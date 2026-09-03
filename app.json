@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "StudyRPG",
-    "slug": "StudyRPG",
+    "name": "LifeRPG",
+    "slug": "LifeRPG",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "studyrpg",
+    "scheme": "liferpg",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0F172A",
     "ios": {
@@ -21,7 +21,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.soonteck.StudyRPG"
+      "package": "com.soonteck.liferpg"
     },
     "web": {
       "output": "static",
@@ -46,8 +46,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "65c7ea03-1cfe-4c3e-a27c-cd49e29a4278"
+        "projectId": "1030d96a-3a08-4d88-91cc-51c892688fea"
       }
-    }
+    },
+    "owner": "soonteck"
   }
 }

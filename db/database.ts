@@ -218,7 +218,6 @@ export function addTask(
   const xp = targetMinutes * 10;
   const isRecurring = repeatRule !== 'once' ? 1 : 0;
 
-  // Safety net: Auto-patch table on the fly if column is missing
   try {
     db.runSync(
       'INSERT INTO tasks (title, difficulty, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id) VALUES (?, ?, ?, ?, ?, ?, ?);',
@@ -227,7 +226,6 @@ export function addTask(
   } catch (err: any) {
     if (err.message && err.message.includes('has no column named target_minutes')) {
       db.execSync('ALTER TABLE tasks ADD COLUMN target_minutes INTEGER DEFAULT 30;');
-      // Retry insert after patch
       db.runSync(
         'INSERT INTO tasks (title, difficulty, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id) VALUES (?, ?, ?, ?, ?, ?, ?);',
         [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId]
