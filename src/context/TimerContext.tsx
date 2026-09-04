@@ -1,13 +1,27 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { addXPAndCheckLevelUp, logStudySession, completeTask, getTasks } from '../../db/database';
-import { useUser } from './UserContext';
-import * as Haptics from 'expo-haptics';
-import { Platform } from 'react-native';
+import * as Haptics from "expo-haptics";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { AppState, AppStateStatus, Platform } from "react-native";
+import {
+  addXPAndCheckLevelUp,
+  completeTask,
+  getTasks,
+  logStudySession,
+} from "../../db/database";
+import { useUser } from "./UserContext";
 
 let Notifications: any = null;
 try {
-  Notifications = require('expo-notifications');
-  if (Notifications && typeof Notifications.setNotificationHandler === 'function') {
+  Notifications = require("expo-notifications");
+  if (
+    Notifications &&
+    typeof Notifications.setNotificationHandler === "function"
+  ) {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
@@ -16,7 +30,12 @@ try {
       }),
     });
   }
-} catch (e) {}
+} catch (e) {
+  console.warn("expo-notifications module not found or failed to load.");
+}
+
+const ONGOING_NOTIFICATION_ID = "life-rpg-ongoing-timer";
+const COMPLETION_NOTIFICATION_ID = "life-rpg-completion-timer";
 
 interface SessionSummary {
   xpEarned: number;
@@ -54,28 +73,51 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [targetAttributeId, setTargetAttributeId] = useState<number | null>(null);
+  const [targetAttributeId, setTargetAttributeId] = useState<number | null>(
+    null,
+  );
   const [linkedTaskId, setLinkedTaskId] = useState<number | null>(null);
-  const [notes, setNotes] = useState('');
-  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
-  const [completedLevelUp, setCompletedLevelUp] = useState<{ leveledUp: boolean; newLevel: number } | null>(null);
+  const [notes, setNotes] = useState("");
+  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(
+    null,
+  );
+  const [completedLevelUp, setCompletedLevelUp] = useState<{
+    leveledUp: boolean;
+    newLevel: number;
+  } | null>(null);
 
   const endTimeRef = useRef<number | null>(null);
+  const activeQuestTitleRef = useRef<string | undefined>(undefined);
 
-  const ensureChannel = async () => {
-    if (!Notifications || Platform.OS !== 'android') return;
+  const ensureChannels = async () => {
+    if (!Notifications || Platform.OS !== "android") return;
     try {
-      // Versioned channel ID forces Android to create a fresh channel with sound enabled
-      await Notifications.setNotificationChannelAsync('focus-timer-v2', {
-        name: 'Focus Timer Alerts',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#6366F1',
-        sound: 'default',
-        enableVibrate: true,
-      });
+      // LOW importance for persistent banner (no sound, silent status bar item)
+      await Notifications.setNotificationChannelAsync(
+        "focus-ongoing-channel-v11",
+        {
+          name: "Active Session Banner",
+          importance: Notifications.AndroidImportance.LOW,
+          sound: undefined,
+          enableVibrate: false,
+          showBadge: false,
+        },
+      );
+
+      // MAX importance forces heads-up pop-up alert & sound even during Doze/sleep
+      await Notifications.setNotificationChannelAsync(
+        "focus-complete-channel-v11",
+        {
+          name: "Session Finish Alert",
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 500, 250, 500],
+          sound: "default",
+          enableVibrate: true,
+          showBadge: true,
+        },
+      );
     } catch (e) {
-      console.error('Failed to configure channel:', e);
+      console.error("Failed to configure channels:", e);
     }
   };
 
@@ -83,24 +125,41 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     async function setupNotifications() {
       if (!Notifications) return;
       try {
-        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        const { status: existingStatus } =
+          await Notifications.getPermissionsAsync();
         let finalStatus = existingStatus;
 
-        if (existingStatus !== 'granted') {
+        if (existingStatus !== "granted") {
           const { status } = await Notifications.requestPermissionsAsync();
           finalStatus = status;
         }
 
-        if (finalStatus === 'granted') {
-          await ensureChannel();
+        if (finalStatus === "granted") {
+          await ensureChannels();
         }
       } catch (e) {
-        console.error('Notification setup failed:', e);
+        console.error("Notification setup failed:", e);
       }
     }
     setupNotifications();
   }, []);
 
+  // Notification tap response
+  useEffect(() => {
+    if (!Notifications) return;
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response: any) => {
+        const data = response?.notification?.request?.content?.data;
+        if (data?.type === "COMPLETION") {
+          setIsCompleted(true);
+        }
+      },
+    );
+
+    return () => subscription.remove();
+  }, []);
+
+  // Foreground tick
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
 
@@ -122,31 +181,123 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isRunning]);
 
-  const scheduleNotification = async (seconds: number, questTitle?: string) => {
-    if (!Notifications || typeof Notifications.scheduleNotificationAsync !== 'function') return;
+  // AppState restoration
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      if (nextAppState === "active" && isRunning && endTimeRef.current) {
+        const now = Date.now();
+        const diff = Math.max(0, Math.ceil((endTimeRef.current - now) / 1000));
+        setTimeLeft(diff);
+        if (diff <= 0) {
+          handleComplete();
+        }
+      }
+
+      if (
+        (nextAppState === "background" || nextAppState === "inactive") &&
+        isRunning &&
+        endTimeRef.current
+      ) {
+        const now = Date.now();
+        const remainingSec = Math.max(
+          0,
+          Math.ceil((endTimeRef.current - now) / 1000),
+        );
+
+        if (remainingSec > 0 && Notifications) {
+          await Notifications.scheduleNotificationAsync({
+            identifier: ONGOING_NOTIFICATION_ID,
+            content: {
+              title: "🚀 Focus Session Active",
+              body: activeQuestTitleRef.current
+                ? `Quest: "${activeQuestTitleRef.current}" in progress...`
+                : "Stay focused! Tap to view timer.",
+              sticky: true,
+              autoDismiss: false,
+              channelId: "focus-ongoing-channel-v11",
+            },
+            trigger: null,
+          }).catch(() => {});
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange,
+    );
+    return () => subscription.remove();
+  }, [isRunning]);
+
+  const clearOngoingNotification = async () => {
+    if (!Notifications) return;
     try {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-      await ensureChannel();
+      await Notifications.dismissNotificationAsync(
+        ONGOING_NOTIFICATION_ID,
+      ).catch(() => {});
+      await Notifications.cancelScheduledNotificationAsync(
+        COMPLETION_NOTIFICATION_ID,
+      ).catch(() => {});
+    } catch (e) {}
+  };
 
-      const targetTime = new Date(Date.now() + seconds * 1000);
+  const scheduleNotificationLifecycle = async (
+    seconds: number,
+    questTitle?: string,
+  ) => {
+    if (!Notifications) return;
+    const validSeconds = Math.max(1, seconds);
+    activeQuestTitleRef.current = questTitle;
 
+    try {
+      await ensureChannels();
+
+      // 1. Cancel previous pending completion notification
+      await Notifications.cancelScheduledNotificationAsync(
+        COMPLETION_NOTIFICATION_ID,
+      ).catch(() => {});
+
+      // 2. Schedule Ongoing Sticky Notification
       await Notifications.scheduleNotificationAsync({
+        identifier: ONGOING_NOTIFICATION_ID,
         content: {
-          title: '⚔️ Focus Session Complete!',
+          title: "🚀 Focus Session Active",
           body: questTitle
-            ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
-            : 'Focus session finished! Tap to claim your rewards.',
-          sound: 'default',
-          priority: Notifications.AndroidNotificationPriority.MAX,
-          channelId: 'focus-timer-v2',
+            ? `Quest: "${questTitle}" in progress...`
+            : "Stay focused! Tap to view timer.",
+          sticky: true,
+          autoDismiss: false,
+          channelId: "focus-ongoing-channel-v11",
         },
-        trigger: {
-          type: 'date',
-          timestamp: targetTime.getTime(),
-        },
+        trigger: null,
       });
+
+      // 3. Schedule Completion Alarm cleanly using exact millisecond timestamp
+      const targetTime = Date.now() + validSeconds * 1000;
+
+      setTimeout(async () => {
+        await Notifications.scheduleNotificationAsync({
+          identifier: COMPLETION_NOTIFICATION_ID,
+          content: {
+            title: "⚔️ Focus Session Complete!",
+            body: questTitle
+              ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
+              : "Focus session finished! Tap to claim your rewards.",
+            sound: "default",
+            priority: Notifications.AndroidNotificationPriority.MAX,
+            data: { type: "COMPLETION" },
+            channelId: "focus-complete-channel-v11",
+          },
+          trigger: {
+            type: "date",
+            timestamp: targetTime,
+          },
+        }).catch((err: unknown) =>
+          console.error("Failed scheduling end alert:", err),
+        );
+      }, 400); // 400ms buffer isolates the execution thread for Android AlarmManager
     } catch (error) {
-      console.error('Failed to schedule notification:', error);
+      console.error("Failed to schedule notification lifecycle:", error);
     }
   };
 
@@ -166,15 +317,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     endTimeRef.current = Date.now() + totalSec * 1000;
     setIsRunning(true);
 
-    scheduleNotification(totalSec, questTitle);
+    scheduleNotificationLifecycle(totalSec, questTitle);
   };
 
   const pauseTimer = async () => {
     setIsRunning(false);
     endTimeRef.current = null;
-    if (Notifications) {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-    }
+    await clearOngoingNotification();
   };
 
   const resumeTimer = () => {
@@ -184,7 +333,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }
     endTimeRef.current = Date.now() + timeLeft * 1000;
     setIsRunning(true);
-    scheduleNotification(timeLeft);
+    scheduleNotificationLifecycle(timeLeft, activeQuestTitleRef.current);
   };
 
   const resetTimer = async () => {
@@ -192,9 +341,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setIsCompleted(false);
     endTimeRef.current = null;
     setTimeLeft(duration);
-    if (Notifications) {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-    }
+    activeQuestTitleRef.current = undefined;
+    await clearOngoingNotification();
   };
 
   const handleComplete = async () => {
@@ -203,9 +351,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     endTimeRef.current = null;
     setTimeLeft(0);
 
-    if (Notifications) {
-      await Notifications.cancelAllScheduledNotificationsAsync();
-    }
+    // Dismiss active session banner
+    await Notifications?.dismissNotificationAsync(
+      ONGOING_NOTIFICATION_ID,
+    ).catch(() => {});
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
@@ -225,7 +374,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
     reloadProfile();
 
-    let activeQuestName = 'Focus Session';
+    let activeQuestName = "Focus Session";
     if (linkedTaskId) {
       const allTasks = getTasks();
       const currentTask = allTasks.find((t) => t.id === linkedTaskId);
@@ -233,7 +382,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }
 
     setSessionSummary({
-      xpEarned: linkedTaskId ? (getTasks().find((t) => t.id === linkedTaskId)?.xp_awarded || 100) : xpEarned,
+      xpEarned: linkedTaskId
+        ? getTasks().find((t) => t.id === linkedTaskId)?.xp_awarded || 100
+        : xpEarned,
       minutesSpent,
       questTitle: activeQuestName,
     });
@@ -279,6 +430,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
 export function useTimer() {
   const context = useContext(TimerContext);
-  if (!context) throw new Error('useTimer must be used within a TimerProvider');
+  if (!context) throw new Error("useTimer must be used within a TimerProvider");
   return context;
 }
