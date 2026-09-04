@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,14 +7,17 @@ import {
   ScrollView,
   Switch,
   Alert,
+  BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Header from '../components/Header';
 import { resetDatabase } from '../../db/database';
 import { useUser } from '../context/UserContext';
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { 
     soundEnabled, 
     setSoundEnabled, 
@@ -22,6 +25,21 @@ export default function SettingsScreen() {
     setHapticsEnabled, 
     reloadProfile 
   } = useUser();
+
+  // Intercept Android back gesture ONLY when this screen is actively in focus
+  useFocusEffect(
+    useCallback(() => {
+      const onBackPress = () => {
+        router.navigate('/profile' as any);
+        return true; // Stop default behavior
+      };
+
+      const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+
+      // Remove listener immediately when navigating away from Settings
+      return () => subscription.remove();
+    }, [router])
+  );
 
   const handleResetData = () => {
     Alert.alert(

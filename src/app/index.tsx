@@ -3,29 +3,30 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { getUserProfile, getTasks, getSubjects, UserProfile, Task, Attribute } from '../../db/database';
+import { getTasks, getSubjects, Task, Attribute } from '../../db/database';
 import { useUser } from '../context/UserContext';
 import { useTimer } from '../context/TimerContext';
 import Header from '../components/Header';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { hapticsEnabled } = useUser();
+  const { profile, hapticsEnabled } = useUser();
   const { isRunning, timeLeft, setLinkedTaskId } = useTimer();
 
-  const [profile, setProfile] = useState<UserProfile | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [attributes, setAttributes] = useState<Attribute[]>([]);
 
   const loadDashboardData = useCallback(() => {
-    const user = getUserProfile();
-    const allTasks = getTasks();
-    const activeTasks = allTasks.filter((t) => t.is_completed === 0);
-    const attrs = getSubjects();
+    try {
+      const allTasks = getTasks() || [];
+      const activeTasks = allTasks.filter((t) => t.is_completed === 0);
+      const attrs = getSubjects() || [];
 
-    setProfile(user);
-    setTasks(activeTasks);
-    setAttributes(attrs);
+      setTasks(activeTasks);
+      setAttributes(attrs);
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    }
   }, []);
 
   useFocusEffect(
@@ -45,10 +46,21 @@ export default function HomeScreen() {
     router.push('/timer');
   };
 
-  if (!profile) return null;
+  if (!profile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <Text style={{ color: '#F8FAFC', fontSize: 16 }}>Loading Character Data...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
-  const requiredXP = Math.floor(100 * Math.pow(profile.level, 1.5));
-  const xpProgressPercent = Math.min(100, Math.round((profile.current_xp / requiredXP) * 100));
+  const requiredXP = Math.floor(100 * Math.pow(profile.level || 1, 1.5));
+  const xpProgressPercent = Math.min(
+    100,
+    Math.round(((profile.current_xp || 0) / requiredXP) * 100)
+  );
 
   const formatTimerExact = (sec: number) => {
     const mins = Math.floor(sec / 60);
@@ -60,29 +72,29 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Header
-          title={`Welcome, ${profile.username}`}
-          subtitle={`${profile.class_title} • Level ${profile.level}`}
+          title={`Welcome, ${profile.username || 'Hero'}`}
+          subtitle={`${profile.class_title || 'Novice'} • Level ${profile.level || 1}`}
           showBack={false}
         />
 
         <View style={styles.heroGlassCard}>
           <View style={styles.heroHeader}>
             <View style={styles.avatarCircle}>
-              <Text style={styles.avatarEmoji}>{profile.avatar}</Text>
+              <Text style={styles.avatarEmoji}>{profile.avatar || '🧙‍♂️'}</Text>
             </View>
             <View style={styles.heroInfo}>
-              <Text style={styles.heroLevel}>Level {profile.level}</Text>
+              <Text style={styles.heroLevel}>Level {profile.level || 1}</Text>
               <View style={styles.xpBarBackground}>
                 <View style={[styles.xpBarFill, { width: `${xpProgressPercent}%` }]} />
               </View>
               <Text style={styles.xpText}>
-                {profile.current_xp} / {requiredXP} XP ({xpProgressPercent}%)
+                {profile.current_xp || 0} / {requiredXP} XP ({xpProgressPercent}%)
               </Text>
             </View>
           </View>
 
           <View style={styles.streakBadge}>
-            <Text style={styles.streakText}>🔥 {profile.streak_count} Day Streak</Text>
+            <Text style={styles.streakText}>🔥 {profile.streak_count || 0} Day Streak</Text>
           </View>
         </View>
 

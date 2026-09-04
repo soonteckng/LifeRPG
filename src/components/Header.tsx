@@ -8,20 +8,23 @@ interface HeaderProps {
   title?: string;
   subtitle?: string;
   showBack?: boolean;
+  fallbackRoute?: string;
 }
 
-export default function Header({ title, subtitle, showBack = true }: HeaderProps) {
+export default function Header({ 
+  title, 
+  subtitle, 
+  showBack = true,
+  fallbackRoute = '/profile'
+}: HeaderProps) {
   const router = useRouter();
   const { hapticsEnabled } = useUser();
 
   const handleBack = () => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/');
-    }
+    // Explicitly navigate to the fallback route (defaults to /profile)
+    router.navigate(fallbackRoute as any);
   };
 
   return (

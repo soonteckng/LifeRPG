@@ -10,11 +10,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import {
-  getUserProfile,
   getSubjects,
-  UserProfile,
   Attribute,
 } from '../../db/database';
+import { useUser } from '../context/UserContext';
 import Header from '../components/Header';
 
 interface Badge {
@@ -26,14 +25,16 @@ interface Badge {
 }
 
 export default function StatsScreen() {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const { profile, hapticsEnabled } = useUser(); // Pull profile directly from UserContext
   const [attributes, setAttributes] = useState<Attribute[]>([]);
 
   const loadData = useCallback(() => {
-    const user = getUserProfile();
-    const attrs = getSubjects();
-    setProfile(user);
-    setAttributes(attrs);
+    try {
+      const attrs = getSubjects() || [];
+      setAttributes(attrs);
+    } catch (error) {
+      console.error('Failed to load attributes:', error);
+    }
   }, []);
 
   useFocusEffect(
@@ -52,48 +53,51 @@ export default function StatsScreen() {
     );
   }
 
+  const level = profile.level || 1;
+  const streak = profile.streak_count || 0;
+
   const badges: Badge[] = [
     {
       id: 'lvl_2',
       icon: '🐣',
       title: 'First Step',
       description: 'Reach Character Level 2',
-      isUnlocked: profile.level >= 2,
+      isUnlocked: level >= 2,
     },
     {
       id: 'streak_3',
       icon: '🔥',
       title: 'Consistent Hero',
       description: 'Maintain a 3-Day Streak',
-      isUnlocked: profile.streak_count >= 3,
+      isUnlocked: streak >= 3,
     },
     {
       id: 'lvl_5',
       icon: '⚡',
       title: 'Rising Adventurer',
       description: 'Reach Character Level 5',
-      isUnlocked: profile.level >= 5,
+      isUnlocked: level >= 5,
     },
     {
       id: 'multi_attr',
       icon: '💪',
       title: 'Jack of All Trades',
       description: 'Level 2+ in 2 or more Stat Trees',
-      isUnlocked: attributes.filter((a) => a.level >= 2).length >= 2,
+      isUnlocked: (attributes || []).filter((a) => (a.level || 1) >= 2).length >= 2,
     },
     {
       id: 'streak_7',
       icon: '👑',
       title: 'Streak Veteran',
       description: 'Maintain a 7-Day Streak',
-      isUnlocked: profile.streak_count >= 7,
+      isUnlocked: streak >= 7,
     },
     {
       id: 'lvl_10',
       icon: '🏆',
       title: 'Legendary Hero',
       description: 'Reach Character Level 10',
-      isUnlocked: profile.level >= 10,
+      isUnlocked: level >= 10,
     },
   ];
 
@@ -101,7 +105,7 @@ export default function StatsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
         <Header
           title="Hero Stat Sheet"
@@ -110,12 +114,12 @@ export default function StatsScreen() {
 
         <View style={styles.statsGrid}>
           <View style={styles.summaryCard}>
-            <Text style={styles.summaryValue}>Lv. {profile.level}</Text>
+            <Text style={styles.summaryValue}>Lv. {level}</Text>
             <Text style={styles.summaryLabel}>Overall Level</Text>
           </View>
           <View style={styles.summaryCard}>
             <Text style={[styles.summaryValue, { color: '#F59E0B' }]}>
-              {profile.streak_count} Days
+              {streak} Days
             </Text>
             <Text style={styles.summaryLabel}>Active Streak</Text>
           </View>
@@ -124,9 +128,10 @@ export default function StatsScreen() {
         <Text style={styles.sectionTitle}>Attribute Progress</Text>
         <View style={styles.attrList}>
           {attributes.map((attr) => {
-            const reqXP = Math.floor(100 * Math.pow(attr.level, 1.5));
+            const attrLvl = attr.level || 1;
+            const reqXP = Math.floor(100 * Math.pow(attrLvl, 1.5));
             const progress = Math.min(
-              Math.round((attr.current_xp / reqXP) * 100),
+              Math.round(((attr.current_xp || 0) / reqXP) * 100),
               100
             );
 
@@ -134,20 +139,20 @@ export default function StatsScreen() {
               <View key={attr.id} style={styles.attrCard}>
                 <View style={styles.attrHeader}>
                   <Text style={styles.attrTitle}>{attr.title}</Text>
-                  <Text style={[styles.attrLevel, { color: attr.color_code }]}>
-                    Lv. {attr.level}
+                  <Text style={[styles.attrLevel, { color: attr.color_code || '#818CF8' }]}>
+                    Lv. {attrLvl}
                   </Text>
                 </View>
                 <View style={styles.attrProgressBg}>
                   <View
                     style={[
                       styles.attrProgressFill,
-                      { width: `${progress}%`, backgroundColor: attr.color_code },
+                      { width: `${progress}%`, backgroundColor: attr.color_code || '#6366F1' },
                     ]}
                   />
                 </View>
                 <Text style={styles.xpDetail}>
-                  {attr.current_xp} / {reqXP} XP ({progress}%)
+                  {attr.current_xp || 0} / {reqXP} XP ({progress}%)
                 </Text>
               </View>
             );
@@ -170,10 +175,11 @@ export default function StatsScreen() {
                 !badge.isUnlocked && styles.badgeCardLocked,
               ]}
               onPress={() => {
-                if (badge.isUnlocked) {
+                if (badge.isUnlocked && hapticsEnabled) {
                   Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 }
               }}
+              activeOpacity={badge.isUnlocked ? 0.7 : 1}
             >
               <Text style={styles.badgeIcon}>
                 {badge.isUnlocked ? badge.icon : '🔒'}
