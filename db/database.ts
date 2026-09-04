@@ -23,6 +23,7 @@ export interface Task {
   repeat_rule?: string;
   target_minutes?: number;
   subject_id?: number | null;
+  last_completed_date?: string | null;
 }
 
 export interface Attribute {
@@ -72,7 +73,8 @@ export function initDatabase() {
       is_recurring INTEGER DEFAULT 0,
       repeat_rule TEXT DEFAULT 'once',
       target_minutes INTEGER DEFAULT 30,
-      subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL
+      subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
+      last_completed_date TEXT
     );
 
     CREATE TABLE IF NOT EXISTS study_sessions (
@@ -84,20 +86,18 @@ export function initDatabase() {
     );
   `);
 
-  // Bulletproof Column Inspection: Automatically adds target_minutes if missing on existing installations
   try {
     const tableInfo = db.getAllSync<{ name: string }>("PRAGMA table_info(tasks);");
-    const hasTargetMinutes = tableInfo.some((col) => col.name === 'target_minutes');
-
-    if (!hasTargetMinutes) {
-      console.log('Migrating database: Adding target_minutes column to tasks...');
+    if (!tableInfo.some((col) => col.name === 'target_minutes')) {
       db.execSync('ALTER TABLE tasks ADD COLUMN target_minutes INTEGER DEFAULT 30;');
+    }
+    if (!tableInfo.some((col) => col.name === 'last_completed_date')) {
+      db.execSync('ALTER TABLE tasks ADD COLUMN last_completed_date TEXT;');
     }
   } catch (e) {
     console.error('Migration check failed:', e);
   }
 
-  // Seed default User Profile
   const user = db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;');
   const today = new Date().toISOString().split('T')[0];
 
@@ -108,7 +108,6 @@ export function initDatabase() {
     );
   }
 
-  // Seed default Attributes
   const subjectCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM subjects;');
   if (subjectCount && subjectCount.count === 0) {
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Strength', 1, 0, '#EF4444');");
@@ -122,7 +121,29 @@ export function getDatabase() {
 }
 
 export function getUserProfile(): UserProfile {
-  return db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;')!;
+  try {
+    const user = db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;');
+    if (user) return user;
+
+    const today = new Date().toISOString().split('T')[0];
+    db.runSync(
+      'INSERT INTO user_profile (id, username, avatar, class_title, level, current_xp, streak_count, last_active_date) VALUES (1, ?, ?, ?, 1, 0, 1, ?);',
+      ['Hero', '🧙‍♂️', 'Scholar', today]
+    );
+    return db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;')!;
+  } catch (e) {
+    console.error('Failed to get user profile, returning fallback:', e);
+    return {
+      id: 1,
+      username: 'Hero',
+      avatar: '🧙‍♂️',
+      class_title: 'Scholar',
+      level: 1,
+      current_xp: 0,
+      streak_count: 1,
+      last_active_date: new Date().toISOString().split('T')[0],
+    };
+  }
 }
 
 export function updateUserProfile(username: string, avatar: string, class_title: string) {
@@ -134,8 +155,8 @@ export function updateUserProfile(username: string, avatar: string, class_title:
 
 export function addXPAndCheckLevelUp(xpGain: number): { newLevel: number; newXP: number; leveledUp: boolean } {
   const profile = getUserProfile();
-  let currentXP = profile.current_xp + xpGain;
-  let level = profile.level;
+  let currentXP = (profile?.current_xp || 0) + xpGain;
+  let level = profile?.level || 1;
   let leveledUp = false;
 
   let requiredXP = Math.floor(100 * Math.pow(level, 1.5));
@@ -148,6 +169,7 @@ export function addXPAndCheckLevelUp(xpGain: number): { newLevel: number; newXP:
   }
 
   db.runSync('UPDATE user_profile SET level = ?, current_xp = ? WHERE id = 1;', [level, currentXP]);
+  console.log(`[XP UPDATE] Gain: +${xpGain} XP | Total: ${currentXP}/${requiredXP} XP | Level: ${level}`);
 
   return { newLevel: level, newXP: currentXP, leveledUp };
 }
@@ -205,6 +227,17 @@ export function getWeeklyStats(): DailyStat[] {
 }
 
 export function getTasks(): Task[] {
+  const today = new Date().toISOString().split('T')[0];
+
+  db.runSync(
+    `UPDATE tasks 
+     SET is_completed = 0 
+     WHERE is_recurring = 1 
+       AND is_completed = 1 
+       AND (last_completed_date IS NULL OR last_completed_date < ?);`,
+    [today]
+  );
+
   return db.getAllSync<Task>('SELECT * FROM tasks ORDER BY id DESC;');
 }
 
@@ -218,22 +251,10 @@ export function addTask(
   const xp = targetMinutes * 10;
   const isRecurring = repeatRule !== 'once' ? 1 : 0;
 
-  try {
-    db.runSync(
-      'INSERT INTO tasks (title, difficulty, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id) VALUES (?, ?, ?, ?, ?, ?, ?);',
-      [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId]
-    );
-  } catch (err: any) {
-    if (err.message && err.message.includes('has no column named target_minutes')) {
-      db.execSync('ALTER TABLE tasks ADD COLUMN target_minutes INTEGER DEFAULT 30;');
-      db.runSync(
-        'INSERT INTO tasks (title, difficulty, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id) VALUES (?, ?, ?, ?, ?, ?, ?);',
-        [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId]
-      );
-    } else {
-      throw err;
-    }
-  }
+  db.runSync(
+    'INSERT INTO tasks (title, difficulty, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id) VALUES (?, ?, ?, ?, ?, ?, ?);',
+    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId]
+  );
 }
 
 export function updateTask(
@@ -256,9 +277,14 @@ export function completeTask(taskId: number): { leveledUp: boolean; newLevel: nu
   const task = db.getFirstSync<Task>('SELECT * FROM tasks WHERE id = ?;', [taskId]);
   if (!task || task.is_completed === 1) return { leveledUp: false, newLevel: 1 };
 
-  db.runSync('UPDATE tasks SET is_completed = 1 WHERE id = ?;', [taskId]);
-  const levelResult = addXPAndCheckLevelUp(task.xp_awarded);
+  const today = new Date().toISOString().split('T')[0];
 
+  db.runSync(
+    'UPDATE tasks SET is_completed = 1, last_completed_date = ? WHERE id = ?;',
+    [today, taskId]
+  );
+
+  const levelResult = addXPAndCheckLevelUp(task.xp_awarded || 100);
   return { leveledUp: levelResult.leveledUp, newLevel: levelResult.newLevel };
 }
 

@@ -8,6 +8,12 @@
     "scheme": "liferpg",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0F172A",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/1030d96a-3a08-4d88-91cc-51c892688fea"
+    },
     "ios": {
       "icon": "./assets/expo.icon",
       "backgroundColor": "#0F172A"
@@ -37,7 +43,14 @@
           "imageWidth": 76
         }
       ],
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#0F172A"
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

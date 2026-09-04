@@ -26,17 +26,15 @@ export default function SettingsScreen() {
     reloadProfile 
   } = useUser();
 
-  // Intercept Android back gesture ONLY when this screen is actively in focus
   useFocusEffect(
     useCallback(() => {
       const onBackPress = () => {
         router.navigate('/profile' as any);
-        return true; // Stop default behavior
+        return true;
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
 
-      // Remove listener immediately when navigating away from Settings
       return () => subscription.remove();
     }, [router])
   );

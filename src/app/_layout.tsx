@@ -14,11 +14,17 @@ import { UserProvider, useUser } from "../context/UserContext";
 
 function GlobalRewardListener() {
   const { sessionSummary, completedLevelUp, clearCompletionModal } = useTimer();
-  const { profile } = useUser();
+  const { profile, reloadProfile } = useUser();
 
-  const requiredXP = profile
-    ? Math.floor(100 * Math.pow(profile.level, 1.5))
-    : 100;
+  useEffect(() => {
+    if (sessionSummary || completedLevelUp) {
+      reloadProfile();
+    }
+  }, [sessionSummary, completedLevelUp, reloadProfile]);
+
+  const currentXP = profile?.current_xp || 0;
+  const currentLevel = profile?.level || 1;
+  const requiredXP = Math.floor(100 * Math.pow(currentLevel, 1.5));
 
   return (
     <LevelUpModal
@@ -27,8 +33,8 @@ function GlobalRewardListener() {
       minutesSpent={sessionSummary?.minutesSpent || 0}
       questTitle={sessionSummary?.questTitle}
       isLevelUp={!!completedLevelUp?.leveledUp}
-      newLevel={completedLevelUp?.newLevel || profile?.level || 1}
-      currentXP={profile?.current_xp || 0}
+      newLevel={completedLevelUp?.newLevel || currentLevel}
+      currentXP={currentXP}
       requiredXP={requiredXP}
       onClose={clearCompletionModal}
     />
@@ -96,9 +102,7 @@ export default function RootLayout() {
             options={{
               title: "Quests",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>
-                  📜
-                </Text>
+                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>📜</Text>
               ),
             }}
           />
@@ -107,9 +111,7 @@ export default function RootLayout() {
             options={{
               title: "Stats",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>
-                  📊
-                </Text>
+                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>📊</Text>
               ),
             }}
           />
@@ -118,9 +120,7 @@ export default function RootLayout() {
             options={{
               title: "Home",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>
-                  🏰
-                </Text>
+                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>🏰</Text>
               ),
             }}
           />
@@ -129,9 +129,7 @@ export default function RootLayout() {
             options={{
               title: "Focus",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>
-                  ⏱️
-                </Text>
+                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>⏱️</Text>
               ),
             }}
           />
@@ -140,9 +138,7 @@ export default function RootLayout() {
             options={{
               title: "Profile",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>
-                  👤
-                </Text>
+                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>👤</Text>
               ),
             }}
           />
@@ -179,14 +175,8 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 12,
   },
-  tabItem: {
-    paddingVertical: 2,
-  },
-  tabLabel: {
-    fontSize: 10,
-    fontWeight: "700",
-    marginTop: 2,
-  },
+  tabItem: { paddingVertical: 2 },
+  tabLabel: { fontSize: 10, fontWeight: "700", marginTop: 2 },
   activeBanner: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 98 : 90,
@@ -206,33 +196,10 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 8,
   },
-  pausedBanner: {
-    backgroundColor: "#F59E0B",
-    shadowColor: "#F59E0B",
-  },
-  bannerInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#FFFFFF",
-  },
-  pausedDot: {
-    backgroundColor: "rgba(255, 255, 255, 0.6)",
-  },
-  bannerTitle: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  bannerTimer: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-    fontVariant: ["tabular-nums"],
-  },
+  pausedBanner: { backgroundColor: "#F59E0B", shadowColor: "#F59E0B" },
+  bannerInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
+  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#FFFFFF" },
+  pausedDot: { backgroundColor: "rgba(255, 255, 255, 0.6)" },
+  bannerTitle: { color: "#FFFFFF", fontSize: 12, fontWeight: "bold" },
+  bannerTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "900", fontVariant: ["tabular-nums"] },
 });

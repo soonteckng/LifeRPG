@@ -10,7 +10,7 @@ import Header from '../components/Header';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { profile, hapticsEnabled } = useUser();
+  const { profile, reloadProfile, hapticsEnabled } = useUser();
   const { isRunning, timeLeft, setLinkedTaskId } = useTimer();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -18,6 +18,8 @@ export default function HomeScreen() {
 
   const loadDashboardData = useCallback(() => {
     try {
+      reloadProfile();
+
       const allTasks = getTasks() || [];
       const activeTasks = allTasks.filter((t) => t.is_completed === 0);
       const attrs = getSubjects() || [];
@@ -27,12 +29,20 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     }
-  }, []);
+  }, [reloadProfile]);
 
   useFocusEffect(
     useCallback(() => {
       loadDashboardData();
     }, [loadDashboardData])
+  );
+
+  const level = profile.level || 1;
+  const currentXP = profile.current_xp || 0;
+  const requiredXP = Math.floor(100 * Math.pow(level, 1.5));
+  const xpProgressPercent = Math.min(
+    100,
+    Math.round((currentXP / Math.max(1, requiredXP)) * 100)
   );
 
   const handleQuestPress = (task: Task) => {
@@ -46,22 +56,6 @@ export default function HomeScreen() {
     router.push('/timer');
   };
 
-  if (!profile) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#F8FAFC', fontSize: 16 }}>Loading Character Data...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const requiredXP = Math.floor(100 * Math.pow(profile.level || 1, 1.5));
-  const xpProgressPercent = Math.min(
-    100,
-    Math.round(((profile.current_xp || 0) / requiredXP) * 100)
-  );
-
   const formatTimerExact = (sec: number) => {
     const mins = Math.floor(sec / 60);
     const secs = sec % 60;
@@ -73,7 +67,7 @@ export default function HomeScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <Header
           title={`Welcome, ${profile.username || 'Hero'}`}
-          subtitle={`${profile.class_title || 'Novice'} • Level ${profile.level || 1}`}
+          subtitle={`${profile.class_title || 'Novice'} • Level ${level}`}
           showBack={false}
         />
 
@@ -83,12 +77,12 @@ export default function HomeScreen() {
               <Text style={styles.avatarEmoji}>{profile.avatar || '🧙‍♂️'}</Text>
             </View>
             <View style={styles.heroInfo}>
-              <Text style={styles.heroLevel}>Level {profile.level || 1}</Text>
+              <Text style={styles.heroLevel}>Level {level}</Text>
               <View style={styles.xpBarBackground}>
                 <View style={[styles.xpBarFill, { width: `${xpProgressPercent}%` }]} />
               </View>
               <Text style={styles.xpText}>
-                {profile.current_xp || 0} / {requiredXP} XP ({xpProgressPercent}%)
+                {currentXP} / {requiredXP} XP ({xpProgressPercent}%)
               </Text>
             </View>
           </View>

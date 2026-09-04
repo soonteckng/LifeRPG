@@ -1,49 +1,54 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { getUserProfile, updateUserProfile, UserProfile } from '../../db/database';
 
 interface UserContextType {
-  profile: UserProfile | null;
+  profile: UserProfile;
   username: string;
   avatar: string;
   classTitle: string;
-  updateProfile: (name: string, av: string, cls: string) => void;
   soundEnabled: boolean;
-  setSoundEnabled: (val: boolean) => void;
   hapticsEnabled: boolean;
+  setSoundEnabled: (val: boolean) => void;
   setHapticsEnabled: (val: boolean) => void;
+  updateProfile: (username: string, avatar: string, classTitle: string) => void;
   reloadProfile: () => void;
 }
+
+const defaultProfile: UserProfile = {
+  id: 1,
+  username: 'Hero',
+  avatar: '🧙‍♂️',
+  class_title: 'Scholar',
+  level: 1,
+  current_xp: 0,
+  streak_count: 1,
+  last_active_date: new Date().toISOString().split('T')[0],
+};
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [username, setUsernameState] = useState('Hero Player');
-  const [avatar, setAvatarState] = useState('🥷');
-  const [classTitle, setClassTitleState] = useState('Scholar');
-
+  const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
 
-  const reloadProfile = () => {
-    const user = getUserProfile();
-    if (user) {
-      setProfile(user);
-      setUsernameState(user.username || 'Hero Player');
-      setAvatarState(user.avatar || '🥷');
-      setClassTitleState(user.class_title || 'Scholar');
+  const reloadProfile = useCallback(() => {
+    try {
+      const user = getUserProfile();
+      if (user) {
+        setProfile({ ...user });
+      }
+    } catch (error) {
+      console.error('Failed to reload profile in UserContext:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     reloadProfile();
-  }, []);
+  }, [reloadProfile]);
 
-  const updateProfile = (newName: string, newAvatar: string, newClass: string) => {
-    setUsernameState(newName);
-    setAvatarState(newAvatar);
-    setClassTitleState(newClass);
-    updateUserProfile(newName, newAvatar, newClass);
+  const updateProfile = (username: string, avatar: string, classTitle: string) => {
+    updateUserProfile(username, avatar, classTitle);
     reloadProfile();
   };
 
@@ -51,14 +56,14 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     <UserContext.Provider
       value={{
         profile,
-        username,
-        avatar,
-        classTitle,
-        updateProfile,
+        username: profile.username || 'Hero',
+        avatar: profile.avatar || '🧙‍♂️',
+        classTitle: profile.class_title || 'Scholar',
         soundEnabled,
-        setSoundEnabled,
         hapticsEnabled,
+        setSoundEnabled,
         setHapticsEnabled,
+        updateProfile,
         reloadProfile,
       }}
     >

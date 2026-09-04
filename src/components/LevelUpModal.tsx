@@ -68,7 +68,9 @@ export default function LevelUpModal({
             <View style={styles.xpProgressContainer}>
               <View style={styles.xpHeader}>
                 <Text style={styles.xpLabel}>Character Level {newLevel}</Text>
-                <Text style={styles.xpPercentText}>{xpPercent}%</Text>
+                <Text style={styles.xpPercentText}>
+                  {currentXP} / {requiredXP} XP ({xpPercent}%)
+                </Text>
               </View>
               <View style={styles.xpBarBg}>
                 <View style={[styles.xpBarFill, { width: `${xpPercent}%` }]} />

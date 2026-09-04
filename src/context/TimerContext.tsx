@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { addXPAndCheckLevelUp, logStudySession, completeTask, getTasks } from '../../db/database';
+import { useUser } from './UserContext';
 import * as Haptics from 'expo-haptics';
+import { Platform } from 'react-native';
 
 let Notifications: any = null;
 try {
@@ -11,8 +13,6 @@ try {
         shouldShowAlert: true,
         shouldPlaySound: true,
         shouldSetBadge: false,
-        banner: true,
-        list: true,
       }),
     });
   }
@@ -48,6 +48,8 @@ interface TimerContextType {
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
 
 export function TimerProvider({ children }: { children: React.ReactNode }) {
+  const { reloadProfile } = useUser();
+
   const [duration, setDuration] = useState(30 * 60);
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [isRunning, setIsRunning] = useState(false);
@@ -59,6 +61,45 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [completedLevelUp, setCompletedLevelUp] = useState<{ leveledUp: boolean; newLevel: number } | null>(null);
 
   const endTimeRef = useRef<number | null>(null);
+
+  const ensureChannel = async () => {
+    if (!Notifications || Platform.OS !== 'android') return;
+    try {
+      // Versioned channel ID forces Android to create a fresh channel with sound enabled
+      await Notifications.setNotificationChannelAsync('focus-timer-v2', {
+        name: 'Focus Timer Alerts',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#6366F1',
+        sound: 'default',
+        enableVibrate: true,
+      });
+    } catch (e) {
+      console.error('Failed to configure channel:', e);
+    }
+  };
+
+  useEffect(() => {
+    async function setupNotifications() {
+      if (!Notifications) return;
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+
+        if (finalStatus === 'granted') {
+          await ensureChannel();
+        }
+      } catch (e) {
+        console.error('Notification setup failed:', e);
+      }
+    }
+    setupNotifications();
+  }, []);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
@@ -85,20 +126,28 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     if (!Notifications || typeof Notifications.scheduleNotificationAsync !== 'function') return;
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
+      await ensureChannel();
+
+      const targetTime = new Date(Date.now() + seconds * 1000);
+
       await Notifications.scheduleNotificationAsync({
         content: {
           title: '⚔️ Focus Session Complete!',
           body: questTitle
             ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
             : 'Focus session finished! Tap to claim your rewards.',
-          sound: true,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          channelId: 'focus-timer-v2',
         },
         trigger: {
-          type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-          seconds: Math.max(1, seconds),
+          type: 'date',
+          timestamp: targetTime.getTime(),
         },
       });
-    } catch (error) {}
+    } catch (error) {
+      console.error('Failed to schedule notification:', error);
+    }
   };
 
   const setDurationInMinutes = (minutes: number) => {
@@ -120,11 +169,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     scheduleNotification(totalSec, questTitle);
   };
 
-  const pauseTimer = () => {
+  const pauseTimer = async () => {
     setIsRunning(false);
     endTimeRef.current = null;
-    if (Notifications && typeof Notifications.cancelAllScheduledNotificationsAsync === 'function') {
-      Notifications.cancelAllScheduledNotificationsAsync();
+    if (Notifications) {
+      await Notifications.cancelAllScheduledNotificationsAsync();
     }
   };
 
@@ -138,24 +187,24 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     scheduleNotification(timeLeft);
   };
 
-  const resetTimer = () => {
+  const resetTimer = async () => {
     setIsRunning(false);
     setIsCompleted(false);
     endTimeRef.current = null;
     setTimeLeft(duration);
-    if (Notifications && typeof Notifications.cancelAllScheduledNotificationsAsync === 'function') {
-      Notifications.cancelAllScheduledNotificationsAsync();
+    if (Notifications) {
+      await Notifications.cancelAllScheduledNotificationsAsync();
     }
   };
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     setIsRunning(false);
     setIsCompleted(true);
     endTimeRef.current = null;
     setTimeLeft(0);
 
-    if (Notifications && typeof Notifications.cancelAllScheduledNotificationsAsync === 'function') {
-      Notifications.cancelAllScheduledNotificationsAsync();
+    if (Notifications) {
+      await Notifications.cancelAllScheduledNotificationsAsync();
     }
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -164,22 +213,27 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const xpEarned = minutesSpent * 10;
 
     logStudySession(duration, xpEarned, targetAttributeId);
-    let result = addXPAndCheckLevelUp(xpEarned);
+
+    let result = { leveledUp: false, newLevel: 1 };
+
+    if (linkedTaskId) {
+      result = completeTask(linkedTaskId);
+    } else {
+      const levelRes = addXPAndCheckLevelUp(xpEarned);
+      result = { leveledUp: levelRes.leveledUp, newLevel: levelRes.newLevel };
+    }
+
+    reloadProfile();
 
     let activeQuestName = 'Focus Session';
     if (linkedTaskId) {
       const allTasks = getTasks();
       const currentTask = allTasks.find((t) => t.id === linkedTaskId);
       if (currentTask) activeQuestName = currentTask.title;
-
-      const taskResult = completeTask(linkedTaskId);
-      if (taskResult.leveledUp) {
-        result = { newLevel: taskResult.newLevel, newXP: 0, leveledUp: true };
-      }
     }
 
     setSessionSummary({
-      xpEarned,
+      xpEarned: linkedTaskId ? (getTasks().find((t) => t.id === linkedTaskId)?.xp_awarded || 100) : xpEarned,
       minutesSpent,
       questTitle: activeQuestName,
     });

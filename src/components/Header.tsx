@@ -22,8 +22,6 @@ export default function Header({
 
   const handleBack = () => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    // Explicitly navigate to the fallback route (defaults to /profile)
     router.navigate(fallbackRoute as any);
   };
 

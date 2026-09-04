@@ -50,15 +50,19 @@ export default function TimerScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
 
   const loadData = useCallback(() => {
-    const attrs = getSubjects();
-    const taskList = getTasks().filter((t) => t.is_completed === 0);
-    setAttributes(attrs);
-    setTasks(taskList);
+    try {
+      const attrs = getSubjects() || [];
+      const taskList = (getTasks() || []).filter((t) => t.is_completed === 0);
+      setAttributes(attrs);
+      setTasks(taskList);
 
-    if (attrs.length > 0 && targetAttributeId === null) {
-      setTargetAttributeId(attrs[0].id);
+      if (attrs.length > 0 && targetAttributeId === null) {
+        setTargetAttributeId(attrs[0].id);
+      }
+    } catch (error) {
+      console.error('Failed to load timer data:', error);
     }
-  }, [targetAttributeId]);
+  }, [targetAttributeId, setTargetAttributeId]);
 
   useFocusEffect(
     useCallback(() => {
