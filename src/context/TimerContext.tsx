@@ -15,7 +15,6 @@ import {
 } from "../../db/database";
 import { useUser } from "./UserContext";
 
-import type { NotificationRequestInput } from "expo-notifications";
 import { SchedulableTriggerInputTypes } from "expo-notifications";
 
 let Notifications: any = null;
@@ -29,7 +28,7 @@ try {
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
-        shouldSetBadge: false,
+        shouldSetBadge: true,
       }),
     });
   }
@@ -96,7 +95,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     if (!Notifications || Platform.OS !== "android") return;
     try {
       await Notifications.setNotificationChannelAsync(
-        "focus-ongoing-channel-v13",
+        "focus-ongoing-channel-v15",
         {
           name: "Active Session Banner",
           importance: Notifications.AndroidImportance.LOW,
@@ -107,7 +106,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       );
 
       await Notifications.setNotificationChannelAsync(
-        "focus-complete-channel-v13",
+        "focus-complete-channel-v15",
         {
           name: "Session Finish Alert",
           importance: Notifications.AndroidImportance.MAX,
@@ -145,7 +144,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setupNotifications();
   }, []);
 
-  // Completion notification tap handler
   useEffect(() => {
     if (!Notifications) return;
     const subscription = Notifications.addNotificationResponseReceivedListener(
@@ -160,7 +158,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.remove();
   }, []);
 
-  // Foreground tick loop
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
 
@@ -182,7 +179,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isRunning]);
 
-  // AppState restoration
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: AppStateStatus) => {
       if (nextAppState === "active" && isRunning && endTimeRef.current) {
@@ -206,7 +202,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         );
 
         if (remainingSec > 0 && Notifications) {
-          const restoreRequest: NotificationRequestInput = {
+          await Notifications.scheduleNotificationAsync({
             identifier: ONGOING_NOTIFICATION_ID,
             content: {
               title: "🚀 Focus Session Active",
@@ -215,12 +211,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
                 : "Stay focused! Tap to view timer.",
               sticky: true,
               autoDismiss: false,
+              channelId: "focus-ongoing-channel-v15",
             },
-            trigger: {
-              channelId: "focus-ongoing-channel-v13",
-            },
-          };
-          await Notifications.scheduleNotificationAsync(restoreRequest).catch(() => {});
+            trigger: null,
+          }).catch(() => {});
         }
       }
     };
@@ -255,13 +249,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     try {
       await ensureChannels();
 
-      // 1. Cancel previous pending completion notification
       await Notifications.cancelScheduledNotificationAsync(
         COMPLETION_NOTIFICATION_ID,
       ).catch(() => {});
 
-      // 2. Immediate Ongoing Notification
-      const ongoingRequest: NotificationRequestInput = {
+      // Immediate Ongoing Sticky Banner
+      await Notifications.scheduleNotificationAsync({
         identifier: ONGOING_NOTIFICATION_ID,
         content: {
           title: "🚀 Focus Session Active",
@@ -270,17 +263,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             : "Stay focused! Tap to view timer.",
           sticky: true,
           autoDismiss: false,
+          channelId: "focus-ongoing-channel-v15",
         },
-        trigger: {
-          channelId: "focus-ongoing-channel-v13",
-        },
-      };
-      await Notifications.scheduleNotificationAsync(ongoingRequest);
+        trigger: null,
+      });
 
-      // 3. Scheduled Completion Notification (AlarmManager DATE trigger)
-      const targetTime = Date.now() + validSeconds * 1000;
-
-      const completionRequest: NotificationRequestInput = {
+      // Completion Alarm
+      await Notifications.scheduleNotificationAsync({
         identifier: COMPLETION_NOTIFICATION_ID,
         content: {
           title: "⚔️ Focus Session Complete!",
@@ -288,16 +277,16 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
             : "Focus session finished! Tap to claim your rewards.",
           sound: "default",
-          priority: Notifications.AndroidNotificationPriority.MAX,
+          priority: Notifications.AndroidNotificationPriority?.MAX,
+          channelId: "focus-complete-channel-v15",
           data: { type: "COMPLETION" },
         },
         trigger: {
-          type: SchedulableTriggerInputTypes.DATE,
-          date: targetTime,
-          channelId: "focus-complete-channel-v13",
+          type: SchedulableTriggerInputTypes.TIME_INTERVAL,
+          seconds: validSeconds,
+          repeats: false,
         },
-      };
-      await Notifications.scheduleNotificationAsync(completionRequest).catch(
+      }).catch(
         (err: unknown) => console.error("Failed scheduling end alert:", err),
       );
     } catch (error) {
