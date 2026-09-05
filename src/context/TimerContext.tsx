@@ -15,6 +15,9 @@ import {
 } from "../../db/database";
 import { useUser } from "./UserContext";
 
+import type { NotificationRequestInput } from "expo-notifications";
+import { SchedulableTriggerInputTypes } from "expo-notifications";
+
 let Notifications: any = null;
 try {
   Notifications = require("expo-notifications");
@@ -92,9 +95,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const ensureChannels = async () => {
     if (!Notifications || Platform.OS !== "android") return;
     try {
-      // LOW importance for persistent banner (no sound, silent status bar item)
       await Notifications.setNotificationChannelAsync(
-        "focus-ongoing-channel-v11",
+        "focus-ongoing-channel-v13",
         {
           name: "Active Session Banner",
           importance: Notifications.AndroidImportance.LOW,
@@ -104,9 +106,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         },
       );
 
-      // MAX importance forces heads-up pop-up alert & sound even during Doze/sleep
       await Notifications.setNotificationChannelAsync(
-        "focus-complete-channel-v11",
+        "focus-complete-channel-v13",
         {
           name: "Session Finish Alert",
           importance: Notifications.AndroidImportance.MAX,
@@ -144,7 +145,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setupNotifications();
   }, []);
 
-  // Notification tap response
+  // Completion notification tap handler
   useEffect(() => {
     if (!Notifications) return;
     const subscription = Notifications.addNotificationResponseReceivedListener(
@@ -159,7 +160,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.remove();
   }, []);
 
-  // Foreground tick
+  // Foreground tick loop
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
 
@@ -205,7 +206,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         );
 
         if (remainingSec > 0 && Notifications) {
-          await Notifications.scheduleNotificationAsync({
+          const restoreRequest: NotificationRequestInput = {
             identifier: ONGOING_NOTIFICATION_ID,
             content: {
               title: "🚀 Focus Session Active",
@@ -214,10 +215,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
                 : "Stay focused! Tap to view timer.",
               sticky: true,
               autoDismiss: false,
-              channelId: "focus-ongoing-channel-v11",
             },
-            trigger: null,
-          }).catch(() => {});
+            trigger: {
+              channelId: "focus-ongoing-channel-v13",
+            },
+          };
+          await Notifications.scheduleNotificationAsync(restoreRequest).catch(() => {});
         }
       }
     };
@@ -257,8 +260,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         COMPLETION_NOTIFICATION_ID,
       ).catch(() => {});
 
-      // 2. Schedule Ongoing Sticky Notification
-      await Notifications.scheduleNotificationAsync({
+      // 2. Immediate Ongoing Notification
+      const ongoingRequest: NotificationRequestInput = {
         identifier: ONGOING_NOTIFICATION_ID,
         content: {
           title: "🚀 Focus Session Active",
@@ -267,35 +270,36 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             : "Stay focused! Tap to view timer.",
           sticky: true,
           autoDismiss: false,
-          channelId: "focus-ongoing-channel-v11",
         },
-        trigger: null,
-      });
+        trigger: {
+          channelId: "focus-ongoing-channel-v13",
+        },
+      };
+      await Notifications.scheduleNotificationAsync(ongoingRequest);
 
-      // 3. Schedule Completion Alarm cleanly using exact millisecond timestamp
+      // 3. Scheduled Completion Notification (AlarmManager DATE trigger)
       const targetTime = Date.now() + validSeconds * 1000;
 
-      setTimeout(async () => {
-        await Notifications.scheduleNotificationAsync({
-          identifier: COMPLETION_NOTIFICATION_ID,
-          content: {
-            title: "⚔️ Focus Session Complete!",
-            body: questTitle
-              ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
-              : "Focus session finished! Tap to claim your rewards.",
-            sound: "default",
-            priority: Notifications.AndroidNotificationPriority.MAX,
-            data: { type: "COMPLETION" },
-            channelId: "focus-complete-channel-v11",
-          },
-          trigger: {
-            type: "date",
-            timestamp: targetTime,
-          },
-        }).catch((err: unknown) =>
-          console.error("Failed scheduling end alert:", err),
-        );
-      }, 400); // 400ms buffer isolates the execution thread for Android AlarmManager
+      const completionRequest: NotificationRequestInput = {
+        identifier: COMPLETION_NOTIFICATION_ID,
+        content: {
+          title: "⚔️ Focus Session Complete!",
+          body: questTitle
+            ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
+            : "Focus session finished! Tap to claim your rewards.",
+          sound: "default",
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          data: { type: "COMPLETION" },
+        },
+        trigger: {
+          type: SchedulableTriggerInputTypes.DATE,
+          date: targetTime,
+          channelId: "focus-complete-channel-v13",
+        },
+      };
+      await Notifications.scheduleNotificationAsync(completionRequest).catch(
+        (err: unknown) => console.error("Failed scheduling end alert:", err),
+      );
     } catch (error) {
       console.error("Failed to schedule notification lifecycle:", error);
     }
@@ -351,7 +355,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     endTimeRef.current = null;
     setTimeLeft(0);
 
-    // Dismiss active session banner
     await Notifications?.dismissNotificationAsync(
       ONGOING_NOTIFICATION_ID,
     ).catch(() => {});
