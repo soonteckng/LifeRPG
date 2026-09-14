@@ -171,36 +171,33 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        {/* --- ATTRIBUTE MASTERY --- */}
-        <Text style={styles.sectionTitle}>ATTRIBUTE MASTERY</Text>
-        <View style={styles.attrList}>
-          {attributes.map((attr) => {
-            const attrLvl = attr.level || 1;
-            const reqXP = Math.floor(100 * Math.pow(attrLvl, 1.5));
-            const progress = Math.min(
-              Math.round(((attr.current_xp || 0) / reqXP) * 100),
-              100
-            );
+        {/* --- FOCUS HISTORY --- */}
+        <Text style={styles.sectionTitle}>FOCUS HISTORY · LAST 7 DAYS</Text>
+        <View style={styles.historyCard}>
+          {weeklyStats.map((item, index) => {
+            const date = new Date(`${item.date}T00:00:00`);
+            const dateLabel = date.toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric',
+            });
 
             return (
-              <View key={attr.id} style={styles.attrCard}>
-                <View style={styles.attrHeader}>
-                  <Text style={styles.attrTitle}>{attr.title}</Text>
-                  <Text style={[styles.attrLevel, { color: attr.color_code || '#818CF8' }]}>
-                    Lv. {attrLvl}
-                  </Text>
+              <View
+                key={item.date}
+                style={[styles.historyRow, index === weeklyStats.length - 1 && styles.historyRowLast]}
+              >
+                <View>
+                  <Text style={styles.historyDay}>{item.dayLabel}</Text>
+                  <Text style={styles.historyDate}>{dateLabel}</Text>
                 </View>
-                <View style={styles.attrProgressBg}>
-                  <View
-                    style={[
-                      styles.attrProgressFill,
-                      { width: `${progress}%`, backgroundColor: attr.color_code || '#6366F1' },
-                    ]}
-                  />
+                <View style={styles.historyMetric}>
+                  <Text style={styles.historyMinutes}>{item.focusMinutes}m</Text>
+                  <Text style={styles.historyCaption}>focused</Text>
                 </View>
-                <Text style={styles.xpDetail}>
-                  {attr.current_xp || 0} / {reqXP} XP ({progress}%)
-                </Text>
+                <View style={styles.historyMetric}>
+                  <Text style={styles.historyXP}>+{item.xpEarned}</Text>
+                  <Text style={styles.historyCaption}>XP</Text>
+                </View>
               </View>
             );
           })}
@@ -301,20 +298,29 @@ const styles = StyleSheet.create({
   },
   barFill: { width: '100%', borderRadius: 6 },
   barDayLabel: { color: '#64748B', fontSize: 10, fontWeight: 'bold', marginTop: 6 },
-  attrList: { gap: 10, marginBottom: 20 },
-  attrCard: {
+  historyCard: {
     backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    padding: 14,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: '#334155',
+    paddingHorizontal: 16,
+    marginBottom: 20,
   },
-  attrHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  attrTitle: { color: '#F8FAFC', fontWeight: '600', fontSize: 14 },
-  attrLevel: { fontWeight: 'bold', fontSize: 14 },
-  attrProgressBg: { height: 8, backgroundColor: '#0F172A', borderRadius: 4, overflow: 'hidden' },
-  attrProgressFill: { height: '100%', borderRadius: 4 },
-  xpDetail: { color: '#64748B', fontSize: 11, textAlign: 'right', marginTop: 6 },
+  historyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  historyRowLast: { borderBottomWidth: 0 },
+  historyDay: { color: '#F8FAFC', fontSize: 13, fontWeight: '700' },
+  historyDate: { color: '#64748B', fontSize: 10, marginTop: 2 },
+  historyMetric: { minWidth: 58, alignItems: 'flex-end' },
+  historyMinutes: { color: '#A5B4FC', fontSize: 13, fontWeight: '800' },
+  historyXP: { color: '#6EE7B7', fontSize: 13, fontWeight: '800' },
+  historyCaption: { color: '#64748B', fontSize: 9, marginTop: 2, textTransform: 'uppercase' },
   badgeHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
