@@ -27,6 +27,8 @@ try {
     Notifications.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
         shouldPlaySound: true,
         shouldSetBadge: true,
       }),
@@ -38,6 +40,8 @@ try {
 
 const ONGOING_NOTIFICATION_ID = "life-rpg-ongoing-timer";
 const COMPLETION_NOTIFICATION_ID = "life-rpg-completion-timer";
+const ONGOING_CHANNEL_ID = "focus-ongoing-channel-v16";
+const COMPLETION_CHANNEL_ID = "focus-complete-channel-v16";
 
 interface SessionSummary {
   xpEarned: number;
@@ -95,7 +99,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     if (!Notifications || Platform.OS !== "android") return;
     try {
       await Notifications.setNotificationChannelAsync(
-        "focus-ongoing-channel-v15",
+        ONGOING_CHANNEL_ID,
         {
           name: "Active Session Banner",
           importance: Notifications.AndroidImportance.LOW,
@@ -106,7 +110,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       );
 
       await Notifications.setNotificationChannelAsync(
-        "focus-complete-channel-v15",
+        COMPLETION_CHANNEL_ID,
         {
           name: "Session Finish Alert",
           importance: Notifications.AndroidImportance.MAX,
@@ -211,10 +215,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
                 : "Stay focused! Tap to view timer.",
               sticky: true,
               autoDismiss: false,
-              channelId: "focus-ongoing-channel-v15",
+              channelId: ONGOING_CHANNEL_ID,
             },
             trigger: null,
-          }).catch(() => {});
+          }).catch((error: unknown) => {
+            console.error("Failed to refresh ongoing notification:", error);
+          });
         }
       }
     };
@@ -231,11 +237,17 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     try {
       await Notifications.dismissNotificationAsync(
         ONGOING_NOTIFICATION_ID,
-      ).catch(() => {});
+      ).catch((error: unknown) => {
+        console.error("Failed to dismiss ongoing notification:", error);
+      });
       await Notifications.cancelScheduledNotificationAsync(
         COMPLETION_NOTIFICATION_ID,
-      ).catch(() => {});
-    } catch (e) {}
+      ).catch((error: unknown) => {
+        console.error("Failed to cancel completion notification:", error);
+      });
+    } catch (error) {
+      console.error("Failed to clear timer notifications:", error);
+    }
   };
 
   const scheduleNotificationLifecycle = async (
@@ -251,7 +263,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
       await Notifications.cancelScheduledNotificationAsync(
         COMPLETION_NOTIFICATION_ID,
-      ).catch(() => {});
+      ).catch((error: unknown) => {
+        console.error("Failed to replace completion notification:", error);
+      });
 
       // Immediate Ongoing Sticky Banner
       await Notifications.scheduleNotificationAsync({
@@ -263,13 +277,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             : "Stay focused! Tap to view timer.",
           sticky: true,
           autoDismiss: false,
-          channelId: "focus-ongoing-channel-v15",
+          channelId: ONGOING_CHANNEL_ID,
         },
         trigger: null,
       });
 
       // Completion Alarm
-      await Notifications.scheduleNotificationAsync({
+      const notificationId = await Notifications.scheduleNotificationAsync({
         identifier: COMPLETION_NOTIFICATION_ID,
         content: {
           title: "⚔️ Focus Session Complete!",
@@ -278,7 +292,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             : "Focus session finished! Tap to claim your rewards.",
           sound: "default",
           priority: Notifications.AndroidNotificationPriority?.MAX,
-          channelId: "focus-complete-channel-v15",
+          channelId: COMPLETION_CHANNEL_ID,
           data: { type: "COMPLETION" },
         },
         trigger: {
@@ -286,9 +300,20 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
           seconds: validSeconds,
           repeats: false,
         },
-      }).catch(
-        (err: unknown) => console.error("Failed scheduling end alert:", err),
+      });
+
+      const scheduledNotifications =
+        await Notifications.getAllScheduledNotificationsAsync();
+      const completionNotification = scheduledNotifications.find(
+        (notification: any) =>
+          notification.request.identifier === notificationId,
       );
+
+      if (!completionNotification) {
+        throw new Error(
+          "The completion notification was accepted but is not present in the scheduled notification list.",
+        );
+      }
     } catch (error) {
       console.error("Failed to schedule notification lifecycle:", error);
     }
@@ -346,7 +371,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
     await Notifications?.dismissNotificationAsync(
       ONGOING_NOTIFICATION_ID,
-    ).catch(() => {});
+    ).catch((error: unknown) => {
+      console.error("Failed to dismiss ongoing notification on completion:", error);
+    });
 
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
