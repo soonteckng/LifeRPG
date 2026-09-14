@@ -207,7 +207,7 @@ export default function TimerScreen() {
                     value={customText}
                     onChangeText={handleCustomChange}
                     editable={!isRunning}
-                    maxLength={3}
+                    maxLength={4}
                   />
                   <Text style={styles.minSuffix}>MIN</Text>
                 </View>

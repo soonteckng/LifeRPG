@@ -11,6 +11,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -41,6 +42,8 @@ export default function TasksScreen() {
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
   const [targetMinutes, setTargetMinutes] = useState(30);
+  const [isCustomDuration, setIsCustomDuration] = useState(false);
+  const [customDurationText, setCustomDurationText] = useState('30');
   const [repeatType, setRepeatType] = useState<'once' | 'daily' | 'custom'>('once');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
 
@@ -58,6 +61,8 @@ export default function TasksScreen() {
   const resetForm = () => {
     setTitle('');
     setTargetMinutes(30);
+    setIsCustomDuration(false);
+    setCustomDurationText('30');
     setRepeatType('once');
     setSelectedDays([]);
     setEditingTaskId(null);
@@ -73,7 +78,10 @@ export default function TasksScreen() {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditingTaskId(task.id);
     setTitle(task.title);
-    setTargetMinutes(task.target_minutes || 30);
+    const taskMinutes = task.target_minutes || 30;
+    setTargetMinutes(taskMinutes);
+    setIsCustomDuration(!DURATION_OPTIONS.includes(taskMinutes));
+    setCustomDurationText(String(taskMinutes));
 
     const rule = task.repeat_rule || 'once';
     if (rule === 'once') {
@@ -114,6 +122,11 @@ export default function TasksScreen() {
 
   const handleSaveTask = () => {
     if (!title.trim()) return;
+    const duration = isCustomDuration ? parseInt(customDurationText, 10) : targetMinutes;
+    if (!Number.isInteger(duration) || duration < 1 || duration > 9999) {
+      Alert.alert('Invalid duration', 'Enter a duration between 1 and 9999 minutes.');
+      return;
+    }
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     let rule = 'once';
@@ -121,9 +134,9 @@ export default function TasksScreen() {
     if (repeatType === 'custom') rule = selectedDays.length > 0 ? selectedDays.join(',') : 'once';
 
     if (editingTaskId) {
-      updateTask(editingTaskId, title.trim(), 'medium', rule, targetMinutes);
+      updateTask(editingTaskId, title.trim(), 'medium', rule, duration);
     } else {
-      addTask(title.trim(), 'medium', null, rule, targetMinutes);
+      addTask(title.trim(), 'medium', null, rule, duration);
     }
 
     resetForm();
@@ -219,15 +232,46 @@ export default function TasksScreen() {
                   {DURATION_OPTIONS.map((m) => (
                     <TouchableOpacity
                       key={m}
-                      style={[styles.segmentBtn, targetMinutes === m && styles.segmentActive]}
-                      onPress={() => setTargetMinutes(m)}
+                      style={[styles.segmentBtn, !isCustomDuration && targetMinutes === m && styles.segmentActive]}
+                      onPress={() => {
+                        setIsCustomDuration(false);
+                        setTargetMinutes(m);
+                      }}
                     >
-                      <Text style={[styles.segmentText, targetMinutes === m && styles.segmentTextActive]}>
+                      <Text style={[styles.segmentText, !isCustomDuration && targetMinutes === m && styles.segmentTextActive]}>
                         {m}m
                       </Text>
                     </TouchableOpacity>
                   ))}
+                  <TouchableOpacity
+                    style={[styles.segmentBtn, isCustomDuration && styles.segmentActive]}
+                    onPress={() => {
+                      setIsCustomDuration(true);
+                      setCustomDurationText(String(targetMinutes));
+                    }}
+                  >
+                    <Text style={[styles.segmentText, isCustomDuration && styles.segmentTextActive]}>
+                      Custom
+                    </Text>
+                  </TouchableOpacity>
                 </View>
+
+                {isCustomDuration && (
+                  <View style={styles.customDurationRow}>
+                    <Text style={styles.customDurationLabel}>MINUTES</Text>
+                    <TextInput
+                      style={styles.customDurationInput}
+                      keyboardType="number-pad"
+                      value={customDurationText}
+                      onChangeText={(text) => {
+                        setCustomDurationText(text);
+                        const minutes = parseInt(text, 10);
+                        if (Number.isInteger(minutes)) setTargetMinutes(minutes);
+                      }}
+                      maxLength={4}
+                    />
+                  </View>
+                )}
 
                 <Text style={styles.inputLabel}>REPEAT SCHEDULE</Text>
                 <View style={styles.segmentedRow}>
@@ -382,6 +426,31 @@ const styles = StyleSheet.create({
   segmentActive: { backgroundColor: '#6366F1' },
   segmentText: { color: '#64748B', fontSize: 11, fontWeight: '700' },
   segmentTextActive: { color: '#FFFFFF' },
+  customDurationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: -6,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#6366F1',
+  },
+  customDurationLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  customDurationInput: {
+    color: '#F8FAFC',
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    minWidth: 72,
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '700',
+  },
   daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   dayChip: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
   dayChipActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
