@@ -1,5 +1,6 @@
 import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect } from "react";
+import { GlassView } from "expo-glass-effect";
 import {
   Platform,
   StyleSheet,
@@ -92,8 +93,14 @@ export default function RootLayout() {
             tabBarShowLabel: true,
             tabBarStyle: styles.tabBar,
             tabBarItemStyle: styles.tabItem,
-            tabBarActiveTintColor: "#818CF8",
-            tabBarInactiveTintColor: "#64748B",
+            tabBarBackground: () => (
+              <GlassView
+                style={styles.glassBackground}
+                glassEffectStyle="clear"
+              />
+            ),
+            tabBarActiveTintColor: "#FFFFFF",
+            tabBarInactiveTintColor: "#94A3B8",
             tabBarLabelStyle: styles.tabLabel,
           }}
         >
@@ -102,7 +109,9 @@ export default function RootLayout() {
             options={{
               title: "Quests",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>📜</Text>
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>📜</Text>
+                </View>
               ),
             }}
           />
@@ -111,7 +120,9 @@ export default function RootLayout() {
             options={{
               title: "Stats",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>📊</Text>
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>📊</Text>
+                </View>
               ),
             }}
           />
@@ -120,7 +131,9 @@ export default function RootLayout() {
             options={{
               title: "Home",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>🏰</Text>
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🏰</Text>
+                </View>
               ),
             }}
           />
@@ -129,7 +142,9 @@ export default function RootLayout() {
             options={{
               title: "Focus",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>⏱️</Text>
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>⏱️</Text>
+                </View>
               ),
             }}
           />
@@ -138,7 +153,9 @@ export default function RootLayout() {
             options={{
               title: "Profile",
               tabBarIcon: ({ focused }) => (
-                <Text style={{ fontSize: 18, opacity: focused ? 1 : 0.6 }}>👤</Text>
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>👤</Text>
+                </View>
               ),
             }}
           />
@@ -162,11 +179,11 @@ const styles = StyleSheet.create({
     left: 16,
     right: 16,
     height: 64,
-    backgroundColor: "rgba(30, 41, 59, 0.92)",
+    backgroundColor: "rgba(15, 23, 42, 0.58)",
     borderRadius: 24,
     borderTopWidth: 0,
     borderWidth: 1.5,
-    borderColor: "rgba(255, 255, 255, 0.12)",
+    borderColor: "rgba(255, 255, 255, 0.24)",
     paddingBottom: Platform.OS === "ios" ? 8 : 8,
     paddingTop: 8,
     shadowColor: "#000",
@@ -175,8 +192,32 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 12,
   },
+  glassBackground: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 24,
+    overflow: "hidden",
+  },
   tabItem: { paddingVertical: 2 },
-  tabLabel: { fontSize: 10, fontWeight: "700", marginTop: 2 },
+  tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
+  iconPill: {
+    minWidth: 38,
+    minHeight: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconPillActive: {
+    backgroundColor: "rgba(129, 140, 248, 0.34)",
+    borderWidth: 1,
+    borderColor: "rgba(199, 210, 254, 0.7)",
+    shadowColor: "#818CF8",
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.7,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  tabIcon: { fontSize: 18, opacity: 0.65 },
+  tabIconActive: { fontSize: 21, opacity: 1 },
   activeBanner: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 98 : 90,
