@@ -96,6 +96,10 @@ export default function TimerScreen() {
       setDurationInMinutes(targetMins);
     } else {
       setLinkedTaskId(null);
+      setSelectedMinutes(30);
+      setIsCustom(false);
+      setCustomText('30');
+      setDurationInMinutes(30);
     }
   };
 
