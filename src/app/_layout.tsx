@@ -184,9 +184,9 @@ const styles = StyleSheet.create({
     bottom: Platform.OS === "ios" ? 24 : 16,
     left: "12%",
     right: "12%",
-    height: 60,
+    height: 50,
     backgroundColor: "rgba(15, 23, 42, 0.88)",
-    borderRadius: 24,
+    borderRadius: 25,
     borderWidth: 0,
     borderTopColor: "transparent",
     paddingBottom: 0,
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   },
   glassBackground: {
     ...StyleSheet.absoluteFill,
-    borderRadius: 24,
+    borderRadius: 25,
     overflow: "hidden",
     backgroundColor: "rgba(15, 23, 42, 0.42)",
   },
@@ -210,7 +210,6 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 0,
     alignSelf: "center",
-    transform: [{ translateY: 5 }],
   },
   tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
   iconPill: {
