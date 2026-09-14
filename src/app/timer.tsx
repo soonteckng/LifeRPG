@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -70,6 +70,19 @@ export default function TimerScreen() {
     }, [loadData])
   );
 
+  useEffect(() => {
+    if (isRunning || linkedTaskId === null) return;
+
+    const linkedTask = tasks.find((task) => task.id === linkedTaskId);
+    if (!linkedTask) return;
+
+    const targetMins = linkedTask.target_minutes || 30;
+    setSelectedMinutes(targetMins);
+    setIsCustom(!PRESETS.includes(targetMins));
+    setCustomText(String(targetMins));
+    setDurationInMinutes(targetMins);
+  }, [isRunning, linkedTaskId, setDurationInMinutes, tasks]);
+
   const handleSelectTask = (task: Task | null) => {
     if (isRunning) return;
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -105,8 +118,8 @@ export default function TimerScreen() {
 
   const handleStart = () => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const mins = isCustom ? parseInt(customText, 10) || 30 : selectedMinutes;
     const questObj = tasks.find((t) => t.id === linkedTaskId);
+    const mins = isCustom ? parseInt(customText, 10) || 30 : selectedMinutes;
     startTimer(mins, questObj?.title);
   };
 
