@@ -153,9 +153,9 @@ export default function ProfileScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B0F19' },
+  container: { flex: 1, backgroundColor: '#05070D' },
   scrollContent: { padding: 20, paddingBottom: 140 },
-  heroCard: { backgroundColor: 'rgba(30, 41, 59, 0.55)', borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#6366F1' },
+  heroCard: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 28, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.14)' },
   avatarCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 2, borderColor: '#F59E0B' },
   avatarEmoji: { fontSize: 40 },
   heroName: { color: '#F8FAFC', fontSize: 22, fontWeight: 'bold' },
@@ -167,10 +167,10 @@ const styles = StyleSheet.create({
   heroStatLabel: { color: '#64748B', fontSize: 11, marginTop: 2, fontWeight: '600' },
   divider: { width: 1, height: 30, backgroundColor: '#334155' },
   sectionTitle: { color: '#94A3B8', fontSize: 11, fontWeight: '800', marginBottom: 8, marginTop: 12, letterSpacing: 1 },
-  card: { backgroundColor: 'rgba(30, 41, 59, 0.55)', borderRadius: 16, padding: 14, borderWidth: 1, borderColor: '#334155', marginBottom: 12 },
+  card: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', marginBottom: 12 },
   input: { backgroundColor: '#0F172A', color: '#F8FAFC', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#334155', fontWeight: 'bold' },
   avatarGrid: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 12 },
-  avatarOption: { width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(30, 41, 59, 0.55)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
+  avatarOption: { width: 52, height: 52, borderRadius: 18, backgroundColor: 'rgba(255, 255, 255, 0.07)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)' },
   avatarSelected: { borderColor: '#6366F1', backgroundColor: '#312E81' },
   avatarText: { fontSize: 24 },
   classRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },

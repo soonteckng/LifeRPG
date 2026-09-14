@@ -45,23 +45,23 @@ export default function Header({
 }
 
 const styles = StyleSheet.create({
-  container: { marginBottom: 16, width: '100%' },
+  container: { marginBottom: 22, width: '100%' },
   backPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1E293B',
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     alignSelf: 'flex-start',
     gap: 4,
     marginBottom: 12,
   },
-  backChevron: { color: '#6366F1', fontSize: 20, fontWeight: 'bold', marginTop: -2 },
+  backChevron: { color: '#7EA2FF', fontSize: 20, fontWeight: 'bold', marginTop: -2 },
   backText: { color: '#F8FAFC', fontSize: 12, fontWeight: '700' },
   titleGroup: { gap: 2 },
-  title: { color: '#F8FAFC', fontSize: 26, fontWeight: 'bold' },
-  subtitle: { color: '#94A3B8', fontSize: 13 },
+  title: { color: '#FFFFFF', fontSize: 30, fontWeight: '800', letterSpacing: -0.6 },
+  subtitle: { color: '#9CA8BC', fontSize: 13, marginTop: 3 },
 });

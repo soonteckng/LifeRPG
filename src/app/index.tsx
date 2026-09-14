@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView } from 'react-nati
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-import { getTasks, getSubjects, Task, Attribute } from '../../db/database';
+import { getTasks, Task } from '../../db/database';
 import { useUser } from '../context/UserContext';
 import { useTimer } from '../context/TimerContext';
 import Header from '../components/Header';
@@ -14,7 +14,6 @@ export default function HomeScreen() {
   const { isRunning, timeLeft, setLinkedTaskId } = useTimer();
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [attributes, setAttributes] = useState<Attribute[]>([]);
 
   const loadDashboardData = useCallback(() => {
     try {
@@ -22,10 +21,7 @@ export default function HomeScreen() {
 
       const allTasks = getTasks() || [];
       const activeTasks = allTasks.filter((t) => t.is_completed === 0);
-      const attrs = getSubjects() || [];
-
       setTasks(activeTasks);
-      setAttributes(attrs);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
     }
@@ -142,33 +138,20 @@ export default function HomeScreen() {
           </View>
         )}
 
-        <Text style={styles.sectionTitle}>ATTRIBUTES & MASTERY</Text>
-        <View style={styles.attrGrid}>
-          {attributes.map((attr) => (
-            <View key={attr.id} style={styles.attrGlassCard}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Text style={styles.attrTitle}>{attr.title}</Text>
-                <Text style={[styles.attrLevel, { color: attr.color_code || '#818CF8' }]}>
-                  Lvl {attr.level}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0B0F19' },
+  container: { flex: 1, backgroundColor: '#05070D' },
   scrollContent: { padding: 20, paddingBottom: 120 },
   heroGlassCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderRadius: 28,
     padding: 18,
     borderWidth: 1.5,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.14)',
     marginBottom: 16,
   },
   heroHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
@@ -207,14 +190,14 @@ const styles = StyleSheet.create({
   },
   streakText: { color: '#F59E0B', fontSize: 11, fontWeight: 'bold' },
   chamberCard: {
-    backgroundColor: '#10B981',
-    borderRadius: 18,
+    backgroundColor: '#2F6BFF',
+    borderRadius: 22,
     padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 20,
-    shadowColor: '#10B981',
+    shadowColor: '#2F6BFF',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 10,
@@ -237,17 +220,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   emptyText: { color: '#94A3B8', fontSize: 13 },
-  createTaskLink: { color: '#10B981', fontWeight: 'bold', marginTop: 6, fontSize: 13 },
+  createTaskLink: { color: '#7EA2FF', fontWeight: 'bold', marginTop: 6, fontSize: 13 },
   questList: { gap: 10, marginBottom: 20 },
   questGlassCard: {
-    backgroundColor: 'rgba(30, 41, 59, 0.55)',
-    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.065)',
+    borderRadius: 20,
     padding: 12,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.08)',
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   questIconBox: {
     width: 32,

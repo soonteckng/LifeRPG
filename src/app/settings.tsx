@@ -99,14 +99,14 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
+  container: { flex: 1, backgroundColor: '#05070D' },
   scrollContent: { padding: 20, paddingBottom: 110 },
   sectionTitle: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 8, marginTop: 12 },
-  card: { backgroundColor: '#1E293B', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#334155', marginBottom: 12 },
+  card: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', marginBottom: 12 },
   settingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 4 },
   settingText: { color: '#F8FAFC', fontSize: 14, fontWeight: '600' },
   divider: { height: 1, backgroundColor: '#334155', marginVertical: 12 },
-  dangerCard: { backgroundColor: '#1E293B', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EF4444' },
+  dangerCard: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(239, 68, 68, 0.7)' },
   dangerTitle: { color: '#EF4444', fontWeight: 'bold', fontSize: 14 },
   dangerSubtitle: { color: '#64748B', fontSize: 11, marginTop: 2 },
 });
