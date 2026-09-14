@@ -182,8 +182,8 @@ const styles = StyleSheet.create({
   tabBar: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 24 : 16,
-    width: "76%",
     left: "12%",
+    right: "12%",
     height: 72,
     backgroundColor: "rgba(15, 23, 42, 0.88)",
     borderRadius: 24,
