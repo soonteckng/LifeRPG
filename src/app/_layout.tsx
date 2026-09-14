@@ -206,7 +206,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  tabIconContainer: { marginTop: 0, marginBottom: 0, alignSelf: "center" },
+  tabIconContainer: {
+    marginTop: 0,
+    marginBottom: 0,
+    alignSelf: "center",
+    transform: [{ translateY: 5 }],
+  },
   tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
   iconPill: {
     width: 60,
