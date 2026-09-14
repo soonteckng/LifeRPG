@@ -214,10 +214,11 @@ const styles = StyleSheet.create({
   tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
   iconPill: {
     width: 60,
-    height: 50,
-    borderRadius: 25,
+    height: 46,
+    borderRadius: 23,
     alignItems: "center",
     justifyContent: "center",
+    transform: [{ translateY: 2 }],
     marginTop: 0,
   },
   iconPillActive: {
