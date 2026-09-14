@@ -12,6 +12,7 @@ import {
   TouchableWithoutFeedback,
   Keyboard,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -210,9 +211,14 @@ export default function TasksScreen() {
           <View style={styles.modalOverlay}>
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ width: '100%' }}
+              style={styles.keyboardContainer}
             >
-              <View style={styles.modalCard}>
+              <ScrollView
+                contentContainerStyle={styles.modalScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <View style={styles.modalCard}>
                 <Text style={styles.modalTitle}>
                   {editingTaskId ? 'Edit Quest' : 'New Quest'}
                 </Text>
@@ -339,7 +345,8 @@ export default function TasksScreen() {
                     </Text>
                   </TouchableOpacity>
                 </View>
-              </View>
+                </View>
+              </ScrollView>
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
@@ -399,9 +406,10 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
     padding: 20,
   },
+  keyboardContainer: { flex: 1, width: '100%' },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 12 },
   modalCard: {
     backgroundColor: '#1E293B',
     borderRadius: 20,
