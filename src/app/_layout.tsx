@@ -90,7 +90,7 @@ export default function RootLayout() {
         <Tabs
           screenOptions={{
             headerShown: false,
-            tabBarShowLabel: true,
+            tabBarShowLabel: false,
             tabBarStyle: styles.tabBar,
             tabBarItemStyle: styles.tabItem,
             tabBarIconStyle: styles.tabIconContainer,
@@ -112,6 +112,7 @@ export default function RootLayout() {
               tabBarIcon: ({ focused }) => (
                 <View style={[styles.iconPill, focused && styles.iconPillActive]}>
                   <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>📜</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Quests</Text>
                 </View>
               ),
             }}
@@ -123,6 +124,7 @@ export default function RootLayout() {
               tabBarIcon: ({ focused }) => (
                 <View style={[styles.iconPill, focused && styles.iconPillActive]}>
                   <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>📊</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Stats</Text>
                 </View>
               ),
             }}
@@ -134,6 +136,7 @@ export default function RootLayout() {
               tabBarIcon: ({ focused }) => (
                 <View style={[styles.iconPill, focused && styles.iconPillActive]}>
                   <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🏰</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Home</Text>
                 </View>
               ),
             }}
@@ -145,6 +148,7 @@ export default function RootLayout() {
               tabBarIcon: ({ focused }) => (
                 <View style={[styles.iconPill, focused && styles.iconPillActive]}>
                   <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>⏱️</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Focus</Text>
                 </View>
               ),
             }}
@@ -156,6 +160,7 @@ export default function RootLayout() {
               tabBarIcon: ({ focused }) => (
                 <View style={[styles.iconPill, focused && styles.iconPillActive]}>
                   <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>👤</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Profile</Text>
                 </View>
               ),
             }}
@@ -177,8 +182,8 @@ const styles = StyleSheet.create({
   tabBar: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 24 : 16,
-    left: "7%",
-    right: "7%",
+    width: "76%",
+    left: "12%",
     height: 72,
     backgroundColor: "rgba(15, 23, 42, 0.88)",
     borderRadius: 24,
@@ -199,11 +204,12 @@ const styles = StyleSheet.create({
   tabIconContainer: { marginTop: 0, marginBottom: 0 },
   tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
   iconPill: {
-    width: 58,
-    height: 44,
-    borderRadius: 22,
+    width: 64,
+    height: 58,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
+    marginTop: 0,
   },
   iconPillActive: {
     backgroundColor: "rgba(129, 140, 248, 0.34)",
@@ -215,8 +221,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  tabIcon: { fontSize: 21, opacity: 0.7 },
-  tabIconActive: { fontSize: 25, opacity: 1 },
+  tabIcon: { fontSize: 22, opacity: 0.7 },
+  tabIconActive: { fontSize: 26, opacity: 1 },
+  pillLabel: { color: "#94A3B8", fontSize: 9, fontWeight: "800", marginTop: 1 },
+  pillLabelActive: { color: "#FFFFFF" },
   activeBanner: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 98 : 90,
