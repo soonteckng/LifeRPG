@@ -84,6 +84,11 @@ export function initDatabase() {
       subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS completed_timer_sessions (
+      session_id TEXT PRIMARY KEY,
+      completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   try {
@@ -172,6 +177,15 @@ export function addXPAndCheckLevelUp(xpGain: number): { newLevel: number; newXP:
   console.log(`[XP UPDATE] Gain: +${xpGain} XP | Total: ${currentXP}/${requiredXP} XP | Level: ${level}`);
 
   return { newLevel: level, newXP: currentXP, leveledUp };
+}
+
+export function claimTimerSession(sessionId: string): boolean {
+  const result = db.runSync(
+    'INSERT OR IGNORE INTO completed_timer_sessions (session_id) VALUES (?);',
+    [sessionId]
+  );
+
+  return result.changes === 1;
 }
 
 export function logStudySession(durationSeconds: number, xpEarned: number, subjectId: number | null = null) {
@@ -273,9 +287,9 @@ export function updateTask(
   );
 }
 
-export function completeTask(taskId: number): { leveledUp: boolean; newLevel: number } {
+export function completeTask(taskId: number): boolean {
   const task = db.getFirstSync<Task>('SELECT * FROM tasks WHERE id = ?;', [taskId]);
-  if (!task || task.is_completed === 1) return { leveledUp: false, newLevel: 1 };
+  if (!task || task.is_completed === 1) return false;
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -284,8 +298,7 @@ export function completeTask(taskId: number): { leveledUp: boolean; newLevel: nu
     [today, taskId]
   );
 
-  const levelResult = addXPAndCheckLevelUp(task.xp_awarded || 100);
-  return { leveledUp: levelResult.leveledUp, newLevel: levelResult.newLevel };
+  return true;
 }
 
 export function uncompleteTask(taskId: number) {
@@ -306,6 +319,7 @@ export function resetDatabase() {
 
     db.execSync(`
       DELETE FROM study_sessions;
+      DELETE FROM completed_timer_sessions;
       DELETE FROM tasks;
       DELETE FROM sqlite_sequence WHERE name IN ('study_sessions', 'tasks');
       UPDATE user_profile 

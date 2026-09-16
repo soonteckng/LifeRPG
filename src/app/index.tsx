@@ -130,7 +130,7 @@ export default function HomeScreen() {
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.questTitle}>{item.title}</Text>
-                  <Text style={styles.questSub}>Tap to start focus • +{item.xp_awarded} XP</Text>
+                  <Text style={styles.questSub}>Tap to start focus • +{item.target_minutes || 30} XP</Text>
                 </View>
                 <Text style={styles.focusBtnText}>Focus ›</Text>
               </TouchableOpacity>

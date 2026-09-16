@@ -9,6 +9,7 @@ import React, {
 import { AppState, AppStateStatus, Platform } from "react-native";
 import {
   addXPAndCheckLevelUp,
+  claimTimerSession,
   completeTask,
   getTasks,
   logStudySession,
@@ -42,6 +43,7 @@ const ONGOING_NOTIFICATION_ID = "life-rpg-ongoing-timer";
 const COMPLETION_NOTIFICATION_ID = "life-rpg-completion-timer";
 const ONGOING_CHANNEL_ID = "focus-ongoing-channel-v16";
 const COMPLETION_CHANNEL_ID = "focus-complete-channel-v16";
+const completedTimerSessions = new Set<string>();
 
 interface SessionSummary {
   xpEarned: number;
@@ -94,6 +96,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   const endTimeRef = useRef<number | null>(null);
   const activeQuestTitleRef = useRef<string | undefined>(undefined);
+  const completionHandledRef = useRef(false);
+  const timerSessionIdRef = useRef<string | null>(null);
 
   const ensureChannels = async () => {
     if (!Notifications || Platform.OS !== "android") return;
@@ -325,6 +329,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setDuration(totalSec);
     setTimeLeft(totalSec);
     setIsCompleted(false);
+    completionHandledRef.current = false;
+    timerSessionIdRef.current = null;
   };
 
   const startTimer = (minutes: number, questTitle?: string) => {
@@ -332,6 +338,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setDuration(totalSec);
     setTimeLeft(totalSec);
     setIsCompleted(false);
+    completionHandledRef.current = false;
+    timerSessionIdRef.current = `${Date.now()}-${Math.random()}`;
     endTimeRef.current = Date.now() + totalSec * 1000;
     setIsRunning(true);
 
@@ -357,6 +365,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const resetTimer = async () => {
     setIsRunning(false);
     setIsCompleted(false);
+    completionHandledRef.current = false;
+    timerSessionIdRef.current = null;
     endTimeRef.current = null;
     setTimeLeft(duration);
     activeQuestTitleRef.current = undefined;
@@ -364,6 +374,18 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleComplete = async () => {
+    const sessionId = timerSessionIdRef.current;
+    if (
+      completionHandledRef.current ||
+      !sessionId ||
+      completedTimerSessions.has(sessionId) ||
+      !claimTimerSession(sessionId)
+    ) {
+      return;
+    }
+    completionHandledRef.current = true;
+    completedTimerSessions.add(sessionId);
+
     setIsRunning(false);
     setIsCompleted(true);
     endTimeRef.current = null;
@@ -378,18 +400,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const minutesSpent = Math.max(1, Math.round(duration / 60));
-    const xpEarned = minutesSpent * 10;
+    const xpEarned = minutesSpent * 1;
 
     logStudySession(duration, xpEarned, targetAttributeId);
 
-    let result = { leveledUp: false, newLevel: 1 };
-
     if (linkedTaskId) {
-      result = completeTask(linkedTaskId);
-    } else {
-      const levelRes = addXPAndCheckLevelUp(xpEarned);
-      result = { leveledUp: levelRes.leveledUp, newLevel: levelRes.newLevel };
+      completeTask(linkedTaskId);
     }
+    const levelRes = addXPAndCheckLevelUp(xpEarned);
+    const result = { leveledUp: levelRes.leveledUp, newLevel: levelRes.newLevel };
 
     reloadProfile();
 
@@ -401,9 +420,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }
 
     setSessionSummary({
-      xpEarned: linkedTaskId
-        ? getTasks().find((t) => t.id === linkedTaskId)?.xp_awarded || 100
-        : xpEarned,
+      xpEarned,
       minutesSpent,
       questTitle: activeQuestName,
     });

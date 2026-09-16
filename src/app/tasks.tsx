@@ -179,7 +179,7 @@ export default function TasksScreen() {
                     {item.title}
                   </Text>
                   <View style={styles.metaRow}>
-                    <Text style={styles.taskXP}>⏱️ {item.target_minutes || 30}m (+{item.xp_awarded} XP)</Text>
+                    <Text style={styles.taskXP}>⏱️ {item.target_minutes || 30}m (+{item.target_minutes || 30} XP)</Text>
                     <Text style={styles.repeatBadge}>{getRepeatLabel(item.repeat_rule)}</Text>
                   </View>
                 </View>
