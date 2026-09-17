@@ -167,8 +167,6 @@ export default function RootLayout() {
           />
 
           <Tabs.Screen name="settings" options={{ href: null }} />
-          <Tabs.Screen name="explore" options={{ href: null }} />
-          <Tabs.Screen name="stats" options={{ href: null }} />
         </Tabs>
 
         <ActiveTimerBanner />
