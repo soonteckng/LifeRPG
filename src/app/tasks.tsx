@@ -1,33 +1,32 @@
-import React, { useState, useCallback } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TextInput,
-  TouchableOpacity,
-  FlatList,
-  Modal,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
-  Alert,
-  ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import React, { useCallback, useState } from 'react';
 import {
-  getTasks,
+  FlatList,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  TouchableWithoutFeedback,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
   addTask,
-  updateTask,
-  uncompleteTask,
   deleteTask,
+  getTasks,
   Task,
+  uncompleteTask,
+  updateTask,
 } from '../../db/database';
-import { useUser } from '../context/UserContext';
-import { useTimer } from '../context/TimerContext';
 import Header from '../components/Header';
+import { useTimer } from '../context/TimerContext';
+import { useUser } from '../context/UserContext';
 
 const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const DURATION_OPTIONS = [15, 30, 45, 60];
@@ -39,6 +38,7 @@ export default function TasksScreen() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
 
+  // Task creation/edit modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [title, setTitle] = useState('');
@@ -47,6 +47,10 @@ export default function TasksScreen() {
   const [customDurationText, setCustomDurationText] = useState('30');
   const [repeatType, setRepeatType] = useState<'once' | 'daily' | 'custom'>('once');
   const [selectedDays, setSelectedDays] = useState<string[]>([]);
+
+  // Custom Dark RPG Focus Confirmation Modal State
+  const [focusModalVisible, setFocusModalVisible] = useState(false);
+  const [selectedQuestForFocus, setSelectedQuestForFocus] = useState<Task | null>(null);
 
   const loadData = useCallback(() => {
     const taskList = getTasks();
@@ -108,26 +112,32 @@ export default function TasksScreen() {
     }
   };
 
-  const handleQuestPress = (task: Task) => {
+  const handleToggleComplete = (task: Task) => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
     if (task.is_completed === 1) {
       uncompleteTask(task.id);
       loadData();
-    } else {
-      setLinkedTaskId(task.id);
-      setDurationInMinutes(task.target_minutes || 30);
-      router.push('/timer');
     }
+  };
+
+  const handleOpenFocusPrompt = (task: Task) => {
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSelectedQuestForFocus(task);
+    setFocusModalVisible(true);
+  };
+
+  const handleConfirmStartFocus = () => {
+    if (!selectedQuestForFocus) return;
+    setLinkedTaskId(selectedQuestForFocus.id);
+    setDurationInMinutes(selectedQuestForFocus.target_minutes || 30);
+    setFocusModalVisible(false);
+    setSelectedQuestForFocus(null);
+    router.push('/timer');
   };
 
   const handleSaveTask = () => {
     if (!title.trim()) return;
     const duration = isCustomDuration ? parseInt(customDurationText, 10) : targetMinutes;
-    if (!Number.isInteger(duration) || duration < 1 || duration > 9999) {
-      Alert.alert('Invalid duration', 'Enter a duration between 1 and 9999 minutes.');
-      return;
-    }
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     let rule = 'once';
@@ -154,7 +164,7 @@ export default function TasksScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Header title="Quest Log" subtitle="Tap a quest to start a focus session" showBack={false} />
+        <Header title="Quest Log" subtitle="Manage quests and start dedicated focus sessions" showBack={false} />
 
         <TouchableOpacity style={styles.addBtn} onPress={handleOpenCreateModal}>
           <Text style={styles.addBtnText}>+ CREATE NEW QUEST</Text>
@@ -166,46 +176,59 @@ export default function TasksScreen() {
           contentContainerStyle={styles.list}
           renderItem={({ item }) => (
             <View style={[styles.card, item.is_completed === 1 && styles.cardDone]}>
-              <TouchableOpacity style={styles.checkArea} onPress={() => handleQuestPress(item)}>
-                <View style={[styles.checkbox, item.is_completed === 1 && styles.checkboxDone]}>
-                  {item.is_completed === 1 ? (
-                    <Text style={styles.checkMark}>✓</Text>
-                  ) : (
-                    <Text style={styles.focusIcon}>⏱️</Text>
-                  )}
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.taskTitle, item.is_completed === 1 && styles.taskTitleDone]}>
-                    {item.title}
-                  </Text>
-                  <View style={styles.metaRow}>
-                    <Text style={styles.taskXP}>⏱️ {item.target_minutes || 30}m (+{item.target_minutes || 30} XP)</Text>
-                    <Text style={styles.repeatBadge}>{getRepeatLabel(item.repeat_rule)}</Text>
+              <View style={styles.cardMainRow}>
+                <TouchableOpacity style={styles.checkArea} onPress={() => handleToggleComplete(item)}>
+                  <View style={[styles.checkbox, item.is_completed === 1 && styles.checkboxDone]}>
+                    {item.is_completed === 1 ? (
+                      <Text style={styles.checkMark}>✓</Text>
+                    ) : (
+                      <Text style={styles.focusIcon}>📜</Text>
+                    )}
                   </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.taskTitle, item.is_completed === 1 && styles.taskTitleDone]}>
+                      {item.title}
+                    </Text>
+                    <View style={styles.metaRow}>
+                      <Text style={styles.taskXP}>⏱️ {item.target_minutes || 30}m (+{item.target_minutes || 30} XP)</Text>
+                      <Text style={styles.repeatBadge}>{getRepeatLabel(item.repeat_rule)}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+
+                <View style={styles.actionRow}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleOpenEditModal(item)}>
+                    <Text style={styles.editIcon}>✏️</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.actionBtn}
+                    onPress={() => {
+                      if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      deleteTask(item.id);
+                      loadData();
+                    }}
+                  >
+                    <Text style={styles.deleteText}>✕</Text>
+                  </TouchableOpacity>
                 </View>
-              </TouchableOpacity>
-
-              <View style={styles.actionRow}>
-                <TouchableOpacity style={styles.actionBtn} onPress={() => handleOpenEditModal(item)}>
-                  <Text style={styles.editIcon}>✏️</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() => {
-                    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    deleteTask(item.id);
-                    loadData();
-                  }}
-                >
-                  <Text style={styles.deleteText}>✕</Text>
-                </TouchableOpacity>
               </View>
+
+              {item.is_completed === 0 && (
+                <TouchableOpacity
+                  style={styles.startFocusBtn}
+                  onPress={() => handleOpenFocusPrompt(item)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.startFocusBtnText}>⚔️ START FOCUS SESSION</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         />
       </View>
 
+      {/* --- TASK CREATION / EDIT MODAL --- */}
       <Modal visible={isModalOpen} transparent animationType="slide">
         <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
           <View style={styles.modalOverlay}>
@@ -219,137 +242,175 @@ export default function TasksScreen() {
                 showsVerticalScrollIndicator={false}
               >
                 <View style={styles.modalCard}>
-                <Text style={styles.modalTitle}>
-                  {editingTaskId ? 'Edit Quest' : 'New Quest'}
-                </Text>
+                  <Text style={styles.modalTitle}>
+                    {editingTaskId ? 'Edit Quest' : 'New Quest'}
+                  </Text>
 
-                <Text style={styles.inputLabel}>QUEST NAME</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="Quest Title..."
-                  placeholderTextColor="#64748B"
-                  value={title}
-                  onChangeText={setTitle}
-                  autoFocus
-                />
+                  <Text style={styles.inputLabel}>QUEST NAME</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Quest Title..."
+                    placeholderTextColor="#64748B"
+                    value={title}
+                    onChangeText={setTitle}
+                    autoFocus
+                  />
 
-                <Text style={styles.inputLabel}>TARGET DURATION</Text>
-                <View style={styles.segmentedRow}>
-                  {DURATION_OPTIONS.map((m) => (
+                  <Text style={styles.inputLabel}>TARGET DURATION</Text>
+                  <View style={styles.segmentedRow}>
+                    {DURATION_OPTIONS.map((m) => (
+                      <TouchableOpacity
+                        key={m}
+                        style={[styles.segmentBtn, !isCustomDuration && targetMinutes === m && styles.segmentActive]}
+                        onPress={() => {
+                          setIsCustomDuration(false);
+                          setTargetMinutes(m);
+                        }}
+                      >
+                        <Text style={[styles.segmentText, !isCustomDuration && targetMinutes === m && styles.segmentTextActive]}>
+                          {m}m
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
                     <TouchableOpacity
-                      key={m}
-                      style={[styles.segmentBtn, !isCustomDuration && targetMinutes === m && styles.segmentActive]}
+                      style={[styles.segmentBtn, isCustomDuration && styles.segmentActive]}
                       onPress={() => {
-                        setIsCustomDuration(false);
-                        setTargetMinutes(m);
+                        setIsCustomDuration(true);
+                        setCustomDurationText(String(targetMinutes));
                       }}
                     >
-                      <Text style={[styles.segmentText, !isCustomDuration && targetMinutes === m && styles.segmentTextActive]}>
-                        {m}m
+                      <Text style={[styles.segmentText, isCustomDuration && styles.segmentTextActive]}>
+                        Custom
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, isCustomDuration && styles.segmentActive]}
-                    onPress={() => {
-                      setIsCustomDuration(true);
-                      setCustomDurationText(String(targetMinutes));
-                    }}
-                  >
-                    <Text style={[styles.segmentText, isCustomDuration && styles.segmentTextActive]}>
-                      Custom
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                  </View>
 
-                {isCustomDuration && (
-                  <View style={styles.customDurationRow}>
-                    <Text style={styles.customDurationLabel}>MINUTES</Text>
-                    <TextInput
-                      style={styles.customDurationInput}
-                      keyboardType="number-pad"
-                      value={customDurationText}
-                      onChangeText={(text) => {
-                        setCustomDurationText(text);
-                        const minutes = parseInt(text, 10);
-                        if (Number.isInteger(minutes)) setTargetMinutes(minutes);
+                  {isCustomDuration && (
+                    <View style={styles.customDurationRow}>
+                      <Text style={styles.customDurationLabel}>MINUTES</Text>
+                      <TextInput
+                        style={styles.customDurationInput}
+                        keyboardType="number-pad"
+                        value={customDurationText}
+                        onChangeText={(text) => {
+                          setCustomDurationText(text);
+                          const minutes = parseInt(text, 10);
+                          if (Number.isInteger(minutes)) setTargetMinutes(minutes);
+                        }}
+                        maxLength={4}
+                      />
+                    </View>
+                  )}
+
+                  <Text style={styles.inputLabel}>REPEAT SCHEDULE</Text>
+                  <View style={styles.segmentedRow}>
+                    <TouchableOpacity
+                      style={[styles.segmentBtn, repeatType === 'once' && styles.segmentActive]}
+                      onPress={() => setRepeatType('once')}
+                    >
+                      <Text style={[styles.segmentText, repeatType === 'once' && styles.segmentTextActive]}>
+                        Once
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.segmentBtn, repeatType === 'daily' && styles.segmentActive]}
+                      onPress={() => setRepeatType('daily')}
+                    >
+                      <Text style={[styles.segmentText, repeatType === 'daily' && styles.segmentTextActive]}>
+                        Everyday
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.segmentBtn, repeatType === 'custom' && styles.segmentActive]}
+                      onPress={() => setRepeatType('custom')}
+                    >
+                      <Text style={[styles.segmentText, repeatType === 'custom' && styles.segmentTextActive]}>
+                        Specific Days
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {repeatType === 'custom' && (
+                    <View style={styles.daysRow}>
+                      {DAYS_OF_WEEK.map((day) => {
+                        const isSelected = selectedDays.includes(day);
+                        return (
+                          <TouchableOpacity
+                            key={day}
+                            style={[styles.dayChip, isSelected && styles.dayChipActive]}
+                            onPress={() => toggleDay(day)}
+                          >
+                            <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>
+                              {day[0]}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+
+                  <View style={styles.modalRow}>
+                    <TouchableOpacity
+                      style={styles.cancelBtn}
+                      onPress={() => {
+                        setIsModalOpen(false);
+                        resetForm();
                       }}
-                      maxLength={4}
-                    />
+                    >
+                      <Text style={styles.cancelText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity style={styles.submitBtn} onPress={handleSaveTask}>
+                      <Text style={styles.submitText}>
+                        {editingTaskId ? 'Save Changes' : 'Add Quest'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                )}
-
-                <Text style={styles.inputLabel}>REPEAT SCHEDULE</Text>
-                <View style={styles.segmentedRow}>
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, repeatType === 'once' && styles.segmentActive]}
-                    onPress={() => setRepeatType('once')}
-                  >
-                    <Text style={[styles.segmentText, repeatType === 'once' && styles.segmentTextActive]}>
-                      Once
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, repeatType === 'daily' && styles.segmentActive]}
-                    onPress={() => setRepeatType('daily')}
-                  >
-                    <Text style={[styles.segmentText, repeatType === 'daily' && styles.segmentTextActive]}>
-                      Everyday
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.segmentBtn, repeatType === 'custom' && styles.segmentActive]}
-                    onPress={() => setRepeatType('custom')}
-                  >
-                    <Text style={[styles.segmentText, repeatType === 'custom' && styles.segmentTextActive]}>
-                      Specific Days
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
-                {repeatType === 'custom' && (
-                  <View style={styles.daysRow}>
-                    {DAYS_OF_WEEK.map((day) => {
-                      const isSelected = selectedDays.includes(day);
-                      return (
-                        <TouchableOpacity
-                          key={day}
-                          style={[styles.dayChip, isSelected && styles.dayChipActive]}
-                          onPress={() => toggleDay(day)}
-                        >
-                          <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>
-                            {day[0]}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                )}
-
-                <View style={styles.modalRow}>
-                  <TouchableOpacity
-                    style={styles.cancelBtn}
-                    onPress={() => {
-                      setIsModalOpen(false);
-                      resetForm();
-                    }}
-                  >
-                    <Text style={styles.cancelText}>Cancel</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.submitBtn} onPress={handleSaveTask}>
-                    <Text style={styles.submitText}>
-                      {editingTaskId ? 'Save Changes' : 'Add Quest'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
                 </View>
               </ScrollView>
             </KeyboardAvoidingView>
           </View>
         </TouchableWithoutFeedback>
+      </Modal>
+
+      {/* --- CUSTOM DARK RPG FOCUS CONFIRMATION MODAL --- */}
+      <Modal
+        visible={focusModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFocusModalVisible(false)}
+      >
+        <View style={styles.darkPromptOverlay}>
+          <View style={styles.darkPromptCard}>
+            <Text style={styles.promptIcon}>⚔️</Text>
+            <Text style={styles.promptTitle}>START QUEST SESSION</Text>
+            <Text style={styles.promptMessage}>
+              Begin a <Text style={styles.highlightText}>{selectedQuestForFocus?.target_minutes || 30}-minute</Text> focus timer for quest:{'\n'}
+              <Text style={styles.questHighlight}>"{selectedQuestForFocus?.title}"</Text>?
+            </Text>
+
+            <View style={styles.promptActionRow}>
+              <TouchableOpacity
+                style={styles.promptCancelBtn}
+                onPress={() => {
+                  setFocusModalVisible(false);
+                  setSelectedQuestForFocus(null);
+                }}
+              >
+                <Text style={styles.promptCancelText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.promptStartBtn}
+                onPress={handleConfirmStartFocus}
+              >
+                <Text style={styles.promptStartText}>Begin Session</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -373,13 +434,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.065)',
     borderRadius: 20,
     padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    gap: 12,
+  },
+  cardDone: { opacity: 0.6 },
+  cardMainRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
-  cardDone: { opacity: 0.6 },
   checkArea: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
   checkbox: {
     width: 28,
@@ -403,6 +467,19 @@ const styles = StyleSheet.create({
   actionBtn: { padding: 4 },
   editIcon: { fontSize: 14 },
   deleteText: { color: '#EF4444', fontSize: 16, paddingLeft: 4 },
+  startFocusBtn: {
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  startFocusBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 11,
+    letterSpacing: 0.5,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.7)',
@@ -481,4 +558,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#6366F1',
   },
   submitText: { color: '#FFFFFF', fontWeight: 'bold' },
+
+  /* --- DARK RPG PROMPT STYLES --- */
+  darkPromptOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 8, 15, 0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  darkPromptCard: {
+    width: '100%',
+    backgroundColor: '#171B26',
+    borderRadius: 24,
+    padding: 22,
+    borderWidth: 1.5,
+    borderColor: '#6366F1',
+    alignItems: 'center',
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  promptIcon: { fontSize: 36, marginBottom: 8 },
+  promptTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '900', letterSpacing: 0.5, marginBottom: 10 },
+  promptMessage: { color: '#94A3B8', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  highlightText: { color: '#818CF8', fontWeight: '800' },
+  questHighlight: { color: '#F8FAFC', fontWeight: '800' },
+  promptActionRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  promptCancelBtn: { flex: 1, backgroundColor: '#0F172A', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
+  promptCancelText: { color: '#94A3B8', fontWeight: '700', fontSize: 13 },
+  promptStartBtn: { flex: 1, backgroundColor: '#6366F1', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  promptStartText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 });

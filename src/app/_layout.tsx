@@ -105,6 +105,7 @@ export default function RootLayout() {
             tabBarLabelStyle: styles.tabLabel,
           }}
         >
+          {/* Tab 1: Quests */}
           <Tabs.Screen
             name="tasks"
             options={{
@@ -117,30 +118,8 @@ export default function RootLayout() {
               ),
             }}
           />
-          <Tabs.Screen
-            name="analytics"
-            options={{
-              title: "Stats",
-              tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>📊</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Stats</Text>
-                </View>
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name="index"
-            options={{
-              title: "Home",
-              tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🏰</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Home</Text>
-                </View>
-              ),
-            }}
-          />
+
+          {/* Tab 2: Focus Timer */}
           <Tabs.Screen
             name="timer"
             options={{
@@ -153,6 +132,36 @@ export default function RootLayout() {
               ),
             }}
           />
+
+          {/* Tab 3: Home (CENTER TAB) */}
+          <Tabs.Screen
+            name="index"
+            options={{
+              title: "Home",
+              tabBarIcon: ({ focused }) => (
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🏰</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Home</Text>
+                </View>
+              ),
+            }}
+          />
+
+          {/* Tab 4: Shop */}
+          <Tabs.Screen
+            name="shop"
+            options={{
+              title: "Shop",
+              tabBarIcon: ({ focused }) => (
+                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
+                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🛒</Text>
+                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Shop</Text>
+                </View>
+              ),
+            }}
+          />
+
+          {/* Tab 5: Profile */}
           <Tabs.Screen
             name="profile"
             options={{
@@ -166,6 +175,8 @@ export default function RootLayout() {
             }}
           />
 
+          {/* Hidden Routes */}
+          <Tabs.Screen name="analytics" options={{ href: null }} />
           <Tabs.Screen name="settings" options={{ href: null }} />
         </Tabs>
 
@@ -180,8 +191,8 @@ const styles = StyleSheet.create({
   tabBar: {
     position: "absolute",
     bottom: Platform.OS === "ios" ? 24 : 16,
-    left: "12%",
-    right: "12%",
+    left: "4%",
+    right: "4%",
     height: 50,
     backgroundColor: "rgba(15, 23, 42, 0.88)",
     borderRadius: 25,
@@ -211,9 +222,9 @@ const styles = StyleSheet.create({
   },
   tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
   iconPill: {
-    width: 60,
-    height: 50,
-    borderRadius: 25,
+    width: 54,
+    height: 48,
+    borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
     transform: [{ translateY: 4 }],
@@ -229,8 +240,8 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  tabIcon: { fontSize: 22, opacity: 0.7 },
-  tabIconActive: { fontSize: 26, opacity: 1 },
+  tabIcon: { fontSize: 20, opacity: 0.7 },
+  tabIconActive: { fontSize: 24, opacity: 1 },
   pillLabel: { color: "#94A3B8", fontSize: 9, fontWeight: "800", marginTop: 1 },
   pillLabelActive: { color: "#FFFFFF" },
   activeBanner: {

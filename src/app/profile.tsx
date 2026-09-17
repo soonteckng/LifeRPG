@@ -1,185 +1,542 @@
-import React, { useState, useEffect } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
+  Modal,
+  ScrollView,
   StyleSheet,
+  Switch,
   Text,
-  View,
   TextInput,
   TouchableOpacity,
-  ScrollView,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  TouchableWithoutFeedback,
-  Keyboard,
+  View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import Header from '../components/Header';
+import { resetDatabase } from '../../db/database';
 import { useUser } from '../context/UserContext';
 
-const AVATARS = ['🧙‍♂️', '🥷', '🛡️', '👨‍💻', '⚡', '🐉'];
-const CLASSES = ['Scholar', 'Mage', 'Warrior', 'Coder', 'Monk'];
-
-export function getRankTitle(level: number): string {
-  if (level >= 10) return 'Legendary Hero';
-  if (level >= 7) return 'Master Specialist';
-  if (level >= 5) return 'Rising Adventurer';
-  if (level >= 3) return 'Apprentice Scholar';
-  return 'Novice Adventurer';
-}
+const PRESET_AVATARS = ['🧙‍♂️', '🧝‍♂️', '🛡️', '⚔️', '🔮', '🐉', '🐱', '🤖', '🚀', '⭐'];
 
 export default function ProfileScreen() {
-  const router = useRouter();
-  const { profile, username, avatar, classTitle, updateProfile, hapticsEnabled } = useUser();
+  const {
+    profile,
+    reloadProfile,
+    updateProfile,
+    soundEnabled,
+    hapticsEnabled,
+    setSoundEnabled,
+    setHapticsEnabled,
+  } = useUser();
 
-  const [inputName, setInputName] = useState(username);
-  const [selectedAvatar, setSelectedAvatar] = useState(avatar);
-  const [selectedClass, setSelectedClass] = useState(classTitle);
+  const [usernameInput, setUsernameInput] = useState(profile?.username || 'Hero');
+  const [avatarInput, setAvatarInput] = useState(profile?.avatar || '🧙‍♂️');
+  const [isEditing, setIsEditing] = useState(false);
+  const [resetModalVisible, setResetModalVisible] = useState(false);
+  const [successModalVisible, setSuccessModalVisible] = useState(false);
+  const [successModalMessage, setSuccessModalMessage] = useState({ title: '', body: '', isError: false });
 
-  useEffect(() => {
-    setInputName(username);
-    setSelectedAvatar(avatar);
-    setSelectedClass(classTitle);
-  }, [username, avatar, classTitle]);
+  useFocusEffect(
+    useCallback(() => {
+      reloadProfile();
+    }, [reloadProfile])
+  );
 
-  if (!profile) return null;
-
-  const handleSave = () => {
-    if (!inputName.trim()) return;
-    updateProfile(inputName.trim(), selectedAvatar, selectedClass);
-    if (hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    Alert.alert('Saved', 'Character identity updated successfully!');
+  const handleSaveProfile = () => {
+    if (!usernameInput.trim()) {
+      setSuccessModalMessage({
+        title: 'INVALID INPUT',
+        body: 'Username cannot be empty. Please enter a valid hero name.',
+        isError: true,
+      });
+      setSuccessModalVisible(true);
+      return;
+    }
+    // Keep existing automated class title while saving username and avatar changes
+    updateProfile(usernameInput.trim(), avatarInput.trim() || '🧙‍♂️', profile?.class_title || 'Novice Scholar 📚');
+    setIsEditing(false);
+    reloadProfile();
+    setSuccessModalMessage({
+      title: 'PROFILE UPDATED!',
+      body: 'Your hero avatar and name have been successfully saved.',
+      isError: false,
+    });
+    setSuccessModalVisible(true);
   };
 
-  const rankTitle = getRankTitle(profile.level);
+  const confirmResetDatabase = () => {
+    resetDatabase();
+    reloadProfile();
+    setResetModalVisible(false);
+    setSuccessModalMessage({
+      title: 'PURGE COMPLETE!',
+      body: 'Database successfully wiped. All hero stats have been reset to default initial state.',
+      isError: false,
+    });
+    setSuccessModalVisible(true);
+  };
+
+  const currentLevel = profile?.level || 1;
+  const currentXP = profile?.current_xp || 0;
+  const requiredXP = Math.floor(100 * Math.pow(currentLevel, 1.5));
+  const xpProgress = Math.min(1, currentXP / requiredXP);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      {/* Profile Identity Card */}
+      <View style={styles.card}>
+        <View style={styles.avatarRow}>
+          <Text style={styles.avatarDisplay}>{profile?.avatar || '🧙‍♂️'}</Text>
+          <View style={styles.identityText}>
+            <Text style={styles.usernameDisplay}>{profile?.username || 'Hero'}</Text>
+            <Text style={styles.classTitleDisplay}>
+              Lvl {currentLevel} {profile?.class_title || 'Novice Scholar 📚'}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.statGrid}>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>🔥 {profile?.streak_count || 1}</Text>
+            <Text style={styles.statLabel}>Day Streak</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>💰 {profile?.gold || 0}</Text>
+            <Text style={styles.statLabel}>Gold</Text>
+          </View>
+          <View style={styles.statBox}>
+            <Text style={styles.statValue}>⭐ {currentLevel}</Text>
+            <Text style={styles.statLabel}>Level</Text>
+          </View>
+        </View>
+
+        {/* XP Progress */}
+        <View style={styles.xpSection}>
+          <View style={styles.xpHeader}>
+            <Text style={styles.xpLabel}>CURRENT XP</Text>
+            <Text style={styles.xpValue}>
+              {currentXP} / {requiredXP}
+            </Text>
+          </View>
+          <View style={styles.xpTrack}>
+            <View style={[styles.xpFill, { width: `${xpProgress * 100}%` }]} />
+          </View>
+        </View>
+      </View>
+
+      {/* Profile Edit Section */}
+      <View style={styles.card}>
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.cardTitle}>Hero Customization</Text>
+          <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
+            <Text style={styles.editToggleText}>{isEditing ? 'Cancel' : 'Edit'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {isEditing ? (
+          <View style={styles.formGroup}>
+            <Text style={styles.inputLabel}>Choose Avatar</Text>
+            <View style={styles.avatarPresetRow}>
+              {PRESET_AVATARS.map((emoji) => {
+                const isSelected = avatarInput === emoji;
+                return (
+                  <TouchableOpacity
+                    key={emoji}
+                    style={[styles.avatarChip, isSelected && styles.avatarChipSelected]}
+                    onPress={() => setAvatarInput(emoji)}
+                  >
+                    <Text style={styles.avatarChipText}>{emoji}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={styles.inputLabel}>Username</Text>
+            <TextInput
+              style={styles.input}
+              value={usernameInput}
+              onChangeText={setUsernameInput}
+              placeholder="Hero Name"
+              placeholderTextColor="#64748B"
+            />
+
+            <Text style={styles.infoNote}>
+              *Class titles evolve automatically based on your Level milestones.
+            </Text>
+
+            <TouchableOpacity style={styles.saveButton} onPress={handleSaveProfile}>
+              <Text style={styles.saveButtonText}>Save Hero Details</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Text style={styles.infoText}>
+            Tap Edit to customize your avatar emoji and hero name.
+          </Text>
+        )}
+      </View>
+
+      {/* System Settings */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>App Preferences</Text>
+
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Sound Effects</Text>
+          <Switch
+            value={soundEnabled}
+            onValueChange={setSoundEnabled}
+            trackColor={{ false: '#334155', true: '#6366F1' }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+
+        <View style={styles.settingRow}>
+          <Text style={styles.settingLabel}>Haptic Feedback</Text>
+          <Switch
+            value={hapticsEnabled}
+            onValueChange={setHapticsEnabled}
+            trackColor={{ false: '#334155', true: '#6366F1' }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
+      </View>
+
+      {/* Danger Zone */}
+      <View style={[styles.card, styles.dangerCard]}>
+        <Text style={styles.dangerTitle}>Danger Zone (Testing Tool)</Text>
+        <Text style={styles.dangerText}>
+          Resetting the database will clear all local records and revert your hero stats to initial defaults.
+        </Text>
+        <TouchableOpacity
+          style={styles.resetButton}
+          onPress={() => setResetModalVisible(true)}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.resetButtonText}>⚠️ Reset Local Database</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Custom Themed Dark RPG Reset Modal */}
+      <Modal
+        visible={resetModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setResetModalVisible(false)}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-            <Header title="Hero Profile" subtitle="Character identity & class customization" showBack={false} />
-
-            <View style={styles.heroCard}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarEmoji}>{selectedAvatar}</Text>
-              </View>
-
-              <Text style={styles.heroName}>{inputName}</Text>
-              <View style={styles.titleBadge}>
-                <Text style={styles.titleBadgeText}>✨ {selectedClass} • {rankTitle}</Text>
-              </View>
-
-              <View style={styles.heroStatsRow}>
-                <View style={styles.heroStatItem}>
-                  <Text style={styles.heroStatValue}>Level {profile.level}</Text>
-                  <Text style={styles.heroStatLabel}>Character Rank</Text>
-                </View>
-                <View style={styles.divider} />
-                <View style={styles.heroStatItem}>
-                  <Text style={[styles.heroStatValue, { color: '#F59E0B' }]}>
-                    🔥 {profile.streak_count}
-                  </Text>
-                  <Text style={styles.heroStatLabel}>Day Streak</Text>
-                </View>
-              </View>
+        <View style={styles.modalOverlay}>
+          <View style={styles.darkModalCard}>
+            <Text style={styles.modalIcon}>⚠️</Text>
+            <Text style={styles.modalTitle}>PURGE ALL HERO DATA?</Text>
+            <Text style={styles.modalText}>
+              This action will permanently erase your study logs, gold, level progress, and item vault. This cannot be undone.
+            </Text>
+            <View style={styles.modalActionRow}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setResetModalVisible(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalConfirmButton}
+                onPress={confirmResetDatabase}
+              >
+                <Text style={styles.modalConfirmText}>Purge Data</Text>
+              </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
 
-            <Text style={styles.sectionTitle}>CHARACTER NAME</Text>
-            <View style={styles.card}>
-              <TextInput
-                style={styles.input}
-                value={inputName}
-                onChangeText={setInputName}
-                placeholder="Enter username..."
-                placeholderTextColor="#64748B"
-              />
-            </View>
-
-            <Text style={styles.sectionTitle}>CHOOSE AVATAR</Text>
-            <View style={styles.avatarGrid}>
-              {AVATARS.map((av) => (
-                <TouchableOpacity
-                  key={av}
-                  style={[styles.avatarOption, selectedAvatar === av && styles.avatarSelected]}
-                  onPress={() => {
-                    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedAvatar(av);
-                  }}
-                >
-                  <Text style={styles.avatarText}>{av}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <Text style={styles.sectionTitle}>CHARACTER CLASS</Text>
-            <View style={styles.classRow}>
-              {CLASSES.map((cls) => (
-                <TouchableOpacity
-                  key={cls}
-                  style={[styles.classChip, selectedClass === cls && styles.classChipActive]}
-                  onPress={() => {
-                    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                    setSelectedClass(cls);
-                  }}
-                >
-                  <Text style={[styles.classText, selectedClass === cls && styles.classTextActive]}>
-                    {cls}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-              <Text style={styles.saveBtnText}>SAVE CHANGES</Text>
-            </TouchableOpacity>
-
+      {/* Success / Notification Modal */}
+      <Modal
+        visible={successModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setSuccessModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.successModalCard, successModalMessage.isError && styles.errorModalCard]}>
+            <Text style={styles.modalIcon}>{successModalMessage.isError ? '⚠️' : '✨'}</Text>
+            <Text style={[styles.successModalTitle, successModalMessage.isError && styles.errorModalTitle]}>
+              {successModalMessage.title}
+            </Text>
+            <Text style={styles.modalText}>{successModalMessage.body}</Text>
             <TouchableOpacity
-              style={styles.settingsBtn}
-              onPress={() => router.push('/settings')}
+              style={[styles.successButton, successModalMessage.isError && styles.errorButton]}
+              onPress={() => setSuccessModalVisible(false)}
             >
-              <Text style={styles.settingsBtnText}>⚙️ Advanced Settings & Data Reset</Text>
+              <Text style={styles.successButtonText}>Got It</Text>
             </TouchableOpacity>
-          </ScrollView>
-        </TouchableWithoutFeedback>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#05070D' },
-  scrollContent: { padding: 20, paddingBottom: 140 },
-  heroCard: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 28, padding: 24, alignItems: 'center', marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.14)' },
-  avatarCircle: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 2, borderColor: '#F59E0B' },
-  avatarEmoji: { fontSize: 40 },
-  heroName: { color: '#F8FAFC', fontSize: 22, fontWeight: 'bold' },
-  titleBadge: { backgroundColor: 'rgba(245, 158, 11, 0.15)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 12, marginVertical: 8, borderWidth: 1, borderColor: '#F59E0B' },
-  titleBadgeText: { color: '#F59E0B', fontSize: 12, fontWeight: 'bold' },
-  heroStatsRow: { flexDirection: 'row', alignItems: 'center', marginTop: 16, width: '100%', paddingTop: 16, borderTopWidth: 1, borderTopColor: '#334155' },
-  heroStatItem: { flex: 1, alignItems: 'center' },
-  heroStatValue: { color: '#6366F1', fontSize: 18, fontWeight: 'bold' },
-  heroStatLabel: { color: '#64748B', fontSize: 11, marginTop: 2, fontWeight: '600' },
-  divider: { width: 1, height: 30, backgroundColor: '#334155' },
-  sectionTitle: { color: '#94A3B8', fontSize: 11, fontWeight: '800', marginBottom: 8, marginTop: 12, letterSpacing: 1 },
-  card: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 20, padding: 14, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', marginBottom: 12 },
-  input: { backgroundColor: '#0F172A', color: '#F8FAFC', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: '#334155', fontWeight: 'bold' },
-  avatarGrid: { flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 12 },
-  avatarOption: { width: 52, height: 52, borderRadius: 18, backgroundColor: 'rgba(255, 255, 255, 0.07)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)' },
-  avatarSelected: { borderColor: '#6366F1', backgroundColor: '#312E81' },
-  avatarText: { fontSize: 24 },
-  classRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
-  classChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, backgroundColor: 'rgba(30, 41, 59, 0.55)', borderWidth: 1, borderColor: '#334155' },
-  classChipActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  classText: { color: '#94A3B8', fontSize: 12, fontWeight: 'bold' },
-  classTextActive: { color: '#FFFFFF' },
-  saveBtn: { backgroundColor: '#10B981', paddingVertical: 14, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
-  saveBtnText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 14 },
-  settingsBtn: { backgroundColor: 'rgba(30, 41, 59, 0.55)', padding: 16, borderRadius: 14, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
-  settingsBtnText: { color: '#F8FAFC', fontWeight: 'bold', fontSize: 13 },
+  container: {
+    flex: 1,
+    backgroundColor: '#090D16',
+  },
+  contentContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 48,
+    paddingBottom: 90,
+    gap: 14,
+  },
+  card: {
+    backgroundColor: '#1E293B',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginBottom: 16,
+  },
+  avatarDisplay: {
+    fontSize: 48,
+  },
+  identityText: {
+    flex: 1,
+  },
+  usernameDisplay: {
+    color: '#F8FAFC',
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  classTitleDisplay: {
+    color: '#818CF8',
+    fontSize: 14,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  statGrid: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 16,
+  },
+  statBox: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  statValue: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  statLabel: {
+    color: '#64748B',
+    fontSize: 11,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  xpSection: {
+    gap: 6,
+  },
+  xpHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  xpLabel: {
+    color: '#94A3B8',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  xpValue: {
+    color: '#818CF8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  xpTrack: {
+    height: 10,
+    backgroundColor: '#0F172A',
+    borderRadius: 5,
+    overflow: 'hidden',
+  },
+  xpFill: {
+    height: '100%',
+    backgroundColor: '#6366F1',
+    borderRadius: 5,
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  cardTitle: {
+    color: '#F8FAFC',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  editToggleText: {
+    color: '#818CF8',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  formGroup: {
+    gap: 8,
+    marginTop: 6,
+  },
+  inputLabel: {
+    color: '#94A3B8',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  avatarPresetRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 8,
+  },
+  avatarChip: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    backgroundColor: '#0F172A',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  avatarChipSelected: {
+    borderColor: '#6366F1',
+    backgroundColor: '#6366F133',
+  },
+  avatarChipText: {
+    fontSize: 22,
+  },
+  input: {
+    backgroundColor: '#0F172A',
+    color: '#F8FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  infoNote: {
+    color: '#64748B',
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginBottom: 4,
+  },
+  saveButton: {
+    backgroundColor: '#6366F1',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  infoText: {
+    color: '#64748B',
+    fontSize: 13,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
+  },
+  settingLabel: {
+    color: '#F8FAFC',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dangerCard: {
+    borderColor: '#EF444433',
+    backgroundColor: '#1E1218',
+  },
+  dangerTitle: {
+    color: '#F87171',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  dangerText: {
+    color: '#94A3B8',
+    fontSize: 12,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  resetButton: {
+    backgroundColor: '#EF444422',
+    borderWidth: 1,
+    borderColor: '#EF444466',
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  resetButtonText: {
+    color: '#F87171',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 8, 15, 0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  darkModalCard: {
+    width: '100%',
+    backgroundColor: '#1E1218',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1.5,
+    borderColor: '#EF4444',
+    alignItems: 'center',
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  successModalCard: {
+    width: '100%',
+    backgroundColor: '#131C2E',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    alignItems: 'center',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  errorModalCard: {
+    backgroundColor: '#1E1218',
+    borderColor: '#EF4444',
+  },
+  modalIcon: { fontSize: 36, marginBottom: 8 },
+  modalTitle: { color: '#F87171', fontSize: 18, fontWeight: '900', letterSpacing: 0.5, marginBottom: 8 },
+  successModalTitle: { color: '#34D399', fontSize: 18, fontWeight: '900', letterSpacing: 0.5, marginBottom: 8 },
+  errorModalTitle: { color: '#F87171' },
+  modalText: { color: '#94A3B8', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
+  modalActionRow: { flexDirection: 'row', gap: 10, width: '100%' },
+  modalCancelButton: { flex: 1, backgroundColor: '#1E293B', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
+  modalCancelText: { color: '#F8FAFC', fontWeight: '700', fontSize: 13 },
+  modalConfirmButton: { flex: 1, backgroundColor: '#EF4444', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  modalConfirmText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  successButton: { width: '100%', backgroundColor: '#10B981', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  errorButton: { backgroundColor: '#EF4444' },
+  successButtonText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
 });

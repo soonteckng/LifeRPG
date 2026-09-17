@@ -21,6 +21,7 @@ const defaultProfile: UserProfile = {
   class_title: 'Scholar',
   level: 1,
   current_xp: 0,
+  gold: 0,
   streak_count: 1,
   last_active_date: new Date().toISOString().split('T')[0],
 };
