@@ -139,7 +139,7 @@ export default function ShopScreen() {
       <View style={styles.goldBalance}>
         <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
         <Text style={styles.goldLabel}>GOLD</Text>
-      </SafeAreaView>
+      </View>
 
       {/* Reward Creator */}
       <View style={styles.createBox}>
@@ -198,7 +198,7 @@ export default function ShopScreen() {
           </View>
         }
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

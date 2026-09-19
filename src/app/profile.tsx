@@ -93,7 +93,7 @@ export default function ProfileScreen() {
             <Text style={styles.classTitleDisplay}>
               Lvl {currentLevel} {profile?.class_title || 'Novice Scholar 📚'}
             </Text>
-          </SafeAreaView>
+          </View>
         </View>
 
         <View style={styles.statGrid}>
@@ -272,7 +272,7 @@ export default function ProfileScreen() {
         </View>
       </Modal>
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 

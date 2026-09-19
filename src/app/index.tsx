@@ -125,7 +125,7 @@ export default function HomeScreen() {
             <Text style={styles.classTitle}>
               Lvl {currentLevel} {profile?.class_title || 'Novice Scholar 📚'}
             </Text>
-          </SafeAreaView>
+          </View>
           <View style={styles.goldBadge}>
             <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
           </View>
@@ -362,7 +362,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
     </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }
 
