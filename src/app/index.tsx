@@ -361,6 +361,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
     </ScrollView>
+    </View>
   );
 }
 
