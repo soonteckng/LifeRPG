@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { resetDatabase } from '../../db/database';
 import { useUser } from '../context/UserContext';
 import Header from '../components/Header';
@@ -80,7 +81,7 @@ export default function ProfileScreen() {
   const xpProgress = Math.min(1, currentXP / requiredXP);
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Header title="Profile" subtitle="Manage your hero identity and preferences" showBack={false} />
       <ScrollView contentContainerStyle={styles.contentContainer}>
       {/* Profile Identity Card */}
@@ -92,7 +93,7 @@ export default function ProfileScreen() {
             <Text style={styles.classTitleDisplay}>
               Lvl {currentLevel} {profile?.class_title || 'Novice Scholar 📚'}
             </Text>
-          </View>
+          </SafeAreaView>
         </View>
 
         <View style={styles.statGrid}>

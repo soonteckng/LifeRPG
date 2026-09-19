@@ -10,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   Attribute,
   DailyStat,
@@ -106,7 +107,7 @@ export default function HomeScreen() {
     : [];
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Header title="Home" subtitle="Your daily progress and hero overview" showBack={false} />
       <ScrollView
         contentContainerStyle={styles.contentContainer}
@@ -124,7 +125,7 @@ export default function HomeScreen() {
             <Text style={styles.classTitle}>
               Lvl {currentLevel} {profile?.class_title || 'Novice Scholar 📚'}
             </Text>
-          </View>
+          </SafeAreaView>
           <View style={styles.goldBadge}>
             <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
           </View>

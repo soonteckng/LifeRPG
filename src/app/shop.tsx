@@ -18,6 +18,7 @@ import {
   getRewards,
   Reward,
 } from '../../db/database';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useUser } from '../context/UserContext';
 import Header from '../components/Header';
 
@@ -133,12 +134,12 @@ export default function ShopScreen() {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Header title="Item Shop" subtitle="Craft and redeem rewards with earned gold" showBack={false} />
       <View style={styles.goldBalance}>
         <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
         <Text style={styles.goldLabel}>GOLD</Text>
-      </View>
+      </SafeAreaView>
 
       {/* Reward Creator */}
       <View style={styles.createBox}>
