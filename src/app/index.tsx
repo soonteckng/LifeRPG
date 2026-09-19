@@ -20,6 +20,7 @@ import {
 } from '../../db/database';
 import { useTimer } from '../context/TimerContext';
 import { useUser } from '../context/UserContext';
+import Header from '../components/Header';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -105,14 +106,15 @@ export default function HomeScreen() {
     : [];
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.contentContainer}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#818CF8" />
-      }
-      showsVerticalScrollIndicator={false}
-    >
+    <View style={styles.container}>
+      <Header title="Home" subtitle="Your daily progress and hero overview" showBack={false} />
+      <ScrollView
+        contentContainerStyle={styles.contentContainer}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#818CF8" />
+        }
+        showsVerticalScrollIndicator={false}
+      >
       {/* Hero Header Banner */}
       <View style={styles.heroCard}>
         <View style={styles.heroRow}>
@@ -298,7 +300,8 @@ export default function HomeScreen() {
                   </Text>
                 </TouchableOpacity>
               )}
-            </ScrollView>
+              </ScrollView>
+            </View>
 
             <TouchableOpacity
               style={styles.codexDismissBtn}
@@ -369,7 +372,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 16,
-    paddingTop: 48,
     paddingBottom: 90,
   },
   heroCard: {

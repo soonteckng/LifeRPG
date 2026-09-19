@@ -19,6 +19,7 @@ import {
   Reward,
 } from '../../db/database';
 import { useUser } from '../context/UserContext';
+import Header from '../components/Header';
 
 export default function ShopScreen() {
   const { profile, reloadProfile } = useUser();
@@ -133,16 +134,10 @@ export default function ShopScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Header Banner */}
-      <View style={styles.vaultHeader}>
-        <View style={styles.vaultTitleRow}>
-          <Ionicons name="storefront" size={24} color="#F59E0B" />
-          <Text style={styles.vaultTitle}>Item Shop</Text>
-        </View>
-        <View style={styles.goldDisplay}>
-          <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
-          <Text style={styles.goldLabel}>GOLD</Text>
-        </View>
+      <Header title="Item Shop" subtitle="Craft and redeem rewards with earned gold" showBack={false} />
+      <View style={styles.goldBalance}>
+        <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
+        <Text style={styles.goldLabel}>GOLD</Text>
       </View>
 
       {/* Reward Creator */}
@@ -211,32 +206,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#090D16',
     paddingHorizontal: 16,
-    paddingTop: 48,
   },
-  vaultHeader: {
-    backgroundColor: '#1E293B',
-    borderRadius: 16,
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#334155',
-    marginBottom: 16,
-  },
-  vaultTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  vaultTitle: {
-    color: '#F8FAFC',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-  },
-  goldDisplay: {
+  goldBalance: {
     alignItems: 'flex-end',
+    marginBottom: 12,
   },
   goldText: {
     color: '#F59E0B',
