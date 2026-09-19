@@ -61,9 +61,8 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Header title="Settings" subtitle="System preferences and game controls" />
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Header title="Settings" subtitle="System preferences and game controls" />
-
         <Text style={styles.sectionTitle}>AUDIO & TACTILE</Text>
         <View style={styles.card}>
           <View style={styles.settingRow}>
@@ -99,7 +98,7 @@ export default function SettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#05070D' },
+  container: { flex: 1, backgroundColor: '#090D16' },
   scrollContent: { padding: 20, paddingBottom: 110 },
   sectionTitle: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 8, marginTop: 12 },
   card: { backgroundColor: 'rgba(255, 255, 255, 0.07)', borderRadius: 20, padding: 16, borderWidth: 1, borderColor: 'rgba(255, 255, 255, 0.12)', marginBottom: 12 },

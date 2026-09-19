@@ -163,9 +163,8 @@ export default function TasksScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Header title="Quest Log" subtitle="Manage quests and start dedicated focus sessions" showBack={false} />
       <View style={styles.content}>
-        <Header title="Quest Log" subtitle="Manage quests and start dedicated focus sessions" showBack={false} />
-
         <TouchableOpacity style={styles.addBtn} onPress={handleOpenCreateModal}>
           <Text style={styles.addBtnText}>+ CREATE NEW QUEST</Text>
         </TouchableOpacity>
@@ -417,7 +416,7 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#05070D' },
+  container: { flex: 1, backgroundColor: '#090D16' },
   content: { flex: 1, padding: 20, paddingBottom: 120 },
   addBtn: {
     backgroundColor: 'rgba(255, 255, 255, 0.07)',

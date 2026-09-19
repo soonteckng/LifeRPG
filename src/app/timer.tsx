@@ -137,6 +137,11 @@ export default function TimerScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Header
+        title="Focus Chamber"
+        subtitle="Link a quest to convert study time into instant completion"
+        showBack={false}
+      />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -147,12 +152,6 @@ export default function TimerScreen() {
             contentContainerStyle={styles.scrollContent}
             keyboardShouldPersistTaps="handled"
           >
-            <Header
-              title="Focus Chamber"
-              subtitle="Link a quest to convert study time into instant completion"
-              showBack={false}
-            />
-
             <Text style={styles.label}>🎯 LINKED QUEST (AUTO-COMPLETES ON FINISH)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.row}>
               <TouchableOpacity
@@ -273,7 +272,7 @@ export default function TimerScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#05070D' },
+  container: { flex: 1, backgroundColor: '#090D16' },
   scrollContent: { padding: 20, paddingBottom: 140, alignItems: 'center' },
   label: { alignSelf: 'flex-start', color: '#64748B', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 8, marginTop: 4 },
   row: { maxHeight: 38, marginBottom: 12, width: '100%' },
