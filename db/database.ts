@@ -124,6 +124,9 @@ export function initDatabase() {
     if (!tableInfo.some((col) => col.name === 'last_completed_date')) {
       db.execSync('ALTER TABLE tasks ADD COLUMN last_completed_date TEXT;');
     }
+    if (!tableInfo.some((col) => col.name === 'subject_id')) {
+      db.execSync('ALTER TABLE tasks ADD COLUMN subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL;');
+    }
 
     const profileInfo = db.getAllSync<{ name: string }>("PRAGMA table_info(user_profile);");
     if (!profileInfo.some((col) => col.name === 'gold')) {
@@ -144,14 +147,15 @@ export function initDatabase() {
     );
   }
 
-  // Seed Default Subjects/Attributes
+  // Seed Default Subjects/Attributes (Updated Computer Science -> Knowledge)
   const subjectCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM subjects;');
   if (subjectCount && subjectCount.count === 0) {
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Strength & Health', 1, 0, '#EF4444');");
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Computer Science', 1, 0, '#6366F1');");
+    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Knowledge', 1, 0, '#6366F1');");
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Mathematics', 1, 0, '#EC4899');");
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Focus & Mindfulness', 1, 0, '#10B981');");
   }
+  renameLegacyKnowledgeSubject();
 
   // Seed Default Balanced Shop Rewards (2:1 Ratio Economy)
   const rewardCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM rewards;');
@@ -349,14 +353,15 @@ export function updateTask(
   title: string,
   difficulty: 'easy' | 'medium' | 'hard' = 'medium',
   repeatRule: string = 'once',
-  targetMinutes: number = 30
+  targetMinutes: number = 30,
+  subjectId: number | null = null
 ) {
   const xp = targetMinutes * 1;
   const isRecurring = repeatRule !== 'once' ? 1 : 0;
 
   db.runSync(
-    'UPDATE tasks SET title = ?, difficulty = ?, xp_awarded = ?, is_recurring = ?, repeat_rule = ?, target_minutes = ? WHERE id = ?;',
-    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, id]
+    'UPDATE tasks SET title = ?, difficulty = ?, xp_awarded = ?, is_recurring = ?, repeat_rule = ?, target_minutes = ?, subject_id = ? WHERE id = ?;',
+    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId, id]
   );
 }
 
@@ -383,7 +388,26 @@ export function deleteTask(taskId: number) {
 }
 
 export function getSubjects(): Attribute[] {
-  return db.getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;');
+  renameLegacyKnowledgeSubject();
+  return db
+    .getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;')
+    .map((subject) => ({
+      ...subject,
+      title: isLegacyKnowledgeTitle(subject.title) ? 'Knowledge' : subject.title,
+    }));
+}
+
+function renameLegacyKnowledgeSubject() {
+  db.runSync(
+    `UPDATE subjects
+     SET title = 'Knowledge'
+     WHERE lower(trim(title)) IN ('intellect & code', 'computer science');`
+  );
+}
+
+function isLegacyKnowledgeTitle(title: string) {
+  const normalizedTitle = title.trim().toLowerCase();
+  return normalizedTitle === 'intellect & code' || normalizedTitle === 'computer science';
 }
 
 export function getRewards(): Reward[] {

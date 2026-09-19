@@ -2,6 +2,7 @@ import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect } from "react";
 import { GlassView } from "expo-glass-effect";
 import {
+  BackHandler,
   Platform,
   StyleSheet,
   Text,
@@ -12,6 +13,42 @@ import { initDatabase } from "../../db/database";
 import LevelUpModal from "../components/LevelUpModal";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+
+function GlobalBackHandler() {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    const onBackPress = () => {
+      // 1. Home Screen: Allow system default (minimize/exit app)
+      if (pathname === "/" || pathname === "/index") {
+        return false;
+      }
+
+      // 2. Second Layer Sub-pages (Analytics, Settings, etc.): Go back to previous screen
+      if (pathname === "/analytics" || pathname === "/settings") {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/");
+        }
+        return true;
+      }
+
+      // 3. Any Tab in Tab Layer (Quests, Focus, Shop, Profile): Go directly to Home
+      router.replace("/");
+      return true;
+    };
+
+    const subscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      onBackPress
+    );
+    return () => subscription.remove();
+  }, [pathname, router]);
+
+  return null;
+}
 
 function GlobalRewardListener() {
   const { sessionSummary, completedLevelUp, clearCompletionModal } = useTimer();
@@ -75,6 +112,8 @@ function ActiveTimerBanner() {
 }
 
 export default function RootLayout() {
+  const pathname = usePathname();
+
   useEffect(() => {
     try {
       initDatabase();
@@ -84,10 +123,17 @@ export default function RootLayout() {
     }
   }, []);
 
+  // Check if current route is Home or a sub-page of Home (e.g., /analytics)
+  const isHomeSubRoute =
+    pathname === "/" || pathname === "/index" || pathname === "/analytics";
+
   return (
     <UserProvider>
       <TimerProvider>
+        <GlobalBackHandler />
         <Tabs
+          initialRouteName="index"
+          backBehavior="initialRoute"
           screenOptions={{
             headerShown: false,
             tabBarShowLabel: false,
@@ -133,17 +179,20 @@ export default function RootLayout() {
             }}
           />
 
-          {/* Tab 3: Home (CENTER TAB) */}
+          {/* Tab 3: Home (Highlights for Home and Home Sub-pages like /analytics) */}
           <Tabs.Screen
             name="index"
             options={{
               title: "Home",
-              tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🏰</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Home</Text>
-                </View>
-              ),
+              tabBarIcon: ({ focused }) => {
+                const isHomeActive = focused || isHomeSubRoute;
+                return (
+                  <View style={[styles.iconPill, isHomeActive && styles.iconPillActive]}>
+                    <Text style={[styles.tabIcon, isHomeActive && styles.tabIconActive]}>🏰</Text>
+                    <Text style={[styles.pillLabel, isHomeActive && styles.pillLabelActive]}>Home</Text>
+                  </View>
+                );
+              },
             }}
           />
 

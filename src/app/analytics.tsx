@@ -108,7 +108,8 @@ export default function AnalyticsScreen() {
         <Header
           title="Analytics & Hero Stats"
           subtitle="Study performance, mastery, & achievements"
-          showBack={false}
+          showBack={true}
+          fallbackRoute="/"
         />
 
         {/* --- OVERALL HERO SUMMARY --- */}
@@ -340,7 +341,6 @@ const styles = StyleSheet.create({
   barFill: { width: '100%', borderRadius: 6 },
   barDayLabel: { color: '#64748B', fontSize: 10, fontWeight: 'bold', marginTop: 6 },
 
-  /* Attribute Mastery Styles */
   attributesCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderRadius: 24,

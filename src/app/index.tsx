@@ -1,4 +1,5 @@
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import React, { useCallback, useState } from 'react';
 import {
   Modal,
@@ -12,25 +13,37 @@ import {
 import {
   Attribute,
   DailyStat,
+  Task,
   getSubjects,
   getWeeklyStats,
+  getTasks,
 } from '../../db/database';
+import { useTimer } from '../context/TimerContext';
 import { useUser } from '../context/UserContext';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { profile, reloadProfile } = useUser();
+  const { profile, reloadProfile, hapticsEnabled } = useUser();
+  const { setTargetAttributeId, setLinkedTaskId, setDurationInMinutes } = useTimer();
+
   const [attributes, setAttributes] = useState<Attribute[]>([]);
   const [weeklyStats, setWeeklyStats] = useState<DailyStat[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [codexModalVisible, setCodexModalVisible] = useState(false);
+
+  // Attribute action modal state
+  const [selectedAttribute, setSelectedAttribute] = useState<Attribute | null>(null);
+  const [attrModalVisible, setAttrModalVisible] = useState(false);
 
   const loadData = useCallback(() => {
     reloadProfile();
     const attrs = getSubjects();
     const weekly = getWeeklyStats();
+    const taskList = getTasks();
     setAttributes(attrs);
     setWeeklyStats(weekly);
+    setTasks(taskList);
   }, [reloadProfile]);
 
   useFocusEffect(
@@ -52,6 +65,44 @@ export default function HomeScreen() {
 
   const todayMinutes =
     weeklyStats.length > 0 ? weeklyStats[weeklyStats.length - 1].focusMinutes : 0;
+
+  const handleAttributePress = (attr: Attribute) => {
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSelectedAttribute(attr);
+    setAttrModalVisible(true);
+  };
+
+  const handleStartFreeFocus = () => {
+    if (!selectedAttribute) return;
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setTargetAttributeId(selectedAttribute.id);
+    setLinkedTaskId(null);
+    setAttrModalVisible(false);
+    setSelectedAttribute(null);
+    router.push('/timer');
+  };
+
+  const handleSelectQuestForAttr = (task: Task) => {
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setTargetAttributeId(selectedAttribute?.id || null);
+    setLinkedTaskId(task.id);
+    setDurationInMinutes(task.target_minutes || 30);
+    setAttrModalVisible(false);
+    setSelectedAttribute(null);
+    router.push('/timer');
+  };
+
+  const handleNavigateToQuestLog = () => {
+    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setAttrModalVisible(false);
+    setSelectedAttribute(null);
+    router.push('/tasks');
+  };
+
+  // Filter uncompleted quests matching the selected attribute
+  const filteredQuests = selectedAttribute
+    ? tasks.filter((t) => t.is_completed === 0 && t.subject_id === selectedAttribute.id)
+    : [];
 
   return (
     <ScrollView
@@ -165,10 +216,15 @@ export default function HomeScreen() {
       </View>
 
       {/* Character Attributes Overview */}
-      <Text style={styles.sectionTitle}>Hero Attributes</Text>
+      <Text style={styles.sectionTitle}>Hero Attributes (Tap to Train)</Text>
       <View style={styles.attributesContainer}>
         {attributes.map((attr) => (
-          <View key={attr.id} style={styles.attributeCard}>
+          <TouchableOpacity
+            key={attr.id}
+            style={styles.attributeCard}
+            onPress={() => handleAttributePress(attr)}
+            activeOpacity={0.8}
+          >
             <View style={styles.attrRow}>
               <View style={styles.attrInfo}>
                 <View
@@ -176,11 +232,83 @@ export default function HomeScreen() {
                 />
                 <Text style={styles.attrTitle}>{attr.title}</Text>
               </View>
-              <Text style={styles.attrLevel}>Lvl {attr.level}</Text>
+              <Text style={styles.attrLevel}>Lvl {attr.level} ›</Text>
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
+
+      {/* --- ATTRIBUTE ACTION MODAL (Free Focus vs Quest) --- */}
+      <Modal
+        visible={attrModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setAttrModalVisible(false)}
+      >
+        <View style={styles.codexOverlay}>
+          <View style={styles.codexCard}>
+            <View style={styles.codexHeaderRow}>
+              <Text style={styles.codexTitle}>
+                ⚔️ Train: {selectedAttribute?.title}
+              </Text>
+              <TouchableOpacity onPress={() => setAttrModalVisible(false)}>
+                <Text style={styles.codexCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.codexScroll} showsVerticalScrollIndicator={false}>
+              <Text style={styles.codexBody}>
+                Level <Text style={styles.highlight}>{selectedAttribute?.level}</Text> • XP: <Text style={styles.highlight}>{selectedAttribute?.current_xp}</Text>
+              </Text>
+
+              <TouchableOpacity
+                style={styles.freeFocusOptBtn}
+                onPress={handleStartFreeFocus}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.freeFocusOptIcon}>⏱️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.freeFocusOptTitle}>Start Free Focus Session</Text>
+                  <Text style={styles.freeFocusOptSub}>Begin timer directly for this attribute</Text>
+                </View>
+              </TouchableOpacity>
+
+              <Text style={styles.codexSectionHeading}>Or Link to Active Quest:</Text>
+              {filteredQuests.length > 0 ? (
+                filteredQuests.map((quest) => (
+                  <TouchableOpacity
+                    key={quest.id}
+                    style={styles.questOptRow}
+                    onPress={() => handleSelectQuestForAttr(quest)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.questOptTitle} numberOfLines={1}>{quest.title}</Text>
+                    <Text style={styles.questOptMeta}>⏱️ {quest.target_minutes || 30}m</Text>
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <TouchableOpacity
+                  style={styles.emptyQuestBox}
+                  onPress={handleNavigateToQuestLog}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.emptyQuestText}>
+                    No active quests assigned to this attribute.{'\n'}
+                    <Text style={styles.emptyQuestLink}>Create one in the Quest Log ›</Text>
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.codexDismissBtn}
+              onPress={() => setAttrModalVisible(false)}
+            >
+              <Text style={styles.codexDismissText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* --- HERO CODEX / TUTORIAL MODAL --- */}
       <Modal
@@ -217,7 +345,7 @@ export default function HomeScreen() {
 
               <Text style={styles.codexSectionHeading}>⚔️ Quests & Focus Sessions</Text>
               <Text style={styles.codexBody}>
-                Manage your daily tasks in the Quest Log. Start dedicated focus sessions linked directly to your quests to log study time, maintain streaks, and boost your attributes!
+                Manage your daily tasks in the Quest Log and assign them to attributes like Knowledge or Mathematics. Start dedicated focus sessions linked directly to your quests to level up those specific skills!
               </Text>
             </ScrollView>
 
@@ -444,7 +572,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
   },
-  /* --- HERO CODEX MODAL STYLES --- */
+  /* --- ATTRIBUTE ACTION MODAL & CODEX MODAL STYLES --- */
   codexOverlay: {
     flex: 1,
     backgroundColor: 'rgba(5, 8, 15, 0.88)',
@@ -531,4 +659,40 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 13,
   },
+  freeFocusOptBtn: {
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#6366F144',
+    marginTop: 6,
+  },
+  freeFocusOptIcon: { fontSize: 24 },
+  freeFocusOptTitle: { color: '#F8FAFC', fontSize: 14, fontWeight: '700' },
+  freeFocusOptSub: { color: '#94A3B8', fontSize: 11, marginTop: 2 },
+  questOptRow: {
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  questOptTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '600', flex: 1, marginRight: 8 },
+  questOptMeta: { color: '#818CF8', fontSize: 12, fontWeight: '700' },
+  emptyQuestBox: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#6366F144',
+  },
+  emptyQuestText: { color: '#94A3B8', fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  emptyQuestLink: { color: '#818CF8', fontWeight: '800', marginTop: 4 },
 });
