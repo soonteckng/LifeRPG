@@ -8,6 +8,7 @@ import React, {
 } from "react";
 import { AppState, AppStateStatus, Platform } from "react-native";
 import {
+  addGold,
   addXPAndCheckLevelUp,
   claimTimerSession,
   completeTask,
@@ -16,8 +17,7 @@ import {
 } from "../../db/database";
 import { useUser } from "./UserContext";
 
-import { SchedulableTriggerInputTypes } from "expo-notifications";
-
+// Dynamically load expo-notifications to prevent Expo Go SDK 53+ crashes
 let Notifications: any = null;
 try {
   Notifications = require("expo-notifications");
@@ -47,6 +47,7 @@ const completedTimerSessions = new Set<string>();
 
 interface SessionSummary {
   xpEarned: number;
+  goldEarned: number;
   minutesSpent: number;
   questTitle?: string;
 }
@@ -271,7 +272,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         console.error("Failed to replace completion notification:", error);
       });
 
-      // Immediate Ongoing Sticky Banner
       await Notifications.scheduleNotificationAsync({
         identifier: ONGOING_NOTIFICATION_ID,
         content: {
@@ -286,13 +286,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         trigger: null,
       });
 
-      // Completion Alarm
       const notificationId = await Notifications.scheduleNotificationAsync({
         identifier: COMPLETION_NOTIFICATION_ID,
         content: {
           title: "⚔️ Focus Session Complete!",
           body: questTitle
-            ? `Quest Completed: "${questTitle}"! Tap to claim your XP!`
+            ? `Quest Completed: "${questTitle}"! Tap to claim your rewards!`
             : "Focus session finished! Tap to claim your rewards.",
           sound: "default",
           priority: Notifications.AndroidNotificationPriority?.MAX,
@@ -300,7 +299,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
           data: { type: "COMPLETION" },
         },
         trigger: {
-          type: SchedulableTriggerInputTypes.TIME_INTERVAL,
+          type: Notifications?.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? "timeInterval",
           seconds: validSeconds,
           repeats: false,
         },
@@ -400,9 +399,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
 
     const minutesSpent = Math.max(1, Math.round(duration / 60));
-    const xpEarned = minutesSpent * 1;
+    const xpEarned = minutesSpent * 1; // 1 Minute = 1 XP
+    const goldEarned = minutesSpent * 5; // 1 Minute = 5 Gold
 
     logStudySession(duration, xpEarned, targetAttributeId);
+    addGold(goldEarned);
 
     if (linkedTaskId) {
       completeTask(linkedTaskId);
@@ -421,6 +422,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
     setSessionSummary({
       xpEarned,
+      goldEarned,
       minutesSpent,
       questTitle: activeQuestName,
     });

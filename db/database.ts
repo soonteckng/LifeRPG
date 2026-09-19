@@ -9,6 +9,7 @@ export interface UserProfile {
   class_title: string;
   level: number;
   current_xp: number;
+  gold: number;
   streak_count: number;
   last_active_date: string;
 }
@@ -41,6 +42,21 @@ export interface DailyStat {
   xpEarned: number;
 }
 
+export interface Reward {
+  id: number;
+  title: string;
+  cost_gold: number;
+  is_claimed: number;
+  created_at?: string;
+}
+
+export function getTitleForLevel(level: number): string {
+  if (level >= 15) return 'Grandmaster Archmage 👑';
+  if (level >= 10) return 'Master Wizard 🧙‍♂️';
+  if (level >= 5) return 'Adept Practitioner ⚡';
+  return 'Novice Scholar 📚';
+}
+
 export function initDatabase() {
   db.execSync(`
     PRAGMA foreign_keys = ON;
@@ -52,6 +68,7 @@ export function initDatabase() {
       class_title TEXT NOT NULL,
       level INTEGER DEFAULT 1,
       current_xp INTEGER DEFAULT 0,
+      gold INTEGER DEFAULT 0,
       streak_count INTEGER DEFAULT 1,
       last_active_date TEXT
     );
@@ -89,6 +106,14 @@ export function initDatabase() {
       session_id TEXT PRIMARY KEY,
       completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS rewards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      cost_gold INTEGER NOT NULL,
+      is_claimed INTEGER DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
   try {
@@ -99,25 +124,46 @@ export function initDatabase() {
     if (!tableInfo.some((col) => col.name === 'last_completed_date')) {
       db.execSync('ALTER TABLE tasks ADD COLUMN last_completed_date TEXT;');
     }
+    if (!tableInfo.some((col) => col.name === 'subject_id')) {
+      db.execSync('ALTER TABLE tasks ADD COLUMN subject_id INTEGER REFERENCES subjects(id) ON DELETE SET NULL;');
+    }
+
+    const profileInfo = db.getAllSync<{ name: string }>("PRAGMA table_info(user_profile);");
+    if (!profileInfo.some((col) => col.name === 'gold')) {
+      db.execSync('ALTER TABLE user_profile ADD COLUMN gold INTEGER DEFAULT 0;');
+    }
   } catch (e) {
     console.error('Migration check failed:', e);
   }
 
-  const user = db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;');
   const today = new Date().toISOString().split('T')[0];
+  const user = db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;');
 
   if (!user) {
+    const defaultTitle = getTitleForLevel(1);
     db.runSync(
-      'INSERT INTO user_profile (id, username, avatar, class_title, level, current_xp, streak_count, last_active_date) VALUES (1, ?, ?, ?, 1, 0, 1, ?);',
-      ['Hero', '🧙‍♂️', 'Scholar', today]
+      'INSERT INTO user_profile (id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date) VALUES (1, ?, ?, ?, 1, 0, 0, 1, ?);',
+      ['Hero', '🧙‍♂️', defaultTitle, today]
     );
   }
 
+  // Seed Default Subjects/Attributes (Updated Computer Science -> Knowledge)
   const subjectCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM subjects;');
   if (subjectCount && subjectCount.count === 0) {
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Strength', 1, 0, '#EF4444');");
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Intelligence', 1, 0, '#6366F1');");
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Focus', 1, 0, '#10B981');");
+    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Strength & Health', 1, 0, '#EF4444');");
+    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Knowledge', 1, 0, '#6366F1');");
+    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Mathematics', 1, 0, '#EC4899');");
+    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Focus & Mindfulness', 1, 0, '#10B981');");
+  }
+  renameLegacyKnowledgeSubject();
+
+  // Seed Default Balanced Shop Rewards (2:1 Ratio Economy)
+  const rewardCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM rewards;');
+  if (rewardCount && rewardCount.count === 0) {
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('☕ 15-Min Coffee Break', 150);");
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('🎮 30-Min Gaming Session', 300);");
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('🎬 1-Hour Movie / Series', 600);");
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('🏖️ Full Evening Off', 1200);");
   }
 }
 
@@ -131,9 +177,10 @@ export function getUserProfile(): UserProfile {
     if (user) return user;
 
     const today = new Date().toISOString().split('T')[0];
+    const defaultTitle = getTitleForLevel(1);
     db.runSync(
-      'INSERT INTO user_profile (id, username, avatar, class_title, level, current_xp, streak_count, last_active_date) VALUES (1, ?, ?, ?, 1, 0, 1, ?);',
-      ['Hero', '🧙‍♂️', 'Scholar', today]
+      'INSERT INTO user_profile (id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date) VALUES (1, ?, ?, ?, 1, 0, 0, 1, ?);',
+      ['Hero', '🧙‍♂️', defaultTitle, today]
     );
     return db.getFirstSync<UserProfile>('SELECT * FROM user_profile WHERE id = 1;')!;
   } catch (e) {
@@ -142,9 +189,10 @@ export function getUserProfile(): UserProfile {
       id: 1,
       username: 'Hero',
       avatar: '🧙‍♂️',
-      class_title: 'Scholar',
+      class_title: 'Novice Scholar 📚',
       level: 1,
       current_xp: 0,
+      gold: 0,
       streak_count: 1,
       last_active_date: new Date().toISOString().split('T')[0],
     };
@@ -173,10 +221,19 @@ export function addXPAndCheckLevelUp(xpGain: number): { newLevel: number; newXP:
     requiredXP = Math.floor(100 * Math.pow(level, 1.5));
   }
 
-  db.runSync('UPDATE user_profile SET level = ?, current_xp = ? WHERE id = 1;', [level, currentXP]);
-  console.log(`[XP UPDATE] Gain: +${xpGain} XP | Total: ${currentXP}/${requiredXP} XP | Level: ${level}`);
+  const newTitle = getTitleForLevel(level);
+
+  db.runSync('UPDATE user_profile SET level = ?, current_xp = ?, class_title = ? WHERE id = 1;', [
+    level,
+    currentXP,
+    newTitle,
+  ]);
 
   return { newLevel: level, newXP: currentXP, leveledUp };
+}
+
+export function addGold(goldGain: number) {
+  db.runSync('UPDATE user_profile SET gold = gold + ? WHERE id = 1;', [goldGain]);
 }
 
 export function claimTimerSession(sessionId: string): boolean {
@@ -184,27 +241,47 @@ export function claimTimerSession(sessionId: string): boolean {
     'INSERT OR IGNORE INTO completed_timer_sessions (session_id) VALUES (?);',
     [sessionId]
   );
-
   return result.changes === 1;
 }
 
 export function logStudySession(durationSeconds: number, xpEarned: number, subjectId: number | null = null) {
+  const today = new Date().toISOString().split('T')[0];
+
   db.runSync(
-    'INSERT INTO study_sessions (duration_seconds, xp_earned, subject_id) VALUES (?, ?, ?);',
-    [durationSeconds, xpEarned, subjectId]
+    'INSERT INTO study_sessions (duration_seconds, xp_earned, subject_id, created_at) VALUES (?, ?, ?, ?);',
+    [durationSeconds, xpEarned, subjectId, today]
   );
 
+  // Dynamic Streak Calculation
+  const profile = getUserProfile();
+  if (profile.last_active_date !== today) {
+    let newStreak = 1;
+    if (profile.last_active_date) {
+      const lastDate = new Date(profile.last_active_date);
+      const currDate = new Date(today);
+      const diffDays = Math.round((currDate.getTime() - lastDate.getTime()) / (1000 * 3600 * 24));
+      if (diffDays === 1) {
+        newStreak = profile.streak_count + 1;
+      }
+    }
+    db.runSync('UPDATE user_profile SET streak_count = ?, last_active_date = ? WHERE id = 1;', [
+      newStreak,
+      today,
+    ]);
+  }
+
+  // Linked Attribute/Subject Leveling
   if (subjectId) {
     const attr = db.getFirstSync<Attribute>('SELECT * FROM subjects WHERE id = ?;', [subjectId]);
     if (attr) {
       let newXP = attr.current_xp + xpEarned;
       let newLevel = attr.level;
-      let required = newLevel * 100;
+      let required = newLevel * 50;
 
       while (newXP >= required) {
         newXP -= required;
         newLevel += 1;
-        required = newLevel * 100;
+        required = newLevel * 50;
       }
 
       db.runSync('UPDATE subjects SET level = ?, current_xp = ? WHERE id = ?;', [newLevel, newXP, subjectId]);
@@ -262,7 +339,7 @@ export function addTask(
   repeatRule: string = 'once',
   targetMinutes: number = 30
 ) {
-  const xp = targetMinutes * 10;
+  const xp = targetMinutes * 1;
   const isRecurring = repeatRule !== 'once' ? 1 : 0;
 
   db.runSync(
@@ -276,14 +353,15 @@ export function updateTask(
   title: string,
   difficulty: 'easy' | 'medium' | 'hard' = 'medium',
   repeatRule: string = 'once',
-  targetMinutes: number = 30
+  targetMinutes: number = 30,
+  subjectId: number | null = null
 ) {
-  const xp = targetMinutes * 10;
+  const xp = targetMinutes * 1;
   const isRecurring = repeatRule !== 'once' ? 1 : 0;
 
   db.runSync(
-    'UPDATE tasks SET title = ?, difficulty = ?, xp_awarded = ?, is_recurring = ?, repeat_rule = ?, target_minutes = ? WHERE id = ?;',
-    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, id]
+    'UPDATE tasks SET title = ?, difficulty = ?, xp_awarded = ?, is_recurring = ?, repeat_rule = ?, target_minutes = ?, subject_id = ? WHERE id = ?;',
+    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId, id]
   );
 }
 
@@ -310,25 +388,79 @@ export function deleteTask(taskId: number) {
 }
 
 export function getSubjects(): Attribute[] {
-  return db.getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;');
+  renameLegacyKnowledgeSubject();
+  return db
+    .getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;')
+    .map((subject) => ({
+      ...subject,
+      title: isLegacyKnowledgeTitle(subject.title) ? 'Knowledge' : subject.title,
+    }));
+}
+
+function renameLegacyKnowledgeSubject() {
+  db.runSync(
+    `UPDATE subjects
+     SET title = 'Knowledge'
+     WHERE lower(trim(title)) IN ('intellect & code', 'computer science');`
+  );
+}
+
+function isLegacyKnowledgeTitle(title: string) {
+  const normalizedTitle = title.trim().toLowerCase();
+  return normalizedTitle === 'intellect & code' || normalizedTitle === 'computer science';
+}
+
+export function getRewards(): Reward[] {
+  return db.getAllSync<Reward>('SELECT * FROM rewards WHERE is_claimed = 0 ORDER BY id DESC;');
+}
+
+export function addReward(title: string, costGold: number) {
+  db.runSync(
+    'INSERT INTO rewards (title, cost_gold, is_claimed) VALUES (?, ?, 0);',
+    [title, costGold]
+  );
+}
+
+export function claimReward(rewardId: number): boolean {
+  const reward = db.getFirstSync<Reward>('SELECT * FROM rewards WHERE id = ?;', [rewardId]);
+  const profile = getUserProfile();
+
+  if (!reward || reward.is_claimed === 1 || profile.gold < reward.cost_gold) {
+    return false;
+  }
+
+  db.runSync('UPDATE user_profile SET gold = gold - ? WHERE id = 1;', [reward.cost_gold]);
+  db.runSync('UPDATE rewards SET is_claimed = 1 WHERE id = ?;', [rewardId]);
+  return true;
+}
+
+export function deleteReward(rewardId: number) {
+  db.runSync('DELETE FROM rewards WHERE id = ?;', [rewardId]);
 }
 
 export function resetDatabase() {
   try {
     const today = new Date().toISOString().split('T')[0];
+    const defaultTitle = getTitleForLevel(1);
 
     db.execSync(`
       DELETE FROM study_sessions;
       DELETE FROM completed_timer_sessions;
       DELETE FROM tasks;
-      DELETE FROM sqlite_sequence WHERE name IN ('study_sessions', 'tasks');
+      DELETE FROM rewards;
+      DELETE FROM sqlite_sequence WHERE name IN ('study_sessions', 'tasks', 'rewards');
       UPDATE user_profile 
-      SET level = 1, current_xp = 0, streak_count = 1, last_active_date = '${today}' 
+      SET level = 1, current_xp = 0, gold = 0, streak_count = 1, class_title = '${defaultTitle}', last_active_date = '${today}' 
       WHERE id = 1;
       UPDATE subjects SET level = 1, current_xp = 0;
       VACUUM;
     `);
-    console.log('Database successfully reset and vacuumed!');
+
+    // Re-seed default rewards on reset
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('☕ 15-Min Coffee Break', 150);");
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('🎮 30-Min Gaming Session', 300);");
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('🎬 1-Hour Movie / Series', 600);");
+    db.runSync("INSERT INTO rewards (title, cost_gold) VALUES ('🏖️ Full Evening Off', 1200);");
   } catch (e) {
     console.error('Failed to reset database:', e);
   }

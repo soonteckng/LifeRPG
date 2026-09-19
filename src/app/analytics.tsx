@@ -1,22 +1,22 @@
-import React, { useState, useCallback } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  TouchableOpacity,
-  ScrollView,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import React, { useCallback, useState } from 'react';
 import {
-  getSubjects,
-  getWeeklyStats,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
   Attribute,
   DailyStat,
+  getSubjects,
+  getWeeklyStats,
 } from '../../db/database';
-import { useUser } from '../context/UserContext';
 import Header from '../components/Header';
+import { useUser } from '../context/UserContext';
 
 interface Badge {
   id: string;
@@ -48,8 +48,8 @@ export default function AnalyticsScreen() {
     }, [loadData])
   );
 
-  const level = profile.level || 1;
-  const streak = profile.streak_count || 0;
+  const level = profile?.level || 1;
+  const streak = profile?.streak_count || 0;
 
   const totalWeeklyMinutes = weeklyStats.reduce((sum, d) => sum + d.focusMinutes, 0);
   const totalWeeklyXP = weeklyStats.reduce((sum, d) => sum + d.xpEarned, 0);
@@ -108,7 +108,8 @@ export default function AnalyticsScreen() {
         <Header
           title="Analytics & Hero Stats"
           subtitle="Study performance, mastery, & achievements"
-          showBack={false}
+          showBack={true}
+          fallbackRoute="/"
         />
 
         {/* --- OVERALL HERO SUMMARY --- */}
@@ -169,6 +170,47 @@ export default function AnalyticsScreen() {
               );
             })}
           </View>
+        </View>
+
+        {/* --- HERO ATTRIBUTES / SKILL TREES --- */}
+        <Text style={styles.sectionTitle}>HERO STAT MASTERY</Text>
+        <View style={styles.attributesCard}>
+          {attributes.map((attr) => {
+            const attrLevel = attr.level || 1;
+            const attrXP = attr.current_xp || 0;
+            const requiredXP = attrLevel * 50;
+            const progress = Math.min(1, attrXP / requiredXP);
+
+            return (
+              <View key={attr.id} style={styles.attrRow}>
+                <View style={styles.attrHeader}>
+                  <View style={styles.attrTitleGroup}>
+                    <View
+                      style={[
+                        styles.colorDot,
+                        { backgroundColor: attr.color_code || '#6366F1' },
+                      ]}
+                    />
+                    <Text style={styles.attrTitle}>{attr.title}</Text>
+                  </View>
+                  <Text style={styles.attrLevelText}>
+                    Lv. {attrLevel} <Text style={styles.attrXPText}>({attrXP}/{requiredXP} XP)</Text>
+                  </Text>
+                </View>
+                <View style={styles.attrTrack}>
+                  <View
+                    style={[
+                      styles.attrFill,
+                      {
+                        width: `${progress * 100}%`,
+                        backgroundColor: attr.color_code || '#6366F1',
+                      },
+                    ]}
+                  />
+                </View>
+              </View>
+            );
+          })}
         </View>
 
         {/* --- FOCUS HISTORY --- */}
@@ -298,6 +340,31 @@ const styles = StyleSheet.create({
   },
   barFill: { width: '100%', borderRadius: 6 },
   barDayLabel: { color: '#64748B', fontSize: 10, fontWeight: 'bold', marginTop: 6 },
+
+  attributesCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+    marginBottom: 20,
+    gap: 12,
+  },
+  attrRow: { gap: 6 },
+  attrHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  attrTitleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  colorDot: { width: 8, height: 8, borderRadius: 4 },
+  attrTitle: { color: '#F8FAFC', fontSize: 13, fontWeight: '700' },
+  attrLevelText: { color: '#818CF8', fontSize: 12, fontWeight: '800' },
+  attrXPText: { color: '#64748B', fontSize: 10, fontWeight: '600' },
+  attrTrack: {
+    height: 8,
+    backgroundColor: '#0F172A',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  attrFill: { height: '100%', borderRadius: 4 },
+
   historyCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.07)',
     borderRadius: 24,
