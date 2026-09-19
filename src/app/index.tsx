@@ -301,7 +301,6 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               )}
               </ScrollView>
-            </View>
 
             <TouchableOpacity
               style={styles.codexDismissBtn}
