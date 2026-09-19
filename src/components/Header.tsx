@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../context/UserContext';
 
@@ -8,8 +8,8 @@ interface HeaderProps {
   title?: string;
   subtitle?: string;
   showBack?: boolean;
-  fallbackRoute?: string;
   backTitle?: string;
+  fallbackRoute?: string;
   onBack?: () => void;
   backgroundColor?: string;
 }
@@ -37,13 +37,12 @@ export default function Header({
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace(fallbackRoute as any);
+      router.replace(fallbackRoute as Href);
     }
   };
 
   return (
     <View style={[styles.headerContainer, { backgroundColor }]}>
-      {/* iOS Style Back Button */}
       {showBack && (
         <View style={styles.navBar}>
           <TouchableOpacity 
@@ -58,7 +57,6 @@ export default function Header({
         </View>
       )}
 
-      {/* Large Title Text */}
       {title && (
         <View style={styles.titleGroup}>
           <Text style={styles.titleText}>{title}</Text>
@@ -75,7 +73,6 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 4 : 8,
     paddingBottom: 12,
     width: '100%',
-    // No borders, lines, or shadows - blends naturally into page background
   },
   navBar: {
     height: 36,
