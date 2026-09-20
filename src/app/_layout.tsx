@@ -198,19 +198,19 @@ export default function RootLayout() {
           {/* Tab 3: Home (Highlights for Home and Home Sub-pages like /analytics) */}
           <Tabs.Screen
             name="index"
+            listeners={{
+              tabPress: (event) => {
+                if (
+                  lastHomeSubRoute.current === "/analytics" &&
+                  pathname !== "/analytics"
+                ) {
+                  event.preventDefault();
+                  router.navigate("/analytics");
+                }
+              },
+            }}
             options={{
               title: "Home",
-              listeners: {
-                tabPress: (event) => {
-                  if (
-                    lastHomeSubRoute.current === "/analytics" &&
-                    pathname !== "/analytics"
-                  ) {
-                    event.preventDefault();
-                    router.navigate("/analytics");
-                  }
-                },
-              },
               tabBarIcon: ({ focused }) => {
                 const isHomeActive = focused || isHomeSubRoute;
                 return (
