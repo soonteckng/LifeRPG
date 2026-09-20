@@ -63,6 +63,8 @@ export default function TasksScreen() {
     setSubjects(subList);
   }, []);
 
+  const getGeneralSubjectId = () => subjects.find((subject) => subject.title === 'General')?.id ?? null;
+
   useFocusEffect(
     useCallback(() => {
       loadData();
@@ -76,7 +78,7 @@ export default function TasksScreen() {
     setCustomDurationText('30');
     setRepeatType('once');
     setSelectedDays([]);
-    setSelectedSubjectId(null);
+    setSelectedSubjectId(getGeneralSubjectId());
     setEditingTaskId(null);
   };
 
@@ -94,7 +96,7 @@ export default function TasksScreen() {
     setTargetMinutes(taskMinutes);
     setIsCustomDuration(!DURATION_OPTIONS.includes(taskMinutes));
     setCustomDurationText(String(taskMinutes));
-    setSelectedSubjectId(task.subject_id ?? null);
+    setSelectedSubjectId(task.subject_id ?? getGeneralSubjectId());
 
     const rule = task.repeat_rule || 'once';
     if (rule === 'once') {
@@ -280,12 +282,6 @@ export default function TasksScreen() {
 
                   <Text style={styles.inputLabel}>HERO ATTRIBUTE / SKILL</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subjectRow}>
-                    <TouchableOpacity
-                      style={[styles.subjectChip, selectedSubjectId === null && styles.subjectChipActive]}
-                      onPress={() => setSelectedSubjectId(null)}
-                    >
-                      <Text style={[styles.subjectText, selectedSubjectId === null && styles.subjectTextActive]}>General</Text>
-                    </TouchableOpacity>
                     {subjects.map((sub) => {
                       const isSelected = selectedSubjectId === sub.id;
                       return (
