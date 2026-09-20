@@ -89,7 +89,6 @@ export default function TimerScreen() {
 
     if (task) {
       setLinkedTaskId(task.id);
-      setTargetAttributeId(task.subject_id ?? null);
       const targetMins = task.target_minutes || 30;
       setSelectedMinutes(targetMins);
       setIsCustom(!PRESETS.includes(targetMins));
@@ -140,7 +139,7 @@ export default function TimerScreen() {
     <SafeAreaView style={styles.container}>
       <Header
         title="Focus Chamber"
-        subtitle="Link a quest to convert focus time into instant completion"
+        subtitle="Link a quest to convert study time into instant completion"
         showBack={false}
       />
       <KeyboardAvoidingView
