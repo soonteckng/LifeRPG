@@ -147,15 +147,15 @@ export function initDatabase() {
     );
   }
 
-  // Seed Default Subjects/Attributes (Updated Computer Science -> Knowledge)
+  // Seed or migrate the default subject categories without changing their IDs.
   const subjectCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM subjects;');
   if (subjectCount && subjectCount.count === 0) {
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Strength & Health', 1, 0, '#EF4444');");
+    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Fitness & Health', 1, 0, '#EF4444');");
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Knowledge', 1, 0, '#6366F1');");
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Mathematics', 1, 0, '#EC4899');");
     db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Focus & Mindfulness', 1, 0, '#10B981');");
   }
-  renameLegacyKnowledgeSubject();
+  migrateLegacySubjects();
 
   // Seed Default Balanced Shop Rewards (2:1 Ratio Economy)
   const rewardCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM rewards;');
@@ -388,7 +388,7 @@ export function deleteTask(taskId: number) {
 }
 
 export function getSubjects(): Attribute[] {
-  renameLegacyKnowledgeSubject();
+  migrateLegacySubjects();
   return db
     .getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;')
     .map((subject) => ({
@@ -397,17 +397,38 @@ export function getSubjects(): Attribute[] {
     }));
 }
 
-function renameLegacyKnowledgeSubject() {
-  db.runSync(
-    `UPDATE subjects
-     SET title = 'Knowledge'
-     WHERE lower(trim(title)) IN ('intellect & code', 'computer science');`
-  );
+function migrateLegacySubjects() {
+  const migrations = [
+    {
+      title: 'Fitness & Health',
+      legacyTitles: ['strength', 'strength & health', 'fitness'],
+    },
+    {
+      title: 'Knowledge',
+      legacyTitles: ['intelligence', 'intellect & code', 'computer science'],
+    },
+    {
+      title: 'Focus & Mindfulness',
+      legacyTitles: ['focus', 'focus & mindfulness'],
+    },
+  ];
+
+  for (const migration of migrations) {
+    const placeholders = migration.legacyTitles.map(() => '?').join(', ');
+    db.runSync(
+      `UPDATE subjects
+       SET title = ?
+       WHERE lower(trim(title)) IN (${placeholders});`,
+      [migration.title, ...migration.legacyTitles]
+    );
+  }
 }
 
 function isLegacyKnowledgeTitle(title: string) {
   const normalizedTitle = title.trim().toLowerCase();
-  return normalizedTitle === 'intellect & code' || normalizedTitle === 'computer science';
+  return normalizedTitle === 'intelligence' ||
+    normalizedTitle === 'intellect & code' ||
+    normalizedTitle === 'computer science';
 }
 
 export function getRewards(): Reward[] {
