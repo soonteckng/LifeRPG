@@ -5,6 +5,7 @@ import React, { useCallback, useState } from 'react';
 import {
   Alert,
   FlatList,
+  Modal,
   StyleSheet,
   Text,
   TextInput,
@@ -27,6 +28,7 @@ export default function ShopScreen() {
   const [rewards, setRewards] = useState<Reward[]>([]);
   const [title, setTitle] = useState('');
   const [costGold, setCostGold] = useState('');
+  const [feedback, setFeedback] = useState<{ title: string; message: string; icon: string } | null>(null);
 
   const refreshShopData = useCallback(() => {
     reloadProfile();
@@ -48,7 +50,11 @@ export default function ShopScreen() {
 
     const parsedCost = parseInt(costGold, 10);
     if (isNaN(parsedCost) || parsedCost <= 0) {
-      Alert.alert('Invalid Cost', 'Please enter a valid Gold amount greater than 0.');
+      setFeedback({
+        title: 'Gold Required',
+        message: 'Add a Gold amount greater than 0 to place this reward in your vault.',
+        icon: '💰',
+      });
       return;
     }
 
@@ -57,6 +63,11 @@ export default function ShopScreen() {
     setCostGold('');
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     refreshShopData();
+    setFeedback({
+      title: 'REWARD CREATED!',
+      message: 'Your new reward has been added to the vault.',
+      icon: '🎁',
+    });
   };
 
   const handleClaimReward = (reward: Reward) => {
@@ -134,7 +145,8 @@ export default function ShopScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <>
+      <SafeAreaView style={styles.container}>
       <Header title="Item Shop" subtitle="Craft and redeem rewards with earned gold" showBack={false} />
       <View style={styles.goldBalance}>
         <Text style={styles.goldText}>💰 {profile?.gold || 0}</Text>
@@ -198,7 +210,21 @@ export default function ShopScreen() {
           </View>
         }
       />
-    </SafeAreaView>
+      </SafeAreaView>
+
+      <Modal visible={!!feedback} transparent animationType="fade" onRequestClose={() => setFeedback(null)}>
+        <View style={styles.feedbackOverlay}>
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackIcon}>{feedback?.icon}</Text>
+            <Text style={styles.feedbackTitle}>{feedback?.title}</Text>
+            <Text style={styles.feedbackMessage}>{feedback?.message}</Text>
+            <TouchableOpacity style={styles.feedbackButton} onPress={() => setFeedback(null)}>
+              <Text style={styles.feedbackButtonText}>CONTINUE</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -207,6 +233,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#090D16',
   },
+  feedbackOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  feedbackCard: {
+    width: '100%',
+    backgroundColor: '#1E293B',
+    borderRadius: 24,
+    padding: 24,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#6366F1',
+  },
+  feedbackIcon: { fontSize: 44, marginBottom: 8 },
+  feedbackTitle: { color: '#F8FAFC', fontSize: 20, fontWeight: '900', letterSpacing: 1, textAlign: 'center' },
+  feedbackMessage: { color: '#94A3B8', fontSize: 13, textAlign: 'center', marginTop: 8, lineHeight: 19 },
+  feedbackButton: {
+    backgroundColor: '#6366F1',
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  feedbackButtonText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 },
   goldBalance: {
     alignItems: 'flex-end',
     marginHorizontal: 16,
