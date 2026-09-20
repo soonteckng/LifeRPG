@@ -57,7 +57,8 @@ export default function TimerScreen() {
       setTasks(taskList);
 
       if (attrs.length > 0 && targetAttributeId === null) {
-        setTargetAttributeId(attrs[0].id);
+        const generalAttribute = attrs.find((attribute) => attribute.title === 'General');
+        setTargetAttributeId(generalAttribute?.id ?? attrs[0].id);
       }
     } catch (error) {
       console.error('Failed to load timer data:', error);
@@ -89,6 +90,11 @@ export default function TimerScreen() {
 
     if (task) {
       setLinkedTaskId(task.id);
+      const taskAttribute = task.subject_id
+        ? attributes.find((attribute) => attribute.id === task.subject_id)
+        : undefined;
+      const generalAttribute = attributes.find((attribute) => attribute.title === 'General');
+      setTargetAttributeId(taskAttribute?.id ?? generalAttribute?.id ?? null);
       const targetMins = task.target_minutes || 30;
       setSelectedMinutes(targetMins);
       setIsCustom(!PRESETS.includes(targetMins));
