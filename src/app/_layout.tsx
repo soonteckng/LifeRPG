@@ -1,4 +1,4 @@
-import { Tabs, useLocalSearchParams, usePathname, useRouter } from "expo-router";
+import { Tabs, usePathname, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { GlassView } from "expo-glass-effect";
 import {
@@ -13,6 +13,8 @@ import { initDatabase } from "../../db/database";
 import LevelUpModal from "../components/LevelUpModal";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+
+let clearHomeSubRouteOnNextHome = false;
 
 function GlobalBackHandler() {
   const pathname = usePathname();
@@ -30,7 +32,8 @@ function GlobalBackHandler() {
         if (router.canGoBack()) {
           router.back();
         } else {
-          router.replace({ pathname: "/", params: { clearHomeSubRoute: "1" } });
+          clearHomeSubRouteOnNextHome = true;
+          router.replace("/");
         }
         return true;
       }
@@ -114,13 +117,13 @@ function ActiveTimerBanner() {
 export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
-  const { clearHomeSubRoute } = useLocalSearchParams<{ clearHomeSubRoute?: string }>();
   const previousPathname = useRef(pathname);
   const lastHomeSubRoute = useRef<string | null>(null);
 
   useEffect(() => {
-    if (clearHomeSubRoute === "1") {
+    if (clearHomeSubRouteOnNextHome && (pathname === "/" || pathname === "/index")) {
       lastHomeSubRoute.current = null;
+      clearHomeSubRouteOnNextHome = false;
     } else if (pathname === "/analytics") {
       lastHomeSubRoute.current = pathname;
     } else if (
@@ -131,7 +134,7 @@ export default function RootLayout() {
     }
 
     previousPathname.current = pathname;
-  }, [clearHomeSubRoute, pathname]);
+  }, [pathname]);
 
   useEffect(() => {
     try {
