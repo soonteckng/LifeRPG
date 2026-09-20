@@ -358,6 +358,7 @@ export function updateTask(
   id: number,
   title: string,
   difficulty: 'easy' | 'medium' | 'hard' = 'medium',
+  subjectId: number | null = null,
   repeatRule: string = 'once',
   targetMinutes: number = 30
 ) {
@@ -365,8 +366,8 @@ export function updateTask(
   const isRecurring = repeatRule !== 'once' ? 1 : 0;
 
   db.runSync(
-    'UPDATE tasks SET title = ?, difficulty = ?, xp_awarded = ?, is_recurring = ?, repeat_rule = ?, target_minutes = ? WHERE id = ?;',
-    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, id]
+    'UPDATE tasks SET title = ?, difficulty = ?, xp_awarded = ?, is_recurring = ?, repeat_rule = ?, target_minutes = ?, subject_id = ? WHERE id = ?;',
+    [title, difficulty, xp, isRecurring, repeatRule, targetMinutes, subjectId, id]
   );
 }
 
