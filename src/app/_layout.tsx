@@ -1,5 +1,5 @@
 import { Tabs, usePathname, useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { GlassView } from "expo-glass-effect";
 import {
   BackHandler,
@@ -113,6 +113,22 @@ function ActiveTimerBanner() {
 
 export default function RootLayout() {
   const pathname = usePathname();
+  const router = useRouter();
+  const previousPathname = useRef(pathname);
+  const lastHomeSubRoute = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (pathname === "/analytics") {
+      lastHomeSubRoute.current = pathname;
+    } else if (
+      (pathname === "/" || pathname === "/index") &&
+      previousPathname.current === "/analytics"
+    ) {
+      lastHomeSubRoute.current = null;
+    }
+
+    previousPathname.current = pathname;
+  }, [pathname]);
 
   useEffect(() => {
     try {
@@ -184,6 +200,17 @@ export default function RootLayout() {
             name="index"
             options={{
               title: "Home",
+              listeners: {
+                tabPress: (event) => {
+                  if (
+                    lastHomeSubRoute.current === "/analytics" &&
+                    pathname !== "/analytics"
+                  ) {
+                    event.preventDefault();
+                    router.navigate("/analytics");
+                  }
+                },
+              },
               tabBarIcon: ({ focused }) => {
                 const isHomeActive = focused || isHomeSubRoute;
                 return (
