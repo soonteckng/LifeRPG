@@ -104,14 +104,13 @@ export default function AnalyticsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <Header
+        title="Analytics & Hero Stats"
+        subtitle="Study performance, mastery, & achievements"
+        showBack={true}
+        fallbackRoute="/"
+      />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Header
-          title="Analytics & Hero Stats"
-          subtitle="Study performance, mastery, & achievements"
-          showBack={true}
-          fallbackRoute="/"
-        />
-
         {/* --- OVERALL HERO SUMMARY --- */}
         <View style={styles.summaryRow}>
           <View style={styles.summaryCard}>
@@ -289,7 +288,7 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#05070D' },
+  container: { flex: 1, backgroundColor: '#090D16' },
   scrollContent: { padding: 20, paddingBottom: 120 },
   summaryRow: { flexDirection: 'row', gap: 8, marginBottom: 20 },
   summaryCard: {

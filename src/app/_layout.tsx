@@ -1,5 +1,5 @@
 import { Tabs, usePathname, useRouter } from "expo-router";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { GlassView } from "expo-glass-effect";
 import {
   BackHandler,
@@ -13,6 +13,8 @@ import { initDatabase } from "../../db/database";
 import LevelUpModal from "../components/LevelUpModal";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+
+let clearHomeSubRouteOnNextHome = false;
 
 function GlobalBackHandler() {
   const pathname = usePathname();
@@ -30,6 +32,7 @@ function GlobalBackHandler() {
         if (router.canGoBack()) {
           router.back();
         } else {
+          clearHomeSubRouteOnNextHome = true;
           router.replace("/");
         }
         return true;
@@ -113,6 +116,25 @@ function ActiveTimerBanner() {
 
 export default function RootLayout() {
   const pathname = usePathname();
+  const router = useRouter();
+  const previousPathname = useRef(pathname);
+  const lastHomeSubRoute = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (clearHomeSubRouteOnNextHome && (pathname === "/" || pathname === "/index")) {
+      lastHomeSubRoute.current = null;
+      clearHomeSubRouteOnNextHome = false;
+    } else if (pathname === "/analytics") {
+      lastHomeSubRoute.current = pathname;
+    } else if (
+      (pathname === "/" || pathname === "/index") &&
+      previousPathname.current === "/analytics"
+    ) {
+      lastHomeSubRoute.current = null;
+    }
+
+    previousPathname.current = pathname;
+  }, [pathname]);
 
   useEffect(() => {
     try {
@@ -182,6 +204,17 @@ export default function RootLayout() {
           {/* Tab 3: Home (Highlights for Home and Home Sub-pages like /analytics) */}
           <Tabs.Screen
             name="index"
+            listeners={{
+              tabPress: (event) => {
+                if (
+                  lastHomeSubRoute.current === "/analytics" &&
+                  pathname !== "/analytics"
+                ) {
+                  event.preventDefault();
+                  router.navigate("/analytics");
+                }
+              },
+            }}
             options={{
               title: "Home",
               tabBarIcon: ({ focused }) => {

@@ -10,8 +10,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { resetDatabase } from '../../db/database';
 import { useUser } from '../context/UserContext';
+import Header from '../components/Header';
 
 const PRESET_AVATARS = ['🧙‍♂️', '🧝‍♂️', '🛡️', '⚔️', '🔮', '🐉', '🐱', '🤖', '🚀', '⭐'];
 
@@ -79,7 +81,9 @@ export default function ProfileScreen() {
   const xpProgress = Math.min(1, currentXP / requiredXP);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+    <SafeAreaView style={styles.container}>
+      <Header title="Profile" subtitle="Manage your hero identity and preferences" showBack={false} />
+      <ScrollView contentContainerStyle={styles.contentContainer}>
       {/* Profile Identity Card */}
       <View style={styles.card}>
         <View style={styles.avatarRow}>
@@ -267,7 +271,8 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -278,7 +283,6 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: 16,
-    paddingTop: 48,
     paddingBottom: 90,
     gap: 14,
   },

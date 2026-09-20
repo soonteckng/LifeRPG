@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../context/UserContext';
 
@@ -8,8 +8,8 @@ interface HeaderProps {
   title?: string;
   subtitle?: string;
   showBack?: boolean;
-  fallbackRoute?: string;
   backTitle?: string;
+  fallbackRoute?: string;
   onBack?: () => void;
   backgroundColor?: string;
 }
@@ -37,28 +37,24 @@ export default function Header({
     if (router.canGoBack()) {
       router.back();
     } else {
-      router.replace(fallbackRoute as any);
+      router.replace(fallbackRoute as Href);
     }
   };
 
   return (
     <View style={[styles.headerContainer, { backgroundColor }]}>
-      {/* iOS Style Back Button */}
       {showBack && (
-        <View style={styles.navBar}>
-          <TouchableOpacity 
-            style={styles.backButton} 
-            onPress={handleBack}
-            activeOpacity={0.6}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Text style={styles.backChevron}>‹</Text>
-            <Text style={styles.backText}>{backTitle}</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleBack}
+          activeOpacity={0.6}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.backChevron}>‹</Text>
+          <Text style={styles.backText}>{backTitle}</Text>
+        </TouchableOpacity>
       )}
 
-      {/* Large Title Text */}
       {title && (
         <View style={styles.titleGroup}>
           <Text style={styles.titleText}>{title}</Text>
@@ -75,18 +71,13 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'ios' ? 4 : 8,
     paddingBottom: 12,
     width: '100%',
-    // No borders, lines, or shadows - blends naturally into page background
-  },
-  navBar: {
-    height: 36,
-    justifyContent: 'center',
-    marginBottom: 4,
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
     marginLeft: -4,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
   },
   backChevron: {
     color: '#818CF8',
