@@ -43,26 +43,24 @@ export default function Header({
 
   return (
     <View style={[styles.headerContainer, { backgroundColor }]}>
-      <View style={styles.titleRow}>
-        {showBack && (
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-            activeOpacity={0.6}
-            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          >
-            <Text style={styles.backChevron}>‹</Text>
-            <Text style={styles.backText}>{backTitle}</Text>
-          </TouchableOpacity>
-        )}
+      {showBack && (
+        <TouchableOpacity
+          style={styles.backButton}
+          onPress={handleBack}
+          activeOpacity={0.6}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <Text style={styles.backChevron}>‹</Text>
+          <Text style={styles.backText}>{backTitle}</Text>
+        </TouchableOpacity>
+      )}
 
-        {title && (
-          <View style={styles.titleGroup}>
-            <Text style={styles.titleText}>{title}</Text>
-            {subtitle && <Text style={styles.subtitleText}>{subtitle}</Text>}
-          </View>
-        )}
-      </View>
+      {title && (
+        <View style={styles.titleGroup}>
+          <Text style={styles.titleText}>{title}</Text>
+          {subtitle && <Text style={styles.subtitleText}>{subtitle}</Text>}
+        </View>
+      )}
     </View>
   );
 }
@@ -74,17 +72,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     width: '100%',
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexShrink: 0,
-    marginRight: 8,
     marginLeft: -4,
-    paddingTop: 1,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
   },
   backChevron: {
     color: '#818CF8',
