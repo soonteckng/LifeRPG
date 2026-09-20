@@ -50,6 +50,13 @@ export interface Reward {
   created_at?: string;
 }
 
+const defaultSubjects = [
+  { title: 'Fitness & Health', colorCode: '#EF4444' },
+  { title: 'Knowledge', colorCode: '#6366F1' },
+  { title: 'Grooming & Vitality', colorCode: '#EC4899' },
+  { title: 'Life Admin', colorCode: '#10B981' },
+] as const;
+
 export function getTitleForLevel(level: number): string {
   if (level >= 15) return 'Grandmaster Archmage 👑';
   if (level >= 10) return 'Master Wizard 🧙‍♂️';
@@ -147,11 +154,14 @@ export function initDatabase() {
   // Seed Default Subjects/Attributes
   const subjectCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM subjects;');
   if (subjectCount && subjectCount.count === 0) {
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Strength & Health', 1, 0, '#EF4444');");
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Computer Science', 1, 0, '#6366F1');");
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Mathematics', 1, 0, '#EC4899');");
-    db.runSync("INSERT INTO subjects (title, level, current_xp, color_code) VALUES ('Focus & Mindfulness', 1, 0, '#10B981');");
+    for (const subject of defaultSubjects) {
+      db.runSync(
+        'INSERT INTO subjects (title, level, current_xp, color_code) VALUES (?, 1, 0, ?);',
+        [subject.title, subject.colorCode]
+      );
+    }
   }
+  migrateLegacySubjects();
 
   // Seed Default Balanced Shop Rewards (2:1 Ratio Economy)
   const rewardCount = db.getFirstSync<{ count: number }>('SELECT COUNT(*) as count FROM rewards;');
@@ -383,7 +393,56 @@ export function deleteTask(taskId: number) {
 }
 
 export function getSubjects(): Attribute[] {
+  migrateLegacySubjects();
   return db.getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;');
+}
+
+function migrateLegacySubjects() {
+  const legacySubjects = [
+    { titles: ['Strength', 'Strength & Health', 'Fitness'], replacement: defaultSubjects[0] },
+    { titles: ['Intelligence', 'Intellect & Code', 'Computer Science'], replacement: defaultSubjects[1] },
+    { titles: ['Mathematics'], replacement: defaultSubjects[2] },
+    { titles: ['Focus', 'Focus & Mindfulness'], replacement: defaultSubjects[3] },
+  ];
+
+  for (const legacy of legacySubjects) {
+    for (const title of legacy.titles) {
+      const source = db.getFirstSync<Attribute>('SELECT * FROM subjects WHERE title = ?;', [title]);
+      if (!source || source.title === legacy.replacement.title) continue;
+
+      const target = db.getFirstSync<Attribute>('SELECT * FROM subjects WHERE title = ?;', [
+        legacy.replacement.title,
+      ]);
+
+      if (target) {
+        db.runSync('UPDATE tasks SET subject_id = ? WHERE subject_id = ?;', [target.id, source.id]);
+        db.runSync('UPDATE study_sessions SET subject_id = ? WHERE subject_id = ?;', [target.id, source.id]);
+        db.runSync(
+          'UPDATE subjects SET level = ?, current_xp = current_xp + ? WHERE id = ?;',
+          [Math.max(target.level, source.level), source.current_xp, target.id]
+        );
+        db.runSync('DELETE FROM subjects WHERE id = ?;', [source.id]);
+      } else {
+        db.runSync('UPDATE subjects SET title = ?, color_code = ? WHERE id = ?;', [
+          legacy.replacement.title,
+          legacy.replacement.colorCode,
+          source.id,
+        ]);
+      }
+    }
+  }
+
+  for (const subject of defaultSubjects) {
+    const existing = db.getFirstSync<{ id: number }>('SELECT id FROM subjects WHERE title = ?;', [
+      subject.title,
+    ]);
+    if (!existing) {
+      db.runSync(
+        'INSERT INTO subjects (title, level, current_xp, color_code) VALUES (?, 1, 0, ?);',
+        [subject.title, subject.colorCode]
+      );
+    }
+  }
 }
 
 export function getRewards(): Reward[] {
