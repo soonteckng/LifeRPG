@@ -396,7 +396,9 @@ export function deleteTask(taskId: number) {
 
 export function getSubjects(): Attribute[] {
   migrateLegacySubjects();
-  return db.getAllSync<Attribute>('SELECT * FROM subjects ORDER BY id ASC;');
+  return db.getAllSync<Attribute>(
+    "SELECT * FROM subjects ORDER BY CASE WHEN title = 'General' THEN 0 ELSE 1 END, id ASC;"
+  );
 }
 
 function migrateLegacySubjects() {
