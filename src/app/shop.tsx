@@ -206,10 +206,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#090D16',
-    paddingHorizontal: 16,
   },
   goldBalance: {
     alignItems: 'flex-end',
+    marginHorizontal: 16,
     marginBottom: 12,
   },
   goldText: {
@@ -229,6 +229,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#1E293B',
+    marginHorizontal: 16,
     marginBottom: 20,
   },
   createTitle: {
@@ -291,9 +292,11 @@ const styles = StyleSheet.create({
     color: '#F8FAFC',
     fontSize: 16,
     fontWeight: '700',
+    marginHorizontal: 16,
     marginBottom: 12,
   },
   listContainer: {
+    paddingHorizontal: 16,
     paddingBottom: 32,
   },
   rewardCard: {
