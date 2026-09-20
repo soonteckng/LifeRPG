@@ -284,7 +284,7 @@ export default function TasksScreen() {
                       style={[styles.subjectChip, selectedSubjectId === null && styles.subjectChipActive]}
                       onPress={() => setSelectedSubjectId(null)}
                     >
-                      <Text style={[styles.subjectText, selectedSubjectId === null && styles.subjectTextActive]}>None (General)</Text>
+                      <Text style={[styles.subjectText, selectedSubjectId === null && styles.subjectTextActive]}>General</Text>
                     </TouchableOpacity>
                     {subjects.map((sub) => {
                       const isSelected = selectedSubjectId === sub.id;

@@ -55,6 +55,7 @@ const defaultSubjects = [
   { title: 'Knowledge', colorCode: '#6366F1' },
   { title: 'Grooming & Vitality', colorCode: '#EC4899' },
   { title: 'Life Admin', colorCode: '#10B981' },
+  { title: 'General', colorCode: '#F59E0B' },
 ] as const;
 
 export function getTitleForLevel(level: number): string {
