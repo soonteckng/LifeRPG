@@ -1,4 +1,4 @@
-import { Tabs, usePathname, useRouter } from "expo-router";
+import { Tabs, useLocalSearchParams, usePathname, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
 import { GlassView } from "expo-glass-effect";
 import {
@@ -30,7 +30,7 @@ function GlobalBackHandler() {
         if (router.canGoBack()) {
           router.back();
         } else {
-          router.replace("/");
+          router.replace({ pathname: "/", params: { clearHomeSubRoute: "1" } });
         }
         return true;
       }
@@ -114,11 +114,14 @@ function ActiveTimerBanner() {
 export default function RootLayout() {
   const pathname = usePathname();
   const router = useRouter();
+  const { clearHomeSubRoute } = useLocalSearchParams<{ clearHomeSubRoute?: string }>();
   const previousPathname = useRef(pathname);
   const lastHomeSubRoute = useRef<string | null>(null);
 
   useEffect(() => {
-    if (pathname === "/analytics") {
+    if (clearHomeSubRoute === "1") {
+      lastHomeSubRoute.current = null;
+    } else if (pathname === "/analytics") {
       lastHomeSubRoute.current = pathname;
     } else if (
       (pathname === "/" || pathname === "/index") &&
@@ -128,7 +131,7 @@ export default function RootLayout() {
     }
 
     previousPathname.current = pathname;
-  }, [pathname]);
+  }, [clearHomeSubRoute, pathname]);
 
   useEffect(() => {
     try {
