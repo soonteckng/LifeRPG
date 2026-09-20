@@ -3,7 +3,6 @@ import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
-  Alert,
   FlatList,
   Modal,
   StyleSheet,
@@ -29,6 +28,7 @@ export default function ShopScreen() {
   const [title, setTitle] = useState('');
   const [costGold, setCostGold] = useState('');
   const [feedback, setFeedback] = useState<{ title: string; message: string; icon: string } | null>(null);
+  const [claimPrompt, setClaimPrompt] = useState<Reward | null>(null);
 
   const refreshShopData = useCallback(() => {
     reloadProfile();
@@ -44,7 +44,11 @@ export default function ShopScreen() {
 
   const handleCreateReward = () => {
     if (!title.trim()) {
-      Alert.alert('Missing Title', 'Please enter a reward title.');
+      setFeedback({
+        title: 'REWARD NAME REQUIRED',
+        message: 'Enter a title for your reward before adding it to the vault.',
+        icon: '🎁',
+      });
       return;
     }
 
@@ -72,31 +76,33 @@ export default function ShopScreen() {
 
   const handleClaimReward = (reward: Reward) => {
     if (!profile || profile.gold < reward.cost_gold) {
-      Alert.alert('Insufficient Gold', `You need ${reward.cost_gold} Gold to purchase this reward.`);
+      setFeedback({
+        title: 'INSUFFICIENT GOLD',
+        message: `You need ${reward.cost_gold} Gold to purchase this reward.`,
+        icon: '💰',
+      });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
-    Alert.alert(
-      'Claim Reward',
-      `Spend 💰 ${reward.cost_gold} Gold on "${reward.title}"?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Redeem',
-          style: 'default',
-          onPress: () => {
-            const success = claimReward(reward.id);
-            if (success) {
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              refreshShopData();
-            } else {
-              Alert.alert('Error', 'Failed to redeem reward.');
-            }
-          },
-        },
-      ]
-    );
+    setClaimPrompt(reward);
+  };
+
+  const confirmClaimReward = () => {
+    if (!claimPrompt) return;
+
+    const success = claimReward(claimPrompt.id);
+    setClaimPrompt(null);
+    if (success) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      refreshShopData();
+    } else {
+      setFeedback({
+        title: 'REDEEM FAILED',
+        message: 'This reward could not be redeemed. Please try again.',
+        icon: '⚠️',
+      });
+    }
   };
 
   const handleDeleteReward = (rewardId: number) => {
@@ -224,6 +230,26 @@ export default function ShopScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={!!claimPrompt} transparent animationType="fade" onRequestClose={() => setClaimPrompt(null)}>
+        <View style={styles.feedbackOverlay}>
+          <View style={styles.feedbackCard}>
+            <Text style={styles.feedbackIcon}>🎁</Text>
+            <Text style={styles.feedbackTitle}>CLAIM REWARD?</Text>
+            <Text style={styles.feedbackMessage}>
+              Spend 💰 {claimPrompt?.cost_gold} Gold on "{claimPrompt?.title}"?
+            </Text>
+            <View style={styles.claimPromptActions}>
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setClaimPrompt(null)}>
+                <Text style={styles.cancelButtonText}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.feedbackButton, styles.claimPromptButton]} onPress={confirmClaimReward}>
+                <Text style={styles.feedbackButtonText}>REDEEM</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -261,6 +287,17 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   feedbackButtonText: { color: '#FFFFFF', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 },
+  claimPromptActions: { flexDirection: 'row', width: '100%', gap: 10, marginTop: 20 },
+  claimPromptButton: { flex: 1, width: undefined, marginTop: 0 },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#475569',
+  },
+  cancelButtonText: { color: '#CBD5E1', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 },
   goldBalance: {
     alignItems: 'flex-end',
     marginHorizontal: 16,
