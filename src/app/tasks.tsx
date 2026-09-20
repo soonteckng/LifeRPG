@@ -154,7 +154,7 @@ export default function TasksScreen() {
     if (repeatType === 'custom') rule = selectedDays.length > 0 ? selectedDays.join(',') : 'once';
 
     if (editingTaskId) {
-      updateTask(editingTaskId, title.trim(), 'medium', rule, duration, selectedSubjectId);
+      updateTask(editingTaskId, title.trim(), 'medium', selectedSubjectId, rule, duration);
     } else {
       addTask(title.trim(), 'medium', selectedSubjectId, rule, duration);
     }
