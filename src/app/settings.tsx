@@ -3,17 +3,14 @@ import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
   ScrollView,
   Switch,
-  Alert,
   BackHandler,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Header from '../components/Header';
-import { resetDatabase } from '../../db/database';
 import { useUser } from '../context/UserContext';
 
 export default function SettingsScreen() {
@@ -23,7 +20,6 @@ export default function SettingsScreen() {
     setSoundEnabled, 
     hapticsEnabled, 
     setHapticsEnabled, 
-    reloadProfile 
   } = useUser();
 
   useFocusEffect(
@@ -38,26 +34,6 @@ export default function SettingsScreen() {
       return () => subscription.remove();
     }, [router])
   );
-
-  const handleResetData = () => {
-    Alert.alert(
-      '⚠️ Reset All Game Data',
-      'This will wipe all active quests, level progress, and study session history. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset Everything',
-          style: 'destructive',
-          onPress: () => {
-            resetDatabase();
-            reloadProfile();
-            if (hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            Alert.alert('Reset Complete', 'Database cleared and restored to Level 1.');
-          },
-        },
-      ]
-    );
-  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -86,12 +62,6 @@ export default function SettingsScreen() {
             />
           </View>
         </View>
-
-        <Text style={styles.sectionTitle}>DANGER ZONE</Text>
-        <TouchableOpacity style={styles.dangerCard} onPress={handleResetData}>
-          <Text style={styles.dangerTitle}>🗑️ Reset Game Progress</Text>
-          <Text style={styles.dangerSubtitle}>Wipe database & restore Level 1 state</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

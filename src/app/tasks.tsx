@@ -1,455 +1,1128 @@
-import { useFocusEffect, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
-import React, { useCallback, useState } from 'react';
+import * as Haptics from "expo-haptics";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
+  Alert,
+  BackHandler,
   FlatList,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  addTask,
-  deleteTask,
-  getTasks,
-  getSubjects,
-  Attribute,
-  Task,
-  uncompleteTask,
-  updateTask,
-} from '../../db/database';
-import Header from '../components/Header';
-import { useTimer } from '../context/TimerContext';
-import { useUser } from '../context/UserContext';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const DAYS_OF_WEEK = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+import Header from "../components/Header";
+import { useTimer } from "../context/TimerContext";
+import { useUser } from "../context/UserContext";
+import {
+  createTask,
+  deleteTask,
+  getSubjects,
+  getTasks,
+  type Subject,
+  type Task,
+  updateTask,
+} from "../services/taskService";
+
 const DURATION_OPTIONS = [15, 30, 45, 60];
+
+type RepeatType = "once" | "daily" | "custom";
+
+const DAYS_OF_WEEK = [
+  "Mon",
+  "Tue",
+  "Wed",
+  "Thu",
+  "Fri",
+  "Sat",
+  "Sun",
+];
 
 export default function TasksScreen() {
   const router = useRouter();
+
   const { hapticsEnabled } = useUser();
-  const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId } = useTimer();
+
+  const {
+    setLinkedTaskId,
+    setDurationInMinutes,
+    setTargetAttributeId,
+  } = useTimer();
 
   const [tasks, setTasks] = useState<Task[]>([]);
-  const [subjects, setSubjects] = useState<Attribute[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
 
-  // Task creation/edit modal state
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
-  const [title, setTitle] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [modalVisible, setModalVisible] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  const [deleteConfirmTask, setDeleteConfirmTask] =
+    useState<Task | null>(null);
+
+  const [title, setTitle] = useState("");
   const [targetMinutes, setTargetMinutes] = useState(30);
-  const [isCustomDuration, setIsCustomDuration] = useState(false);
-  const [customDurationText, setCustomDurationText] = useState('30');
-  const [repeatType, setRepeatType] = useState<'once' | 'daily' | 'custom'>('once');
-  const [selectedDays, setSelectedDays] = useState<string[]>([]);
-  const [selectedSubjectId, setSelectedSubjectId] = useState<number | null>(null);
+  const [customDuration, setCustomDuration] = useState("30");
 
-  // Custom Dark RPG Focus Confirmation Modal State
-  const [focusModalVisible, setFocusModalVisible] = useState(false);
-  const [selectedQuestForFocus, setSelectedQuestForFocus] = useState<Task | null>(null);
+  const [repeatType, setRepeatType] =
+    useState<RepeatType>("once");
 
-  const loadData = useCallback(() => {
-    const taskList = getTasks();
-    const subList = getSubjects();
-    setTasks(taskList);
-    setSubjects(subList);
+  const [selectedDays, setSelectedDays] = useState<string[]>(
+    [],
+  );
+
+  const [selectedSubjectId, setSelectedSubjectId] =
+    useState<number | null>(null);
+
+  const [showMoreOptions, setShowMoreOptions] =
+    useState(false);
+
+  const keyboardVisibleRef = useRef(false);
+
+  useEffect(() => {
+    const showSubscription = Keyboard.addListener(
+      "keyboardDidShow",
+      () => {
+        keyboardVisibleRef.current = true;
+      },
+    );
+
+    const hideSubscription = Keyboard.addListener(
+      "keyboardDidHide",
+      () => {
+        keyboardVisibleRef.current = false;
+      },
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
   }, []);
 
-  const getGeneralSubjectId = () => subjects.find((subject) => subject.title === 'General')?.id ?? null;
+  useEffect(() => {
+    if (!modalVisible) {
+      return;
+    }
+
+    const backSubscription = BackHandler.addEventListener(
+      "hardwareBackPress",
+      () => {
+        if (keyboardVisibleRef.current) {
+          Keyboard.dismiss();
+          return true;
+        }
+
+        if (!saving) {
+          Keyboard.dismiss();
+          setModalVisible(false);
+          resetForm();
+        }
+
+        return true;
+      },
+    );
+
+    return () => {
+      backSubscription.remove();
+    };
+  }, [modalVisible, saving]);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+
+      const [taskList, subjectList] = await Promise.all([
+        getTasks(),
+        getSubjects(),
+      ]);
+
+      setTasks(taskList);
+      setSubjects(subjectList);
+    } catch (error) {
+      console.error("Failed to load quest data:", error);
+
+      Alert.alert(
+        "Couldn't load quests",
+        "Please check your connection and try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       loadData();
-    }, [loadData])
+    }, [loadData]),
+  );
+
+  const activeTasks = useMemo(
+    () =>
+      tasks.filter(
+        (task) =>
+          task.is_due_today && !task.is_completed_today,
+      ),
+    [tasks],
+  );
+
+  const completedTasks = useMemo(
+    () =>
+      tasks.filter(
+        (task) =>
+          !task.is_due_today ||
+          task.is_completed_today,
+      ),
+    [tasks],
   );
 
   const resetForm = () => {
-    setTitle('');
+    setEditingTask(null);
+    setTitle("");
     setTargetMinutes(30);
-    setIsCustomDuration(false);
-    setCustomDurationText('30');
-    setRepeatType('once');
+    setCustomDuration("30");
+    setRepeatType("once");
     setSelectedDays([]);
-    setSelectedSubjectId(getGeneralSubjectId());
-    setEditingTaskId(null);
+    setSelectedSubjectId(null);
+    setShowMoreOptions(false);
   };
 
-  const handleOpenCreateModal = () => {
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    resetForm();
-    setIsModalOpen(true);
-  };
-
-  const handleOpenEditModal = (task: Task) => {
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setEditingTaskId(task.id);
-    setTitle(task.title);
-    const taskMinutes = task.target_minutes || 30;
-    setTargetMinutes(taskMinutes);
-    setIsCustomDuration(!DURATION_OPTIONS.includes(taskMinutes));
-    setCustomDurationText(String(taskMinutes));
-    setSelectedSubjectId(task.subject_id ?? getGeneralSubjectId());
-
-    const rule = task.repeat_rule || 'once';
-    if (rule === 'once') {
-      setRepeatType('once');
-      setSelectedDays([]);
-    } else if (rule === 'daily') {
-      setRepeatType('daily');
-      setSelectedDays([]);
-    } else {
-      setRepeatType('custom');
-      setSelectedDays(rule.split(','));
+  const openCreateModal = () => {
+    if (hapticsEnabled) {
+      Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light,
+      );
     }
 
-    setIsModalOpen(true);
+    resetForm();
+    setModalVisible(true);
+  };
+
+  const openEditModal = (task: Task) => {
+    if (hapticsEnabled) {
+      Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light,
+      );
+    }
+
+    setEditingTask(task);
+    setTitle(task.title);
+
+    const minutes = task.target_minutes || 30;
+
+    setTargetMinutes(minutes);
+    setCustomDuration(String(minutes));
+
+    if (!DURATION_OPTIONS.includes(minutes)) {
+      setShowMoreOptions(true);
+    }
+
+    const rule = task.repeat_rule || "once";
+
+    if (rule === "once") {
+      setRepeatType("once");
+      setSelectedDays([]);
+    } else if (rule === "daily") {
+      setRepeatType("daily");
+      setSelectedDays([]);
+      setShowMoreOptions(true);
+    } else {
+      setRepeatType("custom");
+      setSelectedDays(
+        rule
+          .split(",")
+          .map((day) => day.trim())
+          .filter(Boolean),
+      );
+      setShowMoreOptions(true);
+    }
+
+    setSelectedSubjectId(task.subject_id ?? null);
+    setModalVisible(true);
+  };
+
+  const closeModal = () => {
+    if (saving) {
+      return;
+    }
+
+    Keyboard.dismiss();
+    setModalVisible(false);
+    resetForm();
   };
 
   const toggleDay = (day: string) => {
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (selectedDays.includes(day)) {
-      setSelectedDays(selectedDays.filter((d) => d !== day));
-    } else {
-      setSelectedDays([...selectedDays, day]);
+    if (hapticsEnabled) {
+      Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light,
+      );
+    }
+
+    setSelectedDays((current) =>
+      current.includes(day)
+        ? current.filter((value) => value !== day)
+        : [...current, day],
+    );
+  };
+
+  const getRepeatRule = () => {
+    if (repeatType === "daily") {
+      return "daily";
+    }
+
+    if (repeatType === "custom") {
+      return selectedDays.length > 0
+        ? selectedDays.join(",")
+        : "once";
+    }
+
+    return "once";
+  };
+
+  const saveQuest = async () => {
+    const cleanTitle = title.trim();
+
+    if (!cleanTitle) {
+      Alert.alert(
+        "Quest name missing",
+        "Give your quest a name first.",
+      );
+      return;
+    }
+
+    let minutes = targetMinutes;
+
+    if (
+      showMoreOptions &&
+      !DURATION_OPTIONS.includes(targetMinutes)
+    ) {
+      minutes = Number.parseInt(customDuration, 10);
+    }
+
+    if (!Number.isFinite(minutes) || minutes < 1) {
+      Alert.alert(
+        "Invalid duration",
+        "Enter a duration of at least 1 minute.",
+      );
+      return;
+    }
+
+    if (
+      repeatType === "custom" &&
+      selectedDays.length === 0
+    ) {
+      Alert.alert(
+        "Choose a day",
+        "Select at least one day for a repeating quest.",
+      );
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      const repeatRule = getRepeatRule();
+
+      const params = {
+        title: cleanTitle,
+        targetMinutes: minutes,
+        subjectId: selectedSubjectId,
+        repeatRule,
+        difficulty: "medium" as const,
+      };
+
+      if (editingTask) {
+        await updateTask(editingTask.id, params);
+      } else {
+        await createTask(params);
+      }
+
+      if (hapticsEnabled) {
+        Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+      }
+
+      Keyboard.dismiss();
+      setModalVisible(false);
+      resetForm();
+
+      await loadData();
+    } catch (error) {
+      console.error("Failed to save quest:", error);
+
+      Alert.alert(
+        "Couldn't save quest",
+        "Please check your connection and try again.",
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleToggleComplete = (task: Task) => {
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (task.is_completed === 1) {
-      uncompleteTask(task.id);
-      loadData();
+  const requestDeleteQuest = (task: Task) => {
+    if (hapticsEnabled) {
+      Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light,
+      );
+    }
+
+    setDeleteConfirmTask(task);
+  };
+
+  const confirmDeleteQuest = async () => {
+    if (!deleteConfirmTask) {
+      return;
+    }
+
+    try {
+      await deleteTask(deleteConfirmTask.id);
+
+      if (hapticsEnabled) {
+        Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+      }
+
+      setDeleteConfirmTask(null);
+      await loadData();
+    } catch (error) {
+      console.error("Failed to delete quest:", error);
+
+      setDeleteConfirmTask(null);
+
+      Alert.alert(
+        "Couldn't delete quest",
+        "Please try again.",
+      );
     }
   };
 
-  const handleOpenFocusPrompt = (task: Task) => {
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setSelectedQuestForFocus(task);
-    setFocusModalVisible(true);
-  };
-
-  const handleConfirmStartFocus = () => {
-    if (!selectedQuestForFocus) return;
-    setLinkedTaskId(selectedQuestForFocus.id);
-    setDurationInMinutes(selectedQuestForFocus.target_minutes || 30);
-    setTargetAttributeId(selectedQuestForFocus.subject_id ?? null);
-    setFocusModalVisible(false);
-    setSelectedQuestForFocus(null);
-    router.push('/timer');
-  };
-
-  const handleSaveTask = () => {
-    if (!title.trim()) return;
-    const duration = isCustomDuration ? parseInt(customDurationText, 10) : targetMinutes;
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
-    let rule = 'once';
-    if (repeatType === 'daily') rule = 'daily';
-    if (repeatType === 'custom') rule = selectedDays.length > 0 ? selectedDays.join(',') : 'once';
-
-    if (editingTaskId) {
-      updateTask(editingTaskId, title.trim(), 'medium', selectedSubjectId, rule, duration);
-    } else {
-      addTask(title.trim(), 'medium', selectedSubjectId, rule, duration);
+  const startQuest = (task: Task) => {
+    if (hapticsEnabled) {
+      Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Medium,
+      );
     }
 
-    resetForm();
-    setIsModalOpen(false);
-    loadData();
+    setLinkedTaskId(task.id);
+
+    setDurationInMinutes(
+      task.target_minutes || 30,
+    );
+
+    setTargetAttributeId(
+      task.subject_id ?? null,
+    );
+
+    router.push("/timer");
   };
 
-  const getRepeatLabel = (rule?: string) => {
-    if (!rule || rule === 'once') return 'One-time';
-    if (rule === 'daily') return '🔄 Daily';
-    return `📅 ${rule}`;
+  const getSubject = (subjectId: number | null) => {
+    if (!subjectId) {
+      return null;
+    }
+
+    return subjects.find(
+      (subject) => subject.id === subjectId,
+    );
   };
 
-  const getSubjectInfo = (subjectId?: number | null) => {
-    if (!subjectId) return null;
-    return subjects.find((s) => s.id === subjectId);
+  const getRepeatLabel = (task: Task) => {
+    if (!task.is_recurring) {
+      return "One-time";
+    }
+
+    if (task.repeat_rule === "daily") {
+      return "Daily";
+    }
+
+    return task.repeat_rule;
+  };
+
+  const renderTask = ({
+    item,
+    completed = false,
+  }: {
+    item: Task;
+    completed?: boolean;
+  }) => {
+    const subject = getSubject(item.subject_id);
+
+    return (
+      <View
+        style={[
+          styles.questCard,
+          completed && styles.questCardCompleted,
+        ]}
+      >
+        <View style={styles.questTopRow}>
+          <View style={styles.questTextArea}>
+            <View style={styles.questTitleRow}>
+              <View
+                style={[
+                  styles.statusDot,
+                  completed && styles.statusDotDone,
+                ]}
+              />
+
+              <Text
+                style={[
+                  styles.questTitle,
+                  completed &&
+                    styles.questTitleCompleted,
+                ]}
+                numberOfLines={2}
+              >
+                {item.title}
+              </Text>
+            </View>
+
+            <View style={styles.metadataRow}>
+              <Text style={styles.metadataText}>
+                {item.target_minutes || 30} min
+              </Text>
+
+              <Text style={styles.metadataSeparator}>
+                •
+              </Text>
+
+              <Text style={styles.metadataText}>
+                +{item.target_minutes || 30} XP
+              </Text>
+
+              <Text style={styles.metadataSeparator}>
+                •
+              </Text>
+
+              <Text style={styles.metadataText}>
+                {getRepeatLabel(item)}
+              </Text>
+            </View>
+
+            {subject && (
+              <View
+                style={[
+                  styles.areaBadge,
+                  {
+                    borderColor:
+                      subject.color_code ??
+                      "#6366F1",
+                  },
+                ]}
+              >
+                <View
+                  style={[
+                    styles.areaDot,
+                    {
+                      backgroundColor:
+                        subject.color_code ??
+                        "#6366F1",
+                    },
+                  ]}
+                />
+
+                <Text
+                  style={[
+                    styles.areaBadgeText,
+                    {
+                      color:
+                        subject.color_code ??
+                        "#6366F1",
+                    },
+                  ]}
+                >
+                  {subject.title}
+                </Text>
+              </View>
+            )}
+          </View>
+
+          <View style={styles.questActions}>
+            <TouchableOpacity
+              onPress={() => openEditModal(item)}
+              style={styles.iconButton}
+            >
+              <Text style={styles.iconButtonText}>
+                ✏️
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() =>
+                requestDeleteQuest(item)
+              }
+              style={styles.iconButton}
+            >
+              <Text
+                style={[
+                  styles.iconButtonText,
+                  styles.deleteIcon,
+                ]}
+              >
+                ✕
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {!completed && (
+          <TouchableOpacity
+            style={styles.startButton}
+            activeOpacity={0.85}
+            onPress={() => startQuest(item)}
+          >
+            <Text style={styles.startButtonText}>
+              ▶ START
+            </Text>
+
+            <Text style={styles.startButtonDuration}>
+              {item.target_minutes || 30} min
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        {completed && (
+          <View style={styles.completedBadge}>
+            <Text style={styles.completedBadgeText}>
+              ✓ COMPLETED
+            </Text>
+          </View>
+        )}
+      </View>
+    );
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Quest Log" subtitle="Manage quests and start dedicated focus sessions" showBack={false} />
+      <Header
+        title="Quests"
+        subtitle="Things you want to get done"
+        showBack={false}
+      />
+
       <View style={styles.content}>
-        <TouchableOpacity style={styles.addBtn} onPress={handleOpenCreateModal}>
-          <Text style={styles.addBtnText}>+ CREATE NEW QUEST</Text>
-        </TouchableOpacity>
+        <View style={styles.goalHint}>
+          <View style={styles.goalHintTextArea}>
+            <Text style={styles.goalHintTitle}>
+              Make progress without overthinking it
+            </Text>
 
-        <FlatList
-          data={tasks}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => {
-            const subject = getSubjectInfo(item.subject_id);
-            return (
-              <View style={[styles.card, item.is_completed === 1 && styles.cardDone]}>
-                <View style={styles.cardMainRow}>
-                  <TouchableOpacity style={styles.checkArea} onPress={() => handleToggleComplete(item)}>
-                    <View style={[styles.checkbox, item.is_completed === 1 && styles.checkboxDone]}>
-                      {item.is_completed === 1 ? (
-                        <Text style={styles.checkMark}>✓</Text>
-                      ) : (
-                        <Text style={styles.focusIcon}>📜</Text>
-                      )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.taskTitle, item.is_completed === 1 && styles.taskTitleDone]}>
-                        {item.title}
-                      </Text>
-                      <View style={styles.metaRow}>
-                        <Text style={styles.taskXP}>⏱️ {item.target_minutes || 30}m (+{item.target_minutes || 30} XP)</Text>
-                        <Text style={styles.repeatBadge}>{getRepeatLabel(item.repeat_rule)}</Text>
-                        {subject && (
-                          <View style={[styles.attributeBadge, { borderColor: subject.color_code || '#6366F1' }]}>
-                            <View style={[styles.attrDot, { backgroundColor: subject.color_code || '#6366F1' }]} />
-                            <Text style={[styles.attributeBadgeText, { color: subject.color_code || '#6366F1' }]}>{subject.title}</Text>
-                          </View>
-                        )}
-                      </View>
-                    </View>
-                  </TouchableOpacity>
+            <Text style={styles.goalHintText}>
+              Add a quest when you want extra structure.
+              You can also start a session directly.
+            </Text>
+          </View>
 
-                  <View style={styles.actionRow}>
-                    <TouchableOpacity style={styles.actionBtn} onPress={() => handleOpenEditModal(item)}>
-                      <Text style={styles.editIcon}>✏️</Text>
-                    </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={openCreateModal}
+            activeOpacity={0.85}
+          >
+            <Text style={styles.addButtonText}>
+              +
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-                    <TouchableOpacity
-                      style={styles.actionBtn}
-                      onPress={() => {
-                        if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                        deleteTask(item.id);
-                        loadData();
-                      }}
-                    >
-                      <Text style={styles.deleteText}>✕</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                {item.is_completed === 0 && (
-                  <TouchableOpacity
-                    style={styles.startFocusBtn}
-                    onPress={() => handleOpenFocusPrompt(item)}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.startFocusBtnText}>⚔️ START FOCUS SESSION</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          }}
-        />
-      </View>
-
-      {/* --- TASK CREATION / EDIT MODAL --- */}
-      <Modal visible={isModalOpen} transparent animationType="slide">
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-          <View style={styles.modalOverlay}>
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.keyboardContainer}
-            >
-              <ScrollView
-                contentContainerStyle={styles.modalScrollContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                <View style={styles.modalCard}>
-                  <Text style={styles.modalTitle}>
-                    {editingTaskId ? 'Edit Quest' : 'New Quest'}
+        {loading ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>
+              Loading quests...
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={activeTasks}
+            keyExtractor={(item) =>
+              String(item.id)
+            }
+            renderItem={(props) =>
+              renderTask(props)
+            }
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContent}
+            ListHeaderComponent={
+              <View>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>
+                    Today's quests
                   </Text>
 
-                  <Text style={styles.inputLabel}>QUEST NAME</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="Quest Title..."
-                    placeholderTextColor="#64748B"
-                    value={title}
-                    onChangeText={setTitle}
-                    autoFocus
-                  />
+                  <Text style={styles.sectionCount}>
+                    {activeTasks.length}
+                  </Text>
+                </View>
 
-                  <Text style={styles.inputLabel}>HERO ATTRIBUTE / SKILL</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subjectRow}>
-                    {subjects.map((sub) => {
-                      const isSelected = selectedSubjectId === sub.id;
-                      return (
-                        <TouchableOpacity
-                          key={sub.id}
-                          style={[
-                            styles.subjectChip,
-                            isSelected && { backgroundColor: sub.color_code || '#6366F1', borderColor: sub.color_code || '#6366F1' },
-                          ]}
-                          onPress={() => setSelectedSubjectId(sub.id)}
-                        >
-                          <Text style={[styles.subjectText, isSelected && { color: '#FFFFFF' }]}>{sub.title}</Text>
-                        </TouchableOpacity>
+                {activeTasks.length === 0 && (
+                  <View style={styles.emptyCard}>
+                    <Text style={styles.emptyIcon}>
+                      ✨
+                    </Text>
+
+                    <Text style={styles.emptyTitle}>
+                      Nothing waiting for you
+                    </Text>
+
+                    <Text style={styles.emptyText}>
+                      Start a session or add a quest when
+                      you have something you want to accomplish.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            }
+            ListFooterComponent={
+              completedTasks.length > 0 ? (
+                <View style={styles.completedSection}>
+                  <View style={styles.sectionHeader}>
+                    <Text style={styles.sectionTitle}>
+                      Completed / upcoming
+                    </Text>
+
+                    <Text style={styles.sectionCount}>
+                      {completedTasks.length}
+                    </Text>
+                  </View>
+
+                  {completedTasks.map((task) => (
+                    <View key={task.id}>
+                      {renderTask({
+                        item: task,
+                        completed:
+                          task.is_completed_today,
+                      })}
+                    </View>
+                  ))}
+                </View>
+              ) : null
+            }
+          />
+        )}
+      </View>
+
+      {/* Create / Edit Quest Overlay */}
+      {modalVisible && (
+        <View style={styles.questOverlay}>
+          <KeyboardAvoidingView
+            style={styles.questOverlayKeyboard}
+            behavior="padding"
+          >
+            <View style={styles.modalCard}>
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={
+                  styles.modalScrollContent
+                }
+              >
+                <View style={styles.modalHeader}>
+                  <View>
+                    <Text style={styles.modalTitle}>
+                      {editingTask
+                        ? "Edit Quest"
+                        : "New Quest"}
+                    </Text>
+
+                    <Text style={styles.modalSubtitle}>
+                      Keep it simple. You can add more later.
+                    </Text>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={closeModal}
+                    disabled={saving}
+                  >
+                    <Text style={styles.closeButton}>
+                      ✕
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.inputLabel}>
+                  WHAT DO YOU WANT TO DO?
+                </Text>
+
+                <TextInput
+                  value={title}
+                  onChangeText={setTitle}
+                  placeholder="e.g. Finish my resume"
+                  placeholderTextColor="#64748B"
+                  style={styles.titleInput}
+                  autoFocus
+                  maxLength={120}
+                />
+
+                <Text style={styles.inputLabel}>
+                  HOW LONG?
+                </Text>
+
+                <View style={styles.durationGrid}>
+                  {DURATION_OPTIONS.map((minutes) => {
+                    const selected =
+                      targetMinutes === minutes &&
+                      DURATION_OPTIONS.includes(
+                        targetMinutes,
                       );
-                    })}
-                  </ScrollView>
 
-                  <Text style={styles.inputLabel}>TARGET DURATION</Text>
-                  <View style={styles.segmentedRow}>
-                    {DURATION_OPTIONS.map((m) => (
+                    return (
                       <TouchableOpacity
-                        key={m}
-                        style={[styles.segmentBtn, !isCustomDuration && targetMinutes === m && styles.segmentActive]}
+                        key={minutes}
+                        style={[
+                          styles.durationButton,
+                          selected &&
+                            styles.durationButtonSelected,
+                        ]}
                         onPress={() => {
-                          setIsCustomDuration(false);
-                          setTargetMinutes(m);
+                          setTargetMinutes(minutes);
+                          setCustomDuration(
+                            String(minutes),
+                          );
                         }}
                       >
-                        <Text style={[styles.segmentText, !isCustomDuration && targetMinutes === m && styles.segmentTextActive]}>
-                          {m}m
+                        <Text
+                          style={[
+                            styles.durationButtonText,
+                            selected &&
+                              styles.durationButtonTextSelected,
+                          ]}
+                        >
+                          {minutes}
+                        </Text>
+
+                        <Text
+                          style={[
+                            styles.durationUnit,
+                            selected &&
+                              styles.durationUnitSelected,
+                          ]}
+                        >
+                          min
                         </Text>
                       </TouchableOpacity>
-                    ))}
-                    <TouchableOpacity
-                      style={[styles.segmentBtn, isCustomDuration && styles.segmentActive]}
-                      onPress={() => {
-                        setIsCustomDuration(true);
-                        setCustomDurationText(String(targetMinutes));
+                    );
+                  })}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.moreOptionsToggle}
+                  onPress={() =>
+                    setShowMoreOptions(
+                      (current) => !current,
+                    )
+                  }
+                >
+                  <Text
+                    style={styles.moreOptionsText}
+                  >
+                    {showMoreOptions
+                      ? "Hide options"
+                      : "More options"}
+                  </Text>
+
+                  <Text style={styles.chevron}>
+                    {showMoreOptions ? "⌃" : "⌄"}
+                  </Text>
+                </TouchableOpacity>
+
+                {showMoreOptions && (
+                  <View style={styles.advancedArea}>
+                    <Text style={styles.inputLabel}>
+                      CUSTOM DURATION
+                    </Text>
+
+                    <TextInput
+                      value={customDuration}
+                      onChangeText={(text) => {
+                        setCustomDuration(text);
+
+                        const value =
+                          Number.parseInt(
+                            text,
+                            10,
+                          );
+
+                        if (
+                          Number.isFinite(value) &&
+                          value > 0
+                        ) {
+                          setTargetMinutes(value);
+                        }
                       }}
+                      keyboardType="number-pad"
+                      placeholder="30"
+                      placeholderTextColor="#64748B"
+                      style={styles.titleInput}
+                      maxLength={3}
+                    />
+
+                    <Text style={styles.inputLabel}>
+                      AREA
+                    </Text>
+
+                    <ScrollView
+                      horizontal
+                      showsHorizontalScrollIndicator={
+                        false
+                      }
+                      contentContainerStyle={
+                        styles.areaScroll
+                      }
                     >
-                      <Text style={[styles.segmentText, isCustomDuration && styles.segmentTextActive]}>
-                        Custom
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                      <TouchableOpacity
+                        style={[
+                          styles.areaChip,
+                          selectedSubjectId ===
+                            null &&
+                            styles.areaChipSelected,
+                        ]}
+                        onPress={() =>
+                          setSelectedSubjectId(
+                            null,
+                          )
+                        }
+                      >
+                        <Text
+                          style={[
+                            styles.areaChipText,
+                            selectedSubjectId ===
+                              null &&
+                              styles.areaChipTextSelected,
+                          ]}
+                        >
+                          General
+                        </Text>
+                      </TouchableOpacity>
 
-                  {isCustomDuration && (
-                    <View style={styles.customDurationRow}>
-                      <Text style={styles.customDurationLabel}>MINUTES</Text>
-                      <TextInput
-                        style={styles.customDurationInput}
-                        keyboardType="number-pad"
-                        value={customDurationText}
-                        onChangeText={(text) => {
-                          setCustomDurationText(text);
-                          const minutes = parseInt(text, 10);
-                          if (Number.isInteger(minutes)) setTargetMinutes(minutes);
-                        }}
-                        maxLength={4}
-                      />
-                    </View>
-                  )}
+                      {subjects
+                        .filter(
+                          (subject) =>
+                            subject.title !==
+                            "General",
+                        )
+                        .map((subject) => {
+                          const selected =
+                            selectedSubjectId ===
+                            subject.id;
 
-                  <Text style={styles.inputLabel}>REPEAT SCHEDULE</Text>
-                  <View style={styles.segmentedRow}>
-                    <TouchableOpacity
-                      style={[styles.segmentBtn, repeatType === 'once' && styles.segmentActive]}
-                      onPress={() => setRepeatType('once')}
-                    >
-                      <Text style={[styles.segmentText, repeatType === 'once' && styles.segmentTextActive]}>
-                        Once
-                      </Text>
-                    </TouchableOpacity>
+                          return (
+                            <TouchableOpacity
+                              key={subject.id}
+                              style={[
+                                styles.areaChip,
+                                selected && {
+                                  backgroundColor:
+                                    subject.color_code ??
+                                    "#6366F1",
+                                  borderColor:
+                                    subject.color_code ??
+                                    "#6366F1",
+                                },
+                              ]}
+                              onPress={() =>
+                                setSelectedSubjectId(
+                                  subject.id,
+                                )
+                              }
+                            >
+                              <Text
+                                style={[
+                                  styles.areaChipText,
+                                  selected &&
+                                    styles.areaChipTextSelected,
+                                ]}
+                              >
+                                {subject.title}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                    </ScrollView>
 
-                    <TouchableOpacity
-                      style={[styles.segmentBtn, repeatType === 'daily' && styles.segmentActive]}
-                      onPress={() => setRepeatType('daily')}
-                    >
-                      <Text style={[styles.segmentText, repeatType === 'daily' && styles.segmentTextActive]}>
-                        Everyday
-                      </Text>
-                    </TouchableOpacity>
+                    <Text style={styles.inputLabel}>
+                      REPEAT
+                    </Text>
 
-                    <TouchableOpacity
-                      style={[styles.segmentBtn, repeatType === 'custom' && styles.segmentActive]}
-                      onPress={() => setRepeatType('custom')}
-                    >
-                      <Text style={[styles.segmentText, repeatType === 'custom' && styles.segmentTextActive]}>
-                        Specific Days
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
+                    <View style={styles.repeatRow}>
+                      {[
+                        {
+                          value: "once" as const,
+                          label: "Once",
+                        },
+                        {
+                          value: "daily" as const,
+                          label: "Daily",
+                        },
+                        {
+                          value: "custom" as const,
+                          label: "Days",
+                        },
+                      ].map((option) => {
+                        const selected =
+                          repeatType ===
+                          option.value;
 
-                  {repeatType === 'custom' && (
-                    <View style={styles.daysRow}>
-                      {DAYS_OF_WEEK.map((day) => {
-                        const isSelected = selectedDays.includes(day);
                         return (
                           <TouchableOpacity
-                            key={day}
-                            style={[styles.dayChip, isSelected && styles.dayChipActive]}
-                            onPress={() => toggleDay(day)}
+                            key={option.value}
+                            style={[
+                              styles.repeatButton,
+                              selected &&
+                                styles.repeatButtonSelected,
+                            ]}
+                            onPress={() =>
+                              setRepeatType(
+                                option.value,
+                              )
+                            }
                           >
-                            <Text style={[styles.dayText, isSelected && styles.dayTextActive]}>
-                              {day[0]}
+                            <Text
+                              style={[
+                                styles.repeatButtonText,
+                                selected &&
+                                  styles.repeatButtonTextSelected,
+                              ]}
+                            >
+                              {option.label}
                             </Text>
                           </TouchableOpacity>
                         );
                       })}
                     </View>
-                  )}
 
-                  <View style={styles.modalRow}>
-                    <TouchableOpacity
-                      style={styles.cancelBtn}
-                      onPress={() => {
-                        setIsModalOpen(false);
-                        resetForm();
-                      }}
-                    >
-                      <Text style={styles.cancelText}>Cancel</Text>
-                    </TouchableOpacity>
+                    {repeatType === "custom" && (
+                      <View style={styles.daysContainer}>
+                        {DAYS_OF_WEEK.map(
+                          (day) => {
+                            const selected =
+                              selectedDays.includes(
+                                day,
+                              );
 
-                    <TouchableOpacity style={styles.submitBtn} onPress={handleSaveTask}>
-                      <Text style={styles.submitText}>
-                        {editingTaskId ? 'Save Changes' : 'Add Quest'}
-                      </Text>
-                    </TouchableOpacity>
+                            return (
+                              <TouchableOpacity
+                                key={day}
+                                style={[
+                                  styles.dayButton,
+                                  selected &&
+                                    styles.dayButtonSelected,
+                                ]}
+                                onPress={() =>
+                                  toggleDay(day)
+                                }
+                              >
+                                <Text
+                                  style={[
+                                    styles.dayButtonText,
+                                    selected &&
+                                      styles.dayButtonTextSelected,
+                                  ]}
+                                >
+                                  {day[0]}
+                                </Text>
+                              </TouchableOpacity>
+                            );
+                          },
+                        )}
+                      </View>
+                    )}
                   </View>
-                </View>
-              </ScrollView>
-            </KeyboardAvoidingView>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
+                )}
 
-      {/* --- CUSTOM DARK RPG FOCUS CONFIRMATION MODAL --- */}
+                <TouchableOpacity
+                  style={[
+                    styles.saveButton,
+                    saving && styles.saveButtonDisabled,
+                  ]}
+                  onPress={saveQuest}
+                  disabled={saving}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {saving
+                      ? "SAVING..."
+                      : editingTask
+                        ? "SAVE QUEST"
+                        : "ADD QUEST"}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={closeModal}
+                  disabled={saving}
+                >
+                  <Text style={styles.modalCancelText}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      )}
+
+      {/* Themed Delete Confirmation */}
       <Modal
-        visible={focusModalVisible}
+        visible={!!deleteConfirmTask}
         transparent
         animationType="fade"
-        onRequestClose={() => setFocusModalVisible(false)}
+        onRequestClose={() =>
+          setDeleteConfirmTask(null)
+        }
       >
-        <View style={styles.darkPromptOverlay}>
-          <View style={styles.darkPromptCard}>
-            <Text style={styles.promptIcon}>⚔️</Text>
-            <Text style={styles.promptTitle}>START QUEST SESSION</Text>
-            <Text style={styles.promptMessage}>
-              Begin a <Text style={styles.highlightText}>{selectedQuestForFocus?.target_minutes || 30}-minute</Text> focus timer for quest:{'\n'}
-              <Text style={styles.questHighlight}>"{selectedQuestForFocus?.title}"</Text>?
+        <View style={styles.deleteOverlay}>
+          <View style={styles.deleteCard}>
+            <Text style={styles.deleteWarningIcon}>
+              ⚠️
             </Text>
 
-            <View style={styles.promptActionRow}>
+            <Text style={styles.deleteTitle}>
+              Delete this quest?
+            </Text>
+
+            <Text style={styles.deleteMessage}>
+              {deleteConfirmTask
+                ? `"${deleteConfirmTask.title}" will be permanently removed.`
+                : ""}
+            </Text>
+
+            <View style={styles.deleteActions}>
               <TouchableOpacity
-                style={styles.promptCancelBtn}
-                onPress={() => {
-                  setFocusModalVisible(false);
-                  setSelectedQuestForFocus(null);
-                }}
+                style={styles.deleteCancelButton}
+                onPress={() =>
+                  setDeleteConfirmTask(null)
+                }
               >
-                <Text style={styles.promptCancelText}>Cancel</Text>
+                <Text
+                  style={styles.deleteCancelText}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.promptStartBtn}
-                onPress={handleConfirmStartFocus}
+                style={styles.deleteConfirmButton}
+                onPress={confirmDeleteQuest}
               >
-                <Text style={styles.promptStartText}>Begin Session</Text>
+                <Text
+                  style={styles.deleteConfirmText}
+                >
+                  Delete
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -460,186 +1133,633 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#090D16' },
-  content: { flex: 1, padding: 20, paddingBottom: 120 },
-  addBtn: {
-    backgroundColor: 'rgba(255, 255, 255, 0.07)',
-    paddingVertical: 12,
-    borderRadius: 18,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(126, 162, 255, 0.7)',
-    marginBottom: 16,
-  },
-  addBtnText: { color: '#6366F1', fontWeight: 'bold', fontSize: 13, letterSpacing: 1 },
-  list: { gap: 10 },
-  card: {
-    backgroundColor: 'rgba(255, 255, 255, 0.065)',
-    borderRadius: 20,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-    gap: 12,
-  },
-  cardDone: { opacity: 0.6 },
-  cardMainRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  checkArea: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 },
-  checkbox: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    borderWidth: 1.5,
-    borderColor: '#6366F1',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#0F172A',
-  },
-  checkboxDone: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  checkMark: { color: '#FFFFFF', fontWeight: 'bold' },
-  focusIcon: { fontSize: 13 },
-  taskTitle: { color: '#F8FAFC', fontSize: 15, fontWeight: '600' },
-  taskTitleDone: { textDecorationLine: 'line-through', color: '#64748B' },
-  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginTop: 4 },
-  taskXP: { color: '#6366F1', fontSize: 11, fontWeight: 'bold' },
-  repeatBadge: { color: '#64748B', fontSize: 10, fontWeight: '700', backgroundColor: '#0F172A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
-  attributeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#0F172A', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
-  attrDot: { width: 6, height: 6, borderRadius: 3 },
-  attributeBadgeText: { fontSize: 10, fontWeight: '700' },
-  actionRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  actionBtn: { padding: 4 },
-  editIcon: { fontSize: 14 },
-  deleteText: { color: '#EF4444', fontSize: 16, paddingLeft: 4 },
-  startFocusBtn: {
-    backgroundColor: '#6366F1',
-    borderRadius: 12,
-    paddingVertical: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  startFocusBtnText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 11,
-    letterSpacing: 0.5,
-  },
-  modalOverlay: {
+  container: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    padding: 20,
+    backgroundColor: "#090D16",
   },
-  keyboardContainer: { flex: 1, width: '100%' },
-  modalScrollContent: { flexGrow: 1, justifyContent: 'center', paddingVertical: 12 },
-  modalCard: {
-    backgroundColor: '#171B26',
-    borderRadius: 28,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.14)',
-  },
-  modalTitle: { color: '#F8FAFC', fontSize: 18, fontWeight: 'bold', marginBottom: 14 },
-  modalInput: {
-    backgroundColor: '#0F172A',
-    color: '#F8FAFC',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#334155',
-    marginBottom: 14,
-    fontSize: 15,
-  },
-  inputLabel: { color: '#64748B', fontSize: 10, fontWeight: '800', letterSpacing: 1, marginBottom: 8 },
-  subjectRow: { flexDirection: 'row', marginBottom: 14, gap: 8 },
-  subjectChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: '#0F172A', borderWidth: 1, borderColor: '#334155', marginRight: 8 },
-  subjectChipActive: { backgroundColor: '#6366F1', borderColor: '#6366F1' },
-  subjectText: { color: '#94A3B8', fontSize: 12, fontWeight: '700' },
-  subjectTextActive: { color: '#FFFFFF' },
-  segmentedRow: { flexDirection: 'row', backgroundColor: '#0F172A', borderRadius: 10, padding: 3, marginBottom: 14 },
-  segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  segmentActive: { backgroundColor: '#2F6BFF' },
-  segmentText: { color: '#64748B', fontSize: 11, fontWeight: '700' },
-  segmentTextActive: { color: '#FFFFFF' },
-  customDurationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#0F172A',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginTop: -6,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#6366F1',
-  },
-  customDurationLabel: { color: '#94A3B8', fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  customDurationInput: {
-    color: '#F8FAFC',
-    backgroundColor: '#1E293B',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minWidth: 72,
-    textAlign: 'center',
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  daysRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  dayChip: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#0F172A', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
-  dayChipActive: { backgroundColor: '#10B981', borderColor: '#10B981' },
-  dayText: { color: '#64748B', fontWeight: 'bold', fontSize: 12 },
-  dayTextActive: { color: '#FFFFFF' },
-  modalRow: { flexDirection: 'row', gap: 10, marginTop: 6 },
-  cancelBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: '#0F172A',
-  },
-  cancelText: { color: '#94A3B8', fontWeight: 'bold' },
-  submitBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: 'center',
-    borderRadius: 10,
-    backgroundColor: '#6366F1',
-  },
-  submitText: { color: '#FFFFFF', fontWeight: 'bold' },
 
-  /* --- DARK RPG PROMPT STYLES --- */
-  darkPromptOverlay: {
+  content: {
     flex: 1,
-    backgroundColor: 'rgba(5, 8, 15, 0.88)',
-    justifyContent: 'center',
-    alignItems: 'center',
     paddingHorizontal: 20,
   },
-  darkPromptCard: {
-    width: '100%',
-    backgroundColor: '#171B26',
-    borderRadius: 24,
-    padding: 22,
-    borderWidth: 1.5,
-    borderColor: '#6366F1',
-    alignItems: 'center',
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
+
+  goalHint: {
+    marginTop: 6,
+    marginBottom: 18,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: "rgba(99, 102, 241, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(129, 140, 248, 0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
-  promptIcon: { fontSize: 36, marginBottom: 8 },
-  promptTitle: { color: '#F8FAFC', fontSize: 17, fontWeight: '900', letterSpacing: 0.5, marginBottom: 10 },
-  promptMessage: { color: '#94A3B8', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  highlightText: { color: '#818CF8', fontWeight: '800' },
-  questHighlight: { color: '#F8FAFC', fontWeight: '800' },
-  promptActionRow: { flexDirection: 'row', gap: 10, width: '100%' },
-  promptCancelBtn: { flex: 1, backgroundColor: '#0F172A', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
-  promptCancelText: { color: '#94A3B8', fontWeight: '700', fontSize: 13 },
-  promptStartBtn: { flex: 1, backgroundColor: '#6366F1', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  promptStartText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+
+  goalHintTextArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  goalHintTitle: {
+    color: "#F8FAFC",
+    fontSize: 14,
+    fontWeight: "800",
+  },
+
+  goalHintText: {
+    color: "#94A3B8",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 5,
+  },
+
+  addButton: {
+    width: 44,
+    height: 44,
+    flexShrink: 0,
+    borderRadius: 14,
+    backgroundColor: "#6366F1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  addButtonText: {
+    color: "#FFFFFF",
+    fontSize: 28,
+    lineHeight: 30,
+    fontWeight: "300",
+  },
+
+  listContent: {
+    paddingBottom: 120,
+  },
+
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+
+  sectionTitle: {
+    color: "#F8FAFC",
+    fontSize: 17,
+    fontWeight: "900",
+  },
+
+  sectionCount: {
+    color: "#818CF8",
+    fontSize: 12,
+    fontWeight: "800",
+    marginLeft: 8,
+    backgroundColor: "rgba(99, 102, 241, 0.12)",
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+
+  questCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.055)",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    padding: 14,
+    marginBottom: 10,
+  },
+
+  questCardCompleted: {
+    opacity: 0.62,
+  },
+
+  questTopRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+
+  questTextArea: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  questTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+
+  statusDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: "#818CF8",
+  },
+
+  statusDotDone: {
+    backgroundColor: "#10B981",
+  },
+
+  questTitle: {
+    flex: 1,
+    color: "#F8FAFC",
+    fontSize: 15,
+    fontWeight: "700",
+  },
+
+  questTitleCompleted: {
+    textDecorationLine: "line-through",
+    color: "#64748B",
+  },
+
+  metadataRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    marginTop: 7,
+    gap: 5,
+  },
+
+  metadataText: {
+    color: "#94A3B8",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  metadataSeparator: {
+    color: "#475569",
+    fontSize: 10,
+  },
+
+  areaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    marginTop: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#0F172A",
+    borderWidth: 1,
+  },
+
+  areaDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+
+  areaBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  questActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: 8,
+  },
+
+  iconButton: {
+    padding: 6,
+  },
+
+  iconButtonText: {
+    fontSize: 14,
+  },
+
+  deleteIcon: {
+    color: "#EF4444",
+    fontWeight: "800",
+  },
+
+  startButton: {
+    marginTop: 14,
+    height: 40,
+    borderRadius: 11,
+    backgroundColor: "#6366F1",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+  },
+
+  startButtonText: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  startButtonDuration: {
+    color: "#E0E7FF",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  completedBadge: {
+    marginTop: 14,
+    paddingVertical: 9,
+    borderRadius: 11,
+    backgroundColor: "rgba(16, 185, 129, 0.10)",
+    alignItems: "center",
+  },
+
+  completedBadgeText: {
+    color: "#34D399",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.6,
+  },
+
+  emptyCard: {
+    padding: 24,
+    borderRadius: 18,
+    backgroundColor: "rgba(255, 255, 255, 0.035)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+  },
+
+  emptyIcon: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+
+  emptyTitle: {
+    color: "#F8FAFC",
+    fontSize: 15,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+
+  emptyText: {
+    color: "#64748B",
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: "center",
+    marginTop: 6,
+  },
+
+  completedSection: {
+    marginTop: 18,
+  },
+
+  emptyState: {
+    paddingTop: 60,
+    alignItems: "center",
+  },
+
+  emptyStateText: {
+    color: "#64748B",
+    fontSize: 12,
+  },
+
+  /* CREATE / EDIT OVERLAY */
+
+  questOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.76)",
+    justifyContent: "flex-end",
+    zIndex: 1000,
+    elevation: 1000,
+  },
+
+  questOverlayKeyboard: {
+    flex: 1,
+    width: "100%",
+    justifyContent: "flex-end",
+  },
+
+  modalCard: {
+    width: "100%",
+    maxHeight: "95%",
+    backgroundColor: "#0F172A",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+
+  modalScrollContent: {
+    paddingBottom: 32,
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    marginBottom: 24,
+  },
+
+  modalTitle: {
+    color: "#F8FAFC",
+    fontSize: 22,
+    fontWeight: "900",
+  },
+
+  modalSubtitle: {
+    color: "#64748B",
+    fontSize: 11,
+    marginTop: 5,
+  },
+
+  closeButton: {
+    color: "#64748B",
+    fontSize: 20,
+    padding: 4,
+  },
+
+  inputLabel: {
+    color: "#94A3B8",
+    fontSize: 10,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    marginBottom: 8,
+    marginTop: 14,
+  },
+
+  titleInput: {
+    backgroundColor: "#111C30",
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.09)",
+    color: "#F8FAFC",
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 14,
+  },
+
+  durationGrid: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  durationButton: {
+    flex: 1,
+    minHeight: 56,
+    borderRadius: 13,
+    backgroundColor: "#111C30",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  durationButtonSelected: {
+    backgroundColor: "rgba(99, 102, 241, 0.22)",
+    borderColor: "#6366F1",
+  },
+
+  durationButtonText: {
+    color: "#CBD5E1",
+    fontSize: 16,
+    fontWeight: "900",
+  },
+
+  durationButtonTextSelected: {
+    color: "#FFFFFF",
+  },
+
+  durationUnit: {
+    color: "#64748B",
+    fontSize: 9,
+    fontWeight: "800",
+    marginTop: 1,
+  },
+
+  durationUnitSelected: {
+    color: "#C7D2FE",
+  },
+
+  moreOptionsToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255, 255, 255, 0.07)",
+    marginBottom: 2,
+  },
+
+  moreOptionsText: {
+    color: "#A5B4FC",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  chevron: {
+    color: "#A5B4FC",
+    fontSize: 16,
+  },
+
+  advancedArea: {
+    paddingTop: 2,
+  },
+
+  areaScroll: {
+    gap: 8,
+    paddingBottom: 3,
+  },
+
+  areaChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 11,
+    backgroundColor: "#111C30",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+  },
+
+  areaChipSelected: {
+    backgroundColor: "#6366F1",
+    borderColor: "#6366F1",
+  },
+
+  areaChipText: {
+    color: "#94A3B8",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  areaChipTextSelected: {
+    color: "#FFFFFF",
+  },
+
+  repeatRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  repeatButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 11,
+    backgroundColor: "#111C30",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  repeatButtonSelected: {
+    backgroundColor: "rgba(99, 102, 241, 0.22)",
+    borderColor: "#6366F1",
+  },
+
+  repeatButtonText: {
+    color: "#94A3B8",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  repeatButtonTextSelected: {
+    color: "#FFFFFF",
+  },
+
+  daysContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 6,
+    marginTop: 10,
+  },
+
+  dayButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#111C30",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.08)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  dayButtonSelected: {
+    backgroundColor: "#6366F1",
+    borderColor: "#6366F1",
+  },
+
+  dayButtonText: {
+    color: "#64748B",
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  dayButtonTextSelected: {
+    color: "#FFFFFF",
+  },
+
+  saveButton: {
+    marginTop: 24,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: "#6366F1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  saveButtonDisabled: {
+    opacity: 0.55,
+  },
+
+  saveButtonText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  modalCancelButton: {
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  modalCancelText: {
+    color: "#64748B",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  /* DELETE CONFIRMATION */
+
+  deleteOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.78)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 28,
+  },
+
+  deleteCard: {
+    width: "100%",
+    maxWidth: 380,
+    backgroundColor: "#111827",
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.10)",
+    padding: 24,
+    alignItems: "center",
+  },
+
+  deleteWarningIcon: {
+    fontSize: 30,
+    marginBottom: 10,
+  },
+
+  deleteTitle: {
+    color: "#F8FAFC",
+    fontSize: 18,
+    fontWeight: "900",
+  },
+
+  deleteMessage: {
+    color: "#94A3B8",
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: 8,
+  },
+
+  deleteActions: {
+    flexDirection: "row",
+    width: "100%",
+    gap: 10,
+    marginTop: 22,
+  },
+
+  deleteCancelButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#1E293B",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  deleteCancelText: {
+    color: "#CBD5E1",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  deleteConfirmButton: {
+    flex: 1,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#DC2626",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  deleteConfirmText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "900",
+  },
 });

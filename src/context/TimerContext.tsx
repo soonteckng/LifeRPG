@@ -59,12 +59,15 @@ interface TimerContextType {
   isRunning: boolean;
   isCompleted: boolean;
 
+  activityType: string;
+
   targetAttributeId: number | null;
   linkedTaskId: number | null;
   notes: string;
 
   sessionSummary: SessionSummary | null;
 
+  setActivityType: (type: string) => void;
   setNotes: (text: string) => void;
   setTargetAttributeId: (id: number | null) => void;
   setLinkedTaskId: (id: number | null) => void;
@@ -93,6 +96,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [activityType, setActivityType] = useState("general");
 
   const [targetAttributeId, setTargetAttributeId] = useState<number | null>(
     null,
@@ -440,7 +444,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     try {
       const sessionId = await startActivitySession({
         targetDurationSeconds: totalSec,
-        activityType: "general",
+        activityType,
         taskId: linkedTaskId,
         subjectId: targetAttributeId,
         notes: notes.trim() || null,
@@ -653,6 +657,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         duration,
         isRunning,
         isCompleted,
+        activityType,
 
         targetAttributeId,
         linkedTaskId,
@@ -663,7 +668,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         setNotes,
         setTargetAttributeId,
         setLinkedTaskId,
-
+        setActivityType,
+        
         startTimer,
         pauseTimer,
         resumeTimer,

@@ -18,6 +18,10 @@ export interface UserProfile {
   gold: number;
   streak_count: number;
   last_active_date: string | null;
+  daily_goal_minutes: number;
+  last_goal_completed_date: string | null;
+  onboarding_completed: boolean;
+  timezone: string;
 }
 
 interface UserContextType {
@@ -47,6 +51,10 @@ const defaultProfile: UserProfile = {
   gold: 0,
   streak_count: 1,
   last_active_date: new Date().toISOString().split("T")[0],
+  daily_goal_minutes: 60,
+  last_goal_completed_date: null,
+  onboarding_completed: false,
+  timezone: "Asia/Kuala_Lumpur",
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -68,7 +76,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date",
+          "id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date, daily_goal_minutes, last_goal_completed_date, onboarding_completed, timezone",
         )
         .eq("id", user.id)
         .single();

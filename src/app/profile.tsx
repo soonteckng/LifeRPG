@@ -11,7 +11,6 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { resetDatabase } from '../../db/database';
 import { useUser } from '../context/UserContext';
 import Header from '../components/Header';
 
@@ -31,7 +30,6 @@ export default function ProfileScreen() {
   const [usernameInput, setUsernameInput] = useState(profile?.username || 'Hero');
   const [avatarInput, setAvatarInput] = useState(profile?.avatar || '🧙‍♂️');
   const [isEditing, setIsEditing] = useState(false);
-  const [resetModalVisible, setResetModalVisible] = useState(false);
   const [successModalVisible, setSuccessModalVisible] = useState(false);
   const [successModalMessage, setSuccessModalMessage] = useState({ title: '', body: '', isError: false });
 
@@ -58,18 +56,6 @@ export default function ProfileScreen() {
     setSuccessModalMessage({
       title: 'PROFILE UPDATED!',
       body: 'Your hero avatar and name have been successfully saved.',
-      isError: false,
-    });
-    setSuccessModalVisible(true);
-  };
-
-  const confirmResetDatabase = () => {
-    resetDatabase();
-    reloadProfile();
-    setResetModalVisible(false);
-    setSuccessModalMessage({
-      title: 'PURGE COMPLETE!',
-      body: 'Database successfully wiped. All hero stats have been reset to default initial state.',
       isError: false,
     });
     setSuccessModalVisible(true);
@@ -200,53 +186,6 @@ export default function ProfileScreen() {
           />
         </View>
       </View>
-
-      {/* Danger Zone */}
-      <View style={[styles.card, styles.dangerCard]}>
-        <Text style={styles.dangerTitle}>Danger Zone (Testing Tool)</Text>
-        <Text style={styles.dangerText}>
-          Resetting the database will clear all local records and revert your hero stats to initial defaults.
-        </Text>
-        <TouchableOpacity
-          style={styles.resetButton}
-          onPress={() => setResetModalVisible(true)}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.resetButtonText}>⚠️ Reset Local Database</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Custom Themed Dark RPG Reset Modal */}
-      <Modal
-        visible={resetModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setResetModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.darkModalCard}>
-            <Text style={styles.modalIcon}>⚠️</Text>
-            <Text style={styles.modalTitle}>PURGE ALL HERO DATA?</Text>
-            <Text style={styles.modalText}>
-              This action will permanently erase your study logs, gold, level progress, and item vault. This cannot be undone.
-            </Text>
-            <View style={styles.modalActionRow}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setResetModalVisible(false)}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalConfirmButton}
-                onPress={confirmResetDatabase}
-              >
-                <Text style={styles.modalConfirmText}>Purge Data</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Success / Notification Modal */}
       <Modal
@@ -462,35 +401,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  dangerCard: {
-    borderColor: '#EF444433',
-    backgroundColor: '#1E1218',
-  },
-  dangerTitle: {
-    color: '#F87171',
-    fontSize: 16,
-    fontWeight: '800',
-    marginBottom: 4,
-  },
-  dangerText: {
-    color: '#94A3B8',
-    fontSize: 12,
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  resetButton: {
-    backgroundColor: '#EF444422',
-    borderWidth: 1,
-    borderColor: '#EF444466',
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  resetButtonText: {
-    color: '#F87171',
-    fontWeight: '700',
-    fontSize: 13,
-  },
+  
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(5, 8, 15, 0.88)',
@@ -498,20 +409,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  darkModalCard: {
-    width: '100%',
-    backgroundColor: '#1E1218',
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1.5,
-    borderColor: '#EF4444',
-    alignItems: 'center',
-    shadowColor: '#EF4444',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-  },
+ 
   successModalCard: {
     width: '100%',
     backgroundColor: '#131C2E',
@@ -530,16 +428,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E1218',
     borderColor: '#EF4444',
   },
+
   modalIcon: { fontSize: 36, marginBottom: 8 },
   modalTitle: { color: '#F87171', fontSize: 18, fontWeight: '900', letterSpacing: 0.5, marginBottom: 8 },
   successModalTitle: { color: '#34D399', fontSize: 18, fontWeight: '900', letterSpacing: 0.5, marginBottom: 8 },
   errorModalTitle: { color: '#F87171' },
   modalText: { color: '#94A3B8', fontSize: 13, textAlign: 'center', lineHeight: 20, marginBottom: 20 },
-  modalActionRow: { flexDirection: 'row', gap: 10, width: '100%' },
-  modalCancelButton: { flex: 1, backgroundColor: '#1E293B', paddingVertical: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: '#334155' },
-  modalCancelText: { color: '#F8FAFC', fontWeight: '700', fontSize: 13 },
-  modalConfirmButton: { flex: 1, backgroundColor: '#EF4444', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
-  modalConfirmText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   successButton: { width: '100%', backgroundColor: '#10B981', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   errorButton: { backgroundColor: '#EF4444' },
   successButtonText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
