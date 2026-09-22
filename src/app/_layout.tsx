@@ -1,6 +1,6 @@
-import { Tabs, usePathname, useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
 import { GlassView } from "expo-glass-effect";
+import { Tabs, usePathname, useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   BackHandler,
   Platform,
@@ -45,7 +45,7 @@ function GlobalBackHandler() {
 
     const subscription = BackHandler.addEventListener(
       "hardwareBackPress",
-      onBackPress
+      onBackPress,
     );
     return () => subscription.remove();
   }, [pathname, router]);
@@ -115,13 +115,27 @@ function ActiveTimerBanner() {
 }
 
 export default function RootLayout() {
+  const [dbReady, setDbReady] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
   const previousPathname = useRef(pathname);
   const lastHomeSubRoute = useRef<string | null>(null);
 
   useEffect(() => {
-    if (clearHomeSubRouteOnNextHome && (pathname === "/" || pathname === "/index")) {
+    try {
+      initDatabase();
+      console.log("Database intialized successfully on startup!");
+      setDbReady(true);
+    } catch (e) {
+      console.error("Failed to initialize database on startup:", e);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      clearHomeSubRouteOnNextHome &&
+      (pathname === "/" || pathname === "/index")
+    ) {
       lastHomeSubRoute.current = null;
       clearHomeSubRouteOnNextHome = false;
     } else if (pathname === "/analytics") {
@@ -136,18 +150,13 @@ export default function RootLayout() {
     previousPathname.current = pathname;
   }, [pathname]);
 
-  useEffect(() => {
-    try {
-      initDatabase();
-      console.log("Database initialized successfully on startup!");
-    } catch (e) {
-      console.error("Failed to initialize database on startup:", e);
-    }
-  }, []);
-
   // Check if current route is Home or a sub-page of Home (e.g., /analytics)
   const isHomeSubRoute =
     pathname === "/" || pathname === "/index" || pathname === "/analytics";
+
+  if (!dbReady) {
+    return null;
+  }
 
   return (
     <UserProvider>
@@ -179,9 +188,22 @@ export default function RootLayout() {
             options={{
               title: "Quests",
               tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>📜</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Quests</Text>
+                <View
+                  style={[styles.iconPill, focused && styles.iconPillActive]}
+                >
+                  <Text
+                    style={[styles.tabIcon, focused && styles.tabIconActive]}
+                  >
+                    📜
+                  </Text>
+                  <Text
+                    style={[
+                      styles.pillLabel,
+                      focused && styles.pillLabelActive,
+                    ]}
+                  >
+                    Quests
+                  </Text>
                 </View>
               ),
             }}
@@ -193,9 +215,22 @@ export default function RootLayout() {
             options={{
               title: "Focus",
               tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>⏱️</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Focus</Text>
+                <View
+                  style={[styles.iconPill, focused && styles.iconPillActive]}
+                >
+                  <Text
+                    style={[styles.tabIcon, focused && styles.tabIconActive]}
+                  >
+                    ⏱️
+                  </Text>
+                  <Text
+                    style={[
+                      styles.pillLabel,
+                      focused && styles.pillLabelActive,
+                    ]}
+                  >
+                    Focus
+                  </Text>
                 </View>
               ),
             }}
@@ -220,9 +255,28 @@ export default function RootLayout() {
               tabBarIcon: ({ focused }) => {
                 const isHomeActive = focused || isHomeSubRoute;
                 return (
-                  <View style={[styles.iconPill, isHomeActive && styles.iconPillActive]}>
-                    <Text style={[styles.tabIcon, isHomeActive && styles.tabIconActive]}>🏰</Text>
-                    <Text style={[styles.pillLabel, isHomeActive && styles.pillLabelActive]}>Home</Text>
+                  <View
+                    style={[
+                      styles.iconPill,
+                      isHomeActive && styles.iconPillActive,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tabIcon,
+                        isHomeActive && styles.tabIconActive,
+                      ]}
+                    >
+                      🏰
+                    </Text>
+                    <Text
+                      style={[
+                        styles.pillLabel,
+                        isHomeActive && styles.pillLabelActive,
+                      ]}
+                    >
+                      Home
+                    </Text>
                   </View>
                 );
               },
@@ -235,9 +289,22 @@ export default function RootLayout() {
             options={{
               title: "Shop",
               tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>🛒</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Shop</Text>
+                <View
+                  style={[styles.iconPill, focused && styles.iconPillActive]}
+                >
+                  <Text
+                    style={[styles.tabIcon, focused && styles.tabIconActive]}
+                  >
+                    🛒
+                  </Text>
+                  <Text
+                    style={[
+                      styles.pillLabel,
+                      focused && styles.pillLabelActive,
+                    ]}
+                  >
+                    Shop
+                  </Text>
                 </View>
               ),
             }}
@@ -249,9 +316,22 @@ export default function RootLayout() {
             options={{
               title: "Profile",
               tabBarIcon: ({ focused }) => (
-                <View style={[styles.iconPill, focused && styles.iconPillActive]}>
-                  <Text style={[styles.tabIcon, focused && styles.tabIconActive]}>👤</Text>
-                  <Text style={[styles.pillLabel, focused && styles.pillLabelActive]}>Profile</Text>
+                <View
+                  style={[styles.iconPill, focused && styles.iconPillActive]}
+                >
+                  <Text
+                    style={[styles.tabIcon, focused && styles.tabIconActive]}
+                  >
+                    👤
+                  </Text>
+                  <Text
+                    style={[
+                      styles.pillLabel,
+                      focused && styles.pillLabelActive,
+                    ]}
+                  >
+                    Profile
+                  </Text>
                 </View>
               ),
             }}
@@ -347,8 +427,18 @@ const styles = StyleSheet.create({
   },
   pausedBanner: { backgroundColor: "#F59E0B", shadowColor: "#F59E0B" },
   bannerInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pulseDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: "#FFFFFF" },
+  pulseDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#FFFFFF",
+  },
   pausedDot: { backgroundColor: "rgba(255, 255, 255, 0.6)" },
   bannerTitle: { color: "#FFFFFF", fontSize: 12, fontWeight: "bold" },
-  bannerTimer: { color: "#FFFFFF", fontSize: 14, fontWeight: "900", fontVariant: ["tabular-nums"] },
+  bannerTimer: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "900",
+    fontVariant: ["tabular-nums"],
+  },
 });
