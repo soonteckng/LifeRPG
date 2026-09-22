@@ -1,5 +1,24 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { getUserProfile, updateUserProfile, UserProfile } from '../../db/database';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
+import { supabase } from "../../lib/supabase";
+import { useAuth } from "./AuthContext";
+
+export interface UserProfile {
+  id: string;
+  username: string;
+  avatar: string;
+  class_title: string;
+  level: number;
+  current_xp: number;
+  gold: number;
+  streak_count: number;
+  last_active_date: string | null;
+}
 
 interface UserContextType {
   profile: UserProfile;
@@ -10,56 +29,105 @@ interface UserContextType {
   hapticsEnabled: boolean;
   setSoundEnabled: (val: boolean) => void;
   setHapticsEnabled: (val: boolean) => void;
-  updateProfile: (username: string, avatar: string, classTitle: string) => void;
+  updateProfile: (
+    username: string,
+    avatar: string,
+    classTitle: string,
+  ) => void;
   reloadProfile: () => void;
 }
 
 const defaultProfile: UserProfile = {
-  id: 1,
-  username: 'Hero',
-  avatar: '🧙‍♂️',
-  class_title: 'Scholar',
+  id: "",
+  username: "Hero",
+  avatar: "🧙‍♂️",
+  class_title: "Scholar",
   level: 1,
   current_xp: 0,
   gold: 0,
   streak_count: 1,
-  last_active_date: new Date().toISOString().split('T')[0],
+  last_active_date: new Date().toISOString().split("T")[0],
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth();
+
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
 
-  const reloadProfile = useCallback(() => {
+  const reloadProfile = useCallback(async () => {
+    if (!user) {
+      setProfile(defaultProfile);
+      return;
+    }
+
     try {
-      const user = getUserProfile();
-      if (user) {
-        setProfile({ ...user });
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(
+          "id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date",
+        )
+        .eq("id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Failed to reload cloud profile:", error);
+        return;
+      }
+
+      if (data) {
+        setProfile(data);
       }
     } catch (error) {
-      console.error('Failed to reload profile in UserContext:', error);
+      console.error("Failed to reload cloud profile:", error);
     }
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     reloadProfile();
   }, [reloadProfile]);
 
-  const updateProfile = (username: string, avatar: string, classTitle: string) => {
-    updateUserProfile(username, avatar, classTitle);
-    reloadProfile();
+  const updateProfile = async (
+    username: string,
+    avatar: string,
+    classTitle: string,
+  ) => {
+    if (!user) {
+      console.error("Cannot update profile: no authenticated user.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          username,
+          avatar,
+          class_title: classTitle,
+        })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Failed to update cloud profile:", error);
+        return;
+      }
+
+      await reloadProfile();
+    } catch (error) {
+      console.error("Failed to update cloud profile:", error);
+    }
   };
 
   return (
     <UserContext.Provider
       value={{
         profile,
-        username: profile.username || 'Hero',
-        avatar: profile.avatar || '🧙‍♂️',
-        classTitle: profile.class_title || 'Scholar',
+        username: profile.username || "Hero",
+        avatar: profile.avatar || "🧙‍♂️",
+        classTitle: profile.class_title || "Scholar",
         soundEnabled,
         hapticsEnabled,
         setSoundEnabled,
@@ -75,6 +143,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
 export function useUser() {
   const context = useContext(UserContext);
-  if (!context) throw new Error('useUser must be used within a UserProvider');
+
+  if (!context) {
+    throw new Error("useUser must be used within a UserProvider");
+  }
+
   return context;
 }
