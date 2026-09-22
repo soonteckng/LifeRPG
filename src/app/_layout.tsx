@@ -13,6 +13,8 @@ import { initDatabase } from "../../db/database";
 import LevelUpModal from "../components/LevelUpModal";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+import AuthScreen from "../components/AuthScreen";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 
 let clearHomeSubRouteOnNextHome = false;
 
@@ -114,22 +116,11 @@ function ActiveTimerBanner() {
   );
 }
 
-export default function RootLayout() {
-  const [dbReady, setDbReady] = useState(false);
+function AppContent() {
   const pathname = usePathname();
   const router = useRouter();
   const previousPathname = useRef(pathname);
   const lastHomeSubRoute = useRef<string | null>(null);
-
-  useEffect(() => {
-    try {
-      initDatabase();
-      console.log("Database intialized successfully on startup!");
-      setDbReady(true);
-    } catch (e) {
-      console.error("Failed to initialize database on startup:", e);
-    }
-  }, []);
 
   useEffect(() => {
     if (
@@ -150,18 +141,14 @@ export default function RootLayout() {
     previousPathname.current = pathname;
   }, [pathname]);
 
-  // Check if current route is Home or a sub-page of Home (e.g., /analytics)
   const isHomeSubRoute =
     pathname === "/" || pathname === "/index" || pathname === "/analytics";
-
-  if (!dbReady) {
-    return null;
-  }
 
   return (
     <UserProvider>
       <TimerProvider>
         <GlobalBackHandler />
+
         <Tabs
           initialRouteName="index"
           backBehavior="initialRoute"
@@ -182,6 +169,7 @@ export default function RootLayout() {
             tabBarLabelStyle: styles.tabLabel,
           }}
         >
+          {/* EVERYTHING currently inside your Tabs goes here */}
           {/* Tab 1: Quests */}
           <Tabs.Screen
             name="tasks"
@@ -236,7 +224,7 @@ export default function RootLayout() {
             }}
           />
 
-          {/* Tab 3: Home (Highlights for Home and Home Sub-pages like /analytics) */}
+          {/* Tab 3: Home */}
           <Tabs.Screen
             name="index"
             listeners={{
@@ -254,6 +242,7 @@ export default function RootLayout() {
               title: "Home",
               tabBarIcon: ({ focused }) => {
                 const isHomeActive = focused || isHomeSubRoute;
+
                 return (
                   <View
                     style={[
@@ -269,6 +258,7 @@ export default function RootLayout() {
                     >
                       🏰
                     </Text>
+
                     <Text
                       style={[
                         styles.pillLabel,
@@ -346,6 +336,44 @@ export default function RootLayout() {
         <GlobalRewardListener />
       </TimerProvider>
     </UserProvider>
+  );
+}
+
+function AuthGate() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return null;
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
+
+  return <AppContent />;
+}
+
+export default function RootLayout() {
+  const [dbReady, setDbReady] = useState(false);
+
+  useEffect(() => {
+    try {
+      initDatabase();
+      console.log("Database initialized successfully on startup!");
+      setDbReady(true);
+    } catch (e) {
+      console.error("Failed to initialize database on startup:", e);
+    }
+  }, []);
+
+  if (!dbReady) {
+    return null;
+  }
+
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }
 
