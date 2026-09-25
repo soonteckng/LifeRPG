@@ -23,9 +23,9 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Header from "../components/Header";
-import { useTimer } from "../context/TimerContext";
-import { useUser } from "../context/UserContext";
+import Header from "../../components/Header";
+import { useTimer } from "../../context/TimerContext";
+import { useUser } from "../../context/UserContext";
 import {
   createTask,
   deleteTask,
@@ -34,7 +34,7 @@ import {
   type Subject,
   type Task,
   updateTask,
-} from "../services/taskService";
+} from "../../services/taskService";
 
 const DURATION_OPTIONS = [15, 30, 45, 60];
 

@@ -13,13 +13,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Header from "../components/Header";
-import { useUser } from "../context/UserContext";
+import Header from "../../components/Header";
+import { useUser } from "../../context/UserContext";
 import {
   getCompletedSessions,
   getProgressSubjects,
   type ProgressSession,
-} from "../services/progressService";
+} from "../../services/progressService";
 
 const TIME_ZONE = "Asia/Kuala_Lumpur";
 

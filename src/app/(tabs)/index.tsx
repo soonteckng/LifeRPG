@@ -15,16 +15,16 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Header from "../components/Header";
-import { useTimer } from "../context/TimerContext";
-import { useUser } from "../context/UserContext";
+import Header from "../../components/Header";
+import { useTimer } from "../../context/TimerContext";
+import { useUser } from "../../context/UserContext";
 import {
   getSubjects,
   getTasks,
   type Subject,
   type Task,
-} from "../services/taskService";
-import { getTodayProgress } from "../services/dailyProgressService";
+} from "../../services/taskService";
+import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();

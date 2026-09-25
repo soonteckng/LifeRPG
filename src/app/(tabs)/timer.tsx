@@ -18,15 +18,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import Header from "../components/Header";
-import { useTimer } from "../context/TimerContext";
-import { useUser } from "../context/UserContext";
+import Header from "../../components/Header";
+import { useTimer } from "../../context/TimerContext";
+import { useUser } from "../../context/UserContext";
 import {
   getSubjects,
   getTasks,
   type Subject,
   type Task,
-} from "../services/taskService";
+} from "../../services/taskService";
 
 const PRESETS = [15, 30, 45, 60];
 

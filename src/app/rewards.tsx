@@ -1,12 +1,11 @@
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
-import React, {
-  useCallback,
-  useState,
-} from "react";
+import React, { useCallback, useState } from "react";
 import {
   Alert,
+  Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   RefreshControl,
   ScrollView,
@@ -20,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import Header from "../components/Header";
 import { useUser } from "../context/UserContext";
+import { getTodayProgress } from "../services/dailyProgressService";
 import {
   createReward,
   deleteReward,
@@ -32,7 +32,8 @@ import {
   type Reward,
   type RewardChest,
 } from "../services/rewardService";
-import { getTodayProgress } from "../services/dailyProgressService";
+
+const DEFAULT_DAILY_CHEST_GOLD = 50;
 
 export default function RewardsScreen() {
   const {
@@ -41,105 +42,85 @@ export default function RewardsScreen() {
     hapticsEnabled,
   } = useUser();
 
-  const [rewards, setRewards] = useState<
-    Reward[]
+  const [rewards, setRewards] = useState<Reward[]>([]);
+  const [exclusiveRewards, setExclusiveRewards] = useState<
+    ExclusiveReward[]
   >([]);
-
-  const [
-    exclusiveRewards,
-    setExclusiveRewards,
-  ] = useState<ExclusiveReward[]>([]);
-
   const [todayChest, setTodayChest] =
     useState<RewardChest | null>(null);
 
   const [completedMinutes, setCompletedMinutes] =
     useState(0);
-
   const [goalMinutes, setGoalMinutes] =
     useState(60);
-
   const [goalCompleted, setGoalCompleted] =
     useState(false);
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [openingChest, setOpeningChest] =
-    useState(false);
-
-  const [saving, setSaving] =
-    useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [openingChest, setOpeningChest] = useState(false);
 
   const [creatingReward, setCreatingReward] =
     useState(false);
+  const [saving, setSaving] = useState(false);
 
-  const [rewardTitle, setRewardTitle] =
-    useState("");
+  const [rewardTitle, setRewardTitle] = useState("");
+  const [rewardCost, setRewardCost] = useState("300");
 
-  const [rewardCost, setRewardCost] =
-    useState("300");
+  const gold = profile?.gold ?? 0;
 
-  const loadData = useCallback(
-    async () => {
-      try {
-        setLoading(true);
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
 
-        const [
-          rewardList,
-          exclusiveList,
-          chest,
-          progress,
-        ] = await Promise.all([
-          getRewards(),
-          getExclusiveRewards(),
-          getTodayRewardChest(),
-          getTodayProgress(),
-        ]);
+      const [
+        rewardList,
+        exclusiveList,
+        chest,
+        progress,
+      ] = await Promise.all([
+        getRewards(),
+        getExclusiveRewards(),
+        getTodayRewardChest(),
+        getTodayProgress(),
+      ]);
 
-        setRewards(rewardList);
-        setExclusiveRewards(
-          exclusiveList,
-        );
-        setTodayChest(chest);
+      setRewards(rewardList);
+      setExclusiveRewards(exclusiveList);
+      setTodayChest(chest);
 
-        setCompletedMinutes(
-          progress?.completed_minutes ?? 0,
-        );
+      setCompletedMinutes(
+        progress?.completed_minutes ?? 0,
+      );
 
-        setGoalMinutes(
-          progress?.goal_minutes ??
-            profile?.daily_goal_minutes ??
-            60,
-        );
+      setGoalMinutes(
+        progress?.goal_minutes ??
+          profile?.daily_goal_minutes ??
+          60,
+      );
 
-        setGoalCompleted(
-          progress?.goal_completed ?? false,
-        );
+      setGoalCompleted(
+        progress?.goal_completed ?? false,
+      );
 
-        await reloadProfile();
-      } catch (error) {
-        console.error(
-          "Failed to load rewards:",
-          error,
-        );
+      await reloadProfile();
+    } catch (error) {
+      console.error(
+        "Failed to load rewards:",
+        error,
+      );
 
-        Alert.alert(
-          "Couldn't load rewards",
-          "Please check your connection and try again.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      profile?.daily_goal_minutes,
-      reloadProfile,
-    ],
-  );
+      Alert.alert(
+        "Couldn't load rewards",
+        "Please check your connection and try again.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    profile?.daily_goal_minutes,
+    reloadProfile,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -147,33 +128,31 @@ export default function RewardsScreen() {
     }, [loadData]),
   );
 
-  const onRefresh = useCallback(
-    async () => {
-      setRefreshing(true);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
 
-      try {
-        await loadData();
-      } finally {
-        setRefreshing(false);
-      }
-    },
-    [loadData],
-  );
-
-  const gold = profile?.gold ?? 0;
+    try {
+      await loadData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadData]);
 
   const goalProgress = Math.min(
     1,
-    completedMinutes /
-      Math.max(1, goalMinutes),
+    completedMinutes / Math.max(1, goalMinutes),
   );
 
   const chestOpened =
-    todayChest?.opened_at !== null &&
-    todayChest !== null;
+    todayChest !== null &&
+    todayChest.opened_at !== null;
 
   const chestReady =
     goalCompleted && !chestOpened;
+
+  const chestGold =
+    todayChest?.reward_gold ??
+    DEFAULT_DAILY_CHEST_GOLD;
 
   const openChest = async () => {
     if (!chestReady || openingChest) {
@@ -202,12 +181,11 @@ export default function RewardsScreen() {
             "Complete today's goal first.",
           );
         } else if (
-          result.reason ===
-          "already_opened"
+          result.reason === "already_opened"
         ) {
           Alert.alert(
-            "Already opened",
-            "Today's chest has already been opened.",
+            "Chest already opened",
+            "Today's reward has already been claimed.",
           );
         } else {
           Alert.alert(
@@ -227,8 +205,10 @@ export default function RewardsScreen() {
       }
 
       Alert.alert(
-        "Chest opened 🎉",
-        `You received ${result.reward_gold ?? 0} Gold!`,
+        "Daily Reward Claimed 🎉",
+        `You received ${
+          result.reward_gold ?? chestGold
+        } Gold.`,
       );
 
       await reloadProfile();
@@ -264,78 +244,64 @@ export default function RewardsScreen() {
     setRewardCost("300");
   };
 
-  const handleCreateReward =
-    async () => {
-      const title =
-        rewardTitle.trim();
+  const handleCreateReward = async () => {
+    const title = rewardTitle.trim();
+    const cost = Number.parseInt(
+      rewardCost,
+      10,
+    );
 
-      const cost = Number.parseInt(
-        rewardCost,
-        10,
+    if (!title) {
+      Alert.alert(
+        "Reward name missing",
+        "Give your reward a name first.",
+      );
+      return;
+    }
+
+    if (!Number.isFinite(cost) || cost < 1) {
+      Alert.alert(
+        "Invalid Gold cost",
+        "Enter a Gold cost of at least 1.",
+      );
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      await createReward(title, cost);
+
+      if (hapticsEnabled) {
+        Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+      }
+
+      closeCreateReward();
+      await loadData();
+    } catch (error) {
+      console.error(
+        "Failed to create reward:",
+        error,
       );
 
-      if (!title) {
-        Alert.alert(
-          "Reward name missing",
-          "Give your reward a name first.",
-        );
-        return;
-      }
+      Alert.alert(
+        "Couldn't create reward",
+        "Please try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
 
-      if (
-        !Number.isFinite(cost) ||
-        cost < 1
-      ) {
-        Alert.alert(
-          "Invalid Gold cost",
-          "Enter a Gold cost of at least 1.",
-        );
-        return;
-      }
-
-      try {
-        setSaving(true);
-
-        await createReward(
-          title,
-          cost,
-        );
-
-        if (hapticsEnabled) {
-          Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Success,
-          );
-        }
-
-        setCreatingReward(false);
-        setRewardTitle("");
-        setRewardCost("300");
-
-        await loadData();
-      } catch (error) {
-        console.error(
-          "Failed to create reward:",
-          error,
-        );
-
-        Alert.alert(
-          "Couldn't create reward",
-          "Please try again.",
-        );
-      } finally {
-        setSaving(false);
-      }
-    };
-
-  const handleRedeem = async (
-    reward: Reward,
-  ) => {
+  const handleRedeem = (reward: Reward) => {
     if (gold < reward.cost_gold) {
       Alert.alert(
         "Not enough Gold",
         `You need ${
           reward.cost_gold - gold
-        } more Gold to redeem this reward.`,
+        } more Gold.`,
       );
       return;
     }
@@ -359,9 +325,7 @@ export default function RewardsScreen() {
               }
 
               const result =
-                await redeemReward(
-                  reward.id,
-                );
+                await redeemReward(reward.id);
 
               if (!result.success) {
                 Alert.alert(
@@ -371,7 +335,7 @@ export default function RewardsScreen() {
                     : "Couldn't redeem",
                   result.reason ===
                     "insufficient_gold"
-                    ? "You don't have enough Gold for this reward."
+                    ? "You don't have enough Gold."
                     : "This reward could not be redeemed.",
                 );
 
@@ -386,8 +350,8 @@ export default function RewardsScreen() {
               }
 
               Alert.alert(
-                "Reward redeemed 🎉",
-                `"${reward.title}" is yours.`,
+                "Reward Redeemed 🎉",
+                `"${reward.title}" has been redeemed.`,
               );
 
               await reloadProfile();
@@ -409,9 +373,7 @@ export default function RewardsScreen() {
     );
   };
 
-  const handleDelete = (
-    reward: Reward,
-  ) => {
+  const handleDelete = (reward: Reward) => {
     Alert.alert(
       "Delete reward?",
       `"${reward.title}" will be permanently removed.`,
@@ -425,9 +387,7 @@ export default function RewardsScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              await deleteReward(
-                reward.id,
-              );
+              await deleteReward(reward.id);
 
               if (hapticsEnabled) {
                 Haptics.notificationAsync(
@@ -456,9 +416,7 @@ export default function RewardsScreen() {
   const isExclusiveUnlocked = (
     reward: ExclusiveReward,
   ) => {
-    switch (
-      reward.unlock_type
-    ) {
+    switch (reward.unlock_type) {
       case "streak":
         return (
           (profile?.streak_count ?? 0) >=
@@ -473,11 +431,6 @@ export default function RewardsScreen() {
 
       case "sessions":
       case "minutes":
-        /*
-         * Lifetime session/minute tracking
-         * will be connected when the
-         * progression system exposes it.
-         */
         return false;
 
       default:
@@ -485,19 +438,15 @@ export default function RewardsScreen() {
     }
   };
 
-  const getExclusiveProgressText = (
+  const getExclusiveProgress = (
     reward: ExclusiveReward,
   ) => {
-    switch (
-      reward.unlock_type
-    ) {
+    switch (reward.unlock_type) {
       case "streak":
         return `${Math.min(
           profile?.streak_count ?? 0,
           reward.unlock_value,
-        )} / ${
-          reward.unlock_value
-        } day streak`;
+        )} / ${reward.unlock_value} days`;
 
       case "level":
         return `Level ${
@@ -515,21 +464,22 @@ export default function RewardsScreen() {
     }
   };
 
+  const unlockedExclusiveCount =
+    exclusiveRewards.filter(
+      isExclusiveUnlocked,
+    ).length;
+
   return (
-    <SafeAreaView
-      style={styles.container}
-    >
+    <SafeAreaView style={styles.container}>
       <Header
         title="Rewards"
-        subtitle="Turn progress into something meaningful"
-        showBack={false}
+        subtitle="Earn it. Unlock it. Enjoy it."
+        showBack={true}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={
-          styles.content
-        }
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -538,114 +488,104 @@ export default function RewardsScreen() {
           />
         }
       >
-        {/* GOLD */}
-        <View
-          style={styles.goldCard}
-        >
+        {/* GOLD WALLET */}
+        <View style={styles.walletCard}>
           <View>
-            <Text
-              style={styles.goldLabel}
-            >
-              YOUR GOLD
+            <Text style={styles.eyebrow}>
+              GOLD WALLET
             </Text>
 
-            <Text
-              style={styles.goldAmount}
-            >
+            <Text style={styles.goldAmount}>
               💰 {gold}
+            </Text>
+
+            <Text style={styles.goldCaption}>
+              Earned through completed sessions
             </Text>
           </View>
 
-          <View
-            style={styles.goldInfo}
-          >
-            <Text
-              style={styles.goldInfoText}
-            >
-              Earn Gold from completed
-              sessions.
-            </Text>
-
-            <Text
-              style={styles.goldInfoText}
-            >
-              Spend it on rewards you choose.
+          <View style={styles.walletBadge}>
+            <Text style={styles.walletBadgeText}>
+              REWARD CURRENCY
             </Text>
           </View>
         </View>
 
-        {/* DAILY REWARD CHEST */}
-        <View
-          style={styles.chestCard}
-        >
-          <View
-            style={styles.chestTopRow}
-          >
+        {/* DAILY CHEST */}
+        <View style={styles.featureCard}>
+          <View style={styles.featureTop}>
             <View
-              style={styles.chestIconBox}
+              style={[
+                styles.featureIconBox,
+                chestReady &&
+                  styles.featureIconBoxReady,
+              ]}
             >
-              <Text
-                style={styles.chestIcon}
-              >
+              <Text style={styles.featureIcon}>
                 {chestOpened
                   ? "📦"
-                  : "🎁"}
+                  : chestReady
+                    ? "🎁"
+                    : "🔒"}
               </Text>
             </View>
 
-            <View
-              style={styles.chestInfo}
-            >
-              <Text
-                style={styles.chestTitle}
-              >
+            <View style={styles.featureInfo}>
+              <Text style={styles.featureTitle}>
                 Daily Reward Chest
               </Text>
 
+              <Text style={styles.featureDescription}>
+                {chestOpened
+                  ? "Today's reward has already been claimed."
+                  : chestReady
+                    ? `Your chest is ready. Guaranteed +${chestGold} Gold.`
+                    : "Complete today's Daily Goal to unlock it."}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.statusPill,
+                chestReady &&
+                  styles.statusPillReady,
+                chestOpened &&
+                  styles.statusPillDone,
+              ]}
+            >
               <Text
-                style={styles.chestDescription}
+                style={[
+                  styles.statusPillText,
+                  chestReady &&
+                    styles.statusPillTextReady,
+                  chestOpened &&
+                    styles.statusPillTextDone,
+                ]}
               >
                 {chestOpened
-                  ? "Today's chest has already been opened."
-                  : "Complete your Daily Goal to earn today's chest."}
+                  ? "CLAIMED"
+                  : chestReady
+                    ? "READY"
+                    : "LOCKED"}
               </Text>
             </View>
           </View>
 
-          <View
-            style={
-              styles.chestProgressHeader
-            }
-          >
-            <Text
-              style={
-                styles.chestProgressText
-              }
-            >
+          <View style={styles.goalRow}>
+            <Text style={styles.goalLabel}>
+              DAILY GOAL
+            </Text>
+
+            <Text style={styles.goalValue}>
               {completedMinutes} /{" "}
               {goalMinutes} min
             </Text>
-
-            <Text
-              style={
-                styles.chestProgressText
-              }
-            >
-              {Math.round(
-                goalProgress * 100,
-              )}
-              %
-            </Text>
           </View>
 
-          <View
-            style={
-              styles.chestProgressTrack
-            }
-          >
+          <View style={styles.progressTrack}>
             <View
               style={[
-                styles.chestProgressFill,
+                styles.progressFill,
                 {
                   width: `${goalProgress * 100}%`,
                 },
@@ -653,41 +593,27 @@ export default function RewardsScreen() {
             />
           </View>
 
-          <View
-            style={
-              styles.chestBottomRow
-            }
-          >
-            <Text
-              style={styles.chestStatus}
-            >
+          <View style={styles.featureBottom}>
+            <Text style={styles.featureBottomText}>
               {chestOpened
-                ? "Come back tomorrow for another chest."
+                ? "Come back tomorrow."
                 : chestReady
-                  ? "Chest ready to open."
+                  ? `+${chestGold} Gold guaranteed`
                   : `${Math.max(
                       0,
                       goalMinutes -
                         completedMinutes,
-                    )} min remaining.`}
+                    )} min remaining`}
             </Text>
 
             {chestReady && (
               <TouchableOpacity
-                style={
-                  styles.openChestButton
-                }
+                style={styles.primaryButton}
                 onPress={openChest}
-                disabled={
-                  openingChest
-                }
+                disabled={openingChest}
                 activeOpacity={0.85}
               >
-                <Text
-                  style={
-                    styles.openChestText
-                  }
-                >
+                <Text style={styles.primaryButtonText}>
                   {openingChest
                     ? "OPENING..."
                     : "OPEN CHEST"}
@@ -698,192 +624,126 @@ export default function RewardsScreen() {
         </View>
 
         {/* PERSONAL REWARDS */}
-        <View
-          style={styles.sectionHeader}
-        >
-          <View>
-            <Text
-              style={styles.sectionTitle}
-            >
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleGroup}>
+            <Text style={styles.sectionTitle}>
               PERSONAL REWARDS
             </Text>
 
-            <Text
-              style={styles.sectionSubtitle}
-            >
-              Rewards you choose for yourself.
+            <Text style={styles.sectionSubtitle}>
+              Real-life treats you choose for yourself
             </Text>
           </View>
 
           <TouchableOpacity
-            style={styles.addRewardButton}
-            onPress={
-              openCreateReward
-            }
+            style={styles.addButton}
+            onPress={openCreateReward}
+            activeOpacity={0.8}
           >
-            <Text
-              style={
-                styles.addRewardButtonText
-              }
-            >
+            <Text style={styles.addButtonText}>
               +
             </Text>
           </TouchableOpacity>
         </View>
 
         {loading ? (
-          <View
-            style={styles.loadingCard}
-          >
-            <Text
-              style={styles.loadingText}
-            >
+          <View style={styles.simpleCard}>
+            <Text style={styles.mutedText}>
               Loading rewards...
             </Text>
           </View>
         ) : rewards.length === 0 ? (
-          <View
-            style={styles.emptyCard}
-          >
-            <Text
-              style={styles.emptyIcon}
-            >
-              🎁
+          <View style={styles.emptyRewardCard}>
+            <Text style={styles.emptyRewardIcon}>
+              🎯
             </Text>
 
-            <Text
-              style={styles.emptyTitle}
-            >
+            <Text style={styles.emptyRewardTitle}>
               No personal rewards yet
             </Text>
 
-            <Text
-              style={styles.emptyText}
-            >
+            <Text style={styles.emptyRewardText}>
               Create something you genuinely
               want to earn with your Gold.
             </Text>
 
             <TouchableOpacity
-              style={
-                styles.emptyAction
-              }
-              onPress={
-                openCreateReward
-              }
+              style={styles.secondaryButton}
+              onPress={openCreateReward}
             >
               <Text
-                style={
-                  styles.emptyActionText
-                }
+                style={styles.secondaryButtonText}
               >
-                CREATE REWARD
+                CREATE FIRST REWARD
               </Text>
             </TouchableOpacity>
           </View>
         ) : (
           rewards.map((reward) => {
             const canRedeem =
-              gold >=
-              reward.cost_gold;
+              gold >= reward.cost_gold;
 
             return (
               <View
                 key={reward.id}
                 style={styles.rewardCard}
               >
-                <View
-                  style={
-                    styles.rewardMain
-                  }
-                >
-                  <View
-                    style={
-                      styles.rewardIconBox
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.rewardIcon
-                      }
-                    >
+                <View style={styles.rewardTop}>
+                  <View style={styles.rewardIconBox}>
+                    <Text style={styles.rewardIcon}>
                       🎁
                     </Text>
                   </View>
 
-                  <View
-                    style={
-                      styles.rewardInfo
-                    }
-                  >
+                  <View style={styles.rewardInfo}>
                     <Text
-                      style={
-                        styles.rewardTitle
-                      }
+                      style={styles.rewardTitle}
                       numberOfLines={2}
                     >
                       {reward.title}
                     </Text>
 
-                    <Text
-                      style={
-                        styles.rewardCost
-                      }
-                    >
-                      💰{" "}
-                      {
-                        reward.cost_gold
-                      }
+                    <Text style={styles.rewardCost}>
+                      💰 {reward.cost_gold} Gold
                     </Text>
                   </View>
                 </View>
 
-                <View
-                  style={
-                    styles.rewardActions
-                  }
-                >
+                <View style={styles.rewardActionRow}>
                   <TouchableOpacity
                     style={[
-                      styles.redeemButton,
+                      styles.rewardRedeemButton,
                       !canRedeem &&
-                        styles.redeemButtonDisabled,
+                        styles.rewardRedeemDisabled,
                     ]}
                     onPress={() =>
-                      handleRedeem(
-                        reward,
-                      )
+                      handleRedeem(reward)
                     }
-                    disabled={
-                      !canRedeem
-                    }
+                    disabled={!canRedeem}
                   >
                     <Text
                       style={[
-                        styles.redeemButtonText,
+                        styles.rewardRedeemText,
                         !canRedeem &&
-                          styles.redeemButtonTextDisabled,
+                          styles.rewardRedeemTextDisabled,
                       ]}
                     >
-                      REDEEM
+                      {canRedeem
+                        ? "REDEEM"
+                        : `NEED ${
+                            reward.cost_gold -
+                            gold
+                          } MORE`}
                     </Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={
-                      styles.deleteRewardButton
-                    }
+                    style={styles.deleteButton}
                     onPress={() =>
-                      handleDelete(
-                        reward,
-                      )
+                      handleDelete(reward)
                     }
                   >
-                    <Text
-                      style={
-                        styles.deleteRewardText
-                      }
-                    >
+                    <Text style={styles.deleteButtonText}>
                       ✕
                     </Text>
                   </TouchableOpacity>
@@ -893,205 +753,137 @@ export default function RewardsScreen() {
           })
         )}
 
-        {/* EXCLUSIVE REWARDS */}
-        <View
-          style={styles.sectionHeader}
-        >
-          <View>
-            <Text
-              style={styles.sectionTitle}
-            >
-              EXCLUSIVE REWARDS
+        {/* MILESTONE REWARDS */}
+        <View style={styles.sectionHeader}>
+          <View style={styles.sectionTitleGroup}>
+            <Text style={styles.sectionTitle}>
+              MILESTONE REWARDS
             </Text>
 
-            <Text
-              style={styles.sectionSubtitle}
-            >
-              Milestone rewards that you unlock,
-              not buy.
+            <Text style={styles.sectionSubtitle}>
+              Unlock them through progression
+            </Text>
+          </View>
+
+          <View style={styles.counterPill}>
+            <Text style={styles.counterPillText}>
+              {unlockedExclusiveCount} /{" "}
+              {exclusiveRewards.length}
             </Text>
           </View>
         </View>
 
         {exclusiveRewards.length === 0 ? (
-          <View
-            style={styles.emptyCard}
-          >
-            <Text
-              style={styles.emptyText}
-            >
-              No exclusive rewards are
-              configured yet.
+          <View style={styles.simpleCard}>
+            <Text style={styles.mutedText}>
+              No milestone rewards configured yet.
             </Text>
           </View>
         ) : (
-          exclusiveRewards.map(
-            (reward) => {
-              const unlocked =
-                isExclusiveUnlocked(
-                  reward,
-                );
+          exclusiveRewards.map((reward) => {
+            const unlocked =
+              isExclusiveUnlocked(reward);
 
-              return (
+            return (
+              <View
+                key={reward.id}
+                style={[
+                  styles.milestoneCard,
+                  unlocked &&
+                    styles.milestoneCardUnlocked,
+                ]}
+              >
                 <View
-                  key={reward.id}
                   style={[
-                    styles.exclusiveCard,
+                    styles.milestoneIconBox,
                     unlocked &&
-                      styles.exclusiveCardUnlocked,
+                      styles.milestoneIconBoxUnlocked,
                   ]}
                 >
-                  <View
-                    style={
-                      styles.exclusiveMain
-                    }
-                  >
-                    <View
-                      style={[
-                        styles.exclusiveIconBox,
-                        unlocked &&
-                          styles.exclusiveIconBoxUnlocked,
-                      ]}
-                    >
-                      <Text
-                        style={
-                          styles.exclusiveIcon
-                        }
-                      >
-                        {unlocked
-                          ? reward.icon
-                          : "🔒"}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={
-                        styles.exclusiveInfo
-                      }
-                    >
-                      <Text
-                        style={[
-                          styles.exclusiveTitle,
-                          !unlocked &&
-                            styles.exclusiveTitleLocked,
-                        ]}
-                      >
-                        {reward.title}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.exclusiveDescription
-                        }
-                      >
-                        {
-                          reward.description
-                        }
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.exclusiveProgress
-                        }
-                      >
-                        {getExclusiveProgressText(
-                          reward,
-                        )}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={[
-                        styles.unlockBadge,
-                        unlocked &&
-                          styles.unlockBadgeUnlocked,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.unlockBadgeText,
-                          unlocked &&
-                            styles.unlockBadgeTextUnlocked,
-                        ]}
-                      >
-                        {unlocked
-                          ? "UNLOCKED"
-                          : "LOCKED"}
-                      </Text>
-                    </View>
-                  </View>
+                  <Text style={styles.milestoneIcon}>
+                    {unlocked
+                      ? reward.icon
+                      : "🔒"}
+                  </Text>
                 </View>
-              );
-            },
-          )
+
+                <View style={styles.milestoneInfo}>
+                  <View style={styles.milestoneTitleRow}>
+                    <Text
+                      style={[
+                        styles.milestoneTitle,
+                        !unlocked &&
+                          styles.milestoneTitleLocked,
+                      ]}
+                    >
+                      {reward.title}
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.milestoneStatus,
+                        unlocked &&
+                          styles.milestoneStatusUnlocked,
+                      ]}
+                    >
+                      {unlocked
+                        ? "UNLOCKED"
+                        : "LOCKED"}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.milestoneDescription}>
+                    {reward.description}
+                  </Text>
+
+                  <Text style={styles.milestoneProgress}>
+                    {getExclusiveProgress(reward)}
+                  </Text>
+                </View>
+              </View>
+            );
+          })
         )}
 
-        {/* LEADERBOARD */}
-        <View
-          style={styles.leaderboardCard}
-        >
-          <View
-            style={
-              styles.leaderboardIconBox
-            }
-          >
-            <Text
-              style={
-                styles.leaderboardIcon
-              }
-            >
+        {/* FUTURE SOCIAL SYSTEM */}
+        <View style={styles.futureCard}>
+          <View style={styles.futureIconBox}>
+            <Text style={styles.futureIcon}>
               🏆
             </Text>
           </View>
 
-          <View
-            style={
-              styles.leaderboardInfo
-            }
-          >
-            <Text
-              style={
-                styles.leaderboardTitle
-              }
-            >
-              Weekly Leaderboard
+          <View style={styles.futureInfo}>
+            <Text style={styles.futureTitle}>
+              Community Rewards
             </Text>
 
-            <Text
-              style={
-                styles.leaderboardText
-              }
-            >
-              Compare progress with friends
-              and other heroes.
+            <Text style={styles.futureText}>
+              Leaderboards, seasonal events,
+              cosmetics, titles, and other
+              multiplayer reward systems can
+              come here later.
             </Text>
           </View>
 
-          <View
-            style={
-              styles.soonBadge
-            }
-          >
-            <Text
-              style={
-                styles.soonBadgeText
-              }
-            >
+          <View style={styles.futureBadge}>
+            <Text style={styles.futureBadgeText}>
               SOON
             </Text>
           </View>
         </View>
 
-        <View
-          style={styles.bottomSpace}
-        />
+        <View style={styles.bottomSpace} />
       </ScrollView>
 
       {/* CREATE PERSONAL REWARD */}
-      {creatingReward && (
-        <View
-          style={styles.modalOverlay}
-        >
+      <Modal
+        visible={creatingReward}
+        transparent
+        animationType="fade"
+        onRequestClose={closeCreateReward}
+      >
+        <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
             style={styles.modalKeyboard}
             behavior={
@@ -1100,90 +892,55 @@ export default function RewardsScreen() {
                 : "padding"
             }
           >
-            <View
-              style={styles.modalCard}
-            >
-              <View
-                style={
-                  styles.modalHeader
-                }
-              >
+            <View style={styles.modalCard}>
+              <View style={styles.modalHeader}>
                 <View>
-                  <Text
-                    style={
-                      styles.modalTitle
-                    }
-                  >
-                    Create Reward
+                  <Text style={styles.modalTitle}>
+                    Create Personal Reward
                   </Text>
 
                   <Text
-                    style={
-                      styles.modalSubtitle
-                    }
+                    style={styles.modalSubtitle}
                   >
-                    Decide what your Gold can
-                    buy.
+                    Decide what your Gold is worth.
                   </Text>
                 </View>
 
                 <TouchableOpacity
-                  onPress={
-                    closeCreateReward
-                  }
+                  onPress={closeCreateReward}
                   disabled={saving}
                 >
-                  <Text
-                    style={
-                      styles.closeButton
-                    }
-                  >
+                  <Text style={styles.closeButton}>
                     ✕
                   </Text>
                 </TouchableOpacity>
               </View>
 
-              <Text
-                style={styles.inputLabel}
-              >
+              <Text style={styles.inputLabel}>
                 REWARD NAME
               </Text>
 
               <TextInput
-                value={
-                  rewardTitle
-                }
-                onChangeText={
-                  setRewardTitle
-                }
+                value={rewardTitle}
+                onChangeText={setRewardTitle}
                 placeholder="e.g. 30-Minute Gaming Session"
                 placeholderTextColor="#64748B"
-                style={
-                  styles.titleInput
-                }
+                style={styles.input}
                 autoFocus
                 maxLength={100}
               />
 
-              <Text
-                style={styles.inputLabel}
-              >
+              <Text style={styles.inputLabel}>
                 GOLD COST
               </Text>
 
               <TextInput
-                value={
-                  rewardCost
-                }
-                onChangeText={
-                  setRewardCost
-                }
+                value={rewardCost}
+                onChangeText={setRewardCost}
                 keyboardType="number-pad"
                 placeholder="300"
                 placeholderTextColor="#64748B"
-                style={
-                  styles.titleInput
-                }
+                style={styles.input}
                 maxLength={5}
               />
 
@@ -1193,18 +950,10 @@ export default function RewardsScreen() {
                   saving &&
                     styles.createButtonDisabled,
                 ]}
-                onPress={
-                  handleCreateReward
-                }
-                disabled={
-                  saving
-                }
+                onPress={handleCreateReward}
+                disabled={saving}
               >
-                <Text
-                  style={
-                    styles.createButtonText
-                  }
-                >
+                <Text style={styles.createButtonText}>
                   {saving
                     ? "CREATING..."
                     : "CREATE REWARD"}
@@ -1212,26 +961,18 @@ export default function RewardsScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={
-                  styles.cancelButton
-                }
-                onPress={
-                  closeCreateReward
-                }
+                style={styles.cancelButton}
+                onPress={closeCreateReward}
                 disabled={saving}
               >
-                <Text
-                  style={
-                    styles.cancelButtonText
-                  }
-                >
+                <Text style={styles.cancelButtonText}>
                   Cancel
                 </Text>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
         </View>
-      )}
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1243,143 +984,184 @@ const styles = StyleSheet.create({
   },
 
   content: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
+    paddingHorizontal: 18,
+    paddingBottom: 110,
   },
 
-  goldCard: {
-    marginTop: 6,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor:
-      "rgba(245,158,11,0.08)",
+  walletCard: {
+    marginTop: 8,
+    padding: 20,
+    borderRadius: 24,
+    backgroundColor: "rgba(245,158,11,0.09)",
     borderWidth: 1,
-    borderColor:
-      "rgba(245,158,11,0.16)",
+    borderColor: "rgba(245,158,11,0.2)",
     flexDirection: "row",
-    alignItems: "center",
     justifyContent: "space-between",
+    alignItems: "center",
   },
 
-  goldLabel: {
+  eyebrow: {
     color: "#A16207",
     fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 0.9,
+    letterSpacing: 1,
   },
 
   goldAmount: {
     color: "#FBBF24",
-    fontSize: 25,
+    fontSize: 30,
     fontWeight: "900",
+    marginTop: 3,
+  },
+
+  goldCaption: {
+    color: "#92400E",
+    fontSize: 9,
     marginTop: 4,
   },
 
-  goldInfo: {
-    maxWidth: 155,
+  walletBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 9,
+    backgroundColor: "rgba(245,158,11,0.1)",
   },
 
-  goldInfoText: {
-    color: "#92400E",
-    fontSize: 9,
-    lineHeight: 14,
-    fontWeight: "700",
-    textAlign: "right",
+  walletBadgeText: {
+    color: "#FBBF24",
+    fontSize: 7,
+    fontWeight: "900",
   },
 
-  chestCard: {
+  featureCard: {
     marginTop: 14,
     padding: 18,
-    borderRadius: 22,
-    backgroundColor:
-      "rgba(99,102,241,0.10)",
+    borderRadius: 24,
+    backgroundColor: "rgba(99,102,241,0.11)",
     borderWidth: 1,
-    borderColor:
-      "rgba(129,140,248,0.22)",
+    borderColor: "rgba(129,140,248,0.24)",
   },
 
-  chestTopRow: {
+  featureTop: {
     flexDirection: "row",
     alignItems: "center",
   },
 
-  chestIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor:
-      "rgba(99,102,241,0.18)",
+  featureIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 17,
+    backgroundColor: "rgba(255,255,255,0.05)",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  chestIcon: {
-    fontSize: 28,
+  featureIconBoxReady: {
+    backgroundColor: "rgba(99,102,241,0.22)",
   },
 
-  chestInfo: {
+  featureIcon: {
+    fontSize: 30,
+  },
+
+  featureInfo: {
     flex: 1,
     minWidth: 0,
     marginLeft: 12,
+    marginRight: 8,
   },
 
-  chestTitle: {
+  featureTitle: {
     color: "#F8FAFC",
     fontSize: 14,
     fontWeight: "900",
   },
 
-  chestDescription: {
+  featureDescription: {
     color: "#94A3B8",
     fontSize: 10,
     lineHeight: 15,
-    marginTop: 5,
+    marginTop: 4,
   },
 
-  chestProgressHeader: {
+  statusPill: {
+    paddingHorizontal: 7,
+    paddingVertical: 5,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.05)",
+  },
+
+  statusPillReady: {
+    backgroundColor: "rgba(99,102,241,0.18)",
+  },
+
+  statusPillDone: {
+    backgroundColor: "rgba(16,185,129,0.1)",
+  },
+
+  statusPillText: {
+    color: "#64748B",
+    fontSize: 7,
+    fontWeight: "900",
+  },
+
+  statusPillTextReady: {
+    color: "#A5B4FC",
+  },
+
+  statusPillTextDone: {
+    color: "#34D399",
+  },
+
+  goalRow: {
+    marginTop: 17,
+    marginBottom: 7,
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 16,
-    marginBottom: 6,
   },
 
-  chestProgressText: {
+  goalLabel: {
+    color: "#64748B",
+    fontSize: 8,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+  },
+
+  goalValue: {
     color: "#A5B4FC",
     fontSize: 9,
     fontWeight: "800",
   },
 
-  chestProgressTrack: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor:
-      "rgba(255,255,255,0.07)",
+  progressTrack: {
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: "rgba(255,255,255,0.07)",
     overflow: "hidden",
   },
 
-  chestProgressFill: {
+  progressFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 5,
     backgroundColor: "#6366F1",
   },
 
-  chestBottomRow: {
-    marginTop: 9,
+  featureBottom: {
+    marginTop: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
   },
 
-  chestStatus: {
+  featureBottomText: {
     flex: 1,
     color: "#64748B",
     fontSize: 9,
-    lineHeight: 14,
   },
 
-  openChestButton: {
-    minWidth: 104,
+  primaryButton: {
+    minWidth: 108,
     height: 38,
     borderRadius: 11,
     backgroundColor: "#6366F1",
@@ -1388,18 +1170,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
 
-  openChestText: {
+  primaryButtonText: {
     color: "#FFFFFF",
     fontSize: 9,
     fontWeight: "900",
   },
 
   sectionHeader: {
-    marginTop: 24,
+    marginTop: 25,
     marginBottom: 10,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+
+  sectionTitleGroup: {
+    flex: 1,
   },
 
   sectionTitle: {
@@ -1415,61 +1201,71 @@ const styles = StyleSheet.create({
     marginTop: 3,
   },
 
-  addRewardButton: {
+  addButton: {
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor:
-      "rgba(99,102,241,0.16)",
+    backgroundColor: "rgba(99,102,241,0.15)",
     borderWidth: 1,
-    borderColor:
-      "rgba(129,140,248,0.25)",
+    borderColor: "rgba(129,140,248,0.24)",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  addRewardButtonText: {
+  addButtonText: {
     color: "#A5B4FC",
     fontSize: 23,
     fontWeight: "300",
   },
 
-  loadingCard: {
-    padding: 22,
+  counterPill: {
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 9,
+    backgroundColor: "rgba(99,102,241,0.1)",
+  },
+
+  counterPillText: {
+    color: "#A5B4FC",
+    fontSize: 8,
+    fontWeight: "900",
+  },
+
+  simpleCard: {
+    padding: 20,
     borderRadius: 18,
-    backgroundColor:
-      "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
     alignItems: "center",
   },
 
-  loadingText: {
+  mutedText: {
     color: "#64748B",
     fontSize: 10,
   },
 
-  emptyCard: {
+  emptyRewardCard: {
     padding: 24,
     borderRadius: 20,
-    backgroundColor:
-      "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
   },
 
-  emptyIcon: {
-    fontSize: 30,
+  emptyRewardIcon: {
+    fontSize: 31,
   },
 
-  emptyTitle: {
+  emptyRewardTitle: {
     color: "#F8FAFC",
     fontSize: 14,
     fontWeight: "900",
     marginTop: 8,
   },
 
-  emptyText: {
+  emptyRewardText: {
     color: "#64748B",
     fontSize: 10,
     lineHeight: 15,
@@ -1477,21 +1273,19 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 
-  emptyAction: {
+  secondaryButton: {
     height: 40,
     paddingHorizontal: 16,
     borderRadius: 11,
-    backgroundColor:
-      "rgba(99,102,241,0.14)",
+    backgroundColor: "rgba(99,102,241,0.14)",
     borderWidth: 1,
-    borderColor:
-      "rgba(129,140,248,0.22)",
+    borderColor: "rgba(129,140,248,0.22)",
     alignItems: "center",
     justifyContent: "center",
     marginTop: 14,
   },
 
-  emptyActionText: {
+  secondaryButtonText: {
     color: "#A5B4FC",
     fontSize: 9,
     fontWeight: "900",
@@ -1500,31 +1294,28 @@ const styles = StyleSheet.create({
   rewardCard: {
     padding: 14,
     borderRadius: 18,
-    backgroundColor:
-      "rgba(255,255,255,0.045)",
+    backgroundColor: "rgba(255,255,255,0.045)",
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.08)",
     marginBottom: 9,
   },
 
-  rewardMain: {
+  rewardTop: {
     flexDirection: "row",
     alignItems: "center",
   },
 
   rewardIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor:
-      "rgba(99,102,241,0.12)",
+    width: 47,
+    height: 47,
+    borderRadius: 14,
+    backgroundColor: "rgba(99,102,241,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
 
   rewardIcon: {
-    fontSize: 21,
+    fontSize: 22,
   },
 
   rewardInfo: {
@@ -1541,18 +1332,18 @@ const styles = StyleSheet.create({
 
   rewardCost: {
     color: "#FBBF24",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
     marginTop: 4,
   },
 
-  rewardActions: {
+  rewardActionRow: {
     flexDirection: "row",
     gap: 8,
     marginTop: 11,
   },
 
-  redeemButton: {
+  rewardRedeemButton: {
     flex: 1,
     height: 39,
     borderRadius: 11,
@@ -1561,202 +1352,177 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
-  redeemButtonDisabled: {
-    backgroundColor:
-      "rgba(255,255,255,0.05)",
+  rewardRedeemDisabled: {
+    backgroundColor: "rgba(255,255,255,0.05)",
   },
 
-  redeemButtonText: {
+  rewardRedeemText: {
     color: "#FFFFFF",
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: "900",
   },
 
-  redeemButtonTextDisabled: {
+  rewardRedeemTextDisabled: {
     color: "#475569",
   },
 
-  deleteRewardButton: {
+  deleteButton: {
     width: 39,
     height: 39,
     borderRadius: 11,
-    backgroundColor:
-      "rgba(239,68,68,0.07)",
+    backgroundColor: "rgba(239,68,68,0.07)",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  deleteRewardText: {
+  deleteButtonText: {
     color: "#F87171",
     fontSize: 12,
     fontWeight: "900",
   },
 
-  exclusiveCard: {
+  milestoneCard: {
     padding: 14,
     borderRadius: 18,
-    backgroundColor:
-      "rgba(255,255,255,0.035)",
+    backgroundColor: "rgba(255,255,255,0.035)",
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.07)",
+    borderColor: "rgba(255,255,255,0.07)",
     marginBottom: 9,
-  },
-
-  exclusiveCardUnlocked: {
-    backgroundColor:
-      "rgba(99,102,241,0.07)",
-    borderColor:
-      "rgba(129,140,248,0.24)",
-  },
-
-  exclusiveMain: {
     flexDirection: "row",
     alignItems: "center",
   },
 
-  exclusiveIconBox: {
-    width: 46,
-    height: 46,
+  milestoneCardUnlocked: {
+    backgroundColor: "rgba(99,102,241,0.07)",
+    borderColor: "rgba(129,140,248,0.24)",
+  },
+
+  milestoneIconBox: {
+    width: 48,
+    height: 48,
     borderRadius: 14,
-    backgroundColor:
-      "rgba(255,255,255,0.04)",
+    backgroundColor: "rgba(255,255,255,0.04)",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  exclusiveIconBoxUnlocked: {
-    backgroundColor:
-      "rgba(99,102,241,0.14)",
+  milestoneIconBoxUnlocked: {
+    backgroundColor: "rgba(99,102,241,0.14)",
   },
 
-  exclusiveIcon: {
-    fontSize: 22,
+  milestoneIcon: {
+    fontSize: 23,
   },
 
-  exclusiveInfo: {
+  milestoneInfo: {
     flex: 1,
     minWidth: 0,
     marginLeft: 11,
   },
 
-  exclusiveTitle: {
+  milestoneTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  milestoneTitle: {
+    flex: 1,
     color: "#E2E8F0",
     fontSize: 12,
     fontWeight: "900",
   },
 
-  exclusiveTitleLocked: {
+  milestoneTitleLocked: {
     color: "#94A3B8",
   },
 
-  exclusiveDescription: {
+  milestoneStatus: {
+    color: "#64748B",
+    fontSize: 7,
+    fontWeight: "900",
+  },
+
+  milestoneStatusUnlocked: {
+    color: "#34D399",
+  },
+
+  milestoneDescription: {
     color: "#64748B",
     fontSize: 9,
     lineHeight: 13,
     marginTop: 3,
   },
 
-  exclusiveProgress: {
+  milestoneProgress: {
     color: "#818CF8",
     fontSize: 8,
     fontWeight: "800",
     marginTop: 5,
   },
 
-  unlockBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 7,
-    backgroundColor:
-      "rgba(255,255,255,0.05)",
-  },
-
-  unlockBadgeUnlocked: {
-    backgroundColor:
-      "rgba(16,185,129,0.10)",
-  },
-
-  unlockBadgeText: {
-    color: "#64748B",
-    fontSize: 7,
-    fontWeight: "900",
-  },
-
-  unlockBadgeTextUnlocked: {
-    color: "#34D399",
-  },
-
-  leaderboardCard: {
-    marginTop: 14,
+  futureCard: {
+    marginTop: 16,
     padding: 15,
     borderRadius: 19,
-    backgroundColor:
-      "rgba(245,158,11,0.06)",
+    backgroundColor: "rgba(245,158,11,0.06)",
     borderWidth: 1,
-    borderColor:
-      "rgba(245,158,11,0.12)",
+    borderColor: "rgba(245,158,11,0.12)",
     flexDirection: "row",
     alignItems: "center",
   },
 
-  leaderboardIconBox: {
+  futureIconBox: {
     width: 44,
     height: 44,
     borderRadius: 13,
-    backgroundColor:
-      "rgba(245,158,11,0.10)",
+    backgroundColor: "rgba(245,158,11,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  leaderboardIcon: {
+  futureIcon: {
     fontSize: 22,
   },
 
-  leaderboardInfo: {
+  futureInfo: {
     flex: 1,
+    minWidth: 0,
     marginLeft: 11,
+    marginRight: 8,
   },
 
-  leaderboardTitle: {
+  futureTitle: {
     color: "#F8FAFC",
     fontSize: 12,
     fontWeight: "900",
   },
 
-  leaderboardText: {
+  futureText: {
     color: "#64748B",
     fontSize: 9,
     lineHeight: 14,
     marginTop: 3,
   },
 
-  soonBadge: {
+  futureBadge: {
     paddingHorizontal: 7,
     paddingVertical: 4,
     borderRadius: 7,
-    backgroundColor:
-      "rgba(245,158,11,0.08)",
+    backgroundColor: "rgba(245,158,11,0.08)",
   },
 
-  soonBadgeText: {
+  futureBadgeText: {
     color: "#FBBF24",
     fontSize: 7,
     fontWeight: "900",
   },
 
   modalOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor:
-      "rgba(0,0,0,0.76)",
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.76)",
     justifyContent: "flex-end",
-    zIndex: 1000,
-    elevation: 1000,
   },
 
   modalKeyboard: {
@@ -1770,20 +1536,19 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 28,
     padding: 22,
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.08)",
+    borderColor: "rgba(255,255,255,0.08)",
   },
 
   modalHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    marginBottom: 22,
+    marginBottom: 18,
   },
 
   modalTitle: {
     color: "#F8FAFC",
-    fontSize: 21,
+    fontSize: 20,
     fontWeight: "900",
   },
 
@@ -1808,12 +1573,11 @@ const styles = StyleSheet.create({
     marginTop: 13,
   },
 
-  titleInput: {
+  input: {
     backgroundColor: "#111C30",
     borderRadius: 13,
     borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.09)",
+    borderColor: "rgba(255,255,255,0.09)",
     color: "#F8FAFC",
     paddingHorizontal: 14,
     paddingVertical: 13,
