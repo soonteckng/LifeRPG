@@ -37,7 +37,12 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <Header title="Settings" subtitle="System preferences and game controls" />
+      <Header
+        title="Settings"
+        subtitle="System preferences and game controls"
+        backTitle="Profile"
+        backRoute="/profile"
+      />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.sectionTitle}>AUDIO & TACTILE</Text>
         <View style={styles.card}>
