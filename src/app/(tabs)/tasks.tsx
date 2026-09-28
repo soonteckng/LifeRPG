@@ -759,7 +759,7 @@ export default function TasksScreen() {
                 <TextInput
                   value={title}
                   onChangeText={setTitle}
-                  placeholder="e.g. Finish my resume"
+                  placeholder="e.g. Revision"
                   placeholderTextColor="#64748B"
                   style={styles.titleInput}
                   autoFocus
