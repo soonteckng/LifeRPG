@@ -131,6 +131,27 @@ export default function ProfileScreen() {
             <Text style={styles.rewardsEntryArrow}>›</Text>
           </TouchableOpacity>
 
+          {/* Settings */}
+          <TouchableOpacity
+            style={styles.rewardsEntryCard}
+            onPress={() => router.push("/settings")}
+            activeOpacity={0.85}
+          >
+            <View style={styles.rewardsEntryIcon}>
+              <Text style={styles.rewardsEntryIconText}>⚙️</Text>
+            </View>
+
+            <View style={styles.rewardsEntryInfo}>
+              <Text style={styles.rewardsEntryTitle}>Settings</Text>
+
+              <Text style={styles.rewardsEntrySubtitle}>
+                Sound, haptics, and app preferences
+              </Text>
+            </View>
+
+            <Text style={styles.rewardsEntryArrow}>›</Text>
+          </TouchableOpacity>
+
           <View style={styles.statGrid}>
             <View style={styles.statBox}>
               <Text style={styles.statValue}>
