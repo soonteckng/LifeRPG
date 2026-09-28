@@ -79,7 +79,6 @@ export default function TimerScreen() {
   const [isCustom, setIsCustom] = useState(false);
   const [customText, setCustomText] = useState("30");
 
-  const [showOptions, setShowOptions] = useState(false);
   const [showQuestPicker, setShowQuestPicker] =
     useState(false);
 
@@ -1111,143 +1110,6 @@ export default function TimerScreen() {
             )}
           </View>
 
-          {/* MORE OPTIONS */}
-          <TouchableOpacity
-            style={
-              styles.moreToggle
-            }
-            onPress={() =>
-              setShowOptions(
-                (current) =>
-                  !current,
-              )
-            }
-          >
-            <Text
-              style={
-                styles.moreToggleText
-              }
-            >
-              {showOptions
-                ? "Hide options"
-                : "More options"}
-            </Text>
-
-            <Text
-              style={
-                styles.moreToggleArrow
-              }
-            >
-              {showOptions
-                ? "⌃"
-                : "⌄"}
-            </Text>
-          </TouchableOpacity>
-
-          {showOptions && (
-            <View
-              style={
-                styles.optionsCard
-              }
-            >
-              <Text
-                style={
-                  styles.optionLabel
-                }
-              >
-                AREA
-              </Text>
-
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={
-                  false
-                }
-                contentContainerStyle={
-                  styles.areaRow
-                }
-              >
-                {subjects.map(
-                  (subject) => {
-                    const selected =
-                      targetAttributeId ===
-                      subject.id;
-
-                    return (
-                      <TouchableOpacity
-                        key={
-                          subject.id
-                        }
-                        style={[
-                          styles.areaChip,
-                          selected &&
-                            styles.areaChipSelected,
-                          selected && {
-                            borderColor:
-                              subject.color_code ??
-                              "#6366F1",
-                          },
-                        ]}
-                        onPress={() => {
-                          if (
-                            isRunning
-                          ) {
-                            return;
-                          }
-
-                          setTargetAttributeId(
-                            subject.id,
-                          );
-                        }}
-                        disabled={
-                          isRunning
-                        }
-                      >
-                        <Text
-                          style={[
-                            styles.areaChipText,
-                            selected &&
-                              styles.areaChipTextSelected,
-                          ]}
-                        >
-                          {
-                            subject.title
-                          }
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  },
-                )}
-              </ScrollView>
-
-              <Text
-                style={[
-                  styles.optionLabel,
-                  styles.notesLabel,
-                ]}
-              >
-                NOTES
-              </Text>
-
-              <TextInput
-                style={
-                  styles.notesInput
-                }
-                multiline
-                value={notes}
-                onChangeText={
-                  setNotes
-                }
-                placeholder="Optional notes..."
-                placeholderTextColor="#64748B"
-                editable={
-                  !isRunning
-                }
-                textAlignVertical="top"
-              />
-            </View>
-          )}
-
           <View
             style={
               styles.bottomSpace
@@ -1270,20 +1132,20 @@ const styles = StyleSheet.create({
   },
 
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingBottom: 130,
+    paddingHorizontal: 18,
+    paddingBottom: 90,
   },
 
   section: {
-    marginTop: 8,
-    marginBottom: 18,
+    marginTop: 5,
+    marginBottom: 12,
   },
 
   sectionHeader: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8,
+    marginBottom: 5,
   },
 
   sectionLabel: {
@@ -1488,14 +1350,14 @@ const styles = StyleSheet.create({
 
   activityRow: {
     gap: 8,
-    paddingTop: 6,
-    paddingBottom: 2,
+    paddingTop: 2,
+    paddingBottom: 0,
   },
 
   activityChip: {
     minWidth: 90,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 7,
     borderRadius: 13,
     backgroundColor:
       "rgba(255, 255, 255, 0.05)",
@@ -1577,8 +1439,8 @@ const styles = StyleSheet.create({
   },
 
   customDurationCard: {
-    marginTop: 10,
-    padding: 12,
+    marginTop: 7,
+    padding: 9,
     borderRadius: 14,
     backgroundColor:
       "rgba(99, 102, 241, 0.08)",
@@ -1623,14 +1485,14 @@ const styles = StyleSheet.create({
 
   timerSection: {
     alignItems: "center",
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
 
   timerCircle: {
-    width: 238,
-    height: 238,
-    borderRadius: 119,
+    width: 210,
+    height: 210,
+    borderRadius: 105,
     borderWidth: 7,
     borderColor: "#6366F1",
     backgroundColor:
@@ -1653,7 +1515,7 @@ const styles = StyleSheet.create({
 
   timerDigits: {
     color: "#F8FAFC",
-    fontSize: 43,
+    fontSize: 39,
     fontWeight: "900",
     fontVariant: ["tabular-nums"],
   },
@@ -1680,7 +1542,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#6366F1",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 16,
+    marginTop: 10,
   },
 
   startButtonText: {
@@ -1761,94 +1623,6 @@ const styles = StyleSheet.create({
     color: "#94A3B8",
     fontSize: 10,
     fontWeight: "900",
-  },
-
-  moreToggle: {
-    marginTop: 12,
-    paddingVertical: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor:
-      "rgba(255, 255, 255, 0.07)",
-  },
-
-  moreToggleText: {
-    color: "#A5B4FC",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  moreToggleArrow: {
-    color: "#A5B4FC",
-    fontSize: 16,
-  },
-
-  optionsCard: {
-    marginTop: 12,
-    padding: 15,
-    borderRadius: 17,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.035)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.07)",
-  },
-
-  optionLabel: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-  },
-
-  notesLabel: {
-    marginTop: 16,
-  },
-
-  areaRow: {
-    gap: 8,
-  },
-
-  areaChip: {
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-    borderRadius: 10,
-    backgroundColor: "#111C30",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-  },
-
-  areaChipSelected: {
-    backgroundColor:
-      "rgba(99, 102, 241, 0.18)",
-  },
-
-  areaChipText: {
-    color: "#94A3B8",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  areaChipTextSelected: {
-    color: "#FFFFFF",
-  },
-
-  notesInput: {
-    width: "100%",
-    minHeight: 90,
-    backgroundColor: "#0F172A",
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    color: "#F8FAFC",
-    paddingHorizontal: 13,
-    paddingVertical: 11,
-    fontSize: 12,
   },
 
   bottomSpace: {
