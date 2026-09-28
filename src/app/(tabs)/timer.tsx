@@ -170,7 +170,7 @@ export default function TimerScreen() {
    * duration and subject automatically.
    */
   useEffect(() => {
-    if (isRunning || !linkedTask) {
+    if (!linkedTask) {
       return;
     }
 
@@ -190,9 +190,10 @@ export default function TimerScreen() {
         null,
     );
   }, [
-    linkedTask,
-    isRunning,
-    generalSubject,
+    linkedTask?.id,
+    linkedTask?.target_minutes,
+    linkedTask?.subject_id,
+    generalSubject?.id,
     setDurationInMinutes,
     setTargetAttributeId,
   ]);
