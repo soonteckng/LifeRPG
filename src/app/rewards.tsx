@@ -28,7 +28,6 @@ import {
   getTodayRewardChest,
   openDailyRewardChest,
   redeemReward,
-  type ExclusiveReward,
   type Reward,
   type RewardChest,
 } from "../services/rewardService";
@@ -43,9 +42,6 @@ export default function RewardsScreen() {
   } = useUser();
 
   const [rewards, setRewards] = useState<Reward[]>([]);
-  const [exclusiveRewards, setExclusiveRewards] = useState<
-    ExclusiveReward[]
-  >([]);
   const [todayChest, setTodayChest] =
     useState<RewardChest | null>(null);
 
@@ -80,13 +76,11 @@ export default function RewardsScreen() {
         progress,
       ] = await Promise.all([
         getRewards(),
-        getExclusiveRewards(),
         getTodayRewardChest(),
         getTodayProgress(),
       ]);
 
       setRewards(rewardList);
-      setExclusiveRewards(exclusiveList);
       setTodayChest(chest);
 
       setCompletedMinutes(
@@ -413,12 +407,7 @@ export default function RewardsScreen() {
     );
   };
 
-  const isExclusiveUnlocked = (
-    reward: ExclusiveReward,
-  ) => {
-    switch (reward.unlock_type) {
-      case "streak":
-        return (
+  return (
           (profile?.streak_count ?? 0) >=
           reward.unlock_value
         );
@@ -755,127 +744,6 @@ export default function RewardsScreen() {
           })
         )}
 
-        {/* MILESTONE REWARDS */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleGroup}>
-            <Text style={styles.sectionTitle}>
-              MILESTONE REWARDS
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Unlock them through progression
-            </Text>
-          </View>
-
-          <View style={styles.counterPill}>
-            <Text style={styles.counterPillText}>
-              {unlockedExclusiveCount} /{" "}
-              {exclusiveRewards.length}
-            </Text>
-          </View>
-        </View>
-
-        {exclusiveRewards.length === 0 ? (
-          <View style={styles.simpleCard}>
-            <Text style={styles.mutedText}>
-              No milestone rewards configured yet.
-            </Text>
-          </View>
-        ) : (
-          exclusiveRewards.map((reward) => {
-            const unlocked =
-              isExclusiveUnlocked(reward);
-
-            return (
-              <View
-                key={reward.id}
-                style={[
-                  styles.milestoneCard,
-                  unlocked &&
-                    styles.milestoneCardUnlocked,
-                ]}
-              >
-                <View
-                  style={[
-                    styles.milestoneIconBox,
-                    unlocked &&
-                      styles.milestoneIconBoxUnlocked,
-                  ]}
-                >
-                  <Text style={styles.milestoneIcon}>
-                    {unlocked
-                      ? reward.icon
-                      : "🔒"}
-                  </Text>
-                </View>
-
-                <View style={styles.milestoneInfo}>
-                  <View style={styles.milestoneTitleRow}>
-                    <Text
-                      style={[
-                        styles.milestoneTitle,
-                        !unlocked &&
-                          styles.milestoneTitleLocked,
-                      ]}
-                    >
-                      {reward.title}
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.milestoneStatus,
-                        unlocked &&
-                          styles.milestoneStatusUnlocked,
-                      ]}
-                    >
-                      {unlocked
-                        ? "UNLOCKED"
-                        : "LOCKED"}
-                    </Text>
-                  </View>
-
-                  <Text style={styles.milestoneDescription}>
-                    {reward.description}
-                  </Text>
-
-                  <Text style={styles.milestoneProgress}>
-                    {getExclusiveProgress(reward)}
-                  </Text>
-                </View>
-              </View>
-            );
-          })
-        )}
-
-        {/* FUTURE SOCIAL SYSTEM */}
-        <View style={styles.futureCard}>
-          <View style={styles.futureIconBox}>
-            <Text style={styles.futureIcon}>
-              🏆
-            </Text>
-          </View>
-
-          <View style={styles.futureInfo}>
-            <Text style={styles.futureTitle}>
-              Community Rewards
-            </Text>
-
-            <Text style={styles.futureText}>
-              Leaderboards, seasonal events,
-              cosmetics, titles, and other
-              multiplayer reward systems can
-              come here later.
-            </Text>
-          </View>
-
-          <View style={styles.futureBadge}>
-            <Text style={styles.futureBadgeText}>
-              SOON
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.bottomSpace} />
       </ScrollView>
 
       {/* CREATE PERSONAL REWARD */}
