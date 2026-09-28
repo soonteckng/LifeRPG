@@ -23,7 +23,6 @@ import { getTodayProgress } from "../services/dailyProgressService";
 import {
   createReward,
   deleteReward,
-  getExclusiveRewards,
   getRewards,
   getTodayRewardChest,
   openDailyRewardChest,
@@ -71,7 +70,6 @@ export default function RewardsScreen() {
 
       const [
         rewardList,
-        exclusiveList,
         chest,
         progress,
       ] = await Promise.all([
