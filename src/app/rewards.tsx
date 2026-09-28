@@ -406,57 +406,6 @@ export default function RewardsScreen() {
   };
 
   return (
-          (profile?.streak_count ?? 0) >=
-          reward.unlock_value
-        );
-
-      case "level":
-        return (
-          (profile?.level ?? 1) >=
-          reward.unlock_value
-        );
-
-      case "sessions":
-      case "minutes":
-        return false;
-
-      default:
-        return false;
-    }
-  };
-
-  const getExclusiveProgress = (
-    reward: ExclusiveReward,
-  ) => {
-    switch (reward.unlock_type) {
-      case "streak":
-        return `${Math.min(
-          profile?.streak_count ?? 0,
-          reward.unlock_value,
-        )} / ${reward.unlock_value} days`;
-
-      case "level":
-        return `Level ${
-          profile?.level ?? 1
-        } / ${reward.unlock_value}`;
-
-      case "sessions":
-        return `${reward.unlock_value} sessions`;
-
-      case "minutes":
-        return `${reward.unlock_value} minutes`;
-
-      default:
-        return "Milestone reward";
-    }
-  };
-
-  const unlockedExclusiveCount =
-    exclusiveRewards.filter(
-      isExclusiveUnlocked,
-    ).length;
-
-  return (
     <SafeAreaView style={styles.container}>
       <Header
         title="Rewards"
