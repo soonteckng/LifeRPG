@@ -245,31 +245,6 @@ export default function ProfileScreen() {
           )}
         </View>
 
-        {/* System Settings */}
-        <View style={styles.card}>
-          <Text style={styles.cardTitle}>App Preferences</Text>
-
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Sound Effects</Text>
-            <Switch
-              value={soundEnabled}
-              onValueChange={setSoundEnabled}
-              trackColor={{ false: "#334155", true: "#6366F1" }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <Text style={styles.settingLabel}>Haptic Feedback</Text>
-            <Switch
-              value={hapticsEnabled}
-              onValueChange={setHapticsEnabled}
-              trackColor={{ false: "#334155", true: "#6366F1" }}
-              thumbColor="#FFFFFF"
-            />
-          </View>
-        </View>
-
         {/* Success / Notification Modal */}
         <Modal
           visible={successModalVisible}
