@@ -475,6 +475,8 @@ export default function RewardsScreen() {
         title="Rewards"
         subtitle="Earn it. Unlock it. Enjoy it."
         showBack={true}
+        backTitle="Profile"
+        backRoute="/profile"
       />
 
       <ScrollView
