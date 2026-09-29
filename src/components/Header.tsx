@@ -10,6 +10,7 @@ interface HeaderProps {
   showBack?: boolean;
   backTitle?: string;
   fallbackRoute?: string;
+  backRoute?: string;
   backgroundColor?: string;
 }
 
@@ -19,6 +20,7 @@ export default function Header({
   showBack = true,
   backTitle = 'Home',
   fallbackRoute = '/profile',
+  backRoute,
   backgroundColor = '#090D16',
 }: HeaderProps) {
   const router = useRouter();
@@ -26,7 +28,9 @@ export default function Header({
 
   const handleBack = () => {
     if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (router.canGoBack()) {
+    if (backRoute) {
+      router.replace(backRoute as Href);
+    } else if (router.canGoBack()) {
       router.back();
     } else {
       router.replace(fallbackRoute as Href);

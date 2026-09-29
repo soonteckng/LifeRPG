@@ -1,6 +1,5 @@
-import { GlassView } from "expo-glass-effect";
-import { Tabs, usePathname, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { Slot, usePathname, useRouter } from "expo-router";
+import { useEffect } from "react";
 import {
   BackHandler,
   Platform,
@@ -9,8 +8,10 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { initDatabase } from "../../db/database";
+
+import AuthScreen from "../components/AuthScreen";
 import LevelUpModal from "../components/LevelUpModal";
+import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
 
@@ -27,8 +28,29 @@ function GlobalBackHandler() {
         return false;
       }
 
-      // 2. Second Layer Sub-pages (Analytics, Settings, etc.): Go back to previous screen
-      if (pathname === "/analytics" || pathname === "/settings") {
+      // 2. Onboarding: prevent going back
+      if (pathname === "/onboarding") {
+        return true;
+      }
+
+      // 3. Tutorial: go back to previous tutorial page if possible
+      if (pathname === "/tutorial") {
+        if (router.canGoBack()) {
+          router.back();
+        } else {
+          router.replace("/onboarding");
+        }
+        return true;
+      }
+
+      //4. Rewards is a secondary screen opened from Profile
+      if (pathname === "/rewards") {
+        router.replace("/profile");
+        return true;
+      }
+
+      // 5. Second Layer Sub-pages
+      if (pathname === "/settings") {
         if (router.canGoBack()) {
           router.back();
         } else {
@@ -38,7 +60,7 @@ function GlobalBackHandler() {
         return true;
       }
 
-      // 3. Any Tab in Tab Layer (Quests, Focus, Shop, Profile): Go directly to Home
+      // 6. Any Tab in Tab Layer: Go directly to Home
       router.replace("/");
       return true;
     };
@@ -114,238 +136,59 @@ function ActiveTimerBanner() {
   );
 }
 
-export default function RootLayout() {
-  const [dbReady, setDbReady] = useState(false);
+function AppContent() {
   const pathname = usePathname();
   const router = useRouter();
-  const previousPathname = useRef(pathname);
-  const lastHomeSubRoute = useRef<string | null>(null);
+  const { profile } = useUser();
 
   useEffect(() => {
-    try {
-      initDatabase();
-      console.log("Database intialized successfully on startup!");
-      setDbReady(true);
-    } catch (e) {
-      console.error("Failed to initialize database on startup:", e);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (
-      clearHomeSubRouteOnNextHome &&
-      (pathname === "/" || pathname === "/index")
-    ) {
-      lastHomeSubRoute.current = null;
-      clearHomeSubRouteOnNextHome = false;
-    } else if (pathname === "/analytics") {
-      lastHomeSubRoute.current = pathname;
-    } else if (
-      (pathname === "/" || pathname === "/index") &&
-      previousPathname.current === "/analytics"
-    ) {
-      lastHomeSubRoute.current = null;
+    if (!profile.id) {
+      return;
     }
 
-    previousPathname.current = pathname;
-  }, [pathname]);
+    const onboardingRoute = pathname === "/onboarding";
+    const tutorialRoute = pathname === "/tutorial";
 
-  // Check if current route is Home or a sub-page of Home (e.g., /analytics)
-  const isHomeSubRoute =
-    pathname === "/" || pathname === "/index" || pathname === "/analytics";
+    if (!profile.onboarding_completed && !onboardingRoute && !tutorialRoute) {
+      router.replace("/onboarding");
+    }
+  }, [profile.id, profile.onboarding_completed, pathname, router]);
 
-  if (!dbReady) {
+  return (
+    <TimerProvider>
+      <GlobalBackHandler />
+
+      <Slot />
+
+      <ActiveTimerBanner />
+      <GlobalRewardListener />
+    </TimerProvider>
+  );
+}
+
+function AuthGate() {
+  const { user, loading } = useAuth();
+
+  if (loading) {
     return null;
+  }
+
+  if (!user) {
+    return <AuthScreen />;
   }
 
   return (
     <UserProvider>
-      <TimerProvider>
-        <GlobalBackHandler />
-        <Tabs
-          initialRouteName="index"
-          backBehavior="initialRoute"
-          screenOptions={{
-            headerShown: false,
-            tabBarShowLabel: false,
-            tabBarStyle: styles.tabBar,
-            tabBarItemStyle: styles.tabItem,
-            tabBarIconStyle: styles.tabIconContainer,
-            tabBarBackground: () => (
-              <GlassView
-                style={styles.glassBackground}
-                glassEffectStyle="clear"
-              />
-            ),
-            tabBarActiveTintColor: "#FFFFFF",
-            tabBarInactiveTintColor: "#94A3B8",
-            tabBarLabelStyle: styles.tabLabel,
-          }}
-        >
-          {/* Tab 1: Quests */}
-          <Tabs.Screen
-            name="tasks"
-            options={{
-              title: "Quests",
-              tabBarIcon: ({ focused }) => (
-                <View
-                  style={[styles.iconPill, focused && styles.iconPillActive]}
-                >
-                  <Text
-                    style={[styles.tabIcon, focused && styles.tabIconActive]}
-                  >
-                    📜
-                  </Text>
-                  <Text
-                    style={[
-                      styles.pillLabel,
-                      focused && styles.pillLabelActive,
-                    ]}
-                  >
-                    Quests
-                  </Text>
-                </View>
-              ),
-            }}
-          />
-
-          {/* Tab 2: Focus Timer */}
-          <Tabs.Screen
-            name="timer"
-            options={{
-              title: "Focus",
-              tabBarIcon: ({ focused }) => (
-                <View
-                  style={[styles.iconPill, focused && styles.iconPillActive]}
-                >
-                  <Text
-                    style={[styles.tabIcon, focused && styles.tabIconActive]}
-                  >
-                    ⏱️
-                  </Text>
-                  <Text
-                    style={[
-                      styles.pillLabel,
-                      focused && styles.pillLabelActive,
-                    ]}
-                  >
-                    Focus
-                  </Text>
-                </View>
-              ),
-            }}
-          />
-
-          {/* Tab 3: Home (Highlights for Home and Home Sub-pages like /analytics) */}
-          <Tabs.Screen
-            name="index"
-            listeners={{
-              tabPress: (event) => {
-                if (
-                  lastHomeSubRoute.current === "/analytics" &&
-                  pathname !== "/analytics"
-                ) {
-                  event.preventDefault();
-                  router.navigate("/analytics");
-                }
-              },
-            }}
-            options={{
-              title: "Home",
-              tabBarIcon: ({ focused }) => {
-                const isHomeActive = focused || isHomeSubRoute;
-                return (
-                  <View
-                    style={[
-                      styles.iconPill,
-                      isHomeActive && styles.iconPillActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.tabIcon,
-                        isHomeActive && styles.tabIconActive,
-                      ]}
-                    >
-                      🏰
-                    </Text>
-                    <Text
-                      style={[
-                        styles.pillLabel,
-                        isHomeActive && styles.pillLabelActive,
-                      ]}
-                    >
-                      Home
-                    </Text>
-                  </View>
-                );
-              },
-            }}
-          />
-
-          {/* Tab 4: Shop */}
-          <Tabs.Screen
-            name="shop"
-            options={{
-              title: "Shop",
-              tabBarIcon: ({ focused }) => (
-                <View
-                  style={[styles.iconPill, focused && styles.iconPillActive]}
-                >
-                  <Text
-                    style={[styles.tabIcon, focused && styles.tabIconActive]}
-                  >
-                    🛒
-                  </Text>
-                  <Text
-                    style={[
-                      styles.pillLabel,
-                      focused && styles.pillLabelActive,
-                    ]}
-                  >
-                    Shop
-                  </Text>
-                </View>
-              ),
-            }}
-          />
-
-          {/* Tab 5: Profile */}
-          <Tabs.Screen
-            name="profile"
-            options={{
-              title: "Profile",
-              tabBarIcon: ({ focused }) => (
-                <View
-                  style={[styles.iconPill, focused && styles.iconPillActive]}
-                >
-                  <Text
-                    style={[styles.tabIcon, focused && styles.tabIconActive]}
-                  >
-                    👤
-                  </Text>
-                  <Text
-                    style={[
-                      styles.pillLabel,
-                      focused && styles.pillLabelActive,
-                    ]}
-                  >
-                    Profile
-                  </Text>
-                </View>
-              ),
-            }}
-          />
-
-          {/* Hidden Routes */}
-          <Tabs.Screen name="analytics" options={{ href: null }} />
-          <Tabs.Screen name="settings" options={{ href: null }} />
-        </Tabs>
-
-        <ActiveTimerBanner />
-        <GlobalRewardListener />
-      </TimerProvider>
+      <AppContent />
     </UserProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <AuthProvider>
+      <AuthGate />
+    </AuthProvider>
   );
 }
 
