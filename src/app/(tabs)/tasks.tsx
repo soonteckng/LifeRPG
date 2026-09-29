@@ -621,7 +621,8 @@ export default function TasksScreen() {
       <Header
         title="Quests"
         subtitle="Things you want to get done"
-        showBack={false}
+        showBack={true}
+        backTitle="Close"
       />
 
       <View style={styles.content}>
