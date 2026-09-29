@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Header from "../../components/Header";
+import { formatSessionActivity } from "../../constants/sessionActivities";
 import { useUser } from "../../context/UserContext";
 import {
   getCompletedSessions,
@@ -891,17 +892,8 @@ export default function ProgressScreen() {
   );
 }
 
-function formatActivity(
-  activity: string,
-): string {
-  if (!activity) {
-    return "General";
-  }
-
-  return (
-    activity.charAt(0).toUpperCase() +
-    activity.slice(1)
-  );
+function formatActivity(activity: string): string {
+  return formatSessionActivity(activity);
 }
 
 const styles = StyleSheet.create({
