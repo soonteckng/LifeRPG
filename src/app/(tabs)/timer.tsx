@@ -860,18 +860,17 @@ export default function TimerScreen() {
                 },
               )}
 
-              {!linkedTask && (
-                <TouchableOpacity
-                  disabled={isRunning}
-                  style={[
-                    styles.presetButton,
-                    isCustom &&
-                      styles.presetButtonSelected,
-                  ]}
-                  onPress={
-                    selectCustom
-                  }
-                >
+              <TouchableOpacity
+                disabled={isRunning || !!linkedTask}
+                style={[
+                  styles.presetButton,
+                  isCustom &&
+                    styles.presetButtonSelected,
+                  !!linkedTask &&
+                    styles.presetButtonLocked,
+                ]}
+                onPress={selectCustom}
+              >
                   <Text
                     style={[
                       styles.presetText,
@@ -885,8 +884,7 @@ export default function TimerScreen() {
               )}
             </View>
 
-            {!linkedTask &&
-              isCustom && (
+            {isCustom && (
                 <View
                   style={
                     styles.customDurationCard
