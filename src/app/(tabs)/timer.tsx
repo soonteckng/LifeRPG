@@ -40,6 +40,7 @@ export default function TimerScreen() {
     duration,
     isRunning,
     isCompleted,
+    hasOpenSession,
 
     activityType,
     setActivityType,
@@ -139,7 +140,7 @@ export default function TimerScreen() {
 
   // A paused session is still an open session.
   const isSessionLocked =
-    isRunning || timeLeft < duration;
+    hasOpenSession && !isCompleted;
 
   /*
    * Synchronize the visible duration controls with
