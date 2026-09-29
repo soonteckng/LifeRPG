@@ -59,6 +59,7 @@ interface TimerContextType {
   duration: number;
   isRunning: boolean;
   isCompleted: boolean;
+  hasOpenSession: boolean;
 
   activityType: string;
 
@@ -97,6 +98,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [hasOpenSession, setHasOpenSession] = useState(false);
   const [activityType, setActivityType] = useState("other");
 
   const [targetAttributeId, setTargetAttributeId] = useState<number | null>(
@@ -468,6 +470,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
         timerSessionIdRef.current = session.id;
         completionHandledRef.current = false;
+        setHasOpenSession(true);
 
         setDuration(targetSeconds);
         setTimeLeft(remainingSeconds);
@@ -553,6 +556,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       });
 
       timerSessionIdRef.current = sessionId;
+      setHasOpenSession(true);
 
       activeQuestTitleRef.current = questTitle;
 
@@ -666,6 +670,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
     timerSessionIdRef.current = null;
     endTimeRef.current = null;
+    setHasOpenSession(false);
 
     setTimeLeft(duration);
 
@@ -717,6 +722,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       const result =
         await completeActivitySession(sessionId);
 
+      setHasOpenSession(false);
+
       await reloadProfile();
 
       setSessionSummary({
@@ -759,6 +766,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         duration,
         isRunning,
         isCompleted,
+        hasOpenSession,
         activityType,
 
         targetAttributeId,
