@@ -109,7 +109,11 @@ export default function HomeScreen() {
 
   const getSubject = (subjectId: number | null) => {
     if (subjectId === null) {
-      return null;
+      return (
+        subjects.find(
+          (subject) => subject.title === "General",
+        ) ?? null
+      );
     }
 
     return (
