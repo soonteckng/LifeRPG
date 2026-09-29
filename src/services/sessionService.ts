@@ -8,6 +8,21 @@ export interface StartSessionParams {
   notes?: string | null;
 }
 
+
+export interface OpenActivitySession {
+  id: string;
+  task_id: number | null;
+  subject_id: number | null;
+  activity_type: string;
+  target_duration_seconds: number;
+  elapsed_seconds: number;
+  status: "active" | "paused";
+  notes: string | null;
+  started_at: string;
+  last_resumed_at: string | null;
+  paused_at: string | null;
+}
+
 export interface CompletedSessionResult {
   already_completed: boolean;
   session_id: string;
@@ -37,6 +52,25 @@ async function callRpc<T>(
   }
 
   return data as T;
+}
+
+export async function getOpenActivitySession(): Promise<OpenActivitySession | null> {
+  const { data, error } = await supabase
+    .from("activity_sessions")
+    .select(
+      "id, task_id, subject_id, activity_type, target_duration_seconds, elapsed_seconds, status, notes, started_at, last_resumed_at, paused_at",
+    )
+    .in("status", ["active", "paused"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Failed to load open activity session:", error);
+    throw error;
+  }
+
+  return data;
 }
 
 export async function startActivitySession({
