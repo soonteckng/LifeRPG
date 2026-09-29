@@ -1,5 +1,6 @@
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
-import { Platform, StyleSheet, Text } from "react-native";
+import { Platform, StyleSheet } from "react-native";
 
 export default function TabsLayout() {
   return (
@@ -21,7 +22,7 @@ export default function TabsLayout() {
         options={{
           title: "Home",
           tabBarIcon: ({ color }) => (
-            <Text style={[styles.icon, { color }]}>⌂</Text>
+            <Ionicons name="home-outline" size={22} color={color} />
           ),
         }}
       />
@@ -31,7 +32,7 @@ export default function TabsLayout() {
         options={{
           title: "Progress",
           tabBarIcon: ({ color }) => (
-            <Text style={[styles.icon, { color }]}>↗</Text>
+            <Ionicons name="stats-chart-outline" size={21} color={color} />
           ),
         }}
       />
@@ -41,7 +42,7 @@ export default function TabsLayout() {
         options={{
           title: "Profile",
           tabBarIcon: ({ color }) => (
-            <Text style={[styles.icon, { color }]}>◉</Text>
+            <Ionicons name="person-outline" size={22} color={color} />
           ),
         }}
       />
@@ -93,8 +94,4 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
 
-  icon: {
-    fontSize: 21,
-    fontWeight: "600",
-  },
 });
