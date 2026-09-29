@@ -125,7 +125,7 @@ function ActiveTimerBanner() {
       <View style={styles.bannerInfo}>
         <View style={[styles.pulseDot, !isRunning && styles.pausedDot]} />
         <Text style={styles.bannerTitle}>
-          {isRunning ? "Focus Session Active" : "Session Paused"}
+          {isRunning ? "Session Active" : "Session Paused"}
         </Text>
       </View>
       <Text style={styles.bannerTimer}>{formattedTime} ›</Text>
