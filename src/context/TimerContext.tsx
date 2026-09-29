@@ -12,6 +12,7 @@ import {
   completeActivitySession,
   pauseActivitySession,
   resumeActivitySession,
+  getOpenActivitySession,
   startActivitySession,
 } from "../services/sessionService";
 import { useUser } from "./UserContext";
@@ -119,6 +120,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   const completionHandledRef = useRef(false);
   const timerSessionIdRef = useRef<string | null>(null);
+  const sessionRecoveryHandledRef = useRef(false);
 
   const ensureChannels = async () => {
     if (!Notifications || Platform.OS !== "android") {
@@ -416,8 +418,106 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    if (sessionRecoveryHandledRef.current) {
+      return;
+    }
+
+    sessionRecoveryHandledRef.current = true;
+
+    let cancelled = false;
+
+    const restoreOpenSession = async () => {
+      try {
+        const session = await getOpenActivitySession();
+
+        if (!session || cancelled) {
+          return;
+        }
+
+        const targetSeconds = Math.max(
+          60,
+          session.target_duration_seconds,
+        );
+
+        let elapsedSeconds = Math.max(
+          0,
+          session.elapsed_seconds,
+        );
+
+        if (
+          session.status === "active" &&
+          session.last_resumed_at
+        ) {
+          elapsedSeconds += Math.max(
+            0,
+            Math.floor(
+              (Date.now() -
+                new Date(
+                  session.last_resumed_at,
+                ).getTime()) /
+                1000,
+            ),
+          );
+        }
+
+        const remainingSeconds = Math.max(
+          0,
+          targetSeconds - elapsedSeconds,
+        );
+
+        timerSessionIdRef.current = session.id;
+        completionHandledRef.current = false;
+
+        setDuration(targetSeconds);
+        setTimeLeft(remainingSeconds);
+        setIsCompleted(false);
+        setActivityType(
+          session.activity_type || "general",
+        );
+        setTargetAttributeId(
+          session.subject_id,
+        );
+        setLinkedTaskId(session.task_id);
+        setNotes(session.notes ?? "");
+
+        activeQuestTitleRef.current = undefined;
+
+        if (remainingSeconds <= 0) {
+          endTimeRef.current = Date.now();
+          setIsRunning(true);
+          return;
+        }
+
+        if (session.status === "active") {
+          endTimeRef.current =
+            Date.now() + remainingSeconds * 1000;
+          setIsRunning(true);
+
+          await scheduleNotificationLifecycle(
+            remainingSeconds,
+          );
+        } else {
+          endTimeRef.current = null;
+          setIsRunning(false);
+        }
+      } catch (error) {
+        console.error(
+          "Failed to restore open activity session:",
+          error,
+        );
+      }
+    };
+
+    void restoreOpenSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const setDurationInMinutes = (minutes: number) => {
-    if (isRunning) {
+    if (isRunning || timerSessionIdRef.current) {
       return;
     }
 
