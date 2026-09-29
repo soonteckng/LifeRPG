@@ -318,29 +318,8 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.questsButton}
-          onPress={() => router.push("/quests")}
-          activeOpacity={0.88}
-        >
-          <View style={styles.questsButtonIcon}>
-            <Text style={styles.questsButtonIconText}>📜</Text>
-          </View>
-
-          <View style={styles.questsButtonText}>
-            <Text style={styles.questsButtonTitle}>
-              Quests
-            </Text>
-            <Text style={styles.questsButtonSubtitle}>
-              Create and manage things you want to get done
-            </Text>
-          </View>
-
-          <Text style={styles.chevron}>›</Text>
-        </TouchableOpacity>
-
         <View style={styles.sectionBlock}>
-          <View style={styles.sectionTopRow}>
+          <View style={styles.questSectionHeader}>
             <View>
               <Text style={styles.sectionEyebrow}>
                 TODAY
@@ -350,9 +329,18 @@ export default function HomeScreen() {
               </Text>
             </View>
 
-            <Text style={styles.countPill}>
-              {activeTasks.length}
-            </Text>
+            <TouchableOpacity
+              style={styles.questsLink}
+              onPress={() => router.push("/quests")}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.questsLinkText}>
+                Quests
+              </Text>
+              <Text style={styles.questsLinkChevron}>
+                ›
+              </Text>
+            </TouchableOpacity>
           </View>
 
           {previewTasks.length === 0 ? (
@@ -730,6 +718,35 @@ const styles = StyleSheet.create({
 
   sectionBlock: {
     marginTop: 2,
+  },
+
+  questSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  questsLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.04)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+  },
+
+  questsLinkText: {
+    color: "#B9C1D3",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  questsLinkChevron: {
+    color: "#7D869A",
+    fontSize: 16,
+    marginLeft: 3,
   },
 
   listTitle: {
