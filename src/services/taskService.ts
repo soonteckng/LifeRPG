@@ -36,13 +36,19 @@ export interface CreateTaskParams {
   difficulty?: "easy" | "medium" | "hard";
 }
 
+const TIME_ZONE = "Asia/Kuala_Lumpur";
+
 function getToday(): string {
-  return new Date().toISOString().split("T")[0];
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: TIME_ZONE,
+  }).format(new Date());
 }
 
 function getTodayShortName(): string {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return days[new Date().getDay()];
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: TIME_ZONE,
+    weekday: "short",
+  }).format(new Date());
 }
 
 function isTaskDueToday(
