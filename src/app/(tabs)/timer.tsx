@@ -1,6 +1,7 @@
 import * as Haptics from "expo-haptics";
-import { useRouter } from "expo-router";
+import { } from "expo-router";
 import React, {
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -31,8 +32,6 @@ import {
 const PRESETS = [15, 30, 45, 60];
 
 export default function TimerScreen() {
-  const router = useRouter();
-
   const {
     timeLeft,
     duration,
@@ -136,11 +135,11 @@ export default function TimerScreen() {
     }
   };
 
-  React.useEffect(() => {
+  useEffect(() => {
     void loadChoices();
   }, []);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!generalArea || isSessionLocked || linkedTaskId !== null) {
       return;
     }
