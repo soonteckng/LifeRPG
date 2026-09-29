@@ -19,6 +19,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Header from "../../components/Header";
+import { SESSION_ACTIVITIES } from "../../constants/sessionActivities";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import {
@@ -30,16 +31,6 @@ import {
 
 const PRESETS = [15, 30, 45, 60];
 
-const ACTIVITIES = [
-  { id: "general", label: "General", icon: "✨" },
-  { id: "study", label: "Study", icon: "📚" },
-  { id: "work", label: "Work", icon: "💼" },
-  { id: "coding", label: "Coding", icon: "💻" },
-  { id: "workout", label: "Workout", icon: "🏋️" },
-  { id: "reading", label: "Reading", icon: "📖" },
-  { id: "cleaning", label: "Cleaning", icon: "🧹" },
-  { id: "other", label: "Other", icon: "✨" },
-];
 
 export default function TimerScreen() {
   const router = useRouter();
@@ -146,6 +137,10 @@ export default function TimerScreen() {
     Math.round(duration / 60),
   );
 
+  // A paused session is still an open session.
+  const isSessionLocked =
+    isRunning || timeLeft < duration;
+
   /*
    * Synchronize the visible duration controls with
    * TimerContext whenever the actual timer duration changes.
@@ -154,7 +149,7 @@ export default function TimerScreen() {
    * 15 minutes while the visible selector still showed 30.
    */
   useEffect(() => {
-    if (isRunning) {
+    if (isSessionLocked) {
       return;
     }
 
@@ -163,7 +158,7 @@ export default function TimerScreen() {
     setIsCustom(
       !PRESETS.includes(currentMinutes),
     );
-  }, [currentMinutes, isRunning]);
+  }, [currentMinutes, isSessionLocked]);
 
   /*
    * When arriving from the Quest screen, use the Quest's
@@ -200,7 +195,7 @@ export default function TimerScreen() {
 
   useEffect(() => {
     if (
-      isRunning ||
+      isSessionLocked ||
       linkedTaskId !== null ||
       !generalSubject
     ) {
@@ -211,14 +206,14 @@ export default function TimerScreen() {
       generalSubject.id,
     );
   }, [
-    isRunning,
+    isSessionLocked,
     linkedTaskId,
     generalSubject,
     setTargetAttributeId,
   ]);
 
   const selectActivity = (type: string) => {
-    if (isRunning) {
+    if (isSessionLocked) {
       return;
     }
 
@@ -232,7 +227,7 @@ export default function TimerScreen() {
   };
 
   const selectQuest = (task: Task | null) => {
-    if (isRunning) {
+    if (isSessionLocked) {
       return;
     }
 
@@ -275,7 +270,7 @@ export default function TimerScreen() {
   };
 
   const selectPreset = (minutes: number) => {
-    if (isRunning || linkedTask) {
+    if (isSessionLocked || linkedTask) {
       return;
     }
 
@@ -408,10 +403,13 @@ export default function TimerScreen() {
       .padStart(2, "0")}`;
 
   const currentActivity =
-    ACTIVITIES.find(
+    SESSION_ACTIVITIES.find(
       (activity) =>
         activity.id === activityType,
-    ) ?? ACTIVITIES[0];
+    ) ??
+    SESSION_ACTIVITIES[
+      SESSION_ACTIVITIES.length - 1
+    ];
 
   const isReady =
     !isRunning &&
@@ -530,7 +528,7 @@ export default function TimerScreen() {
                   </View>
                 </View>
 
-                {!isRunning && (
+                {!isSessionLocked && (
                   <TouchableOpacity
                     style={
                       styles.removeQuestButton
@@ -560,7 +558,7 @@ export default function TimerScreen() {
                       !current,
                   )
                 }
-                disabled={isRunning}
+                disabled={isSessionLocked}
                 activeOpacity={0.85}
               >
                 <View
@@ -735,7 +733,7 @@ export default function TimerScreen() {
                 styles.activityRow
               }
             >
-              {ACTIVITIES.map(
+              {SESSION_ACTIVITIES.map(
                 (activity) => {
                   const selected =
                     activity.id ===
@@ -784,6 +782,94 @@ export default function TimerScreen() {
                 },
               )}
             </ScrollView>
+          </View>
+
+          {/* AREA */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionLabel}>
+                AREA
+              </Text>
+
+              <Text style={styles.lockedLabel}>
+                {linkedTask
+                  ? "Linked to quest"
+                  : "Where this helps"}
+              </Text>
+            </View>
+
+            {linkedTask ? (
+              <View style={styles.linkedAreaCard}>
+                <View
+                  style={[
+                    styles.areaDot,
+                    {
+                      backgroundColor:
+                        linkedSubject?.color_code ??
+                        generalSubject?.color_code ??
+                        "#F59E0B",
+                    },
+                  ]}
+                />
+
+                <Text style={styles.linkedAreaTitle}>
+                  {linkedSubject?.title ??
+                    generalSubject?.title ??
+                    "General"}
+                </Text>
+
+                <Text style={styles.linkedAreaMeta}>
+                  From quest
+                </Text>
+              </View>
+            ) : (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={
+                  styles.areaRow
+                }
+              >
+                {subjects.map((subject) => {
+                  const selected =
+                    targetAttributeId === subject.id;
+
+                  return (
+                    <TouchableOpacity
+                      key={subject.id}
+                      disabled={isSessionLocked}
+                      style={[
+                        styles.areaChip,
+                        selected && {
+                          backgroundColor:
+                            subject.color_code ??
+                            "#6366F1",
+                          borderColor:
+                            subject.color_code ??
+                            "#6366F1",
+                        },
+                      ]}
+                      onPress={() =>
+                        setTargetAttributeId(
+                          subject.id,
+                        )
+                      }
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.areaChipText,
+                          selected &&
+                            styles.areaChipTextSelected,
+                        ]}
+                      >
+                        {subject.title}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
 
           {/* DURATION */}
@@ -881,7 +967,6 @@ export default function TimerScreen() {
                     Custom
                   </Text>
                 </TouchableOpacity>
-              )}
             </View>
 
             {isCustom && (
@@ -912,7 +997,8 @@ export default function TimerScreen() {
                       }
                       keyboardType="number-pad"
                       editable={
-                        !isRunning
+                        !isSessionLocked &&
+                        !linkedTask
                       }
                       style={
                         styles.customInput
@@ -1345,6 +1431,68 @@ const styles = StyleSheet.create({
     fontSize: 11,
     padding: 16,
     textAlign: "center",
+  },
+
+  areaRow: {
+    gap: 8,
+    paddingTop: 2,
+    paddingBottom: 0,
+  },
+
+  areaChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 13,
+    backgroundColor:
+      "rgba(255, 255, 255, 0.05)",
+    borderWidth: 1,
+    borderColor:
+      "rgba(255, 255, 255, 0.08)",
+  },
+
+  areaChipText: {
+    color: "#94A3B8",
+    fontSize: 9,
+    fontWeight: "800",
+  },
+
+  areaChipTextSelected: {
+    color: "#FFFFFF",
+  },
+
+  linkedAreaCard: {
+    width: "100%",
+    minHeight: 46,
+    paddingHorizontal: 13,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor:
+      "rgba(255, 255, 255, 0.04)",
+    borderWidth: 1,
+    borderColor:
+      "rgba(255, 255, 255, 0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+  },
+
+  areaDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 9,
+  },
+
+  linkedAreaTitle: {
+    color: "#E2E8F0",
+    fontSize: 11,
+    fontWeight: "800",
+    flex: 1,
+  },
+
+  linkedAreaMeta: {
+    color: "#64748B",
+    fontSize: 9,
+    fontWeight: "700",
   },
 
   activityRow: {
