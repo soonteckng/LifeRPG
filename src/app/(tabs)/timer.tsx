@@ -1,13 +1,12 @@
 import * as Haptics from "expo-haptics";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import React, {
-  useCallback,
-  useEffect,
   useMemo,
   useState,
 } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -31,7 +30,6 @@ import {
 
 const PRESETS = [15, 30, 45, 60];
 
-
 export default function TimerScreen() {
   const router = useRouter();
 
@@ -51,9 +49,6 @@ export default function TimerScreen() {
     linkedTaskId,
     setLinkedTaskId,
 
-    notes,
-    setNotes,
-
     startTimer,
     pauseTimer,
     resumeTimer,
@@ -65,19 +60,63 @@ export default function TimerScreen() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-
-  const [loadingTasks, setLoadingTasks] = useState(true);
+  const [questPickerVisible, setQuestPickerVisible] = useState(false);
 
   const [isCustom, setIsCustom] = useState(false);
   const [customText, setCustomText] = useState("30");
 
-  const [showQuestPicker, setShowQuestPicker] =
-    useState(false);
+  const currentMinutes = Math.max(
+    1,
+    Math.round(duration / 60),
+  );
 
-  const loadData = useCallback(async () => {
+  const linkedTask = useMemo(
+    () =>
+      tasks.find(
+        (task) => task.id === linkedTaskId,
+      ) ?? null,
+    [tasks, linkedTaskId],
+  );
+
+  const linkedArea = useMemo(
+    () =>
+      subjects.find(
+        (subject) => subject.id === targetAttributeId,
+      ) ?? null,
+    [subjects, targetAttributeId],
+  );
+
+  const generalArea = useMemo(
+    () =>
+      subjects.find(
+        (subject) => subject.title === "General",
+      ) ?? null,
+    [subjects],
+  );
+
+  const currentActivity =
+    SESSION_ACTIVITIES.find(
+      (activity) => activity.id === activityType,
+    ) ??
+    SESSION_ACTIVITIES[
+      SESSION_ACTIVITIES.length - 1
+    ];
+
+  const minutes = Math.floor(timeLeft / 60);
+  const seconds = timeLeft % 60;
+
+  const formattedTime =
+    `${minutes
+      .toString()
+      .padStart(2, "0")}:${seconds
+      .toString()
+      .padStart(2, "0")}`;
+
+  const isSessionLocked =
+    hasOpenSession && !isCompleted;
+
+  const loadChoices = async () => {
     try {
-      setLoadingTasks(true);
-
       const [taskList, subjectList] = await Promise.all([
         getTasks(),
         getSubjects(),
@@ -90,126 +129,55 @@ export default function TimerScreen() {
             !task.is_completed_today,
         ),
       );
-
       setSubjects(subjectList);
     } catch (error) {
-      console.error(
-        "Failed to load timer data:",
-        error,
-      );
-    } finally {
-      setLoadingTasks(false);
+      console.error("Failed to load session choices:", error);
     }
+  };
+
+  React.useEffect(() => {
+    void loadChoices();
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData]),
-  );
-
-  const linkedTask = useMemo(
-    () =>
-      tasks.find(
-        (task) => task.id === linkedTaskId,
-      ) ?? null,
-    [tasks, linkedTaskId],
-  );
-
-  const linkedSubject = useMemo(
-    () =>
-      subjects.find(
-        (subject) =>
-          subject.id === targetAttributeId,
-      ) ?? null,
-    [subjects, targetAttributeId],
-  );
-
-  const generalSubject = useMemo(
-    () =>
-      subjects.find(
-        (subject) => subject.title === "General",
-      ) ?? null,
-    [subjects],
-  );
-
-  const currentMinutes = Math.max(
-    1,
-    Math.round(duration / 60),
-  );
-
-  // A paused session is still an open session.
-  const isSessionLocked =
-    hasOpenSession && !isCompleted;
-
-  /*
-   * Synchronize the visible duration controls with
-   * TimerContext whenever the actual timer duration changes.
-   *
-   * This fixes the old problem where a Quest could be
-   * 15 minutes while the visible selector still showed 30.
-   */
-  useEffect(() => {
-    if (isSessionLocked) {
+  React.useEffect(() => {
+    if (!generalArea || isSessionLocked || linkedTaskId !== null) {
       return;
     }
 
-    setCustomText(String(currentMinutes));
+    if (targetAttributeId === null) {
+      setTargetAttributeId(generalArea.id);
+    }
+  }, [
+    generalArea,
+    isSessionLocked,
+    linkedTaskId,
+    targetAttributeId,
+    setTargetAttributeId,
+  ]);
 
-    setIsCustom(
-      !PRESETS.includes(currentMinutes),
-    );
-  }, [currentMinutes, isSessionLocked]);
-
-  /*
-   * When arriving from the Quest screen, use the Quest's
-   * duration and subject automatically.
-   */
-  useEffect(() => {
-    if (!linkedTask) {
+  React.useEffect(() => {
+    if (!linkedTask || isSessionLocked) {
       return;
     }
 
-    const questMinutes =
-      linkedTask.target_minutes || 30;
+    const questMinutes = linkedTask.target_minutes || 30;
 
     setDurationInMinutes(questMinutes);
     setCustomText(String(questMinutes));
-
-    setIsCustom(
-      !PRESETS.includes(questMinutes),
-    );
+    setIsCustom(!PRESETS.includes(questMinutes));
 
     setTargetAttributeId(
       linkedTask.subject_id ??
-        generalSubject?.id ??
+        generalArea?.id ??
         null,
     );
   }, [
     linkedTask?.id,
     linkedTask?.target_minutes,
     linkedTask?.subject_id,
-    generalSubject?.id,
-    setDurationInMinutes,
-    setTargetAttributeId,
-  ]);
-
-  useEffect(() => {
-    if (
-      isSessionLocked ||
-      linkedTaskId !== null ||
-      !generalSubject
-    ) {
-      return;
-    }
-
-    setTargetAttributeId(
-      generalSubject.id,
-    );
-  }, [
     isSessionLocked,
-    linkedTaskId,
-    generalSubject,
+    generalArea?.id,
+    setDurationInMinutes,
     setTargetAttributeId,
   ]);
 
@@ -227,50 +195,7 @@ export default function TimerScreen() {
     setActivityType(type);
   };
 
-  const selectQuest = (task: Task | null) => {
-    if (isSessionLocked) {
-      return;
-    }
-
-    if (hapticsEnabled) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Light,
-      );
-    }
-
-    if (!task) {
-      setLinkedTaskId(null);
-      setTargetAttributeId(
-        generalSubject?.id ?? null,
-      );
-      return;
-    }
-
-    setLinkedTaskId(task.id);
-
-    if (task.subject_id !== null) {
-      setTargetAttributeId(
-        task.subject_id,
-      );
-    }
-
-    const questMinutes =
-      task.target_minutes || 30;
-
-    setDurationInMinutes(
-      questMinutes,
-    );
-
-    setCustomText(
-      String(questMinutes),
-    );
-
-    setIsCustom(
-      !PRESETS.includes(questMinutes),
-    );
-  };
-
-  const selectPreset = (minutes: number) => {
+  const selectPreset = (value: number) => {
     if (isSessionLocked || linkedTask) {
       return;
     }
@@ -282,8 +207,8 @@ export default function TimerScreen() {
     }
 
     setIsCustom(false);
-    setCustomText(String(minutes));
-    setDurationInMinutes(minutes);
+    setCustomText(String(value));
+    setDurationInMinutes(value);
   };
 
   const selectCustom = () => {
@@ -299,40 +224,63 @@ export default function TimerScreen() {
 
     setIsCustom(true);
 
-    const minutes =
-      Number.parseInt(
-        customText,
-        10,
-      ) || 30;
+    const value =
+      Number.parseInt(customText, 10) || 30;
 
     setDurationInMinutes(
-      Math.max(1, minutes),
+      Math.min(480, Math.max(1, value)),
     );
   };
 
-  const handleCustomChange = (
-    text: string,
-  ) => {
-    if (isRunning || linkedTask) {
+  const handleCustomChange = (text: string) => {
+    if (isSessionLocked || linkedTask) {
       return;
     }
 
     setCustomText(text);
 
-    const minutes =
-      Number.parseInt(
-        text,
-        10,
-      );
+    const value = Number.parseInt(text, 10);
 
     if (
-      Number.isFinite(minutes) &&
-      minutes > 0
+      Number.isFinite(value) &&
+      value > 0
     ) {
       setDurationInMinutes(
-        Math.min(480, minutes),
+        Math.min(480, value),
       );
     }
+  };
+
+  const chooseQuest = (task: Task) => {
+    if (isSessionLocked) {
+      return;
+    }
+
+    if (hapticsEnabled) {
+      Haptics.impactAsync(
+        Haptics.ImpactFeedbackStyle.Light,
+      );
+    }
+
+    setLinkedTaskId(task.id);
+    setTargetAttributeId(
+      task.subject_id ??
+        generalArea?.id ??
+        null,
+    );
+    setDurationInMinutes(
+      task.target_minutes || 30,
+    );
+    setCustomText(
+      String(task.target_minutes || 30),
+    );
+    setIsCustom(
+      !PRESETS.includes(
+        task.target_minutes || 30,
+      ),
+    );
+
+    setQuestPickerVisible(false);
   };
 
   const removeQuest = () => {
@@ -341,12 +289,18 @@ export default function TimerScreen() {
     }
 
     setLinkedTaskId(null);
-
     setTargetAttributeId(
-      generalSubject?.id ?? null,
+      generalArea?.id ?? null,
     );
+    setDurationInMinutes(30);
+    setCustomText("30");
+    setIsCustom(false);
+  };
 
-    setShowQuestPicker(false);
+  const chooseArea = (subject: Subject) => {
+    if (isSessionLocked || linkedTask) {
+      return;
+    }
 
     if (hapticsEnabled) {
       Haptics.impactAsync(
@@ -354,17 +308,11 @@ export default function TimerScreen() {
       );
     }
 
-    /*
-     * Once the Quest is removed, return to the
-     * default 30-minute free-session duration.
-     */
-    setIsCustom(false);
-    setCustomText("30");
-    setDurationInMinutes(30);
+    setTargetAttributeId(subject.id);
   };
 
   const handleStart = async () => {
-    const minutes = Math.max(
+    const value = Math.max(
       1,
       Math.min(
         480,
@@ -377,57 +325,28 @@ export default function TimerScreen() {
       ),
     );
 
-    if (hapticsEnabled) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium,
-      );
-    }
-
     await startTimer(
-      minutes,
+      value,
       linkedTask?.title,
     );
   };
 
-  const minutes = Math.floor(
-    timeLeft / 60,
-  );
-
-  const seconds = timeLeft % 60;
-
-  const formattedTime =
-    `${minutes
-      .toString()
-      .padStart(2, "0")}:` +
-    `${seconds
-      .toString()
-      .padStart(2, "0")}`;
-
-  const currentActivity =
-    SESSION_ACTIVITIES.find(
-      (activity) =>
-        activity.id === activityType,
-    ) ??
-    SESSION_ACTIVITIES[
-      SESSION_ACTIVITIES.length - 1
-    ];
-
-  const isReady =
-    !isRunning &&
-    !isCompleted &&
-    timeLeft === duration;
-
-  const selectedDuration =
-    linkedTask
-      ? linkedTask.target_minutes || 30
-      : currentMinutes;
-
   return (
     <SafeAreaView style={styles.container}>
       <Header
-        title="Session"
-        subtitle="Make progress on something that matters"
-        showBack={false}
+        title={
+          hasOpenSession
+            ? "Current session"
+            : "Start a session"
+        }
+        subtitle={
+          hasOpenSession
+            ? "Your progress is safe. Continue when you're ready."
+            : "Choose only what you need, then start."
+        }
+        showBack={true}
+        backTitle="Home"
+        backRoute="/"
       />
 
       <KeyboardAvoidingView
@@ -439,770 +358,553 @@ export default function TimerScreen() {
         }
       >
         <ScrollView
-          contentContainerStyle={
-            styles.scrollContent
-          }
-          keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.content}
         >
-          {/* QUEST */}
-          <View style={styles.section}>
-            <View
-              style={styles.sectionHeader}
-            >
-              <Text style={styles.sectionLabel}>
-                QUEST
-              </Text>
+          {isSessionLocked ? (
+            <View style={styles.activeCard}>
+              <View style={styles.activeCardTop}>
+                <View>
+                  <Text style={styles.eyebrow}>
+                    {isRunning
+                      ? "SESSION ACTIVE"
+                      : "SESSION PAUSED"}
+                  </Text>
 
-              <Text
-                style={styles.optionalLabel}
-              >
-                Optional
-              </Text>
-            </View>
-
-            {linkedTask ? (
-              <View style={styles.linkedQuestCard}>
-                <View
-                  style={styles.questIcon}
-                >
-                  <Text
-                    style={
-                      styles.questIconText
-                    }
-                  >
-                    📜
+                  <Text style={styles.timerText}>
+                    {formattedTime}
                   </Text>
                 </View>
 
-                <View
-                  style={styles.questInfo}
-                >
-                  <Text
-                    style={
-                      styles.questTitle
-                    }
-                    numberOfLines={2}
-                  >
-                    {linkedTask.title}
+                <View style={styles.activeActivity}>
+                  <Text style={styles.activeActivityIcon}>
+                    {currentActivity.icon}
                   </Text>
+                  <Text style={styles.activeActivityText}>
+                    {currentActivity.label}
+                  </Text>
+                </View>
+              </View>
 
-                  <View
-                    style={
-                      styles.questMeta
+              <Text style={styles.activeHint}>
+                {linkedTask
+                  ? `Quest · ${linkedTask.title}`
+                  : "Free session"}
+              </Text>
+
+              {!isCompleted ? (
+                <View style={styles.activeActions}>
+                  <TouchableOpacity
+                    style={styles.primaryAction}
+                    onPress={
+                      isRunning
+                        ? pauseTimer
+                        : resumeTimer
                     }
+                    activeOpacity={0.88}
                   >
-                    <Text
-                      style={
-                        styles.questMetaText
-                      }
-                    >
-                      {selectedDuration} min
+                    <Text style={styles.primaryActionText}>
+                      {isRunning
+                        ? "PAUSE"
+                        : "RESUME"}
                     </Text>
+                  </TouchableOpacity>
 
-                    {linkedSubject && (
-                      <>
-                        <Text
-                          style={
-                            styles.metaDot
-                          }
-                        >
-                          •
-                        </Text>
+                  <TouchableOpacity
+                    style={styles.secondaryAction}
+                    onPress={resetTimer}
+                    activeOpacity={0.88}
+                  >
+                    <Text style={styles.secondaryActionText}>
+                      RESET
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View style={styles.completedBox}>
+                  <Text style={styles.completedTitle}>
+                    Session complete 🎉
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.primaryAction}
+                    onPress={resetTimer}
+                    activeOpacity={0.88}
+                  >
+                    <Text style={styles.primaryActionText}>
+                      NEW SESSION
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          ) : (
+            <>
+              <View style={styles.block}>
+                <Text style={styles.sectionEyebrow}>
+                  WHAT ARE YOU DOING?
+                </Text>
 
-                        <Text
+                <View style={styles.activityGrid}>
+                  {SESSION_ACTIVITIES.map(
+                    (activity) => {
+                      const selected =
+                        activity.id ===
+                        activityType;
+
+                      return (
+                        <TouchableOpacity
+                          key={activity.id}
                           style={[
-                            styles.questMetaText,
-                            {
-                              color:
-                                linkedSubject.color_code ??
-                                "#818CF8",
-                            },
+                            styles.activityCard,
+                            selected &&
+                              styles.activityCardSelected,
                           ]}
-                        >
-                          {
-                            linkedSubject.title
+                          onPress={() =>
+                            selectActivity(
+                              activity.id,
+                            )
                           }
-                        </Text>
-                      </>
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.activityIcon}>
+                            {activity.icon}
+                          </Text>
+
+                          <Text
+                            style={[
+                              styles.activityLabel,
+                              selected &&
+                                styles.activityLabelSelected,
+                            ]}
+                          >
+                            {activity.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    },
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.block}>
+                <View style={styles.blockHeader}>
+                  <View>
+                    <Text style={styles.sectionEyebrow}>
+                      HOW LONG?
+                    </Text>
+                    {linkedTask && (
+                      <Text style={styles.helperText}>
+                        Quest duration is fixed at{" "}
+                        {linkedTask.target_minutes ||
+                          30}{" "}
+                        min
+                      </Text>
                     )}
                   </View>
                 </View>
 
-                {!isSessionLocked && (
+                <View style={styles.durationRow}>
+                  {PRESETS.map((value) => {
+                    const selected =
+                      !isCustom &&
+                      currentMinutes ===
+                        value;
+
+                    return (
+                      <TouchableOpacity
+                        key={value}
+                        style={[
+                          styles.durationButton,
+                          selected &&
+                            styles.durationButtonSelected,
+                          linkedTask &&
+                            styles.controlDisabled,
+                        ]}
+                        disabled={
+                          !!linkedTask
+                        }
+                        onPress={() =>
+                          selectPreset(
+                            value,
+                          )
+                        }
+                        activeOpacity={0.85}
+                      >
+                        <Text
+                          style={[
+                            styles.durationValue,
+                            selected &&
+                              styles.durationValueSelected,
+                          ]}
+                        >
+                          {value}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.durationUnit,
+                            selected &&
+                              styles.durationUnitSelected,
+                          ]}
+                        >
+                          min
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+
                   <TouchableOpacity
-                    style={
-                      styles.removeQuestButton
-                    }
-                    onPress={
-                      removeQuest
-                    }
+                    style={[
+                      styles.durationButton,
+                      isCustom &&
+                        styles.durationButtonSelected,
+                      linkedTask &&
+                        styles.controlDisabled,
+                    ]}
+                    disabled={!!linkedTask}
+                    onPress={selectCustom}
+                    activeOpacity={0.85}
                   >
                     <Text
-                      style={
-                        styles.removeQuestText
-                      }
+                      style={[
+                        styles.durationValue,
+                        isCustom &&
+                          styles.durationValueSelected,
+                      ]}
                     >
-                      Remove
+                      Custom
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {isCustom && (
+                  <View style={styles.customRow}>
+                    <Text style={styles.customLabel}>
+                      Minutes
+                    </Text>
+
+                    <View style={styles.customInputWrap}>
+                      <TextInput
+                        value={customText}
+                        onChangeText={
+                          handleCustomChange
+                        }
+                        keyboardType="number-pad"
+                        editable={!linkedTask}
+                        selectTextOnFocus
+                        style={styles.customInput}
+                      />
+                      <Text style={styles.customUnit}>
+                        MIN
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+
+              <View style={styles.block}>
+                <View style={styles.blockHeader}>
+                  <Text style={styles.sectionEyebrow}>
+                    QUEST
+                  </Text>
+                  <Text style={styles.optionalText}>
+                    Optional
+                  </Text>
+                </View>
+
+                {linkedTask ? (
+                  <View style={styles.selectedRow}>
+                    <View style={styles.selectedRowMain}>
+                      <Text style={styles.selectedIcon}>
+                        📜
+                      </Text>
+
+                      <View style={styles.selectedRowText}>
+                        <Text
+                          style={styles.selectedTitle}
+                          numberOfLines={1}
+                        >
+                          {linkedTask.title}
+                        </Text>
+                        <Text style={styles.selectedMeta}>
+                          {linkedTask.target_minutes ||
+                            30}{" "}
+                          min
+                        </Text>
+                      </View>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={removeQuest}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.removeText}>
+                        Remove
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.selectRow}
+                    onPress={() =>
+                      setQuestPickerVisible(true)
+                    }
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.selectRowMain}>
+                      <Text style={styles.selectIcon}>
+                        📜
+                      </Text>
+                      <View>
+                        <Text style={styles.selectTitle}>
+                          Add a quest
+                        </Text>
+                        <Text style={styles.selectMeta}>
+                          Optional · use a quest as your session target
+                        </Text>
+                      </View>
+                    </View>
+                    <Text style={styles.rowChevron}>
+                      ›
                     </Text>
                   </TouchableOpacity>
                 )}
               </View>
-            ) : (
-              <TouchableOpacity
-                style={
-                  styles.addQuestCard
-                }
-                onPress={() =>
-                  setShowQuestPicker(
-                    (current) =>
-                      !current,
-                  )
-                }
-                disabled={isSessionLocked}
-                activeOpacity={0.85}
-              >
-                <View
-                  style={
-                    styles.addQuestIcon
-                  }
-                >
-                  <Text
-                    style={
-                      styles.addQuestIconText
-                    }
-                  >
-                    +
+
+              <View style={styles.block}>
+                <View style={styles.blockHeader}>
+                  <Text style={styles.sectionEyebrow}>
+                    AREA
+                  </Text>
+                  <Text style={styles.optionalText}>
+                    {linkedTask
+                      ? "From quest"
+                      : "Optional"}
                   </Text>
                 </View>
 
-                <View
-                  style={styles.addQuestInfo}
-                >
-                  <Text
-                    style={
-                      styles.addQuestTitle
+                {linkedTask ? (
+                  <View style={styles.selectedRow}>
+                    <View style={styles.selectedRowMain}>
+                      <View
+                        style={[
+                          styles.areaDot,
+                          {
+                            backgroundColor:
+                              linkedArea?.color_code ??
+                              generalArea?.color_code ??
+                              "#8B8CF8",
+                          },
+                        ]}
+                      />
+
+                      <View style={styles.selectedRowText}>
+                        <Text style={styles.selectedTitle}>
+                          {linkedArea?.title ??
+                            generalArea?.title ??
+                            "General"}
+                        </Text>
+                        <Text style={styles.selectedMeta}>
+                          Linked to this quest
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                ) : (
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={
+                      styles.areaRow
                     }
                   >
-                    Add a quest
-                  </Text>
+                    {subjects.map((subject) => {
+                      const selected =
+                        targetAttributeId ===
+                        subject.id;
 
-                  <Text
-                    style={
-                      styles.addQuestText
-                    }
-                  >
-                    Optional — just focus on
-                    whatever you want to do.
-                  </Text>
-                </View>
-
-                <Text
-                  style={styles.chevron}
-                >
-                  ›
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {!linkedTask &&
-              showQuestPicker && (
-                <View
-                  style={
-                    styles.questPicker
-                  }
-                >
-                  <TouchableOpacity
-                    style={[
-                      styles.questPickerItem,
-                      styles.freeSessionItem,
-                    ]}
-                    onPress={() => {
-                      setShowQuestPicker(
-                        false,
-                      );
-                    }}
-                  >
-                    <Text
-                      style={
-                        styles.questPickerIcon
-                      }
-                    >
-                      ✨
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.questPickerText,
-                        {
-                          color:
-                            "#C7D2FE",
-                        },
-                      ]}
-                    >
-                      Keep it as a free
-                      session
-                    </Text>
-                  </TouchableOpacity>
-
-                  {loadingTasks ? (
-                    <Text
-                      style={
-                        styles.loadingText
-                      }
-                    >
-                      Loading quests...
-                    </Text>
-                  ) : tasks.length === 0 ? (
-                    <Text
-                      style={
-                        styles.loadingText
-                      }
-                    >
-                      No active quests yet.
-                    </Text>
-                  ) : (
-                    tasks.map(
-                      (task) => (
+                      return (
                         <TouchableOpacity
-                          key={task.id}
-                          style={
-                            styles.questPickerItem
-                          }
+                          key={subject.id}
+                          style={[
+                            styles.areaChip,
+                            selected &&
+                              {
+                                backgroundColor:
+                                  subject.color_code ??
+                                  "#8B8CF8",
+                                borderColor:
+                                  subject.color_code ??
+                                  "#8B8CF8",
+                              },
+                          ]}
                           onPress={() =>
-                            selectQuest(
-                              task,
-                            )
+                            chooseArea(subject)
                           }
+                          activeOpacity={0.85}
                         >
                           <Text
-                            style={
-                              styles.questPickerIcon
-                            }
+                            style={[
+                              styles.areaChipText,
+                              selected &&
+                                styles.areaChipTextSelected,
+                            ]}
                           >
-                            📜
+                            {subject.title}
                           </Text>
-
-                          <View
-                            style={
-                              styles.questPickerInfo
-                            }
-                          >
-                            <Text
-                              style={
-                                styles.questPickerText
-                              }
-                              numberOfLines={
-                                1
-                              }
-                            >
-                              {
-                                task.title
-                              }
-                            </Text>
-
-                            <Text
-                              style={
-                                styles.questPickerMeta
-                              }
-                            >
-                              {task.target_minutes ||
-                                30}{" "}
-                              min
-                            </Text>
-                          </View>
                         </TouchableOpacity>
-                      ),
-                    )
-                  )}
-                </View>
-              )}
-          </View>
+                      );
+                    })}
+                  </ScrollView>
+                )}
+              </View>
 
-          {/* ACTIVITY */}
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>
-              WHAT ARE YOU DOING?
-            </Text>
+              <View style={styles.timerPreview}>
+                <Text style={styles.previewEyebrow}>
+                  READY
+                </Text>
+                <Text style={styles.previewTimer}>
+                  {isCustom
+                    ? `${Math.floor(
+                        Math.max(
+                          1,
+                          Number.parseInt(
+                            customText,
+                            10,
+                          ) || 30,
+                        ),
+                      )
+                        .toString()
+                        .padStart(2, "0")}:00`
+                    : `${currentMinutes
+                        .toString()
+                        .padStart(2, "0")}:00`}
+                </Text>
+                <Text style={styles.previewMeta}>
+                  {currentActivity.icon}{" "}
+                  {currentActivity.label}
+                  {linkedTask
+                    ? ` · ${linkedTask.title}`
+                    : ""}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.startButton}
+                onPress={handleStart}
+                activeOpacity={0.88}
+              >
+                <Text style={styles.startButtonTitle}>
+                  START SESSION
+                </Text>
+                <Text style={styles.startButtonSubtitle}>
+                  Your timer starts immediately
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <Modal
+        visible={questPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() =>
+          setQuestPickerVisible(false)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.questModal}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>
+                  Choose a quest
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  Only quests scheduled for today are shown
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() =>
+                  setQuestPickerVisible(false)
+                }
+              >
+                <Text style={styles.modalClose}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={
-                false
-              }
+              showsVerticalScrollIndicator={false}
               contentContainerStyle={
-                styles.activityRow
+                styles.questModalList
               }
             >
-              {SESSION_ACTIVITIES.map(
-                (activity) => {
-                  const selected =
-                    activity.id ===
-                    activityType;
+              {tasks.length === 0 ? (
+                <View style={styles.modalEmpty}>
+                  <Text style={styles.modalEmptyIcon}>
+                    ✨
+                  </Text>
+                  <Text style={styles.modalEmptyTitle}>
+                    No quests for today
+                  </Text>
+                  <Text style={styles.modalEmptyText}>
+                    You can still start a free session.
+                  </Text>
+                </View>
+              ) : (
+                tasks.map((task) => {
+                  const area = subjects.find(
+                    (subject) =>
+                      subject.id ===
+                      task.subject_id,
+                  );
 
                   return (
                     <TouchableOpacity
-                      key={
-                        activity.id
-                      }
-                      style={[
-                        styles.activityChip,
-                        selected &&
-                          styles.activityChipSelected,
-                      ]}
+                      key={task.id}
+                      style={styles.questOption}
                       onPress={() =>
-                        selectActivity(
-                          activity.id,
-                        )
+                        chooseQuest(task)
                       }
-                      disabled={isSessionLocked}
+                      activeOpacity={0.85}
                     >
-                      <Text
-                        style={
-                          styles.activityIcon
-                        }
-                      >
-                        {
-                          activity.icon
-                        }
+                      <Text style={styles.questOptionIcon}>
+                        📜
                       </Text>
 
-                      <Text
-                        style={[
-                          styles.activityText,
-                          selected &&
-                            styles.activityTextSelected,
-                        ]}
-                      >
-                        {
-                          activity.label
-                        }
+                      <View style={styles.questOptionInfo}>
+                        <Text
+                          style={styles.questOptionTitle}
+                          numberOfLines={1}
+                        >
+                          {task.title}
+                        </Text>
+
+                        <Text style={styles.questOptionMeta}>
+                          {task.target_minutes || 30}{" "}
+                          min
+                          {area
+                            ? ` · ${area.title}`
+                            : ""}
+                        </Text>
+                      </View>
+
+                      <Text style={styles.rowChevron}>
+                        ›
                       </Text>
                     </TouchableOpacity>
                   );
-                },
+                })
               )}
             </ScrollView>
           </View>
-
-          {/* AREA */}
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionLabel}>
-                AREA
-              </Text>
-
-              <Text style={styles.lockedLabel}>
-                {linkedTask
-                  ? "Linked to quest"
-                  : "Where this helps"}
-              </Text>
-            </View>
-
-            {linkedTask ? (
-              <View style={styles.linkedAreaCard}>
-                <View
-                  style={[
-                    styles.areaDot,
-                    {
-                      backgroundColor:
-                        linkedSubject?.color_code ??
-                        generalSubject?.color_code ??
-                        "#F59E0B",
-                    },
-                  ]}
-                />
-
-                <Text style={styles.linkedAreaTitle}>
-                  {linkedSubject?.title ??
-                    generalSubject?.title ??
-                    "General"}
-                </Text>
-
-                <Text style={styles.linkedAreaMeta}>
-                  From quest
-                </Text>
-              </View>
-            ) : (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={
-                  styles.areaRow
-                }
-              >
-                {subjects.map((subject) => {
-                  const selected =
-                    targetAttributeId === subject.id;
-
-                  return (
-                    <TouchableOpacity
-                      key={subject.id}
-                      disabled={isSessionLocked}
-                      style={[
-                        styles.areaChip,
-                        selected && {
-                          backgroundColor:
-                            subject.color_code ??
-                            "#6366F1",
-                          borderColor:
-                            subject.color_code ??
-                            "#6366F1",
-                        },
-                      ]}
-                      onPress={() =>
-                        setTargetAttributeId(
-                          subject.id,
-                        )
-                      }
-                      activeOpacity={0.8}
-                    >
-                      <Text
-                        style={[
-                          styles.areaChipText,
-                          selected &&
-                            styles.areaChipTextSelected,
-                        ]}
-                      >
-                        {subject.title}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
-
-          {/* DURATION */}
-          <View style={styles.section}>
-            <View
-              style={styles.sectionHeader}
-            >
-              <Text style={styles.sectionLabel}>
-                DURATION
-              </Text>
-
-              {linkedTask && (
-                <Text
-                  style={
-                    styles.lockedLabel
-                  }
-                >
-                  Quest duration
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.presetRow}>
-              {PRESETS.map(
-                (preset) => {
-                  const selected =
-                    !isCustom &&
-                    selectedDuration ===
-                      preset;
-
-                  return (
-                    <TouchableOpacity
-                      key={
-                        preset
-                      }
-                      disabled={
-                        isRunning ||
-                        !!linkedTask
-                      }
-                      style={[
-                        styles.presetButton,
-                        selected &&
-                          styles.presetButtonSelected,
-                        !!linkedTask &&
-                          styles.presetButtonLocked,
-                      ]}
-                      onPress={() =>
-                        selectPreset(
-                          preset,
-                        )
-                      }
-                    >
-                      <Text
-                        style={[
-                          styles.presetText,
-                          selected &&
-                            styles.presetTextSelected,
-                        ]}
-                      >
-                        {preset}
-                      </Text>
-
-                      <Text
-                        style={[
-                          styles.presetUnit,
-                          selected &&
-                            styles.presetUnitSelected,
-                        ]}
-                      >
-                        min
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                },
-              )}
-
-              <TouchableOpacity
-                disabled={isRunning || !!linkedTask}
-                style={[
-                  styles.presetButton,
-                  isCustom &&
-                    styles.presetButtonSelected,
-                  !!linkedTask &&
-                    styles.presetButtonLocked,
-                ]}
-                onPress={selectCustom}
-              >
-                  <Text
-                    style={[
-                      styles.presetText,
-                      isCustom &&
-                        styles.presetTextSelected,
-                    ]}
-                  >
-                    Custom
-                  </Text>
-                </TouchableOpacity>
-            </View>
-
-            {isCustom && (
-                <View
-                  style={
-                    styles.customDurationCard
-                  }
-                >
-                  <Text
-                    style={
-                      styles.customDurationLabel
-                    }
-                  >
-                    Minutes
-                  </Text>
-
-                  <View
-                    style={
-                      styles.customInputWrapper
-                    }
-                  >
-                    <TextInput
-                      value={
-                        customText
-                      }
-                      onChangeText={
-                        handleCustomChange
-                      }
-                      keyboardType="number-pad"
-                      editable={
-                        !isSessionLocked &&
-                        !linkedTask
-                      }
-                      style={
-                        styles.customInput
-                      }
-                      selectTextOnFocus
-                    />
-
-                    <Text
-                      style={
-                        styles.customInputUnit
-                      }
-                    >
-                      MIN
-                    </Text>
-                  </View>
-                </View>
-              )}
-          </View>
-
-          {/* TIMER */}
-          <View
-            style={
-              styles.timerSection
-            }
-          >
-            <View
-              style={[
-                styles.timerCircle,
-                isRunning &&
-                  styles.timerCircleRunning,
-                isCompleted &&
-                  styles.timerCircleCompleted,
-              ]}
-            >
-              <Text
-                style={
-                  styles.timerDigits
-                }
-              >
-                {formattedTime}
-              </Text>
-
-              <Text
-                style={
-                  styles.timerStatus
-                }
-              >
-                {isRunning
-                  ? "IN SESSION"
-                  : isCompleted
-                    ? "COMPLETED"
-                    : "READY"}
-              </Text>
-
-              <Text
-                style={
-                  styles.activitySummary
-                }
-              >
-                {currentActivity.icon}{" "}
-                {currentActivity.label}
-              </Text>
-            </View>
-
-            {isReady ? (
-              <TouchableOpacity
-                style={
-                  styles.startButton
-                }
-                onPress={
-                  handleStart
-                }
-                activeOpacity={
-                  0.85
-                }
-              >
-                <Text
-                  style={
-                    styles.startButtonText
-                  }
-                >
-                  START SESSION
-                </Text>
-
-                <Text
-                  style={
-                    styles.startButtonSubtext
-                  }
-                >
-                  {currentMinutes} min
-                </Text>
-              </TouchableOpacity>
-            ) : isCompleted ? (
-              <View
-                style={
-                  styles.completedActions
-                }
-              >
-                <View
-                  style={
-                    styles.completedMessage
-                  }
-                >
-                  <Text
-                    style={
-                      styles.completedMessageTitle
-                    }
-                  >
-                    Session complete 🎉
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.completedMessageText
-                    }
-                  >
-                    Your progress has been
-                    saved.
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  style={
-                    styles.startButton
-                  }
-                  onPress={
-                    resetTimer
-                  }
-                  activeOpacity={
-                    0.85
-                  }
-                >
-                  <Text
-                    style={
-                      styles.startButtonText
-                    }
-                  >
-                    NEW SESSION
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View
-                style={
-                  styles.runningActions
-                }
-              >
-                <TouchableOpacity
-                  style={[
-                    styles.pauseResumeButton,
-                    !isRunning &&
-                      styles.resumeButton,
-                  ]}
-                  onPress={
-                    isRunning
-                      ? pauseTimer
-                      : resumeTimer
-                  }
-                  activeOpacity={
-                    0.85
-                  }
-                >
-                  <Text
-                    style={
-                      styles.pauseResumeText
-                    }
-                  >
-                    {isRunning
-                      ? "PAUSE"
-                      : "RESUME"}
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={
-                    styles.resetButton
-                  }
-                  onPress={
-                    resetTimer
-                  }
-                  activeOpacity={
-                    0.85
-                  }
-                >
-                  <Text
-                    style={
-                      styles.resetButtonText
-                    }
-                  >
-                    RESET
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-
-          <View
-            style={
-              styles.bottomSpace
-            }
-          />
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1210,249 +912,283 @@ export default function TimerScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#090D16",
+    backgroundColor: "#0B0D13",
   },
 
   flex: {
     flex: 1,
   },
 
-  scrollContent: {
+  content: {
     paddingHorizontal: 18,
-    paddingBottom: 90,
+    paddingBottom: 42,
+    gap: 16,
   },
 
-  section: {
-    marginTop: 5,
-    marginBottom: 12,
+  block: {
+    marginTop: 2,
   },
 
-  sectionHeader: {
+  blockHeader: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
-    marginBottom: 5,
+    marginBottom: 8,
   },
 
-  sectionLabel: {
-    color: "#64748B",
+  sectionEyebrow: {
+    color: "#7D869A",
     fontSize: 10,
     fontWeight: "900",
-    letterSpacing: 0.9,
+    letterSpacing: 1,
   },
 
-  optionalLabel: {
-    color: "#475569",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-
-  lockedLabel: {
-    color: "#64748B",
+  optionalText: {
+    color: "#646D80",
     fontSize: 9,
     fontWeight: "700",
   },
 
-  linkedQuestCard: {
-    width: "100%",
-    padding: 15,
-    borderRadius: 18,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.10)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.35)",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  questIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-
-  questIconText: {
-    fontSize: 20,
-  },
-
-  questInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  questTitle: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "800",
-  },
-
-  questMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 5,
-    gap: 6,
-  },
-
-  questMetaText: {
-    color: "#94A3B8",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-
-  metaDot: {
-    color: "#475569",
-    fontSize: 10,
-  },
-
-  removeQuestButton: {
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 9,
-    backgroundColor:
-      "rgba(239, 68, 68, 0.08)",
-  },
-
-  removeQuestText: {
-    color: "#F87171",
+  helperText: {
+    color: "#6F7789",
     fontSize: 9,
-    fontWeight: "800",
-  },
-
-  addQuestCard: {
-    width: "100%",
-    padding: 15,
-    borderRadius: 18,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.04)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    borderStyle: "dashed",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  addQuestIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 14,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-
-  addQuestIconText: {
-    color: "#818CF8",
-    fontSize: 24,
-    fontWeight: "300",
-  },
-
-  addQuestInfo: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  addQuestTitle: {
-    color: "#E2E8F0",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  addQuestText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 4,
-  },
-
-  chevron: {
-    color: "#64748B",
-    fontSize: 24,
-    marginLeft: 8,
-  },
-
-  questPicker: {
-    marginTop: 8,
-    borderRadius: 16,
-    overflow: "hidden",
-    backgroundColor:
-      "rgba(255, 255, 255, 0.035)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-  },
-
-  questPickerItem: {
-    minHeight: 52,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderBottomColor:
-      "rgba(255, 255, 255, 0.05)",
-  },
-
-  freeSessionItem: {
-    backgroundColor:
-      "rgba(99, 102, 241, 0.07)",
-  },
-
-  questPickerIcon: {
-    fontSize: 17,
-    marginRight: 11,
-  },
-
-  questPickerInfo: {
-    flex: 1,
-  },
-
-  questPickerText: {
-    color: "#CBD5E1",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  questPickerMeta: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "700",
     marginTop: 3,
   },
 
-  loadingText: {
-    color: "#64748B",
-    fontSize: 11,
-    padding: 16,
+  activityGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  activityCard: {
+    width: "31.7%",
+    minHeight: 78,
+    borderRadius: 18,
+    backgroundColor: "#141821",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+
+  activityCardSelected: {
+    backgroundColor: "rgba(139,140,248,0.14)",
+    borderColor: "rgba(165,180,252,0.42)",
+  },
+
+  activityIcon: {
+    fontSize: 22,
+    marginBottom: 5,
+  },
+
+  activityLabel: {
+    color: "#8991A3",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  activityLabelSelected: {
+    color: "#F3F4FF",
+  },
+
+  durationRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+
+  durationButton: {
+    flex: 1,
+    minHeight: 57,
+    borderRadius: 16,
+    backgroundColor: "#141821",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  durationButtonSelected: {
+    backgroundColor: "rgba(139,140,248,0.14)",
+    borderColor: "rgba(165,180,252,0.42)",
+  },
+
+  controlDisabled: {
+    opacity: 0.45,
+  },
+
+  durationValue: {
+    color: "#D4D8E2",
+    fontSize: 15,
+    fontWeight: "900",
+  },
+
+  durationValueSelected: {
+    color: "#FFFFFF",
+  },
+
+  durationUnit: {
+    color: "#6D7587",
+    fontSize: 8,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+
+  durationUnitSelected: {
+    color: "#C7D2FE",
+  },
+
+  customRow: {
+    marginTop: 8,
+    minHeight: 54,
+    borderRadius: 16,
+    backgroundColor: "#121620",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 13,
+  },
+
+  customLabel: {
+    color: "#A0A8B8",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  customInputWrap: {
+    minWidth: 100,
+    height: 42,
+    borderRadius: 12,
+    backgroundColor: "#0D1017",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+  },
+
+  customInput: {
+    flex: 1,
+    color: "#E9EBF2",
+    fontSize: 17,
+    fontWeight: "900",
     textAlign: "center",
+    paddingVertical: 0,
+  },
+
+  customUnit: {
+    color: "#697286",
+    fontSize: 8,
+    fontWeight: "900",
+  },
+
+  selectRow: {
+    minHeight: 66,
+    borderRadius: 18,
+    backgroundColor: "#141821",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 13,
+  },
+
+  selectedRow: {
+    minHeight: 66,
+    borderRadius: 18,
+    backgroundColor: "rgba(139,140,248,0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(165,180,252,0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 13,
+  },
+
+  selectRowMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  selectedRowMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  selectIcon: {
+    fontSize: 20,
+    marginRight: 11,
+  },
+
+  selectedIcon: {
+    fontSize: 20,
+    marginRight: 11,
+  },
+
+  selectTitle: {
+    color: "#E7EAF1",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  selectedTitle: {
+    color: "#EDF0F6",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  selectMeta: {
+    color: "#747D90",
+    fontSize: 9,
+    marginTop: 3,
+    maxWidth: 260,
+  },
+
+  selectedMeta: {
+    color: "#747D90",
+    fontSize: 9,
+    marginTop: 3,
+  },
+
+  selectedRowText: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  removeText: {
+    color: "#E18B8B",
+    fontSize: 10,
+    fontWeight: "800",
+  },
+
+  rowChevron: {
+    color: "#70798C",
+    fontSize: 25,
+    marginLeft: 10,
   },
 
   areaRow: {
     gap: 8,
-    paddingTop: 2,
-    paddingBottom: 0,
+    paddingVertical: 1,
   },
 
   areaChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 13,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.05)",
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 14,
+    backgroundColor: "#141821",
     borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255,255,255,0.06)",
   },
 
   areaChipText: {
-    color: "#94A3B8",
+    color: "#9199AA",
     fontSize: 9,
     fontWeight: "800",
   },
@@ -1461,319 +1197,277 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
   },
 
-  linkedAreaCard: {
-    width: "100%",
-    minHeight: 46,
-    paddingHorizontal: 13,
-    paddingVertical: 10,
-    borderRadius: 14,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.04)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
   areaDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 9,
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    marginRight: 10,
   },
 
-  linkedAreaTitle: {
-    color: "#E2E8F0",
-    fontSize: 11,
-    fontWeight: "800",
-    flex: 1,
+  timerPreview: {
+    alignItems: "center",
+    paddingTop: 3,
   },
 
-  linkedAreaMeta: {
-    color: "#64748B",
+  previewEyebrow: {
+    color: "#687184",
     fontSize: 9,
-    fontWeight: "700",
-  },
-
-  activityRow: {
-    gap: 8,
-    paddingTop: 2,
-    paddingBottom: 0,
-  },
-
-  activityChip: {
-    minWidth: 90,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 13,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.05)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    alignItems: "center",
-  },
-
-  activityChipSelected: {
-    backgroundColor:
-      "rgba(99, 102, 241, 0.20)",
-    borderColor: "#6366F1",
-  },
-
-  activityIcon: {
-    fontSize: 17,
-    marginBottom: 3,
-  },
-
-  activityText: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "800",
-  },
-
-  activityTextSelected: {
-    color: "#FFFFFF",
-  },
-
-  presetRow: {
-    width: "100%",
-    flexDirection: "row",
-    gap: 7,
-  },
-
-  presetButton: {
-    flex: 1,
-    minHeight: 54,
-    borderRadius: 14,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.05)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  presetButtonSelected: {
-    backgroundColor:
-      "rgba(99, 102, 241, 0.22)",
-    borderColor: "#6366F1",
-  },
-
-  presetButtonLocked: {
-    opacity: 0.8,
-  },
-
-  presetText: {
-    color: "#CBD5E1",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-
-  presetTextSelected: {
-    color: "#FFFFFF",
-  },
-
-  presetUnit: {
-    color: "#64748B",
-    fontSize: 8,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-
-  presetUnitSelected: {
-    color: "#C7D2FE",
-  },
-
-  customDurationCard: {
-    marginTop: 7,
-    padding: 9,
-    borderRadius: 14,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.08)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(99, 102, 241, 0.25)",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  customDurationLabel: {
-    color: "#CBD5E1",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  customInputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#0F172A",
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: "#334155",
-    paddingHorizontal: 10,
-  },
-
-  customInput: {
-    color: "#A5B4FC",
-    fontSize: 17,
-    fontWeight: "900",
-    minWidth: 42,
-    textAlign: "center",
-    paddingVertical: 7,
-  },
-
-  customInputUnit: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "900",
-  },
-
-  timerSection: {
-    alignItems: "center",
-    marginTop: 4,
-    marginBottom: 8,
-  },
-
-  timerCircle: {
-    width: 210,
-    height: 210,
-    borderRadius: 105,
-    borderWidth: 7,
-    borderColor: "#6366F1",
-    backgroundColor:
-      "rgba(99, 102, 241, 0.05)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  timerCircleRunning: {
-    borderColor: "#10B981",
-    backgroundColor:
-      "rgba(16, 185, 129, 0.06)",
-  },
-
-  timerCircleCompleted: {
-    borderColor: "#F59E0B",
-    backgroundColor:
-      "rgba(245, 158, 11, 0.06)",
-  },
-
-  timerDigits: {
-    color: "#F8FAFC",
-    fontSize: 39,
-    fontWeight: "900",
-    fontVariant: ["tabular-nums"],
-  },
-
-  timerStatus: {
-    color: "#94A3B8",
-    fontSize: 10,
     fontWeight: "900",
     letterSpacing: 1,
-    marginTop: 6,
   },
 
-  activitySummary: {
-    color: "#A5B4FC",
-    fontSize: 10,
+  previewTimer: {
+    color: "#F6F7FA",
+    fontSize: 48,
+    lineHeight: 56,
     fontWeight: "800",
-    marginTop: 8,
-  },
-
-  startButton: {
-    width: "100%",
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: "#6366F1",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 10,
-  },
-
-  startButtonText: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-
-  startButtonSubtext: {
-    color: "#C7D2FE",
-    fontSize: 9,
-    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
     marginTop: 3,
   },
 
-  completedActions: {
-    width: "100%",
-  },
-
-  completedMessage: {
-    alignItems: "center",
-    marginTop: 14,
-  },
-
-  completedMessageTitle: {
-    color: "#F8FAFC",
-    fontSize: 15,
-    fontWeight: "900",
-  },
-
-  completedMessageText: {
-    color: "#64748B",
+  previewMeta: {
+    color: "#7C8597",
     fontSize: 10,
+    fontWeight: "700",
+    marginTop: 3,
+    textAlign: "center",
+  },
+
+  startButton: {
+    minHeight: 70,
+    borderRadius: 21,
+    backgroundColor: "#E9EAFF",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    marginTop: -2,
+  },
+
+  startButtonTitle: {
+    color: "#171827",
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 0.5,
+  },
+
+  startButtonSubtitle: {
+    color: "#5F6279",
+    fontSize: 9,
+    fontWeight: "600",
     marginTop: 4,
   },
 
-  runningActions: {
-    width: "100%",
+  activeCard: {
+    marginTop: 5,
+    padding: 18,
+    borderRadius: 24,
+    backgroundColor: "#151923",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+  },
+
+  activeCardTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  eyebrow: {
+    color: "#7D869A",
+    fontSize: 9,
+    fontWeight: "900",
+    letterSpacing: 1,
+  },
+
+  timerText: {
+    color: "#F7F8FA",
+    fontSize: 48,
+    lineHeight: 54,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
+    marginTop: 4,
+  },
+
+  activeActivity: {
+    alignItems: "center",
+    marginTop: 4,
+  },
+
+  activeActivityIcon: {
+    fontSize: 27,
+  },
+
+  activeActivityText: {
+    color: "#C5CBD8",
+    fontSize: 10,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+
+  activeHint: {
+    color: "#7B8496",
+    fontSize: 10,
+    marginTop: 9,
+  },
+
+  activeActions: {
     flexDirection: "row",
     gap: 8,
     marginTop: 16,
   },
 
-  pauseResumeButton: {
+  primaryAction: {
     flex: 1,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor: "#F59E0B",
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: "#E9EAFF",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  resumeButton: {
-    backgroundColor: "#3B82F6",
-  },
-
-  pauseResumeText: {
-    color: "#FFFFFF",
-    fontSize: 13,
+  primaryActionText: {
+    color: "#171827",
+    fontSize: 11,
     fontWeight: "900",
   },
 
-  resetButton: {
-    width: 90,
-    height: 50,
-    borderRadius: 15,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.05)",
+  secondaryAction: {
+    width: 88,
+    minHeight: 52,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.05)",
     borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
+    borderColor: "rgba(255,255,255,0.08)",
     alignItems: "center",
     justifyContent: "center",
   },
 
-  resetButtonText: {
-    color: "#94A3B8",
+  secondaryActionText: {
+    color: "#A4ACBC",
     fontSize: 10,
     fontWeight: "900",
   },
 
-  bottomSpace: {
-    height: 20,
+  completedBox: {
+    marginTop: 15,
+    alignItems: "center",
+  },
+
+  completedTitle: {
+    color: "#F0F2F6",
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 10,
+  },
+
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.50)",
+    justifyContent: "flex-end",
+  },
+
+  questModal: {
+    maxHeight: "82%",
+    backgroundColor: "#11151E",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.08)",
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 24,
+  },
+
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#4B5363",
+    alignSelf: "center",
+    marginBottom: 13,
+  },
+
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+  },
+
+  modalTitle: {
+    color: "#F1F3F7",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+
+  modalSubtitle: {
+    color: "#737C8F",
+    fontSize: 9,
+    marginTop: 4,
+  },
+
+  modalClose: {
+    color: "#9AA3B4",
+    fontSize: 18,
+    padding: 3,
+  },
+
+  questModalList: {
+    paddingTop: 14,
+    gap: 8,
+  },
+
+  questOption: {
+    minHeight: 63,
+    borderRadius: 17,
+    backgroundColor: "#171B24",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 13,
+  },
+
+  questOptionIcon: {
+    fontSize: 19,
+    marginRight: 11,
+  },
+
+  questOptionInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  questOptionTitle: {
+    color: "#E8EAF0",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+
+  questOptionMeta: {
+    color: "#737C8F",
+    fontSize: 9,
+    marginTop: 4,
+  },
+
+  modalEmpty: {
+    alignItems: "center",
+    paddingVertical: 36,
+  },
+
+  modalEmptyIcon: {
+    fontSize: 25,
+  },
+
+  modalEmptyTitle: {
+    color: "#E4E7ED",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+
+  modalEmptyText: {
+    color: "#727B8D",
+    fontSize: 10,
+    marginTop: 4,
   },
 });
