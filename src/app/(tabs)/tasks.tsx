@@ -414,7 +414,7 @@ export default function TasksScreen() {
 
   const startQuest = (task: Task) => {
     if (hasOpenSession) {
-      router.push("/timer");
+      router.push("/session");
       return;
     }
 
