@@ -227,9 +227,9 @@ export default function TasksScreen() {
     setTargetMinutes(minutes);
     setCustomDuration(String(minutes));
 
-    if (!DURATION_OPTIONS.includes(minutes)) {
-      setShowMoreOptions(true);
-    }
+    setShowMoreOptions(
+      !DURATION_OPTIONS.includes(minutes),
+    );
 
     const rule = task.repeat_rule || "once";
 
@@ -239,7 +239,6 @@ export default function TasksScreen() {
     } else if (rule === "daily") {
       setRepeatType("daily");
       setSelectedDays([]);
-      setShowMoreOptions(true);
     } else {
       setRepeatType("custom");
       setSelectedDays(
@@ -248,7 +247,6 @@ export default function TasksScreen() {
           .map((day) => day.trim())
           .filter(Boolean),
       );
-      setShowMoreOptions(true);
     }
 
     setSelectedSubjectId(task.subject_id ?? null);
@@ -621,15 +619,13 @@ export default function TasksScreen() {
       />
 
       <View style={styles.content}>
-        <View style={styles.goalHint}>
-          <View style={styles.goalHintTextArea}>
-            <Text style={styles.goalHintTitle}>
-              Make progress without overthinking it
+        <View style={styles.questToolbar}>
+          <View>
+            <Text style={styles.questToolbarTitle}>
+              Today's quests
             </Text>
-
-            <Text style={styles.goalHintText}>
-              Add a quest when you want extra structure.
-              You can also start a session directly.
+            <Text style={styles.questToolbarSubtitle}>
+              Quests appear here only when they're due today
             </Text>
           </View>
 
@@ -638,9 +634,7 @@ export default function TasksScreen() {
             onPress={openCreateModal}
             activeOpacity={0.85}
           >
-            <Text style={styles.addButtonText}>
-              +
-            </Text>
+            <Text style={styles.addButtonText}>+</Text>
           </TouchableOpacity>
         </View>
 
@@ -772,281 +766,277 @@ export default function TasksScreen() {
                   maxLength={120}
                 />
 
-                <Text style={styles.inputLabel}>
-                  HOW LONG?
-                </Text>
+                <View style={styles.formSection}>
+                  <Text style={styles.inputLabel}>
+                    HOW LONG?
+                  </Text>
 
-                <View style={styles.durationGrid}>
-                  {DURATION_OPTIONS.map((minutes) => {
-                    const selected =
-                      targetMinutes === minutes &&
-                      DURATION_OPTIONS.includes(
-                        targetMinutes,
+                  <View style={styles.durationGrid}>
+                    {DURATION_OPTIONS.map((minutes) => {
+                      const selected =
+                        targetMinutes === minutes &&
+                        !showMoreOptions;
+
+                      return (
+                        <TouchableOpacity
+                          key={minutes}
+                          style={[
+                            styles.durationButton,
+                            selected &&
+                              styles.durationButtonSelected,
+                          ]}
+                          onPress={() => {
+                            setTargetMinutes(minutes);
+                            setCustomDuration(String(minutes));
+                            setShowMoreOptions(false);
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.durationButtonText,
+                              selected &&
+                                styles.durationButtonTextSelected,
+                            ]}
+                          >
+                            {minutes}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.durationUnit,
+                              selected &&
+                                styles.durationUnitSelected,
+                            ]}
+                          >
+                            min
+                          </Text>
+                        </TouchableOpacity>
                       );
+                    })}
 
-                    return (
-                      <TouchableOpacity
-                        key={minutes}
-                        style={[
-                          styles.durationButton,
-                          selected &&
-                            styles.durationButtonSelected,
-                        ]}
-                        onPress={() => {
-                          setTargetMinutes(minutes);
-                          setCustomDuration(
-                            String(minutes),
-                          );
-                        }}
-                      >
-                        <Text
-                          style={[
-                            styles.durationButtonText,
-                            selected &&
-                              styles.durationButtonTextSelected,
-                          ]}
-                        >
-                          {minutes}
-                        </Text>
-
-                        <Text
-                          style={[
-                            styles.durationUnit,
-                            selected &&
-                              styles.durationUnitSelected,
-                          ]}
-                        >
-                          min
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-
-                <TouchableOpacity
-                  style={styles.moreOptionsToggle}
-                  onPress={() =>
-                    setShowMoreOptions(
-                      (current) => !current,
-                    )
-                  }
-                >
-                  <Text
-                    style={styles.moreOptionsText}
-                  >
-                    {showMoreOptions
-                      ? "Hide options"
-                      : "More options"}
-                  </Text>
-
-                  <Text style={styles.chevron}>
-                    {showMoreOptions ? "⌃" : "⌄"}
-                  </Text>
-                </TouchableOpacity>
-
-                {showMoreOptions && (
-                  <View style={styles.advancedArea}>
-                    <Text style={styles.inputLabel}>
-                      CUSTOM DURATION
-                    </Text>
-
-                    <TextInput
-                      value={customDuration}
-                      onChangeText={(text) => {
-                        setCustomDuration(text);
-
-                        const value =
-                          Number.parseInt(
-                            text,
-                            10,
-                          );
-
-                        if (
-                          Number.isFinite(value) &&
-                          value > 0
-                        ) {
-                          setTargetMinutes(value);
-                        }
-                      }}
-                      keyboardType="number-pad"
-                      placeholder="30"
-                      placeholderTextColor="#64748B"
-                      style={styles.titleInput}
-                      maxLength={3}
-                    />
-
-                    <Text style={styles.inputLabel}>
-                      AREA
-                    </Text>
-
-                    <ScrollView
-                      horizontal
-                      showsHorizontalScrollIndicator={
-                        false
-                      }
-                      contentContainerStyle={
-                        styles.areaScroll
+                    <TouchableOpacity
+                      style={[
+                        styles.durationButton,
+                        showMoreOptions &&
+                          styles.durationButtonSelected,
+                      ]}
+                      onPress={() =>
+                        setShowMoreOptions(true)
                       }
                     >
-                      <TouchableOpacity
+                      <Text
                         style={[
-                          styles.areaChip,
-                          selectedSubjectId ===
-                            null &&
-                            styles.areaChipSelected,
+                          styles.durationButtonText,
+                          showMoreOptions &&
+                            styles.durationButtonTextSelected,
                         ]}
-                        onPress={() =>
-                          setSelectedSubjectId(
-                            null,
-                          )
-                        }
                       >
-                        <Text
-                          style={[
-                            styles.areaChipText,
-                            selectedSubjectId ===
-                              null &&
-                              styles.areaChipTextSelected,
-                          ]}
-                        >
-                          General
-                        </Text>
-                      </TouchableOpacity>
+                        Custom
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
 
-                      {subjects
-                        .filter(
-                          (subject) =>
-                            subject.title !==
-                            "General",
-                        )
-                        .map((subject) => {
-                          const selected =
-                            selectedSubjectId ===
-                            subject.id;
+                  {showMoreOptions && (
+                    <View style={styles.customDurationInline}>
+                      <Text style={styles.customDurationInlineLabel}>
+                        Minutes
+                      </Text>
 
-                          return (
-                            <TouchableOpacity
-                              key={subject.id}
-                              style={[
-                                styles.areaChip,
-                                selected && {
-                                  backgroundColor:
-                                    subject.color_code ??
-                                    "#6366F1",
-                                  borderColor:
-                                    subject.color_code ??
-                                    "#6366F1",
-                                },
-                              ]}
-                              onPress={() =>
-                                setSelectedSubjectId(
-                                  subject.id,
-                                )
-                              }
-                            >
-                              <Text
-                                style={[
-                                  styles.areaChipText,
-                                  selected &&
-                                    styles.areaChipTextSelected,
-                                ]}
-                              >
-                                {subject.title}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                    </ScrollView>
+                      <TextInput
+                        value={customDuration}
+                        onChangeText={(text) => {
+                          setCustomDuration(text);
 
+                          const value =
+                            Number.parseInt(text, 10);
+
+                          if (
+                            Number.isFinite(value) &&
+                            value > 0
+                          ) {
+                            setTargetMinutes(value);
+                          }
+                        }}
+                        keyboardType="number-pad"
+                        placeholder="30"
+                        placeholderTextColor="#64748B"
+                        style={styles.customDurationInlineInput}
+                        maxLength={3}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.formSection}>
+                  <View style={styles.formSectionHeader}>
                     <Text style={styles.inputLabel}>
-                      REPEAT
+                      WHEN?
                     </Text>
 
-                    <View style={styles.repeatRow}>
-                      {[
-                        {
-                          value: "once" as const,
-                          label: "Once",
-                        },
-                        {
-                          value: "daily" as const,
-                          label: "Daily",
-                        },
-                        {
-                          value: "custom" as const,
-                          label: "Days",
-                        },
-                      ].map((option) => {
+                    <Text style={styles.helperText}>
+                      Choose when this quest should appear
+                    </Text>
+                  </View>
+
+                  <View style={styles.repeatRow}>
+                    {[
+                      {
+                        value: "once" as const,
+                        label: "Today",
+                      },
+                      {
+                        value: "daily" as const,
+                        label: "Every day",
+                      },
+                      {
+                        value: "custom" as const,
+                        label: "Selected days",
+                      },
+                    ].map((option) => {
+                      const selected =
+                        repeatType === option.value;
+
+                      return (
+                        <TouchableOpacity
+                          key={option.value}
+                          style={[
+                            styles.repeatButton,
+                            selected &&
+                              styles.repeatButtonSelected,
+                          ]}
+                          onPress={() =>
+                            setRepeatType(option.value)
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.repeatButtonText,
+                              selected &&
+                                styles.repeatButtonTextSelected,
+                            ]}
+                          >
+                            {option.label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  {repeatType === "custom" && (
+                    <View style={styles.daysContainer}>
+                      {DAYS_OF_WEEK.map((day) => {
                         const selected =
-                          repeatType ===
-                          option.value;
+                          selectedDays.includes(day);
 
                         return (
                           <TouchableOpacity
-                            key={option.value}
+                            key={day}
                             style={[
-                              styles.repeatButton,
+                              styles.dayButton,
                               selected &&
-                                styles.repeatButtonSelected,
+                                styles.dayButtonSelected,
                             ]}
                             onPress={() =>
-                              setRepeatType(
-                                option.value,
-                              )
+                              toggleDay(day)
                             }
                           >
                             <Text
                               style={[
-                                styles.repeatButtonText,
+                                styles.dayButtonText,
                                 selected &&
-                                  styles.repeatButtonTextSelected,
+                                  styles.dayButtonTextSelected,
                               ]}
                             >
-                              {option.label}
+                              {day[0]}
                             </Text>
                           </TouchableOpacity>
                         );
                       })}
                     </View>
+                  )}
+                </View>
 
-                    {repeatType === "custom" && (
-                      <View style={styles.daysContainer}>
-                        {DAYS_OF_WEEK.map(
-                          (day) => {
-                            const selected =
-                              selectedDays.includes(
-                                day,
-                              );
+                <View style={styles.formSection}>
+                  <View style={styles.formSectionHeader}>
+                    <Text style={styles.inputLabel}>
+                      AREA
+                    </Text>
 
-                            return (
-                              <TouchableOpacity
-                                key={day}
-                                style={[
-                                  styles.dayButton,
-                                  selected &&
-                                    styles.dayButtonSelected,
-                                ]}
-                                onPress={() =>
-                                  toggleDay(day)
-                                }
-                              >
-                                <Text
-                                  style={[
-                                    styles.dayButtonText,
-                                    selected &&
-                                      styles.dayButtonTextSelected,
-                                  ]}
-                                >
-                                  {day[0]}
-                                </Text>
-                              </TouchableOpacity>
-                            );
-                          },
-                        )}
-                      </View>
-                    )}
+                    <Text style={styles.helperText}>
+                      Optional · General is fine
+                    </Text>
                   </View>
-                )}
+
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.areaScroll}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.areaChip,
+                        selectedSubjectId === null &&
+                          styles.areaChipSelected,
+                      ]}
+                      onPress={() =>
+                        setSelectedSubjectId(null)
+                      }
+                      activeOpacity={0.85}
+                    >
+                      <Text
+                        style={[
+                          styles.areaChipText,
+                          selectedSubjectId === null &&
+                            styles.areaChipTextSelected,
+                        ]}
+                      >
+                        General
+                      </Text>
+                    </TouchableOpacity>
+
+                    {subjects
+                      .filter(
+                        (subject) =>
+                          subject.title !== "General",
+                      )
+                      .map((subject) => {
+                        const selected =
+                          selectedSubjectId === subject.id;
+
+                        return (
+                          <TouchableOpacity
+                            key={subject.id}
+                            style={[
+                              styles.areaChip,
+                              selected && {
+                                backgroundColor:
+                                  subject.color_code ??
+                                  "#6366F1",
+                                borderColor:
+                                  subject.color_code ??
+                                  "#6366F1",
+                              },
+                            ]}
+                            onPress={() =>
+                              setSelectedSubjectId(
+                                subject.id,
+                              )
+                            }
+                            activeOpacity={0.85}
+                          >
+                            <Text
+                              style={[
+                                styles.areaChipText,
+                                selected &&
+                                  styles.areaChipTextSelected,
+                              ]}
+                            >
+                              {subject.title}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </ScrollView>
+                </View>
 
                 <TouchableOpacity
                   style={[
@@ -1498,6 +1488,42 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 13,
     fontSize: 14,
+  },
+
+  formSection: {
+    marginTop: 16,
+  },
+
+  formSectionHeader: {
+    marginBottom: 8,
+  },
+
+  customDurationInline: {
+    marginTop: 8,
+    minHeight: 52,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.035)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 12,
+  },
+
+  customDurationInlineLabel: {
+    color: "#9099AB",
+    fontSize: 10,
+    fontWeight: "700",
+  },
+
+  customDurationInlineInput: {
+    width: 88,
+    color: "#EEF0F5",
+    fontSize: 16,
+    fontWeight: "800",
+    textAlign: "center",
+    paddingVertical: 9,
   },
 
   durationGrid: {
