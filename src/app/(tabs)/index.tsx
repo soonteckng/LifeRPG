@@ -6,6 +6,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -39,6 +40,7 @@ export default function HomeScreen() {
     setLinkedTaskId,
     setDurationInMinutes,
     setTargetAttributeId,
+    hasOpenSession,
   } = useTimer();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -170,6 +172,10 @@ export default function HomeScreen() {
   };
 
   const startFreeSession = () => {
+    if (hasOpenSession) {
+      router.push("/timer");
+      return;
+    }
     if (hapticsEnabled) {
       Haptics.impactAsync(
         Haptics.ImpactFeedbackStyle.Medium,
@@ -184,6 +190,10 @@ export default function HomeScreen() {
   };
 
   const startQuest = (task: Task) => {
+    if (hasOpenSession) {
+      router.push("/timer");
+      return;
+    }
     if (hapticsEnabled) {
       Haptics.impactAsync(
         Haptics.ImpactFeedbackStyle.Medium,
