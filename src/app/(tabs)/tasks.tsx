@@ -432,16 +432,22 @@ export default function TasksScreen() {
       task.subject_id ?? null,
     );
 
-    router.push("/timer");
+    router.push("/session");
   };
 
   const getSubject = (subjectId: number | null) => {
     if (!subjectId) {
-      return null;
+      return (
+        subjects.find(
+          (subject) => subject.title === "General",
+        ) ?? null
+      );
     }
 
-    return subjects.find(
-      (subject) => subject.id === subjectId,
+    return (
+      subjects.find(
+        (subject) => subject.id === subjectId,
+      ) ?? null
     );
   };
 
