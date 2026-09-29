@@ -97,7 +97,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [timeLeft, setTimeLeft] = useState(30 * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [activityType, setActivityType] = useState("general");
+  const [activityType, setActivityType] = useState("other");
 
   const [targetAttributeId, setTargetAttributeId] = useState<number | null>(
     null,
@@ -473,7 +473,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         setTimeLeft(remainingSeconds);
         setIsCompleted(false);
         setActivityType(
-          session.activity_type || "general",
+          session.activity_type === "general"
+            ? "other"
+            : session.activity_type || "other",
         );
         setTargetAttributeId(
           session.subject_id,
