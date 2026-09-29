@@ -1,5 +1,4 @@
 import * as Haptics from "expo-haptics";
-import { } from "expo-router";
 import React, {
   useEffect,
   useMemo,
