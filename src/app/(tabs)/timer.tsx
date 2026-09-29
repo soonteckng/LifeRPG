@@ -345,8 +345,7 @@ export default function TimerScreen() {
             : "Choose only what you need, then start."
         }
         showBack={true}
-        backTitle="Home"
-        backRoute="/"
+        backTitle="Back"
       />
 
       <KeyboardAvoidingView
