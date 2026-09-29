@@ -61,6 +61,7 @@ export default function TimerScreen() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [questPickerVisible, setQuestPickerVisible] = useState(false);
+  const [areaPickerVisible, setAreaPickerVisible] = useState(false);
 
   const [isCustom, setIsCustom] = useState(false);
   const [customText, setCustomText] = useState("30");
@@ -309,6 +310,7 @@ export default function TimerScreen() {
     }
 
     setTargetAttributeId(subject.id);
+    setAreaPickerVisible(false);
   };
 
   const handleStart = async () => {
@@ -682,80 +684,48 @@ export default function TimerScreen() {
                   </Text>
                 </View>
 
-                {linkedTask ? (
-                  <View style={styles.selectedRow}>
-                    <View style={styles.selectedRowMain}>
-                      <View
-                        style={[
-                          styles.areaDot,
-                          {
-                            backgroundColor:
-                              linkedArea?.color_code ??
-                              generalArea?.color_code ??
-                              "#8B8CF8",
-                          },
-                        ]}
-                      />
+                <TouchableOpacity
+                  style={styles.selectRow}
+                  disabled={!!linkedTask}
+                  onPress={() =>
+                    setAreaPickerVisible(true)
+                  }
+                  activeOpacity={0.85}
+                >
+                  <View style={styles.selectRowMain}>
+                    <View
+                      style={[
+                        styles.areaDot,
+                        {
+                          backgroundColor:
+                            linkedArea?.color_code ??
+                            generalArea?.color_code ??
+                            "#8B8CF8",
+                        },
+                      ]}
+                    />
 
-                      <View style={styles.selectedRowText}>
-                        <Text style={styles.selectedTitle}>
-                          {linkedArea?.title ??
-                            generalArea?.title ??
-                            "General"}
-                        </Text>
-                        <Text style={styles.selectedMeta}>
-                          Linked to this quest
-                        </Text>
-                      </View>
+                    <View>
+                      <Text style={styles.selectTitle}>
+                        {linkedArea?.title ??
+                          generalArea?.title ??
+                          "General"}
+                      </Text>
+
+                      <Text style={styles.selectMeta}>
+                        {linkedTask
+                          ? "Linked to this quest"
+                          : "Where this session helps"}
+                      </Text>
                     </View>
                   </View>
-                ) : (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={
-                      styles.areaRow
-                    }
-                  >
-                    {subjects.map((subject) => {
-                      const selected =
-                        targetAttributeId ===
-                        subject.id;
 
-                      return (
-                        <TouchableOpacity
-                          key={subject.id}
-                          style={[
-                            styles.areaChip,
-                            selected &&
-                              {
-                                backgroundColor:
-                                  subject.color_code ??
-                                  "#8B8CF8",
-                                borderColor:
-                                  subject.color_code ??
-                                  "#8B8CF8",
-                              },
-                          ]}
-                          onPress={() =>
-                            chooseArea(subject)
-                          }
-                          activeOpacity={0.85}
-                        >
-                          <Text
-                            style={[
-                              styles.areaChipText,
-                              selected &&
-                                styles.areaChipTextSelected,
-                            ]}
-                          >
-                            {subject.title}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </ScrollView>
-                )}
+                  {!linkedTask && (
+                    <Text style={styles.rowChevron}>
+                      ›
+                    </Text>
+                  )}
+                </TouchableOpacity>
               </View>
 
               <View style={styles.timerPreview}>
@@ -903,7 +873,93 @@ export default function TimerScreen() {
             </ScrollView>
           </View>
         </View>
+      </Modal> 
+      <Modal
+        visible={areaPickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() =>
+          setAreaPickerVisible(false)
+        }
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.questModal}>
+            <View style={styles.modalHandle} />
+
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>
+                  Choose an Area
+                </Text>
+                <Text style={styles.modalSubtitle}>
+                  What part of your life does this session help?
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                onPress={() =>
+                  setAreaPickerVisible(false)
+                }
+              >
+                <Text style={styles.modalClose}>
+                  ✕
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.questModalList}
+            >
+              {subjects.map((subject) => {
+                const selected =
+                  targetAttributeId === subject.id;
+
+                return (
+                  <TouchableOpacity
+                    key={subject.id}
+                    style={[
+                      styles.questOption,
+                      selected &&
+                        styles.areaOptionSelected,
+                    ]}
+                    onPress={() =>
+                      chooseArea(subject)
+                    }
+                    activeOpacity={0.85}
+                  >
+                    <View
+                      style={[
+                        styles.areaDot,
+                        {
+                          backgroundColor:
+                            subject.color_code ??
+                            "#8B8CF8",
+                        },
+                      ]}
+                    />
+
+                    <View style={styles.questOptionInfo}>
+                      <Text
+                        style={styles.questOptionTitle}
+                      >
+                        {subject.title}
+                      </Text>
+                    </View>
+
+                    {selected && (
+                      <Text style={styles.areaCheck}>
+                        ✓
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
+
     </SafeAreaView>
   );
 }
@@ -1194,6 +1250,17 @@ const styles = StyleSheet.create({
 
   areaChipTextSelected: {
     color: "#FFFFFF",
+  },
+
+  areaOptionSelected: {
+    backgroundColor: "rgba(139,140,248,0.09)",
+    borderColor: "rgba(165,180,252,0.16)",
+  },
+
+  areaCheck: {
+    color: "#C7D2FE",
+    fontSize: 13,
+    fontWeight: "900",
   },
 
   areaDot: {
