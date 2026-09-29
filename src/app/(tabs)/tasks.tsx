@@ -59,6 +59,7 @@ export default function TasksScreen() {
     setLinkedTaskId,
     setDurationInMinutes,
     setTargetAttributeId,
+    hasOpenSession,
   } = useTimer();
 
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -412,6 +413,11 @@ export default function TasksScreen() {
   };
 
   const startQuest = (task: Task) => {
+    if (hasOpenSession) {
+      router.push("/timer");
+      return;
+    }
+
     if (hapticsEnabled) {
       Haptics.impactAsync(
         Haptics.ImpactFeedbackStyle.Medium,
