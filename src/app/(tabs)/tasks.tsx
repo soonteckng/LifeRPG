@@ -335,10 +335,18 @@ export default function TasksScreen() {
 
       const repeatRule = getRepeatRule();
 
+      const generalSubject =
+        subjects.find(
+          (subject) => subject.title === "General",
+        ) ?? null;
+
       const params = {
         title: cleanTitle,
         targetMinutes: minutes,
-        subjectId: selectedSubjectId,
+        subjectId:
+          selectedSubjectId ??
+          generalSubject?.id ??
+          null,
         repeatRule,
         difficulty: "medium" as const,
       };
@@ -662,36 +670,7 @@ export default function TasksScreen() {
             }
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
-            ListHeaderComponent={
-              <View>
-                <View style={styles.sectionHeader}>
-                  <Text style={styles.sectionTitle}>
-                    Today's quests
-                  </Text>
-
-                  <Text style={styles.sectionCount}>
-                    {activeTasks.length}
-                  </Text>
-                </View>
-
-                {activeTasks.length === 0 && (
-                  <View style={styles.emptyCard}>
-                    <Text style={styles.emptyIcon}>
-                      ✨
-                    </Text>
-
-                    <Text style={styles.emptyTitle}>
-                      Nothing waiting for you
-                    </Text>
-
-                    <Text style={styles.emptyText}>
-                      Start a session or add a quest when
-                      you have something you want to accomplish.
-                    </Text>
-                  </View>
-                )}
-              </View>
-            }
+            ListHeaderComponent={null}
             ListFooterComponent={
               completedTasks.length > 0 ? (
                 <View style={styles.completedSection}>
@@ -769,7 +748,6 @@ export default function TasksScreen() {
                   placeholder="e.g. Revision"
                   placeholderTextColor="#64748B"
                   style={styles.titleInput}
-                  autoFocus
                   maxLength={120}
                 />
 
