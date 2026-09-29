@@ -1,21 +1,24 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useRouter } from "expo-router";
-import React, {
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   RefreshControl,
-  ScrollView,
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  useWindowDimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-import Header from "../../components/Header";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import {
@@ -28,6 +31,9 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const compact = height - insets.top - insets.bottom < 700;
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
   const {
@@ -42,15 +48,17 @@ export default function HomeScreen() {
   const [completedMinutes, setCompletedMinutes] = useState(0);
   const [goalCompleted, setGoalCompleted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [questsVisible, setQuestsVisible] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [taskList, subjectList, progress] =
-        await Promise.all([
-          getTasks(),
-          getSubjects(),
-          getTodayProgress(),
-        ]);
+      const [taskList, subjectList, progress] = await Promise.all([
+        getTasks(),
+        getSubjects(),
+        getTodayProgress(),
+      ]);
 
       setTasks(taskList);
       setSubjects(subjectList);
@@ -58,8 +66,12 @@ export default function HomeScreen() {
       setGoalCompleted(progress?.goal_completed ?? false);
 
       await reloadProfile();
+      setLoadFailed(false);
     } catch (error) {
+      setLoadFailed(true);
       console.error("Failed to load Home data:", error);
+    } finally {
+      setLoading(false);
     }
   }, [reloadProfile]);
 
@@ -85,49 +97,35 @@ export default function HomeScreen() {
     1,
     safeCompletedMinutes / Math.max(1, dailyGoalMinutes),
   );
-  const remainingMinutes = Math.max(
-    0,
-    dailyGoalMinutes - safeCompletedMinutes,
-  );
+  const remainingMinutes = Math.max(0, dailyGoalMinutes - safeCompletedMinutes);
 
   const level = profile?.level ?? 1;
   const currentXP = profile?.current_xp ?? 0;
-  const requiredXP = Math.floor(
-    100 * Math.pow(level, 1.5),
-  );
+  const requiredXP = Math.floor(100 * Math.pow(level, 1.5));
 
   const activeTasks = useMemo(
-    () =>
-      tasks.filter(
-        (task) =>
-          task.is_due_today && !task.is_completed_today,
-      ),
+    () => tasks.filter((task) => task.is_due_today && !task.is_completed_today),
     [tasks],
   );
 
-  const previewTasks = activeTasks.slice(0, 3);
+  const todayTasks = tasks.filter((task) => task.is_due_today);
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const isGoalComplete = goalCompleted || remainingMinutes === 0;
 
   const getSubject = (subjectId: number | null) => {
     if (subjectId === null) {
-      return (
-        subjects.find(
-          (subject) => subject.title === "General",
-        ) ?? null
-      );
+      return subjects.find((subject) => subject.title === "General") ?? null;
     }
 
-    return (
-      subjects.find(
-        (subject) => subject.id === subjectId,
-      ) ?? null
-    );
+    return subjects.find((subject) => subject.id === subjectId) ?? null;
   };
 
   const openSession = () => {
+    setQuestsVisible(false);
     if (hapticsEnabled) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium,
-      );
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
     router.push("/session");
@@ -146,15 +144,14 @@ export default function HomeScreen() {
   };
 
   const startQuest = (task: Task) => {
+    setQuestsVisible(false);
     if (hasOpenSession) {
       openSession();
       return;
     }
 
     if (hapticsEnabled) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium,
-      );
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
     setLinkedTaskId(task.id);
@@ -164,752 +161,533 @@ export default function HomeScreen() {
     router.push("/session");
   };
 
+  const manageQuests = () => {
+    setQuestsVisible(false);
+    router.push("/quests");
+  };
+
   return (
-    <SafeAreaView style={styles.container}>
-      <Header
-        title="Home"
-        subtitle="Build your day, one session at a time"
-        showBack={false}
-      />
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#A5B4FC"
-          />
-        }
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      {/* Home stays fixed; only the quest sheet's list scrolls. */}
+      <View
+        style={[
+          styles.content,
+          { paddingBottom: insets.bottom + 94 },
+          compact && styles.compactContent,
+        ]}
       >
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {profile?.avatar || "🧙‍♂️"}
-              </Text>
-            </View>
-
-            <View style={styles.heroIdentity}>
-              <Text style={styles.eyebrow}>
-                WELCOME BACK
-              </Text>
-
-              <Text style={styles.username} numberOfLines={1}>
+        <View style={styles.welcome}>
+          <View style={styles.welcomeHeading}>
+            <View style={styles.welcomeIdentity}>
+              <Text style={styles.welcomeSalutation}>{greeting},</Text>
+              <Text
+                style={[styles.greeting, compact && styles.compactGreeting]}
+                numberOfLines={1}
+              >
                 {profile?.username || "Hero"}
               </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.iconButton}
+              onPress={() => void onRefresh()}
+              disabled={refreshing}
+              accessibilityRole="button"
+              accessibilityLabel="Refresh Home"
+              accessibilityState={{ busy: refreshing, disabled: refreshing }}
+            >
+              {refreshing ? (
+                <ActivityIndicator size="small" color="#A5B4FC" />
+              ) : (
+                <Ionicons name="refresh-outline" size={19} color="#A1A8B8" />
+              )}
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.welcomeSubtitle}>
+            Build your day, one session at a time.
+          </Text>
+        </View>
 
-              <Text style={styles.classTitle}>
-                Lv {level} ·{" "}
-                {profile?.class_title || "Adventurer"}
+        <View style={styles.character}>
+          <View style={styles.characterRow}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>{profile?.avatar || "🧙‍♂️"}</Text>
+            </View>
+            <View style={styles.identity}>
+              <Text style={styles.classTitle} numberOfLines={1}>
+                Level {level} · {profile?.class_title || "Adventurer"}
+              </Text>
+              <Text style={styles.streak}>
+                🔥 {profile?.streak_count ?? 0} day streak
               </Text>
             </View>
-
             <View style={styles.goldPill}>
-              <Text style={styles.goldText}>
-                💰 {profile?.gold ?? 0}
-              </Text>
+              <Text style={styles.goldText}>💰 {profile?.gold ?? 0}</Text>
             </View>
           </View>
-
-          <View style={styles.xpSection}>
-            <View style={styles.xpHeader}>
-              <Text style={styles.mutedLabel}>XP</Text>
-              <Text style={styles.xpValue}>
-                {currentXP} / {requiredXP}
-              </Text>
-            </View>
-
-            <View style={styles.progressTrack}>
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${
-                      Math.min(
-                        1,
-                        currentXP /
-                          Math.max(1, requiredXP),
-                      ) * 100
-                    }%`,
-                  },
-                ]}
-              />
-            </View>
+          <View style={styles.xpHeader}>
+            <Text style={styles.smallLabel}>XP to level {level + 1}</Text>
+            <Text style={styles.xpValue}>
+              {currentXP} / {requiredXP}
+            </Text>
           </View>
-
-          <View style={styles.statsRow}>
-            <View style={styles.statItem}>
-              <Text style={styles.statIcon}>🔥</Text>
-              <View>
-                <Text style={styles.statValue}>
-                  {profile?.streak_count ?? 0}
-                </Text>
-                <Text style={styles.statLabel}>Day streak</Text>
-              </View>
-            </View>
-
-            <View style={styles.statDivider} />
-
-            <View style={styles.statItem}>
-              <Text style={styles.statIcon}>⏱</Text>
-              <View>
-                <Text style={styles.statValue}>
-                  {safeCompletedMinutes}m
-                </Text>
-                <Text style={styles.statLabel}>Today</Text>
-              </View>
-            </View>
+          <View style={styles.xpTrack}>
+            <View
+              style={[
+                styles.xpFill,
+                {
+                  width: `${Math.max(0, Math.min(1, currentXP / Math.max(1, requiredXP))) * 100}%`,
+                },
+              ]}
+            />
           </View>
         </View>
 
-        <View style={styles.goalCard}>
-          <View style={styles.sectionTopRow}>
-            <View>
-              <Text style={styles.sectionEyebrow}>
-                TODAY'S GOAL
-              </Text>
-              <Text style={styles.goalValue}>
-                {goalCompleted
-                  ? "Complete 🎉"
-                  : `${safeCompletedMinutes} / ${
-                      dailyGoalMinutes
-                    } min`}
-              </Text>
-            </View>
-
+        <View style={[styles.goalCard, compact && styles.compactGoal]}>
+          <View style={styles.goalHeader}>
+            <Text style={styles.goalTitle}>Today's goal</Text>
             <Text style={styles.goalPercent}>
               {Math.round(goalProgress * 100)}%
             </Text>
           </View>
-
+          <Text style={[styles.goalValue, compact && styles.compactGoalValue]}>
+            {isGoalComplete
+              ? "Goal complete 🎉"
+              : `${safeCompletedMinutes} / ${dailyGoalMinutes} min`}
+          </Text>
           <View style={styles.goalTrack}>
             <View
-              style={[
-                styles.goalFill,
-                { width: `${goalProgress * 100}%` },
-              ]}
+              style={[styles.goalFill, { width: `${goalProgress * 100}%` }]}
             />
           </View>
-
           <Text style={styles.goalHint}>
-            {goalCompleted
-              ? "You've done enough for today."
-              : `${remainingMinutes} min remaining`}
+            {isGoalComplete
+              ? "Nice work. Take a moment to enjoy it."
+              : `${remainingMinutes} minutes remaining. One session closer.`}
           </Text>
+        </View>
 
+        <View style={styles.focusSection}>
+          <Text
+            style={[styles.focusTitle, compact && styles.compactFocusTitle]}
+          >
+            {hasOpenSession
+              ? "Let's pick up where you left off."
+              : "Ready to focus?"}
+          </Text>
+          <Text style={styles.focusHint}>
+            {hasOpenSession
+              ? "Your current session is waiting for you."
+              : "Choose what you're doing and make a little progress."}
+          </Text>
           <TouchableOpacity
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              compact && styles.compactPrimaryButton,
+            ]}
             onPress={startFreeSession}
             activeOpacity={0.88}
+            accessibilityRole="button"
           >
-            <Text style={styles.primaryButtonTitle}>
-              {hasOpenSession
-                ? "CONTINUE SESSION"
-                : "START SESSION"}
-            </Text>
-
-            <Text style={styles.primaryButtonSubtitle}>
-              {hasOpenSession
-                ? "Your current session is waiting"
-                : "Choose what you're doing and start the clock"}
+            <Ionicons name="play" size={18} color="#171827" />
+            <Text style={styles.primaryButtonText}>
+              {hasOpenSession ? "Continue session" : "Start session"}
             </Text>
           </TouchableOpacity>
         </View>
 
-        <View style={styles.sectionBlock}>
-          <View style={styles.questSectionHeader}>
-            <View>
-              <Text style={styles.sectionEyebrow}>
-                TODAY
-              </Text>
-              <Text style={styles.listTitle}>
-                Today's quests
+        <TouchableOpacity
+          style={styles.questsButton}
+          onPress={() => {
+            setQuestsVisible(true);
+            void loadData();
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`Today's quests, ${activeTasks.length} pending`}
+          accessibilityHint="Opens your quests for today"
+        >
+          <Ionicons name="list-outline" size={23} color="#A5B4FC" />
+          <Text style={styles.questsButtonTitle}>Today's quests</Text>
+          {activeTasks.length > 0 && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>
+                {activeTasks.length > 99 ? "99+" : activeTasks.length}
               </Text>
             </View>
+          )}
+          <Ionicons name="chevron-forward" size={19} color="#8992A6" />
+        </TouchableOpacity>
+      </View>
 
-            <TouchableOpacity
-              style={styles.questsLink}
-              onPress={() => router.push("/quests")}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.questsLinkText}>
-                Quests
-              </Text>
-              <Text style={styles.questsLinkChevron}>
-                ›
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {previewTasks.length === 0 ? (
-            <View style={styles.emptyCard}>
-              <Text style={styles.emptyIcon}>✨</Text>
-              <Text style={styles.emptyTitle}>
-                No quests for today
-              </Text>
-              <Text style={styles.emptyText}>
-                Start a session freely, or create a quest
-                when you want more structure.
-              </Text>
-
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => router.push("/quests")}
-                activeOpacity={0.88}
-              >
-                <Text style={styles.secondaryButtonText}>
-                  ADD A QUEST
+      <Modal
+        visible={questsVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setQuestsVisible(false)}
+      >
+        <View style={styles.modalRoot}>
+          <Pressable
+            style={styles.backdrop}
+            onPress={() => setQuestsVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close today's quests"
+          />
+          <View
+            style={[
+              styles.sheet,
+              {
+                height: Math.min(height * 0.8, 680),
+                paddingBottom: Math.max(insets.bottom, 16),
+              },
+            ]}
+            accessibilityViewIsModal
+          >
+            <View style={styles.sheetHeader}>
+              <View style={styles.sheetHeading}>
+                <Text style={styles.sheetTitle}>Today's quests</Text>
+                <Text style={styles.sheetSubtitle}>
+                  {activeTasks.length > 0
+                    ? `${activeTasks.length} pending · one step at a time`
+                    : "Make room for what matters today"}
                 </Text>
+              </View>
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={() => setQuestsVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close today's quests"
+              >
+                <Ionicons name="close" size={24} color="#C7CEE0" />
               </TouchableOpacity>
             </View>
-          ) : (
-            previewTasks.map((task) => {
-              const subject = getSubject(task.subject_id);
-
-              return (
-                <View key={task.id} style={styles.questCard}>
-                  <View style={styles.questMain}>
-                    <View style={styles.questIcon}>
-                      <Text>📜</Text>
-                    </View>
-
-                    <View style={styles.questInfo}>
-                      <Text style={styles.questTitle} numberOfLines={2}>
-                        {task.title}
-                      </Text>
-
-                      <View style={styles.questMeta}>
-                        <Text style={styles.questMetaText}>
-                          {task.target_minutes || 30} min
-                        </Text>
-
-                        {subject && (
-                          <>
-                            <Text style={styles.metaDot}>•</Text>
-                            <Text
-                              style={[
-                                styles.questMetaText,
-                                {
-                                  color:
-                                    subject.color_code ??
-                                    "#A5B4FC",
-                                },
-                              ]}
-                            >
-                              {subject.title}
-                            </Text>
-                          </>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity
-                    style={styles.questStart}
-                    onPress={() => startQuest(task)}
-                    activeOpacity={0.88}
-                  >
-                    <Text style={styles.questStartText}>
-                      START
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })
-          )}
-
-          {activeTasks.length > 3 && (
-            <TouchableOpacity
-              onPress={() => router.push("/quests")}
-              style={styles.viewAllButton}
-              activeOpacity={0.85}
-            >
-              <Text style={styles.viewAllText}>
-                View all quests
+            {hasOpenSession && activeTasks.length > 0 && (
+              <Text style={styles.sessionNotice}>
+                You have an open session. Continue it before starting another
+                quest.
               </Text>
-              <Text style={styles.viewAllChevron}>›</Text>
+            )}
+            <FlatList
+              style={styles.questList}
+              contentContainerStyle={styles.questListContent}
+              data={activeTasks}
+              keyExtractor={(task) => String(task.id)}
+              refreshControl={
+                <RefreshControl
+                  refreshing={refreshing}
+                  onRefresh={onRefresh}
+                  tintColor="#A5B4FC"
+                />
+              }
+              renderItem={({ item: task }) => {
+                const subject = getSubject(task.subject_id);
+                return (
+                  <View style={styles.questRow}>
+                    <View style={styles.questInfo}>
+                      <Text style={styles.questTitle}>{task.title}</Text>
+                      <Text style={styles.questMeta}>
+                        <Text
+                          style={{ color: subject?.color_code ?? "#A5B4FC" }}
+                        >
+                          {subject?.title || "General"}
+                        </Text>
+                        {` · ${task.target_minutes || 30} min`}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.questStart}
+                      onPress={() => startQuest(task)}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        hasOpenSession
+                          ? "Continue current session"
+                          : `Start ${task.title}`
+                      }
+                    >
+                      <Text style={styles.questStartText}>
+                        {hasOpenSession ? "Continue" : "Start"}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              }}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  {loading ? (
+                    <ActivityIndicator color="#A5B4FC" />
+                  ) : (
+                    <>
+                      <Text style={styles.emptyIcon}>
+                        {loadFailed ? "☁️" : "✨"}
+                      </Text>
+                      <Text style={styles.emptyTitle}>
+                        {loadFailed
+                          ? "Couldn't refresh your quests"
+                          : todayTasks.length > 0
+                            ? "Today's quests are complete"
+                            : "A little space in your day"}
+                      </Text>
+                      <Text style={styles.emptyText}>
+                        {loadFailed
+                          ? "Try refreshing to see your latest quests."
+                          : todayTasks.length > 0
+                            ? "Nice work. You can take a break or start a session freely."
+                            : "Start a session freely, or add a quest for a little structure."}
+                      </Text>
+                      {loadFailed && (
+                        <TouchableOpacity
+                          style={styles.questStart}
+                          onPress={() => void onRefresh()}
+                          accessibilityRole="button"
+                        >
+                          <Text style={styles.questStartText}>Try again</Text>
+                        </TouchableOpacity>
+                      )}
+                    </>
+                  )}
+                </View>
+              }
+            />
+            <TouchableOpacity
+              style={styles.manageButton}
+              onPress={manageQuests}
+              accessibilityRole="button"
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#C7D2FE" />
+              <Text style={styles.manageButtonText}>Manage quests</Text>
+              <Ionicons name="chevron-forward" size={17} color="#8992A6" />
             </TouchableOpacity>
-          )}
+          </View>
         </View>
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0B0D13",
-  },
-
+  container: { flex: 1, backgroundColor: "#0B0D13" },
   content: {
-    paddingHorizontal: 18,
-    paddingBottom: 128,
-    gap: 14,
+    flex: 1,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    justifyContent: "space-evenly",
+    gap: 20,
   },
-
-  heroCard: {
-    marginTop: 4,
-    padding: 18,
-    borderRadius: 26,
-    backgroundColor: "#151923",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+  compactContent: { paddingTop: 4, gap: 12 },
+  welcome: { gap: 5 },
+  welcomeHeading: { flexDirection: "row", alignItems: "center", gap: 8 },
+  welcomeIdentity: { flex: 1, minWidth: 0, gap: 3 },
+  welcomeSalutation: { color: "#A1A8B8", fontSize: 14 },
+  greeting: {
+    color: "#F5F7FA",
+    fontSize: 26,
+    fontWeight: "700",
+    letterSpacing: -0.5,
   },
-
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.06)",
+  compactGreeting: { fontSize: 22 },
+  welcomeSubtitle: { color: "#A1A8B8", fontSize: 13, lineHeight: 19 },
+  iconButton: {
+    width: 44,
+    height: 44,
     alignItems: "center",
     justifyContent: "center",
   },
-
-  avatarText: {
-    fontSize: 27,
+  character: { paddingHorizontal: 2 },
+  characterRow: { flexDirection: "row", alignItems: "center", gap: 11 },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 15,
+    backgroundColor: "rgba(165,180,252,0.08)",
+    alignItems: "center",
+    justifyContent: "center",
   },
-
-  heroIdentity: {
-    flex: 1,
-    marginLeft: 12,
-    minWidth: 0,
-  },
-
-  eyebrow: {
-    color: "#7D869A",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-
-  username: {
-    color: "#F5F7FA",
-    fontSize: 24,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-
-  classTitle: {
-    color: "#A1A8B8",
-    fontSize: 11,
-    marginTop: 2,
-  },
-
+  avatarText: { fontSize: 26 },
+  identity: { flex: 1, minWidth: 0, gap: 4 },
+  classTitle: { color: "#E2E6EF", fontSize: 13, fontWeight: "600" },
+  streak: { color: "#A1A8B8", fontSize: 12 },
   goldPill: {
     paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 14,
-    backgroundColor: "rgba(245,158,11,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.18)",
+    paddingVertical: 8,
+    borderRadius: 12,
+    backgroundColor: "rgba(245,158,11,0.08)",
   },
-
-  goldText: {
-    color: "#FBBF24",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  xpSection: {
-    marginTop: 19,
-  },
-
+  goldText: { color: "#FBBF24", fontSize: 12, fontWeight: "700" },
   xpHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 7,
+    marginTop: 12,
+    marginBottom: 6,
   },
-
-  mutedLabel: {
-    color: "#778094",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.8,
-  },
-
-  xpValue: {
-    color: "#C7CEE0",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-
-  progressTrack: {
-    height: 7,
+  smallLabel: { color: "#8992A6", fontSize: 11 },
+  xpValue: { color: "#B9C2D7", fontSize: 11 },
+  xpTrack: {
+    height: 5,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.07)",
     overflow: "hidden",
   },
-
-  progressFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#8B8CF8",
-  },
-
-  statsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 17,
-  },
-
-  statItem: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  statDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: "rgba(255,255,255,0.07)",
-  },
-
-  statIcon: {
-    fontSize: 16,
-  },
-
-  statValue: {
-    color: "#F4F6F9",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  statLabel: {
-    color: "#737C90",
-    fontSize: 9,
-    marginTop: 2,
-  },
-
+  xpFill: { height: "100%", borderRadius: 999, backgroundColor: "#8B8CF8" },
   goalCard: {
-    padding: 18,
-    borderRadius: 26,
-    backgroundColor: "#131720",
+    padding: 20,
+    borderRadius: 23,
+    backgroundColor: "#171A28",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: "rgba(165,180,252,0.10)",
   },
-
-  sectionTopRow: {
+  compactGoal: { padding: 15 },
+  goalHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
+    justifyContent: "space-between",
   },
-
-  sectionEyebrow: {
-    color: "#7D869A",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-
+  goalTitle: { color: "#C5CCDC", fontSize: 13, fontWeight: "600" },
+  goalPercent: { color: "#A5B4FC", fontSize: 13, fontWeight: "700" },
   goalValue: {
-    color: "#F6F8FB",
-    fontSize: 22,
+    color: "#F5F7FA",
+    fontSize: 27,
     fontWeight: "700",
-    marginTop: 4,
+    marginTop: 7,
   },
-
-  goalPercent: {
-    color: "#A5B4FC",
-    fontSize: 22,
-    fontWeight: "700",
-  },
-
+  compactGoalValue: { fontSize: 23 },
   goalTrack: {
-    marginTop: 15,
-    height: 9,
+    height: 8,
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.07)",
     overflow: "hidden",
+    marginTop: 14,
   },
-
-  goalFill: {
-    height: "100%",
-    borderRadius: 999,
-    backgroundColor: "#6F72D8",
-  },
-
-  goalHint: {
-    color: "#7F8798",
-    fontSize: 10,
-    marginTop: 8,
-  },
-
+  goalFill: { height: "100%", borderRadius: 999, backgroundColor: "#9195ED" },
+  goalHint: { color: "#A1A8B8", fontSize: 12, lineHeight: 17, marginTop: 9 },
+  focusSection: { gap: 7 },
+  focusTitle: { color: "#F2F4F8", fontSize: 22, fontWeight: "600" },
+  compactFocusTitle: { fontSize: 19 },
+  focusHint: { color: "#A1A8B8", fontSize: 13, lineHeight: 19 },
   primaryButton: {
-    marginTop: 16,
-    minHeight: 68,
-    borderRadius: 20,
+    minHeight: 60,
+    borderRadius: 18,
     backgroundColor: "#E8E9FF",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 14,
+    gap: 10,
+    marginTop: 9,
+    padding: 14,
   },
-
-  primaryButtonTitle: {
-    color: "#171827",
-    fontSize: 14,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-
-  primaryButtonSubtitle: {
-    color: "#5C607A",
-    fontSize: 10,
-    fontWeight: "600",
-    marginTop: 4,
-    textAlign: "center",
-  },
-
+  compactPrimaryButton: { minHeight: 52, marginTop: 5 },
+  primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "700" },
   questsButton: {
-    minHeight: 66,
-    borderRadius: 21,
-    backgroundColor: "#151923",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
+    minHeight: 60,
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 13,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 17,
+    backgroundColor: "rgba(165,180,252,0.05)",
   },
-
-  questsButtonIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 13,
-    backgroundColor: "rgba(165,180,252,0.10)",
+  questsButtonTitle: {
+    flex: 1,
+    color: "#E4E8F1",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  countBadge: {
+    minWidth: 27,
+    height: 27,
+    paddingHorizontal: 7,
+    borderRadius: 14,
+    backgroundColor: "rgba(165,180,252,0.15)",
     alignItems: "center",
     justifyContent: "center",
   },
-
-  questsButtonIconText: {
-    fontSize: 18,
+  countText: { color: "#C7D2FE", fontSize: 12, fontWeight: "700" },
+  modalRoot: { flex: 1, justifyContent: "flex-end" },
+  backdrop: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(0,0,0,0.6)",
   },
-
-  questsButtonText: {
-    flex: 1,
-    marginLeft: 11,
+  sheet: {
+    backgroundColor: "#131722",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 22,
+    paddingTop: 22,
   },
-
-  questsButtonTitle: {
-    color: "#E9ECF3",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  questsButtonSubtitle: {
-    color: "#737C90",
-    fontSize: 9,
-    marginTop: 3,
-  },
-
-  chevron: {
-    color: "#7E879B",
-    fontSize: 27,
-    marginLeft: 8,
-  },
-
-  sectionBlock: {
-    marginTop: 2,
-  },
-
-  questSectionHeader: {
+  sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    paddingBottom: 18,
   },
-
-  questsLink: {
+  sheetHeading: { flex: 1, gap: 5 },
+  sheetTitle: { color: "#F5F7FA", fontSize: 23, fontWeight: "700" },
+  sheetSubtitle: { color: "#A1A8B8", fontSize: 12, lineHeight: 17 },
+  sessionNotice: {
+    color: "#C7D2FE",
+    fontSize: 12,
+    lineHeight: 18,
+    paddingBottom: 12,
+  },
+  questList: { flex: 1, minHeight: 0 },
+  questListContent: { flexGrow: 1, paddingBottom: 12 },
+  questRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    gap: 12,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.06)",
+  },
+  questInfo: { flex: 1, gap: 6, minWidth: 0 },
+  questTitle: { color: "#E8EBF1", fontSize: 15, fontWeight: "600" },
+  questMeta: { color: "#A1A8B8", fontSize: 12, lineHeight: 17 },
+  questStart: {
+    minHeight: 44,
+    paddingHorizontal: 15,
+    paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-  },
-
-  questsLinkText: {
-    color: "#B9C1D3",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  questsLinkChevron: {
-    color: "#7D869A",
-    fontSize: 16,
-    marginLeft: 3,
-  },
-
-  listTitle: {
-    color: "#F2F4F7",
-    fontSize: 18,
-    fontWeight: "700",
-    marginTop: 3,
-  },
-
-  countPill: {
-    minWidth: 30,
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 999,
-    textAlign: "center",
-    color: "#C7CEE0",
-    backgroundColor: "rgba(255,255,255,0.06)",
-    fontSize: 10,
-    fontWeight: "800",
-    overflow: "hidden",
-  },
-
-  emptyCard: {
-    marginTop: 11,
-    padding: 20,
-    borderRadius: 22,
-    backgroundColor: "#11151E",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
+    backgroundColor: "rgba(165,180,252,0.12)",
     alignItems: "center",
+    justifyContent: "center",
   },
-
-  emptyIcon: {
-    fontSize: 24,
+  questStartText: { color: "#C7D2FE", fontSize: 12, fontWeight: "700" },
+  emptyState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    paddingVertical: 28,
   },
-
+  emptyIcon: { fontSize: 30 },
   emptyTitle: {
     color: "#E6E9F0",
-    fontSize: 13,
-    fontWeight: "800",
-    marginTop: 8,
-  },
-
-  emptyText: {
-    color: "#737C90",
-    fontSize: 10,
-    lineHeight: 15,
+    fontSize: 18,
+    fontWeight: "600",
     textAlign: "center",
-    marginTop: 5,
-    maxWidth: 285,
   },
-
-  secondaryButton: {
-    marginTop: 13,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: "rgba(165,180,252,0.10)",
-    borderWidth: 1,
-    borderColor: "rgba(165,180,252,0.18)",
+  emptyText: {
+    color: "#A1A8B8",
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: "center",
+    maxWidth: 280,
   },
-
-  secondaryButtonText: {
+  manageButton: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.06)",
+    paddingTop: 12,
+  },
+  manageButtonText: {
+    flex: 1,
     color: "#C7D2FE",
-    fontSize: 9,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
-
-  questCard: {
-    marginTop: 10,
-    minHeight: 72,
-    paddingHorizontal: 13,
-    paddingVertical: 12,
-    borderRadius: 20,
-    backgroundColor: "#151923",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.06)",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  questMain: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    minWidth: 0,
-  },
-
-  questIcon: {
-    width: 39,
-    height: 39,
-    borderRadius: 12,
-    backgroundColor: "rgba(139,140,248,0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  questInfo: {
-    flex: 1,
-    marginLeft: 10,
-    minWidth: 0,
-  },
-
-  questTitle: {
-    color: "#E8EBF1",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  questMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-    gap: 5,
-  },
-
-  questMetaText: {
-    color: "#777F92",
-    fontSize: 9,
-    fontWeight: "700",
-  },
-
-  metaDot: {
-    color: "#4A5262",
-    fontSize: 9,
-  },
-
-  questStart: {
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-    borderRadius: 12,
-    backgroundColor: "rgba(232,233,255,0.12)",
-    borderWidth: 1,
-    borderColor: "rgba(232,233,255,0.16)",
-  },
-
-  questStartText: {
-    color: "#DCDFFF",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.6,
-  },
-
-  viewAllButton: {
-    marginTop: 10,
-    minHeight: 42,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.03)",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "row",
-    gap: 4,
-  },
-
-  viewAllText: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  viewAllChevron: {
-    color: "#A5B4FC",
-    fontSize: 17,
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

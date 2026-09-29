@@ -635,7 +635,7 @@ export default function TasksScreen() {
 
       <View style={styles.content}>
         <View style={styles.questToolbar}>
-          <View>
+          <View style={styles.questToolbarHeading}>
             <Text style={styles.questToolbarTitle}>
               Today's quests
             </Text>
@@ -1114,6 +1114,31 @@ export default function TasksScreen() {
 }
 
 const styles = StyleSheet.create({
+  questToolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 16,
+  },
+  questToolbarHeading: {
+    flex: 1,
+  },
+  questToolbarTitle: {
+    color: "#F8FAFC",
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  questToolbarSubtitle: {
+    color: "#9CA8BC",
+    fontSize: 11,
+    marginTop: 4,
+  },
+  helperText: {
+    color: "#94A3B8",
+    fontSize: 10,
+    lineHeight: 15,
+  },
   container: {
     flex: 1,
     backgroundColor: "#090D16",
