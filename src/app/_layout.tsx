@@ -108,7 +108,7 @@ function ActiveTimerBanner() {
 
   const isSessionActive = (isRunning || timeLeft < duration) && !isCompleted;
 
-  if (!isSessionActive || pathname === "/timer") return null;
+  if (!isSessionActive || pathname === "/session") return null;
 
   const minutes = Math.floor(timeLeft / 60);
   const seconds = timeLeft % 60;
@@ -119,7 +119,7 @@ function ActiveTimerBanner() {
   return (
     <TouchableOpacity
       style={[styles.activeBanner, !isRunning && styles.pausedBanner]}
-      onPress={() => router.push("/timer")}
+      onPress={() => router.push("/session")}
       activeOpacity={0.85}
     >
       <View style={styles.bannerInfo}>
