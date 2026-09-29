@@ -286,7 +286,7 @@ export default function TimerScreen() {
   };
 
   const selectCustom = () => {
-    if (isRunning || linkedTask) {
+    if (isSessionLocked || linkedTask) {
       return;
     }
 
@@ -335,7 +335,7 @@ export default function TimerScreen() {
   };
 
   const removeQuest = () => {
-    if (isRunning) {
+    if (isSessionLocked) {
       return;
     }
 
@@ -754,7 +754,7 @@ export default function TimerScreen() {
                           activity.id,
                         )
                       }
-                      disabled={isRunning}
+                      disabled={isSessionLocked}
                     >
                       <Text
                         style={
