@@ -28,12 +28,7 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
-
-  const {
-    profile,
-    reloadProfile,
-    hapticsEnabled,
-  } = useUser();
+  const { profile, reloadProfile, hapticsEnabled } = useUser();
 
   const {
     setLinkedTaskId,
@@ -44,51 +39,33 @@ export default function HomeScreen() {
 
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-
-  const [completedMinutes, setCompletedMinutes] =
-    useState(0);
-
-  const [goalCompleted, setGoalCompleted] =
-    useState(false);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const [completedMinutes, setCompletedMinutes] = useState(0);
+  const [goalCompleted, setGoalCompleted] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [
-        taskList,
-        subjectList,
-        progress,
-      ] = await Promise.all([
-        getTasks(),
-        getSubjects(),
-        getTodayProgress(),
-      ]);
+      const [taskList, subjectList, progress] =
+        await Promise.all([
+          getTasks(),
+          getSubjects(),
+          getTodayProgress(),
+        ]);
 
       setTasks(taskList);
       setSubjects(subjectList);
+      setCompletedMinutes(progress?.completed_minutes ?? 0);
+      setGoalCompleted(progress?.goal_completed ?? false);
 
-      setCompletedMinutes(
-        progress?.completed_minutes ?? 0,
-      );
-
-      setGoalCompleted(
-        progress?.goal_completed ?? false,
-      );
-
-      reloadProfile();
+      await reloadProfile();
     } catch (error) {
-      console.error(
-        "Failed to load Home data:",
-        error,
-      );
+      console.error("Failed to load Home data:", error);
     }
   }, [reloadProfile]);
 
   useFocusEffect(
     useCallback(() => {
-      loadData();
+      void loadData();
     }, [loadData]),
   );
 
@@ -102,97 +79,74 @@ export default function HomeScreen() {
     }
   }, [loadData]);
 
-  const dailyGoalMinutes =
-    profile?.daily_goal_minutes ?? 60;
-
-  const safeCompletedMinutes = Math.max(
-    0,
-    completedMinutes,
-  );
-
+  const dailyGoalMinutes = profile?.daily_goal_minutes ?? 60;
+  const safeCompletedMinutes = Math.max(0, completedMinutes);
   const goalProgress = Math.min(
     1,
-    safeCompletedMinutes /
-      Math.max(1, dailyGoalMinutes),
+    safeCompletedMinutes / Math.max(1, dailyGoalMinutes),
   );
-
   const remainingMinutes = Math.max(
     0,
-    dailyGoalMinutes -
-      safeCompletedMinutes,
+    dailyGoalMinutes - safeCompletedMinutes,
   );
 
-  const currentLevel =
-    profile?.level ?? 1;
-
-  const currentXP =
-    profile?.current_xp ?? 0;
-
+  const level = profile?.level ?? 1;
+  const currentXP = profile?.current_xp ?? 0;
   const requiredXP = Math.floor(
-    100 *
-      Math.pow(
-        currentLevel,
-        1.5,
-      ),
-  );
-
-  const xpProgress = Math.min(
-    1,
-    currentXP /
-      Math.max(1, requiredXP),
+    100 * Math.pow(level, 1.5),
   );
 
   const activeTasks = useMemo(
     () =>
       tasks.filter(
         (task) =>
-          task.is_due_today &&
-          !task.is_completed_today,
+          task.is_due_today && !task.is_completed_today,
       ),
     [tasks],
   );
 
-  const previewTasks =
-    activeTasks.slice(0, 3);
+  const previewTasks = activeTasks.slice(0, 3);
 
-  const getSubject = (
-    subjectId: number | null,
-  ) => {
+  const getSubject = (subjectId: number | null) => {
     if (subjectId === null) {
       return null;
     }
 
     return (
       subjects.find(
-        (subject) =>
-          subject.id === subjectId,
+        (subject) => subject.id === subjectId,
       ) ?? null
     );
   };
 
-  const startFreeSession = () => {
-    if (hasOpenSession) {
-      router.push("/timer");
-      return;
-    }
+  const openSession = () => {
     if (hapticsEnabled) {
       Haptics.impactAsync(
         Haptics.ImpactFeedbackStyle.Medium,
       );
     }
 
+    router.push("/session");
+  };
+
+  const startFreeSession = () => {
+    if (hasOpenSession) {
+      openSession();
+      return;
+    }
+
     setLinkedTaskId(null);
     setTargetAttributeId(null);
     setDurationInMinutes(30);
-
-    router.push("/timer");
+    openSession();
   };
 
   const startQuest = (task: Task) => {
     if (hasOpenSession) {
-      router.push("/timer");
+      openSession();
       return;
     }
+
     if (hapticsEnabled) {
       Haptics.impactAsync(
         Haptics.ImpactFeedbackStyle.Medium,
@@ -200,343 +154,259 @@ export default function HomeScreen() {
     }
 
     setLinkedTaskId(task.id);
+    setDurationInMinutes(task.target_minutes || 30);
+    setTargetAttributeId(task.subject_id ?? null);
 
-    setDurationInMinutes(
-      task.target_minutes || 30,
-    );
-
-    setTargetAttributeId(
-      task.subject_id ?? null,
-    );
-
-    router.push("/timer");
+    router.push("/session");
   };
 
   return (
     <SafeAreaView style={styles.container}>
       <Header
         title="Home"
-        subtitle="Your daily progress"
+        subtitle="Build your day, one session at a time"
         showBack={false}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={
-          styles.content
-        }
+        contentContainerStyle={styles.content}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor="#818CF8"
+            tintColor="#A5B4FC"
           />
         }
       >
-        {/* HERO */}
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
-            <View
-              style={styles.avatarCircle}
-            >
+            <View style={styles.avatar}>
               <Text style={styles.avatarText}>
                 {profile?.avatar || "🧙‍♂️"}
               </Text>
             </View>
 
-            <View
-              style={styles.heroInfo}
-            >
-              <Text
-                style={styles.greeting}
-              >
-                Welcome back
+            <View style={styles.heroIdentity}>
+              <Text style={styles.eyebrow}>
+                WELCOME BACK
               </Text>
 
-              <Text
-                style={styles.username}
-                numberOfLines={1}
-              >
+              <Text style={styles.username} numberOfLines={1}>
                 {profile?.username || "Hero"}
               </Text>
 
-              <Text
-                style={styles.classTitle}
-              >
-                Lv {currentLevel}{" "}
-                {profile?.class_title ||
-                  "Adventurer"}
+              <Text style={styles.classTitle}>
+                Lv {level} ·{" "}
+                {profile?.class_title || "Adventurer"}
               </Text>
             </View>
 
-            <View
-              style={styles.goldBadge}
-            >
+            <View style={styles.goldPill}>
               <Text style={styles.goldText}>
                 💰 {profile?.gold ?? 0}
               </Text>
             </View>
           </View>
 
-          <View
-            style={styles.xpSection}
-          >
-            <View
-              style={styles.xpHeader}
-            >
-              <Text
-                style={styles.xpLabel}
-              >
-                XP
-              </Text>
-
-              <Text
-                style={styles.xpValue}
-              >
+          <View style={styles.xpSection}>
+            <View style={styles.xpHeader}>
+              <Text style={styles.mutedLabel}>XP</Text>
+              <Text style={styles.xpValue}>
                 {currentXP} / {requiredXP}
               </Text>
             </View>
 
-            <View
-              style={
-                styles.progressBackground
-              }
-            >
+            <View style={styles.progressTrack}>
               <View
                 style={[
                   styles.progressFill,
                   {
                     width: `${
-                      xpProgress * 100
+                      Math.min(
+                        1,
+                        currentXP /
+                          Math.max(1, requiredXP),
+                      ) * 100
                     }%`,
                   },
                 ]}
               />
             </View>
           </View>
+
+          <View style={styles.statsRow}>
+            <View style={styles.statItem}>
+              <Text style={styles.statIcon}>🔥</Text>
+              <View>
+                <Text style={styles.statValue}>
+                  {profile?.streak_count ?? 0}
+                </Text>
+                <Text style={styles.statLabel}>Day streak</Text>
+              </View>
+            </View>
+
+            <View style={styles.statDivider} />
+
+            <View style={styles.statItem}>
+              <Text style={styles.statIcon}>⏱</Text>
+              <View>
+                <Text style={styles.statValue}>
+                  {safeCompletedMinutes}m
+                </Text>
+                <Text style={styles.statLabel}>Today</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        {/* DAILY GOAL */}
         <View style={styles.goalCard}>
-          <View
-            style={styles.sectionHeader}
-          >
+          <View style={styles.sectionTopRow}>
             <View>
-              <Text
-                style={styles.sectionLabel}
-              >
+              <Text style={styles.sectionEyebrow}>
                 TODAY'S GOAL
               </Text>
-
-              <Text
-                style={styles.goalTitle}
-              >
+              <Text style={styles.goalValue}>
                 {goalCompleted
-                  ? "Goal complete 🎉"
-                  : `${safeCompletedMinutes} / ${dailyGoalMinutes} min`}
+                  ? "Complete 🎉"
+                  : `${safeCompletedMinutes} / ${
+                      dailyGoalMinutes
+                    } min`}
               </Text>
             </View>
 
-            <Text
-              style={styles.goalPercentage}
-            >
-              {Math.round(
-                goalProgress * 100,
-              )}
-              %
+            <Text style={styles.goalPercent}>
+              {Math.round(goalProgress * 100)}%
             </Text>
           </View>
 
-          <View
-            style={
-              styles.goalProgressBackground
-            }
-          >
+          <View style={styles.goalTrack}>
             <View
               style={[
-                styles.goalProgressFill,
-                {
-                  width: `${goalProgress * 100}%`,
-                },
+                styles.goalFill,
+                { width: `${goalProgress * 100}%` },
               ]}
             />
           </View>
 
-          <Text
-            style={styles.goalSubtext}
-          >
+          <Text style={styles.goalHint}>
             {goalCompleted
-              ? "You've completed today's Daily Goal."
-              : `${remainingMinutes} min remaining today`}
+              ? "You've done enough for today."
+              : `${remainingMinutes} min remaining`}
           </Text>
 
           <TouchableOpacity
-            style={styles.startSessionButton}
+            style={styles.primaryButton}
             onPress={startFreeSession}
-            activeOpacity={0.85}
+            activeOpacity={0.88}
           >
-            <Text
-              style={styles.startSessionText}
-            >
-              START SESSION
+            <Text style={styles.primaryButtonTitle}>
+              {hasOpenSession
+                ? "CONTINUE SESSION"
+                : "START SESSION"}
             </Text>
 
-            <Text
-              style={styles.startSessionSubtext}
-            >
-              Focus on whatever matters right now
+            <Text style={styles.primaryButtonSubtitle}>
+              {hasOpenSession
+                ? "Your current session is waiting"
+                : "Choose what you're doing and start the clock"}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* QUESTS */}
-        <View style={styles.sectionBlock}>
-          <View
-            style={styles.sectionTitleRow}
-          >
-            <Text
-              style={styles.sectionTitle}
-            >
-              TODAY'S QUESTS
-            </Text>
+        <TouchableOpacity
+          style={styles.questsButton}
+          onPress={() => router.push("/quests")}
+          activeOpacity={0.88}
+        >
+          <View style={styles.questsButtonIcon}>
+            <Text style={styles.questsButtonIconText}>📜</Text>
+          </View>
 
-            <TouchableOpacity
-              onPress={() =>
-                router.push("/tasks")
-              }
-            >
-              <Text
-                style={styles.viewAllText}
-              >
-                View all
+          <View style={styles.questsButtonText}>
+            <Text style={styles.questsButtonTitle}>
+              Quests
+            </Text>
+            <Text style={styles.questsButtonSubtitle}>
+              Create and manage things you want to get done
+            </Text>
+          </View>
+
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+
+        <View style={styles.sectionBlock}>
+          <View style={styles.sectionTopRow}>
+            <View>
+              <Text style={styles.sectionEyebrow}>
+                TODAY
               </Text>
-            </TouchableOpacity>
+              <Text style={styles.listTitle}>
+                Today's quests
+              </Text>
+            </View>
+
+            <Text style={styles.countPill}>
+              {activeTasks.length}
+            </Text>
           </View>
 
           {previewTasks.length === 0 ? (
-            <View
-              style={styles.emptyQuestCard}
-            >
-              <Text
-                style={styles.emptyQuestIcon}
-              >
-                ✨
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyIcon}>✨</Text>
+              <Text style={styles.emptyTitle}>
+                No quests for today
               </Text>
-
-              <Text
-                style={styles.emptyQuestTitle}
-              >
-                No quests waiting
-              </Text>
-
-              <Text
-                style={styles.emptyQuestText}
-              >
-                You can start a free session
-                or add a quest when you
-                need more structure.
+              <Text style={styles.emptyText}>
+                Start a session freely, or create a quest
+                when you want more structure.
               </Text>
 
               <TouchableOpacity
                 style={styles.secondaryButton}
-                onPress={() =>
-                  router.push("/tasks")
-                }
+                onPress={() => router.push("/quests")}
+                activeOpacity={0.88}
               >
-                <Text
-                  style={
-                    styles.secondaryButtonText
-                  }
-                >
+                <Text style={styles.secondaryButtonText}>
                   ADD A QUEST
                 </Text>
               </TouchableOpacity>
             </View>
           ) : (
             previewTasks.map((task) => {
-              const subject =
-                getSubject(
-                  task.subject_id,
-                );
+              const subject = getSubject(task.subject_id);
 
               return (
-                <View
-                  key={task.id}
-                  style={
-                    styles.questCard
-                  }
-                >
-                  <View
-                    style={
-                      styles.questMain
-                    }
-                  >
-                    <View
-                      style={
-                        styles.questIcon
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.questIconText
-                        }
-                      >
-                        📜
-                      </Text>
+                <View key={task.id} style={styles.questCard}>
+                  <View style={styles.questMain}>
+                    <View style={styles.questIcon}>
+                      <Text>📜</Text>
                     </View>
 
-                    <View
-                      style={
-                        styles.questInfo
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.questTitle
-                        }
-                        numberOfLines={2}
-                      >
+                    <View style={styles.questInfo}>
+                      <Text style={styles.questTitle} numberOfLines={2}>
                         {task.title}
                       </Text>
 
-                      <View
-                        style={
-                          styles.questMeta
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.questMetaText
-                          }
-                        >
-                          {task.target_minutes ||
-                            30}{" "}
-                          min
+                      <View style={styles.questMeta}>
+                        <Text style={styles.questMetaText}>
+                          {task.target_minutes || 30} min
                         </Text>
 
                         {subject && (
                           <>
-                            <Text
-                              style={
-                                styles.metaDot
-                              }
-                            >
-                              •
-                            </Text>
-
+                            <Text style={styles.metaDot}>•</Text>
                             <Text
                               style={[
                                 styles.questMetaText,
                                 {
                                   color:
                                     subject.color_code ??
-                                    "#818CF8",
+                                    "#A5B4FC",
                                 },
                               ]}
                             >
-                              {
-                                subject.title
-                              }
+                              {subject.title}
                             </Text>
                           </>
                         )}
@@ -545,19 +415,11 @@ export default function HomeScreen() {
                   </View>
 
                   <TouchableOpacity
-                    style={
-                      styles.questStartButton
-                    }
-                    onPress={() =>
-                      startQuest(task)
-                    }
-                    activeOpacity={0.85}
+                    style={styles.questStart}
+                    onPress={() => startQuest(task)}
+                    activeOpacity={0.88}
                   >
-                    <Text
-                      style={
-                        styles.questStartText
-                      }
-                    >
+                    <Text style={styles.questStartText}>
                       START
                     </Text>
                   </TouchableOpacity>
@@ -568,71 +430,17 @@ export default function HomeScreen() {
 
           {activeTasks.length > 3 && (
             <TouchableOpacity
-              style={
-                styles.viewMoreButton
-              }
-              onPress={() =>
-                router.push("/tasks")
-              }
+              onPress={() => router.push("/quests")}
+              style={styles.viewAllButton}
+              activeOpacity={0.85}
             >
-              <Text
-                style={
-                  styles.viewMoreText
-                }
-              >
-                View {activeTasks.length - 3}{" "}
-                more quest
-                {activeTasks.length - 3 ===
-                1
-                  ? ""
-                  : "s"}
+              <Text style={styles.viewAllText}>
+                View all quests
               </Text>
+              <Text style={styles.viewAllChevron}>›</Text>
             </TouchableOpacity>
           )}
         </View>
-
-        {/* STREAK */}
-        <View
-          style={styles.streakCard}
-        >
-          <View
-            style={styles.streakIcon}
-          >
-            <Text
-              style={
-                styles.streakIconText
-              }
-            >
-              🔥
-            </Text>
-          </View>
-
-          <View
-            style={styles.streakInfo}
-          >
-            <Text
-              style={
-                styles.streakTitle
-              }
-            >
-              {profile?.streak_count ?? 0} day
-              streak
-            </Text>
-
-            <Text
-              style={
-                styles.streakText
-              }
-            >
-              Complete your Daily Goal
-              to keep it going.
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={styles.bottomSpace}
-        />
       </ScrollView>
     </SafeAreaView>
   );
@@ -641,23 +449,22 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#090D16",
+    backgroundColor: "#0B0D13",
   },
 
   content: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
+    paddingHorizontal: 18,
+    paddingBottom: 128,
+    gap: 14,
   },
 
   heroCard: {
-    marginTop: 6,
+    marginTop: 4,
     padding: 18,
-    borderRadius: 22,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.10)",
+    borderRadius: 26,
+    backgroundColor: "#151923",
     borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.20)",
+    borderColor: "rgba(255,255,255,0.07)",
   },
 
   heroTopRow: {
@@ -665,195 +472,413 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  avatarCircle: {
+  avatar: {
     width: 52,
     height: 52,
     borderRadius: 18,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.18)",
+    backgroundColor: "rgba(255,255,255,0.06)",
     alignItems: "center",
     justifyContent: "center",
   },
 
   avatarText: {
-    fontSize: 28,
+    fontSize: 27,
   },
 
-  heroInfo: {
+  heroIdentity: {
     flex: 1,
-    minWidth: 0,
     marginLeft: 12,
+    minWidth: 0,
   },
 
-  greeting: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "700",
+  eyebrow: {
+    color: "#7D869A",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
 
   username: {
-    color: "#F8FAFC",
-    fontSize: 18,
-    fontWeight: "900",
+    color: "#F5F7FA",
+    fontSize: 24,
+    fontWeight: "700",
     marginTop: 2,
   },
 
   classTitle: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "800",
-    marginTop: 3,
+    color: "#A1A8B8",
+    fontSize: 11,
+    marginTop: 2,
   },
 
-  goldBadge: {
-    paddingHorizontal: 9,
+  goldPill: {
+    paddingHorizontal: 10,
     paddingVertical: 7,
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(245, 158, 11, 0.10)",
+    borderRadius: 14,
+    backgroundColor: "rgba(245,158,11,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(245,158,11,0.18)",
   },
 
   goldText: {
     color: "#FBBF24",
-    fontSize: 10,
-    fontWeight: "900",
+    fontSize: 11,
+    fontWeight: "800",
   },
 
   xpSection: {
-    marginTop: 18,
+    marginTop: 19,
   },
 
   xpHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 7,
   },
 
-  xpLabel: {
-    color: "#64748B",
+  mutedLabel: {
+    color: "#778094",
     fontSize: 9,
-    fontWeight: "900",
+    fontWeight: "800",
     letterSpacing: 0.8,
   },
 
   xpValue: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "800",
+    color: "#C7CEE0",
+    fontSize: 10,
+    fontWeight: "700",
   },
 
-  progressBackground: {
+  progressTrack: {
     height: 7,
-    borderRadius: 4,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.07)",
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.07)",
     overflow: "hidden",
   },
 
   progressFill: {
     height: "100%",
-    borderRadius: 4,
-    backgroundColor: "#818CF8",
+    borderRadius: 999,
+    backgroundColor: "#8B8CF8",
+  },
+
+  statsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 17,
+  },
+
+  statItem: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  statDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255,255,255,0.07)",
+  },
+
+  statIcon: {
+    fontSize: 16,
+  },
+
+  statValue: {
+    color: "#F4F6F9",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  statLabel: {
+    color: "#737C90",
+    fontSize: 9,
+    marginTop: 2,
   },
 
   goalCard: {
-    marginTop: 14,
     padding: 18,
-    borderRadius: 22,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.045)",
+    borderRadius: 26,
+    backgroundColor: "#131720",
     borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.09)",
+    borderColor: "rgba(255,255,255,0.07)",
   },
 
-  sectionHeader: {
+  sectionTopRow: {
     flexDirection: "row",
-    alignItems: "flex-start",
     justifyContent: "space-between",
+    alignItems: "center",
   },
 
-  sectionLabel: {
-    color: "#64748B",
+  sectionEyebrow: {
+    color: "#7D869A",
     fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.9,
+    fontWeight: "800",
+    letterSpacing: 1,
   },
 
-  goalTitle: {
-    color: "#F8FAFC",
+  goalValue: {
+    color: "#F6F8FB",
     fontSize: 22,
-    fontWeight: "900",
-    marginTop: 5,
-  },
-
-  goalPercentage: {
-    color: "#A5B4FC",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-
-  goalProgressBackground: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.07)",
-    overflow: "hidden",
-    marginTop: 14,
-  },
-
-  goalProgressFill: {
-    height: "100%",
-    borderRadius: 5,
-    backgroundColor: "#6366F1",
-  },
-
-  goalSubtext: {
-    color: "#64748B",
-    fontSize: 10,
     fontWeight: "700",
+    marginTop: 4,
+  },
+
+  goalPercent: {
+    color: "#A5B4FC",
+    fontSize: 22,
+    fontWeight: "700",
+  },
+
+  goalTrack: {
+    marginTop: 15,
+    height: 9,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.07)",
+    overflow: "hidden",
+  },
+
+  goalFill: {
+    height: "100%",
+    borderRadius: 999,
+    backgroundColor: "#6F72D8",
+  },
+
+  goalHint: {
+    color: "#7F8798",
+    fontSize: 10,
     marginTop: 8,
   },
 
-  startSessionButton: {
-    height: 54,
-    borderRadius: 15,
-    backgroundColor: "#6366F1",
+  primaryButton: {
+    marginTop: 16,
+    minHeight: 68,
+    borderRadius: 20,
+    backgroundColor: "#E8E9FF",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 16,
+    paddingHorizontal: 14,
   },
 
-  startSessionText: {
-    color: "#FFFFFF",
-    fontSize: 13,
+  primaryButtonTitle: {
+    color: "#171827",
+    fontSize: 14,
     fontWeight: "900",
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
   },
 
-  startSessionSubtext: {
-    color: "#C7D2FE",
+  primaryButtonSubtitle: {
+    color: "#5C607A",
+    fontSize: 10,
+    fontWeight: "600",
+    marginTop: 4,
+    textAlign: "center",
+  },
+
+  questsButton: {
+    minHeight: 66,
+    borderRadius: 21,
+    backgroundColor: "#151923",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.07)",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 13,
+  },
+
+  questsButtonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: "rgba(165,180,252,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  questsButtonIconText: {
+    fontSize: 18,
+  },
+
+  questsButtonText: {
+    flex: 1,
+    marginLeft: 11,
+  },
+
+  questsButtonTitle: {
+    color: "#E9ECF3",
+    fontSize: 13,
+    fontWeight: "800",
+  },
+
+  questsButtonSubtitle: {
+    color: "#737C90",
     fontSize: 9,
+    marginTop: 3,
+  },
+
+  chevron: {
+    color: "#7E879B",
+    fontSize: 27,
+    marginLeft: 8,
+  },
+
+  sectionBlock: {
+    marginTop: 2,
+  },
+
+  listTitle: {
+    color: "#F2F4F7",
+    fontSize: 18,
     fontWeight: "700",
     marginTop: 3,
   },
 
-  sectionBlock: {
-    marginTop: 22,
+  countPill: {
+    minWidth: 30,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 999,
+    textAlign: "center",
+    color: "#C7CEE0",
+    backgroundColor: "rgba(255,255,255,0.06)",
+    fontSize: 10,
+    fontWeight: "800",
+    overflow: "hidden",
   },
 
-  sectionTitleRow: {
+  emptyCard: {
+    marginTop: 11,
+    padding: 20,
+    borderRadius: 22,
+    backgroundColor: "#11151E",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
+    alignItems: "center",
+  },
+
+  emptyIcon: {
+    fontSize: 24,
+  },
+
+  emptyTitle: {
+    color: "#E6E9F0",
+    fontSize: 13,
+    fontWeight: "800",
+    marginTop: 8,
+  },
+
+  emptyText: {
+    color: "#737C90",
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: "center",
+    marginTop: 5,
+    maxWidth: 285,
+  },
+
+  secondaryButton: {
+    marginTop: 13,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "rgba(165,180,252,0.10)",
+    borderWidth: 1,
+    borderColor: "rgba(165,180,252,0.18)",
+  },
+
+  secondaryButtonText: {
+    color: "#C7D2FE",
+    fontSize: 9,
+    fontWeight: "800",
+    letterSpacing: 0.5,
+  },
+
+  questCard: {
+    marginTop: 10,
+    minHeight: 72,
+    paddingHorizontal: 13,
+    paddingVertical: 12,
+    borderRadius: 20,
+    backgroundColor: "#151923",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.06)",
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
   },
 
-  sectionTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
+  questMain: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    minWidth: 0,
+  },
+
+  questIcon: {
+    width: 39,
+    height: 39,
+    borderRadius: 12,
+    backgroundColor: "rgba(139,140,248,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  questInfo: {
+    flex: 1,
+    marginLeft: 10,
+    minWidth: 0,
+  },
+
+  questTitle: {
+    color: "#E8EBF1",
+    fontSize: 12,
+    fontWeight: "800",
+  },
+
+  questMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    gap: 5,
+  },
+
+  questMetaText: {
+    color: "#777F92",
+    fontSize: 9,
+    fontWeight: "700",
+  },
+
+  metaDot: {
+    color: "#4A5262",
+    fontSize: 9,
+  },
+
+  questStart: {
+    paddingHorizontal: 13,
+    paddingVertical: 9,
+    borderRadius: 12,
+    backgroundColor: "rgba(232,233,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(232,233,255,0.16)",
+  },
+
+  questStartText: {
+    color: "#DCDFFF",
+    fontSize: 9,
     fontWeight: "900",
-    letterSpacing: 0.4,
+    letterSpacing: 0.6,
+  },
+
+  viewAllButton: {
+    marginTop: 10,
+    minHeight: 42,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.03)",
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 4,
   },
 
   viewAllText: {
@@ -862,193 +887,8 @@ const styles = StyleSheet.create({
     fontWeight: "800",
   },
 
-  questCard: {
-    padding: 14,
-    borderRadius: 17,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.045)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    marginBottom: 9,
-  },
-
-  questMain: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  questIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  questIconText: {
-    fontSize: 18,
-  },
-
-  questInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 11,
-  },
-
-  questTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  questMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 5,
-  },
-
-  questMetaText: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "700",
-  },
-
-  metaDot: {
-    color: "#475569",
-    fontSize: 9,
-  },
-
-  questStartButton: {
-    height: 36,
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.16)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 11,
-  },
-
-  questStartText: {
+  viewAllChevron: {
     color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-
-  emptyQuestCard: {
-    padding: 22,
-    borderRadius: 17,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.035)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    alignItems: "center",
-  },
-
-  emptyQuestIcon: {
-    fontSize: 26,
-  },
-
-  emptyQuestTitle: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "900",
-    marginTop: 8,
-  },
-
-  emptyQuestText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-    textAlign: "center",
-    marginTop: 5,
-  },
-
-  secondaryButton: {
-    height: 40,
-    paddingHorizontal: 16,
-    borderRadius: 11,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.12)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.20)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 14,
-  },
-
-  secondaryButtonText: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  viewMoreButton: {
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-
-  viewMoreText: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  streakCard: {
-    marginTop: 22,
-    padding: 16,
-    borderRadius: 18,
-    backgroundColor:
-      "rgba(245, 158, 11, 0.07)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(245, 158, 11, 0.14)",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  streakIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor:
-      "rgba(245, 158, 11, 0.10)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  streakIconText: {
-    fontSize: 21,
-  },
-
-  streakInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-
-  streakTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-
-  streakText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 3,
-  },
-
-  bottomSpace: {
-    height: 30,
+    fontSize: 17,
   },
 });
