@@ -619,7 +619,7 @@ export default function ProgressScreen() {
           )}
         </View>
 
-        {/* AREA MASTERY */}
+        {/* AREA PROGRESS */}
         <Text
           style={styles.sectionTitle}
         >
