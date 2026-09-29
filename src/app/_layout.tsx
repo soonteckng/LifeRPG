@@ -1,4 +1,4 @@
-import { Slot, usePathname, useRouter } from "expo-router";
+import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect } from "react";
 import {
   BackHandler,
@@ -15,25 +15,23 @@ import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
 
-let clearHomeSubRouteOnNextHome = false;
-
 function GlobalBackHandler() {
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     const onBackPress = () => {
-      // 1. Home Screen: Allow system default (minimize/exit app)
+      // Home is the root. Let Android handle the default exit behavior.
       if (pathname === "/" || pathname === "/index") {
         return false;
       }
 
-      // 2. Onboarding: prevent going back
+      // Onboarding is intentionally not dismissible.
       if (pathname === "/onboarding") {
         return true;
       }
 
-      // 3. Tutorial: go back to previous tutorial page if possible
+      // Tutorial returns to onboarding when there is no previous page.
       if (pathname === "/tutorial") {
         if (router.canGoBack()) {
           router.back();
@@ -43,32 +41,31 @@ function GlobalBackHandler() {
         return true;
       }
 
-      //4. Rewards is a secondary screen opened from Profile
-      if (pathname === "/rewards") {
-        router.replace("/profile");
+      // Tabs are root-level destinations. Android back always returns Home.
+      if (
+        pathname === "/progress" ||
+        pathname === "/profile"
+      ) {
+        router.replace("/");
         return true;
       }
 
-      // 5. Second Layer Sub-pages
-      if (pathname === "/settings") {
-        if (router.canGoBack()) {
-          router.back();
-        } else {
-          clearHomeSubRouteOnNextHome = true;
-          router.replace("/");
-        }
+      // Secondary screens and modal routes use the native stack history.
+      if (router.canGoBack()) {
+        router.back();
         return true;
       }
 
-      // 6. Any Tab in Tab Layer: Go directly to Home
       router.replace("/");
       return true;
     };
 
-    const subscription = BackHandler.addEventListener(
-      "hardwareBackPress",
-      onBackPress,
-    );
+    const subscription =
+      BackHandler.addEventListener(
+        "hardwareBackPress",
+        onBackPress,
+      );
+
     return () => subscription.remove();
   }, [pathname, router]);
 
@@ -158,7 +155,63 @@ function AppContent() {
     <TimerProvider>
       <GlobalBackHandler />
 
-      <Slot />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: {
+            backgroundColor: "#090D16",
+          },
+        }}
+      >
+        <Stack.Screen
+          name="(tabs)"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="session"
+          options={{
+            presentation: "fullScreenModal",
+            animation: "slide_from_bottom",
+          }}
+        />
+        <Stack.Screen
+          name="quests"
+          options={{
+            presentation: "formSheet",
+            sheetAllowedDetents: [0.72, 1],
+            sheetInitialDetentIndex: 0,
+            sheetGrabberVisible: true,
+            sheetCornerRadius: 28,
+          }}
+        />
+        <Stack.Screen
+          name="rewards"
+          options={{
+            presentation: "card",
+          }}
+        />
+        <Stack.Screen
+          name="settings"
+          options={{
+            presentation: "card",
+          }}
+        />
+        <Stack.Screen
+          name="onboarding"
+          options={{
+            headerShown: false,
+            gestureEnabled: false,
+          }}
+        />
+        <Stack.Screen
+          name="tutorial"
+          options={{
+            headerShown: false,
+          }}
+        />
+      </Stack>
 
       <ActiveTimerBanner />
       <GlobalRewardListener />
