@@ -24,7 +24,7 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState(false);
   const revision = useRef(0);
   const request = useRef(0);
-  const refresh = useCallback(async () => {
+  const loadQuests = useCallback(async () => {
     const currentRequest = ++request.current;
     const currentRevision = revision.current;
     setRefreshing(true);
@@ -41,13 +41,19 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
       if (currentRequest === request.current) { setLoading(false); setRefreshing(false); }
     }
   }, []);
+  const pendingRefresh = useRef<Promise<void> | null>(null);
+  const refresh = useCallback(() => {
+    if (!pendingRefresh.current) {
+      pendingRefresh.current = loadQuests().finally(() => { pendingRefresh.current = null; });
+    }
+    return pendingRefresh.current;
+  }, [loadQuests]);
   const upsert = useCallback((task: Task) => {
     revision.current++;
     setTasks((current) => current.some((item) => item.id === task.id)
       ? current.map((item) => item.id === task.id ? task : item) : [task, ...current]);
   }, []);
   // Session completion is an external persistence event; reload its server-derived schedule and completion state.
-  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { if (sessionSummary) void refresh(); }, [sessionSummary, refresh]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });

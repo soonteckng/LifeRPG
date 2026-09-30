@@ -111,11 +111,11 @@ async function setup(initialTasks = [], hasOpenSession = false) {
 
 test("empty sheet adds a quest and immediately changes the unfinished count", async () => {
   const ui = await setup();
-  assert.match(ui.output(), /A little space/);
+  assert.match(ui.output(), /Create your first quest/);
   assert.equal(ui.count(), 0);
   await ui.press("Add quest");
   await ui.type("Quest name", "  Walk outside  ");
-  await ui.press("Save quest");
+  await ui.press("Create quest");
   assert.equal(ui.count(), 1);
   assert.equal(ui.tasks()[0].title, "Walk outside");
   assert.ok(ui.button("Edit Walk outside"));
@@ -129,9 +129,9 @@ test("editing preserves difficulty and saves an upcoming schedule without leavin
   await ui.type("Quest name", "Read two chapters");
   await ui.press("Custom");
   await ui.type("Custom duration in minutes", "75");
-  await ui.press("Choose days");
+  await ui.press("Selected days");
   await ui.press("Friday");
-  await ui.press("Save quest");
+  await ui.press("Save changes");
   assert.equal(ui.count(), 0);
   assert.equal(ui.tasks()[0].difficulty, "hard");
   assert.equal(ui.tasks()[0].target_minutes, 75);
@@ -163,14 +163,14 @@ test("invalid custom duration and empty selected days never reach persistence", 
   await ui.type("Quest name", "Revision");
   await ui.press("Custom");
   await ui.type("Custom duration in minutes", "");
-  await ui.press("Save quest");
+  await ui.press("Create quest");
   assert.match(ui.output(), /between 1 and 480/);
   await ui.type("Custom duration in minutes", "481");
-  await ui.press("Save quest");
+  await ui.press("Create quest");
   assert.equal(ui.calls.length, 0);
   await ui.type("Custom duration in minutes", "30");
-  await ui.press("Choose days");
-  await ui.press("Save quest");
+  await ui.press("Selected days");
+  await ui.press("Create quest");
   assert.match(ui.output(), /Select at least one day/);
   assert.equal(ui.calls.length, 0);
   await ui.cleanup();
@@ -181,7 +181,7 @@ test("failed persistence retains the draft and exposes an actionable error", asy
   await ui.press("Edit Read a chapter");
   await ui.type("Quest name", "Keep this draft");
   ui.failSave();
-  await ui.press("Save quest");
+  await ui.press("Save changes");
   assert.equal(ui.input("Quest name"), "Keep this draft");
   assert.match(ui.output(), /Couldn't update this quest/);
   assert.equal(ui.tasks()[0].title, "Read a chapter");
@@ -197,8 +197,8 @@ test("list stays mounted beneath the editor and through scope changes", async ()
   assert.equal(ui.sheets()[0], list);
   assert.equal(ui.sheets().length, 2);
   const editor = ui.sheets()[1];
-  assert.equal(editor.findAllByType("Pressable").some((node) => /^(Delete|Mark complete|Mark unfinished)/.test(node.props.accessibilityLabel ?? "")), false);
-  await ui.press("Save quest");
+  assert.equal(editor.findAllByType("Pressable").some((node) => /^(Mark complete|Mark unfinished)/.test(node.props.accessibilityLabel ?? "")), false);
+  await ui.press("Save changes");
   assert.equal(ui.sheets().length, 1);
   assert.equal(ui.sheets()[0], list);
   await ui.cleanup();
@@ -208,6 +208,7 @@ test("complete, reopen, and delete update today's count immediately", async () =
   const ui = await setup([task()]);
   await ui.press("Mark complete: Read a chapter");
   assert.equal(ui.count(), 0);
+  assert.match(ui.output(), /All done for today/);
   assert.equal(ui.button("Start Read a chapter"), undefined);
   await ui.press("Mark unfinished: Read a chapter");
   assert.equal(ui.count(), 1);
@@ -230,7 +231,7 @@ test("Start configures a quest session and navigates only after dismissal", asyn
 test("an open or paused session is continued without replacing its task, duration, or area", async () => {
   const ui = await setup([task(), task({ id: 2, title: "Another quest" })], true);
   assert.equal(ui.button("Start Another quest"), undefined);
-  assert.equal(ui.button("Delete Read a chapter").props.disabled, false);
+
   await ui.press("Delete Read a chapter");
   assert.match(ui.output(), /Finish or cancel its session/);
   await ui.alertAction("Keep quest");
@@ -324,3 +325,142 @@ for (const platform of ["ios", "android"]) {
     await act(async () => renderer.unmount());
   });
 }
+
+test("upcoming-only quests link to All without hiding Add", async () => {
+  const ui = await setup([task({ is_due_today: false, repeat_rule: "Fri", is_recurring: true })]);
+  assert.match(ui.output(), /Nothing scheduled for today/);
+  assert.ok(ui.button("Add quest"));
+  await ui.press("View all quests");
+  assert.ok(ui.button("Edit Read a chapter"));
+  await ui.cleanup();
+});
+
+test("rapid create taps submit once and a failed creation keeps the entered draft", async () => {
+  const ui = await setup();
+  await ui.press("Add quest");
+  await ui.type("Quest name", "Keep my new quest");
+  ui.failSave();
+  const save = ui.button("Create quest").props.onPress;
+  await act(async () => { save(); save(); });
+  assert.equal(ui.calls.filter(([action]) => action === "create").length, 1);
+  assert.equal(ui.input("Quest name"), "Keep my new quest");
+  assert.match(ui.output(), /Couldn't update this quest/);
+  await ui.cleanup();
+});
+
+test("continuing from a protected row waits for list dismissal", async () => {
+  const ui = await setup([task()], true);
+  await ui.press("Delete Read a chapter");
+  await ui.alertAction("Continue session");
+  assert.equal(ui.sheets().length, 1);
+  assert.equal(ui.sheets()[0].props.visible, false);
+  assert.deepEqual(ui.calls, []);
+  await ui.finishDismiss();
+  assert.deepEqual(ui.calls, [["navigate", "/session"]]);
+  await ui.cleanup();
+});
+
+test("Home preserves loaded progress on failure and exposes a retry instead of a permanent refresh button", async () => {
+  let refresh, failed = false;
+  const name = "A long welcoming username with several words";
+  const reloadProfile = async () => true;
+  const refreshQuests = async () => {};
+  const Home = load("src/app/(tabs)/index.tsx", {
+    "react-native": { ...native, ScrollView: host("ScrollView"), TouchableOpacity: host("Pressable"), useWindowDimensions: () => ({ height: 640, width: 320, fontScale: 2 }) },
+    "@expo/vector-icons": { Ionicons: host("Icon") },
+    "expo-haptics": {}, "expo-router": { useRouter: () => ({ push() {} }) },
+    "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
+    "../../components/QuestSheet": () => null,
+    "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
+    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false }) },
+    "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
+    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: 25 }; } },
+    "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
+  }).default;
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Home)); });
+  const output = () => JSON.stringify(renderer.toJSON());
+  const retry = () => renderer.root.findAllByType("Pressable").find((node) => node.props.accessibilityLabel === "Retry loading Home");
+  assert.match(output(), new RegExp("Good morning, " + name));
+  assert.equal(retry(), undefined);
+  await act(async () => refresh());
+  assert.match(output(), /25 \/ 60 min/);
+  failed = true;
+  await act(async () => refresh());
+  assert.match(output(), /25 \/ 60 min/);
+  assert.ok(retry());
+  failed = false;
+  await act(async () => retry().props.onPress());
+  assert.equal(retry(), undefined);
+  await act(async () => renderer.unmount());
+});
+
+test("greeting uses the requested local-hour boundaries and username fallback", () => {
+  const { homeWelcome } = load("src/utils/homeWelcome.ts", {});
+  for (const [hour, expected] of [[0, "Still up? Hero"], [4, "Still up? Hero"], [5, "Good morning, Hero"], [11, "Good morning, Hero"], [12, "Good afternoon, Hero"], [17, "Good afternoon, Hero"], [18, "Good evening, Hero"], [23, "Good evening, Hero"]]) {
+    assert.equal(homeWelcome(hour), expected);
+  }
+  assert.equal(homeWelcome(0, "  Alex  "), "Still up? Alex");
+  assert.equal(homeWelcome(12, " "), "Good afternoon, Hero");
+  const name = "A very long username ".repeat(5);
+  assert.equal(homeWelcome(5, name), "Good morning, " + name.trim());
+});
+
+test("concurrent refreshes share a request and failed requests remain retryable", async () => {
+  const { singleFlight } = load("src/utils/singleFlight.ts", {});
+  let calls = 0, reject;
+  const refresh = singleFlight(() => {
+    calls++;
+    return new Promise((_, fail) => { reject = fail; });
+  });
+  const first = refresh();
+  assert.equal(refresh(), first);
+  assert.equal(calls, 1);
+  reject(Error("Offline"));
+  await assert.rejects(first, /Offline/);
+  const retry = refresh();
+  assert.equal(calls, 2);
+  reject(Error("Offline again"));
+  await assert.rejects(retry);
+});
+
+test("Home updates on focus, foreground and a clock boundary; unfocused Home does not fetch", async () => {
+  const RealDate = global.Date;
+  const realTimeout = global.setTimeout, realClear = global.clearTimeout;
+  let hour = 4, foreground, onFocus, onTick, renderedHour, calls = 0;
+  global.Date = class extends RealDate { getHours() { return hour; } };
+  global.setTimeout = (callback) => { onTick = callback; return 1; };
+  global.clearTimeout = () => {};
+  const refresh = async () => { calls++; };
+  const { useHomeLifecycle } = load("src/hooks/useHomeLifecycle.ts", {
+    "expo-router": { useFocusEffect: (effect) => { onFocus = effect; React.useEffect(effect, [effect]); } },
+    "react-native": { AppState: { addEventListener: (_, callback) => { foreground = callback; return { remove() {} }; } } },
+  });
+  let renderer;
+  function Capture() { renderedHour = useHomeLifecycle(refresh); return null; }
+  try {
+    await act(async () => { renderer = create(React.createElement(Capture)); });
+    assert.equal(renderedHour, 4);
+    assert.equal(calls, 1);
+    hour = 5;
+    await act(async () => onTick());
+    assert.equal(renderedHour, 5);
+    assert.equal(calls, 1);
+    hour = 12;
+    await act(async () => foreground("active"));
+    assert.equal(renderedHour, 12);
+    assert.equal(calls, 2);
+    let blur;
+    hour = 18;
+    await act(async () => { blur = onFocus(); });
+    assert.equal(renderedHour, 18);
+    assert.equal(calls, 3);
+    blur();
+    await act(async () => foreground("active"));
+    assert.equal(calls, 3);
+  } finally {
+    if (renderer) await act(async () => renderer.unmount());
+    global.Date = RealDate; global.setTimeout = realTimeout; global.clearTimeout = realClear;
+  }
+});
+

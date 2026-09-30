@@ -15,6 +15,7 @@ interface Props {
   // Editors intercept dismissal before any content is hidden or unmounted.
   guardDismiss?: boolean;
   expanded?: boolean;
+  maxHeightRatio?: number;
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
   label: string;
@@ -42,7 +43,7 @@ function useDismissGestures() {
   return { ...defaults, handleOnStart, handleOnEnd };
 }
 
-export default function AppSheet({ visible, onRequestClose, onDismiss, header, children, guardDismiss = false, expanded = false, overlay, footer, label }: Props) {
+export default function AppSheet({ visible, onRequestClose, onDismiss, header, children, guardDismiss = false, expanded = false, maxHeightRatio = 0.82, overlay, footer, label }: Props) {
   const ref = useRef<BottomSheet>(null);
   const [mounted, setMounted] = useState(visible);
   const [previousVisible, setPreviousVisible] = useState(visible);
@@ -101,7 +102,7 @@ export default function AppSheet({ visible, onRequestClose, onDismiss, header, c
       {mounted && <GestureHandlerRootView style={styles.root} accessibilityViewIsModal onAccessibilityEscape={requestBack}>
         <DismissContext.Provider value={{ guarded: guardDismiss, requestClose: onRequestClose }}>
         <BottomSheet ref={ref} index={0} snapPoints={snapPoints} enableDynamicSizing={!expanded}
-          maxDynamicContentSize={Math.min(height * 0.82, maxHeight)} topInset={insets.top + 12}
+          maxDynamicContentSize={Math.min(height * maxHeightRatio, maxHeight)} topInset={insets.top + 12}
           enablePanDownToClose={!guardDismiss} enableHandlePanningGesture
           enableContentPanningGesture enableOverDrag={guardDismiss}
           gestureEventsHandlersHook={useDismissGestures}

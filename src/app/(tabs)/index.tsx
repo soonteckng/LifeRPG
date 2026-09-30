@@ -1,13 +1,15 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "expo-router";
+import React, { useMemo, useState } from "react";
+import { homeWelcome } from "../../utils/homeWelcome";
+import { singleFlight } from "../../utils/singleFlight";
+import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
 import {
-  ActivityIndicator,
-  AppState,
+  ScrollView,
   useWindowDimensions,
   StyleSheet,
   Text,
@@ -32,51 +34,27 @@ export default function HomeScreen() {
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
   const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession } = useTimer();
-  const { tasks, refresh: refreshQuests } = useQuests();
+  const { tasks, error: questsError, refresh: refreshQuests } = useQuests();
 
   const [completedMinutes, setCompletedMinutes] = useState(0);
   const [goalCompleted, setGoalCompleted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [questsVisible, setQuestsVisible] = useState(false);
-  const [hour, setHour] = useState(() => new Date().getHours());
-
-  useEffect(() => {
-    const updateGreeting = () => setHour(new Date().getHours());
-    const interval = setInterval(updateGreeting, 60_000);
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active") updateGreeting();
-    });
-    return () => { clearInterval(interval); subscription.remove(); };
-  }, []);
-
-  const loadData = useCallback(async () => {
+  const [loadError, setLoadError] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const loadData = useMemo(() => singleFlight(async () => {
+    setRefreshing(true);
     try {
-      const [progress] = await Promise.all([getTodayProgress(), refreshQuests()]);
+      const [progress, profileOK] = await Promise.all([getTodayProgress(), reloadProfile(), refreshQuests()]);
       setCompletedMinutes(progress?.completed_minutes ?? 0);
       setGoalCompleted(progress?.goal_completed ?? false);
-
-      await reloadProfile();
-    } catch (error) {
-      console.error("Failed to load Home data:", error);
-    }
-  }, [reloadProfile, refreshQuests]);
-
-  useFocusEffect(
-    useCallback(() => {
-      setHour(new Date().getHours());
-      void loadData();
-    }, [loadData]),
-  );
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-
-    try {
-      await loadData();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [loadData]);
+      setLoadError(profileOK === false);
+    } catch {
+      setLoadError(true);
+    } finally { setRefreshing(false); }
+  }), [reloadProfile, refreshQuests]);
+  const hour = useHomeLifecycle(loadData);
 
   const dailyGoalMinutes = profile?.daily_goal_minutes ?? 60;
   const safeCompletedMinutes = Math.max(0, completedMinutes);
@@ -95,8 +73,7 @@ export default function HomeScreen() {
     [tasks],
   );
 
-  const greeting =
-    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const greeting = homeWelcome(hour, profile?.username);
   const isGoalComplete = goalCompleted || remainingMinutes === 0;
 
   const openSession = () => {
@@ -122,9 +99,11 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      {/* Home stays fixed; only the quest sheet's list scrolls. */}
-      <View
-        style={[
+      {/* Keep Home fixed when it fits, with scrolling only for overflow. */}
+      <ScrollView style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
+        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+        onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
+        contentContainerStyle={[
           styles.content,
           { paddingBottom: insets.bottom + 94 },
           compact && styles.compactContent,
@@ -132,26 +111,20 @@ export default function HomeScreen() {
         ]}
       >
         <View style={[styles.homeHeader, tight && styles.tightHeader]}>
-          <View style={styles.welcomeHeading}>
-            <View style={styles.welcomeIdentity}>
-              <Text style={styles.welcomeSalutation} maxFontSizeMultiplier={1.5}>{greeting},</Text>
-              <Text style={[styles.greeting, compact && styles.compactGreeting, tight && styles.tightGreeting]} numberOfLines={1}
-                adjustsFontSizeToFit minimumFontScale={0.75} maxFontSizeMultiplier={1.5}>
-                {profile?.username || "Hero"}
-              </Text>
-            </View>
-            <TouchableOpacity style={styles.iconButton} onPress={() => void onRefresh()} disabled={refreshing}
-              accessibilityRole="button" accessibilityLabel="Refresh Home" accessibilityState={{ busy: refreshing, disabled: refreshing }}>
-              {refreshing ? <ActivityIndicator size="small" color={colors.accent} /> : <Ionicons name="refresh-outline" size={18} color={colors.muted} />}
-            </TouchableOpacity>
-          </View>
+          <Text style={[styles.greeting, compact && styles.compactGreeting, tight && styles.tightGreeting]}>
+            {greeting}
+          </Text>
           <Text style={styles.welcomeSubtitle} maxFontSizeMultiplier={1.4}>Make a little room for progress today.</Text>
+          {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
+            accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
+            <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
+          </TouchableOpacity>}
           <View style={[styles.character, tight && styles.tightCharacter]}>
             <View style={styles.characterRow}>
               <View style={[styles.avatar, tight && styles.tightAvatar]}><Text style={styles.avatarText} maxFontSizeMultiplier={1.2}>{profile?.avatar || "🧙‍♂️"}</Text></View>
               <View style={styles.identity}>
-                <Text style={styles.classTitle} numberOfLines={1} maxFontSizeMultiplier={1.4}>{profile?.class_title || "Adventurer"}</Text>
                 <Text style={styles.level} maxFontSizeMultiplier={1.4}>Level {level}</Text>
+                <Text style={styles.classTitle} numberOfLines={1} maxFontSizeMultiplier={1.4}>{profile?.class_title || "Adventurer"}</Text>
               </View>
               <View style={styles.quietStats}>
                 <Text style={styles.goldText} maxFontSizeMultiplier={1.3}>{(profile?.gold ?? 0).toLocaleString()} <Text style={styles.statLabel}>gold</Text></Text>
@@ -160,7 +133,6 @@ export default function HomeScreen() {
             </View>
             <View style={[styles.xpHeader, tight && styles.tightXPHeader]}>
               <Text style={styles.smallLabel} maxFontSizeMultiplier={1.3}>{Math.max(0, requiredXP - currentXP).toLocaleString()} XP to level {level + 1}</Text>
-              <Text style={styles.xpValue} maxFontSizeMultiplier={1.3}>{Math.round(Math.max(0, Math.min(1, currentXP / Math.max(1, requiredXP))) * 100)}%</Text>
             </View>
             <View style={styles.xpTrack} accessible accessibilityRole="progressbar" accessibilityLabel={"Level " + level + " progress"}
               accessibilityValue={{ min: 0, max: requiredXP, now: currentXP, text: currentXP + " of " + requiredXP + " XP" }}>
@@ -244,7 +216,7 @@ export default function HomeScreen() {
           )}
           <Ionicons name="chevron-forward" size={19} color="#8992A6" />
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       <QuestSheet visible={questsVisible} onClose={() => setQuestsVisible(false)} />
     </SafeAreaView>
@@ -253,23 +225,26 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0B0D13" },
+  viewport: { flex: 1 },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 22,
     paddingTop: 12,
-    justifyContent: "space-evenly",
-    gap: 20,
+    justifyContent: "space-between",
+    gap: 24,
   },
   compactContent: { paddingTop: 4, gap: 12 },
   tightContent: { gap: 8, paddingTop: 2 },
+  retry: { minHeight: 44, justifyContent: "center" },
+  retryText: { color: colors.accent, fontSize: 12 },
   homeHeader: { gap: 7 },
   tightHeader: { gap: 4 },
   welcomeHeading: { flexDirection: "row", alignItems: "center", gap: 12 },
   welcomeIdentity: { flex: 1, minWidth: 0, gap: 3 },
   welcomeSalutation: { color: colors.secondary, fontSize: 14 },
-  greeting: { color: colors.text, fontSize: 32, fontWeight: "700", letterSpacing: -1 },
-  compactGreeting: { fontSize: 28 },
-  tightGreeting: { fontSize: 24 },
+  greeting: { color: colors.text, fontSize: 27, fontWeight: "600", letterSpacing: -0.6 },
+  compactGreeting: { fontSize: 24 },
+  tightGreeting: { fontSize: 22 },
   welcomeSubtitle: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   character: { marginTop: 12, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
@@ -279,8 +254,8 @@ const styles = StyleSheet.create({
   tightAvatar: { height: 36, width: 36 },
   avatarText: { fontSize: 29 },
   identity: { flex: 1, minWidth: 0, gap: 4 },
-  classTitle: { color: "#E2E6EF", fontSize: 14, fontWeight: "600" },
-  level: { color: colors.accent, fontSize: 12, fontWeight: "500" },
+  classTitle: { color: colors.secondary, fontSize: 12, fontWeight: "400" },
+  level: { color: colors.text, fontSize: 18, fontWeight: "600" },
   quietStats: { alignItems: "flex-end", gap: 5, flexShrink: 1 },
   goldText: { color: "#D7C69C", fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
   statLabel: { color: colors.secondary, fontWeight: "400", fontSize: 11 },
