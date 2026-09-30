@@ -14,6 +14,8 @@ import LevelUpModal from "../components/LevelUpModal";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+import { QuestProvider } from "../context/QuestContext";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 function GlobalBackHandler() {
   const pathname = usePathname();
@@ -134,6 +136,7 @@ function ActiveTimerBanner() {
 }
 
 function AppContent() {
+  const reducedMotion = useReducedMotion();
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useUser();
@@ -153,68 +156,69 @@ function AppContent() {
 
   return (
     <TimerProvider>
-      <GlobalBackHandler />
+      <QuestProvider>
+        <GlobalBackHandler />
 
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: {
-            backgroundColor: "#090D16",
-          },
-        }}
-      >
-        <Stack.Screen
-          name="(tabs)"
-          options={{
+        <Stack
+          screenOptions={{
             headerShown: false,
+            animation: reducedMotion ? "none" : "slide_from_right",
+            contentStyle: {
+              backgroundColor: "#090D16",
+            },
           }}
-        />
-        <Stack.Screen
-          name="session"
-          options={{
-            presentation: "fullScreenModal",
-            animation: "slide_from_bottom",
-          }}
-        />
-        <Stack.Screen
-          name="quests"
-          options={{
-            presentation: "formSheet",
-            sheetAllowedDetents: [0.72, 1],
-            sheetInitialDetentIndex: 0,
-            sheetGrabberVisible: true,
-            sheetCornerRadius: 28,
-          }}
-        />
-        <Stack.Screen
-          name="rewards"
-          options={{
-            presentation: "card",
-          }}
-        />
-        <Stack.Screen
-          name="settings"
-          options={{
-            presentation: "card",
-          }}
-        />
-        <Stack.Screen
-          name="onboarding"
-          options={{
-            headerShown: false,
-            gestureEnabled: false,
-          }}
-        />
-        <Stack.Screen
-          name="tutorial"
-          options={{
-            headerShown: false,
-          }}
-        />
-      </Stack>
+        >
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="session"
+            options={{
+              presentation: "fullScreenModal",
+              animation: reducedMotion ? "none" : "slide_from_bottom",
+            }}
+          />
+          <Stack.Screen
+            name="quests"
+            options={{
+              presentation: "transparentModal",
+              animation: "none",
+              contentStyle: { backgroundColor: "transparent" },
+            }}
+          />
+          <Stack.Screen
+            name="rewards"
+            options={{
+              presentation: "card",
+            }}
+          />
+          <Stack.Screen
+            name="settings"
+            options={{
+              presentation: "card",
+            }}
+          />
+          <Stack.Screen
+            name="onboarding"
+            options={{
+              headerShown: false,
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
+            name="tutorial"
+            options={{
+              headerShown: false,
+            }}
+          />
+        </Stack>
 
-      <ActiveTimerBanner />
-      <GlobalRewardListener />
+        <ActiveTimerBanner />
+        <GlobalRewardListener />
+      </QuestProvider>
     </TimerProvider>
   );
 }

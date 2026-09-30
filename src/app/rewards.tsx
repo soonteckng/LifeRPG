@@ -1,17 +1,15 @@
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import AppSheet from "../components/AppSheet";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   Alert,
   Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -231,9 +229,13 @@ export default function RewardsScreen() {
       return;
     }
 
-    setCreatingReward(false);
-    setRewardTitle("");
-    setRewardCost("300");
+    const dismiss = () => { Keyboard.dismiss(); setCreatingReward(false); };
+    if (rewardTitle.trim() || rewardCost !== "300") {
+      Alert.alert("Discard changes?", "Your personal reward has not been saved.", [
+        { text: "Keep editing", style: "cancel" },
+        { text: "Discard changes", style: "destructive", onPress: dismiss },
+      ]);
+    } else dismiss();
   };
 
   const handleCreateReward = async () => {
@@ -270,7 +272,8 @@ export default function RewardsScreen() {
         );
       }
 
-      closeCreateReward();
+      Keyboard.dismiss();
+      setCreatingReward(false);
       await loadData();
     } catch (error) {
       console.error(
@@ -694,102 +697,27 @@ export default function RewardsScreen() {
       </ScrollView>
 
       {/* CREATE PERSONAL REWARD */}
-      <Modal
-        visible={creatingReward}
-        transparent
-        animationType="fade"
-        onRequestClose={closeCreateReward}
-      >
-        <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            style={styles.modalKeyboard}
-            behavior={
-              Platform.OS === "ios"
-                ? "padding"
-                : "padding"
-            }
-          >
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View>
-                  <Text style={styles.modalTitle}>
-                    Create Personal Reward
-                  </Text>
-
-                  <Text
-                    style={styles.modalSubtitle}
-                  >
-                    Decide what your Gold is worth.
-                  </Text>
-                </View>
-
-                <TouchableOpacity
-                  onPress={closeCreateReward}
-                  disabled={saving}
-                >
-                  <Text style={styles.closeButton}>
-                    ✕
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.inputLabel}>
-                REWARD NAME
-              </Text>
-
-              <TextInput
-                value={rewardTitle}
-                onChangeText={setRewardTitle}
-                placeholder="e.g. 30-Minute Gaming Session"
-                placeholderTextColor="#64748B"
-                style={styles.input}
-                autoFocus
-                maxLength={100}
-              />
-
-              <Text style={styles.inputLabel}>
-                GOLD COST
-              </Text>
-
-              <TextInput
-                value={rewardCost}
-                onChangeText={setRewardCost}
-                keyboardType="number-pad"
-                placeholder="300"
-                placeholderTextColor="#64748B"
-                style={styles.input}
-                maxLength={5}
-              />
-
-              <TouchableOpacity
-                style={[
-                  styles.createButton,
-                  saving &&
-                    styles.createButtonDisabled,
-                ]}
-                onPress={handleCreateReward}
-                disabled={saving}
-              >
-                <Text style={styles.createButtonText}>
-                  {saving
-                    ? "CREATING..."
-                    : "CREATE REWARD"}
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={closeCreateReward}
-                disabled={saving}
-              >
-                <Text style={styles.cancelButtonText}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </KeyboardAvoidingView>
-        </View>
-      </Modal>
+      <AppSheet visible={creatingReward} onRequestClose={closeCreateReward} guardDismiss label="personal reward"
+        onDismiss={() => { setRewardTitle(""); setRewardCost("300"); }}
+        header={<View style={[styles.modalHeader, { paddingHorizontal: 22, paddingBottom: 16, gap: 12, alignItems: "center" }]}>
+          <TouchableOpacity onPress={closeCreateReward} disabled={saving} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={{ color: "#A5B4FC", fontSize: 14 }}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={[styles.modalTitle, { flex: 1, fontSize: 17, textAlign: "center" }]}>New reward</Text>
+          <TouchableOpacity onPress={handleCreateReward} disabled={saving} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={{ color: "#A5B4FC", fontSize: 14, fontWeight: "700" }}>{saving ? "Saving…" : "Save"}</Text>
+          </TouchableOpacity>
+        </View>}>
+        <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}>
+          <Text style={[styles.modalSubtitle, { marginBottom: 22 }]}>Decide what your Gold is worth.</Text>
+          <Text style={styles.inputLabel}>REWARD NAME</Text>
+          <BottomSheetTextInput value={rewardTitle} onChangeText={setRewardTitle} placeholder="e.g. 30-minute gaming session"
+            placeholderTextColor="#64748B" style={styles.input} maxLength={100} editable={!saving} accessibilityLabel="Reward name" />
+          <Text style={styles.inputLabel}>GOLD COST</Text>
+          <BottomSheetTextInput value={rewardCost} onChangeText={setRewardCost} keyboardType="number-pad" placeholder="300"
+            placeholderTextColor="#64748B" style={styles.input} maxLength={5} editable={!saving} accessibilityLabel="Gold cost" />
+        </BottomSheetScrollView>
+      </AppSheet>
     </SafeAreaView>
   );
 }

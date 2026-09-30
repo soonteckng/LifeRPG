@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View, Modal, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { useReducedMotion } from '../hooks/useReducedMotion';
 
 interface RewardModalProps {
   visible: boolean;
@@ -25,18 +26,17 @@ export default function LevelUpModal({
   requiredXP = 100,
   onClose,
 }: RewardModalProps) {
+  const reducedMotion = useReducedMotion();
   useEffect(() => {
     if (visible) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     }
   }, [visible]);
 
-  if (!visible) return null;
-
   const xpPercent = Math.min(100, Math.round((currentXP / Math.max(1, requiredXP)) * 100));
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType={reducedMotion ? "none" : "fade"} onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card}>
           <Text style={styles.icon}>{isLevelUp ? '🏆' : '⚔️'}</Text>

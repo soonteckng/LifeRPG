@@ -1,3 +1,5 @@
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import AppSheet from "../../components/AppSheet";
 import * as Haptics from "expo-haptics";
 import React, {
   useEffect,
@@ -6,7 +8,6 @@ import React, {
 } from "react";
 import {
   KeyboardAvoidingView,
-  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -773,39 +774,14 @@ export default function TimerScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal
-        visible={questPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() =>
-          setQuestPickerVisible(false)
-        }
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.questModal}>
-            <View style={styles.modalHandle} />
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>
-                  Choose a quest
-                </Text>
-                <Text style={styles.modalSubtitle}>
-                  Only quests scheduled for today are shown
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() =>
-                  setQuestPickerVisible(false)
-                }
-              >
-                <Text style={styles.modalClose}>
-                  ✕
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
+      <AppSheet visible={questPickerVisible} onRequestClose={() => setQuestPickerVisible(false)} label="quest picker"
+        header={<View style={styles.modalHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modalTitle}>Choose a quest</Text>
+            <Text style={styles.modalSubtitle}>Only quests scheduled for today are shown</Text>
+          </View>
+        </View>}>
+            <BottomSheetScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={
                 styles.questModalList
@@ -868,44 +844,16 @@ export default function TimerScreen() {
                   );
                 })
               )}
-            </ScrollView>
+            </BottomSheetScrollView>
+      </AppSheet> 
+      <AppSheet visible={areaPickerVisible} onRequestClose={() => setAreaPickerVisible(false)} label="area picker"
+        header={<View style={styles.modalHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modalTitle}>Choose an area</Text>
+            <Text style={styles.modalSubtitle}>What part of your life does this session help?</Text>
           </View>
-        </View>
-      </Modal> 
-      <Modal
-        visible={areaPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() =>
-          setAreaPickerVisible(false)
-        }
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.questModal}>
-            <View style={styles.modalHandle} />
-
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={styles.modalTitle}>
-                  Choose an Area
-                </Text>
-                <Text style={styles.modalSubtitle}>
-                  What part of your life does this session help?
-                </Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() =>
-                  setAreaPickerVisible(false)
-                }
-              >
-                <Text style={styles.modalClose}>
-                  ✕
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
+        </View>}>
+            <BottomSheetScrollView
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.questModalList}
             >
@@ -953,10 +901,8 @@ export default function TimerScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+            </BottomSheetScrollView>
+      </AppSheet>
 
     </SafeAreaView>
   );
@@ -1452,6 +1398,8 @@ const styles = StyleSheet.create({
   },
 
   modalHeader: {
+    paddingHorizontal: 22,
+    paddingBottom: 14,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
@@ -1464,8 +1412,8 @@ const styles = StyleSheet.create({
   },
 
   modalSubtitle: {
-    color: "#737C8F",
-    fontSize: 9,
+    color: "#A1A8B8",
+    fontSize: 12,
     marginTop: 4,
   },
 
@@ -1476,6 +1424,8 @@ const styles = StyleSheet.create({
   },
 
   questModalList: {
+    paddingHorizontal: 22,
+    paddingBottom: 40,
     paddingTop: 14,
     gap: 8,
   },
