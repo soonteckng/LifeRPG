@@ -1,1 +1,1 @@
-export { default } from "./(tabs)/timer";
+export { default } from "../components/SessionScreen";

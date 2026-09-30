@@ -1,3 +1,4 @@
+import SessionTabBar from "../../components/SessionTabBar";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Platform, StyleSheet } from "react-native";
@@ -5,6 +6,7 @@ import { Platform, StyleSheet } from "react-native";
 export default function TabsLayout() {
   return (
     <Tabs
+      tabBar={(props) => <SessionTabBar {...props} />}
       initialRouteName="index"
       backBehavior="initialRoute"
       screenOptions={{
@@ -67,10 +69,6 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   tabBar: {
-    position: "absolute",
-    left: 18,
-    right: 18,
-    bottom: Platform.OS === "ios" ? 18 : 14,
     height: 66,
     borderRadius: 24,
     backgroundColor: "rgba(20, 24, 34, 0.94)",

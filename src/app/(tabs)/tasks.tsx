@@ -8,7 +8,7 @@ export default function TasksScreen() {
   const [visible, setVisible] = useState(true);
   useFocusEffect(useCallback(() => { setVisible(true); }, []));
   return <QuestSheet visible={visible} initialScope="all" onClose={() => setVisible(false)}
-    onStartSession={() => router.replace("/session")}
+    onStartSession={() => router.navigate("/session")}
     onDismiss={(navigating) => {
       if (!navigating) {
         if (router.canGoBack()) router.back();

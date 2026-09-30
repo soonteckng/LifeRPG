@@ -1,13 +1,7 @@
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect } from "react";
-import {
-  BackHandler,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { BackHandler } from "react-native";
+
 
 import AuthScreen from "../components/AuthScreen";
 import LevelUpModal from "../components/LevelUpModal";
@@ -17,12 +11,16 @@ import { UserProvider, useUser } from "../context/UserContext";
 import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
+export const unstable_settings = { initialRouteName: "(tabs)" };
+
 function GlobalBackHandler() {
   const pathname = usePathname();
   const router = useRouter();
 
   useEffect(() => {
     const onBackPress = () => {
+      // Session owns keyboard/picker priority and native modal dismissal.
+      if (pathname === "/session" || pathname === "/timer") return false;
       // Home is the root. Let Android handle the default exit behavior.
       if (pathname === "/" || pathname === "/index") {
         return false;
@@ -75,7 +73,7 @@ function GlobalBackHandler() {
 }
 
 function GlobalRewardListener() {
-  const { sessionSummary, completedLevelUp, clearCompletionModal } = useTimer();
+  const { sessionSummary, completedLevelUp, clearCompletionModal, rewardsVisible } = useTimer();
   const { profile, reloadProfile } = useUser();
 
   useEffect(() => {
@@ -90,7 +88,7 @@ function GlobalRewardListener() {
 
   return (
     <LevelUpModal
-      visible={!!sessionSummary || !!completedLevelUp}
+      visible={rewardsVisible}
       xpEarned={sessionSummary?.xpEarned || 0}
       minutesSpent={sessionSummary?.minutesSpent || 0}
       questTitle={sessionSummary?.questTitle}
@@ -100,38 +98,6 @@ function GlobalRewardListener() {
       requiredXP={requiredXP}
       onClose={clearCompletionModal}
     />
-  );
-}
-
-function ActiveTimerBanner() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const { isRunning, timeLeft, duration, isCompleted } = useTimer();
-
-  const isSessionActive = (isRunning || timeLeft < duration) && !isCompleted;
-
-  if (!isSessionActive || pathname === "/session") return null;
-
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
-  const formattedTime = `${minutes.toString().padStart(2, "0")}:${seconds
-    .toString()
-    .padStart(2, "0")}`;
-
-  return (
-    <TouchableOpacity
-      style={[styles.activeBanner, !isRunning && styles.pausedBanner]}
-      onPress={() => router.push("/session")}
-      activeOpacity={0.85}
-    >
-      <View style={styles.bannerInfo}>
-        <View style={[styles.pulseDot, !isRunning && styles.pausedDot]} />
-        <Text style={styles.bannerTitle}>
-          {isRunning ? "Session Active" : "Session Paused"}
-        </Text>
-      </View>
-      <Text style={styles.bannerTimer}>{formattedTime} ›</Text>
-    </TouchableOpacity>
   );
 }
 
@@ -176,9 +142,11 @@ function AppContent() {
           />
           <Stack.Screen
             name="session"
+            dangerouslySingular
             options={{
               presentation: "fullScreenModal",
-              animation: reducedMotion ? "none" : "slide_from_bottom",
+              animation: reducedMotion ? "fade" : "slide_from_bottom",
+              gestureDirection: "vertical",
             }}
           />
           <Stack.Screen
@@ -216,7 +184,6 @@ function AppContent() {
           />
         </Stack>
 
-        <ActiveTimerBanner />
         <GlobalRewardListener />
       </QuestProvider>
     </TimerProvider>
@@ -249,96 +216,3 @@ export default function RootLayout() {
   );
 }
 
-const styles = StyleSheet.create({
-  tabBar: {
-    position: "absolute",
-    bottom: Platform.OS === "ios" ? 24 : 16,
-    left: "4%",
-    right: "4%",
-    height: 50,
-    backgroundColor: "rgba(15, 23, 42, 0.88)",
-    borderRadius: 25,
-    borderWidth: 0,
-    borderTopColor: "transparent",
-    paddingBottom: 0,
-    paddingTop: 0,
-    shadowColor: "transparent",
-    elevation: 0,
-  },
-  glassBackground: {
-    ...StyleSheet.absoluteFill,
-    borderRadius: 25,
-    overflow: "hidden",
-    backgroundColor: "rgba(15, 23, 42, 0.42)",
-  },
-  tabItem: {
-    flex: 1,
-    paddingVertical: 0,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  tabIconContainer: {
-    marginTop: 0,
-    marginBottom: 0,
-    alignSelf: "center",
-  },
-  tabLabel: { fontSize: 10, fontWeight: "800", marginTop: 2 },
-  iconPill: {
-    width: 54,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    transform: [{ translateY: 4 }],
-    marginTop: 0,
-  },
-  iconPillActive: {
-    backgroundColor: "rgba(129, 140, 248, 0.34)",
-    borderWidth: 1,
-    borderColor: "rgba(199, 210, 254, 0.7)",
-    shadowColor: "#818CF8",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  tabIcon: { fontSize: 20, opacity: 0.7 },
-  tabIconActive: { fontSize: 24, opacity: 1 },
-  pillLabel: { color: "#94A3B8", fontSize: 9, fontWeight: "800", marginTop: 1 },
-  pillLabelActive: { color: "#FFFFFF" },
-  activeBanner: {
-    position: "absolute",
-    bottom: Platform.OS === "ios" ? 98 : 90,
-    left: 16,
-    right: 16,
-    backgroundColor: "#10B981",
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    zIndex: 1000,
-    shadowColor: "#10B981",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
-  },
-  pausedBanner: { backgroundColor: "#F59E0B", shadowColor: "#F59E0B" },
-  bannerInfo: { flexDirection: "row", alignItems: "center", gap: 8 },
-  pulseDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#FFFFFF",
-  },
-  pausedDot: { backgroundColor: "rgba(255, 255, 255, 0.6)" },
-  bannerTitle: { color: "#FFFFFF", fontSize: 12, fontWeight: "bold" },
-  bannerTimer: {
-    color: "#FFFFFF",
-    fontSize: 14,
-    fontWeight: "900",
-    fontVariant: ["tabular-nums"],
-  },
-});

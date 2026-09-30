@@ -82,7 +82,7 @@ export default function HomeScreen() {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    router.push("/session");
+    router.navigate("/session");
   };
 
   const startFreeSession = () => {
@@ -105,7 +105,7 @@ export default function HomeScreen() {
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
         contentContainerStyle={[
           styles.content,
-          { paddingBottom: insets.bottom + 94 },
+          { paddingBottom: 16 },
           compact && styles.compactContent,
           tight && styles.tightContent,
         ]}

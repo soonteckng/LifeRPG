@@ -41,7 +41,7 @@ export default function LevelUpModal({
         <View style={styles.card}>
           <Text style={styles.icon}>{isLevelUp ? '🏆' : '⚔️'}</Text>
           <Text style={styles.title}>
-            {isLevelUp ? 'LEVEL UP!' : 'QUEST COMPLETED!'}
+            {isLevelUp ? 'Level up!' : 'Session complete'}
           </Text>
 
           <Text style={styles.congratsText}>
@@ -79,7 +79,7 @@ export default function LevelUpModal({
           </View>
 
           <TouchableOpacity style={styles.claimBtn} onPress={onClose}>
-            <Text style={styles.claimBtnText}>CLAIM REWARDS & CONTINUE</Text>
+            <Text style={styles.claimBtnText}>Continue</Text>
           </TouchableOpacity>
         </View>
       </View>
