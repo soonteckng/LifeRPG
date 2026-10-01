@@ -82,6 +82,8 @@ interface TimerContextType {
   notes: string;
 
   sessionSummary: SessionSummary | null;
+  summaryViewed: boolean;
+  acknowledgeSummary: () => void;
 
   setActivityType: (type: string) => void;
   setNotes: (text: string) => void;
@@ -134,6 +136,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
 
   const [sessionSummary, setSessionSummary] =
     useState<SessionSummary | null>(null);
+  const [viewedSummary, setViewedSummary] = useState<SessionSummary | null>(null);
+  const acknowledgeSummary = useCallback(() => setViewedSummary(sessionSummary), [sessionSummary]);
 
   const [completedLevelUp, setCompletedLevelUp] = useState<{
     leveledUp: boolean;
@@ -839,6 +843,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         notes,
 
         sessionSummary,
+        summaryViewed: !!sessionSummary && viewedSummary === sessionSummary,
+        acknowledgeSummary,
 
         setNotes,
         setTargetAttributeId: (id) => { if (!actionLock.current && !hasOpenSession) setTargetAttributeId(id); },

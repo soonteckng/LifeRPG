@@ -1,6 +1,8 @@
 import { Stack, usePathname, useRouter } from "expo-router";
-import { useEffect } from "react";
-import { BackHandler } from "react-native";
+import { useEffect, useRef } from "react";
+import { BackHandler, Platform } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import Constants from "expo-constants";
 
 
 import AuthScreen from "../components/AuthScreen";
@@ -10,6 +12,7 @@ import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
 import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { sessionNativeOptions, traceSession } from "../utils/sessionTransition";
 
 export const unstable_settings = { initialRouteName: "(tabs)" };
 
@@ -20,7 +23,7 @@ function GlobalBackHandler() {
   useEffect(() => {
     const onBackPress = () => {
       // Session owns keyboard/picker priority and native modal dismissal.
-      if (pathname === "/session" || pathname === "/timer") return false;
+      if (pathname === "/session" || pathname === "/timer" || pathname === "/session-transition-test") return false;
       // Home is the root. Let Android handle the default exit behavior.
       if (pathname === "/" || pathname === "/index") {
         return false;
@@ -103,10 +106,19 @@ function GlobalRewardListener() {
 }
 
 function AppContent() {
+  const pendingTransitionTraces = useRef(new Map<string, () => void>());
+  useEffect(() => {
+    const listeners = pendingTransitionTraces.current;
+    return () => { listeners.forEach(unsubscribe => unsubscribe()); listeners.clear(); };
+  }, []);
   const reducedMotion = useReducedMotion();
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useUser();
+
+  useEffect(() => {
+    traceSession("runtime/motion", { os: Platform.OS, nativeRN: Platform.constants.reactNativeVersion, executionEnvironment: Constants.executionEnvironment, reducedMotion });
+  }, [reducedMotion]);
 
   useEffect(() => {
     if (!profile.id) {
@@ -127,6 +139,26 @@ function AppContent() {
         <GlobalBackHandler />
 
         <Stack
+          screenListeners={({ route, navigation }) => route.name.startsWith("session") ? {
+            beforeRemove: (event) => {
+              traceSession("root beforeRemove", { route: route.key, action: event.data.action.type, navigator: navigation.getState()?.key, history: navigation.getState()?.routes.map(item => ({ name: item.name, key: item.key })), reducedMotion });
+              if (__DEV__ && !pendingTransitionTraces.current.has(route.key)) {
+                const start = navigation.addListener("transitionStart", event => {
+                  traceSession("retained native start", { route: route.key, closing: event.data.closing });
+                });
+                const end = navigation.addListener("transitionEnd", event => {
+                  traceSession("retained native end", { route: route.key, closing: event.data.closing });
+                  if (event.data.closing) {
+                    pendingTransitionTraces.current.get(route.key)?.();
+                    pendingTransitionTraces.current.delete(route.key);
+                  }
+                });
+                pendingTransitionTraces.current.set(route.key, () => { start(); end(); });
+              }
+            },
+            transitionStart: (event) => traceSession("root transitionStart", { route: route.key, closing: event.data.closing, reducedMotion }),
+            transitionEnd: (event) => traceSession("root transitionEnd", { route: route.key, closing: event.data.closing, reducedMotion }),
+          } : {}}
           screenOptions={{
             headerShown: false,
             animation: reducedMotion ? "none" : "slide_from_right",
@@ -144,14 +176,13 @@ function AppContent() {
           <Stack.Screen
             name="session"
             dangerouslySingular
-            options={{
-              // A full-screen card uses the reversible native stack slide on both platforms.
-              presentation: "card",
-              animation: reducedMotion ? "fade" : "slide_from_bottom",
-              gestureDirection: "vertical",
-              animationMatchesGesture: true,
-            }}
+            options={sessionNativeOptions(reducedMotion)}
           />
+          <Stack.Screen name="session-transition-test" options={({ route }) => ({
+            ...sessionNativeOptions(reducedMotion),
+            animation: reducedMotion ? "fade" : "slide_from_bottom",
+            presentation: (route.params as { mode?: string } | undefined)?.mode === "card" ? "card" : "transparentModal",
+          })} />
           <Stack.Screen
             name="quests"
             options={{
@@ -213,9 +244,11 @@ function AuthGate() {
 
 export default function RootLayout() {
   return (
-    <AuthProvider>
-      <AuthGate />
-    </AuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
+    </GestureHandlerRootView>
   );
 }
 

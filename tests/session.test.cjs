@@ -128,6 +128,10 @@ test("closing rewards preserves completed summary and never re-awards", async ()
   await ui.run((s)=>s.clearCompletionModal());
   assert.equal(ui.state().rewardsVisible,false);
   assert.equal(ui.state().sessionSummary,summary);
+  assert.equal(ui.state().summaryViewed,false);
+  await ui.run((s)=>s.acknowledgeSummary());
+  assert.equal(ui.state().summaryViewed,true);
+  assert.equal(ui.state().sessionSummary,summary);
   assert.equal(ui.state().isCompleted,true);
   await ui.page(false); await ui.page(true);
   await ui.run((s)=>s.retryCompletion());
@@ -182,8 +186,9 @@ test("duration parser rejects ambiguous input rather than silently substituting"
   for(const input of ["1","30","480"]) assert.equal(validatedSessionMinutes(input),Number(input));
 });
 
-async function screenSetup(initial = {}, questOverrides = {}) {
+async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}) {
   const calls = [], keyboardListeners = {};
+  let exitCallback;
   let keyboard = false, back;
   let state = {
     duration:1800,timeLeft:1800,isRunning:false,isCompleted:false,hasOpenSession:false,
@@ -195,7 +200,7 @@ async function screenSetup(initial = {}, questOverrides = {}) {
     retryRestore:()=>{calls.push(["restore"]);}, retryCompletion:async()=>{calls.push(["complete"]);},
     setLinkedTaskId:(value)=>{calls.push(["task",value]);},setTargetAttributeId:(value)=>{calls.push(["area",value]);},
     setActivityType:(value)=>{calls.push(["activity",value]);},setDurationInMinutes:(value)=>{calls.push(["duration",value]);},setDurationInSeconds:(value)=>{calls.push(["seconds",value]);},
-    setNotes:()=>{},resolveQuestTitle:()=>{},
+    setNotes:()=>{},resolveQuestTitle:()=>{},acknowledgeSummary:()=>calls.push(["summary-viewed"]),
     ...initial,
   };
   const router = {canGoBack:()=>true,goBack:()=>calls.push(["dismiss"]),getState:()=>({routes:[{},{}]}),addListener:()=>()=>{}};
@@ -209,7 +214,7 @@ async function screenSetup(initial = {}, questOverrides = {}) {
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{Value:class {setValue(){}},View:host("AnimatedView"),timing:()=>({start(){},stop(){}})},
+      Animated:{Value:class {setValue(){} interpolate(){return 0;}},View:host("AnimatedView"),timing:(_,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else callback?.({finished:true});},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
@@ -217,10 +222,10 @@ async function screenSetup(initial = {}, questOverrides = {}) {
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),TouchableOpacity:host("Button")},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
-    "./DurationPicker":(p)=>p.visible?React.createElement("DurationSheet",p):null,
+    "./DurationPicker":{__esModule:true,default:p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"}),p.interactive&&React.createElement("Button",{onPress:p.onEdit,accessibilityLabel:"Edit duration"},"Edit duration")),DurationEditor:p=>p.visible?React.createElement("DurationSheet",p):null},
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
     "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
-    "../hooks/useReducedMotion":{useReducedMotion:()=>true},
+    "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
   }).default;
   let renderer;
   await act(async()=>{renderer=create(React.createElement(Screen));});
@@ -232,6 +237,7 @@ async function screenSetup(initial = {}, questOverrides = {}) {
     update:async(changes)=>{state={...state,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
     keyboard:async()=>{keyboard=true;await act(async()=>keyboardListeners.keyboardDidShow());},
     back:async()=>{await act(async()=>back());},
+    finishExit:async(finished=true)=>{await act(async()=>exitCallback?.({finished}));},
     cleanup:async()=>{await act(async()=>renderer.unmount());},
   };
 }
@@ -239,12 +245,12 @@ async function screenSetup(initial = {}, questOverrides = {}) {
 test("timer anchor and countdown stay mounted with identical layout across setup, running and paused",async()=>{
   const ui=await screenSetup();
   const anchor=ui.root().findAllByType("View").find((n)=>n.props.testID==="session-timer-anchor");
-  const countdown=ui.root().findAllByType("Text").find((n)=>n.props.testID==="session-countdown");
+  const countdown=ui.root().findAllByType("View").find((n)=>n.props.testID==="session-countdown");
   const layout=JSON.stringify(anchor.props.style);
   await ui.update({hasOpenSession:true,isRunning:true,timeLeft:1800});
   assert.equal(ui.root().findAllByType("View").find((n)=>n.props.testID==="session-timer-anchor"),anchor);
   assert.equal(JSON.stringify(anchor.props.style),layout);
-  assert.equal(ui.root().findAllByType("Text").find((n)=>n.props.testID==="session-countdown"),countdown);
+  assert.equal(ui.root().findAllByType("View").find((n)=>n.props.testID==="session-countdown"),countdown);
   await ui.update({isRunning:false,timeLeft:1795});
   assert.equal(JSON.stringify(anchor.props.style),layout);
   assert.ok(ui.button("Resume"));
@@ -271,17 +277,17 @@ test("quest setup is compact, keeps its association during loading, and never st
 
 test("custom picker changes setup only on confirm; Retry uses exact seconds",async()=>{
   const ui=await screenSetup();
-  await ui.press("Custom");
+  await ui.press("Edit duration");
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
   await ui.back();
   assert.equal(ui.calls.some(([action])=>action==="seconds"),false);
-  await ui.press("Custom");
+  await ui.press("Edit duration");
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(930));
   assert.deepEqual(ui.calls.at(-1),["seconds",930]);
   await ui.update({duration:930,timeLeft:930,actionError:"Couldn’t start your session."});
   await ui.press("Retry");
   assert.deepEqual(ui.calls.at(-1),["start",930,undefined]);
-  await ui.press("Custom");
+  await ui.press("Edit duration");
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,930);
   await ui.back();
   await ui.update({actionBusy:true});
@@ -310,7 +316,7 @@ test("completed screen offers Done and New session while retaining the summary",
   assert.match(ui.output(),/30 min completed/);
   assert.ok(ui.button("Done")); assert.ok(ui.button("New session"));
   await ui.press("Done");
-  assert.deepEqual(ui.calls,[["dismiss"]]);
+  assert.deepEqual(ui.calls,[["summary-viewed"],["dismiss"]]);
   assert.match(ui.output(),/30 min completed/);
   await ui.cleanup();
 });
@@ -383,57 +389,10 @@ test("free setup has one Life area category and a discoverable optional quest ro
   assert.ok(ui.button("Choose a quest"));
   assert.ok(ui.button("Choose life area"));
   assert.equal(ui.button("Choose activity"),undefined);
-  assert.match(ui.output(),/Free session/);
+  assert.match(ui.output(),/Optional/);
   await ui.press("Choose a quest");
   assert.match(ui.output(),/30 min · General/);
   await ui.cleanup();
-});
-
-test("duration wheels keep a draft, reject bounds, confirm exact seconds and reopen current selection",async()=>{
-  const calls=[];
-  let props={visible:true,seconds:930,onCancel:()=>calls.push("cancel"),onConfirm:(seconds)=>calls.push(seconds)};
-  const Picker=load("src/components/DurationPicker.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:2})},
-    "react-native-gesture-handler":{FlatList:host("Wheel"),NativeViewGestureHandler:host("Gesture")},
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll"),TouchableOpacity:host("Button")},
-    "react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:24})},
-    "expo-haptics":{selectionAsync:async()=>calls.push("haptic")},
-    "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
-    "../hooks/useReducedMotion":{useReducedMotion:()=>true},
-    "./AppSheet":p=>p.visible?React.createElement("Sheet",p,p.header,p.children,p.footer):null,
-  }).default;
-  let renderer;
-  await act(async()=>{renderer=create(React.createElement(Picker,props));});
-  const text=n=>typeof n==="string"?n:(n.children??[]).map(text).join("");
-  const button=label=>renderer.root.findAllByType("Button").find(n=>text(n)===label||n.props.accessibilityLabel===label);
-  const scroll=async(index,value)=>{const wheel=renderer.root.findAllByType("Wheel")[index];await act(async()=>wheel.props.onScroll({nativeEvent:{contentOffset:{y:value*wheel.props.snapToInterval}}}));};
-  assert.equal(renderer.root.findAllByType("Wheel")[0].props.initialScrollIndex,15);
-  assert.equal(renderer.root.findAllByType("Wheel")[1].props.initialScrollIndex,30);
-  await scroll(0,0);await scroll(1,0);
-  assert.equal(button("Set duration").props.disabled,true);
-  assert.deepEqual(calls,[]);
-  await scroll(1,30);
-  assert.equal(button("Set duration").props.disabled,false);
-  await act(async()=>button("Set duration").props.onPress());
-  assert.deepEqual(calls,[30]);
-  await scroll(0,480);await scroll(1,59);
-  assert.equal(button("Set duration").props.disabled,true);
-  await scroll(1,0);
-  await act(async()=>button("Set duration").props.onPress());
-  assert.deepEqual(calls,[30,28800]);
-  await act(async()=>button("Cancel").props.onPress());
-  assert.deepEqual(calls,[30,28800,"cancel"]);
-  props={...props,visible:false,seconds:60};
-  await act(async()=>renderer.update(React.createElement(Picker,props)));
-  props={...props,visible:true};
-  await act(async()=>renderer.update(React.createElement(Picker,props)));
-  assert.equal(renderer.root.findAllByType("Wheel")[0].props.initialScrollIndex,1);
-  assert.equal(renderer.root.findAllByType("Wheel")[1].props.initialScrollIndex,0);
-  await act(async()=>button("Increase seconds").props.onPress());
-  await act(async()=>button("Set duration").props.onPress());
-  assert.equal(calls.at(-1),61);
-  assert.equal(calls.includes("haptic"),false);
-  await act(async()=>renderer.unmount());
 });
 
 test("header close/minimise uses stack back once without changing active state",async()=>{
@@ -465,6 +424,183 @@ test("foreground recovery and notifications retain exact remaining seconds",asyn
   assert.equal(scheduled.filter(n=>n.trigger?.seconds).at(-1).trigger.seconds,899);
   await ui.cleanup();
 });
+function durationModule(calls = [], hapticsEnabled = false) {
+  return load("src/components/DurationPicker.tsx",{
+    "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),TextInput:host("Input"),Modal:host("Modal"),ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),
+      Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:host("Wheel"),event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
+      FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
+    "react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:24}),SafeAreaView:host("SafeArea")},
+    "expo-haptics":{selectionAsync:async()=>calls.push("haptic")},
+    "../context/UserContext":{useUser:()=>({hapticsEnabled})},
+    "../hooks/useReducedMotion":{useReducedMotion:()=>true},
+  });
+}
+
+test("integrated wheels ignore programmatic scrolls, commit on settling, and keep digits fixed",async()=>{
+  const calls=[],{default:Picker}=durationModule(calls);
+  let props={seconds:930,interactive:true,revision:0,onCommit:s=>calls.push(["commit",s]),onBusy:b=>calls.push(["busy",b]),onValidity:v=>calls.push(["valid",v]),onEdit:()=>{}};
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Picker,props));});
+  const wheels=()=>renderer.root.findAllByType("Wheel");
+  const event=(index,value,velocity=0)=>({nativeEvent:{contentOffset:{y:value*wheels()[index].props.snapToInterval},velocity:{y:velocity}}});
+  await act(async()=>wheels()[0].props.onScroll(event(0,0)));
+  assert.deepEqual(calls,[]);
+  await act(async()=>wheels()[0].props.onScrollBeginDrag());
+  const scrollingProps=wheels()[0].props;
+  assert.equal(scrollingProps.onScroll.nativeDriver,true);
+  await act(async()=>wheels()[0].props.onScroll(event(0,100)));
+  assert.equal(wheels()[0].props,scrollingProps,"scrolling digits must not depend on React rerenders");
+  await act(async()=>wheels()[0].props.onScrollEndDrag(event(0,100,2)));
+  assert.equal(calls.some(c=>c[0]==="commit"),false);
+  await act(async()=>wheels()[0].props.onMomentumScrollEnd(event(0,100)));
+  assert.ok(calls.some(c=>c[0]==="commit"&&c[1]===6030));
+  assert.deepEqual(calls.at(-1),["busy",false]);
+  assert.equal(calls.includes("haptic"),false);
+  const digits=renderer.root.findAllByType("View").find(n=>n.props.testID==="session-countdown");
+  const layout=JSON.stringify(digits.props.style);
+  props={...props,seconds:6030,interactive:false};
+  await act(async()=>renderer.update(React.createElement(Picker,props)));
+  assert.equal(renderer.root.findAllByType("View").find(n=>n.props.testID==="session-countdown"),digits);
+  assert.equal(JSON.stringify(digits.props.style),layout);
+  assert.equal(wheels().length,0);
+  for(const seconds of [1,30,930,6000,28800]){
+    props={...props,seconds,interactive:true,revision:props.revision+1};
+    await act(async()=>renderer.update(React.createElement(Picker,props)));
+    assert.equal(wheels()[0].props.initialScrollIndex % 481,Math.floor(seconds/60));
+    assert.equal(wheels()[1].props.initialScrollIndex % 60,seconds%60);
+  }
+  await act(async()=>renderer.unmount());
+});
+
+test("Start is blocked during momentum; preset changes reject stale wheel events",async()=>{
+  const ui=await screenSetup();
+  const oldWheel=ui.root().findByType("DurationControl").props;
+  await act(async()=>oldWheel.onBusy(true));
+  assert.equal(ui.button("Start").props.disabled,true);
+  await ui.press("Start");
+  assert.equal(ui.calls.some(c=>c[0]==="start"),false);
+  await ui.press("15 minutes");
+  await ui.update({duration:900,timeLeft:900});
+  await act(async()=>{oldWheel.onCommit(6030);oldWheel.onBusy(true);oldWheel.onValidity(false);});
+  assert.deepEqual(ui.calls.at(-1),["seconds",900]);
+  assert.equal(ui.button("Start").props.disabled,false);
+  await ui.press("Start");
+  assert.deepEqual(ui.calls.at(-1),["start",900,undefined]);
+  await ui.cleanup();
+});
+
+test("typed editor validates both fields without truncation; Cancel retains the applied value",async()=>{
+  const calls=[],{DurationEditor:Editor}=durationModule(calls);
+  let props={visible:true,seconds:930,onCancel:()=>calls.push("cancel"),onConfirm:s=>calls.push(["confirm",s])};
+  let renderer;await act(async()=>{renderer=create(React.createElement(Editor,props));});
+  const input=label=>renderer.root.findAllByType("Input").find(n=>n.props.accessibilityLabel===label);
+  const text=n=>typeof n==="string"?n:(n.children??[]).map(text).join("");
+  const button=label=>renderer.root.findAllByType("Button").find(n=>text(n)===label);
+  const type=async(m,s)=>{await act(async()=>{input("Duration minutes").props.onChangeText(m);input("Duration seconds").props.onChangeText(s);});};
+  assert.equal(input("Duration minutes").props.value,"15");
+  assert.equal(input("Duration seconds").props.value,"30");
+  assert.equal(input("Duration minutes").props.maxLength,undefined);
+  for(const [m,s] of [["","30"],["0","0"],["480","59"],["481","00"],["15","60"],["1.5","00"],["1000","00"]]){
+    await type(m,s);assert.equal(button("Set duration").props.disabled,true);
+  }
+  for(const [m,s,total] of [["0","1",1],["0","30",30],["15","30",930],["100","00",6000],["480","00",28800]]){
+    await type(m,s);assert.equal(button("Set duration").props.disabled,false);
+    await act(async()=>button("Set duration").props.onPress());
+    assert.deepEqual(calls.at(-1),["confirm",total]);
+  }
+  await type("20","12");
+  await act(async()=>button("Cancel").props.onPress());
+  assert.equal(calls.at(-1),"cancel");
+  props={...props,visible:false};
+  await act(async()=>renderer.update(React.createElement(Editor,props)));
+  props={...props,visible:true};
+  await act(async()=>renderer.update(React.createElement(Editor,props)));
+  assert.equal(input("Duration minutes").props.value,"15");
+  assert.equal(input("Duration seconds").props.value,"30");
+  await act(async()=>renderer.unmount());
+});
+
+test("looping wheels cross 59/00 both ways and tick only for changed user selections",async()=>{
+  const calls=[],{default:Picker}=durationModule(calls,true);
+  let renderer;await act(async()=>{renderer=create(React.createElement(Picker,{seconds:119,interactive:true,revision:0,onCommit:s=>calls.push(["commit",s]),onBusy:()=>{},onValidity:()=>{},onEdit:()=>{}}));});
+  const wheel=()=>renderer.root.findAllByType("Wheel")[1];
+  const event=i=>({nativeEvent:{contentOffset:{y:i*wheel().props.snapToInterval},velocity:{y:1}}});
+  await act(async()=>wheel().props.onScrollBeginDrag());
+  await act(async()=>wheel().props.onScroll(event(300)));
+  await act(async()=>wheel().props.onScroll(event(300)));
+  assert.equal(calls.filter(c=>c==="haptic").length,1);
+  await act(async()=>wheel().props.onScrollEndDrag(event(300)));
+  await act(async()=>wheel().props.onMomentumScrollEnd(event(300)));
+  assert.deepEqual(calls.at(-1),["commit",60]);
+  await act(async()=>wheel().props.onScroll(event(240)));
+  assert.equal(calls.filter(c=>c==="haptic").length,1);
+  await act(async()=>wheel().props.onScrollBeginDrag());
+  await act(async()=>wheel().props.onScroll(event(239)));
+  await act(async()=>wheel().props.onScrollEndDrag(event(239)));
+  await act(async()=>wheel().props.onMomentumScrollEnd(event(239)));
+  assert.deepEqual(calls.at(-1),["commit",119]);
+  assert.equal(calls.filter(c=>c==="haptic").length,2);
+  await act(async()=>renderer.unmount());
+});
+
+test("Session surface stays opaque while the reduced-motion preference resolves",async()=>{
+  const preference={value:true};
+  const ui=await screenSetup({}, {}, false, preference);
+  const surface=()=>ui.root().findAllByType("AnimatedView").find(n=>n.props.testID==="session-surface");
+  assert.equal(surface().props.style.opacity,1);
+  assert.match(surface().props.style.backgroundColor,/^#[0-9a-f]{6}$/i);
+  preference.value=false;await ui.update({});
+  assert.equal(surface().props.style.opacity,1);
+  preference.value=true;await ui.update({});
+  assert.equal(surface().props.style.opacity,1);
+  await ui.cleanup();
+});
+
+test("Android keeps Session mounted until exit finishes and rejects repeated close",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true},{},true);
+  await ui.press("Minimise session");await ui.back();
+  assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
+  assert.ok(ui.root().findByType("DurationControl"));
+  await ui.finishExit(false);
+  assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
+  await ui.back();
+  await ui.finishExit();
+  assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+  assert.equal(ui.calls.some(c=>c[0]==="reset"||c[0]==="pause"),false);
+  await ui.cleanup();
+});
+
+test("viewed completion hides its dock without hiding a running session",async()=>{
+  let timer={hasOpenSession:false,isCompleted:true,sessionSummary:{},summaryViewed:false};
+  const Dock=load("src/components/SessionTabBar.tsx",{
+    "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s}},
+    "expo-router":{useRouter:()=>({navigate:()=>{}})},"expo-router/js-tabs":{BottomTabBar:host("Tabs")},
+    "@expo/vector-icons":{Ionicons:host("Icon")},"react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:0})},
+    "../context/TimerContext":{useTimer:()=>timer},
+  }).default;
+  let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
+  assert.equal(renderer.root.findAllByType("Button").length,1);
+  timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
+  assert.equal(renderer.root.findAllByType("Button").length,0);
+  timer={...timer,hasOpenSession:true,isCompleted:false,isRunning:true,timeLeft:30};await act(async()=>renderer.update(React.createElement(Dock,{})));
+  assert.equal(renderer.root.findAllByType("Button").length,1);
+  await act(async()=>renderer.unmount());
+});
+
+test("typed input and presets share applied seconds while linked quests stay read-only",async()=>{
+  const ui=await screenSetup();
+  await ui.press("Edit duration");
+  await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(6000));
+  await ui.update({duration:6000,timeLeft:6000});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,6000);
+  await ui.press("30 minutes");await ui.update({duration:1800,timeLeft:1800});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
+  await ui.update({linkedTaskId:7,duration:930});
+  assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+  assert.equal(ui.button("Edit duration"),undefined);
+  await ui.cleanup();
+});
+
 
 
 

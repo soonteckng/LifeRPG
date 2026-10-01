@@ -8,26 +8,45 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import SheetConfirmation from "./SheetConfirmation";
 import { colors } from "../constants/theme";
-import DurationPicker from "./DurationPicker";
+import DurationPicker, { DurationEditor } from "./DurationPicker";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { sessionTime, durationLabel } from "../utils/sessionSetup";
+import { durationLabel, validSessionSeconds } from "../utils/sessionSetup";
+import { traceSession } from "../utils/sessionTransition";
 
 type Picker = "duration" | "quest" | "area" | null;
 const PRESETS = [15, 30, 45, 60];
 
 export default function SessionScreen() {
   const timer = useTimer();
+  const { sessionSummary, rewardsVisible, acknowledgeSummary } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
   const { height, fontScale } = useWindowDimensions();
   const [picker, setPicker] = useState<Picker>(null);
-  const custom = !PRESETS.includes(timer.duration / 60);
+  const [durationRevision, setDurationRevision] = useState(0);
+  const durationEpoch = useRef(0);
+  const wheelBusyRef = useRef(false);
+  const durationValidRef = useRef(true);
+  const [wheelBusy, setWheelBusy] = useState(false);
+  const [durationValid, setDurationValid] = useState(true);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [gestureBottom, setGestureBottom] = useState(0);
   const closing = useRef(false);
+  const [exitReady, setExitReady] = useState(false);
+  const [screenMotion] = useState(() => new Animated.Value(Platform.OS === "android" ? 0 : 1));
+  useEffect(() => {
+    if (Platform.OS !== "android" || closing.current) return;
+    const animation = Animated.timing(screenMotion, { toValue: 1, duration: reducedMotion ? 0 : 280, useNativeDriver: true });
+    animation.start();
+    return () => animation.stop();
+  }, [screenMotion, reducedMotion]);
+  useFocusEffect(useCallback(() => {
+    if (sessionSummary && !rewardsVisible) acknowledgeSummary();
+  }, [sessionSummary, rewardsVisible, acknowledgeSummary]));
   const [opacity] = useState(() => new Animated.Value(1));
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
   const general = subjects.find((item) => item.title === "General");
@@ -62,36 +81,66 @@ export default function SessionScreen() {
     if (confirmEnd) { setConfirmEnd(false); return true; }
     return false;
   }, [keyboardVisible, picker, confirmEnd]);
-  const minimise = useCallback(() => {
-    if (dismissLayer() || closing.current) return;
+  const minimise = useCallback((source = "header") => {
+    const layerDismissed = dismissLayer();
+    const state = navigation.getState();
+    traceSession("close request", { source, layerDismissed, alreadyClosing: closing.current, navigator: state?.key, activeRoute: state?.routes[state.index]?.key, reducedMotion });
+    if (layerDismissed || closing.current) return;
     closing.current = true;
     // Target this screen’s native stack directly; never replace/unmount it to close.
     if (__DEV__) console.debug("[Session] close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
-    if (navigation.canGoBack()) navigation.goBack();
+    if (navigation.canGoBack()) {
+      if (Platform.OS === "android") {
+        traceSession("controlled exit start", { reducedMotion });
+        Animated.timing(screenMotion, { toValue: 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
+          traceSession("controlled exit end", { finished });
+          if (finished) setExitReady(true);
+          else { closing.current = false; screenMotion.setValue(1); }
+        });
+      } else navigation.goBack();
+    }
     else { closing.current = false; console.warn("[Session] Missing anchored back history"); }
-  }, [dismissLayer, navigation]);
+  }, [dismissLayer, navigation, reducedMotion, screenMotion]);
+  useEffect(() => {
+    traceSession("Session React mount");
+    return () => traceSession("Session React unmount");
+  }, []);
   useEffect(() => {
     const start = navigation.addListener("transitionStart" as never, ((event: { data: { closing: boolean } }) => {
       if (__DEV__) console.debug("[Session] transitionStart", { closing: event.data.closing });
     }) as never);
     const end = navigation.addListener("transitionEnd" as never, ((event: { data: { closing: boolean } }) => {
-      closing.current = false;
+      if (Platform.OS !== "android") closing.current = false;
       if (__DEV__) console.debug("[Session] transitionEnd", { closing: event.data.closing });
     }) as never);
     return () => { start(); end(); };
   }, [navigation]);
-  usePreventRemove(!!picker || keyboardVisible || confirmEnd, () => { dismissLayer(); });
+  usePreventRemove(!!picker || keyboardVisible || confirmEnd || (Platform.OS === "android" && !exitReady), () => {
+    traceSession("removal deferred", { picker, keyboardVisible, confirmEnd, exitReady });
+    minimise("navigation-back");
+  });
+  // Release the removal guard before dispatching the pop; no timeout or native
+  // exit runs alongside the Android animation.
+  useEffect(() => { if (exitReady) navigation.goBack(); }, [exitReady, navigation]);
   useFocusEffect(useCallback(() => {
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => { minimise(); return true; });
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => { minimise("android-back"); return true; });
     return () => subscription.remove();
   }, [minimise]));
 
+  const applyDuration = (seconds: number) => {
+    if (!validSessionSeconds(seconds)) return;
+    durationEpoch.current += 1;
+    setDurationRevision(durationEpoch.current);
+    wheelBusyRef.current = false; durationValidRef.current = true;
+    setWheelBusy(false); setDurationValid(true);
+    if (seconds !== timer.duration) timer.setDurationInSeconds(seconds);
+  };
   const selectMinutes = (value: number) => {
     if (locked) return;
-    timer.setDurationInMinutes(value);
+    applyDuration(value * 60);
   };
   const start = () => {
-    if (locked || missingQuest || timer.restoreError) return;
+    if (locked || missingQuest || timer.restoreError || picker || wheelBusyRef.current || !durationValidRef.current) return;
     Keyboard.dismiss();
     void timer.startTimer(timer.duration, task?.title);
   };
@@ -103,7 +152,7 @@ export default function SessionScreen() {
   const newSession = async () => {
     await timer.resetTimer();
     timer.setLinkedTaskId(null); timer.setTargetAttributeId(general?.id ?? null); timer.setActivityType("other"); timer.setNotes("");
-    timer.setDurationInMinutes(30);
+    applyDuration(1800);
   };
   const retry = () => {
     if (timer.restoreError) timer.retryRestore();
@@ -113,14 +162,17 @@ export default function SessionScreen() {
   };
   const title = timer.sessionSummary?.questTitle || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : "Free session");
   const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Session complete" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "● Session running" : "Paused" : "Ready when you are";
-  const disabled = timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && missingQuest);
+  const disabled = timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
   const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
-    <SafeAreaView style={styles.screen}>
-      <Stack.Screen options={{ gestureEnabled: !picker && !keyboardVisible && !confirmEnd }} />
-      <View style={styles.header}>
-        <TouchableOpacity onPress={minimise} style={styles.close} accessibilityRole="button" accessibilityLabel={timer.hasOpenSession ? "Minimise session" : "Close session"}>
+    <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: 1,
+      transform: [{ translateY: Platform.OS === "android" && !reducedMotion ? screenMotion.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) : 0 }] }}>
+    <SafeAreaView collapsable={false} style={styles.screen}>
+      <Stack.Screen options={{ gestureEnabled: Platform.OS !== "android" && !picker && !keyboardVisible && !confirmEnd,
+        gestureResponseDistance: { top: 0, bottom: gestureBottom } }} />
+      <View style={styles.header} onLayout={(event) => setGestureBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
+        <TouchableOpacity onPress={() => minimise("header")} style={styles.close} accessibilityRole="button" accessibilityLabel={timer.hasOpenSession ? "Minimise session" : "Close session"}>
           <Ionicons name="chevron-down" size={23} color={colors.text} /><Text style={styles.link}>{timer.hasOpenSession ? "Minimise" : "Close"}</Text>
         </TouchableOpacity>
         <Text style={styles.secondary}>Session</Text>
@@ -128,9 +180,14 @@ export default function SessionScreen() {
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View testID="session-timer-anchor" style={[styles.timerAnchor, height < 700 && styles.compactAnchor]}>
           <Text style={[styles.status, { height: Math.ceil(22 * fontScale) }]} numberOfLines={1} adjustsFontSizeToFit accessibilityLiveRegion="polite">{status}</Text>
-          <Text testID="session-countdown" style={styles.timer} maxFontSizeMultiplier={1.25} adjustsFontSizeToFit numberOfLines={1}>
-            {sessionTime(phase === "setup" ? timer.duration : timer.timeLeft)}
-          </Text>
+          <View style={styles.timerControl}>
+            <DurationPicker seconds={phase === "setup" ? timer.duration : timer.timeLeft} interactive={phase === "setup" && !isQuest && !locked}
+              revision={durationRevision}
+              onCommit={(seconds) => { if (durationEpoch.current === durationRevision && !locked) timer.setDurationInSeconds(seconds); }}
+              onBusy={(busy) => { if (durationEpoch.current === durationRevision) { wheelBusyRef.current = busy; setWheelBusy(busy); } }}
+              onValidity={(valid) => { if (durationEpoch.current === durationRevision) { durationValidRef.current = valid; setDurationValid(valid); } }}
+              onEdit={() => { applyDuration(timer.duration); setPicker("duration"); }} />
+          </View>
           <View style={styles.track} accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }}>
             <View style={[styles.fill, { width: `${phase === "setup" ? 0 : Math.max(0, Math.min(100, (1 - timer.timeLeft / timer.duration) * 100))}%` }]} />
@@ -156,11 +213,9 @@ export default function SessionScreen() {
                 </View><Ionicons name="chevron-forward" size={18} color={colors.secondary} />
               </TouchableOpacity>
               {isQuest ? <Action disabled={locked} label="Switch to free session" onPress={switchToFree} /> : <>
-                <Text style={styles.title}>Free session</Text>
                 <View style={styles.durationSection}>
-                  <View style={styles.durationHeading}><Text style={styles.label}>Duration</Text><Text style={styles.secondary}>{durationLabel(timer.duration)}</Text></View>
-                  <View style={styles.presets}>{PRESETS.map((value) => <TouchableOpacity key={value} disabled={locked} style={[styles.preset, !custom && minutes === value && styles.selected]} onPress={() => selectMinutes(value)} accessibilityRole="button" accessibilityLabel={`${value} minutes`} accessibilityState={{ selected: !custom && minutes === value }}><Text style={styles.link}>{value}</Text></TouchableOpacity>)}
-                    <TouchableOpacity disabled={locked} style={[styles.preset, custom && styles.selected]} onPress={() => { Keyboard.dismiss(); setPicker("duration"); }} accessibilityRole="button" accessibilityState={{ selected: custom }}><Text style={styles.link}>Custom</Text></TouchableOpacity>
+                  <Text style={styles.helper}>Quick duration</Text>
+                  <View style={styles.presets}>{PRESETS.map((value) => <TouchableOpacity key={value} disabled={locked} style={[styles.preset, minutes === value && styles.selected]} onPress={() => selectMinutes(value)} accessibilityRole="button" accessibilityLabel={`${value} minutes`} accessibilityState={{ selected: minutes === value }}><Text style={styles.link}>{value} min</Text></TouchableOpacity>)}
                   </View>
                 </View>
                 <Choice label="Life area" value={area?.title ?? "General"} disabled={locked} onPress={() => setPicker("area")} />
@@ -180,7 +235,7 @@ export default function SessionScreen() {
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
           {timer.isCompleted ? <>
-            <TouchableOpacity style={styles.primary} onPress={minimise} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.primary} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
             {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
           </> : <>
             <TouchableOpacity style={[styles.primary, disabled && styles.disabled]} disabled={disabled}
@@ -205,10 +260,11 @@ export default function SessionScreen() {
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
-      <DurationPicker visible={picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { timer.setDurationInSeconds(seconds); setPicker(null); }} />
+      <DurationEditor visible={picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
       {confirmEnd && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
         onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); void timer.resetTimer(); }} />}
     </SafeAreaView>
+    </Animated.View>
   );
 }
 
@@ -228,16 +284,16 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
   header: { paddingHorizontal: 20, flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 52 },
   close: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6 },
-  timerAnchor: { paddingHorizontal: 28, paddingTop: 24, paddingBottom: 24, alignItems: "center", flexShrink: 0 },
-  compactAnchor: { paddingTop: 8, paddingBottom: 16 },
+  timerAnchor: { paddingHorizontal: 28, paddingTop: 8, paddingBottom: 12, alignItems: "center", flexShrink: 0 },
+  compactAnchor: { paddingTop: 0, paddingBottom: 8 },
+  timerControl: { width: "100%" },
   status: { color: colors.accent, fontWeight: "600", fontSize: 14, minHeight: 22 },
-  timer: { color: colors.text, fontSize: 76, fontWeight: "300", fontVariant: ["tabular-nums"], letterSpacing: -2, textAlign: "center", width: "100%", marginVertical: 8 },
   track: { height: 3, width: "65%", borderRadius: 2, backgroundColor: colors.line, overflow: "hidden" },
   fill: { height: "100%", backgroundColor: colors.accent },
   body: { paddingHorizontal: 24, paddingBottom: 20 },
   title: { color: colors.text, fontSize: 23, fontWeight: "600", marginBottom: 7 },
   secondary: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
-  setup: { gap: 12, marginTop: 18 },
+  setup: { gap: 14, marginTop: 8 },
   label: { color: colors.text, fontSize: 15, flexShrink: 1 },
   link: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18 },
@@ -247,8 +303,7 @@ const styles = StyleSheet.create({
   preset: { minWidth: 44, minHeight: 44, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 12, borderWidth: 1, borderColor: colors.line },
   selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   questRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
-  durationSection: { gap: 10 }, durationHeading: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 8 },
-  links: { flexDirection: "row", flexWrap: "wrap", columnGap: 18 },
+  durationSection: { gap: 10 },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   activeHint: { color: colors.secondary, fontSize: 15, lineHeight: 24, marginTop: 24 },
   actions: { paddingHorizontal: 24, paddingTop: 10, paddingBottom: 12, gap: 4 },

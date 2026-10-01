@@ -16,7 +16,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const { hasOpenSession, isRunning, isCompleted, sessionSummary } = timer;
   const dock = sessionDockState(timer);
   return <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-    {(hasOpenSession || sessionSummary) && <TouchableOpacity style={styles.banner} onPress={() => router.navigate("/session")}
+    {(hasOpenSession || (sessionSummary && !timer.summaryViewed)) && <TouchableOpacity style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
       <Ionicons name={dock.icon} size={20} color={colors.accent} />
       <Text style={styles.title}>{dock.label}</Text>

@@ -9,6 +9,7 @@ import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
 import {
+  Alert,
   ScrollView,
   useWindowDimensions,
   StyleSheet,
@@ -185,6 +186,11 @@ export default function HomeScreen() {
               tight && styles.tightPrimaryButton,
             ]}
             onPress={startFreeSession}
+            onLongPress={typeof __DEV__ !== "undefined" && __DEV__ ? () => Alert.alert("Native Session transition", "Compare the minimal screen with Session. Close and reopen to test Android back separately.", [
+              { text: "Card baseline", onPress: () => router.navigate({ pathname: "/session-transition-test", params: { mode: "card" } }) },
+              { text: "Retained Home", onPress: () => router.navigate({ pathname: "/session-transition-test", params: { mode: "retained" } }) },
+              { text: "Cancel", style: "cancel" },
+            ]) : undefined}
             activeOpacity={0.88}
             accessibilityRole="button"
           >

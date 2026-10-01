@@ -15,6 +15,13 @@ export function validSessionSeconds(seconds: number): boolean {
   return Number.isInteger(seconds) && seconds > 0 && seconds <= MAX_SESSION_SECONDS;
 }
 
+export function parseDurationFields(minutes: string, seconds: string): number | null {
+  if (!/^\d+$/.test(minutes) || !/^\d+$/.test(seconds)) return null;
+  const remainder = Number(seconds);
+  const total = Number(minutes) * 60 + remainder;
+  return remainder <= 59 && validSessionSeconds(total) ? total : null;
+}
+
 export function durationLabel(seconds: number): string {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds % 60;
