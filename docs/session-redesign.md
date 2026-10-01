@@ -243,3 +243,28 @@ because no device/emulator was available.
 
 Quest editor, persistence and backend reward rules were not modified in this
 refinement. No commits or pushes were made.
+
+
+## Home and completion visual refinement
+
+Home retains its local-time greeting and pairs it with the actual streak, or
+“A fresh start” for zero days. Contextual encouragement follows without claiming
+that a streak has been extended. Level/XP and gold remain secondary; the duplicate
+streak label is removed. Goal padding is slightly reduced.
+
+Completion uses the shared dark/lavender palette, a restrained outline symbol,
+exact duration and actual XP/gold from the completion summary. Its content can
+scroll on small screens. Existing dismissal, acknowledgement and timer motion
+are unchanged.
+
+Quest planning intentionally keeps minute presets and custom numeric input.
+Session uses the scrolling minutes/seconds control for precise execution. A large
+wheel in the multi-field quest editor would add gesture competition and height.
+
+Deferred: rewards AND daily-goal credit still floor each completed session to
+whole minutes. 30 seconds is recorded but credits zero; 15:59 credits 15 minutes.
+The popup explains this when partial minutes exist. Redesign accumulation and
+reward rules together later; this visual change does not alter them.
+
+Validation: source review and TypeScript syntax transpilation only for this
+refinement; full app type checking and native layout checks remain required.

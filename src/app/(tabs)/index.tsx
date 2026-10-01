@@ -76,6 +76,11 @@ export default function HomeScreen() {
 
   const greeting = homeWelcome(hour, profile?.username);
   const isGoalComplete = goalCompleted || remainingMinutes === 0;
+  const streakDays = Math.max(0, profile?.streak_count ?? 0);
+  const motivation = isGoalComplete ? "A little effort, real progress."
+    : hasOpenSession ? "Your next step is already underway."
+    : streakDays > 0 ? "Keep making time for what matters."
+    : "Progress starts with a little time.";
 
   const openSession = () => {
     setQuestsVisible(false);
@@ -115,7 +120,11 @@ export default function HomeScreen() {
           <Text style={[styles.greeting, compact && styles.compactGreeting, tight && styles.tightGreeting]}>
             {greeting}
           </Text>
-          <Text style={styles.welcomeSubtitle} maxFontSizeMultiplier={1.4}>Make a little room for progress today.</Text>
+          <View style={styles.momentum}>
+            <Ionicons name={streakDays > 0 ? "flame-outline" : "leaf-outline"} size={19} color={colors.accent} />
+            <Text style={styles.momentumTitle}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text>
+          </View>
+          <Text style={styles.welcomeSubtitle} maxFontSizeMultiplier={1.4}>{motivation}</Text>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
             <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
@@ -129,7 +138,7 @@ export default function HomeScreen() {
               </View>
               <View style={styles.quietStats}>
                 <Text style={styles.goldText} maxFontSizeMultiplier={1.3}>{(profile?.gold ?? 0).toLocaleString()} <Text style={styles.statLabel}>gold</Text></Text>
-                <Text style={styles.streak} maxFontSizeMultiplier={1.3}>{profile?.streak_count ?? 0} day streak</Text>
+                
               </View>
             </View>
             <View style={[styles.xpHeader, tight && styles.tightXPHeader]}>
@@ -243,17 +252,19 @@ const styles = StyleSheet.create({
   tightContent: { gap: 8, paddingTop: 2 },
   retry: { minHeight: 44, justifyContent: "center" },
   retryText: { color: colors.accent, fontSize: 12 },
-  homeHeader: { gap: 7 },
+  homeHeader: { gap: 9 },
+  momentum: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 5 },
+  momentumTitle: { color: colors.accent, fontSize: 16, fontWeight: "600", flexShrink: 1 },
   tightHeader: { gap: 4 },
   welcomeHeading: { flexDirection: "row", alignItems: "center", gap: 12 },
   welcomeIdentity: { flex: 1, minWidth: 0, gap: 3 },
   welcomeSalutation: { color: colors.secondary, fontSize: 14 },
-  greeting: { color: colors.text, fontSize: 27, fontWeight: "600", letterSpacing: -0.6 },
+  greeting: { color: colors.text, fontSize: 25, fontWeight: "600", letterSpacing: -0.5 },
   compactGreeting: { fontSize: 24 },
   tightGreeting: { fontSize: 22 },
   welcomeSubtitle: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  character: { marginTop: 12, paddingTop: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  character: { marginTop: 7, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   tightCharacter: { marginTop: 4, paddingTop: 8 },
   characterRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },
@@ -273,7 +284,7 @@ const styles = StyleSheet.create({
   xpTrack: { height: 4, borderRadius: 2, backgroundColor: colors.line, overflow: "hidden" },
   xpFill: { height: "100%", borderRadius: 2, backgroundColor: colors.accentFill },
   goalCard: {
-    padding: 20,
+    padding: 17,
     borderRadius: 23,
     backgroundColor: "#171A28",
     borderWidth: 1,

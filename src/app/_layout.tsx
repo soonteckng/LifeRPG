@@ -93,6 +93,7 @@ function GlobalRewardListener() {
     <LevelUpModal
       visible={rewardsVisible}
       xpEarned={sessionSummary?.xpEarned || 0}
+      goldEarned={sessionSummary?.goldEarned || 0}
       minutesSpent={sessionSummary?.minutesSpent || 0}
       durationSeconds={sessionSummary?.durationSeconds}
       questTitle={sessionSummary?.questTitle}
