@@ -268,3 +268,27 @@ reward rules together later; this visual change does not alter them.
 
 Validation: source review and TypeScript syntax transpilation only for this
 refinement; full app type checking and native layout checks remain required.
+
+
+## Session follow-up
+
+The completion summary now refreshes Home's daily-goal progress as soon as the
+saved session summary changes, including when Home was covered by Session. A
+forced refresh waits for any older in-flight focus refresh before fetching again.
+The XP and gold amounts have more room in a two-column reward panel.
+
+The typed duration editor now uses the shared bottom sheet and keyboard-aware
+inputs, so its handle, backdrop, drag dismissal and Android back behavior match
+the rest of the app. Opening it no longer increments the wheel revision, which
+prevents the timer digits from remounting and blinking. The timer has more space
+above its wheels.
+
+Session can be dismissed with a downward swipe from outside the timer wheel,
+when the details list is at its top. Keyboard, pickers, confirmation and rewards
+take priority, and the existing route dismissal animation remains in control.
+The gesture dismisses on release; it does not track the card interactively with
+the finger.
+
+Regression coverage was added for Home progress refresh, duration editor wheel
+stability, and session swipe priority. Automated checks and device behavior
+remain to be run in an available coding workspace.

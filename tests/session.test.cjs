@@ -210,6 +210,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "react-native":{
       View:host("View"),Text:host("Text"),TextInput:host("Input"),TouchableOpacity:host("Button"),
       ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),ActivityIndicator:host("Spinner"),
+      PanResponder:{create:(handlers)=>({panHandlers:handlers})},
       Platform:{OS:"android"},useWindowDimensions:()=>({height:640,width:320,fontScale:1.5}),
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
@@ -241,6 +242,33 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     cleanup:async()=>{await act(async()=>renderer.unmount());},
   };
 }
+
+test("opening the typed duration editor does not remount or alter the timer wheels",async()=>{
+  const ui=await screenSetup();
+  const before=ui.root().findByType("DurationControl").props;
+  await ui.press("Edit duration");
+  const after=ui.root().findByType("DurationControl").props;
+  assert.equal(after.revision,before.revision);
+  assert.equal(after.seconds,before.seconds);
+  assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
+  await ui.cleanup();
+});
+
+test("downward session swipe uses the existing animated close and inner sheets take priority",async()=>{
+  for (const initial of [{},{hasOpenSession:true,isRunning:true},{hasOpenSession:true,isRunning:false},{isCompleted:true}]) {
+    const ui=await screenSetup(initial);
+    const safe=ui.root().findByType("SafeArea");
+    assert.equal(safe.props.onMoveShouldSetPanResponderCapture({}, {y0:400,dy:40,dx:0}),true);
+    await act(async()=>safe.props.onPanResponderRelease({}, {dy:100,vy:0.8}));
+    assert.ok(ui.calls.some((call)=>call[0]==="dismiss"));
+    await ui.cleanup();
+  }
+  const ui=await screenSetup();
+  await ui.press("Edit duration");
+  const safe=ui.root().findByType("SafeArea");
+  assert.equal(safe.props.onMoveShouldSetPanResponderCapture({}, {y0:400,dy:40,dx:0}),false);
+  await ui.cleanup();
+});
 
 test("timer anchor and countdown stay mounted with identical layout across setup, running and paused",async()=>{
   const ui=await screenSetup();

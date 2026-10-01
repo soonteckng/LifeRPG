@@ -46,7 +46,7 @@ export default function LevelUpModal({
     <Modal visible={visible} transparent animationType={reducedMotion ? "none" : "fade"} onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.card} accessibilityViewIsModal>
-          <ScrollView style={{ flexShrink: 1 }} contentContainerStyle={{ alignItems: "center" }}>
+          <ScrollView style={styles.contentScroll} contentContainerStyle={styles.contentBody}>
           <View style={styles.symbol}><Ionicons name={isLevelUp ? "sparkles-outline" : "checkmark"} size={30} color={colors.accent} /></View>
           <Text style={styles.title}>
             {isLevelUp ? 'Level up!' : 'Session complete'}
@@ -57,13 +57,16 @@ export default function LevelUpModal({
           <Text style={styles.congratsText}>Time well spent.</Text>
 
           <View style={styles.rewardBox}>
-            <View style={styles.rewardRow}>
-              <Text style={styles.rewardLabel}>XP earned</Text>
-              <Text style={styles.rewardValue}>+{xpEarned} XP</Text>
-            </View>
-            <View style={styles.rewardRow}>
-              <Text style={styles.rewardLabel}>Gold earned</Text>
-              <Text style={styles.rewardValue}>+{goldEarned}</Text>
+            <View style={styles.rewardStats}>
+              <View style={styles.rewardStat}>
+                <Text style={styles.rewardLabel}>XP EARNED</Text>
+                <Text style={styles.rewardValue}>+{xpEarned}</Text>
+              </View>
+              <View style={styles.rewardDivider} />
+              <View style={styles.rewardStat}>
+                <Text style={styles.rewardLabel}>GOLD EARNED</Text>
+                <Text style={styles.rewardValue}>+{goldEarned}</Text>
+              </View>
             </View>
             <View style={styles.xpProgressContainer}>
               <View style={styles.xpHeader}>
@@ -113,19 +116,23 @@ const styles = StyleSheet.create({
   note: { color: colors.secondary, fontSize: 12, lineHeight: 18, textAlign: "center", marginBottom: 16 },
   title: { color: '#F8FAFC', fontSize: 25, fontWeight: '600', letterSpacing: -0.5 },
   congratsText: { color: colors.secondary, fontSize: 13, textAlign: 'center', marginTop: 6, lineHeight: 18 },
+  contentScroll: { width: "100%", flexShrink: 1 },
+  contentBody: { alignItems: "center", paddingBottom: 4 },
   rewardBox: {
-    backgroundColor: colors.background,
-    borderRadius: 16,
-    padding: 16,
-    width: '100%',
-    marginVertical: 16,
+    backgroundColor: colors.accentSoft,
+    borderRadius: 20,
+    padding: 20,
+    width: "100%",
+    marginVertical: 20,
     borderWidth: 1,
     borderColor: colors.line,
-    gap: 8,
+    gap: 18,
   },
-  rewardRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  rewardLabel: { color: colors.secondary, fontSize: 12, fontWeight: '700' },
-  rewardValue: { color: '#F8FAFC', fontSize: 13, fontWeight: 'bold' },
+  rewardStats: { flexDirection: "row", alignItems: "center", justifyContent: "space-around", minHeight: 70 },
+  rewardStat: { flex: 1, alignItems: "center", gap: 8 },
+  rewardDivider: { height: 48, width: StyleSheet.hairlineWidth, backgroundColor: colors.line },
+  rewardLabel: { color: colors.secondary, fontSize: 12, fontWeight: "700", letterSpacing: 0.5 },
+  rewardValue: { color: colors.text, fontSize: 30, fontWeight: "600", fontVariant: ["tabular-nums"] },
   xpProgressContainer: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#1E293B' },
   xpHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
   xpLabel: { color: colors.accent, fontSize: 11, fontWeight: 'bold' },

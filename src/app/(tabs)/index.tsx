@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
@@ -34,7 +34,7 @@ export default function HomeScreen() {
   const tight = height - insets.top - insets.bottom < 610 || fontScale > 1.5;
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
-  const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession } = useTimer();
+  const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = useTimer();
   const { tasks, error: questsError, refresh: refreshQuests } = useQuests();
 
   const [completedMinutes, setCompletedMinutes] = useState(0);
@@ -56,6 +56,12 @@ export default function HomeScreen() {
     } finally { setRefreshing(false); }
   }), [reloadProfile, refreshQuests]);
   const hour = useHomeLifecycle(loadData);
+
+  // A successful completion updates the saved session summary before this fires.
+  // Refresh goal progress even while Home was covered by Session/rewards.
+  useEffect(() => {
+    if (sessionSummary) void loadData(true);
+  }, [sessionSummary, loadData]);
 
   const dailyGoalMinutes = profile?.daily_goal_minutes ?? 60;
   const safeCompletedMinutes = Math.max(0, completedMinutes);

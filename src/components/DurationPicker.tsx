@@ -1,7 +1,9 @@
 import * as Haptics from "expo-haptics";
-import React, { useMemo, useRef, useState } from "react";
-import { Animated, FlatList, Keyboard, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from "react-native";
-import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Animated, FlatList, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import AppSheet from "./AppSheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -152,48 +154,42 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
 
 type EditorProps = { visible: boolean; seconds: number; onCancel: () => void; onConfirm: (seconds: number) => void };
 export function DurationEditor({ visible, seconds, onCancel, onConfirm }: EditorProps) {
-  const reducedMotion = useReducedMotion();
-  const inputRef = useRef<TextInput>(null);
-  // Mount one draft per visit; the hidden editor does not retain an abandoned edit.
-  return <Modal visible={visible} transparent animationType={reducedMotion ? "none" : "fade"} statusBarTranslucent navigationBarTranslucent={false}
-    onShow={() => inputRef.current?.focus()}
-    onRequestClose={() => { if (Keyboard.isVisible()) Keyboard.dismiss(); else onCancel(); }}>
-    {visible && <EditorDraft inputRef={inputRef} seconds={seconds} onCancel={onCancel} onConfirm={onConfirm} />}
-  </Modal>;
+  const [mounted, setMounted] = useState(visible);
+  useEffect(() => { if (visible) setMounted(true); }, [visible]);
+  if (!mounted) return null;
+  return <AppSheet visible={visible} onRequestClose={onCancel}
+    onDismiss={() => setMounted(false)} label="Set duration" header={<View style={styles.pickerHeader}><Text style={styles.title}>Set duration</Text></View>}>
+    <EditorDraft seconds={seconds} onCancel={onCancel} onConfirm={onConfirm} />
+  </AppSheet>;
 }
 
-function EditorDraft({ seconds, onCancel, onConfirm, inputRef }: Omit<EditorProps, "visible"> & { inputRef: React.RefObject<TextInput | null> }) {
+function EditorDraft({ seconds, onCancel, onConfirm }: Omit<EditorProps, "visible">) {
   const [minutesText, setMinutesText] = useState(String(Math.floor(seconds / 60)));
   const [secondsText, setSecondsText] = useState(String(seconds % 60).padStart(2, "0"));
   const insets = useSafeAreaInsets();
   const total = parseDurationFields(minutesText, secondsText);
-  return <KeyboardAvoidingView style={styles.editorRoot} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-    <SafeAreaView edges={["top"]} style={styles.editorSafe}>
-      <View style={[styles.editorCard, { paddingBottom: Math.max(12, insets.bottom) }]} accessibilityViewIsModal>
-        <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.editorBody} style={styles.editorScroll}>
-          <Text style={styles.title}>Set duration</Text>
-          <View style={styles.fields}>
-            <View style={styles.field}><Text style={styles.fieldLabel}>Minutes</Text><TextInput ref={inputRef} selectTextOnFocus
-              accessibilityLabel="Duration minutes" value={minutesText} onChangeText={setMinutesText} keyboardType="number-pad"
-              style={styles.input} /></View>
-            <View style={styles.field}><Text style={styles.fieldLabel}>Seconds</Text><TextInput selectTextOnFocus
-              accessibilityLabel="Duration seconds" value={secondsText} onChangeText={setSecondsText} keyboardType="number-pad"
-              style={styles.input} /></View>
-          </View>
-          <Text accessibilityLiveRegion="polite" style={[styles.hint, total === null && styles.error]}>
-            {total === null ? "Enter 00:01–480:00. Seconds must be 00–59; both fields are required." : durationLabel(total)}
-          </Text>
-        </ScrollView>
-        <View style={styles.footer}>
-          <TouchableOpacity accessibilityRole="button" onPress={() => { Keyboard.dismiss(); onCancel(); }} style={styles.button}><Text style={styles.editText}>Cancel</Text></TouchableOpacity>
-          <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: total === null }} disabled={total === null}
-            onPress={() => { if (total !== null) { Keyboard.dismiss(); onConfirm(total); } }} style={[styles.button, styles.primary, total === null && styles.disabled]}>
-            <Text style={styles.primaryText}>Set duration</Text>
-          </TouchableOpacity>
-        </View>
+  return <>
+    <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.editorBody}>
+      <View style={styles.fields}>
+        <View style={styles.field}><Text style={styles.fieldLabel}>Minutes</Text><BottomSheetTextInput selectTextOnFocus
+          accessibilityLabel="Duration minutes" value={minutesText} onChangeText={setMinutesText} keyboardType="number-pad"
+          style={styles.input} /></View>
+        <View style={styles.field}><Text style={styles.fieldLabel}>Seconds</Text><BottomSheetTextInput selectTextOnFocus
+          accessibilityLabel="Duration seconds" value={secondsText} onChangeText={setSecondsText} keyboardType="number-pad"
+          style={styles.input} /></View>
       </View>
-    </SafeAreaView>
-  </KeyboardAvoidingView>;
+      <Text accessibilityLiveRegion="polite" style={[styles.hint, total === null && styles.error]}>
+        {total === null ? "Enter 00:01–480:00. Seconds must be 00–59; both fields are required." : durationLabel(total)}
+      </Text>
+    </BottomSheetScrollView>
+    <View style={[styles.footer, { paddingBottom: Math.max(12, insets.bottom) }]}>
+      <TouchableOpacity accessibilityRole="button" onPress={onCancel} style={styles.button}><Text style={styles.editText}>Cancel</Text></TouchableOpacity>
+      <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: total === null }} disabled={total === null}
+        onPress={() => { if (total !== null) onConfirm(total); }} style={[styles.button, styles.primary, total === null && styles.disabled]}>
+        <Text style={styles.primaryText}>Set duration</Text>
+      </TouchableOpacity>
+    </View>
+  </>;
 }
 
 const styles = StyleSheet.create({
@@ -207,13 +203,13 @@ const styles = StyleSheet.create({
   colon: { width: 22, textAlign: "center", color: colors.text, fontWeight: "300" },
   editSlot: { minHeight: 44, justifyContent: "center" }, edit: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   editText: { color: colors.accent, fontSize: 15, fontWeight: "500" }, error: { color: colors.danger },
-  editorRoot: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)" }, editorSafe: { flex: 1, justifyContent: "flex-end" },
-  editorCard: { maxHeight: "100%", backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
-  editorScroll: { flexGrow: 0, flexShrink: 1 }, editorBody: { padding: 24, gap: 16 },
+  pickerHeader: { paddingHorizontal: 24, paddingBottom: 8 },
+  editorBody: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 20, gap: 16 },
+  footer: { flexDirection: "row", gap: 12, paddingHorizontal: 24, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  button: { flex: 1, minHeight: 48, justifyContent: "center", alignItems: "center", borderRadius: 14, backgroundColor: colors.background },
+  primary: { backgroundColor: colors.accent }, disabled: { opacity: 0.45 }, primaryText: { color: colors.background, fontSize: 15, fontWeight: "600" },
   title: { color: colors.text, fontSize: 21, fontWeight: "600" }, fields: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   field: { flex: 1, minWidth: 100, gap: 8 }, fieldLabel: { color: colors.secondary, fontSize: 15 },
   input: { color: colors.text, backgroundColor: colors.background, borderRadius: 12, padding: 12, minHeight: 52, fontSize: 24, fontVariant: ["tabular-nums"] },
-  hint: { color: colors.secondary, fontSize: 14 }, footer: { flexDirection: "row", flexWrap: "wrap", paddingHorizontal: 24, gap: 12 },
-  button: { flexGrow: 1, minHeight: 48, padding: 14, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  primary: { backgroundColor: colors.accent }, primaryText: { color: colors.background, fontSize: 16, fontWeight: "600" }, disabled: { opacity: 0.45 },
+  hint: { color: colors.secondary, fontSize: 14 },
 });

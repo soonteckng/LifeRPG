@@ -3,7 +3,7 @@ import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import SheetConfirmation from "./SheetConfirmation";
@@ -34,7 +34,9 @@ export default function SessionScreen() {
   const [durationValid, setDurationValid] = useState(true);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [gestureBottom, setGestureBottom] = useState(0);
+  const wheelBounds = useRef({ top: 0, bottom: 0 });
+  const wheelView = useRef<View>(null);
+  const detailsOffset = useRef(0);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
   const [screenMotion] = useState(() => new Animated.Value(Platform.OS === "android" ? 0 : 1));
@@ -48,6 +50,7 @@ export default function SessionScreen() {
     if (sessionSummary && !rewardsVisible) acknowledgeSummary();
   }, [sessionSummary, rewardsVisible, acknowledgeSummary]));
   const [opacity] = useState(() => new Animated.Value(1));
+
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
   const general = subjects.find((item) => item.title === "General");
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
@@ -101,6 +104,18 @@ export default function SessionScreen() {
     }
     else { closing.current = false; console.warn("[Session] Missing anchored back history"); }
   }, [dismissLayer, navigation, reducedMotion, screenMotion]);
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponderCapture: (_event, gesture) => {
+      const inWheel = gesture.y0 >= wheelBounds.current.top && gesture.y0 <= wheelBounds.current.bottom;
+      return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
+        && !wheelBusyRef.current && detailsOffset.current <= 0 && !inWheel
+        && gesture.dy > 28 && gesture.dy > Math.abs(gesture.dx) * 1.5;
+    },
+    onPanResponderRelease: (_event, gesture) => {
+      if (gesture.dy > 90 || (gesture.dy > 35 && gesture.vy > 0.6)) minimise("swipe-down");
+    },
+  });
+
   useEffect(() => {
     traceSession("Session React mount");
     return () => traceSession("Session React unmount");
@@ -168,32 +183,32 @@ export default function SessionScreen() {
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: 1,
       transform: [{ translateY: Platform.OS === "android" && !reducedMotion ? screenMotion.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) : 0 }] }}>
-    <SafeAreaView collapsable={false} style={styles.screen}>
-      <Stack.Screen options={{ gestureEnabled: Platform.OS !== "android" && !picker && !keyboardVisible && !confirmEnd,
-        gestureResponseDistance: { top: 0, bottom: gestureBottom } }} />
-      <View style={styles.header} onLayout={(event) => setGestureBottom(event.nativeEvent.layout.y + event.nativeEvent.layout.height)}>
+    <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
+      onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+      <View style={styles.header}>
         <TouchableOpacity onPress={() => minimise("header")} style={styles.close} accessibilityRole="button" accessibilityLabel={timer.hasOpenSession ? "Minimise session" : "Close session"}>
           <Ionicons name="chevron-down" size={23} color={colors.text} /><Text style={styles.link}>{timer.hasOpenSession ? "Minimise" : "Close"}</Text>
         </TouchableOpacity>
         <Text style={styles.secondary}>Session</Text>
       </View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View testID="session-timer-anchor" style={[styles.timerAnchor, height < 700 && styles.compactAnchor]}>
+        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, height < 700 && styles.compactAnchor]}>
           <Text style={[styles.status, { height: Math.ceil(22 * fontScale) }]} numberOfLines={1} adjustsFontSizeToFit accessibilityLiveRegion="polite">{status}</Text>
-          <View style={styles.timerControl}>
+          <View style={[styles.timerControl, { marginTop: 16 }]}>
             <DurationPicker seconds={phase === "setup" ? timer.duration : timer.timeLeft} interactive={phase === "setup" && !isQuest && !locked}
               revision={durationRevision}
               onCommit={(seconds) => { if (durationEpoch.current === durationRevision && !locked) timer.setDurationInSeconds(seconds); }}
               onBusy={(busy) => { if (durationEpoch.current === durationRevision) { wheelBusyRef.current = busy; setWheelBusy(busy); } }}
               onValidity={(valid) => { if (durationEpoch.current === durationRevision) { durationValidRef.current = valid; setDurationValid(valid); } }}
-              onEdit={() => { applyDuration(timer.duration); setPicker("duration"); }} />
+              onEdit={() => { if (!wheelBusyRef.current) setPicker("duration"); }} />
           </View>
           <View style={styles.track} accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }}>
             <View style={[styles.fill, { width: `${phase === "setup" ? 0 : Math.max(0, Math.min(100, (1 - timer.timeLeft / timer.duration) * 100))}%` }]} />
           </View>
         </View>
-        <ScrollView style={styles.flex} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+        <ScrollView style={styles.flex} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           {phase !== "setup" && <>
             <Text style={styles.title} accessibilityRole="header">{title}</Text>
             <Text style={styles.secondary}>{area?.title ?? "General"} · {durationLabel(timer.duration)}</Text>

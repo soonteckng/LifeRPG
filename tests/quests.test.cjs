@@ -361,7 +361,7 @@ test("continuing from a protected row waits for list dismissal", async () => {
 });
 
 test("Home preserves loaded progress on failure and exposes a retry instead of a permanent refresh button", async () => {
-  let refresh, failed = false;
+  let refresh, failed = false, progressMinutes = 25, summary = null;
   const name = "A long welcoming username with several words";
   const reloadProfile = async () => true;
   const refreshQuests = async () => {};
@@ -372,9 +372,9 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "../../components/QuestSheet": () => null,
     "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
-    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false }) },
+    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
-    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: 25 }; } },
+    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes }; } },
     "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
   }).default;
   let renderer;
@@ -385,9 +385,13 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.equal(retry(), undefined);
   await act(async () => refresh());
   assert.match(output(), /25 \/ 60 min/);
+  progressMinutes = 26;
+  summary = { id: "saved-session" };
+  await act(async () => renderer.update(React.createElement(Home)));
+  assert.match(output(), /26 \/ 60 min/);
   failed = true;
   await act(async () => refresh());
-  assert.match(output(), /25 \/ 60 min/);
+  assert.match(output(), /26 \/ 60 min/);
   assert.ok(retry());
   failed = false;
   await act(async () => retry().props.onPress());
@@ -406,22 +410,24 @@ test("greeting uses the requested local-hour boundaries and username fallback", 
   assert.equal(homeWelcome(5, name), "Good morning, " + name.trim());
 });
 
-test("concurrent refreshes share a request and failed requests remain retryable", async () => {
+test("concurrent refreshes share work and a completion refresh waits for stale work", async () => {
   const { singleFlight } = load("src/utils/singleFlight.ts", {});
-  let calls = 0, reject;
+  let calls = 0;
+  const finishers = [];
   const refresh = singleFlight(() => {
     calls++;
-    return new Promise((_, fail) => { reject = fail; });
+    return new Promise((resolve) => finishers.push(resolve));
   });
   const first = refresh();
   assert.equal(refresh(), first);
   assert.equal(calls, 1);
-  reject(Error("Offline"));
-  await assert.rejects(first, /Offline/);
-  const retry = refresh();
+  const fresh = refresh(true);
+  finishers[0]("stale");
+  assert.equal(await first, "stale");
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(calls, 2);
-  reject(Error("Offline again"));
-  await assert.rejects(retry);
+  finishers[1]("fresh");
+  assert.equal(await fresh, "fresh");
 });
 
 test("Home updates on focus, foreground and a clock boundary; unfocused Home does not fetch", async () => {
