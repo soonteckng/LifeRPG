@@ -91,6 +91,7 @@ function GlobalRewardListener() {
       visible={rewardsVisible}
       xpEarned={sessionSummary?.xpEarned || 0}
       minutesSpent={sessionSummary?.minutesSpent || 0}
+      durationSeconds={sessionSummary?.durationSeconds}
       questTitle={sessionSummary?.questTitle}
       isLevelUp={!!completedLevelUp?.leveledUp}
       newLevel={completedLevelUp?.newLevel || currentLevel}
@@ -144,9 +145,11 @@ function AppContent() {
             name="session"
             dangerouslySingular
             options={{
-              presentation: "fullScreenModal",
+              // A full-screen card uses the reversible native stack slide on both platforms.
+              presentation: "card",
               animation: reducedMotion ? "fade" : "slide_from_bottom",
               gestureDirection: "vertical",
+              animationMatchesGesture: true,
             }}
           />
           <Stack.Screen

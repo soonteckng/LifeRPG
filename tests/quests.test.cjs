@@ -397,10 +397,10 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
 
 test("greeting uses the requested local-hour boundaries and username fallback", () => {
   const { homeWelcome } = load("src/utils/homeWelcome.ts", {});
-  for (const [hour, expected] of [[0, "Still up? Hero"], [4, "Still up? Hero"], [5, "Good morning, Hero"], [11, "Good morning, Hero"], [12, "Good afternoon, Hero"], [17, "Good afternoon, Hero"], [18, "Good evening, Hero"], [23, "Good evening, Hero"]]) {
+  for (const [hour, expected] of [[0, "Welcome back, Hero"], [4, "Welcome back, Hero"], [5, "Good morning, Hero"], [11, "Good morning, Hero"], [12, "Good afternoon, Hero"], [17, "Good afternoon, Hero"], [18, "Good evening, Hero"], [23, "Good evening, Hero"]]) {
     assert.equal(homeWelcome(hour), expected);
   }
-  assert.equal(homeWelcome(0, "  Alex  "), "Still up? Alex");
+  assert.equal(homeWelcome(0, "  Alex  "), "Welcome back, Alex");
   assert.equal(homeWelcome(12, " "), "Good afternoon, Hero");
   const name = "A very long username ".repeat(5);
   assert.equal(homeWelcome(5, name), "Good morning, " + name.trim());

@@ -17,7 +17,7 @@ import {
   startActivitySession,
 } from "../services/sessionService";
 import { useUser } from "./UserContext";
-import { formatSessionActivity } from "../constants/sessionActivities";
+import { validSessionSeconds } from "../utils/sessionSetup";
 
 // Dynamically load expo-notifications to prevent Expo Go crashes
 let Notifications: any = null;
@@ -55,6 +55,7 @@ interface SessionSummary {
   xpEarned: number;
   goldEarned: number;
   minutesSpent: number;
+  durationSeconds: number;
   questTitle?: string;
 }
 
@@ -87,12 +88,13 @@ interface TimerContextType {
   setTargetAttributeId: (id: number | null) => void;
   setLinkedTaskId: (id: number | null) => void;
 
-  startTimer: (minutes: number, questTitle?: string) => Promise<void>;
+  startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
   pauseTimer: () => Promise<void>;
   resumeTimer: () => Promise<void>;
   resetTimer: () => Promise<void>;
 
   setDurationInMinutes: (minutes: number) => void;
+  setDurationInSeconds: (seconds: number) => void;
 
   completedLevelUp: {
     leveledUp: boolean;
@@ -229,10 +231,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       setSessionSummary({
         xpEarned: result.xp_earned,
         goldEarned: result.gold_earned,
-        minutesSpent: result.minutes,
+        minutesSpent: result.minutes ?? Math.floor(result.duration_seconds / 60),
+        durationSeconds: result.duration_seconds,
         questTitle:
           activeQuestTitleRef.current ??
-          "Activity Session",
+          "Quest session",
       });
 
       setRewardsVisible(!result.already_completed);
@@ -510,7 +513,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       const completionNotification =
         scheduledNotifications.find(
           (notification: any) =>
-            notification.request.identifier === notificationId,
+            notification.identifier === notificationId,
         );
 
       if (!completionNotification) {
@@ -540,7 +543,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         }
 
         const targetSeconds = Math.max(
-          60,
+          1,
           session.target_duration_seconds,
         );
 
@@ -578,9 +581,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         setTimeLeft(remainingSeconds);
         setIsCompleted(false);
         setActivityType(
-          session.activity_type === "general"
-            ? "other"
-            : session.activity_type || "other",
+          session.activity_type || "other",
         );
         setTargetAttributeId(
           session.subject_id,
@@ -588,7 +589,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         setLinkedTaskId(session.task_id);
         setNotes(session.notes ?? "");
 
-        activeQuestTitleRef.current = undefined;
+        activeQuestTitleRef.current = session.task_id === null ? "Free session" : undefined;
 
         if (remainingSeconds <= 0) {
           endTimeRef.current = Date.now();
@@ -626,13 +627,16 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [restoreAttempt, scheduleNotificationLifecycle]);
 
+  // Quest boundaries remain whole minutes. The timer itself always uses seconds.
   const setDurationInMinutes = (minutes: number) => {
+    if (Number.isInteger(minutes)) setDurationInSeconds(minutes * 60);
+  };
+  const setDurationInSeconds = (totalSec: number) => {
     if (isRunning || actionLock.current || (timerSessionIdRef.current && !completionHandledRef.current)) {
       return;
     }
 
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 480) return;
-    const totalSec = minutes * 60;
+    if (!validSessionSeconds(totalSec)) return;
     setSessionSummary(null);
     setCompletedLevelUp(null);
     setRewardsVisible(false);
@@ -647,21 +651,20 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   };
 
   const startTimer = async (
-    minutes: number,
+    totalSec: number,
     questTitle?: string,
   ) => {
     if (actionLock.current || timerSessionIdRef.current || isRestoring || restoreError) return;
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 480) {
-      setActionError("Enter a whole number from 1 to 480 minutes."); return;
+    if (!validSessionSeconds(totalSec)) {
+      setActionError("Choose a duration from 1 second to 480 minutes."); return;
     }
     actionLock.current = true; setActionBusy(true); setActionError(null);
 
-    const totalSec = Math.max(1, minutes) * 60;
 
     try {
       const sessionId = await startActivitySession({
         targetDurationSeconds: totalSec,
-        activityType,
+        activityType: "other", // Neutral compatibility field; Life area is the category.
         taskId: linkedTaskId,
         subjectId: targetAttributeId,
         notes: notes.trim() || null,
@@ -670,7 +673,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       timerSessionIdRef.current = sessionId;
       setHasOpenSession(true);
 
-      activeQuestTitleRef.current = questTitle ?? formatSessionActivity(activityType);
+      activeQuestTitleRef.current = questTitle ?? "Free session";
 
       setDuration(totalSec);
       setTimeLeft(totalSec);
@@ -848,6 +851,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         resetTimer,
 
         setDurationInMinutes,
+        setDurationInSeconds,
 
         completedLevelUp,
         clearCompletionModal,

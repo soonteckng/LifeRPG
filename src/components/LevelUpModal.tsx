@@ -1,3 +1,4 @@
+import { durationLabel } from "../utils/sessionSetup";
 import React, { useEffect } from 'react';
 import { StyleSheet, Text, View, Modal, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
@@ -7,6 +8,7 @@ interface RewardModalProps {
   visible: boolean;
   xpEarned?: number;
   minutesSpent?: number;
+  durationSeconds?: number;
   questTitle?: string;
   isLevelUp?: boolean;
   newLevel?: number;
@@ -19,6 +21,7 @@ export default function LevelUpModal({
   visible,
   xpEarned = 0,
   minutesSpent = 0,
+  durationSeconds,
   questTitle,
   isLevelUp = false,
   newLevel = 1,
@@ -45,7 +48,7 @@ export default function LevelUpModal({
           </Text>
 
           <Text style={styles.congratsText}>
-            🎉 Congrats! You completed {minutesSpent} mins of{' '}
+            🎉 Congrats! You completed {durationLabel(durationSeconds ?? minutesSpent * 60)} of{' '}
             <Text style={{ color: '#F8FAFC', fontWeight: 'bold' }}>
               {questTitle || 'Focus Session'}
             </Text>!
@@ -58,7 +61,7 @@ export default function LevelUpModal({
             </View>
             <View style={styles.rewardRow}>
               <Text style={styles.rewardLabel}>⏱️ Duration:</Text>
-              <Text style={styles.rewardValue}>{minutesSpent} Minutes</Text>
+              <Text style={styles.rewardValue}>{durationLabel(durationSeconds ?? minutesSpent * 60)}</Text>
             </View>
             <View style={styles.rewardRow}>
               <Text style={styles.rewardLabel}>⚡ XP Earned:</Text>

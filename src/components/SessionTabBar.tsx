@@ -5,20 +5,22 @@ import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
-import { sessionTime } from "../utils/sessionSetup";
+import { sessionDockState } from "../utils/sessionReporting";
 
 // This dock occupies layout space inside the tabs, underneath the root modal.
 // It cannot draw over Session while Session is entering or leaving.
 export default function SessionTabBar(props: BottomTabBarProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { hasOpenSession, isRunning, isCompleted, sessionSummary, timeLeft } = useTimer();
+  const timer = useTimer();
+  const { hasOpenSession, isRunning, isCompleted, sessionSummary } = timer;
+  const dock = sessionDockState(timer);
   return <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
     {(hasOpenSession || sessionSummary) && <TouchableOpacity style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
-      <Ionicons name={isRunning ? "play-outline" : "pause-outline"} size={20} color={colors.accent} />
-      <Text style={styles.title}>{isCompleted ? sessionSummary ? "Session complete" : "Save session" : isRunning ? "Session in progress" : "Session paused"}</Text>
-      <Text style={styles.time}>{sessionTime(timeLeft)}</Text>
+      <Ionicons name={dock.icon} size={20} color={colors.accent} />
+      <Text style={styles.title}>{dock.label}</Text>
+      <Text style={styles.time}>{dock.detail}</Text>
       <Ionicons name="chevron-up" size={18} color={colors.secondary} />
     </TouchableOpacity>}
     <BottomTabBar {...props} />
@@ -26,7 +28,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
 }
 const styles = StyleSheet.create({
   dock: { backgroundColor: colors.background, paddingHorizontal: 18, paddingTop: 8, gap: 8 },
-  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surface },
+  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent },
   title: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "500" },
-  time: { color: colors.accent, fontSize: 15, fontVariant: ["tabular-nums"] },
+  time: { color: colors.accent, fontSize: 16, fontWeight: "600", flexShrink: 1, fontVariant: ["tabular-nums"] },
 });
