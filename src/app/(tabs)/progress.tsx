@@ -14,6 +14,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import Header from "../../components/Header";
+import { sessionCategory } from "../../utils/sessionReporting";
+import { durationLabel } from "../../utils/sessionSetup";
 import { useUser } from "../../context/UserContext";
 import {
   getCompletedSessions,
@@ -84,13 +86,13 @@ export default function ProgressScreen() {
   >([]);
 
   const [subjects, setSubjects] = useState<
-    Array<{
+    {
       id: number;
       title: string;
       level: number;
       current_xp: number;
       color_code: string | null;
-    }>
+    }[]
   >([]);
 
   const [refreshing, setRefreshing] =
@@ -165,7 +167,7 @@ export default function ProgressScreen() {
 
       const minutes = Math.max(
         0,
-        Math.round(
+        Math.floor(
           session.duration_seconds / 60,
         ),
       );
@@ -215,13 +217,11 @@ export default function ProgressScreen() {
     >();
 
     sessions.forEach((session) => {
-      const activity =
-        session.activity_type ||
-        "general";
+      const activity = sessionCategory(session, subjects);
 
       const minutes = Math.max(
         0,
-        Math.round(
+        Math.floor(
           session.duration_seconds / 60,
         ),
       );
@@ -246,7 +246,7 @@ export default function ProgressScreen() {
         (a, b) =>
           b.minutes - a.minutes,
       );
-  }, [sessions]);
+  }, [sessions, subjects]);
 
   const subjectBreakdown = useMemo(() => {
     const map = new Map<
@@ -261,7 +261,7 @@ export default function ProgressScreen() {
 
       const minutes = Math.max(
         0,
-        Math.round(
+        Math.floor(
           session.duration_seconds / 60,
         ),
       );
@@ -528,11 +528,11 @@ export default function ProgressScreen() {
           </View>
         </View>
 
-        {/* ACTIVITY BREAKDOWN */}
+        {/* LIFE AREA BREAKDOWN */}
         <Text
           style={styles.sectionTitle}
         >
-          ACTIVITY BREAKDOWN
+          LIFE AREA BREAKDOWN
         </Text>
 
         <View
@@ -544,7 +544,7 @@ export default function ProgressScreen() {
               style={styles.emptyText}
             >
               Complete a session to see
-              your activity breakdown.
+              your Life area breakdown.
             </Text>
           ) : (
             activityBreakdown
@@ -583,9 +583,7 @@ export default function ProgressScreen() {
                           styles.breakdownName
                         }
                       >
-                        {formatActivity(
-                          item.activity,
-                        )}
+                        {item.activity}
                       </Text>
 
                       <Text
@@ -618,7 +616,7 @@ export default function ProgressScreen() {
           )}
         </View>
 
-        {/* AREA MASTERY */}
+        {/* AREA PROGRESS */}
         <Text
           style={styles.sectionTitle}
         >
@@ -735,14 +733,6 @@ export default function ProgressScreen() {
             sessions
               .slice(0, 8)
               .map((session) => {
-                const minutes =
-                  Math.max(
-                    0,
-                    Math.round(
-                      session.duration_seconds /
-                        60,
-                    ),
-                  );
 
                 const time =
                   session.completed_at
@@ -781,9 +771,7 @@ export default function ProgressScreen() {
                           styles.historyActivity
                         }
                       >
-                        {formatActivity(
-                          session.activity_type,
-                        )}
+                        {sessionCategory(session, subjects)}
                       </Text>
 
                       <Text
@@ -805,7 +793,7 @@ export default function ProgressScreen() {
                           styles.historyMinutes
                         }
                       >
-                        {minutes}m
+                        {durationLabel(session.duration_seconds)}
                       </Text>
 
                       <Text
@@ -891,18 +879,6 @@ export default function ProgressScreen() {
   );
 }
 
-function formatActivity(
-  activity: string,
-): string {
-  if (!activity) {
-    return "General";
-  }
-
-  return (
-    activity.charAt(0).toUpperCase() +
-    activity.slice(1)
-  );
-}
 
 const styles = StyleSheet.create({
   container: {

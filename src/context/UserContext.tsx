@@ -1,6 +1,7 @@
+import { singleFlight } from "../utils/singleFlight";
 import React, {
   createContext,
-  useCallback,
+  useMemo,
   useContext,
   useEffect,
   useState,
@@ -38,7 +39,7 @@ interface UserContextType {
     avatar: string,
     classTitle: string,
   ) => void;
-  reloadProfile: () => void;
+  reloadProfile: () => Promise<boolean>;
 }
 
 const defaultProfile: UserProfile = {
@@ -66,10 +67,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
 
-  const reloadProfile = useCallback(async () => {
+  const reloadProfile = useMemo(() => singleFlight(async () => {
     if (!user) {
       setProfile(defaultProfile);
-      return;
+      return true;
     }
 
     try {
@@ -83,19 +84,21 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         console.error("Failed to reload cloud profile:", error);
-        return;
+        return false;
       }
 
       if (data) {
         setProfile(data);
       }
+      return !!data;
     } catch (error) {
       console.error("Failed to reload cloud profile:", error);
+      return false;
     }
-  }, [user]);
+  }), [user]);
 
   useEffect(() => {
-    reloadProfile();
+    void reloadProfile();
   }, [reloadProfile]);
 
   const updateProfile = async (

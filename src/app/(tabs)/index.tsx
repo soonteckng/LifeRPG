@@ -1,1045 +1,372 @@
+import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect, useRouter } from "expo-router";
-import React, {
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import { useRouter } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
+import { homeWelcome } from "../../utils/homeWelcome";
+import { singleFlight } from "../../utils/singleFlight";
+import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
+import QuestSheet from "../../components/QuestSheet";
+import { useQuests } from "../../context/QuestContext";
+import { colors } from "../../constants/theme";
 import {
-  RefreshControl,
+  Alert,
   ScrollView,
+  useWindowDimensions,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
-import Header from "../../components/Header";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
-import {
-  getSubjects,
-  getTasks,
-  type Subject,
-  type Task,
-} from "../../services/taskService";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
+  const { height, fontScale } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const compact = height - insets.top - insets.bottom < 700 || fontScale > 1.15;
+  const tight = height - insets.top - insets.bottom < 610 || fontScale > 1.5;
+  const { profile, reloadProfile, hapticsEnabled } = useUser();
 
-  const {
-    profile,
-    reloadProfile,
-    hapticsEnabled,
-  } = useUser();
+  const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = useTimer();
+  const { tasks, error: questsError, refresh: refreshQuests } = useQuests();
 
-  const {
-    setLinkedTaskId,
-    setDurationInMinutes,
-    setTargetAttributeId,
-  } = useTimer();
-
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-
-  const [completedMinutes, setCompletedMinutes] =
-    useState(0);
-
-  const [goalCompleted, setGoalCompleted] =
-    useState(false);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const loadData = useCallback(async () => {
-    try {
-      const [
-        taskList,
-        subjectList,
-        progress,
-      ] = await Promise.all([
-        getTasks(),
-        getSubjects(),
-        getTodayProgress(),
-      ]);
-
-      setTasks(taskList);
-      setSubjects(subjectList);
-
-      setCompletedMinutes(
-        progress?.completed_minutes ?? 0,
-      );
-
-      setGoalCompleted(
-        progress?.goal_completed ?? false,
-      );
-
-      reloadProfile();
-    } catch (error) {
-      console.error(
-        "Failed to load Home data:",
-        error,
-      );
-    }
-  }, [reloadProfile]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData]),
-  );
-
-  const onRefresh = useCallback(async () => {
+  const [completedMinutes, setCompletedMinutes] = useState(0);
+  const [goalCompleted, setGoalCompleted] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [questsVisible, setQuestsVisible] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  const [contentHeight, setContentHeight] = useState(0);
+  const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
-
     try {
-      await loadData();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [loadData]);
+      const [progress, profileOK] = await Promise.all([getTodayProgress(), reloadProfile(), refreshQuests()]);
+      setCompletedMinutes(progress?.completed_minutes ?? 0);
+      setGoalCompleted(progress?.goal_completed ?? false);
+      setLoadError(profileOK === false);
+    } catch {
+      setLoadError(true);
+    } finally { setRefreshing(false); }
+  }), [reloadProfile, refreshQuests]);
+  const hour = useHomeLifecycle(loadData);
 
-  const dailyGoalMinutes =
-    profile?.daily_goal_minutes ?? 60;
+  // A successful completion updates the saved session summary before this fires.
+  // Refresh goal progress even while Home was covered by Session/rewards.
+  useEffect(() => {
+    if (sessionSummary) void loadData(true);
+  }, [sessionSummary, loadData]);
 
-  const safeCompletedMinutes = Math.max(
-    0,
-    completedMinutes,
-  );
-
+  const dailyGoalMinutes = profile?.daily_goal_minutes ?? 60;
+  const safeCompletedMinutes = Math.max(0, completedMinutes);
   const goalProgress = Math.min(
     1,
-    safeCompletedMinutes /
-      Math.max(1, dailyGoalMinutes),
+    safeCompletedMinutes / Math.max(1, dailyGoalMinutes),
   );
+  const remainingMinutes = Math.max(0, dailyGoalMinutes - safeCompletedMinutes);
 
-  const remainingMinutes = Math.max(
-    0,
-    dailyGoalMinutes -
-      safeCompletedMinutes,
-  );
-
-  const currentLevel =
-    profile?.level ?? 1;
-
-  const currentXP =
-    profile?.current_xp ?? 0;
-
-  const requiredXP = Math.floor(
-    100 *
-      Math.pow(
-        currentLevel,
-        1.5,
-      ),
-  );
-
-  const xpProgress = Math.min(
-    1,
-    currentXP /
-      Math.max(1, requiredXP),
-  );
+  const level = profile?.level ?? 1;
+  const currentXP = profile?.current_xp ?? 0;
+  const requiredXP = Math.floor(100 * Math.pow(level, 1.5));
 
   const activeTasks = useMemo(
-    () =>
-      tasks.filter(
-        (task) =>
-          task.is_due_today &&
-          !task.is_completed_today,
-      ),
+    () => tasks.filter((task) => task.is_due_today && !task.is_completed_today),
     [tasks],
   );
 
-  const previewTasks =
-    activeTasks.slice(0, 3);
+  const greeting = homeWelcome(hour, profile?.username);
+  const isGoalComplete = goalCompleted || remainingMinutes === 0;
+  const streakDays = Math.max(0, profile?.streak_count ?? 0);
+  const motivation = isGoalComplete ? "A little effort, real progress."
+    : hasOpenSession ? "Your next step is already underway."
+    : streakDays > 0 ? "Keep making time for what matters."
+    : "Progress starts with a little time.";
 
-  const getSubject = (
-    subjectId: number | null,
-  ) => {
-    if (subjectId === null) {
-      return null;
+  const openSession = () => {
+    setQuestsVisible(false);
+    if (hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
 
-    return (
-      subjects.find(
-        (subject) =>
-          subject.id === subjectId,
-      ) ?? null
-    );
+    router.navigate("/session");
   };
 
   const startFreeSession = () => {
-    if (hapticsEnabled) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium,
-      );
+    if (hasOpenSession) {
+      openSession();
+      return;
     }
 
     setLinkedTaskId(null);
     setTargetAttributeId(null);
     setDurationInMinutes(30);
-
-    router.push("/timer");
-  };
-
-  const startQuest = (task: Task) => {
-    if (hapticsEnabled) {
-      Haptics.impactAsync(
-        Haptics.ImpactFeedbackStyle.Medium,
-      );
-    }
-
-    setLinkedTaskId(task.id);
-
-    setDurationInMinutes(
-      task.target_minutes || 30,
-    );
-
-    setTargetAttributeId(
-      task.subject_id ?? null,
-    );
-
-    router.push("/timer");
+    openSession();
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Header
-        title="Home"
-        subtitle="Your daily progress"
-        showBack={false}
-      />
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={
-          styles.content
-        }
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#818CF8"
-          />
-        }
+    <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      {/* Keep Home fixed when it fits, with scrolling only for overflow. */}
+      <ScrollView style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
+        onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
+        onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: 16 },
+          compact && styles.compactContent,
+          tight && styles.tightContent,
+        ]}
       >
-        {/* HERO */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroTopRow}>
-            <View
-              style={styles.avatarCircle}
-            >
-              <Text style={styles.avatarText}>
-                {profile?.avatar || "🧙‍♂️"}
-              </Text>
-            </View>
-
-            <View
-              style={styles.heroInfo}
-            >
-              <Text
-                style={styles.greeting}
-              >
-                Welcome back
-              </Text>
-
-              <Text
-                style={styles.username}
-                numberOfLines={1}
-              >
-                {profile?.username || "Hero"}
-              </Text>
-
-              <Text
-                style={styles.classTitle}
-              >
-                Lv {currentLevel}{" "}
-                {profile?.class_title ||
-                  "Adventurer"}
-              </Text>
-            </View>
-
-            <View
-              style={styles.goldBadge}
-            >
-              <Text style={styles.goldText}>
-                💰 {profile?.gold ?? 0}
-              </Text>
-            </View>
+        <View style={[styles.homeHeader, tight && styles.tightHeader]}>
+          <Text style={[styles.greeting, compact && styles.compactGreeting, tight && styles.tightGreeting]}>
+            {greeting}
+          </Text>
+          <View style={styles.momentum}>
+            <Ionicons name={streakDays > 0 ? "flame-outline" : "leaf-outline"} size={19} color={colors.accent} />
+            <Text style={styles.momentumTitle}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text>
           </View>
-
-          <View
-            style={styles.xpSection}
-          >
-            <View
-              style={styles.xpHeader}
-            >
-              <Text
-                style={styles.xpLabel}
-              >
-                XP
-              </Text>
-
-              <Text
-                style={styles.xpValue}
-              >
-                {currentXP} / {requiredXP}
-              </Text>
+          <Text style={styles.welcomeSubtitle} maxFontSizeMultiplier={1.4}>{motivation}</Text>
+          {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
+            accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
+            <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
+          </TouchableOpacity>}
+          <View style={[styles.character, tight && styles.tightCharacter]}>
+            <View style={styles.characterRow}>
+              <View style={[styles.avatar, tight && styles.tightAvatar]}><Text style={styles.avatarText} maxFontSizeMultiplier={1.2}>{profile?.avatar || "🧙‍♂️"}</Text></View>
+              <View style={styles.identity}>
+                <Text style={styles.level} maxFontSizeMultiplier={1.4}>Level {level}</Text>
+                <Text style={styles.classTitle} numberOfLines={1} maxFontSizeMultiplier={1.4}>{profile?.class_title || "Adventurer"}</Text>
+              </View>
+              <View style={styles.quietStats}>
+                <Text style={styles.goldText} maxFontSizeMultiplier={1.3}>{(profile?.gold ?? 0).toLocaleString()} <Text style={styles.statLabel}>gold</Text></Text>
+                
+              </View>
             </View>
-
-            <View
-              style={
-                styles.progressBackground
-              }
-            >
-              <View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${
-                      xpProgress * 100
-                    }%`,
-                  },
-                ]}
-              />
+            <View style={[styles.xpHeader, tight && styles.tightXPHeader]}>
+              <Text style={styles.smallLabel} maxFontSizeMultiplier={1.3}>{Math.max(0, requiredXP - currentXP).toLocaleString()} XP to level {level + 1}</Text>
+            </View>
+            <View style={styles.xpTrack} accessible accessibilityRole="progressbar" accessibilityLabel={"Level " + level + " progress"}
+              accessibilityValue={{ min: 0, max: requiredXP, now: currentXP, text: currentXP + " of " + requiredXP + " XP" }}>
+              <View style={[styles.xpFill, { width: (Math.max(0, Math.min(1, currentXP / Math.max(1, requiredXP))) * 100) + "%" as `${number}%` }]} />
             </View>
           </View>
         </View>
 
-        {/* DAILY GOAL */}
-        <View style={styles.goalCard}>
-          <View
-            style={styles.sectionHeader}
-          >
-            <View>
-              <Text
-                style={styles.sectionLabel}
-              >
-                TODAY'S GOAL
-              </Text>
-
-              <Text
-                style={styles.goalTitle}
-              >
-                {goalCompleted
-                  ? "Goal complete 🎉"
-                  : `${safeCompletedMinutes} / ${dailyGoalMinutes} min`}
-              </Text>
-            </View>
-
-            <Text
-              style={styles.goalPercentage}
-            >
-              {Math.round(
-                goalProgress * 100,
-              )}
-              %
+        <View style={[styles.goalCard, compact && styles.compactGoal, tight && styles.tightGoal]}>
+          <View style={styles.goalHeader}>
+            <Text style={styles.goalTitle}>{"Today's goal"}</Text>
+            <Text style={styles.goalPercent}>
+              {Math.round(goalProgress * 100)}%
             </Text>
           </View>
-
-          <View
-            style={
-              styles.goalProgressBackground
-            }
-          >
+          <Text maxFontSizeMultiplier={1.3} style={[styles.goalValue, compact && styles.compactGoalValue]}>
+            {isGoalComplete
+              ? "Goal complete 🎉"
+              : `${safeCompletedMinutes} / ${dailyGoalMinutes} min`}
+          </Text>
+          <View style={[styles.goalTrack, tight && styles.tightGoalTrack]}>
             <View
-              style={[
-                styles.goalProgressFill,
-                {
-                  width: `${goalProgress * 100}%`,
-                },
-              ]}
+              style={[styles.goalFill, { width: `${goalProgress * 100}%` }]}
             />
           </View>
-
-          <Text
-            style={styles.goalSubtext}
-          >
-            {goalCompleted
-              ? "You've completed today's Daily Goal."
-              : `${remainingMinutes} min remaining today`}
+          <Text style={[styles.goalHint, tight && styles.tightGoalHint]} maxFontSizeMultiplier={1.3}>
+            {isGoalComplete
+              ? "Nice work. Take a moment to enjoy it."
+              : tight ? `${remainingMinutes} minutes to your goal.` : `${remainingMinutes} minutes remaining. One session closer.`}
           </Text>
+        </View>
 
-          <TouchableOpacity
-            style={styles.startSessionButton}
-            onPress={startFreeSession}
-            activeOpacity={0.85}
+        <View style={[styles.focusSection, tight && styles.tightFocus]}>
+          <Text
+            maxFontSizeMultiplier={1.4} style={[styles.focusTitle, compact && styles.compactFocusTitle]}
           >
-            <Text
-              style={styles.startSessionText}
-            >
-              START SESSION
-            </Text>
-
-            <Text
-              style={styles.startSessionSubtext}
-            >
-              Focus on whatever matters right now
+            {hasOpenSession
+              ? tight ? "Pick up where you left off." : "Let's pick up where you left off."
+              : "Ready to focus?"}
+          </Text>
+          <Text style={styles.focusHint} maxFontSizeMultiplier={1.3}>
+            {hasOpenSession
+              ? "Your current session is waiting for you."
+              : tight ? "One session closer to your goals." : "Choose what you're doing and make a little progress."}
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.primaryButton,
+              compact && styles.compactPrimaryButton,
+              tight && styles.tightPrimaryButton,
+            ]}
+            onPress={startFreeSession}
+            onLongPress={typeof __DEV__ !== "undefined" && __DEV__ ? () => Alert.alert("Native Session transition", "Compare the minimal screen with Session. Close and reopen to test Android back separately.", [
+              { text: "Card baseline", onPress: () => router.navigate({ pathname: "/session-transition-test", params: { mode: "card" } }) },
+              { text: "Retained Home", onPress: () => router.navigate({ pathname: "/session-transition-test", params: { mode: "retained" } }) },
+              { text: "Cancel", style: "cancel" },
+            ]) : undefined}
+            activeOpacity={0.88}
+            accessibilityRole="button"
+          >
+            <Ionicons name="play" size={18} color="#171827" />
+            <Text style={styles.primaryButtonText} maxFontSizeMultiplier={1.4}>
+              {hasOpenSession ? "Continue session" : "Start session"}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* QUESTS */}
-        <View style={styles.sectionBlock}>
-          <View
-            style={styles.sectionTitleRow}
-          >
-            <Text
-              style={styles.sectionTitle}
-            >
-              TODAY'S QUESTS
-            </Text>
-
-            <TouchableOpacity
-              onPress={() =>
-                router.push("/tasks")
-              }
-            >
-              <Text
-                style={styles.viewAllText}
-              >
-                View all
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {previewTasks.length === 0 ? (
-            <View
-              style={styles.emptyQuestCard}
-            >
-              <Text
-                style={styles.emptyQuestIcon}
-              >
-                ✨
-              </Text>
-
-              <Text
-                style={styles.emptyQuestTitle}
-              >
-                No quests waiting
-              </Text>
-
-              <Text
-                style={styles.emptyQuestText}
-              >
-                You can start a free session
-                or add a quest when you
-                need more structure.
-              </Text>
-
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() =>
-                  router.push("/tasks")
-                }
-              >
-                <Text
-                  style={
-                    styles.secondaryButtonText
-                  }
-                >
-                  ADD A QUEST
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            previewTasks.map((task) => {
-              const subject =
-                getSubject(
-                  task.subject_id,
-                );
-
-              return (
-                <View
-                  key={task.id}
-                  style={
-                    styles.questCard
-                  }
-                >
-                  <View
-                    style={
-                      styles.questMain
-                    }
-                  >
-                    <View
-                      style={
-                        styles.questIcon
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.questIconText
-                        }
-                      >
-                        📜
-                      </Text>
-                    </View>
-
-                    <View
-                      style={
-                        styles.questInfo
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.questTitle
-                        }
-                        numberOfLines={2}
-                      >
-                        {task.title}
-                      </Text>
-
-                      <View
-                        style={
-                          styles.questMeta
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.questMetaText
-                          }
-                        >
-                          {task.target_minutes ||
-                            30}{" "}
-                          min
-                        </Text>
-
-                        {subject && (
-                          <>
-                            <Text
-                              style={
-                                styles.metaDot
-                              }
-                            >
-                              •
-                            </Text>
-
-                            <Text
-                              style={[
-                                styles.questMetaText,
-                                {
-                                  color:
-                                    subject.color_code ??
-                                    "#818CF8",
-                                },
-                              ]}
-                            >
-                              {
-                                subject.title
-                              }
-                            </Text>
-                          </>
-                        )}
-                      </View>
-                    </View>
-                  </View>
-
-                  <TouchableOpacity
-                    style={
-                      styles.questStartButton
-                    }
-                    onPress={() =>
-                      startQuest(task)
-                    }
-                    activeOpacity={0.85}
-                  >
-                    <Text
-                      style={
-                        styles.questStartText
-                      }
-                    >
-                      START
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })
-          )}
-
-          {activeTasks.length > 3 && (
-            <TouchableOpacity
-              style={
-                styles.viewMoreButton
-              }
-              onPress={() =>
-                router.push("/tasks")
-              }
-            >
-              <Text
-                style={
-                  styles.viewMoreText
-                }
-              >
-                View {activeTasks.length - 3}{" "}
-                more quest
-                {activeTasks.length - 3 ===
-                1
-                  ? ""
-                  : "s"}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* STREAK */}
-        <View
-          style={styles.streakCard}
+        <TouchableOpacity
+          style={[styles.questsButton, tight && styles.tightQuestsButton]}
+          onPress={() => {
+            setQuestsVisible(true);
+          }}
+          activeOpacity={0.85}
+          accessibilityRole="button"
+          accessibilityLabel={`Today's quests, ${activeTasks.length} pending`}
+          accessibilityHint="Opens your quests for today"
         >
-          <View
-            style={styles.streakIcon}
-          >
-            <Text
-              style={
-                styles.streakIconText
-              }
-            >
-              🔥
-            </Text>
-          </View>
-
-          <View
-            style={styles.streakInfo}
-          >
-            <Text
-              style={
-                styles.streakTitle
-              }
-            >
-              {profile?.streak_count ?? 0} day
-              streak
-            </Text>
-
-            <Text
-              style={
-                styles.streakText
-              }
-            >
-              Complete your Daily Goal
-              to keep it going.
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={styles.bottomSpace}
-        />
+          <Ionicons name="checkbox-outline" size={22} color="#A5B4FC" />
+          <Text style={styles.questsButtonTitle} maxFontSizeMultiplier={1.5}>{"Today's quests"}</Text>
+          {activeTasks.length > 0 && (
+            <View style={styles.countBadge}>
+              <Text style={styles.countText}>
+                {activeTasks.length > 99 ? "99+" : activeTasks.length}
+              </Text>
+            </View>
+          )}
+          <Ionicons name="chevron-forward" size={19} color="#8992A6" />
+        </TouchableOpacity>
       </ScrollView>
+
+      <QuestSheet visible={questsVisible} onClose={() => setQuestsVisible(false)} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#090D16",
-  },
-
+  container: { flex: 1, backgroundColor: "#0B0D13" },
+  viewport: { flex: 1 },
   content: {
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-  },
-
-  heroCard: {
-    marginTop: 6,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.10)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.20)",
-  },
-
-  heroTopRow: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  avatarCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 18,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.18)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  avatarText: {
-    fontSize: 28,
-  },
-
-  heroInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 12,
-  },
-
-  greeting: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "700",
-  },
-
-  username: {
-    color: "#F8FAFC",
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 2,
-  },
-
-  classTitle: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "800",
-    marginTop: 3,
-  },
-
-  goldBadge: {
-    paddingHorizontal: 9,
-    paddingVertical: 7,
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(245, 158, 11, 0.10)",
-  },
-
-  goldText: {
-    color: "#FBBF24",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  xpSection: {
-    marginTop: 18,
-  },
-
-  xpHeader: {
-    flexDirection: "row",
+    flexGrow: 1,
+    paddingHorizontal: 22,
+    paddingTop: 12,
     justifyContent: "space-between",
-    marginBottom: 7,
+    gap: 24,
   },
-
-  xpLabel: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-  },
-
-  xpValue: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "800",
-  },
-
-  progressBackground: {
-    height: 7,
-    borderRadius: 4,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.07)",
-    overflow: "hidden",
-  },
-
-  progressFill: {
-    height: "100%",
-    borderRadius: 4,
-    backgroundColor: "#818CF8",
-  },
-
+  compactContent: { paddingTop: 4, gap: 12 },
+  tightContent: { gap: 8, paddingTop: 2 },
+  retry: { minHeight: 44, justifyContent: "center" },
+  retryText: { color: colors.accent, fontSize: 12 },
+  homeHeader: { gap: 9 },
+  momentum: { flexDirection: "row", alignItems: "center", gap: 7, marginTop: 5 },
+  momentumTitle: { color: colors.accent, fontSize: 16, fontWeight: "600", flexShrink: 1 },
+  tightHeader: { gap: 4 },
+  welcomeHeading: { flexDirection: "row", alignItems: "center", gap: 12 },
+  welcomeIdentity: { flex: 1, minWidth: 0, gap: 3 },
+  welcomeSalutation: { color: colors.secondary, fontSize: 14 },
+  greeting: { color: colors.text, fontSize: 25, fontWeight: "600", letterSpacing: -0.5 },
+  compactGreeting: { fontSize: 24 },
+  tightGreeting: { fontSize: 22 },
+  welcomeSubtitle: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  character: { marginTop: 7, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  tightCharacter: { marginTop: 4, paddingTop: 8 },
+  characterRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  avatar: { width: 40, height: 44, alignItems: "center", justifyContent: "center" },
+  tightAvatar: { height: 36, width: 36 },
+  avatarText: { fontSize: 29 },
+  identity: { flex: 1, minWidth: 0, gap: 4 },
+  classTitle: { color: colors.secondary, fontSize: 12, fontWeight: "400" },
+  level: { color: colors.text, fontSize: 18, fontWeight: "600" },
+  quietStats: { alignItems: "flex-end", gap: 5, flexShrink: 1 },
+  goldText: { color: "#D7C69C", fontSize: 13, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  statLabel: { color: colors.secondary, fontWeight: "400", fontSize: 11 },
+  streak: { color: colors.secondary, fontSize: 11 },
+  xpHeader: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 4, marginTop: 13, marginBottom: 7 },
+  tightXPHeader: { marginTop: 8, marginBottom: 5 },
+  smallLabel: { color: colors.muted, fontSize: 11 },
+  xpValue: { color: colors.secondary, fontSize: 11, fontVariant: ["tabular-nums"] },
+  xpTrack: { height: 4, borderRadius: 2, backgroundColor: colors.line, overflow: "hidden" },
+  xpFill: { height: "100%", borderRadius: 2, backgroundColor: colors.accentFill },
   goalCard: {
-    marginTop: 14,
-    padding: 18,
-    borderRadius: 22,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.045)",
+    padding: 17,
+    borderRadius: 23,
+    backgroundColor: "#171A28",
     borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.09)",
+    borderColor: "rgba(165,180,252,0.10)",
   },
-
-  sectionHeader: {
+  compactGoal: { padding: 15 },
+  tightGoal: { padding: 12 },
+  goalHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
+    alignItems: "center",
     justifyContent: "space-between",
   },
-
-  sectionLabel: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.9,
+  goalTitle: { color: "#C5CCDC", fontSize: 13, fontWeight: "600" },
+  goalPercent: { color: "#A5B4FC", fontSize: 13, fontWeight: "700" },
+  goalValue: {
+    color: "#F5F7FA",
+    fontSize: 27,
+    fontWeight: "700",
+    marginTop: 7,
   },
-
-  goalTitle: {
-    color: "#F8FAFC",
-    fontSize: 22,
-    fontWeight: "900",
-    marginTop: 5,
-  },
-
-  goalPercentage: {
-    color: "#A5B4FC",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-
-  goalProgressBackground: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.07)",
+  compactGoalValue: { fontSize: 23 },
+  goalTrack: {
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.07)",
     overflow: "hidden",
     marginTop: 14,
   },
-
-  goalProgressFill: {
-    height: "100%",
-    borderRadius: 5,
-    backgroundColor: "#6366F1",
-  },
-
-  goalSubtext: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "700",
-    marginTop: 8,
-  },
-
-  startSessionButton: {
-    height: 54,
-    borderRadius: 15,
-    backgroundColor: "#6366F1",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 16,
-  },
-
-  startSessionText: {
-    color: "#FFFFFF",
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-
-  startSessionSubtext: {
-    color: "#C7D2FE",
-    fontSize: 9,
-    fontWeight: "700",
-    marginTop: 3,
-  },
-
-  sectionBlock: {
-    marginTop: 22,
-  },
-
-  sectionTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 10,
-  },
-
-  sectionTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-
-  viewAllText: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  questCard: {
-    padding: 14,
-    borderRadius: 17,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.045)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    marginBottom: 9,
-  },
-
-  questMain: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  questIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  questIconText: {
-    fontSize: 18,
-  },
-
-  questInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 11,
-  },
-
-  questTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "800",
-  },
-
-  questMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 5,
-  },
-
-  questMetaText: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "700",
-  },
-
-  metaDot: {
-    color: "#475569",
-    fontSize: 9,
-  },
-
-  questStartButton: {
-    height: 36,
-    borderRadius: 10,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.16)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 11,
-  },
-
-  questStartText: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-
-  emptyQuestCard: {
-    padding: 22,
-    borderRadius: 17,
-    backgroundColor:
-      "rgba(255, 255, 255, 0.035)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255, 255, 255, 0.08)",
-    alignItems: "center",
-  },
-
-  emptyQuestIcon: {
-    fontSize: 26,
-  },
-
-  emptyQuestTitle: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "900",
-    marginTop: 8,
-  },
-
-  emptyQuestText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-    textAlign: "center",
-    marginTop: 5,
-  },
-
-  secondaryButton: {
-    height: 40,
-    paddingHorizontal: 16,
-    borderRadius: 11,
-    backgroundColor:
-      "rgba(99, 102, 241, 0.12)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129, 140, 248, 0.20)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 14,
-  },
-
-  secondaryButtonText: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  viewMoreButton: {
-    paddingVertical: 11,
-    alignItems: "center",
-  },
-
-  viewMoreText: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-
-  streakCard: {
-    marginTop: 22,
-    padding: 16,
+  goalFill: { height: "100%", borderRadius: 999, backgroundColor: "#9195ED" },
+  tightGoalTrack: { marginTop: 10 },
+  goalHint: { color: "#A1A8B8", fontSize: 12, lineHeight: 17, marginTop: 9 },
+  tightGoalHint: { marginTop: 6 },
+  focusSection: { gap: 7 },
+  tightFocus: { gap: 5 },
+  focusTitle: { color: "#F2F4F8", fontSize: 22, fontWeight: "600" },
+  compactFocusTitle: { fontSize: 19 },
+  focusHint: { color: "#A1A8B8", fontSize: 13, lineHeight: 19 },
+  primaryButton: {
+    minHeight: 60,
     borderRadius: 18,
-    backgroundColor:
-      "rgba(245, 158, 11, 0.07)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(245, 158, 11, 0.14)",
+    backgroundColor: "#E8E9FF",
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    marginTop: 9,
+    padding: 14,
   },
-
-  streakIcon: {
-    width: 42,
-    height: 42,
+  compactPrimaryButton: { minHeight: 52, marginTop: 5 },
+  tightPrimaryButton: { minHeight: 48, marginTop: 4, padding: 12 },
+  primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "700" },
+  questsButton: {
+    minHeight: 60,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 17,
+    backgroundColor: "rgba(165,180,252,0.05)",
+  },
+  questsButtonTitle: {
+    flex: 1,
+    color: "#E4E8F1",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  tightQuestsButton: { minHeight: 52, paddingVertical: 10 },
+  countBadge: {
+    minWidth: 27,
+    height: 27,
+    paddingHorizontal: 7,
     borderRadius: 14,
-    backgroundColor:
-      "rgba(245, 158, 11, 0.10)",
+    backgroundColor: colors.accentFill,
     alignItems: "center",
     justifyContent: "center",
   },
-
-  streakIconText: {
-    fontSize: 21,
-  },
-
-  streakInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-
-  streakTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-
-  streakText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 3,
-  },
-
-  bottomSpace: {
-    height: 30,
-  },
+  countText: { color: "#0B0D13", fontSize: 12, fontWeight: "700" },
 });

@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Header from "../../components/Header";
 import { useUser } from "../../context/UserContext";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 
 const PRESET_AVATARS = [
   "🧙‍♂️",
@@ -28,6 +29,7 @@ const PRESET_AVATARS = [
 ];
 
 export default function ProfileScreen() {
+  const reducedMotion = useReducedMotion();
   const router = useRouter();
   const {
     profile,
@@ -249,7 +251,7 @@ export default function ProfileScreen() {
         <Modal
           visible={successModalVisible}
           transparent={true}
-          animationType="fade"
+          animationType={reducedMotion ? "none" : "fade"}
           onRequestClose={() => setSuccessModalVisible(false)}
         >
           <View style={styles.modalOverlay}>
