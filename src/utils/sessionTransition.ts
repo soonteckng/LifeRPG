@@ -13,6 +13,9 @@ export function sessionNativeOptions(reducedMotion: boolean) {
   };
 }
 
+// Opt in only while investigating native transitions; normal Expo Go stays quiet.
+const transitionDebug = __DEV__ && process.env.EXPO_PUBLIC_DEBUG_SESSION_TRANSITIONS === "true";
+
 export function traceSession(event: string, details: Record<string, unknown> = {}) {
-  if (__DEV__) console.debug("[Session transition]", event, { at: Date.now(), ...details });
+  if (transitionDebug) console.debug("[Session transition]", event, { at: Date.now(), ...details });
 }

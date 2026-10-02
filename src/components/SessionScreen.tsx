@@ -91,7 +91,7 @@ export default function SessionScreen() {
     if (layerDismissed || closing.current) return;
     closing.current = true;
     // Target this screen’s native stack directly; never replace/unmount it to close.
-    if (__DEV__) console.debug("[Session] close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
+    traceSession("native stack close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
     if (navigation.canGoBack()) {
       if (Platform.OS === "android") {
         traceSession("controlled exit start", { reducedMotion });
@@ -122,11 +122,11 @@ export default function SessionScreen() {
   }, []);
   useEffect(() => {
     const start = navigation.addListener("transitionStart" as never, ((event: { data: { closing: boolean } }) => {
-      if (__DEV__) console.debug("[Session] transitionStart", { closing: event.data.closing });
+      traceSession("native transitionStart", { closing: event.data.closing });
     }) as never);
     const end = navigation.addListener("transitionEnd" as never, ((event: { data: { closing: boolean } }) => {
       if (Platform.OS !== "android") closing.current = false;
-      if (__DEV__) console.debug("[Session] transitionEnd", { closing: event.data.closing });
+      traceSession("native transitionEnd", { closing: event.data.closing });
     }) as never);
     return () => { start(); end(); };
   }, [navigation]);
@@ -176,7 +176,10 @@ export default function SessionScreen() {
     else start();
   };
   const title = timer.sessionSummary?.questTitle || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : "Free session");
-  const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Session complete" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "● Session running" : "Paused" : "Ready when you are";
+  const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "● Session running" : "Paused" : "Ready when you are";
+  const displayedSeconds = phase === "setup" ? timer.duration
+    : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
+    : timer.timeLeft;
   const disabled = timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
   const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
@@ -196,7 +199,7 @@ export default function SessionScreen() {
         <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, height < 700 && styles.compactAnchor]}>
           <Text style={[styles.status, { height: Math.ceil(22 * fontScale) }]} numberOfLines={1} adjustsFontSizeToFit accessibilityLiveRegion="polite">{status}</Text>
           <View style={[styles.timerControl, { marginTop: 16 }]}>
-            <DurationPicker seconds={phase === "setup" ? timer.duration : timer.timeLeft} interactive={phase === "setup" && !isQuest && !locked}
+            <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
               revision={durationRevision}
               onCommit={(seconds) => { if (durationEpoch.current === durationRevision && !locked) timer.setDurationInSeconds(seconds); }}
               onBusy={(busy) => { if (durationEpoch.current === durationRevision) { wheelBusyRef.current = busy; setWheelBusy(busy); } }}

@@ -292,3 +292,20 @@ the finger.
 Regression coverage was added for Home progress refresh, duration editor wheel
 stability, and session swipe priority. Automated checks and device behavior
 remain to be run in an available coding workspace.
+
+
+## Completed timer display and transition diagnostics
+
+After completion is saved, the anchored timer displays the exact saved duration
+under “Time focused”. Pending or failed saves remain at zero with their existing
+status and Retry; running and paused states continue showing remaining time.
+No timer data or reward calculations change.
+
+Verbose transition diagnostics are now opt-in with
+EXPO_PUBLIC_DEBUG_SESSION_TRANSITIONS=true in development. Restart Metro after
+changing this setting. Ordinary Expo Go navigation no longer prints transition
+traces; real warnings and errors remain available.
+
+A regression test covers saved duration, pending/failed completion and paused
+countdown. This follow-up was reviewed through GitHub; automated checks and
+native device validation could not be run without a connected coding workspace.

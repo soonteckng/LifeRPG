@@ -286,6 +286,22 @@ test("timer anchor and countdown stay mounted with identical layout across setup
   await ui.cleanup();
 });
 
+test("saved completion displays focused duration while unsaved completion stays at zero",async()=>{
+  const ui=await screenSetup({isCompleted:true,timeLeft:0,duration:1800});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,0);
+  assert.match(ui.output(),/Saving your session/);
+  await ui.update({actionError:"Couldn’t save completion"});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,0);
+  assert.match(ui.output(),/Completion needs attention/);
+  await ui.update({actionError:null,sessionSummary:{durationSeconds:1859,minutesSpent:30,xpEarned:30,goldEarned:5,questTitle:"Read"}});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,1859);
+  assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+  assert.match(ui.output(),/Time focused/);
+  await ui.update({isCompleted:false,hasOpenSession:true,isRunning:false,sessionSummary:null,timeLeft:900});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,900);
+  await ui.cleanup();
+});
+
 test("quest setup is compact, keeps its association during loading, and never starts automatically",async()=>{
   const ui=await screenSetup({linkedTaskId:7,duration:2700,timeLeft:2700});
   assert.match(ui.output(),/A long quest title/);
