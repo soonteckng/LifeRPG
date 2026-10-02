@@ -470,6 +470,13 @@ test("foreground recovery and notifications retain exact remaining seconds",asyn
 });
 function durationModule(calls = [], hapticsEnabled = false) {
   return load("src/components/DurationPicker.tsx",{
+    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll"),BottomSheetTextInput:host("Input")},
+    "./AppSheet":function Sheet(props) {
+      // Model completed dismissal so closing unmounts the abandoned draft.
+      // Native animation/gesture behavior belongs to phone verification.
+      React.useEffect(()=>{if(!props.visible) props.onDismiss?.();},[props.visible]);
+      return props.visible ? React.createElement("Sheet",props,props.header,props.children) : null;
+    },
     "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),TextInput:host("Input"),Modal:host("Modal"),ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),
       Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:host("Wheel"),event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
       FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
