@@ -35,7 +35,7 @@ export const INTRO_PAGES: {
   {
     icon: "checkmark-circle-outline",
     title: "Give your day a direction",
-    body: "Quests add optional structure. Your daily goal is a separate commitment, recognised when you reach it. Start small and build a rhythm that suits you.",
+    body: "Quests add optional structure. Your daily goal is a separate commitment, recognised when you reach it. Edit your daily focus goal in Settings. Changes start on the next local day in your progress time zone; today and earned achievements stay unchanged.",
   },
   {
     icon: "ribbon-outline",

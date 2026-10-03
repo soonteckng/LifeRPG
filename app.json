@@ -15,6 +15,7 @@
       "url": "https://u.expo.dev/1030d96a-3a08-4d88-91cc-51c892688fea"
     },
     "ios": {
+      "bundleIdentifier": "com.soonteck.liferpg",
       "icon": "./assets/expo.icon",
       "backgroundColor": "#0F172A"
     },

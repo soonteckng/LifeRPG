@@ -710,3 +710,13 @@ test("iOS Session uses one controlled vertical exit and preserves the running ti
   assert.equal(ui.calls.some(c=>["pause","reset"].includes(c[0])),false);
   await ui.cleanup();
 });
+test("mounting the session provider does not prompt for denied notification permission", async () => {
+  let prompts = 0;
+  const ui = await providerSetup({}, {
+    getPermissionsAsync: async () => ({ status: "denied", granted: false }),
+    requestPermissionsAsync: async () => { prompts++; return { status: "granted" }; },
+    addNotificationResponseReceivedListener: () => ({ remove() {} }),
+  });
+  try { assert.equal(prompts, 0); }
+  finally { await ui.cleanup(); }
+});

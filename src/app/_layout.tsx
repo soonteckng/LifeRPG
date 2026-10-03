@@ -1,5 +1,5 @@
 import { Stack, usePathname, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   BackHandler,
   Platform,
@@ -12,6 +12,7 @@ import Constants from "expo-constants";
 
 import { PersonalButton, p } from "../components/PersonalUI";
 import AuthScreen from "../components/AuthScreen";
+import RecoveryScreen from "../components/RecoveryScreen";
 import LevelUpModal from "../components/LevelUpModal";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider, useTimer } from "../context/TimerContext";
@@ -215,6 +216,7 @@ function AppContent() {
               options={secondaryNativeOptions(reducedMotion)}
             />
           </Stack.Protected>
+          <Stack.Protected guard={!profile.onboarding_completed}>
           <Stack.Screen
             name="onboarding"
             options={{
@@ -222,6 +224,7 @@ function AppContent() {
               gestureEnabled: false,
             }}
           />
+          </Stack.Protected>
           <Stack.Screen
             name="tutorial"
             options={{
@@ -284,8 +287,27 @@ function ProfileGate() {
   return <AppContent />;
 }
 
+function SessionVerificationError({ onRetry, onSignOut }: {
+  onRetry: () => Promise<void>; onSignOut: () => Promise<{ error: Error | null }>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const lock = useRef(false);
+  const run = async (action: () => Promise<unknown>) => {
+    if (lock.current) return; lock.current = true; setBusy(true); setError("");
+    try { await action(); } catch { setError("Could not complete that action. Check your connection and retry."); }
+    finally { lock.current = false; setBusy(false); }
+  };
+  return <View style={[p.page, { justifyContent: "center", padding: 28, gap: 18 }]}>
+    <Text style={p.error}>Could not verify your session. Connect to the internet and try again.</Text>
+    <PersonalButton title="Retry session verification" disabled={busy} onPress={() => void run(onRetry)} />
+    <PersonalButton secondary title="Return to sign in" disabled={busy} onPress={() => void run(async () => { const result = await onSignOut(); if (result.error) throw result.error; })} />
+    {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
+  </View>;
+}
+
 function AuthGate() {
-  const { user, loading } = useAuth();
+  const { user, loading, recovery, sessionError, retrySessionVerification, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -294,6 +316,10 @@ function AuthGate() {
       </View>
     );
   }
+
+  if (recovery !== "none") return <RecoveryScreen key={recovery} />;
+
+  if (sessionError) return <SessionVerificationError onRetry={retrySessionVerification} onSignOut={signOut} />;
 
   if (!user) {
     return <AuthScreen />;

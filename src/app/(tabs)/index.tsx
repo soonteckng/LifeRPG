@@ -42,6 +42,7 @@ export default function HomeScreen() {
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [goalCompleted, setGoalCompleted] = useState(false);
+  const [todayGoal, setTodayGoal] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [questsVisible, setQuestsVisible] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -50,8 +51,9 @@ export default function HomeScreen() {
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
-      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
+      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
       if (streak !== undefined) setFocusStreak(streak);
+      setTodayGoal(progress?.goal_minutes ?? null);
       setCompletedMinutes(progress?.completed_minutes ?? 0);
       setGoalCompleted(progress?.goal_completed ?? false);
       setLoadError(profileOK === false || streak === undefined);
@@ -67,7 +69,7 @@ export default function HomeScreen() {
     if (sessionSummary) void loadData(true);
   }, [sessionSummary, loadData]);
 
-  const dailyGoalMinutes = profile?.daily_goal_minutes ?? 60;
+  const dailyGoalMinutes = todayGoal ?? profile?.daily_goal_minutes ?? 60;
   const safeCompletedMinutes = Math.max(0, completedMinutes);
   const goalProgress = Math.min(
     1,

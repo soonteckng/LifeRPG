@@ -15,7 +15,8 @@ import { useUser } from "../context/UserContext";
 import { PersonalButton, p } from "../components/PersonalUI";
 import CharacterPortrait from "../components/CharacterPortrait";
 import { colors } from "../constants/theme";
-const AVATARS = ["🧙‍♂️", "🏋️", "🧑‍💻", "🎨", "🌱", "🥷"];
+import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
+import { CHARACTER_BADGES } from "../constants/characterBadges";
 export default function OnboardingScreen() {
   const router = useRouter();
   const { profile, reloadProfile } = useUser();
@@ -33,6 +34,8 @@ export default function OnboardingScreen() {
       setError("Enter a name between 1 and 40 characters.");
       return;
     }
+    const goalError = validateDailyGoal(goal);
+    if (goalError) { setError(goalError); return; }
     lock.current = true;
     setBusy(true);
     setError("");
@@ -43,7 +46,7 @@ export default function OnboardingScreen() {
         profile.class_title || "Adventurer",
         goal,
       );
-      await reloadProfile();
+      if (!(await reloadProfile())) throw new Error("Profile refresh failed");
       router.replace("/tutorial");
     } catch {
       setError(
@@ -83,7 +86,7 @@ export default function OnboardingScreen() {
           />
           <Text style={p.rowTitle}>Choose a character badge</Text>
           <View style={[p.inline, { flexWrap: "wrap" }]}>
-            {AVATARS.map((item) => (
+            {CHARACTER_BADGES.map((item) => (
               <Pressable
                 key={item}
                 disabled={busy}
@@ -111,7 +114,7 @@ export default function OnboardingScreen() {
             session counts as showing up.
           </Text>
           <View style={[p.inline, { flexWrap: "wrap" }]}>
-            {[30, 60, 90, 120].map((minutes) => (
+            {DAILY_GOAL_PRESETS.map((minutes) => (
               <Pressable
                 key={minutes}
                 disabled={busy}

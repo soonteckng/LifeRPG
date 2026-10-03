@@ -12,6 +12,8 @@ import { useAuth } from "../context/AuthContext";
 import { PersonalButton, p } from "./PersonalUI";
 import CharacterPortrait from "./CharacterPortrait";
 import { colors } from "../constants/theme";
+import PasswordInput from "./PasswordInput";
+import RecoveryScreen from "./RecoveryScreen";
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
   const [email, setEmail] = useState(""),
@@ -21,6 +23,7 @@ export default function AuthScreen() {
   const [message, setMessage] = useState(""),
     [error, setError] = useState("");
   const lock = useRef(false);
+  const [forgot, setForgot] = useState(false);
   const submit = async () => {
     if (lock.current) return;
     setMessage("");
@@ -37,7 +40,7 @@ export default function AuthScreen() {
         if (result.error) throw result.error;
         if (result.needsEmailConfirmation) {
           setMessage(
-            "Check your email to confirm your account, then sign in here.",
+            "If registration can be completed for this email, check your inbox for next steps. If you already have an account, sign in or use Forgot password.",
           );
           setRegister(false);
           setPassword("");
@@ -57,6 +60,7 @@ export default function AuthScreen() {
       setBusy(false);
     }
   };
+  if (forgot) return <RecoveryScreen requestOnly onBack={() => setForgot(false)} />;
   return (
     <SafeAreaView style={p.page}>
       <KeyboardAvoidingView
@@ -98,13 +102,12 @@ export default function AuthScreen() {
             value={email}
             onChangeText={setEmail}
           />
-          <TextInput
+          <PasswordInput
             accessibilityLabel="Password"
             editable={!busy}
             style={p.input}
             placeholder="Password"
             placeholderTextColor={colors.muted}
-            secureTextEntry
             autoCapitalize="none"
             autoComplete={register ? "new-password" : "current-password"}
             textContentType={register ? "newPassword" : "password"}
@@ -112,6 +115,7 @@ export default function AuthScreen() {
             onChangeText={setPassword}
             onSubmitEditing={() => void submit()}
           />
+          {!register && <PersonalButton secondary title="Forgot password?" disabled={busy} onPress={() => setForgot(true)} />}
           {!!error && (
             <Text style={p.error} accessibilityRole="alert">
               {error}

@@ -1,4 +1,6 @@
 import { supabase } from "../../lib/supabase";
+import { getDailyGoalSettings, missingGoalAPI } from "./dailyGoalService";
+import { dateKey } from "../utils/progressAnalytics";
 
 export interface DailyProgress {
   user_id: string;
@@ -8,12 +10,12 @@ export interface DailyProgress {
   goal_completed: boolean;
   goal_completed_at: string | null;
   created_at: string;
+  // A read-only target snapshot is not a saved daily achievement.
+  is_snapshot?: boolean;
 }
 
 function getTodayDate(timeZone: string): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-  }).format(new Date());
+  return dateKey(new Date(), timeZone);
 }
 
 export async function getTodayProgress(
@@ -41,5 +43,14 @@ export async function getTodayProgress(
     throw error;
   }
 
-  return data;
+  if (data) return data;
+  try {
+    const goal = await getDailyGoalSettings();
+    return { user_id: goal.user_id, progress_date: goal.local_date, goal_minutes: goal.today_goal_minutes,
+      completed_minutes: 0, goal_completed: false, goal_completed_at: null, created_at: "", is_snapshot: true };
+  } catch (error) {
+    // Projects without the optional goal API cannot have scheduled goals yet.
+    if (missingGoalAPI(error)) return null;
+    throw error;
+  }
 }

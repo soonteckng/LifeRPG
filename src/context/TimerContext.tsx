@@ -280,14 +280,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         const { status: existingStatus } =
           await Notifications.getPermissionsAsync();
 
-        let finalStatus = existingStatus;
+        const finalStatus = existingStatus;
 
-        if (existingStatus !== "granted") {
-          const { status } =
-            await Notifications.requestPermissionsAsync();
-
-          finalStatus = status;
-        }
+        // Permission prompts are initiated by the explicit Settings action.
 
         if (finalStatus === "granted") {
           await ensureChannels();

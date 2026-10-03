@@ -24,7 +24,7 @@ import { useCharacterData } from "../../hooks/useCharacterData";
 import { earnedMilestones, lifeAreaGrowth } from "../../utils/characterGrowth";
 import { durationLabel } from "../../utils/progressAnalytics";
 
-const AVATARS = ["🧙‍♂️", "🧝‍♂️", "🏋️", "🧑‍💻", "🎨", "🥷", "🤖", "🌱", "⭐", "🐱"];
+import { CHARACTER_BADGES } from "../../constants/characterBadges";
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -273,7 +273,7 @@ export default function ProfileScreen() {
           />
           <Text style={p.rowTitle}>Character badge</Text>
           <View style={[p.inline, { flexWrap: "wrap" }]}>
-            {AVATARS.map((item) => (
+            {CHARACTER_BADGES.map((item) => (
               <SheetButton
                 key={item}
                 disabled={saving}

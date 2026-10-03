@@ -1,4 +1,5 @@
 import { supabase } from "../../lib/supabase";
+import { validateDailyGoal } from "../utils/dailyGoal";
 
 export async function saveOnboardingProfile(
   username: string,
@@ -6,6 +7,8 @@ export async function saveOnboardingProfile(
   classTitle: string,
   dailyGoalMinutes: number,
 ) {
+  const validation = validateDailyGoal(dailyGoalMinutes);
+  if (validation) throw new Error(validation);
   const { data, error } =
     await supabase.rpc(
       "complete_onboarding",

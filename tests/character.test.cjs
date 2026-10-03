@@ -137,6 +137,7 @@ async function screen(file, mocks) {
     "react-native-safe-area-context": { SafeAreaView: host("Safe") },
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "../hooks/useReducedMotion": { useReducedMotion: () => true },
+    "../services/dailyGoalService": { getDailyGoalSettings: async () => ({ local_date: "2026-10-03", next_effective_date: "2026-10-04", today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false }), scheduleDailyGoal: async () => { throw Error("Not configured"); } },
     "./PersonalUI": UI,
     "../components/PersonalUI": UI,
     "./CharacterPortrait": host("Portrait"),
@@ -185,7 +186,7 @@ test("registration confirms email without claiming an authenticated session", as
     await ui.input("Password", "password");
     await ui.press("Create account");
     assert.equal(calls, 1);
-    assert.match(ui.text(), /Check your email/);
+    assert.match(ui.text(), /If registration can be completed/);
     assert.match(ui.text(), /Sign in/);
   } finally {
     await ui.cleanup();
@@ -662,6 +663,7 @@ test("auth restoration cannot overwrite a newer sign-in event; logout is device-
     resolve = r;
   });
   const auth = {
+    getUser: async () => ({ data: { user: { id: "new" } }, error: null }),
     getSession: () => restore,
     onAuthStateChange: (callback) => {
       listener = callback;
@@ -673,6 +675,9 @@ test("auth restoration cannot overwrite a newer sign-in event; logout is device-
     },
   };
   const module = load("src/context/AuthContext.tsx", {
+    "expo-linking": { createURL: () => "liferpg://auth/recovery", getInitialURL: async () => null, addEventListener: () => ({ remove() {} }) },
+    "react-native": { Platform: { OS: "android" } },
+    "@react-native-async-storage/async-storage": { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} },
     "../../lib/supabase": { supabase: { auth } },
   });
   function Consumer() {
@@ -690,7 +695,7 @@ test("auth restoration cannot overwrite a newer sign-in event; logout is device-
     );
   });
   try {
-    await act(async () => listener("SIGNED_IN", { user: { id: "new" } }));
+    await act(async () => listener("SIGNED_IN", { user: { id: "new" }, access_token: "fixture", refresh_token: "fixture" }));
     await act(async () => resolve({ data: { session: null }, error: null }));
     assert.equal(value.user.id, "new");
     await value.signOut();
@@ -752,7 +757,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
       .findAllByType("Button")
       .find((b) => text(b).startsWith("Notifications"));
     await act(async () => row.props.onPress());
-    assert.match(ui.text(), /installed EAS app/);
+    assert.match(ui.text(), /unavailable here/);
   } finally {
     await ui.cleanup();
   }
