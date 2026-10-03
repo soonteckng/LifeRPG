@@ -199,12 +199,14 @@ export default function AppSheet({
   );
 
   const renderFooter = useCallback(
+    // Safe-area padding belongs inside the measured footer; shifting it again
+    // would overlap the scroll space reserved for that measured height.
     (props: BottomSheetFooterProps) => (
-      <BottomSheetFooter {...props} bottomInset={insets.bottom}>
+      <BottomSheetFooter {...props} bottomInset={0}>
         {footer}
       </BottomSheetFooter>
     ),
-    [footer, insets.bottom],
+    [footer],
   );
 
   return (

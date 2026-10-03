@@ -35,12 +35,12 @@ export const INTRO_PAGES: {
   {
     icon: "checkmark-circle-outline",
     title: "Give your day a direction",
-    body: "Quests add optional structure. Your daily goal is a separate commitment, with a bonus when you reach it. Start small and build a rhythm that suits you.",
+    body: "Quests add optional structure. Your daily goal is a separate commitment, recognised when you reach it. Start small and build a rhythm that suits you.",
   },
   {
     icon: "ribbon-outline",
     title: "Keep the progress you earn",
-    body: "Milestones recognise your saved sessions and best consistency. Personal rewards are optional treats you can exchange earned Gold for. A missed day doesn’t erase your character’s growth.",
+    body: "Milestones unlock automatically through completed sessions, focused time and consistency. Reaching your daily goal is recognised separately. A missed day doesn’t erase earned milestones or your character’s growth.",
   },
 ];
 export default function TutorialScreen() {

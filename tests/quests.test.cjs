@@ -283,10 +283,10 @@ for (const platform of ["ios", "android"]) {
     const BottomSheet = React.forwardRef((props, ref) => {
       sheetProps = props;
       React.useImperativeHandle(ref, () => ({ close() { closeCalls++; } }));
-      return React.createElement("Panel", props, React.createElement(props.handleComponent), props.children);
+      return React.createElement("Panel", props, React.createElement(props.handleComponent), props.children, props.footerComponent && React.createElement(props.footerComponent));
     });
     const AppSheet = load("src/components/AppSheet.tsx", {
-      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, BottomSheetBackdrop: host("Backdrop") },
+      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
       "react-native": { ...native, Modal: host("Modal"), Platform: { OS: platform },
         PanResponder: { create: (handlers) => ({ panHandlers: handlers }) }, useWindowDimensions: () => ({ height: 800 }) },
       "react-native-gesture-handler": { GestureHandlerRootView: host("GestureRoot") },
@@ -314,6 +314,9 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.enableDynamicSizing, true);
     assert.equal(sheetProps.keyboardBehavior, "interactive");
     assert.equal(sheetProps.handleComponent, originalHandle);
+    // The footer must not shift above its measured scroll reservation.
+    await act(async () => renderer.update(React.createElement(AppSheet, { ...props, compact: true, footer: React.createElement("View", {style:{paddingBottom:34}}, "Save") })));
+    assert.equal(renderer.root.findByType("SheetFooter").props.bottomInset, 0);
     const handle = renderer.root.findAllByType("View").find((node) => node.props.onAccessibilityAction);
     await act(async () => handle.props.onAccessibilityAction());
     assert.equal(requestedClose, 2);

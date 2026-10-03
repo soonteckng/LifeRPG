@@ -7,6 +7,7 @@ import {
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { Keyboard, Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
 import SheetConfirmation from "../../components/SheetConfirmation";
 import CharacterPortrait from "../../components/CharacterPortrait";
@@ -26,6 +27,7 @@ import { durationLabel } from "../../utils/progressAnalytics";
 const AVATARS = ["🧙‍♂️", "🧝‍♂️", "🏋️", "🧑‍💻", "🎨", "🥷", "🤖", "🌱", "⭐", "🐱"];
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { profile, updateProfile, reloadProfile } = useUser();
   const { data, loading, error, refresh } = useCharacterData();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -193,7 +195,7 @@ export default function ProfileScreen() {
         </View>
       )}
       <View style={p.card}>
-        <Text style={p.title}>Milestones & rewards</Text>
+        <Text style={p.title}>Milestones</Text>
         <Text style={p.body}>
           {data
             ? `${totals.milestones.filter((m) => m.unlocked).length} milestones earned. Your achievements stay with you.`
@@ -201,8 +203,8 @@ export default function ProfileScreen() {
         </Text>
         <PersonalRow
           icon="ribbon-outline"
-          title="View rewards"
-          subtitle="Earned milestones and personal treats"
+          title="View milestones"
+          subtitle="Achievements earned through your effort"
           onPress={() => router.navigate("/rewards")}
         />
       </View>
@@ -226,7 +228,7 @@ export default function ProfileScreen() {
             style={{
               paddingHorizontal: 22,
               paddingTop: 12,
-              paddingBottom: 24,
+              paddingBottom: Math.max(16, insets.bottom),
               backgroundColor: colors.surface,
             }}
           >

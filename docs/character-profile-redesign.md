@@ -20,7 +20,7 @@ keeps the character still and retains press feedback. Detailed area-specific
 physiques, outfits and a full animation system remain future character work.
 
 Profile contains the character, overall level, Life-area growth, recorded effort
-and Rewards. Progress remains the dedicated tab; the redundant Explore your
+and a Milestones collection. Progress remains the dedicated tab; the redundant Explore your
 progress shortcut was removed. Feedback preferences remain per-account device
 storage. Identity, Life-area XP, account levels, Gold and sessions remain cloud-backed.
 
@@ -32,19 +32,26 @@ Consistency milestones remain earned after a current streak breaks because they
 use the best historical run. They grant no additional XP or Gold. The historical
 rows are the source of truth; these are not a separate persisted badge ledger.
 
-Gold remains available as a secondary balance for existing optional personal
-rewards. The server still owns redemption and the separate daily-goal bonus.
-Existing reward calculations, cancellation/completion rules, RPCs and schema are
-unchanged. **The existing per-session whole-minute XP, Gold and daily-goal credit
-rules remain in force.** This redesign does not implement second carry-over or
-new bonus rates. Ads, purchases, widgets and live session displays are follow-up
-work, not partially enabled controls.
+The old personal-reward shop has been removed from the interface, including
+self-priced treats, redemption and manual Gold-bonus claim controls. The existing
+/rewards route is now titled Milestones. Achievements unlock automatically from
+saved sessions; today's goal is recognised independently from the saved goal row.
+The page does not promise a new XP multiplier, currency bonus or cosmetic unlock.
+Character-specific unlocks and the longer-term reward economy still need design.
+
+Existing Gold balances, personal-reward rows, chest records, service APIs and
+backend schema are retained; no data is deleted or redeemed by this change. Legacy
+daily Gold chests are not automatically claimed by visiting the new collection.
+**Existing per-session whole-minute XP, Gold and daily-goal credit rules remain in
+force.** No second carry-over, new bonus rate, ads, purchases, widgets or live
+session displays are introduced.
 
 ## Interactions and reliability
 
 - Shared dark/lavender tokens, readable typography, rounded surfaces and icons.
-- Profile/reward editors use AppSheet with its existing handle, downward exit,
-  backdrop/back dismissal, keyboard handling and dirty-draft confirmations.
+- Profile editors and milestone details use AppSheet with its existing handle,
+  downward exit, backdrop/back dismissal and keyboard handling. Profile retains
+  dirty-draft confirmation.
 - Rewards/Settings use matching right-to-left entrance and left-to-right exit.
   Android uses a retained opaque moving surface and removes the route only after
   its exit callback; iOS retains native horizontal navigation. No competing native
@@ -55,7 +62,7 @@ work, not partially enabled controls.
   scrollable large-text/keyboard content and interactive keyboard handling. It
   keeps its editor through dismissal instead of switching layouts mid-animation.
   Clean drafts use native sheet dismissal; dirty drafts still require confirmation.
-- Reward sheets keep their contents until native modal dismissal. Re-entry waits
+- Milestone sheets keep their contents until native modal dismissal. Re-entry waits
   for dismissal, avoiding a new sheet being cleared by an older close callback.
 - Session drag follows the finger outside the timer wheels; a short/interrupted
   swipe settles back. A sufficient distance or downward fling finishes minimising
@@ -63,9 +70,12 @@ work, not partially enabled controls.
   fade without a preference-resolution flash. Timer and nested-layer state remain.
 - Profile saves await a returned persisted row; failed saves keep the editor.
 - Profile reads share in-flight work; stale reads cannot undo an identity save.
-- Reward mutations share a synchronous lock and preserve drafts on failure.
-  Redeem/remove require themed confirmation. Costs reject partial/decimal input.
-- Daily reward reads use the account timezone instead of a fixed timezone.
+- Milestones and daily-goal reads are independent: a failed goal fetch does not
+  hide achievements. Both offer Retry; cached milestones remain visible. Goal
+  recognition follows the saved goal status and account timezone.
+- The profile footer includes safe-area padding in its measured height. No extra
+  upward bottomInset displaces Save into the badge area; automatic scroll margin
+  reserves the full measured footer, including that padding.
 - Feedback preferences restore across restarts and serialise rapid writes.
   Completion notifications use sound/vibration-specific Android channels. Sound
   changes apply when the next alert is scheduled; existing phone settings may
@@ -85,14 +95,15 @@ work, not partially enabled controls.
 
 ## Automated verification
 
-94 tests pass, including the existing Home/quest/Session/Progress suite.
+95 tests pass, including the existing Home/quest/Session/Progress suite.
 Coverage includes saved Life-area levels and thresholds, seconds/deduplication,
-retained consistency milestones, reward cost validation, email confirmation,
+retained consistency milestones, automatic milestone unlocking, email confirmation,
 failed/repeated sign-in, onboarding/tutorial failure and replay, profile persistence,
-preference restoration/rapid writes, reward draft/redeem/claim guards, logout
+preference restoration/rapid writes, independent goal recognition/retry, logout
 protection and auth-restoration races. Added polish coverage includes a pinned
 profile Save action, retained editor/discard contents, compact sheet snap points
-and stable handles, Android horizontal exit ordering, finger-following and
+and stable handles, measured safe-area footer reservation, Android horizontal
+exit ordering, finger-following and
 cancelled/interrupted Session drags, iOS exit ordering, repeated-close guards,
 opacity stability and reduced-motion character interaction. Service/native
 boundaries are mocked; no measured frame-rate claim is made.
@@ -128,9 +139,10 @@ Use a test account; do not delete a real account or erase earned progress.
    character; test reduced motion. Personalise: Save is initially reachable,
    keyboard leaves fields and Save reachable, extra upward drag creates no blank
    expansion, and dirty close requires confirmation. Reload/restart after saving.
-8. Claim daily bonus once, retry failures, add personal reward, keyboard/backdrop/
-   swipe dirty dismissal, insufficient balance, redeem/remove confirmations and
-   refresh failures. Verify existing Gold and personal rewards are retained.
+8. Open Milestones from Profile and Progress. Verify the same earned collection,
+   no treat creation/prices/claim controls, sub-minute first-session recognition,
+   retained longest-streak achievements and separate daily-goal recognition.
+   Check refresh errors/retry, retained detail sheets and interrupted dismissals.
 9. Settings: restart feedback preferences, open phone notification settings,
    replay tutorial without changing setup, block sign-out for running/paused or
    unresolved sessions, sign out after finishing, then sign back in.
@@ -151,4 +163,4 @@ session alerts. The Expo Go detector distinguishes actual development builds, wh
 still load notification APIs. iOS and release builds keep the supported API path.
 Three regression tests cover skipping the package, caching its API in builds and
 Settings fallback. This fix added three regression tests; the current full suite
-has 94 passing tests. No package versions were changed.
+has 95 passing tests. No package versions were changed.

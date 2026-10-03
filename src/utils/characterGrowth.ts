@@ -108,16 +108,3 @@ export function earnedMilestones(
     })),
   };
 }
-export function rewardDraft(title: string, cost: string) {
-  const name = title.trim();
-  if (!name || name.length > 80)
-    return { error: "Enter a reward name between 1 and 80 characters." };
-  if (
-    !/^\d+$/.test(cost.trim()) ||
-    !Number.isSafeInteger(Number(cost)) ||
-    Number(cost) < 1 ||
-    Number(cost) > 1000000
-  )
-    return { error: "Enter a whole Gold cost between 1 and 1,000,000." };
-  return { title: name, cost: Number(cost), error: null };
-}

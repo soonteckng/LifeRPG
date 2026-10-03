@@ -762,8 +762,7 @@ export default function ProgressScreen() {
                 <View style={s.flex}>
                   <Text style={s.rowTitle}>Keep growing at your pace</Text>
                   <Text style={s.caption}>
-                    Level {profile?.level ?? 1} · Earned milestones and personal
-                    rewards
+                    Level {profile?.level ?? 1} · Earned through focused effort
                   </Text>
                 </View>
                 <Ionicons

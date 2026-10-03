@@ -60,12 +60,19 @@ test("Life area growth displays the saved level and XP without a second category
     assert.equal(value.level, level);
     assert.equal(value.current, original.current_xp);
     assert.equal(value.required, level * 50);
-    assert.deepEqual(original, { ...area(1, level, level * 50 - 1), title: "Knowledge" });
+    assert.deepEqual(original, {
+      ...area(1, level, level * 50 - 1),
+      title: "Knowledge",
+    });
   }
 });
 test("custom Life areas retain their identity and growth without assigning attributes", () => {
   const custom = { ...area(42, 3, 12), title: "Learn Mandarin" };
-  assert.deepEqual(growth.lifeAreaGrowth(custom), { ...custom, current: 12, required: 150 });
+  assert.deepEqual(growth.lifeAreaGrowth(custom), {
+    ...custom,
+    current: 12,
+    required: 150,
+  });
 });
 test("milestones use exact seconds and deduplicate saved sessions", () => {
   const a = session("a", "2026-10-01", 30),
@@ -87,16 +94,6 @@ test("earned consistency milestones survive a broken current streak", () => {
   assert.equal(result.bestStreak, 3);
   assert.equal(result.milestones.find((m) => m.id === "return").unlocked, true);
   assert.equal(result.milestones.find((m) => m.id === "week").unlocked, false);
-});
-test("reward input rejects decimal, signed, malformed and out-of-range costs", () => {
-  for (const cost of ["1.2", "15x", "-1", "0", "1e3", "1000001", "Infinity"])
-    assert.ok(growth.rewardDraft("Coffee", cost).error);
-  assert.ok(growth.rewardDraft(" ", "10").error);
-  assert.deepEqual(growth.rewardDraft(" Coffee ", " 300 "), {
-    title: "Coffee",
-    cost: 300,
-    error: null,
-  });
 });
 const host =
   (name) =>
@@ -135,7 +132,7 @@ const text = (node) =>
   typeof node === "string" ? node : (node.children ?? []).map(text).join("");
 async function screen(file, mocks) {
   const Component = load(file, {
-    "expo": { isRunningInExpoGo: () => false },
+    expo: { isRunningInExpoGo: () => false },
     "react-native": Native,
     "react-native-safe-area-context": { SafeAreaView: host("Safe") },
     "@expo/vector-icons": { Ionicons: host("Icon") },
@@ -461,155 +458,154 @@ const sheetMocks = {
     TouchableOpacity: host("Button"),
   },
 };
-async function rewardsHarness(overrides = {}) {
-  const calls = [],
-    saved = [];
-  const user = {
-    profile: {
-      id: "a",
-      timezone: "Asia/Kuala_Lumpur",
-      daily_goal_minutes: 60,
-      gold: 500,
+async function rewardsHarness(options = {}) {
+  const calls = [];
+  let growth = {
+    data: { areas: [], sessions: [session("s", "2026-10-01", 30)] },
+    loading: false,
+    error: false,
+    refresh: async () => {
+      calls.push("milestones-refresh");
     },
-    reloadProfile: async () => true,
-  };
-  const service = {
-    getRewards: async () => [{ id: "reward", title: "Coffee", cost_gold: 300 }],
-    getTodayRewardChest: async () => null,
-    openDailyRewardChest: async () => {
-      calls.push("claim");
-      return { success: true, reward_gold: 50 };
-    },
-    createReward: async (title, cost) => {
-      saved.push([title, cost]);
-    },
-    deleteReward: async (id) => {
-      calls.push(["delete", id]);
-    },
-    redeemReward: async (id) => {
-      calls.push(["redeem", id]);
-      return { success: true };
-    },
-    ...overrides,
+    ...options.growth,
   };
   const ui = await screen("src/app/rewards.tsx", {
     ...sheetMocks,
+    "../components/AppSheet": (props) =>
+      React.createElement("Sheet", props, props.header, props.children),
     "expo-router": { useFocusEffect: (fn) => React.useEffect(fn, [fn]) },
-    "../context/UserContext": { useUser: () => user },
-    "../context/TimerContext": { useTimer: () => ({ sessionSummary: null }) },
-    "../hooks/useCharacterData": {
-      useCharacterData: () => ({
-        data: {
-          areas: [],
-          mapping: {},
-          sessions: [session("s", "2026-10-01")],
+    "../context/UserContext": {
+      useUser: () => ({
+        profile: {
+          id: "a",
+          timezone: "Asia/Kuala_Lumpur",
+          daily_goal_minutes: 60,
+          gold: 500,
         },
-        loading: false,
-        error: false,
-        refresh: async () => {},
       }),
     },
-    "../services/rewardService": service,
+    "../context/TimerContext": { useTimer: () => ({ sessionSummary: null }) },
+    "../hooks/useCharacterData": { useCharacterData: () => growth },
+    "../services/rewardService": new Proxy(
+      {},
+      {
+        get() {
+          throw Error("Milestones must not call the reward shop");
+        },
+      },
+    ),
     "../services/dailyProgressService": {
-      getTodayProgress: async () => ({
-        completed_minutes: 60,
-        goal_minutes: 60,
-        goal_completed: true,
-      }),
+      getTodayProgress:
+        options.getTodayProgress ??
+        (async () => ({
+          completed_minutes: 0,
+          goal_minutes: 60,
+          goal_completed: false,
+        })),
     },
   });
-  return { ...ui, calls, saved };
+  return { ...ui, calls };
 }
-test("creating a personal reward validates strictly and preserves failed drafts", async () => {
-  let attempts = 0;
-  const ui = await rewardsHarness({
-    createReward: async () => {
-      if (++attempts === 1) throw Error("Offline");
-    },
-  });
+test("milestones unlock automatically without personal reward creation, prices or claims", async () => {
+  const ui = await rewardsHarness();
   try {
-    await ui.press("Add a personal reward");
-    await ui.input("Reward name", "Tea");
-    await ui.input("Gold cost", "2.5");
-    await ui.press("Save personal reward");
-    assert.equal(attempts, 0);
-    assert.match(ui.text(), /whole Gold cost/);
-    await ui.input("Gold cost", "20");
-    await ui.press("Save personal reward");
-    assert.match(ui.text(), /Offline/);
-    assert.equal(ui.renderer.root.findAllByType("Input")[0].props.value, "Tea");
-    await ui.press("Save personal reward");
-    assert.equal(attempts, 2);
-    assert.match(ui.text(), /Personal reward saved/);
+    assert.match(ui.text(), /Your collection/);
+    assert.match(ui.text(), /First step/);
+    assert.match(ui.text(), /Earned · Yours to keep/);
+    assert.doesNotMatch(
+      ui.text(),
+      /Add a personal reward|Personal rewards|Gold|Claim daily bonus|Redeem/,
+    );
+    assert.equal(ui.calls.length, 0);
   } finally {
     await ui.cleanup();
   }
 });
-test("dirty reward dismissal asks before closing; discard leaves saved rewards untouched", async () => {
+test("a sub-minute completed session earns a milestone before the independent daily goal", async () => {
   const ui = await rewardsHarness();
   try {
-    await ui.press("Add a personal reward");
-    await ui.input("Reward name", "Tea");
+    const first = ui.renderer.root
+      .findAllByType("Button")
+      .find((n) => n.props.accessibilityLabel?.startsWith("First step,"));
+    assert.match(first.props.accessibilityLabel, /earned/);
+    assert.match(ui.text(), /0 \/ 60 goal minutes/);
+    assert.doesNotMatch(ui.text(), /Daily goal achieved/);
+    await act(async () => first.props.onPress());
+    assert.match(ui.text(), /Earned automatically/);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("milestone details stay mounted through dismissal and re-entry waits for native dismissal", async () => {
+  const ui = await rewardsHarness();
+  try {
+    const rows = ui.renderer.root
+      .findAllByType("Button")
+      .filter((n) => n.props.accessibilityLabel?.includes("View milestone"));
+    await act(async () => rows[0].props.onPress());
+    const title =
+      ui.renderer.root.findByType("Sheet").props.header.props.children.props
+        .children;
     await act(async () =>
       ui.renderer.root.findByType("Sheet").props.onRequestClose(),
     );
-    const dialog = ui.renderer.root.findByType("Confirmation");
-    assert.equal(dialog.props.confirmLabel, "Discard draft");
-    await act(async () => dialog.props.onConfirm());
     assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
-    assert.deepEqual(ui.saved, []);
-  } finally {
-    await ui.cleanup();
-  }
-});
-test("rapid daily bonus claims share one in-flight action", async () => {
-  let resolve,
-    calls = 0;
-  const promise = new Promise((r) => {
-    resolve = r;
-  });
-  const ui = await rewardsHarness({
-    openDailyRewardChest: () => {
-      calls++;
-      return promise;
-    },
-  });
-  try {
-    const handler = ui.renderer.root
-      .findAllByType("Button")
-      .find((b) => text(b) === "Claim daily bonus").props.onPress;
-    await act(async () => {
-      handler();
-      handler();
-    });
-    assert.equal(calls, 1);
-    await act(async () => resolve({ success: true, reward_gold: 50 }));
-    assert.match(ui.text(), /Daily goal recognised/);
-  } finally {
-    await ui.cleanup();
-  }
-});
-test("redemption requires confirmation and displays failed persistence without success", async () => {
-  let calls = 0;
-  const ui = await rewardsHarness({
-    redeemReward: async () => {
-      calls++;
-      return { success: false, reason: "insufficient_gold" };
-    },
-  });
-  try {
-    const row = ui.renderer.root
-      .findAllByType("Button")
-      .find((b) => b.props.accessibilityLabel?.startsWith("Coffee,"));
-    await act(async () => row.props.onPress());
-    await ui.press("Redeem reward");
-    assert.equal(calls, 0);
-    await act(async () =>
-      ui.renderer.root.findByType("Confirmation").props.onConfirm(),
+    assert.equal(
+      ui.renderer.root.findByType("Sheet").props.header.props.children.props
+        .children,
+      title,
     );
-    assert.equal(calls, 1);
-    assert.match(ui.text(), /balance hasn’t changed/);
+    assert.match(ui.text(), /Earned automatically/);
+    await act(async () => rows[1].props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
+    await act(async () =>
+      ui.renderer.root.findByType("Sheet").props.onDismiss(),
+    );
+    await act(async () => rows[1].props.onPress());
     assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+    assert.match(ui.text(), /You’re making progress/);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("daily-goal read failure is retryable and does not hide earned milestones", async () => {
+  let attempts = 0;
+  const ui = await rewardsHarness({
+    getTodayProgress: async () => {
+      if (++attempts === 1) throw Error("Offline");
+      return { completed_minutes: 60, goal_minutes: 60, goal_completed: true };
+    },
+  });
+  try {
+    assert.match(ui.text(), /Couldn’t refresh today’s goal/);
+    assert.match(ui.text(), /First step/);
+    await ui.press("Retry today’s goal");
+    assert.equal(attempts, 2);
+    assert.match(ui.text(), /Daily goal achieved/);
+    assert.doesNotMatch(ui.text(), /Couldn’t refresh today’s goal/);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("a new day with no saved goal row shows the user's goal without inventing an achievement", async () => {
+  const ui = await rewardsHarness({ getTodayProgress: async () => null });
+  try {
+    assert.match(ui.text(), /0 \/ 60 goal minutes/);
+    assert.doesNotMatch(
+      ui.text(),
+      /Daily goal achieved|Couldn’t refresh today’s goal/,
+    );
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("milestone refresh failure preserves the already-loaded collection with Retry", async () => {
+  const ui = await rewardsHarness({ growth: { error: true } });
+  try {
+    assert.match(ui.text(), /previously loaded achievements/);
+    assert.match(ui.text(), /First step/);
+    await ui.press("Retry milestones");
+    assert.deepEqual(ui.calls, ["milestones-refresh"]);
   } finally {
     await ui.cleanup();
   }
@@ -704,22 +700,29 @@ test("auth restoration cannot overwrite a newer sign-in event; logout is device-
   }
 });
 
- test("Android Expo Go never evaluates the notification package entry", () => {
+test("Android Expo Go never evaluates the notification package entry", () => {
   const api = load("src/utils/sessionNotifications.ts", {
     expo: { isRunningInExpoGo: () => true },
     "react-native": { Platform: { OS: "android" } },
     // If the loader evaluates this entry, the test fails immediately.
-    get "expo-notifications"() { throw Error("Push entry was evaluated"); },
+    get "expo-notifications"() {
+      throw Error("Push entry was evaluated");
+    },
   });
   assert.equal(api.getSessionNotifications(), null);
 });
 test("development/release builds load and reuse the notification API", () => {
   let imports = 0;
-  const notifications = { getPermissionsAsync: async () => ({ granted: true }) };
+  const notifications = {
+    getPermissionsAsync: async () => ({ granted: true }),
+  };
   const api = load("src/utils/sessionNotifications.ts", {
     expo: { isRunningInExpoGo: () => false },
     "react-native": { Platform: { OS: "android" } },
-    get "expo-notifications"() { imports++; return notifications; },
+    get "expo-notifications"() {
+      imports++;
+      return notifications;
+    },
   });
   assert.equal(api.getSessionNotifications(), notifications);
   assert.equal(api.getSessionNotifications(), notifications);
@@ -730,105 +733,259 @@ test("Settings renders in Expo Go even when notification import would throw", as
     ...sheetMocks,
     expo: { isRunningInExpoGo: () => true },
     "expo-router": { useRouter: () => ({ navigate() {} }) },
-    "../context/UserContext": { useUser: () => ({ profile: { username: "Soon", timezone: "Asia/Kuala_Lumpur" } }) },
-    "../context/AuthContext": { useAuth: () => ({ user: { email: "a@b.com" }, signOut: async () => ({}) }) },
+    "../context/UserContext": {
+      useUser: () => ({
+        profile: { username: "Soon", timezone: "Asia/Kuala_Lumpur" },
+      }),
+    },
+    "../context/AuthContext": {
+      useAuth: () => ({
+        user: { email: "a@b.com" },
+        signOut: async () => ({}),
+      }),
+    },
     "../context/TimerContext": { useTimer: () => ({}) },
     "../utils/sessionNotifications": { getSessionNotifications: () => null },
   });
   try {
-    const row = ui.renderer.root.findAllByType("Button").find(b => text(b).startsWith("Notifications"));
+    const row = ui.renderer.root
+      .findAllByType("Button")
+      .find((b) => text(b).startsWith("Notifications"));
     await act(async () => row.props.onPress());
     assert.match(ui.text(), /installed EAS app/);
-  } finally { await ui.cleanup(); }
+  } finally {
+    await ui.cleanup();
+  }
 });
 
 async function profileScreen(overrides = {}) {
   return screen("src/app/(tabs)/profile.tsx", {
-    "expo-router": { useRouter:()=>({navigate(){}}), useFocusEffect:effect=>React.useEffect(effect,[effect]) },
-    "../../components/PersonalUI":UI,
-    "../../components/CharacterPortrait":host("Portrait"),
-    "../../components/SheetConfirmation":host("Confirm"),
-    "../../components/AppSheet":props=>React.createElement("Sheet",props,props.header,props.children,props.footer,props.overlay),
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),BottomSheetTextInput:host("Input"),TouchableOpacity:host("Button")},
-    "../../context/UserContext":{useUser:()=>({profile:{id:"user",username:"Soon",avatar:"⭐",class_title:"",level:3,current_xp:20,timezone:"Asia/Kuala_Lumpur"},updateProfile:async()=>{},reloadProfile:async()=>{}})},
-    "../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:[{id:1,title:"Knowledge",level:2,current_xp:12}],sessions:[]},loading:false,error:false,refresh:async()=>{}})},
+    "expo-router": {
+      useRouter: () => ({ navigate() {} }),
+      useFocusEffect: (effect) => React.useEffect(effect, [effect]),
+    },
+    "react-native-safe-area-context": {
+      useSafeAreaInsets: () => ({ bottom: 34 }),
+    },
+    "../../components/PersonalUI": UI,
+    "../../components/CharacterPortrait": host("Portrait"),
+    "../../components/SheetConfirmation": host("Confirm"),
+    "../../components/AppSheet": (props) =>
+      React.createElement(
+        "Sheet",
+        props,
+        props.header,
+        props.children,
+        props.footer,
+        props.overlay,
+      ),
+    "@gorhom/bottom-sheet": {
+      BottomSheetScrollView: host("SheetScroll"),
+      BottomSheetTextInput: host("Input"),
+      TouchableOpacity: host("Button"),
+    },
+    "../../context/UserContext": {
+      useUser: () => ({
+        profile: {
+          id: "user",
+          username: "Soon",
+          avatar: "⭐",
+          class_title: "",
+          level: 3,
+          current_xp: 20,
+          timezone: "Asia/Kuala_Lumpur",
+        },
+        updateProfile: async () => {},
+        reloadProfile: async () => {},
+      }),
+    },
+    "../../hooks/useCharacterData": {
+      useCharacterData: () => ({
+        data: {
+          areas: [{ id: 1, title: "Knowledge", level: 2, current_xp: 12 }],
+          sessions: [],
+        },
+        loading: false,
+        error: false,
+        refresh: async () => {},
+      }),
+    },
     ...overrides,
   });
 }
-test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor",async()=>{
-  const ui=await profileScreen();
+test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
+  const ui = await profileScreen();
   try {
-    assert.match(ui.text(),/Your growth/);
-    assert.match(ui.text(),/KnowledgeLv 2/);
-    assert.doesNotMatch(ui.text(),/Connect areas|No Life areas connected|Explore your progress/);
+    assert.match(ui.text(), /Your growth/);
+    assert.match(ui.text(), /KnowledgeLv 2/);
+    assert.doesNotMatch(
+      ui.text(),
+      /Connect areas|No Life areas connected|Explore your progress/,
+    );
     await ui.press("Personalise profile");
-    const sheet=ui.renderer.root.findByType("Sheet");
-    assert.equal(sheet.props.compact,true);
-    assert.equal(sheet.props.guardDismiss,false);
-    const scroll=ui.renderer.root.findByType("SheetScroll");
-    assert.equal(scroll.findAllByType("Button").some(n=>n.props.title==="Save changes"),false);
+    const sheet = ui.renderer.root.findByType("Sheet");
+    assert.equal(sheet.props.compact, true);
+    assert.equal(sheet.props.guardDismiss, false);
+    const scroll = ui.renderer.root.findByType("SheetScroll");
+    assert.equal(
+      scroll
+        .findAllByType("Button")
+        .some((n) => n.props.title === "Save changes"),
+      false,
+    );
     assert.ok(sheet.props.footer);
+    assert.equal(sheet.props.footer.props.style.paddingBottom, 34);
+    assert.equal(scroll.props.enableFooterMarginAdjustment, true);
     await ui.press("Save changes");
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,false);
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
     // The editor is retained for the library's downward exit; it never switches to another layout.
-    assert.equal(ui.renderer.root.findByType("Input").props.value,"Soon");
-  } finally { await ui.cleanup(); }
+    assert.equal(ui.renderer.root.findByType("Input").props.value, "Soon");
+  } finally {
+    await ui.cleanup();
+  }
 });
-test("Profile protects edited drafts and preserves the editor through discard dismissal",async()=>{
-  const ui=await profileScreen();
+test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
+  const ui = await profileScreen();
   try {
     await ui.press("Personalise profile");
-    await ui.input("Profile name","New name");
-    assert.equal(ui.renderer.root.findByType("Sheet").props.guardDismiss,true);
-    await act(async()=>ui.renderer.root.findByType("Sheet").props.onRequestClose());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,true);
-    await act(async()=>ui.renderer.root.findByType("Confirm").props.onConfirm());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,false);
-    assert.equal(ui.renderer.root.findByType("Input").props.value,"New name");
-  } finally { await ui.cleanup(); }
+    await ui.input("Profile name", "New name");
+    assert.equal(ui.renderer.root.findByType("Sheet").props.guardDismiss, true);
+    await act(async () =>
+      ui.renderer.root.findByType("Sheet").props.onRequestClose(),
+    );
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+    await act(async () =>
+      ui.renderer.root.findByType("Confirm").props.onConfirm(),
+    );
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
+    assert.equal(ui.renderer.root.findByType("Input").props.value, "New name");
+  } finally {
+    await ui.cleanup();
+  }
 });
 
-test("Android secondary page retains its contents until animated back finishes and ignores repeated back",async()=>{
+test("Android secondary page retains its contents until animated back finishes and ignores repeated back", async () => {
   let finish, remove;
-  const calls=[];
-  const navigation={canGoBack:()=>true,goBack:()=>calls.push("back")};
-  const {PersonalPage}=load("src/components/PersonalUI.tsx",{
-    "react-native":{...Native,StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:360}),
-      Animated:{Value:class{constructor(v){this.value=v;}setValue(v){this.value=v;}},View:host("Animated"),
-        timing:(value,config)=>({start(callback){if(config.toValue===360) finish=callback;else{value.setValue(config.toValue);callback?.({finished:true});}},stop(){}})}},
-    "expo-router":{useRouter:()=>({canGoBack:()=>true,back:()=>calls.push("router-back")}),useNavigation:()=>navigation},
-    "expo-router/react-navigation":{usePreventRemove:(_,callback)=>{remove=callback;}},
-    "react-native-safe-area-context":{SafeAreaView:host("Safe"),useSafeAreaInsets:()=>({bottom:24})},
-    "@expo/vector-icons":{Ionicons:host("Icon")},
-    "../hooks/useReducedMotion":{useReducedMotion:()=>false},
-    "./AppHeader":host("Header"),
+  const calls = [];
+  const navigation = {
+    canGoBack: () => true,
+    goBack: () => calls.push("back"),
+  };
+  const { PersonalPage } = load("src/components/PersonalUI.tsx", {
+    "react-native": {
+      ...Native,
+      StyleSheet: { create: (s) => s },
+      useWindowDimensions: () => ({ width: 360 }),
+      Animated: {
+        Value: class {
+          constructor(v) {
+            this.value = v;
+          }
+          setValue(v) {
+            this.value = v;
+          }
+        },
+        View: host("Animated"),
+        timing: (value, config) => ({
+          start(callback) {
+            if (config.toValue === 360) finish = callback;
+            else {
+              value.setValue(config.toValue);
+              callback?.({ finished: true });
+            }
+          },
+          stop() {},
+        }),
+      },
+    },
+    "expo-router": {
+      useRouter: () => ({
+        canGoBack: () => true,
+        back: () => calls.push("router-back"),
+      }),
+      useNavigation: () => navigation,
+    },
+    "expo-router/react-navigation": {
+      usePreventRemove: (_, callback) => {
+        remove = callback;
+      },
+    },
+    "react-native-safe-area-context": {
+      SafeAreaView: host("Safe"),
+      useSafeAreaInsets: () => ({ bottom: 24 }),
+    },
+    "@expo/vector-icons": { Ionicons: host("Icon") },
+    "../hooks/useReducedMotion": { useReducedMotion: () => false },
+    "./AppHeader": host("Header"),
   });
   let renderer;
-  await act(async()=>{renderer=create(React.createElement(PersonalPage,{title:"Rewards",subtitle:"Your effort",back:true,animateTransition:true},React.createElement("Text",null,"Saved rewards")));});
+  await act(async () => {
+    renderer = create(
+      React.createElement(
+        PersonalPage,
+        {
+          title: "Rewards",
+          subtitle: "Your effort",
+          back: true,
+          animateTransition: true,
+        },
+        React.createElement("Text", null, "Saved rewards"),
+      ),
+    );
+  });
   try {
-    await act(async()=>renderer.root.findByType("Header").props.onBack());
-    await act(async()=>remove());
-    assert.equal(calls.length,0);
-    assert.match(text(renderer.root),/Saved rewards/);
-    await act(async()=>finish({finished:true}));
-    assert.deepEqual(calls,["back"]);
-    assert.match(text(renderer.root),/Saved rewards/);
-  } finally {await act(async()=>renderer.unmount());}
+    await act(async () => renderer.root.findByType("Header").props.onBack());
+    await act(async () => remove());
+    assert.equal(calls.length, 0);
+    assert.match(text(renderer.root), /Saved rewards/);
+    await act(async () => finish({ finished: true }));
+    assert.deepEqual(calls, ["back"]);
+    assert.match(text(renderer.root), /Saved rewards/);
+  } finally {
+    await act(async () => renderer.unmount());
+  }
 });
 
-test("character wave is cosmetic and respects reduced motion",async()=>{
-  for(const reduced of [false,true]) {
-    const animations=[];
-    const Portrait=load("src/components/CharacterPortrait.tsx",{
-      "react-native":{...Native,StyleSheet:{create:s=>s},Animated:{Value:class{setValue(){}stopAnimation(){}interpolate(){return 0;}},View:host("Animated"),timing:(_,config)=>({start(){animations.push(config);}})}},
-      "../hooks/useReducedMotion":{useReducedMotion:()=>reduced},
+test("character wave is cosmetic and respects reduced motion", async () => {
+  for (const reduced of [false, true]) {
+    const animations = [];
+    const Portrait = load("src/components/CharacterPortrait.tsx", {
+      "react-native": {
+        ...Native,
+        StyleSheet: { create: (s) => s },
+        Animated: {
+          Value: class {
+            setValue() {}
+            stopAnimation() {}
+            interpolate() {
+              return 0;
+            }
+          },
+          View: host("Animated"),
+          timing: (_, config) => ({
+            start() {
+              animations.push(config);
+            },
+          }),
+        },
+      },
+      "../hooks/useReducedMotion": { useReducedMotion: () => reduced },
     }).default;
     let renderer;
-    await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",level:3,developed:2}));});
+    await act(async () => {
+      renderer = create(
+        React.createElement(Portrait, { avatar: "⭐", level: 3, developed: 2 }),
+      );
+    });
     try {
-      await act(async()=>renderer.root.findByType("Button").props.onPress());
-      assert.equal(animations.length,reduced?0:1);
-      assert.match(renderer.root.findByType("Button").props.accessibilityLabel,/Level 3/);
-    } finally {await act(async()=>renderer.unmount());}
+      await act(async () => renderer.root.findByType("Button").props.onPress());
+      assert.equal(animations.length, reduced ? 0 : 1);
+      assert.match(
+        renderer.root.findByType("Button").props.accessibilityLabel,
+        /Level 3/,
+      );
+    } finally {
+      await act(async () => renderer.unmount());
+    }
   }
 });
