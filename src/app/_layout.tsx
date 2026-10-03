@@ -1,5 +1,5 @@
 import { Stack, usePathname, useRouter } from "expo-router";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { BackHandler, Platform } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
@@ -23,7 +23,7 @@ function GlobalBackHandler() {
   useEffect(() => {
     const onBackPress = () => {
       // Session owns keyboard/picker priority and native modal dismissal.
-      if (pathname === "/session" || pathname === "/timer" || pathname === "/session-transition-test") return false;
+      if (pathname === "/session" || pathname === "/timer") return false;
       // Home is the root. Let Android handle the default exit behavior.
       if (pathname === "/" || pathname === "/index") {
         return false;
@@ -107,11 +107,6 @@ function GlobalRewardListener() {
 }
 
 function AppContent() {
-  const pendingTransitionTraces = useRef(new Map<string, () => void>());
-  useEffect(() => {
-    const listeners = pendingTransitionTraces.current;
-    return () => { listeners.forEach(unsubscribe => unsubscribe()); listeners.clear(); };
-  }, []);
   const reducedMotion = useReducedMotion();
   const pathname = usePathname();
   const router = useRouter();
@@ -143,19 +138,6 @@ function AppContent() {
           screenListeners={({ route, navigation }) => route.name.startsWith("session") ? {
             beforeRemove: (event) => {
               traceSession("root beforeRemove", { route: route.key, action: event.data.action.type, navigator: navigation.getState()?.key, history: navigation.getState()?.routes.map(item => ({ name: item.name, key: item.key })), reducedMotion });
-              if (__DEV__ && !pendingTransitionTraces.current.has(route.key)) {
-                const start = navigation.addListener("transitionStart", event => {
-                  traceSession("retained native start", { route: route.key, closing: event.data.closing });
-                });
-                const end = navigation.addListener("transitionEnd", event => {
-                  traceSession("retained native end", { route: route.key, closing: event.data.closing });
-                  if (event.data.closing) {
-                    pendingTransitionTraces.current.get(route.key)?.();
-                    pendingTransitionTraces.current.delete(route.key);
-                  }
-                });
-                pendingTransitionTraces.current.set(route.key, () => { start(); end(); });
-              }
             },
             transitionStart: (event) => traceSession("root transitionStart", { route: route.key, closing: event.data.closing, reducedMotion }),
             transitionEnd: (event) => traceSession("root transitionEnd", { route: route.key, closing: event.data.closing, reducedMotion }),
@@ -179,11 +161,6 @@ function AppContent() {
             dangerouslySingular
             options={sessionNativeOptions(reducedMotion)}
           />
-          <Stack.Screen name="session-transition-test" options={({ route }) => ({
-            ...sessionNativeOptions(reducedMotion),
-            animation: reducedMotion ? "fade" : "slide_from_bottom",
-            presentation: (route.params as { mode?: string } | undefined)?.mode === "card" ? "card" : "transparentModal",
-          })} />
           <Stack.Screen
             name="quests"
             options={{
@@ -252,4 +229,3 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
-

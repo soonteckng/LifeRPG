@@ -4,7 +4,6 @@ import {
   Modal,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   TouchableOpacity,
@@ -35,10 +34,6 @@ export default function ProfileScreen() {
     profile,
     reloadProfile,
     updateProfile,
-    soundEnabled,
-    hapticsEnabled,
-    setSoundEnabled,
-    setHapticsEnabled,
   } = useUser();
 
   const [usernameInput, setUsernameInput] = useState(

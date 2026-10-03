@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, {
+import {
   useRef,
   useState,
 } from "react";

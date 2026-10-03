@@ -1,7 +1,7 @@
 import { durationLabel } from "../utils/sessionSetup";
 import { colors } from "../constants/theme";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { StyleSheet, Text, View, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { useReducedMotion } from '../hooks/useReducedMotion';

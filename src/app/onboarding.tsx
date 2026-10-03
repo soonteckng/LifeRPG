@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   ScrollView,
   StyleSheet,

@@ -2,7 +2,7 @@ import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-shee
 import AppSheet from "../components/AppSheet";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Alert,
   Keyboard,

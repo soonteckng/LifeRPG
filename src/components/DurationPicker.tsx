@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";

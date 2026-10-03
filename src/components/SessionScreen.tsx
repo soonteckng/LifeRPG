@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
