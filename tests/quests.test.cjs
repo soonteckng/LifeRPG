@@ -374,6 +374,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
+    "../../services/progressService": { getFocusStreak: async () => 2 },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes }; } },
     "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
   }).default;
@@ -469,4 +470,5 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
     global.Date = RealDate; global.setTimeout = realTimeout; global.clearTimeout = realClear;
   }
 });
+
 

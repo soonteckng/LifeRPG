@@ -24,6 +24,8 @@ import {
 
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
+import { getFocusStreak } from "../../services/progressService";
+import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
@@ -38,6 +40,8 @@ export default function HomeScreen() {
   const { tasks, error: questsError, refresh: refreshQuests } = useQuests();
 
   const [completedMinutes, setCompletedMinutes] = useState(0);
+  const [focusStreak, setFocusStreak] = useState<number | null>(null);
+  const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [goalCompleted, setGoalCompleted] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [questsVisible, setQuestsVisible] = useState(false);
@@ -47,14 +51,15 @@ export default function HomeScreen() {
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
-      const [progress, profileOK] = await Promise.all([getTodayProgress(), reloadProfile(), refreshQuests()]);
+      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
+      if (streak !== undefined) setFocusStreak(streak);
       setCompletedMinutes(progress?.completed_minutes ?? 0);
       setGoalCompleted(progress?.goal_completed ?? false);
-      setLoadError(profileOK === false);
+      setLoadError(profileOK === false || streak === undefined);
     } catch {
       setLoadError(true);
     } finally { setRefreshing(false); }
-  }), [reloadProfile, refreshQuests]);
+  }), [reloadProfile, refreshQuests, timeZone]);
   const hour = useHomeLifecycle(loadData);
 
   // A successful completion updates the saved session summary before this fires.
@@ -82,7 +87,7 @@ export default function HomeScreen() {
 
   const greeting = homeWelcome(hour, profile?.username);
   const isGoalComplete = goalCompleted || remainingMinutes === 0;
-  const streakDays = Math.max(0, profile?.streak_count ?? 0);
+  const streakDays = Math.max(0, focusStreak ?? 0);
   const motivation = isGoalComplete ? "A little effort, real progress."
     : hasOpenSession ? "Your next step is already underway."
     : streakDays > 0 ? "Keep making time for what matters."
@@ -128,7 +133,7 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.momentum}>
             <Ionicons name={streakDays > 0 ? "flame-outline" : "leaf-outline"} size={19} color={colors.accent} />
-            <Text style={styles.momentumTitle}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text>
+            <Text style={styles.momentumTitle}>{streakDays > 0 ? `${streakDays}-day focus streak` : focusStreak === null ? "Make time for yourself" : "A fresh start"}</Text>
           </View>
           <Text style={styles.welcomeSubtitle} maxFontSizeMultiplier={1.4}>{motivation}</Text>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -370,3 +375,4 @@ const styles = StyleSheet.create({
   },
   countText: { color: "#0B0D13", fontSize: 12, fontWeight: "700" },
 });
+
