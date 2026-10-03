@@ -1,152 +1,156 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
-  Alert,
-  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
   Text,
   TextInput,
-  TouchableOpacity,
-  View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
-
+import { PersonalButton, p } from "./PersonalUI";
+import CharacterPortrait from "./CharacterPortrait";
+import { colors } from "../constants/theme";
+import PasswordInput from "./PasswordInput";
+import RecoveryScreen from "./RecoveryScreen";
 export default function AuthScreen() {
   const { signIn, signUp } = useAuth();
-
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  const handleSubmit = async () => {
+  const [email, setEmail] = useState(""),
+    [password, setPassword] = useState("");
+  const [register, setRegister] = useState(false),
+    [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState(""),
+    [error, setError] = useState("");
+  const lock = useRef(false);
+  const [forgot, setForgot] = useState(false);
+  const submit = async () => {
+    if (lock.current) return;
+    setMessage("");
+    setError("");
     if (!email.trim() || !password) {
-      Alert.alert("Missing information", "Enter your email and password.");
+      setError("Enter your email and password.");
       return;
     }
-
-    setLoading(true);
-
+    lock.current = true;
+    setBusy(true);
     try {
-      if (isSignUp) {
+      if (register) {
         const result = await signUp(email.trim(), password);
-
-        if (result.error) {
-          Alert.alert("Sign up failed", result.error.message);
-        } else if (result.needsEmailConfirmation) {
-          Alert.alert(
-            "Check your email",
-            "Your account was created. Please confirm your email before signing in."
+        if (result.error) throw result.error;
+        if (result.needsEmailConfirmation) {
+          setMessage(
+            "If registration can be completed for this email, check your inbox for next steps. If you already have an account, sign in or use Forgot password.",
           );
-        } else {
-          Alert.alert("Account created", "You are now signed in.");
+          setRegister(false);
+          setPassword("");
         }
       } else {
         const result = await signIn(email.trim(), password);
-
-        if (result.error) {
-          Alert.alert("Sign in failed", result.error.message);
-        }
+        if (result.error) throw result.error;
       }
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Couldn’t connect. Please try again.",
+      );
     } finally {
-      setLoading(false);
+      lock.current = false;
+      setBusy(false);
     }
   };
-
+  if (forgot) return <RecoveryScreen requestOnly onBack={() => setForgot(false)} />;
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>LifeRPG</Text>
-      <Text style={styles.subtitle}>
-        {isSignUp ? "Create your account" : "Welcome back"}
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#94A3B8"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor="#94A3B8"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleSubmit}
-        disabled={loading}
+    <SafeAreaView style={p.page}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <Text style={styles.buttonText}>
-          {loading
-            ? "Please wait..."
-            : isSignUp
-            ? "Create Account"
-            : "Sign In"}
-        </Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={() => setIsSignUp((current) => !current)}
-      >
-        <Text style={styles.switchText}>
-          {isSignUp
-            ? "Already have an account? Sign in"
-            : "Don't have an account? Sign up"}
-        </Text>
-      </TouchableOpacity>
-    </View>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{
+            flexGrow: 1,
+            padding: 24,
+            paddingBottom: 40,
+            justifyContent: "center",
+            gap: 16,
+          }}
+        >
+          <Text style={p.label}>LIFERPG</Text>
+          <Text style={[p.pageTitle, { fontSize: 36 }]}>
+            Your effort.{"\n"}Your character.
+          </Text>
+          <Text style={p.body}>
+            Make time for what matters. See yourself grow.
+          </Text>
+          <CharacterPortrait avatar="🌱" />
+          <Text style={p.title}>
+            {register ? "Create your account" : "Welcome back"}
+          </Text>
+          <TextInput
+            accessibilityLabel="Email"
+            editable={!busy}
+            style={p.input}
+            placeholder="Email"
+            placeholderTextColor={colors.muted}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="email"
+            textContentType="emailAddress"
+            value={email}
+            onChangeText={setEmail}
+          />
+          <PasswordInput
+            accessibilityLabel="Password"
+            editable={!busy}
+            style={p.input}
+            placeholder="Password"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="none"
+            autoComplete={register ? "new-password" : "current-password"}
+            textContentType={register ? "newPassword" : "password"}
+            value={password}
+            onChangeText={setPassword}
+            onSubmitEditing={() => void submit()}
+          />
+          {!register && <PersonalButton secondary title="Forgot password?" disabled={busy} onPress={() => setForgot(true)} />}
+          {!!error && (
+            <Text style={p.error} accessibilityRole="alert">
+              {error}
+            </Text>
+          )}
+          {!!message && (
+            <Text style={p.body} accessibilityRole="alert">
+              {message}
+            </Text>
+          )}
+          <PersonalButton
+            title={
+              busy ? "Please wait…" : register ? "Create account" : "Sign in"
+            }
+            disabled={busy}
+            onPress={() => void submit()}
+          />
+          <Pressable
+            disabled={busy}
+            accessibilityRole="button"
+            style={{ padding: 14, alignItems: "center" }}
+            onPress={() => {
+              setRegister((current) => !current);
+              setError("");
+              setMessage("");
+            }}
+          >
+            <Text style={[p.body, { color: colors.accent }]}>
+              {register
+                ? "Already have an account? Sign in"
+                : "New here? Create an account"}
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#0F172A",
-    justifyContent: "center",
-    padding: 24,
-  },
-  title: {
-    color: "#FFFFFF",
-    fontSize: 36,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-  subtitle: {
-    color: "#94A3B8",
-    fontSize: 16,
-    textAlign: "center",
-    marginTop: 8,
-    marginBottom: 32,
-  },
-  input: {
-    backgroundColor: "#1E293B",
-    color: "#FFFFFF",
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 12,
-  },
-  button: {
-    backgroundColor: "#6366F1",
-    borderRadius: 12,
-    paddingVertical: 15,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  buttonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  switchText: {
-    color: "#A5B4FC",
-    textAlign: "center",
-    marginTop: 20,
-  },
-});

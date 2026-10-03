@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   checks:
-    name: TypeScript and tests
+    name: TypeScript, lint and tests
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -38,3 +38,6 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Lint the full repository
+        run: npm run lint

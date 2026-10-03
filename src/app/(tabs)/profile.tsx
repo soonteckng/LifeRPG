@@ -1,588 +1,307 @@
-import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import Header from "../../components/Header";
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+  TouchableOpacity as SheetButton,
+} from "@gorhom/bottom-sheet";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useRef, useState } from "react";
+import { Keyboard, Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AppSheet from "../../components/AppSheet";
+import SheetConfirmation from "../../components/SheetConfirmation";
+import CharacterPortrait from "../../components/CharacterPortrait";
+import {
+  Meter,
+  PersonalButton,
+  PersonalPage,
+  PersonalRow,
+  p,
+} from "../../components/PersonalUI";
+import { colors } from "../../constants/theme";
 import { useUser } from "../../context/UserContext";
-import { useReducedMotion } from "../../hooks/useReducedMotion";
+import { useCharacterData } from "../../hooks/useCharacterData";
+import { earnedMilestones, lifeAreaGrowth } from "../../utils/characterGrowth";
+import { durationLabel } from "../../utils/progressAnalytics";
 
-const PRESET_AVATARS = [
-  "🧙‍♂️",
-  "🧝‍♂️",
-  "🛡️",
-  "⚔️",
-  "🔮",
-  "🐉",
-  "🐱",
-  "🤖",
-  "🚀",
-  "⭐",
-];
-
+import { CHARACTER_BADGES } from "../../constants/characterBadges";
 export default function ProfileScreen() {
-  const reducedMotion = useReducedMotion();
   const router = useRouter();
-  const {
-    profile,
-    reloadProfile,
-    updateProfile,
-    soundEnabled,
-    hapticsEnabled,
-    setSoundEnabled,
-    setHapticsEnabled,
-  } = useUser();
-
-  const [usernameInput, setUsernameInput] = useState(
-    profile?.username || "Hero",
-  );
-  const [avatarInput, setAvatarInput] = useState(profile?.avatar || "🧙‍♂️");
-  const [isEditing, setIsEditing] = useState(false);
-  const [successModalVisible, setSuccessModalVisible] = useState(false);
-  const [successModalMessage, setSuccessModalMessage] = useState({
-    title: "",
-    body: "",
-    isError: false,
-  });
-
+  const insets = useSafeAreaInsets();
+  const { profile, updateProfile, reloadProfile } = useUser();
+  const { data, loading, error, refresh } = useCharacterData();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [avatar, setAvatar] = useState("");
+  const [saving, setSaving] = useState(false);
+  const lock = useRef(false);
+  const sheetClosing = useRef(false);
+  const [saveError, setSaveError] = useState("");
+  const [discard, setDiscard] = useState(false);
   useFocusEffect(
     useCallback(() => {
-      reloadProfile();
+      void reloadProfile();
     }, [reloadProfile]),
   );
-
-  const handleSaveProfile = () => {
-    if (!usernameInput.trim()) {
-      setSuccessModalMessage({
-        title: "INVALID INPUT",
-        body: "Username cannot be empty. Please enter a valid hero name.",
-        isError: true,
-      });
-      setSuccessModalVisible(true);
+  const areas = (data?.areas ?? []).map(lifeAreaGrowth);
+  const totals = earnedMilestones(data?.sessions ?? [], profile.timezone);
+  const required = Math.floor(100 * Math.pow(Math.max(1, profile.level), 1.5));
+  const open = () => {
+    if (sheetClosing.current) return;
+    setName(profile.username);
+    setAvatar(profile.avatar);
+    setSaveError("");
+    setDiscard(false);
+    setSheetOpen(true);
+  };
+  const dirty = name.trim() !== profile.username || avatar !== profile.avatar;
+  const close = () => {
+    if (lock.current) return;
+    if (dirty) setDiscard(true);
+    else {
+      Keyboard.dismiss();
+      sheetClosing.current = true;
+      setSheetOpen(false);
+    }
+  };
+  const save = async () => {
+    if (lock.current) return;
+    if (!name.trim() || name.trim().length > 40) {
+      setSaveError("Enter a name between 1 and 40 characters.");
       return;
     }
-    // Keep existing automated class title while saving username and avatar changes
-    updateProfile(
-      usernameInput.trim(),
-      avatarInput.trim() || "🧙‍♂️",
-      profile?.class_title || "Novice Scholar 📚",
-    );
-    setIsEditing(false);
-    reloadProfile();
-    setSuccessModalMessage({
-      title: "PROFILE UPDATED!",
-      body: "Your hero avatar and name have been successfully saved.",
-      isError: false,
-    });
-    setSuccessModalVisible(true);
+    lock.current = true;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await updateProfile(name.trim(), avatar, profile.class_title);
+      Keyboard.dismiss();
+      sheetClosing.current = true;
+      setSheetOpen(false);
+    } catch {
+      setSaveError(
+        "Couldn’t save your changes. Your draft is here—please try again.",
+      );
+    } finally {
+      lock.current = false;
+      setSaving(false);
+    }
   };
-
-  const currentLevel = profile?.level || 1;
-  const currentXP = profile?.current_xp || 0;
-  const requiredXP = Math.floor(100 * Math.pow(currentLevel, 1.5));
-  const xpProgress = Math.min(1, currentXP / requiredXP);
-
   return (
-    <SafeAreaView style={styles.container}>
-      <Header
-        title="Profile"
-        subtitle="Manage your hero identity and preferences"
-        showBack={false}
-      />
-      <ScrollView contentContainerStyle={styles.contentContainer}>
-        {/* Profile Identity Card */}
-        <View style={styles.card}>
-          <View style={styles.avatarRow}>
-            <Text style={styles.avatarDisplay}>{profile?.avatar || "🧙‍♂️"}</Text>
-            <View style={styles.identityText}>
-              <Text style={styles.usernameDisplay}>
-                {profile?.username || "Hero"}
-              </Text>
-              <Text style={styles.classTitleDisplay}>
-                Lvl {currentLevel} {profile?.class_title || "Novice Scholar 📚"}
-              </Text>
-            </View>
-          </View>
-
-          {/* Rewards Hub */}
-          <TouchableOpacity
-            style={styles.rewardsEntryCard}
-            onPress={() => router.push("/rewards")}
-            activeOpacity={0.85}
-          >
-            <View style={styles.rewardsEntryIcon}>
-              <Text style={styles.rewardsEntryIconText}>🎁</Text>
-            </View>
-
-            <View style={styles.rewardsEntryInfo}>
-              <Text style={styles.rewardsEntryTitle}>Rewards Hub</Text>
-
-              <Text style={styles.rewardsEntrySubtitle}>
-                Daily chests, personal rewards, and milestone rewards
-              </Text>
-            </View>
-
-            <Text style={styles.rewardsEntryArrow}>›</Text>
-          </TouchableOpacity>
-
-          {/* Settings */}
-          <TouchableOpacity
-            style={styles.rewardsEntryCard}
-            onPress={() => router.push("/settings")}
-            activeOpacity={0.85}
-          >
-            <View style={styles.rewardsEntryIcon}>
-              <Text style={styles.rewardsEntryIconText}>⚙️</Text>
-            </View>
-
-            <View style={styles.rewardsEntryInfo}>
-              <Text style={styles.rewardsEntryTitle}>Settings</Text>
-
-              <Text style={styles.rewardsEntrySubtitle}>
-                Sound, haptics, and app preferences
-              </Text>
-            </View>
-
-            <Text style={styles.rewardsEntryArrow}>›</Text>
-          </TouchableOpacity>
-
-          <View style={styles.statGrid}>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>
-                🔥 {profile?.streak_count || 1}
-              </Text>
-              <Text style={styles.statLabel}>Day Streak</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>💰 {profile?.gold || 0}</Text>
-              <Text style={styles.statLabel}>Gold</Text>
-            </View>
-            <View style={styles.statBox}>
-              <Text style={styles.statValue}>⭐ {currentLevel}</Text>
-              <Text style={styles.statLabel}>Level</Text>
-            </View>
-          </View>
-
-          {/* XP Progress */}
-          <View style={styles.xpSection}>
-            <View style={styles.xpHeader}>
-              <Text style={styles.xpLabel}>CURRENT XP</Text>
-              <Text style={styles.xpValue}>
-                {currentXP} / {requiredXP}
-              </Text>
-            </View>
-            <View style={styles.xpTrack}>
-              <View
-                style={[styles.xpFill, { width: `${xpProgress * 100}%` }]}
-              />
-            </View>
+    <PersonalPage
+      title="Profile"
+      subtitle="A reflection of your effort."
+      action={
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Settings"
+          onPress={() => router.navigate("/settings")}
+          style={p.back}
+        >
+          <Ionicons name="settings-outline" size={23} color={colors.accent} />
+        </Pressable>
+      }
+    >
+      <View style={p.card}>
+        <View style={p.inline}>
+          <Text style={[p.label, p.flex]}>YOUR CHARACTER</Text>
+          <View style={p.pill}>
+            <Text style={p.rowTitle}>Level {profile.level}</Text>
           </View>
         </View>
-
-        {/* Profile Edit Section */}
-        <View style={styles.card}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.cardTitle}>Hero Customization</Text>
-            <TouchableOpacity onPress={() => setIsEditing(!isEditing)}>
-              <Text style={styles.editToggleText}>
-                {isEditing ? "Cancel" : "Edit"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {isEditing ? (
-            <View style={styles.formGroup}>
-              <Text style={styles.inputLabel}>Choose Avatar</Text>
-              <View style={styles.avatarPresetRow}>
-                {PRESET_AVATARS.map((emoji) => {
-                  const isSelected = avatarInput === emoji;
-                  return (
-                    <TouchableOpacity
-                      key={emoji}
-                      style={[
-                        styles.avatarChip,
-                        isSelected && styles.avatarChipSelected,
-                      ]}
-                      onPress={() => setAvatarInput(emoji)}
-                    >
-                      <Text style={styles.avatarChipText}>{emoji}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+        <CharacterPortrait
+          avatar={profile.avatar}
+          level={profile.level}
+          developed={
+            areas.filter((area) => area.level > 1 || area.current_xp > 0).length
+          }
+        />
+        <Text style={[p.caption, { textAlign: "center" }]}>
+          Tap your character to say hello.
+        </Text>
+        <View style={{ alignItems: "center", gap: 6 }}>
+          <Text style={[p.title, { fontSize: 26 }]}>{profile.username}</Text>
+          <Text style={p.body}>Built one session at a time.</Text>
+        </View>
+        <Meter value={profile.current_xp / required} />
+        <Text style={p.caption}>
+          {profile.current_xp} / {required} XP to level {profile.level + 1}
+        </Text>
+        <PersonalButton title="Personalise profile" secondary onPress={open} />
+      </View>
+      {error && (
+        <View style={p.card}>
+          <Text style={p.error}>
+            Couldn’t refresh your growth.{" "}
+            {data
+              ? "Your last loaded progress is still here."
+              : "Check your connection and try again."}
+          </Text>
+          <PersonalButton
+            title="Retry"
+            secondary
+            onPress={() => void refresh()}
+          />
+        </View>
+      )}
+      {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
+      <View style={p.card}>
+        <Text style={p.title}>Your growth</Text>
+        <Text style={p.body}>
+          Your Life areas are your character’s stats. Complete sessions in an
+          area to grow its level.
+        </Text>
+        {areas.map((area) => (
+          <View key={area.id} style={{ gap: 9, paddingVertical: 8 }}>
+            <View style={p.inline}>
+              <View style={p.icon}>
+                <Ionicons name="leaf-outline" size={21} color={colors.accent} />
               </View>
-
-              <Text style={styles.inputLabel}>Username</Text>
-              <TextInput
-                style={styles.input}
-                value={usernameInput}
-                onChangeText={setUsernameInput}
-                placeholder="Hero Name"
-                placeholderTextColor="#64748B"
-              />
-
-              <Text style={styles.infoNote}>
-                *Class titles evolve automatically based on your Level
-                milestones.
-              </Text>
-
-              <TouchableOpacity
-                style={styles.saveButton}
-                onPress={handleSaveProfile}
-              >
-                <Text style={styles.saveButtonText}>Save Hero Details</Text>
-              </TouchableOpacity>
+              <Text style={[p.rowTitle, p.flex]}>{area.title}</Text>
+              <Text style={p.rowTitle}>Lv {area.level}</Text>
             </View>
-          ) : (
-            <Text style={styles.infoText}>
-              Tap Edit to customize your avatar emoji and hero name.
+            <Meter value={area.current / area.required} />
+            <Text style={p.caption}>
+              {area.current} / {area.required} XP to the next level
+            </Text>
+          </View>
+        ))}
+        {data && areas.length === 0 && (
+          <Text style={p.body}>
+            Your overall level still grows. Life areas will appear here when
+            available.
+          </Text>
+        )}
+        <Text style={p.caption}>
+          Levels reflect focused effort you’ve logged.
+        </Text>
+      </View>
+      {data && (
+        <View style={p.card}>
+          <Text style={p.title}>The effort behind your character</Text>
+          <View style={[p.inline, { flexWrap: "wrap" }]}>
+            <View style={p.flex}>
+              <Text style={p.value}>{totals.sessions}</Text>
+              <Text style={p.caption}>Sessions completed</Text>
+            </View>
+            <View style={p.flex}>
+              <Text style={p.value}>{totals.days}</Text>
+              <Text style={p.caption}>Days you showed up</Text>
+            </View>
+          </View>
+          <Text style={p.body}>
+            {durationLabel(totals.seconds)} invested across your life.
+          </Text>
+        </View>
+      )}
+      <View style={p.card}>
+        <Text style={p.title}>Milestones</Text>
+        <Text style={p.body}>
+          {data
+            ? `${totals.milestones.filter((m) => m.unlocked).length} milestones earned. Your achievements stay with you.`
+            : "Recognise the effort you’ve put in."}
+        </Text>
+        <PersonalRow
+          icon="ribbon-outline"
+          title="View milestones"
+          subtitle="Achievements earned through your effort"
+          onPress={() => router.navigate("/rewards")}
+        />
+      </View>
+      <AppSheet
+        visible={sheetOpen}
+        onRequestClose={close}
+        onDismiss={() => {
+          sheetClosing.current = false;
+        }}
+        guardDismiss={dirty || saving || discard}
+        compact
+        label="Personalise profile"
+        header={
+          <View style={p.sheetHeader}>
+            <Text style={p.title}>Make it yours</Text>
+            <Text style={p.body}>Your name and character badge.</Text>
+          </View>
+        }
+        footer={
+          <View
+            style={{
+              paddingHorizontal: 22,
+              paddingTop: 12,
+              paddingBottom: Math.max(16, insets.bottom),
+              backgroundColor: colors.surface,
+            }}
+          >
+            <PersonalButton
+              title={saving ? "Saving…" : "Save changes"}
+              disabled={saving}
+              onPress={() => void save()}
+            />
+          </View>
+        }
+        overlay={
+          discard ? (
+            <SheetConfirmation
+              title="Discard changes?"
+              message="Your changes haven’t been saved."
+              confirmLabel="Discard changes"
+              cancelLabel="Keep editing"
+              onCancel={() => setDiscard(false)}
+              onConfirm={() => {
+                setDiscard(false);
+                Keyboard.dismiss();
+                sheetClosing.current = true;
+                setSheetOpen(false);
+              }}
+            />
+          ) : undefined
+        }
+      >
+        <BottomSheetScrollView
+          keyboardShouldPersistTaps="handled"
+          enableFooterMarginAdjustment
+          contentContainerStyle={[p.sheetBody, { paddingBottom: 12 }]}
+        >
+          <Text style={p.rowTitle}>Name</Text>
+          <BottomSheetTextInput
+            accessibilityLabel="Profile name"
+            editable={!saving}
+            style={p.input}
+            maxLength={40}
+            value={name}
+            onChangeText={setName}
+          />
+          <Text style={p.rowTitle}>Character badge</Text>
+          <View style={[p.inline, { flexWrap: "wrap" }]}>
+            {CHARACTER_BADGES.map((item) => (
+              <SheetButton
+                key={item}
+                disabled={saving}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose ${item}`}
+                accessibilityState={{ selected: avatar === item }}
+                onPress={() => setAvatar(item)}
+                style={[
+                  p.pill,
+                  {
+                    padding: 14,
+                    borderWidth: 1,
+                    borderColor:
+                      avatar === item ? colors.accent : "transparent",
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 26 }}>{item}</Text>
+              </SheetButton>
+            ))}
+          </View>
+          {!!saveError && (
+            <Text style={p.error} accessibilityRole="alert">
+              {saveError}
             </Text>
           )}
-        </View>
-
-        {/* Success / Notification Modal */}
-        <Modal
-          visible={successModalVisible}
-          transparent={true}
-          animationType={reducedMotion ? "none" : "fade"}
-          onRequestClose={() => setSuccessModalVisible(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View
-              style={[
-                styles.successModalCard,
-                successModalMessage.isError && styles.errorModalCard,
-              ]}
-            >
-              <Text style={styles.modalIcon}>
-                {successModalMessage.isError ? "⚠️" : "✨"}
-              </Text>
-              <Text
-                style={[
-                  styles.successModalTitle,
-                  successModalMessage.isError && styles.errorModalTitle,
-                ]}
-              >
-                {successModalMessage.title}
-              </Text>
-              <Text style={styles.modalText}>{successModalMessage.body}</Text>
-              <TouchableOpacity
-                style={[
-                  styles.successButton,
-                  successModalMessage.isError && styles.errorButton,
-                ]}
-                onPress={() => setSuccessModalVisible(false)}
-              >
-                <Text style={styles.successButtonText}>Got It</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
-      </ScrollView>
-    </SafeAreaView>
+        </BottomSheetScrollView>
+      </AppSheet>
+    </PersonalPage>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#090D16",
-  },
-  contentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 90,
-    gap: 14,
-  },
-  card: {
-    backgroundColor: "#1E293B",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  avatarRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    marginBottom: 16,
-  },
-  avatarDisplay: {
-    fontSize: 48,
-  },
-  identityText: {
-    flex: 1,
-  },
-  usernameDisplay: {
-    color: "#F8FAFC",
-    fontSize: 22,
-    fontWeight: "800",
-  },
-  classTitleDisplay: {
-    color: "#818CF8",
-    fontSize: 14,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  statGrid: {
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 16,
-  },
-  statBox: {
-    flex: 1,
-    backgroundColor: "#0F172A",
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  statValue: {
-    color: "#F8FAFC",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-  statLabel: {
-    color: "#64748B",
-    fontSize: 11,
-    fontWeight: "700",
-    marginTop: 2,
-  },
-  xpSection: {
-    gap: 6,
-  },
-  xpHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  xpLabel: {
-    color: "#94A3B8",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-  xpValue: {
-    color: "#818CF8",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  xpTrack: {
-    height: 10,
-    backgroundColor: "#0F172A",
-    borderRadius: 5,
-    overflow: "hidden",
-  },
-  xpFill: {
-    height: "100%",
-    backgroundColor: "#6366F1",
-    borderRadius: 5,
-  },
-  sectionHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  cardTitle: {
-    color: "#F8FAFC",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  editToggleText: {
-    color: "#818CF8",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  formGroup: {
-    gap: 8,
-    marginTop: 6,
-  },
-  inputLabel: {
-    color: "#94A3B8",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  avatarPresetRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 8,
-  },
-  avatarChip: {
-    width: 42,
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: "#0F172A",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  avatarChipSelected: {
-    borderColor: "#6366F1",
-    backgroundColor: "#6366F133",
-  },
-  avatarChipText: {
-    fontSize: 22,
-  },
-  input: {
-    backgroundColor: "#0F172A",
-    color: "#F8FAFC",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: "#334155",
-  },
-  infoNote: {
-    color: "#64748B",
-    fontSize: 11,
-    fontStyle: "italic",
-    marginBottom: 4,
-  },
-  saveButton: {
-    backgroundColor: "#6366F1",
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 8,
-  },
-  saveButtonText: {
-    color: "#FFFFFF",
-    fontWeight: "700",
-    fontSize: 14,
-  },
-  infoText: {
-    color: "#64748B",
-    fontSize: 13,
-  },
-  settingRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: "#334155",
-  },
-  settingLabel: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(5, 8, 15, 0.88)",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-  },
-
-  successModalCard: {
-    width: "100%",
-    backgroundColor: "#131C2E",
-    borderRadius: 20,
-    padding: 22,
-    borderWidth: 1.5,
-    borderColor: "#10B981",
-    alignItems: "center",
-    shadowColor: "#10B981",
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  errorModalCard: {
-    backgroundColor: "#1E1218",
-    borderColor: "#EF4444",
-  },
-
-  rewardsEntryCard: {
-    marginBottom: 14,
-    backgroundColor: "rgba(99,102,241,0.10)",
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "rgba(129,140,248,0.22)",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  rewardsEntryIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: 14,
-    backgroundColor: "rgba(99,102,241,0.16)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  rewardsEntryIconText: {
-    fontSize: 23,
-  },
-
-  rewardsEntryInfo: {
-    flex: 1,
-    marginLeft: 11,
-  },
-
-  rewardsEntryTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "900",
-  },
-
-  rewardsEntrySubtitle: {
-    color: "#64748B",
-    fontSize: 9,
-    lineHeight: 14,
-    marginTop: 3,
-  },
-
-  rewardsEntryArrow: {
-    color: "#A5B4FC",
-    fontSize: 28,
-    fontWeight: "300",
-    marginLeft: 8,
-  },
-
-  modalIcon: { fontSize: 36, marginBottom: 8 },
-  modalTitle: {
-    color: "#F87171",
-    fontSize: 18,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  successModalTitle: {
-    color: "#34D399",
-    fontSize: 18,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-    marginBottom: 8,
-  },
-  errorModalTitle: { color: "#F87171" },
-  modalText: {
-    color: "#94A3B8",
-    fontSize: 13,
-    textAlign: "center",
-    lineHeight: 20,
-    marginBottom: 20,
-  },
-  successButton: {
-    width: "100%",
-    backgroundColor: "#10B981",
-    paddingVertical: 12,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  errorButton: { backgroundColor: "#EF4444" },
-  successButtonText: { color: "#FFFFFF", fontWeight: "800", fontSize: 13 },
-});

@@ -30,9 +30,7 @@ export interface ExclusiveReward {
 export async function getRewards(): Promise<Reward[]> {
   const { data, error } = await supabase
     .from("rewards")
-    .select(
-      "id, user_id, title, cost_gold, created_at",
-    )
+    .select("id, user_id, title, cost_gold, created_at")
     .order("created_at", {
       ascending: true,
     });
@@ -53,9 +51,7 @@ export async function createReward(
   } = await supabase.auth.getUser();
 
   if (!user) {
-    throw new Error(
-      "User is not authenticated.",
-    );
+    throw new Error("User is not authenticated.");
   }
 
   const { data, error } = await supabase
@@ -65,9 +61,7 @@ export async function createReward(
       title,
       cost_gold: costGold,
     })
-    .select(
-      "id, user_id, title, cost_gold, created_at",
-    )
+    .select("id, user_id, title, cost_gold, created_at")
     .single();
 
   if (error) {
@@ -77,29 +71,18 @@ export async function createReward(
   return data;
 }
 
-export async function deleteReward(
-  rewardId: string,
-): Promise<void> {
-  const { error } = await supabase
-    .from("rewards")
-    .delete()
-    .eq("id", rewardId);
+export async function deleteReward(rewardId: string): Promise<void> {
+  const { error } = await supabase.from("rewards").delete().eq("id", rewardId);
 
   if (error) {
     throw error;
   }
 }
 
-export async function redeemReward(
-  rewardId: string,
-) {
-  const { data, error } =
-    await supabase.rpc(
-      "redeem_reward",
-      {
-        p_reward_id: rewardId,
-      },
-    );
+export async function redeemReward(rewardId: string) {
+  const { data, error } = await supabase.rpc("redeem_reward", {
+    p_reward_id: rewardId,
+  });
 
   if (error) {
     throw error;
@@ -117,19 +100,16 @@ export async function redeemReward(
 
 /* -------------------- REWARD CHEST -------------------- */
 
-export async function getTodayRewardChest(): Promise<RewardChest | null> {
-  const today = new Intl.DateTimeFormat(
-    "en-CA",
-    {
-      timeZone: "Asia/Kuala_Lumpur",
-    },
-  ).format(new Date());
+export async function getTodayRewardChest(
+  timeZone = "Asia/Kuala_Lumpur",
+): Promise<RewardChest | null> {
+  const today = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+  }).format(new Date());
 
   const { data, error } = await supabase
     .from("reward_chests")
-    .select(
-      "id, user_id, progress_date, reward_gold, opened_at, created_at",
-    )
+    .select("id, user_id, progress_date, reward_gold, opened_at, created_at")
     .eq("progress_date", today)
     .maybeSingle();
 
@@ -141,10 +121,7 @@ export async function getTodayRewardChest(): Promise<RewardChest | null> {
 }
 
 export async function openDailyRewardChest() {
-  const { data, error } =
-    await supabase.rpc(
-      "open_daily_reward_chest",
-    );
+  const { data, error } = await supabase.rpc("open_daily_reward_chest");
 
   if (error) {
     throw error;
@@ -161,9 +138,7 @@ export async function openDailyRewardChest() {
 
 /* ---------------- EXCLUSIVE REWARDS ---------------- */
 
-export async function getExclusiveRewards(): Promise<
-  ExclusiveReward[]
-> {
+export async function getExclusiveRewards(): Promise<ExclusiveReward[]> {
   const { data, error } = await supabase
     .from("exclusive_rewards")
     .select(

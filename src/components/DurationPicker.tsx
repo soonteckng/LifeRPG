@@ -1,5 +1,5 @@
 import * as Haptics from "expo-haptics";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, FlatList, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
@@ -155,10 +155,16 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
 type EditorProps = { visible: boolean; seconds: number; onCancel: () => void; onConfirm: (seconds: number) => void };
 export function DurationEditor({ visible, seconds, onCancel, onConfirm }: EditorProps) {
   const [mounted, setMounted] = useState(visible);
-  useEffect(() => { if (visible) setMounted(true); }, [visible]);
+  const latestVisible = useRef(visible);
+  useLayoutEffect(() => { latestVisible.current = visible; }, [visible]);
+  const [previousVisible, setPreviousVisible] = useState(visible);
+  if (previousVisible !== visible) {
+    setPreviousVisible(visible);
+    if (visible) setMounted(true);
+  }
   if (!mounted) return null;
   return <AppSheet visible={visible} onRequestClose={onCancel}
-    onDismiss={() => setMounted(false)} label="Set duration" header={<View style={styles.pickerHeader}><Text style={styles.title}>Set duration</Text></View>}>
+    onDismiss={() => { if (!latestVisible.current) setMounted(false); }} label="Set duration" header={<View style={styles.pickerHeader}><Text style={styles.title}>Set duration</Text></View>}>
     <EditorDraft seconds={seconds} onCancel={onCancel} onConfirm={onConfirm} />
   </AppSheet>;
 }

@@ -1,1223 +1,1393 @@
-import { useFocusEffect } from "expo-router";
-import React, {
-  useCallback,
-  useMemo,
-  useState,
-} from "react";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import {
+  BottomSheetScrollView,
+  TouchableOpacity as SheetButton,
+} from "@gorhom/bottom-sheet";
+import * as Haptics from "expo-haptics";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ActivityIndicator,
+  Animated,
+  AppState,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-
-import Header from "../../components/Header";
-import { sessionCategory } from "../../utils/sessionReporting";
-import { durationLabel } from "../../utils/sessionSetup";
-import { useUser } from "../../context/UserContext";
 import {
-  getCompletedSessions,
-  getProgressSubjects,
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
+import AppSheet from "../../components/AppSheet";
+import { colors } from "../../constants/theme";
+import { useTimer } from "../../context/TimerContext";
+import { useUser } from "../../context/UserContext";
+import { useProgressData } from "../../hooks/useProgressData";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
+import {
+  getSessionHistory,
   type ProgressSession,
 } from "../../services/progressService";
+import {
+  buildProgress,
+  calendarLabel,
+  dateKey,
+  DEFAULT_TIMEZONE,
+  durationLabel,
+  nextAnchor,
+  periodFor,
+  previousAnchor,
+  type PeriodMode,
+} from "../../utils/progressAnalytics";
+import { sessionCategory } from "../../utils/sessionReporting";
 
-const TIME_ZONE = "Asia/Kuala_Lumpur";
+type Detail =
+  | { kind: "day"; key: string }
+  | { kind: "area"; key: string }
+  | { kind: "history" }
+  | { kind: "consistency" };
+type Icon = React.ComponentProps<typeof Ionicons>["name"];
+const green = "#8FD8B6";
 
-interface ProgressDay {
-  key: string;
-  day: string;
-  date: string;
-  minutes: number;
-  xp: number;
-}
-
-function getDateKey(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: TIME_ZONE,
-  }).format(date);
-}
-
-function getLastSevenDays(): ProgressDay[] {
-  const today = new Date();
-
-  const dayFormatter = new Intl.DateTimeFormat(
-    "en-US",
-    {
-      timeZone: TIME_ZONE,
-      weekday: "short",
-    },
+function Section({
+  title,
+  subtitle,
+  action,
+  onPress,
+}: {
+  title: string;
+  subtitle?: string;
+  action?: string;
+  onPress?: () => void;
+}) {
+  return (
+    <View style={s.sectionHeading}>
+      <View style={s.flex}>
+        <Text style={s.sectionTitle}>{title}</Text>
+        {subtitle && <Text style={s.caption}>{subtitle}</Text>}
+      </View>
+      {action && (
+        <Pressable
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={action}
+          style={s.sectionAction}
+        >
+          <Text style={s.link}>{action}</Text>
+          <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+        </Pressable>
+      )}
+    </View>
   );
-
-  const dateFormatter = new Intl.DateTimeFormat(
-    "en-US",
-    {
-      timeZone: TIME_ZONE,
-      month: "short",
-      day: "numeric",
-    },
+}
+function Empty({
+  icon,
+  title,
+  body,
+}: {
+  icon: Icon;
+  title: string;
+  body: string;
+}) {
+  return (
+    <View style={s.empty}>
+      <Ionicons name={icon} size={26} color={colors.accent} />
+      <Text style={s.emptyTitle}>{title}</Text>
+      <Text style={s.emptyBody}>{body}</Text>
+    </View>
   );
-
-  return Array.from(
-    { length: 7 },
-    (_, index) => {
-      const date = new Date(
-        today.getTime() -
-          (6 - index) * 24 * 60 * 60 * 1000,
-      );
-
-      return {
-        key: getDateKey(date),
-        day: dayFormatter.format(date),
-        date: dateFormatter.format(date),
-        minutes: 0,
-        xp: 0,
-      };
-    },
+}
+function SessionRow({
+  session,
+  areas,
+  timeZone,
+  inSheet = false,
+  onPress,
+}: {
+  session: ProgressSession;
+  areas: { id: number; title: string }[];
+  timeZone: string;
+  inSheet?: boolean;
+  onPress: () => void;
+}) {
+  const Button = inSheet ? SheetButton : Pressable;
+  const key = dateKey(new Date(session.completed_at!), timeZone);
+  const time = new Intl.DateTimeFormat(undefined, {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(session.completed_at!));
+  const title = sessionCategory(session, areas);
+  return (
+    <Button
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}, ${durationLabel(session.duration_seconds)}, ${calendarLabel(key)}, ${time}. View session`}
+      style={s.sessionRow}
+    >
+      <View style={s.sessionIcon}>
+        <Ionicons name="checkmark" size={18} color={green} />
+      </View>
+      <View style={s.flex}>
+        <Text style={s.rowTitle}>{title}</Text>
+        <Text style={s.caption}>
+          {calendarLabel(key)} · {time}
+        </Text>
+      </View>
+      <Text style={s.rowValue}>{durationLabel(session.duration_seconds)}</Text>
+      <Ionicons name="chevron-forward" size={15} color={colors.muted} />
+    </Button>
   );
 }
 
 export default function ProgressScreen() {
-  const { profile } = useUser();
-
-  const [sessions, setSessions] = useState<
-    ProgressSession[]
-  >([]);
-
-  const [subjects, setSubjects] = useState<
-    {
-      id: number;
-      title: string;
-      level: number;
-      current_xp: number;
-      color_code: string | null;
-    }[]
-  >([]);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const loadData = useCallback(async () => {
+  const router = useRouter();
+  const { profile, hapticsEnabled } = useUser();
+  const { sessionSummary } = useTimer();
+  const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
+  const reduced = useReducedMotion();
+  const insets = useSafeAreaInsets();
+  const [today, setToday] = useState(() => dateKey(new Date(), timeZone));
+  const [mode, setMode] = useState<PeriodMode>("week");
+  const [anchor, setAnchor] = useState<string | null>(null);
+  const period = useMemo(
+    () => periodFor(mode, anchor ?? today, timeZone),
+    [mode, anchor, today, timeZone],
+  );
+  const { data, error, loading, refresh } = useProgressData(
+    period,
+    timeZone,
+    sessionSummary,
+  );
+  const analytics = useMemo(
+    () =>
+      data
+        ? buildProgress(period, data.sessions, data.goals, timeZone, data.areas)
+        : null,
+    [data, period, timeZone],
+  );
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [selectedSession, setSelectedSession] =
+    useState<ProgressSession | null>(null);
+  const [history, setHistory] = useState<ProgressSession[]>([]);
+  const [historyMore, setHistoryMore] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState(false);
+  const historyOffset = useRef(0),
+    historyBefore = useRef(""),
+    historyRequest = useRef(0),
+    historyBusy = useRef(false);
+  const [reveal] = useState(() => new Animated.Value(1));
+  const sheetScroll =
+    useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
+  useEffect(() => {
+    const update = () => setToday(dateKey(new Date(), timeZone));
+    update();
+    const interval = setInterval(update, 60000);
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") update();
+    });
+    return () => {
+      clearInterval(interval);
+      subscription.remove();
+    };
+  }, [timeZone]);
+  useEffect(() => {
+    reveal.stopAnimation();
+    if (reduced || !data) {
+      reveal.setValue(1);
+      return;
+    }
+    reveal.setValue(0.35);
+    const animation = Animated.timing(reveal, {
+      toValue: 1,
+      duration: 240,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [data, reduced, reveal]);
+  useEffect(
+    () => () => {
+      historyRequest.current++;
+    },
+    [],
+  );
+  useEffect(() => {
+    sheetScroll.current?.scrollTo({ y: 0, animated: false });
+  }, [detail, selectedSession]);
+  const tick = () => {
+    if (hapticsEnabled) void Haptics.selectionAsync();
+  };
+  const open = (next: Detail) => {
+    tick();
+    setSelectedSession(null);
+    setDetail(next);
+    setSheetVisible(true);
+  };
+  const loadHistory = async (reset = false) => {
+    if (historyBusy.current && !reset) return;
+    const request = ++historyRequest.current;
+    historyBusy.current = true;
+    if (reset) {
+      historyOffset.current = 0;
+      historyBefore.current = new Date().toISOString();
+      setHistory([]);
+      setHistoryMore(false);
+    }
+    setHistoryLoading(true);
+    setHistoryError(false);
     try {
-      const since = new Date(
-        Date.now() -
-          8 * 24 * 60 * 60 * 1000,
-      ).toISOString();
-
-      const [
-        sessionList,
-        subjectList,
-      ] = await Promise.all([
-        getCompletedSessions(since),
-        getProgressSubjects(),
+      const page = await getSessionHistory(
+        historyOffset.current,
+        historyBefore.current,
+      );
+      if (historyRequest.current !== request) return;
+      historyOffset.current += page.sessions.length;
+      setHistory((old) => [
+        ...old,
+        ...page.sessions.filter((item) => !old.some((s) => s.id === item.id)),
       ]);
-
-      setSessions(sessionList);
-      setSubjects(subjectList);
-    } catch (error) {
-      console.error(
-        "Failed to load progress data:",
-        error,
-      );
-    }
-  }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadData();
-    }, [loadData]),
-  );
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-
-    try {
-      await loadData();
+      setHistoryMore(page.hasMore);
+    } catch {
+      if (historyRequest.current === request) setHistoryError(true);
     } finally {
-      setRefreshing(false);
+      if (historyRequest.current === request) {
+        historyBusy.current = false;
+        setHistoryLoading(false);
+      }
     }
-  }, [loadData]);
-
-  const weeklyDays = useMemo(() => {
-    const days = getLastSevenDays();
-
-    const dayMap = new Map(
-      days.map((day) => [
-        day.key,
-        day,
-      ]),
-    );
-
-    sessions.forEach((session) => {
-      if (!session.completed_at) {
-        return;
-      }
-
-      const date = new Date(
-        session.completed_at,
-      );
-
-      const key = getDateKey(date);
-      const day = dayMap.get(key);
-
-      if (!day) {
-        return;
-      }
-
-      const minutes = Math.max(
-        0,
-        Math.floor(
-          session.duration_seconds / 60,
-        ),
-      );
-
-      day.minutes += minutes;
-      day.xp += session.xp_earned || 0;
-    });
-
-    return days;
-  }, [sessions]);
-
-  const totalWeeklyMinutes =
-    weeklyDays.reduce(
-      (sum, day) =>
-        sum + day.minutes,
-      0,
-    );
-
-  const totalWeeklyXP =
-    weeklyDays.reduce(
-      (sum, day) =>
-        sum + day.xp,
-      0,
-    );
-
-  const totalWeeklyGold =
-    sessions.reduce(
-      (sum, session) =>
-        sum + (session.gold_earned || 0),
-      0,
-    );
-
-  const weeklySessionCount =
-    sessions.length;
-
-  const maxDailyMinutes = Math.max(
-    60,
-    ...weeklyDays.map(
-      (day) => day.minutes,
-    ),
-  );
-
-  const activityBreakdown = useMemo(() => {
-    const map = new Map<
-      string,
-      number
-    >();
-
-    sessions.forEach((session) => {
-      const activity = sessionCategory(session, subjects);
-
-      const minutes = Math.max(
-        0,
-        Math.floor(
-          session.duration_seconds / 60,
-        ),
-      );
-
-      map.set(
-        activity,
-        (map.get(activity) || 0) +
-          minutes,
-      );
-    });
-
-    return Array.from(
-      map.entries(),
-    )
-      .map(
-        ([activity, minutes]) => ({
-          activity,
-          minutes,
-        }),
-      )
-      .sort(
-        (a, b) =>
-          b.minutes - a.minutes,
-      );
-  }, [sessions, subjects]);
-
-  const subjectBreakdown = useMemo(() => {
-    const map = new Map<
-      number,
-      number
-    >();
-
-    sessions.forEach((session) => {
-      if (session.subject_id === null) {
-        return;
-      }
-
-      const minutes = Math.max(
-        0,
-        Math.floor(
-          session.duration_seconds / 60,
-        ),
-      );
-
-      map.set(
-        session.subject_id,
-        (map.get(
-          session.subject_id,
-        ) || 0) + minutes,
-      );
-    });
-
-    return subjects
-      .map((subject) => ({
-        ...subject,
-        minutes:
-          map.get(subject.id) || 0,
-      }))
-      .sort(
-        (a, b) =>
-          b.minutes - a.minutes,
-      );
-  }, [sessions, subjects]);
-
-  const level =
-    profile?.level ?? 1;
-
-  const streak =
-    profile?.streak_count ?? 0;
-
-  const badges = [
-    {
-      icon: "🐣",
-      title: "First Step",
-      description:
-        "Reach Character Level 2",
-      unlocked: level >= 2,
-    },
-    {
-      icon: "🔥",
-      title: "Consistent Hero",
-      description:
-        "Maintain a 3-day streak",
-      unlocked: streak >= 3,
-    },
-    {
-      icon: "⚡",
-      title: "Rising Adventurer",
-      description:
-        "Reach Character Level 5",
-      unlocked: level >= 5,
-    },
-    {
-      icon: "👑",
-      title: "Streak Veteran",
-      description:
-        "Maintain a 7-day streak",
-      unlocked: streak >= 7,
-    },
-    {
-      icon: "🏆",
-      title: "Legendary Hero",
-      description:
-        "Reach Character Level 10",
-      unlocked: level >= 10,
-    },
-  ];
-
-  const unlockedBadges =
-    badges.filter(
-      (badge) => badge.unlocked,
-    ).length;
+  };
+  const openHistory = () => {
+    open({ kind: "history" });
+    void loadHistory(true);
+  };
+  const currentPeriod = period.end >= today;
+  const range = `${calendarLabel(period.start)} – ${calendarLabel(period.end, { month: "short", day: "numeric", year: "numeric" })}`;
+  const peak = Math.max(1, ...(analytics?.days.map((d) => d.seconds) ?? []));
+  const activeDay =
+    detail?.kind === "day"
+      ? analytics?.days.find((d) => d.key === detail.key)
+      : null;
+  const activeArea =
+    detail?.kind === "area"
+      ? analytics?.areas.find((a) => a.key === detail.key)
+      : null;
+  const detailSessions =
+    detail?.kind === "history"
+      ? history
+      : (activeDay?.sessions ?? activeArea?.sessions ?? []);
+  const detailTitle = selectedSession
+    ? "Session details"
+    : detail?.kind === "history"
+      ? "Session history"
+      : detail?.kind === "consistency"
+        ? "Your consistency"
+        : activeDay
+          ? calendarLabel(activeDay.key, {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            })
+          : (activeArea?.title ?? "Details");
+  const comparison =
+    analytics && analytics.previousSeconds > 0
+      ? Math.round(
+          ((analytics.comparisonSeconds - analytics.previousSeconds) /
+            analytics.previousSeconds) *
+            100,
+        )
+      : null;
+  const comparisonLabel =
+    comparison === null
+      ? "Your time adds up, one session at a time."
+      : comparison === 0
+        ? "Matching your previous pace."
+        : `${Math.abs(comparison)}% ${comparison > 0 ? "more" : "less"} focus time than the previous ${mode}.`;
 
   return (
-    <SafeAreaView
-      style={styles.container}
-    >
-      <Header
-        title="Progress"
-        subtitle="See how you're building momentum"
-        showBack={false}
-      />
-
+    <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
       <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={
-          styles.content
-        }
+        contentContainerStyle={s.page}
         refreshControl={
           <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#818CF8"
+            refreshing={loading && !!data}
+            onRefresh={() => void refresh()}
+            tintColor={colors.accent}
           />
         }
       >
-        {/* SUMMARY */}
-        <View
-          style={styles.summaryRow}
-        >
-          <View
-            style={styles.summaryCard}
-          >
-            <Text
-              style={styles.summaryValue}
-            >
-              Lv. {level}
-            </Text>
-
-            <Text
-              style={styles.summaryLabel}
-            >
-              Level
-            </Text>
-          </View>
-
-          <View
-            style={styles.summaryCard}
-          >
-            <Text
-              style={[
-                styles.summaryValue,
-                {
-                  color: "#F59E0B",
-                },
-              ]}
-            >
-              {streak}
-            </Text>
-
-            <Text
-              style={styles.summaryLabel}
-            >
-              Day Streak
-            </Text>
-          </View>
-
-          <View
-            style={styles.summaryCard}
-          >
-            <Text
-              style={[
-                styles.summaryValue,
-                {
-                  color: "#10B981",
-                },
-              ]}
-            >
-              {totalWeeklyMinutes}
-            </Text>
-
-            <Text
-              style={styles.summaryLabel}
-            >
-              Minutes
-            </Text>
-          </View>
+        <View style={s.header}>
+          <Text style={s.eyebrow}>YOUR JOURNEY</Text>
+          <Text style={s.title}>Progress</Text>
+          <Text style={s.subtitle}>Small moments. Meaningful momentum.</Text>
         </View>
-
-        {/* WEEKLY ACTIVITY */}
-        <Text
-          style={styles.sectionTitle}
-        >
-          LAST 7 DAYS
-        </Text>
-
-        <View
-          style={styles.chartCard}
-        >
-          <View
-            style={
-              styles.chartTopRow
-            }
-          >
-            <View>
-              <Text
-                style={
-                  styles.chartMainValue
-                }
-              >
-                {totalWeeklyMinutes} min
+        <View style={s.segment} accessibilityRole="tablist">
+          {(["week", "month"] as const).map((value) => (
+            <Pressable
+              key={value}
+              onPress={() => {
+                tick();
+                setMode(value);
+              }}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: mode === value }}
+              accessibilityLabel={value === "week" ? "Week view" : "Month view"}
+              style={[s.segmentButton, mode === value && s.segmentSelected]}
+            >
+              <Text style={[s.segmentText, mode === value && s.segmentActive]}>
+                {value === "week" ? "Week" : "Month"}
               </Text>
-
-              <Text
-                style={
-                  styles.chartSubtext
-                }
-              >
-                +{totalWeeklyXP} XP ·{" "}
-                {weeklySessionCount} sessions
+            </Pressable>
+          ))}
+        </View>
+        <View style={s.periodNav}>
+          <Pressable
+            style={s.navButton}
+            onPress={() => {
+              tick();
+              setAnchor(previousAnchor(period));
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Previous ${mode}`}
+          >
+            <Ionicons name="chevron-back" color={colors.text} size={20} />
+          </Pressable>
+          <Pressable
+            style={s.periodCenter}
+            onPress={() => {
+              tick();
+              setAnchor(null);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Showing ${range}. Return to this ${mode}`}
+          >
+            <Text style={s.periodTitle}>
+              {currentPeriod
+                ? `This ${mode}`
+                : mode === "month"
+                  ? calendarLabel(period.start, {
+                      month: "long",
+                      year: "numeric",
+                    })
+                  : "Earlier week"}
+            </Text>
+            <Text style={s.caption}>{range}</Text>
+          </Pressable>
+          <Pressable
+            style={s.navButton}
+            disabled={currentPeriod}
+            onPress={() => {
+              tick();
+              setAnchor(nextAnchor(period));
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={`Next ${mode}`}
+            accessibilityState={{ disabled: currentPeriod }}
+          >
+            <Ionicons
+              name="chevron-forward"
+              color={currentPeriod ? "#404656" : colors.text}
+              size={20}
+            />
+          </Pressable>
+        </View>
+        {error && (
+          <View style={s.error}>
+            <Ionicons
+              name="cloud-offline-outline"
+              size={20}
+              color={colors.secondary}
+            />
+            <View style={s.flex}>
+              <Text style={s.rowTitle}>Couldn’t refresh Progress</Text>
+              <Text style={s.caption}>
+                {data
+                  ? "Showing your last loaded data."
+                  : "Your progress is safe. Try again."}
               </Text>
             </View>
-
-            <Text
-              style={styles.goldText}
+            <Pressable
+              onPress={() => void refresh()}
+              disabled={loading}
+              accessibilityRole="button"
+              accessibilityLabel="Retry Progress"
+              style={s.retry}
             >
-              +{totalWeeklyGold} 💰
-            </Text>
+              <Text style={s.link}>{loading ? "Retrying…" : "Retry"}</Text>
+            </Pressable>
           </View>
-
-          <View
-            style={styles.chart}
-          >
-            {weeklyDays.map(
-              (day) => {
-                const height =
-                  day.minutes === 0
-                    ? 4
-                    : Math.max(
-                        10,
-                        (day.minutes /
-                          maxDailyMinutes) *
-                          100,
-                      );
-
-                return (
-                  <View
-                    key={day.key}
-                    style={
-                      styles.barColumn
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.barValue
-                      }
-                    >
-                      {day.minutes > 0
-                        ? `${day.minutes}`
-                        : ""}
-                    </Text>
-
-                    <View
-                      style={
-                        styles.barTrack
-                      }
-                    >
-                      <View
-                        style={[
-                          styles.barFill,
-                          {
-                            height: `${height}%`,
-                            opacity:
-                              day.minutes >
-                              0
-                                ? 1
-                                : 0.35,
-                          },
-                        ]}
-                      />
-                    </View>
-
-                    <Text
-                      style={
-                        styles.barDay
-                      }
-                    >
-                      {day.day}
-                    </Text>
-                  </View>
-                );
-              },
+        )}
+        {!data ? (
+          <View style={s.loading}>
+            {!error && (
+              <>
+                <ActivityIndicator color={colors.accent} />
+                <Text style={s.caption}>Gathering your progress…</Text>
+              </>
             )}
           </View>
-        </View>
-
-        {/* LIFE AREA BREAKDOWN */}
-        <Text
-          style={styles.sectionTitle}
-        >
-          LIFE AREA BREAKDOWN
-        </Text>
-
-        <View
-          style={styles.card}
-        >
-          {activityBreakdown.length ===
-          0 ? (
-            <Text
-              style={styles.emptyText}
-            >
-              Complete a session to see
-              your Life area breakdown.
-            </Text>
-          ) : (
-            activityBreakdown
-              .slice(0, 6)
-              .map((item, index) => {
-                const percentage =
-                  totalWeeklyMinutes >
-                  0
-                    ? Math.round(
-                        (item.minutes /
-                          totalWeeklyMinutes) *
-                          100,
-                      )
-                    : 0;
-
-                return (
-                  <View
-                    key={
-                      item.activity
-                    }
-                    style={[
-                      styles.breakdownRow,
-                      index ===
-                        activityBreakdown.length -
-                          1 &&
-                        styles.lastRow,
-                    ]}
-                  >
-                    <View
-                      style={
-                        styles.breakdownHeader
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.breakdownName
-                        }
-                      >
-                        {item.activity}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.breakdownValue
-                        }
-                      >
-                        {item.minutes} min ·{" "}
-                        {percentage}%
-                      </Text>
-                    </View>
-
-                    <View
-                      style={
-                        styles.breakdownTrack
-                      }
-                    >
-                      <View
-                        style={[
-                          styles.breakdownFill,
-                          {
-                            width: `${percentage}%`,
-                          },
-                        ]}
-                      />
-                    </View>
-                  </View>
-                );
-              })
-          )}
-        </View>
-
-        {/* AREA PROGRESS */}
-        <Text
-          style={styles.sectionTitle}
-        >
-          AREA MASTERY
-        </Text>
-
-        <View
-          style={styles.card}
-        >
-          {subjectBreakdown.map(
-            (subject) => {
-              const requiredXP =
-                Math.max(
-                  50,
-                  subject.level *
-                    50,
-                );
-
-              const progress =
-                Math.min(
-                  1,
-                  subject.current_xp /
-                    requiredXP,
-                );
-
-              return (
-                <View
-                  key={subject.id}
-                  style={
-                    styles.areaRow
-                  }
-                >
-                  <View
-                    style={
-                      styles.areaHeader
-                    }
-                  >
-                    <View
-                      style={
-                        styles.areaNameGroup
-                      }
-                    >
-                      <View
-                        style={[
-                          styles.areaDot,
-                          {
-                            backgroundColor:
-                              subject.color_code ??
-                              "#6366F1",
-                          },
-                        ]}
-                      />
-
-                      <Text
-                        style={
-                          styles.areaTitle
-                        }
-                      >
-                        {subject.title}
-                      </Text>
-                    </View>
-
-                    <Text
-                      style={
-                        styles.areaLevel
-                      }
-                    >
-                      Lv.{" "}
-                      {subject.level}
-                    </Text>
-                  </View>
-
-                  <View
-                    style={
-                      styles.areaTrack
-                    }
-                  >
-                    <View
-                      style={[
-                        styles.areaFill,
-                        {
-                          width: `${progress * 100}%`,
-                          backgroundColor:
-                            subject.color_code ??
-                            "#6366F1",
-                        },
-                      ]}
+        ) : (
+          analytics && (
+            <Animated.View style={{ opacity: reveal }}>
+              <View style={s.hero}>
+                <View style={s.heroTop}>
+                  <Text style={s.overline}>FOCUS TIME</Text>
+                  <View style={s.iconBubble}>
+                    <Ionicons
+                      name="time-outline"
+                      size={20}
+                      color={colors.accent}
                     />
                   </View>
                 </View>
-              );
-            },
-          )}
-        </View>
-
-        {/* HISTORY */}
-        <Text
-          style={styles.sectionTitle}
-        >
-          SESSION HISTORY
-        </Text>
-
-        <View
-          style={styles.card}
-        >
-          {sessions.length === 0 ? (
-            <Text
-              style={styles.emptyText}
-            >
-              Your completed sessions
-              will appear here.
-            </Text>
-          ) : (
-            sessions
-              .slice(0, 8)
-              .map((session) => {
-
-                const time =
-                  session.completed_at
-                    ? new Intl.DateTimeFormat(
-                        "en-US",
-                        {
-                          timeZone:
-                            TIME_ZONE,
-                          month:
-                            "short",
-                          day: "numeric",
-                        },
-                      ).format(
-                        new Date(
-                          session.completed_at,
-                        ),
-                      )
-                    : "";
-
-                return (
-                  <View
-                    key={
-                      session.id
-                    }
-                    style={
-                      styles.historyRow
-                    }
-                  >
-                    <View
-                      style={
-                        styles.historyMain
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.historyActivity
-                        }
-                      >
-                        {sessionCategory(session, subjects)}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.historyDate
-                        }
-                      >
-                        {time}
-                      </Text>
-                    </View>
-
-                    <View
-                      style={
-                        styles.historyMetric
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.historyMinutes
-                        }
-                      >
-                        {durationLabel(session.duration_seconds)}
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.historyXP
-                        }
-                      >
-                        +{session.xp_earned} XP
-                      </Text>
-                    </View>
+                <Text
+                  style={s.focusValue}
+                  adjustsFontSizeToFit
+                  minimumFontScale={0.6}
+                  numberOfLines={1}
+                >
+                  {durationLabel(analytics.seconds)}
+                </Text>
+                <Text style={s.heroDescription}>
+                  {analytics.sessions.length
+                    ? comparisonLabel
+                    : "Make a little space for what matters."}
+                </Text>
+                {analytics.previousSeconds > 0 && (
+                  <Text style={s.comparisonNote}>
+                    {`First ${analytics.comparisonDays} days compared`} ·{" "}
+                    {durationLabel(analytics.previousSeconds)} previously
+                  </Text>
+                )}
+                <View style={s.heroStats}>
+                  <View style={s.stat}>
+                    <Text style={s.statNumber}>
+                      {analytics.sessions.length}
+                    </Text>
+                    <Text style={s.caption}>Sessions</Text>
                   </View>
-                );
-              })
-          )}
-        </View>
-
-        {/* ACHIEVEMENTS */}
-        <View
-          style={
-            styles.achievementHeader
-          }
-        >
-          <Text
-            style={styles.sectionTitle}
-          >
-            ACHIEVEMENTS
-          </Text>
-
-          <Text
-            style={
-              styles.achievementCounter
-            }
-          >
-            {unlockedBadges} /{" "}
-            {badges.length}
-          </Text>
-        </View>
-
-        <View
-          style={styles.badgesGrid}
-        >
-          {badges.map((badge) => (
-            <View
-              key={badge.title}
-              style={[
-                styles.badgeCard,
-                !badge.unlocked &&
-                  styles.badgeLocked,
-              ]}
-            >
-              <Text
-                style={styles.badgeIcon}
+                  <View style={s.statDivider} />
+                  <View style={s.stat}>
+                    <Text style={s.statNumber}>{analytics.activeDays}</Text>
+                    <Text style={s.caption}>Active days</Text>
+                  </View>
+                  <View style={s.statDivider} />
+                  <View style={s.stat}>
+                    <Text style={s.statNumber}>{analytics.goalDays}</Text>
+                    <Text style={s.caption}>Goal days</Text>
+                  </View>
+                </View>
+              </View>
+              <Section
+                title="Your rhythm"
+                subtitle="Tap a day to explore your focus time"
+              />
+              <View style={s.card}>
+                <View style={s.chartHeader}>
+                  <Text style={s.caption}>
+                    {analytics.seconds
+                      ? `Peak day · ${durationLabel(peak)}`
+                      : "A little time makes a difference"}
+                  </Text>
+                  {mode === "month" && (
+                    <Text style={s.caption}>Swipe for more →</Text>
+                  )}
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={[
+                    s.chart,
+                    mode === "week" && s.weekChart,
+                  ]}
+                >
+                  {analytics.days.map((day) => (
+                    <Pressable
+                      key={day.key}
+                      onPress={() => open({ kind: "day", key: day.key })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length} sessions${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
+                      style={[s.chartDay, mode === "week" && s.weekDay]}
+                    >
+                      <View style={s.barTrack}>
+                        <View
+                          style={[
+                            s.bar,
+                            {
+                              height: day.seconds
+                                ? Math.max(5, (day.seconds / peak) * 110)
+                                : 3,
+                              backgroundColor: day.future
+                                ? "#282E3B"
+                                : day.seconds
+                                  ? colors.accent
+                                  : "#3A4152",
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text
+                        style={[s.dayLabel, day.key === today && s.todayLabel]}
+                      >
+                        {calendarLabel(
+                          day.key,
+                          mode === "week"
+                            ? { weekday: "narrow" }
+                            : { day: "numeric" },
+                        )}
+                      </Text>
+                      <View
+                        style={[
+                          s.goalDot,
+                          {
+                            backgroundColor: day.goal?.goal_completed
+                              ? green
+                              : "transparent",
+                          },
+                        ]}
+                      />
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <View style={s.legend}>
+                  <View style={s.legendItem}>
+                    <View
+                      style={[s.legendDot, { backgroundColor: colors.accent }]}
+                    />
+                    <Text style={s.caption}>Focus time</Text>
+                  </View>
+                  <View style={s.legendItem}>
+                    <View style={[s.legendDot, { backgroundColor: green }]} />
+                    <Text style={s.caption}>Goal reached</Text>
+                  </View>
+                </View>
+                {!analytics.sessions.length && (
+                  <Text style={s.chartEmpty}>
+                    No sessions in this {mode} yet. Every completed session
+                    counts.
+                  </Text>
+                )}
+              </View>
+              <Section
+                title="Consistency"
+                action="How it works"
+                onPress={() => open({ kind: "consistency" })}
+              />
+              <Pressable
+                onPress={() => open({ kind: "consistency" })}
+                accessibilityRole="button"
+                accessibilityLabel={`${data.streak}-day focus streak. Learn about focus and daily goals`}
+                style={s.consistency}
               >
-                {badge.unlocked
-                  ? badge.icon
-                  : "🔒"}
-              </Text>
-
-              <Text
-                style={[
-                  styles.badgeTitle,
-                  !badge.unlocked &&
-                    styles.badgeTitleLocked,
-                ]}
+                <View style={s.streakIcon}>
+                  <Ionicons
+                    name="flame-outline"
+                    size={27}
+                    color={colors.accent}
+                  />
+                </View>
+                <View style={s.flex}>
+                  <Text style={s.streakNumber}>
+                    {data.streak > 0
+                      ? `${data.streak}-day focus streak`
+                      : "Your next day starts here"}
+                  </Text>
+                  <Text style={s.caption}>
+                    {data.streak
+                      ? "A little time, day after day."
+                      : "Complete any session to begin."}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={colors.muted}
+                />
+              </Pressable>
+              <View style={[s.card, s.calendarCard]}>
+                <View style={s.calendarWeekdays}>
+                  {["M", "T", "W", "T", "F", "S", "S"].map((label, index) => (
+                    <Text key={index} style={s.weekdayLabel}>
+                      {label}
+                    </Text>
+                  ))}
+                </View>
+                <View style={s.calendar}>
+                  {Array.from(
+                    {
+                      length:
+                        (new Date(`${period.start}T12:00:00Z`).getUTCDay() +
+                          6) %
+                        7,
+                    },
+                    (_, index) => (
+                      <View
+                        key={`blank:${index}`}
+                        style={[s.calendarDay, s.calendarBlank]}
+                      />
+                    ),
+                  )}
+                  {analytics.days.map((day) => (
+                    <Pressable
+                      key={day.key}
+                      onPress={() => open({ kind: "day", key: day.key })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${calendarLabel(day.key)}, ${day.future ? "upcoming" : day.sessions.length ? "active day" : "no sessions"}${day.goal?.goal_completed ? ", goal reached" : ""}`}
+                      style={[
+                        s.calendarDay,
+                        day.sessions.length > 0 && s.calendarActive,
+                        day.future && s.calendarFuture,
+                        day.key === today && s.calendarToday,
+                      ]}
+                    >
+                      <Text
+                        style={[s.calendarNumber, day.future && s.futureText]}
+                      >
+                        {Number(day.key.slice(-2))}
+                      </Text>
+                      {day.goal?.goal_completed && (
+                        <View style={s.calendarGoal} />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={s.legend}>
+                  <Text style={s.caption}>Filled · active day</Text>
+                  <Text style={s.caption}>Green dot · goal reached</Text>
+                </View>
+              </View>
+              <Section
+                title="Life areas"
+                subtitle="Where you made time this period"
+              />
+              <View style={s.card}>
+                {analytics.areas.length ? (
+                  analytics.areas.map((area) => (
+                    <Pressable
+                      key={area.key}
+                      onPress={() => open({ kind: "area", key: area.key })}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}. View sessions`}
+                      style={s.areaRow}
+                    >
+                      <View style={s.areaHeading}>
+                        <View
+                          style={[s.areaDot, { backgroundColor: area.color }]}
+                        />
+                        <Text style={[s.rowTitle, s.flex]}>{area.title}</Text>
+                        <Text style={s.rowValue}>
+                          {durationLabel(area.seconds)}
+                        </Text>
+                        <Ionicons
+                          name="chevron-forward"
+                          size={15}
+                          color={colors.muted}
+                        />
+                      </View>
+                      <View style={s.areaTrack}>
+                        <View
+                          style={[
+                            s.areaFill,
+                            {
+                              width: `${(area.seconds / analytics.seconds) * 100}%`,
+                              backgroundColor: area.color,
+                            },
+                          ]}
+                        />
+                      </View>
+                    </Pressable>
+                  ))
+                ) : (
+                  <Empty
+                    icon="leaf-outline"
+                    title="Room to grow"
+                    body="Your completed sessions will show where you’re investing your time."
+                  />
+                )}
+              </View>
+              <Section
+                title="Recent sessions"
+                action="View all"
+                onPress={openHistory}
+              />
+              <View style={s.card}>
+                {analytics.sessions.length ? (
+                  analytics.sessions.slice(0, 4).map((session) => (
+                    <SessionRow
+                      key={session.id}
+                      session={session}
+                      areas={data.areas}
+                      timeZone={timeZone}
+                      onPress={() => {
+                        open({
+                          kind: "day",
+                          key: dateKey(
+                            new Date(session.completed_at!),
+                            timeZone,
+                          ),
+                        });
+                        setSelectedSession(session);
+                      }}
+                    />
+                  ))
+                ) : (
+                  <Empty
+                    icon="checkmark-circle-outline"
+                    title="A fresh chapter"
+                    body="Finish a session and it will appear here, even if it’s just a few seconds."
+                  />
+                )}
+              </View>
+              <Section
+                title="Milestones"
+                action="Explore"
+                onPress={() => router.navigate("/rewards")}
+              />
+              <Pressable
+                onPress={() => router.navigate("/rewards")}
+                accessibilityRole="button"
+                accessibilityLabel="Explore your level and consistency milestones"
+                style={[s.card, s.milestonePreview]}
               >
-                {badge.title}
+                <Ionicons
+                  name="sparkles-outline"
+                  size={23}
+                  color={colors.accent}
+                />
+                <View style={s.flex}>
+                  <Text style={s.rowTitle}>Keep growing at your pace</Text>
+                  <Text style={s.caption}>
+                    Level {profile?.level ?? 1} · Earned through focused effort
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={colors.muted}
+                />
+              </Pressable>
+              <Text style={s.footnote}>
+                Focus time includes seconds. Daily-goal credit and rewards
+                follow the current whole-minute rules.
               </Text>
-
-              <Text
-                style={styles.badgeDescription}
-              >
-                {badge.description}
-              </Text>
-            </View>
-          ))}
-        </View>
-
-        <View
-          style={styles.bottomSpace}
-        />
+            </Animated.View>
+          )
+        )}
       </ScrollView>
+      <AppSheet
+        visible={sheetVisible}
+        onRequestClose={() => setSheetVisible(false)}
+        onDismiss={() => {
+          setDetail(null);
+          setSelectedSession(null);
+          historyRequest.current++;
+          historyBusy.current = false;
+        }}
+        label="progress details"
+        maxHeightRatio={0.86}
+        header={
+          <View style={s.sheetHeader}>
+            {selectedSession && (
+              <SheetButton
+                onPress={() => setSelectedSession(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Back to sessions"
+                style={s.sheetBack}
+              >
+                <Ionicons name="chevron-back" color={colors.accent} size={20} />
+                <Text style={s.link}>Back</Text>
+              </SheetButton>
+            )}
+            <Text style={s.sheetTitle}>{detailTitle}</Text>
+            {detail?.kind !== "history" &&
+              detail?.kind !== "consistency" &&
+              !selectedSession && <Text style={s.caption}>{range}</Text>}
+          </View>
+        }
+      >
+        <BottomSheetScrollView
+          ref={sheetScroll}
+          contentContainerStyle={[
+            s.sheetContent,
+            { paddingBottom: insets.bottom + 32 },
+          ]}
+        >
+          {selectedSession ? (
+            <>
+              <View style={s.summary}>
+                <Ionicons
+                  name="checkmark-circle-outline"
+                  size={36}
+                  color={green}
+                />
+                <Text style={s.summaryValue}>
+                  {durationLabel(selectedSession.duration_seconds)}
+                </Text>
+                <Text style={s.rowTitle}>Time well spent</Text>
+                <Text style={s.emptyBody}>
+                  {sessionCategory(selectedSession, data?.areas ?? [])}
+                </Text>
+              </View>
+              <View style={s.detailRow}>
+                <Text style={s.caption}>Completed</Text>
+                <Text style={[s.rowTitle, s.detailValue]}>
+                  {new Intl.DateTimeFormat(undefined, {
+                    timeZone,
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                  }).format(new Date(selectedSession.completed_at!))}
+                </Text>
+              </View>
+              <View style={s.detailRow}>
+                <Text style={s.caption}>Rewards earned</Text>
+                <Text style={s.rowTitle}>
+                  +{selectedSession.xp_earned ?? 0} XP · +
+                  {selectedSession.gold_earned ?? 0} gold
+                </Text>
+              </View>
+              <Text style={s.footnote}>
+                This session is already saved. Viewing it doesn’t award rewards
+                again.
+              </Text>
+            </>
+          ) : detail?.kind === "consistency" ? (
+            <>
+              <View style={s.summary}>
+                <Ionicons
+                  name="flame-outline"
+                  size={36}
+                  color={colors.accent}
+                />
+                <Text style={s.summaryValue}>{data?.streak ?? 0} days</Text>
+                <Text style={s.rowTitle}>Current focus streak</Text>
+              </View>
+              <Text style={s.explainTitle}>Showing up counts</Text>
+              <Text style={s.explain}>
+                Complete any session to mark an active day. A 30-second session
+                counts just as a longer one does for consistency. Paused or
+                cancelled sessions don’t count.
+              </Text>
+              <Text style={s.explainTitle}>Keep your rhythm</Text>
+              <Text style={s.explain}>
+                Your streak continues across consecutive active days. If you
+                haven’t focused today, yesterday’s streak stays visible until
+                today ends. Dates use your account’s time zone ({timeZone}).
+              </Text>
+              <Text style={s.explainTitle}>Daily goals are a separate win</Text>
+              <Text style={s.explain}>
+                A green dot marks a saved daily-goal achievement. Goals and
+                XP/gold still use the current whole-minute credit rules; focus
+                time here includes every completed second.
+              </Text>
+            </>
+          ) : (
+            <>
+              {detail?.kind !== "history" && (
+                <>
+                  <Text style={s.detailTotal}>
+                    {durationLabel(
+                      activeDay?.seconds ?? activeArea?.seconds ?? 0,
+                    )}
+                  </Text>
+                  <Text style={s.caption}>
+                    {detailSessions.length} completed{" "}
+                    {detailSessions.length === 1 ? "session" : "sessions"}
+                    {activeDay?.future ? " · Upcoming day" : ""}
+                  </Text>
+                  {activeDay?.goal && (
+                    <View style={s.goalStatus}>
+                      <Ionicons
+                        name={
+                          activeDay.goal.goal_completed
+                            ? "checkmark-circle-outline"
+                            : "flag-outline"
+                        }
+                        size={19}
+                        color={
+                          activeDay.goal.goal_completed
+                            ? green
+                            : colors.secondary
+                        }
+                      />
+                      <Text style={s.goalStatusText}>
+                        {activeDay.goal.goal_completed
+                          ? "Daily goal reached"
+                          : `${activeDay.goal.completed_minutes} of ${activeDay.goal.goal_minutes} goal minutes credited`}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+              {detailSessions.map((session) => (
+                <SessionRow
+                  key={session.id}
+                  session={session}
+                  areas={data?.areas ?? []}
+                  timeZone={timeZone}
+                  inSheet
+                  onPress={() => setSelectedSession(session)}
+                />
+              ))}
+              {!detailSessions.length &&
+                (detail?.kind !== "history" ||
+                  (!historyLoading && !historyError)) && (
+                  <Empty
+                    icon="time-outline"
+                    title={
+                      activeDay?.future
+                        ? "Time ahead of you"
+                        : "No completed sessions"
+                    }
+                    body={
+                      activeDay?.future
+                        ? "Your next moments of focus will appear here."
+                        : "Each completed session will become part of your story."
+                    }
+                  />
+                )}
+              {detail?.kind === "history" && (
+                <>
+                  {historyLoading && (
+                    <ActivityIndicator
+                      color={colors.accent}
+                      style={s.historySpinner}
+                    />
+                  )}
+                  {historyError && (
+                    <Text style={s.errorText}>
+                      Couldn’t load sessions. Your history is safe.
+                    </Text>
+                  )}
+                  {(historyMore || historyError) && (
+                    <SheetButton
+                      onPress={() => void loadHistory()}
+                      disabled={historyLoading}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        historyError
+                          ? "Retry session history"
+                          : "Load more sessions"
+                      }
+                      style={s.loadMore}
+                    >
+                      <Text style={s.link}>
+                        {historyError ? "Retry" : "Load more"}
+                      </Text>
+                    </SheetButton>
+                  )}
+                </>
+              )}
+            </>
+          )}
+        </BottomSheetScrollView>
+      </AppSheet>
     </SafeAreaView>
   );
 }
 
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#090D16",
-  },
-
-  content: {
-    paddingHorizontal: 20,
-    paddingBottom: 120,
-  },
-
-  summaryRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 6,
-    marginBottom: 22,
-  },
-
-  summaryCard: {
-    flex: 1,
-    padding: 13,
-    borderRadius: 18,
-    backgroundColor:
-      "rgba(255,255,255,0.05)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.08)",
-    alignItems: "center",
-  },
-
-  summaryValue: {
-    color: "#818CF8",
-    fontSize: 19,
-    fontWeight: "900",
-  },
-
-  summaryLabel: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-
-  sectionTitle: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "900",
-    letterSpacing: 0.9,
-    marginBottom: 10,
-    marginTop: 4,
-  },
-
-  chartCard: {
-    padding: 17,
-    borderRadius: 21,
-    backgroundColor:
-      "rgba(255,255,255,0.045)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.08)",
-    marginBottom: 22,
-  },
-
-  chartTopRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  chartMainValue: {
-    color: "#F8FAFC",
-    fontSize: 21,
-    fontWeight: "900",
-  },
-
-  chartSubtext: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "700",
-    marginTop: 4,
-  },
-
-  goldText: {
-    color: "#FBBF24",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  chart: {
-    height: 150,
-    marginTop: 18,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-  },
-
-  barColumn: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: "100%",
-  },
-
-  barValue: {
-    color: "#94A3B8",
-    fontSize: 8,
-    fontWeight: "800",
-    marginBottom: 5,
-  },
-
-  barTrack: {
-    width: 14,
-    height: 92,
-    backgroundColor: "#0F172A",
-    borderRadius: 7,
-    justifyContent: "flex-end",
-    overflow: "hidden",
-  },
-
-  barFill: {
-    width: "100%",
-    borderRadius: 7,
-    backgroundColor: "#6366F1",
-  },
-
-  barDay: {
-    color: "#64748B",
-    fontSize: 9,
-    fontWeight: "800",
-    marginTop: 6,
-  },
-
-  card: {
-    padding: 15,
-    borderRadius: 20,
-    backgroundColor:
-      "rgba(255,255,255,0.045)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(255,255,255,0.08)",
-    marginBottom: 22,
-  },
-
-  emptyText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-  },
-
-  breakdownRow: {
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor:
-      "rgba(255,255,255,0.05)",
-  },
-
-  lastRow: {
-    borderBottomWidth: 0,
-  },
-
-  breakdownHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  breakdownName: {
-    color: "#F8FAFC",
+const s = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: colors.background },
+  page: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 28 },
+  flex: { flex: 1, minWidth: 0 },
+  header: { marginBottom: 24 },
+  eyebrow: {
+    color: colors.accent,
     fontSize: 11,
-    fontWeight: "800",
+    letterSpacing: 2,
+    fontWeight: "600",
+    marginBottom: 8,
   },
-
-  breakdownValue: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "700",
+  title: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: "600",
+    letterSpacing: -1,
   },
-
-  breakdownTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#0F172A",
-    overflow: "hidden",
-    marginTop: 7,
+  subtitle: {
+    color: colors.secondary,
+    fontSize: 14,
+    lineHeight: 22,
+    marginTop: 6,
   },
-
-  breakdownFill: {
-    height: "100%",
-    borderRadius: 3,
-    backgroundColor: "#818CF8",
+  segment: {
+    flexDirection: "row",
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 4,
   },
-
-  areaRow: {
-    paddingVertical: 10,
+  segmentButton: {
+    flex: 1,
+    minHeight: 42,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 10,
   },
-
-  areaHeader: {
+  segmentSelected: { backgroundColor: "#2A3047" },
+  segmentText: { color: colors.secondary, fontSize: 14, fontWeight: "600" },
+  segmentActive: { color: colors.text },
+  periodNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 18,
+  },
+  navButton: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  periodCenter: {
+    flex: 1,
+    alignItems: "center",
+    gap: 4,
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  periodTitle: { color: colors.text, fontWeight: "600", fontSize: 15 },
+  caption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  hero: {
+    backgroundColor: "#191D30",
+    borderWidth: 1,
+    borderColor: "rgba(165,180,252,0.18)",
+    borderRadius: 24,
+    padding: 22,
+  },
+  heroTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+  },
+  overline: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 1.5,
+    color: colors.accent,
+  },
+  iconBubble: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.accentSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  focusValue: {
+    color: colors.text,
+    fontSize: 43,
+    fontWeight: "600",
+    letterSpacing: -1.4,
+    marginTop: 6,
+    fontVariant: ["tabular-nums"],
+  },
+  heroDescription: {
+    color: colors.secondary,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  comparisonNote: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 17,
+    marginTop: 4,
+  },
+  heroStats: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 22,
+    paddingTop: 18,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+  stat: { flex: 1, gap: 3 },
+  statNumber: { color: colors.text, fontSize: 21, fontWeight: "600" },
+  statDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: colors.line,
+    marginRight: 14,
+  },
+  sectionHeading: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 26,
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 3,
+  },
+  sectionAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    minHeight: 44,
+  },
+  link: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  card: {
+    backgroundColor: colors.surface,
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  chartHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
     marginBottom: 6,
   },
-
-  areaNameGroup: {
+  chart: { flexDirection: "row", gap: 4, paddingTop: 8 },
+  weekChart: { flexGrow: 1 },
+  chartDay: { width: 38, alignItems: "center", paddingHorizontal: 5 },
+  weekDay: { flex: 1, minWidth: 30 },
+  barTrack: {
+    height: 116,
+    width: "100%",
+    justifyContent: "flex-end",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  bar: { width: "100%", maxWidth: 28, borderRadius: 5 },
+  dayLabel: { color: colors.secondary, fontSize: 12 },
+  todayLabel: { color: colors.accent, fontWeight: "700" },
+  goalDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6 },
+  legend: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 16,
+  },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 6, height: 6, borderRadius: 3 },
+  chartEmpty: {
+    color: colors.secondary,
+    fontSize: 12,
+    lineHeight: 19,
+    marginTop: 12,
+  },
+  consistency: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 16,
+    borderRadius: 20,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  streakIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 15,
+    backgroundColor: colors.accentSoft,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  streakNumber: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  calendarCard: { marginTop: 10 },
+  calendar: { flexDirection: "row", flexWrap: "wrap", rowGap: 7 },
+  calendarDay: {
+    width: "13%",
+    marginHorizontal: "0.64%",
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: "#1C2230",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  calendarWeekdays: { flexDirection: "row", marginBottom: 8 },
+  weekdayLabel: {
+    width: "14.285%",
+    textAlign: "center",
+    fontSize: 11,
+    color: colors.muted,
+  },
+  calendarBlank: { backgroundColor: "transparent" },
+  calendarActive: { backgroundColor: "#303953" },
+  calendarFuture: { backgroundColor: "transparent", borderColor: colors.line },
+  calendarToday: { borderColor: colors.accent },
+  calendarNumber: {
+    color: colors.text,
+    fontSize: 12,
+    fontVariant: ["tabular-nums"],
+  },
+  futureText: { color: colors.muted },
+  calendarGoal: {
+    width: 4,
+    height: 4,
+    backgroundColor: green,
+    borderRadius: 2,
+    position: "absolute",
+    bottom: 4,
+  },
+  areaRow: { paddingVertical: 12 },
+  areaHeading: { flexDirection: "row", alignItems: "center", gap: 9 },
+  areaDot: { height: 8, width: 8, borderRadius: 4 },
+  rowTitle: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: "500",
+    lineHeight: 21,
+  },
+  rowValue: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: "600",
+    fontVariant: ["tabular-nums"],
+  },
+  areaTrack: {
+    height: 4,
+    backgroundColor: "#252B38",
+    borderRadius: 2,
+    marginTop: 12,
+  },
+  areaFill: { height: 4, borderRadius: 2 },
+  sessionRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+    minHeight: 70,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  sessionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: "rgba(143,216,182,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  empty: { paddingVertical: 20, alignItems: "center", gap: 10 },
+  emptyTitle: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  emptyBody: {
+    color: colors.secondary,
+    fontSize: 13,
+    lineHeight: 21,
+    textAlign: "center",
+    maxWidth: 290,
+  },
+  milestonePreview: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 20,
+  },
+  footnote: {
+    color: colors.muted,
+    fontSize: 11,
+    lineHeight: 18,
+    marginTop: 18,
+    textAlign: "center",
+  },
+  error: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    marginBottom: 16,
+  },
+  retry: { minHeight: 44, justifyContent: "center" },
+  loading: { paddingVertical: 60, alignItems: "center", gap: 14 },
+  sheetHeader: { paddingHorizontal: 22, paddingBottom: 16 },
+  sheetTitle: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  sheetBack: {
+    flexDirection: "row",
+    alignItems: "center",
+    minHeight: 44,
+    marginBottom: 4,
+  },
+  sheetContent: { paddingHorizontal: 22 },
+  summary: { alignItems: "center", gap: 10, paddingVertical: 24 },
+  summaryValue: {
+    color: colors.text,
+    fontSize: 36,
+    fontWeight: "600",
+    letterSpacing: -1,
+  },
+  detailRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    justifyContent: "space-between",
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+  detailValue: { flexShrink: 1 },
+  detailTotal: {
+    color: colors.text,
+    fontSize: 32,
+    fontWeight: "600",
+    marginBottom: 5,
+  },
+  goalStatus: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
+    paddingVertical: 16,
   },
-
-  areaDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  goalStatusText: { color: colors.secondary, fontSize: 13, flex: 1 },
+  explainTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: "600",
+    marginTop: 20,
+    marginBottom: 8,
   },
-
-  areaTitle: {
-    color: "#F8FAFC",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  areaLevel: {
-    color: "#A5B4FC",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  areaTrack: {
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: "#0F172A",
-    overflow: "hidden",
-  },
-
-  areaFill: {
-    height: "100%",
-    borderRadius: 4,
-  },
-
-  historyRow: {
+  explain: { color: colors.secondary, fontSize: 14, lineHeight: 23 },
+  milestoneRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 12,
+    gap: 12,
+    minHeight: 78,
     borderBottomWidth: 1,
-    borderBottomColor:
-      "rgba(255,255,255,0.05)",
+    borderBottomColor: colors.line,
   },
-
-  historyMain: {
-    flex: 1,
+  unmet: { backgroundColor: colors.line },
+  historySpinner: { marginVertical: 20 },
+  errorText: {
+    color: colors.secondary,
+    marginVertical: 16,
+    textAlign: "center",
   },
-
-  historyActivity: {
-    color: "#F8FAFC",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  historyDate: {
-    color: "#64748B",
-    fontSize: 9,
-    marginTop: 3,
-  },
-
-  historyMetric: {
-    alignItems: "flex-end",
-  },
-
-  historyMinutes: {
-    color: "#A5B4FC",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  historyXP: {
-    color: "#6EE7B7",
-    fontSize: 9,
-    fontWeight: "800",
-    marginTop: 2,
-  },
-
-  achievementHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "baseline",
-  },
-
-  achievementCounter: {
-    color: "#818CF8",
-    fontSize: 10,
-    fontWeight: "900",
-  },
-
-  badgesGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-  },
-
-  badgeCard: {
-    width: "48%",
-    padding: 13,
-    borderRadius: 18,
-    backgroundColor:
-      "rgba(255,255,255,0.045)",
-    borderWidth: 1,
-    borderColor: "#6366F1",
-  },
-
-  badgeLocked: {
-    borderColor: "#334155",
-    opacity: 0.5,
-  },
-
-  badgeIcon: {
-    fontSize: 23,
-    marginBottom: 7,
-  },
-
-  badgeTitle: {
-    color: "#F8FAFC",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  badgeTitleLocked: {
-    color: "#94A3B8",
-  },
-
-  badgeDescription: {
-    color: "#64748B",
-    fontSize: 9,
-    lineHeight: 13,
-    marginTop: 3,
-  },
-
-  bottomSpace: {
-    height: 25,
+  loadMore: {
+    alignItems: "center",
+    justifyContent: "center",
+    minHeight: 48,
+    marginTop: 14,
+    borderRadius: 14,
+    backgroundColor: colors.accentSoft,
   },
 });

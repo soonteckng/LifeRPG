@@ -1,3 +1,4 @@
+import { getSessionNotifications } from "../utils/sessionNotifications";
 import * as Haptics from "expo-haptics";
 import React, {
   createContext,
@@ -18,38 +19,30 @@ import {
 } from "../services/sessionService";
 import { useUser } from "./UserContext";
 import { validSessionSeconds } from "../utils/sessionSetup";
+import { createSessionNotificationLifecycle } from "../services/sessionNotificationService";
 
-// Dynamically load expo-notifications to prevent Expo Go crashes
-let Notifications: any = null;
+// Optional notification API must never block timer or route loading.
+const Notifications = getSessionNotifications();
+let completionSoundEnabled = true;
 
 try {
-  // Optional in Expo Go; notification failures must not block the timer.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  Notifications = require("expo-notifications");
-
   if (
     Notifications &&
     typeof Notifications.setNotificationHandler === "function"
   ) {
     Notifications.setNotificationHandler({
-      handleNotification: async () => ({
+      handleNotification: async notification => ({
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: true,
+        shouldPlaySound: notification.request.content.data?.type === "COMPLETION" && completionSoundEnabled,
         shouldSetBadge: true,
       }),
     });
   }
 } catch {
-  console.warn("expo-notifications module not found or failed to load.");
+  console.warn("Session notification handler could not be configured.");
 }
-
-const ONGOING_NOTIFICATION_ID = "life-rpg-ongoing-timer";
-const COMPLETION_NOTIFICATION_ID = "life-rpg-completion-timer";
-
-const ONGOING_CHANNEL_ID = "session-ongoing-channel-v17";
-const COMPLETION_CHANNEL_ID = "session-complete-channel-v17";
 
 interface SessionSummary {
   xpEarned: number;
@@ -109,7 +102,8 @@ interface TimerContextType {
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
 
 export function TimerProvider({ children }: { children: React.ReactNode }) {
-  const { reloadProfile } = useUser();
+  const { reloadProfile, soundEnabled = true, hapticsEnabled = true } = useUser();
+  const feedback = useRef({ sound: soundEnabled, haptics: hapticsEnabled });
 
   const [duration, setDuration] = useState(30 * 60);
   const [timeLeft, setTimeLeft] = useState(30 * 60);
@@ -151,38 +145,19 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const timerSessionIdRef = useRef<string | null>(null);
 
 
-  const ensureChannels = useCallback(async () => {
-    if (!Notifications || Platform.OS !== "android") {
-      return;
-    }
-
-    try {
-      await Notifications.setNotificationChannelAsync(
-        ONGOING_CHANNEL_ID,
-        {
-          name: "Active Session Banner",
-          importance: Notifications.AndroidImportance.LOW,
-          sound: undefined,
-          enableVibrate: false,
-          showBadge: false,
-        },
-      );
-
-      await Notifications.setNotificationChannelAsync(
-        COMPLETION_CHANNEL_ID,
-        {
-          name: "Session Finish Alert",
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 500, 250, 500],
-          sound: "default",
-          enableVibrate: true,
-          showBadge: true,
-        },
-      );
-    } catch (error) {
-      console.error("Failed to configure notification channels:", error);
-    }
-  }, []);
+  const [notificationLifecycle] = useState(() =>
+    createSessionNotificationLifecycle(Notifications, Platform.OS, { sound: soundEnabled, haptics: hapticsEnabled }));
+  useEffect(() => {
+    feedback.current = { sound: soundEnabled, haptics: hapticsEnabled };
+    notificationLifecycle.setPreferences(feedback.current);
+    completionSoundEnabled = soundEnabled;
+  }, [soundEnabled, hapticsEnabled, notificationLifecycle]);
+  const ensureChannels = useCallback(() => notificationLifecycle.ensureChannels(), [notificationLifecycle]);
+  const clearOngoingNotification = useCallback(() => notificationLifecycle.clear(), [notificationLifecycle]);
+  useEffect(() => {
+    notificationLifecycle.activate();
+    return () => { void notificationLifecycle.dispose(); };
+  }, [notificationLifecycle]);
 
   const handleComplete = useCallback(async () => {
     const sessionId = timerSessionIdRef.current;
@@ -201,27 +176,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       endTimeRef.current = null;
       setTimeLeft(0);
 
-      if (Notifications) {
-        await Notifications.dismissNotificationAsync(
-          ONGOING_NOTIFICATION_ID,
-        ).catch((error: unknown) => {
-          console.error(
-            "Failed to dismiss ongoing notification on completion:",
-            error,
-          );
-        });
+      await clearOngoingNotification();
 
-        await Notifications.cancelScheduledNotificationAsync(
-          COMPLETION_NOTIFICATION_ID,
-        ).catch((error: unknown) => {
-          console.error(
-            "Failed to cancel completion notification:",
-            error,
-          );
-        });
-      }
-
-      await Haptics.notificationAsync(
+      if (feedback.current.haptics) await Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success,
       ).catch(() => {});
 
@@ -259,7 +216,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       failedAction.current = "complete";
       setActionError("Couldn’t save your completed session. Retry to confirm your rewards.");
     }
-  }, [reloadProfile]);
+  }, [reloadProfile, clearOngoingNotification]);
 
   // A pause/end request can overlap the final tick. Finish once it settles.
   useEffect(() => {
@@ -280,14 +237,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         const { status: existingStatus } =
           await Notifications.getPermissionsAsync();
 
-        let finalStatus = existingStatus;
+        const finalStatus = existingStatus;
 
-        if (existingStatus !== "granted") {
-          const { status } =
-            await Notifications.requestPermissionsAsync();
-
-          finalStatus = status;
-        }
+        // Permission prompts are initiated by the explicit Settings action.
 
         if (finalStatus === "granted") {
           await ensureChannels();
@@ -305,9 +257,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const subscription =
+    let subscription: ReturnType<typeof Notifications.addNotificationResponseReceivedListener>;
+    try {
+      subscription =
       Notifications.addNotificationResponseReceivedListener(
-        (response: any) => {
+        (response) => {
           const data = response?.notification?.request?.content?.data;
 
           if (data?.type === "COMPLETION" && endTimeRef.current && endTimeRef.current <= Date.now()) {
@@ -315,8 +269,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
           }
         },
       );
-
-    return () => subscription.remove();
+    } catch {
+      console.warn("Session notification responses are unavailable; the timer continues.");
+      return;
+    }
+    return () => { try { subscription.remove(); } catch { /* Optional native cleanup. */ } };
   }, []);
 
   useEffect(() => {
@@ -386,496 +343,203 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
           Math.ceil((endTimeRef.current - now) / 1000),
         );
 
-        if (remainingSec > 0 && Notifications) {
-          await Notifications.scheduleNotificationAsync({
-            identifier: ONGOING_NOTIFICATION_ID,
-            content: {
-              title: "🚀 Session Active",
-              body: activeQuestTitleRef.current
-                ? `Quest: "${activeQuestTitleRef.current}" in progress...`
-                : "Session in progress. Tap to view your timer.",
-              sticky: true,
-              autoDismiss: false,
-              channelId: ONGOING_CHANNEL_ID,
-            },
-            trigger: null,
-          }).catch((error: unknown) => {
-            console.error(
-              "Failed to refresh ongoing notification:",
-              error,
-            );
-          });
+        if (remainingSec > 0) {
+          await notificationLifecycle.refreshOngoing(activeQuestTitleRef.current);
         }
+
       }
     };
-
-    const subscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange,
-    );
-
+    const subscription = AppState.addEventListener("change", handleAppStateChange);
     return () => subscription.remove();
-  }, [isRunning, handleComplete]);
+  }, [isRunning, handleComplete, notificationLifecycle]);
 
-  const clearOngoingNotification = async () => {
-    if (!Notifications) {
-      return;
-    }
-
-    try {
-      await Notifications.dismissNotificationAsync(
-        ONGOING_NOTIFICATION_ID,
-      ).catch((error: unknown) => {
-        console.error(
-          "Failed to dismiss ongoing notification:",
-          error,
-        );
-      });
-
-      await Notifications.cancelScheduledNotificationAsync(
-        COMPLETION_NOTIFICATION_ID,
-      ).catch((error: unknown) => {
-        console.error(
-          "Failed to cancel completion notification:",
-          error,
-        );
-      });
-    } catch (error) {
-      console.error(
-        "Failed to clear timer notifications:",
-        error,
-      );
-    }
-  };
-
-  const scheduleNotificationLifecycle = useCallback(async (
-    seconds: number,
-    questTitle?: string,
-  ) => {
-    if (!Notifications) {
-      return;
-    }
-
-    const validSeconds = Math.max(1, seconds);
-
+  const scheduleNotificationLifecycle = useCallback((seconds: number, questTitle?: string) => {
     if (questTitle) activeQuestTitleRef.current = questTitle;
-
-    try {
-      await ensureChannels();
-
-      await Notifications.cancelScheduledNotificationAsync(
-        COMPLETION_NOTIFICATION_ID,
-      ).catch((error: unknown) => {
-        console.error(
-          "Failed to replace completion notification:",
-          error,
-        );
-      });
-
-      await Notifications.scheduleNotificationAsync({
-        identifier: ONGOING_NOTIFICATION_ID,
-        content: {
-          title: "🚀 Session Active",
-          body: questTitle
-            ? `Quest: "${questTitle}" in progress...`
-            : "Session in progress. Tap to view your timer.",
-          sticky: true,
-          autoDismiss: false,
-          channelId: ONGOING_CHANNEL_ID,
-        },
-        trigger: null,
-      });
-
-      const notificationId =
-        await Notifications.scheduleNotificationAsync({
-          identifier: COMPLETION_NOTIFICATION_ID,
-          content: {
-            title: "⚔️ Session Complete!",
-            body: questTitle
-              ? `Quest "${questTitle}" is complete! Open LifeRPG to see your rewards.`
-              : "Your session is complete! Open LifeRPG to see your rewards.",
-            sound: "default",
-            priority:
-              Notifications.AndroidNotificationPriority?.MAX,
-            channelId: COMPLETION_CHANNEL_ID,
-            data: {
-              type: "COMPLETION",
-            },
-          },
-          trigger: {
-            type:
-              Notifications?.SchedulableTriggerInputTypes
-                ?.TIME_INTERVAL ?? "timeInterval",
-            seconds: validSeconds,
-            repeats: false,
-          },
-        });
-
-      const scheduledNotifications =
-        await Notifications.getAllScheduledNotificationsAsync();
-
-      const completionNotification =
-        scheduledNotifications.find(
-          (notification: any) =>
-            notification.identifier === notificationId,
-        );
-
-      if (!completionNotification) {
-        throw new Error(
-          "The completion notification was accepted but is not present in the scheduled notification list.",
-        );
-      }
-    } catch (error) {
-      console.error(
-        "Failed to schedule notification lifecycle:",
-        error,
-      );
-    }
-  }, [ensureChannels]);
+    return notificationLifecycle.schedule(seconds, activeQuestTitleRef.current);
+  }, [notificationLifecycle]);
 
   useEffect(() => {
     let cancelled = false;
-
     const restoreOpenSession = async () => {
       setIsRestoring(true);
       setRestoreError(false);
       try {
         const session = await getOpenActivitySession();
-
-        if (!session || cancelled) {
-          return;
+        if (cancelled) return;
+        if (!session) { await clearOngoingNotification(); return; }
+        const targetSeconds = Math.max(1, session.target_duration_seconds);
+        let elapsedSeconds = Math.max(0, session.elapsed_seconds);
+        if (session.status === "active" && session.last_resumed_at) {
+          elapsedSeconds += Math.max(0, Math.floor((Date.now() - new Date(session.last_resumed_at).getTime()) / 1000));
         }
-
-        const targetSeconds = Math.max(
-          1,
-          session.target_duration_seconds,
-        );
-
-        let elapsedSeconds = Math.max(
-          0,
-          session.elapsed_seconds,
-        );
-
-        if (
-          session.status === "active" &&
-          session.last_resumed_at
-        ) {
-          elapsedSeconds += Math.max(
-            0,
-            Math.floor(
-              (Date.now() -
-                new Date(
-                  session.last_resumed_at,
-                ).getTime()) /
-                1000,
-            ),
-          );
-        }
-
-        const remainingSeconds = Math.max(
-          0,
-          targetSeconds - elapsedSeconds,
-        );
-
+        const remainingSeconds = Math.max(0, targetSeconds - elapsedSeconds);
         timerSessionIdRef.current = session.id;
         completionHandledRef.current = false;
         setHasOpenSession(true);
-
         setDuration(targetSeconds);
         setTimeLeft(remainingSeconds);
         setIsCompleted(false);
-        setActivityType(
-          session.activity_type || "other",
-        );
-        setTargetAttributeId(
-          session.subject_id,
-        );
+        setActivityType(session.activity_type || "other");
+        setTargetAttributeId(session.subject_id);
         setLinkedTaskId(session.task_id);
         setNotes(session.notes ?? "");
-
         activeQuestTitleRef.current = session.task_id === null ? "Free session" : undefined;
-
         if (remainingSeconds <= 0) {
+          await clearOngoingNotification();
+          if (cancelled) return;
           endTimeRef.current = Date.now();
           setIsRunning(true);
           return;
         }
-
         if (session.status === "active") {
-          endTimeRef.current =
-            Date.now() + remainingSeconds * 1000;
+          endTimeRef.current = Date.now() + remainingSeconds * 1000;
           setIsRunning(true);
-
-          await scheduleNotificationLifecycle(
-            remainingSeconds,
-          );
+          await scheduleNotificationLifecycle(remainingSeconds);
         } else {
+          await clearOngoingNotification();
+          if (cancelled) return;
           endTimeRef.current = null;
           setIsRunning(false);
         }
-      } catch (error) {
-        console.error(
-          "Failed to restore open activity session:",
-          error,
-        );
+      } catch {
         if (!cancelled) setRestoreError(true);
       } finally {
         if (!cancelled) setIsRestoring(false);
       }
     };
-
     void restoreOpenSession();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [restoreAttempt, scheduleNotificationLifecycle]);
+    return () => { cancelled = true; void clearOngoingNotification(); };
+  }, [restoreAttempt, scheduleNotificationLifecycle, clearOngoingNotification]);
 
   // Quest boundaries remain whole minutes. The timer itself always uses seconds.
   const setDurationInMinutes = (minutes: number) => {
     if (Number.isInteger(minutes)) setDurationInSeconds(minutes * 60);
   };
   const setDurationInSeconds = (totalSec: number) => {
-    if (isRunning || actionLock.current || (timerSessionIdRef.current && !completionHandledRef.current)) {
-      return;
-    }
-
+    if (isRunning || actionLock.current || (timerSessionIdRef.current && !completionHandledRef.current)) return;
     if (!validSessionSeconds(totalSec)) return;
     setSessionSummary(null);
     setCompletedLevelUp(null);
-    setRewardsVisible(false);
-    setActionError(null);
-
+    setIsCompleted(false);
     setDuration(totalSec);
     setTimeLeft(totalSec);
-    setIsCompleted(false);
-
-    completionHandledRef.current = false;
-    timerSessionIdRef.current = null;
   };
 
-  const startTimer = async (
-    totalSec: number,
-    questTitle?: string,
-  ) => {
+  const startTimer = async (totalSeconds: number, questTitle?: string) => {
     if (actionLock.current || timerSessionIdRef.current || isRestoring || restoreError) return;
-    if (!validSessionSeconds(totalSec)) {
-      setActionError("Choose a duration from 1 second to 480 minutes."); return;
-    }
-    actionLock.current = true; setActionBusy(true); setActionError(null);
-
-
+    if (!validSessionSeconds(totalSeconds)) return;
+    actionLock.current = true;
+    setActionBusy(true);
+    setActionError(null);
+    failedAction.current = "start";
+    setDuration(totalSeconds);
+    setTimeLeft(totalSeconds);
+    activeQuestTitleRef.current = questTitle;
     try {
       const sessionId = await startActivitySession({
-        targetDurationSeconds: totalSec,
-        activityType: "other", // Neutral compatibility field; Life area is the category.
-        taskId: linkedTaskId,
-        subjectId: targetAttributeId,
-        notes: notes.trim() || null,
+        targetDurationSeconds: totalSeconds, activityType, taskId: linkedTaskId,
+        subjectId: targetAttributeId, notes,
       });
-
       timerSessionIdRef.current = sessionId;
-      setHasOpenSession(true);
-
-      activeQuestTitleRef.current = questTitle ?? "Free session";
-
-      setDuration(totalSec);
-      setTimeLeft(totalSec);
-      setIsCompleted(false);
-
       completionHandledRef.current = false;
-
-      endTimeRef.current = Date.now() + totalSec * 1000;
-
+      activeQuestTitleRef.current = questTitle;
+      setHasOpenSession(true);
+      setSessionSummary(null);
+      setCompletedLevelUp(null);
+      setRewardsVisible(false);
+      setIsCompleted(false);
+      setDuration(totalSeconds);
+      setTimeLeft(totalSeconds);
+      endTimeRef.current = Date.now() + totalSeconds * 1000;
       setIsRunning(true);
-
-      await scheduleNotificationLifecycle(
-        totalSec,
-        questTitle,
-      );
-    } catch (error) {
-      console.error(
-        "Failed to start activity session:", error,
-      );
-      failedAction.current = "start";
+      await scheduleNotificationLifecycle(totalSeconds, questTitle);
+    } catch {
       setActionError("Couldn’t start your session. Check your connection and try again.");
     } finally { actionLock.current = false; setActionBusy(false); }
   };
-
   const pauseTimer = async () => {
-    const sessionId = timerSessionIdRef.current;
-
-    if (!sessionId || !isRunning) {
-      return;
-    }
-
-    if (actionLock.current) return;
-    actionLock.current = true; setActionBusy(true); setActionError(null);
+    const id = timerSessionIdRef.current;
+    if (!id || !isRunning || actionLock.current || completionHandledRef.current) return;
+    actionLock.current = true; setActionBusy(true); setActionError(null); failedAction.current = "pause";
     try {
-      await pauseActivitySession(sessionId);
-
-      const now = Date.now();
-
-      if (endTimeRef.current) {
-        const remainingSec = Math.max(
-          0,
-          Math.ceil(
-            (endTimeRef.current - now) / 1000,
-          ),
-        );
-
-        setTimeLeft(remainingSec);
-      }
-
-      setIsRunning(false);
+      await pauseActivitySession(id);
+      const remaining = Math.max(0, Math.ceil(((endTimeRef.current ?? Date.now()) - Date.now()) / 1000));
+      setTimeLeft(remaining);
       endTimeRef.current = null;
-
+      setIsRunning(false);
       await clearOngoingNotification();
-    } catch (error) {
-      console.error(
-        "Failed to pause activity session:",
-        error,
-      );
-      failedAction.current = "pause";
-      setActionError("Couldn’t pause your session. Please try again.");
+    } catch {
+      setActionError("Couldn’t pause your session. Check your connection and try again.");
     } finally { actionLock.current = false; setActionBusy(false); }
   };
-
   const resumeTimer = async () => {
-    const sessionId = timerSessionIdRef.current;
-
-    if (!sessionId) {
-      return;
-    }
-
-    if (timeLeft <= 0) {
-      await handleComplete();
-      return;
-    }
-
-    if (actionLock.current) return;
-    actionLock.current = true; setActionBusy(true); setActionError(null);
+    const id = timerSessionIdRef.current;
+    if (!id || isRunning || actionLock.current || completionHandledRef.current) return;
+    actionLock.current = true; setActionBusy(true); setActionError(null); failedAction.current = "resume";
     try {
-      await resumeActivitySession(sessionId);
-
-      endTimeRef.current =
-        Date.now() + timeLeft * 1000;
-
+      await resumeActivitySession(id);
+      endTimeRef.current = Date.now() + timeLeft * 1000;
       setIsRunning(true);
-
-      await scheduleNotificationLifecycle(
-        timeLeft,
-        activeQuestTitleRef.current,
-      );
-    } catch (error) {
-      console.error(
-        "Failed to resume activity session:",
-        error,
-      );
-      failedAction.current = "resume";
-      setActionError("Couldn’t resume your session. Please try again.");
+      await scheduleNotificationLifecycle(timeLeft);
+    } catch {
+      setActionError("Couldn’t resume your session. Check your connection and try again.");
     } finally { actionLock.current = false; setActionBusy(false); }
   };
-
   const resetTimer = async () => {
-    const sessionId = timerSessionIdRef.current;
-
-    if (actionLock.current) return;
-    actionLock.current = true; setActionBusy(true); setActionError(null);
+    if (actionLock.current || isRestoring || restoreError) return;
+    const id = timerSessionIdRef.current;
+    actionLock.current = true; setActionBusy(true); setActionError(null); failedAction.current = "end";
     try {
-      if (sessionId && !completionHandledRef.current) {
-        await cancelActivitySession(sessionId);
-      }
-    } catch (error) {
-      console.error(
-        "Failed to cancel activity session:",
-        error,
-      );
-      failedAction.current = "end";
-      setActionError("Couldn’t end your session. Please try again.");
-      return;
+      // Never erase a running/paused session locally when server cancellation fails.
+      if (id && hasOpenSession) await cancelActivitySession(id);
+      timerSessionIdRef.current = null;
+      completionHandledRef.current = false;
+      endTimeRef.current = null;
+      activeQuestTitleRef.current = undefined;
+      setHasOpenSession(false);
+      setIsRunning(false);
+      setIsCompleted(false);
+      setRewardsVisible(false);
+      setSessionSummary(null);
+      setCompletedLevelUp(null);
+      setTimeLeft(duration);
+      await clearOngoingNotification();
+    } catch {
+      setActionError("Couldn’t end your session. Check your connection and try again.");
     } finally { actionLock.current = false; setActionBusy(false); }
-
-    setSessionSummary(null); setCompletedLevelUp(null); setRewardsVisible(false);
-    setIsRunning(false);
-    setIsCompleted(false);
-
-    completionHandledRef.current = false;
-
-    timerSessionIdRef.current = null;
-    endTimeRef.current = null;
-    setHasOpenSession(false);
-
-    setTimeLeft(duration);
-
-    activeQuestTitleRef.current = undefined;
-
-    await clearOngoingNotification();
   };
-
-
   const retryAction = async () => {
-    if (failedAction.current === "end") await resetTimer();
-    else if (failedAction.current === "pause") await pauseTimer();
-    else if (failedAction.current === "resume") await resumeTimer();
-    else if (failedAction.current === "complete") await handleComplete();
-    // Start retry uses the screen's validated draft.
+    switch (failedAction.current) {
+      case "start": return startTimer(duration, activeQuestTitleRef.current);
+      case "pause": return pauseTimer();
+      case "resume": return resumeTimer();
+      case "end": return resetTimer();
+      case "complete": return handleComplete();
+    }
   };
-  const clearCompletionModal = () => {
-    setRewardsVisible(false);
-  };
-
+  const setupLocked = () => actionLock.current || hasOpenSession || isRestoring || restoreError;
   return (
-    <TimerContext.Provider
-      value={{
-        timeLeft,
-        duration,
-        isRunning,
-        isCompleted,
-        hasOpenSession,
-        isRestoring, restoreError, retryRestore: () => setRestoreAttempt((value) => value + 1),
-        actionBusy, actionError, rewardsVisible, retryCompletion: handleComplete, retryAction,
-        resolveQuestTitle: (id, title) => { if (id === linkedTaskId && !activeQuestTitleRef.current) activeQuestTitleRef.current = title; },
-        activityType,
-
-        targetAttributeId,
-        linkedTaskId,
-        notes,
-
-        sessionSummary,
-        summaryViewed: !!sessionSummary && viewedSummary === sessionSummary,
-        acknowledgeSummary,
-
-        setNotes,
-        setTargetAttributeId: (id) => { if (!actionLock.current && !hasOpenSession) setTargetAttributeId(id); },
-        setLinkedTaskId: (id) => { if (!actionLock.current && !hasOpenSession) setLinkedTaskId(id); },
-        setActivityType: (type) => { if (!actionLock.current && !hasOpenSession) setActivityType(type); },
-        
-        startTimer,
-        pauseTimer,
-        resumeTimer,
-        resetTimer,
-
-        setDurationInMinutes,
-        setDurationInSeconds,
-
-        completedLevelUp,
-        clearCompletionModal,
-      }}
-    >
+    <TimerContext.Provider value={{
+      timeLeft, duration, isRunning, isCompleted, hasOpenSession, isRestoring, restoreError,
+      retryRestore: () => setRestoreAttempt(value => value + 1),
+      actionBusy, actionError, rewardsVisible, retryCompletion: handleComplete, retryAction,
+      resolveQuestTitle: (id, title) => { if (id === linkedTaskId) activeQuestTitleRef.current = title; },
+      activityType, targetAttributeId, linkedTaskId, notes,
+      setActivityType: value => { if (!setupLocked()) setActivityType(value); },
+      setTargetAttributeId: value => { if (!setupLocked()) setTargetAttributeId(value); },
+      setLinkedTaskId: value => { if (!setupLocked()) setLinkedTaskId(value); },
+      setNotes: value => { if (!setupLocked()) setNotes(value); },
+      setDurationInMinutes, setDurationInSeconds,
+      startTimer, pauseTimer, resumeTimer, resetTimer,
+      sessionSummary, summaryViewed: !!sessionSummary && viewedSummary === sessionSummary, acknowledgeSummary,
+      completedLevelUp, clearCompletionModal: () => setRewardsVisible(false),
+    }}>
       {children}
     </TimerContext.Provider>
   );
 }
-
 export function useTimer() {
   const context = useContext(TimerContext);
-
-  if (!context) {
-    throw new Error(
-      "useTimer must be used within a TimerProvider",
-    );
-  }
-
+  if (!context) throw new Error("useTimer must be used within a TimerProvider");
   return context;
 }

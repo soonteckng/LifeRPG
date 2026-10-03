@@ -1,4 +1,3 @@
-import React from 'react';
 import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
 import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';

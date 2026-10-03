@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../constants/theme";
 
 export interface SheetConfirmationProps {
+  destructive?: boolean;
   title: string;
   message: string;
   confirmLabel: string;
@@ -19,8 +20,8 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
       <View style={styles.dialog}>
         <Text style={styles.title} accessibilityRole="header">{props.title}</Text>
         <Text style={styles.message}>{props.message}</Text>
-        <Pressable style={styles.confirm} onPress={props.onConfirm} accessibilityRole="button">
-          <Text style={styles.confirmText}>{props.confirmLabel}</Text>
+        <Pressable style={[styles.confirm, props.destructive === false && { backgroundColor: colors.accentSoft }]} onPress={props.onConfirm} accessibilityRole="button">
+          <Text style={[styles.confirmText, props.destructive === false && { color: colors.accent }]}>{props.confirmLabel}</Text>
         </Pressable>
         <Pressable style={styles.cancel} onPress={props.onCancel} accessibilityRole="button">
           <Text style={styles.cancelText}>{props.cancelLabel}</Text>
@@ -41,3 +42,4 @@ const styles = StyleSheet.create({
   cancel: { minHeight: 48, marginTop: 8, padding: 12, alignItems: "center", justifyContent: "center" },
   cancelText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
 });
+

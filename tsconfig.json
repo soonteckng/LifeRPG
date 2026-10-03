@@ -9,7 +9,10 @@
       "@/assets/*": [
         "./assets/*"
       ]
-    }
+    },
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "jsx": "react-jsx"
   },
   "include": [
     "**/*.ts",

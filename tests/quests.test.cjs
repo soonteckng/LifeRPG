@@ -283,10 +283,10 @@ for (const platform of ["ios", "android"]) {
     const BottomSheet = React.forwardRef((props, ref) => {
       sheetProps = props;
       React.useImperativeHandle(ref, () => ({ close() { closeCalls++; } }));
-      return React.createElement("Panel", props, React.createElement(props.handleComponent), props.children);
+      return React.createElement("Panel", props, React.createElement(props.handleComponent), props.children, props.footerComponent && React.createElement(props.footerComponent));
     });
     const AppSheet = load("src/components/AppSheet.tsx", {
-      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, BottomSheetBackdrop: host("Backdrop") },
+      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
       "react-native": { ...native, Modal: host("Modal"), Platform: { OS: platform },
         PanResponder: { create: (handlers) => ({ panHandlers: handlers }) }, useWindowDimensions: () => ({ height: 800 }) },
       "react-native-gesture-handler": { GestureHandlerRootView: host("GestureRoot") },
@@ -308,6 +308,15 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.enablePanDownToClose, false);
     assert.equal(sheetProps.enableContentPanningGesture, true);
     assert.equal(sheetProps.enableHandlePanningGesture, true);
+    const originalHandle = sheetProps.handleComponent;
+    await act(async () => renderer.update(React.createElement(AppSheet, { ...props, compact: true, header: React.createElement("Text", null, "Personalise") })));
+    assert.equal(sheetProps.snapPoints, undefined);
+    assert.equal(sheetProps.enableDynamicSizing, true);
+    assert.equal(sheetProps.keyboardBehavior, "interactive");
+    assert.equal(sheetProps.handleComponent, originalHandle);
+    // The footer must not shift above its measured scroll reservation.
+    await act(async () => renderer.update(React.createElement(AppSheet, { ...props, compact: true, footer: React.createElement("View", {style:{paddingBottom:34}}, "Save") })));
+    assert.equal(renderer.root.findByType("SheetFooter").props.bottomInset, 0);
     const handle = renderer.root.findAllByType("View").find((node) => node.props.onAccessibilityAction);
     await act(async () => handle.props.onAccessibilityAction());
     assert.equal(requestedClose, 2);
@@ -374,6 +383,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
+    "../../services/progressService": { getFocusStreak: async () => 2 },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes }; } },
     "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
   }).default;
@@ -469,4 +479,6 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
     global.Date = RealDate; global.setTimeout = realTimeout; global.clearTimeout = realClear;
   }
 });
+
+
 

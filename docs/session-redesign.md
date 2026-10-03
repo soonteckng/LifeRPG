@@ -1,6 +1,29 @@
 # Session redesign
 
-## Latest phone-feedback refinement
+## Current interactive-dismiss refinement
+
+Session now owns vertical entrance, finger-following drag and exit on both
+Android and iOS. Root native animation is disabled for this retained transparent
+route, so native and contained animations do not compete. The opaque content stays
+mounted until exit completes. A short or interrupted swipe settles back without
+navigation or timer mutation; a longer downward swipe or fling minimises from its
+current position. Header dismissal and back use the same exit. No timer data is
+paused, cancelled or reset by minimising.
+
+Drag starts outside the timer control. Header dragging remains available when
+session details are scrolled; inner scrolling, wheels, keyboard, pickers and reward
+layers retain priority. Translation and a mild opacity change follow gesture
+updates without React state updates per movement. Release uses native-driver
+animations. A separate stable opacity value starts at 1, avoiding the earlier
+scalar/animated preference-resolution switch. Reduced motion skips translation
+and fading. The close chevron remains in the shared app navigation header.
+
+Tests verify finger position, cancellation/interruption, retained countdown,
+repeat-close protection, and Android/iOS exit ordering with mocked native APIs.
+This is not device frame-rate or rendered-gesture verification: test both platforms,
+large text, cancelled/fast swipes, nested scrolling and dock exposure on phones.
+
+## Previous phone-feedback refinement
 
 The phone still showed no native dismissal after both card and retained-modal
 attempts. Android now uses a contained Animated translation for entrance (280ms)
@@ -182,30 +205,19 @@ enabled. OS animation settings are not overridden. No runtime limitation has yet
 been isolated to a native source-code cause. The repeated phone failure now motivates
 the Android fallback; custom and native screen animations never run together.
 
-## Minimal reproduction for the next phone run
+## Session transition diagnostics
 
-In a development build or Expo Go, long-press Home's Start session (or Continue
-session). Choose Card baseline or Retained Home. The normal short press is unchanged.
+The standalone `/session-transition-test` reproduction route and Home's diagnostic
+long-press menu were removed during the Progress branch cleanup after the reported
+animation issue was resolved. Actual Session navigation and animation behavior are
+unchanged. Historical observations above describe the earlier investigation.
 
-This opens /session-transition-test in the same root stack with a large coloured
-marker. It has no timer consumer, sheets, removal guard, local back handler,
-singleton option, conditional content or JS screen animation. In production the
-route redirects Home. It has not been run natively here.
-
-For EACH mode, test Close test, reopen, and test Android system back. Then compare
-actual Session from Home, quest Start and the dock, using header and back separately.
-Watch the entire surface slide and Home underneath; logs alone are not proof.
-
-Capture [Session transition] runtime/motion, close request, root beforeRemove,
-retained native start/end and React unmount timestamps. History should show one
-Session/repro above the existing tabs, and no replacement action. Inner-layer back
-should report layerDismissed/blocked removal and keep the route.
-
-If both minimal modes fail, Session logic is not required to reproduce the issue.
-If only card fails, view retention is implicated. If both minimal modes work but
-Session fails, compare its guard/history/singleton path. A short recording together
-with these logs is the next useful evidence. Callback absence alone does not prove
-which pixels were rendered.
+To investigate a new issue, enable `EXPO_PUBLIC_DEBUG_SESSION_TRANSITIONS=true`
+locally and test the actual Session from Home, quest Start and the dock. Compare
+header dismissal, Android back and supported iOS gestures. Capture runtime/motion,
+close requests, root removal, native transition and React unmount timestamps.
+A screen recording is still needed to establish visible motion; logs alone are not
+proof. Normal Expo Go sessions stay quiet when this flag is unset.
 
 ## Verification
 
@@ -222,12 +234,12 @@ completion safeguards and header/back priority.
 
 The prior refinement passed the transactional database regression script and
 Android/iOS JavaScript exports. No database checks were rerun for this UI-only
-revision. Native rendering/gestures and the minimal reproduction remain untested
+revision. Native rendering/gestures remained untested in that revision
 because no device/emulator was available.
 
 ## Remaining phone checks
 
-1. Both minimal transition modes and actual Session: upward entry, visible downward
+1. Actual Session from Home, quest Start and the dock: upward entry, visible downward
    exit, Home underneath and no dock flash. Test header, Android back and supported
    iOS header-origin gestures separately.
 2. Preset → wheel → typed input → preset, rapid changes and Start during momentum.
@@ -309,3 +321,4 @@ traces; real warnings and errors remain available.
 A regression test covers saved duration, pending/failed completion and paused
 countdown. This follow-up was reviewed through GitHub; automated checks and
 native device validation could not be run without a connected coding workspace.
+

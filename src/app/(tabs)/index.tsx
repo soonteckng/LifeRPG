@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
@@ -9,7 +9,6 @@ import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
 import {
-  Alert,
   ScrollView,
   useWindowDimensions,
   StyleSheet,
@@ -24,6 +23,8 @@ import {
 
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
+import { getFocusStreak } from "../../services/progressService";
+import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
@@ -38,7 +39,10 @@ export default function HomeScreen() {
   const { tasks, error: questsError, refresh: refreshQuests } = useQuests();
 
   const [completedMinutes, setCompletedMinutes] = useState(0);
+  const [focusStreak, setFocusStreak] = useState<number | null>(null);
+  const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [goalCompleted, setGoalCompleted] = useState(false);
+  const [todayGoal, setTodayGoal] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [questsVisible, setQuestsVisible] = useState(false);
   const [loadError, setLoadError] = useState(false);
@@ -47,14 +51,16 @@ export default function HomeScreen() {
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
-      const [progress, profileOK] = await Promise.all([getTodayProgress(), reloadProfile(), refreshQuests()]);
+      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
+      if (streak !== undefined) setFocusStreak(streak);
+      setTodayGoal(progress?.goal_minutes ?? null);
       setCompletedMinutes(progress?.completed_minutes ?? 0);
       setGoalCompleted(progress?.goal_completed ?? false);
-      setLoadError(profileOK === false);
+      setLoadError(profileOK === false || streak === undefined);
     } catch {
       setLoadError(true);
     } finally { setRefreshing(false); }
-  }), [reloadProfile, refreshQuests]);
+  }), [reloadProfile, refreshQuests, timeZone]);
   const hour = useHomeLifecycle(loadData);
 
   // A successful completion updates the saved session summary before this fires.
@@ -63,7 +69,7 @@ export default function HomeScreen() {
     if (sessionSummary) void loadData(true);
   }, [sessionSummary, loadData]);
 
-  const dailyGoalMinutes = profile?.daily_goal_minutes ?? 60;
+  const dailyGoalMinutes = todayGoal ?? profile?.daily_goal_minutes ?? 60;
   const safeCompletedMinutes = Math.max(0, completedMinutes);
   const goalProgress = Math.min(
     1,
@@ -82,7 +88,7 @@ export default function HomeScreen() {
 
   const greeting = homeWelcome(hour, profile?.username);
   const isGoalComplete = goalCompleted || remainingMinutes === 0;
-  const streakDays = Math.max(0, profile?.streak_count ?? 0);
+  const streakDays = Math.max(0, focusStreak ?? 0);
   const motivation = isGoalComplete ? "A little effort, real progress."
     : hasOpenSession ? "Your next step is already underway."
     : streakDays > 0 ? "Keep making time for what matters."
@@ -128,7 +134,7 @@ export default function HomeScreen() {
           </Text>
           <View style={styles.momentum}>
             <Ionicons name={streakDays > 0 ? "flame-outline" : "leaf-outline"} size={19} color={colors.accent} />
-            <Text style={styles.momentumTitle}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text>
+            <Text style={styles.momentumTitle}>{streakDays > 0 ? `${streakDays}-day focus streak` : focusStreak === null ? "Make time for yourself" : "A fresh start"}</Text>
           </View>
           <Text style={styles.welcomeSubtitle} maxFontSizeMultiplier={1.4}>{motivation}</Text>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -201,11 +207,6 @@ export default function HomeScreen() {
               tight && styles.tightPrimaryButton,
             ]}
             onPress={startFreeSession}
-            onLongPress={typeof __DEV__ !== "undefined" && __DEV__ ? () => Alert.alert("Native Session transition", "Compare the minimal screen with Session. Close and reopen to test Android back separately.", [
-              { text: "Card baseline", onPress: () => router.navigate({ pathname: "/session-transition-test", params: { mode: "card" } }) },
-              { text: "Retained Home", onPress: () => router.navigate({ pathname: "/session-transition-test", params: { mode: "retained" } }) },
-              { text: "Cancel", style: "cancel" },
-            ]) : undefined}
             activeOpacity={0.88}
             accessibilityRole="button"
           >
