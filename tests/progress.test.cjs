@@ -349,6 +349,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
     },
   };
   const screen = load("src/app/(tabs)/progress.tsx", {
+    "expo-router": { useRouter: () => ({ navigate() {} }) },
     "react-native": Native,
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "@gorhom/bottom-sheet": {
@@ -504,3 +505,4 @@ test("a history failure does not suppress another day’s empty-state details", 
     await ui.cleanup();
   }
 });
+

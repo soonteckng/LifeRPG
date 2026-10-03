@@ -1,0 +1,725 @@
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs"),
+  path = require("node:path"),
+  ts = require("typescript");
+const React = require("react"),
+  { act, create } = require("react-test-renderer");
+global.IS_REACT_ACT_ENVIRONMENT = true;
+function load(file, mocks = {}, cache = new Map()) {
+  const filename = path.resolve(__dirname, "..", file);
+  if (cache.has(filename)) return cache.get(filename).exports;
+  const mod = { exports: {} };
+  cache.set(filename, mod);
+  const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.ReactJSX,
+      esModuleInterop: true,
+    },
+  }).outputText;
+  new Function("require", "module", "exports", code)(
+    (name) => {
+      if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (!name.startsWith(".")) return require(name);
+      const target = path.resolve(path.dirname(filename), name);
+      const ext = ["", ".ts", ".tsx"].find((e) => fs.existsSync(target + e));
+      return load(
+        path.relative(path.resolve(__dirname, ".."), target + ext),
+        mocks,
+        cache,
+      );
+    },
+    mod,
+    mod.exports,
+  );
+  return mod.exports;
+}
+const growth = load("src/utils/characterGrowth.ts");
+const area = (id, level, xp) => ({
+  id,
+  title: `Area ${id}`,
+  level,
+  current_xp: xp,
+  color_code: null,
+});
+const session = (id, day, seconds = 30) => ({
+  id,
+  subject_id: 1,
+  activity_type: "other",
+  duration_seconds: seconds,
+  completed_at: `${day}T04:00:00Z`,
+  xp_earned: 0,
+  gold_earned: 0,
+});
+test("attribute grouping reconstructs earned XP and respects exact level thresholds", () => {
+  for (let level = 1; level <= 20; level++)
+    for (const current of [0, 1, level * 50 - 1]) {
+      assert.deepEqual(
+        growth.attributeProgress(
+          growth.lifetimeAreaXP(area(1, level, current)),
+        ),
+        {
+          level,
+          current,
+          required: level * 50,
+          total: 25 * level * (level - 1) + current,
+        },
+      );
+    }
+  assert.equal(growth.attributeProgress(50).level, 2);
+});
+test("areas are assigned explicitly; switching attributes never changes earned area XP", () => {
+  const areas = [area(1, 3, 12), area(2, 2, 20)];
+  const original = JSON.stringify(areas);
+  assert.equal(growth.characterAttributes(areas, {})[0].total, 0);
+  assert.equal(
+    growth.characterAttributes(areas, { 1: "strength", 2: "strength" })[0]
+      .total,
+    232,
+  );
+  assert.equal(
+    growth.characterAttributes(areas, { 1: "knowledge" })[1].total,
+    162,
+  );
+  assert.equal(JSON.stringify(areas), original);
+  assert.deepEqual(
+    growth.validMapping({ 1: "strength", nope: "strength", 2: "fake" }),
+    { 1: "strength" },
+  );
+});
+test("milestones use exact seconds and deduplicate saved sessions", () => {
+  const a = session("a", "2026-10-01", 30),
+    b = session("b", "2026-10-01", 3570);
+  const result = growth.earnedMilestones(
+    [a, a, b, session("zero", "2026-10-02", 0)],
+    "Asia/Kuala_Lumpur",
+  );
+  assert.equal(result.sessions, 2);
+  assert.equal(result.seconds, 3600);
+  assert.equal(result.days, 1);
+  assert.equal(result.milestones.find((m) => m.id === "hour").unlocked, true);
+});
+test("earned consistency milestones survive a broken current streak", () => {
+  const rows = ["01", "02", "03", "07"].map((d, i) =>
+    session(String(i), `2026-10-${d}`),
+  );
+  const result = growth.earnedMilestones(rows, "Asia/Kuala_Lumpur");
+  assert.equal(result.bestStreak, 3);
+  assert.equal(result.milestones.find((m) => m.id === "return").unlocked, true);
+  assert.equal(result.milestones.find((m) => m.id === "week").unlocked, false);
+});
+test("reward input rejects decimal, signed, malformed and out-of-range costs", () => {
+  for (const cost of ["1.2", "15x", "-1", "0", "1e3", "1000001", "Infinity"])
+    assert.ok(growth.rewardDraft("Coffee", cost).error);
+  assert.ok(growth.rewardDraft(" ", "10").error);
+  assert.deepEqual(growth.rewardDraft(" Coffee ", " 300 "), {
+    title: "Coffee",
+    cost: 300,
+    error: null,
+  });
+});
+const host =
+  (name) =>
+  ({ children, ...props }) =>
+    React.createElement(name, props, children);
+const Native = {
+  Animated: {
+    Value: class {
+      setValue() {}
+    },
+    View: host("Animated"),
+    timing: () => ({ start() {}, stop() {} }),
+  },
+  AppState: { addEventListener: () => ({ remove() {} }) },
+  Keyboard: { dismiss() {} },
+  Switch: host("Switch"),
+  Linking: { openSettings: async () => {} },
+  Text: host("Text"),
+  View: host("View"),
+  Pressable: host("Button"),
+  ScrollView: host("Scroll"),
+  TextInput: host("Input"),
+  KeyboardAvoidingView: host("KeyboardArea"),
+  Platform: { OS: "android" },
+};
+const UI = {
+  Meter: host("Meter"),
+  PersonalRow: ({ title, subtitle, ...props }) =>
+    React.createElement("Button", props, title, subtitle),
+  PersonalPage: host("Page"),
+  PersonalButton: ({ title, ...props }) =>
+    React.createElement("Button", props, title),
+  p: {},
+};
+const text = (node) =>
+  typeof node === "string" ? node : (node.children ?? []).map(text).join("");
+async function screen(file, mocks) {
+  const Component = load(file, {
+    "react-native": Native,
+    "react-native-safe-area-context": { SafeAreaView: host("Safe") },
+    "@expo/vector-icons": { Ionicons: host("Icon") },
+    "../hooks/useReducedMotion": { useReducedMotion: () => true },
+    "./PersonalUI": UI,
+    "../components/PersonalUI": UI,
+    "./CharacterPortrait": host("Portrait"),
+    "../components/CharacterPortrait": host("Portrait"),
+    ...mocks,
+  }).default;
+  let renderer;
+  await act(async () => {
+    renderer = create(React.createElement(Component));
+  });
+  return {
+    renderer,
+    text: () => text(renderer.root),
+    input: async (label, value) =>
+      act(async () =>
+        renderer.root
+          .findAllByType("Input")
+          .find((n) => n.props.accessibilityLabel === label)
+          .props.onChangeText(value),
+      ),
+    press: async (title) =>
+      act(async () =>
+        renderer.root
+          .findAllByType("Button")
+          .find((n) => n.props.title === title || text(n) === title)
+          .props.onPress(),
+      ),
+    cleanup: async () => act(async () => renderer.unmount()),
+  };
+}
+test("registration confirms email without claiming an authenticated session", async () => {
+  let calls = 0;
+  const ui = await screen("src/components/AuthScreen.tsx", {
+    "../context/AuthContext": {
+      useAuth: () => ({
+        signUp: async () => {
+          calls++;
+          return { needsEmailConfirmation: true };
+        },
+      }),
+    },
+  });
+  try {
+    await ui.press("New here? Create an account");
+    await ui.input("Email", "person@example.com");
+    await ui.input("Password", "password");
+    await ui.press("Create account");
+    assert.equal(calls, 1);
+    assert.match(ui.text(), /Check your email/);
+    assert.match(ui.text(), /Sign in/);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("failed login exposes error, preserves inputs and allows retry", async () => {
+  let calls = 0;
+  const ui = await screen("src/components/AuthScreen.tsx", {
+    "../context/AuthContext": {
+      useAuth: () => ({
+        signIn: async () => {
+          if (++calls === 1) throw Error("Offline");
+          return { error: null };
+        },
+      }),
+    },
+  });
+  try {
+    await ui.input("Email", "person@example.com");
+    await ui.input("Password", "password");
+    await ui.press("Sign in");
+    assert.match(ui.text(), /Offline/);
+    assert.equal(
+      ui.renderer.root.findAllByType("Input")[1].props.value,
+      "password",
+    );
+    await ui.press("Sign in");
+    assert.equal(calls, 2);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("rapid sign-in taps submit once", async () => {
+  let resolve,
+    calls = 0;
+  const promise = new Promise((r) => {
+    resolve = r;
+  });
+  const ui = await screen("src/components/AuthScreen.tsx", {
+    "../context/AuthContext": {
+      useAuth: () => ({
+        signIn: () => {
+          calls++;
+          return promise;
+        },
+      }),
+    },
+  });
+  try {
+    await ui.input("Email", "person@example.com");
+    await ui.input("Password", "password");
+    const handler = ui.renderer.root
+      .findAllByType("Button")
+      .find((b) => text(b) === "Sign in").props.onPress;
+    await act(async () => {
+      handler();
+      handler();
+    });
+    assert.equal(calls, 1);
+    await act(async () => resolve({ error: null }));
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("onboarding failure keeps choices and retries before entering tutorial", async () => {
+  let attempts = 0;
+  const routes = [];
+  const ui = await screen("src/app/onboarding.tsx", {
+    "expo-router": {
+      useRouter: () => ({ replace: (route) => routes.push(route) }),
+    },
+    "../context/UserContext": {
+      useUser: () => ({
+        profile: { username: "Hero", avatar: "🌱", daily_goal_minutes: 60 },
+        reloadProfile: async () => true,
+      }),
+    },
+    "../services/onboardingService": {
+      saveOnboardingProfile: async () => {
+        if (++attempts === 1) throw Error("Offline");
+      },
+    },
+  });
+  try {
+    await ui.input("Your name", "Soon Teck");
+    await ui.press("Continue to the introduction");
+    assert.match(ui.text(), /Couldn’t save/);
+    assert.deepEqual(routes, []);
+    await ui.press("Continue to the introduction");
+    assert.deepEqual(routes, ["/tutorial"]);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("new users finish tutorial before Home; failed finish can retry", async () => {
+  let calls = 0;
+  const routes = [];
+  const ui = await screen("src/app/tutorial.tsx", {
+    "expo-router": {
+      useRouter: () => ({ replace: (route) => routes.push(route) }),
+    },
+    "../context/UserContext": {
+      useUser: () => ({
+        profile: { onboarding_completed: false },
+        reloadProfile: async () => true,
+      }),
+    },
+    "../services/onboardingService": {
+      finishOnboarding: async () => {
+        if (++calls === 1) throw Error("Offline");
+      },
+    },
+  });
+  try {
+    for (let i = 0; i < 4; i++) await ui.press("Continue");
+    assert.deepEqual(routes, []);
+    await ui.press("Start my journey");
+    assert.match(ui.text(), /Couldn’t finish setup/);
+    await ui.press("Start my journey");
+    assert.deepEqual(routes, ["/"]);
+    assert.equal(calls, 2);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("replaying tutorial returns without writing onboarding again", async () => {
+  let calls = 0,
+    back = 0;
+  const ui = await screen("src/app/tutorial.tsx", {
+    "expo-router": {
+      useRouter: () => ({ canGoBack: () => true, back: () => back++ }),
+    },
+    "../context/UserContext": {
+      useUser: () => ({ profile: { onboarding_completed: true } }),
+    },
+    "../services/onboardingService": { finishOnboarding: async () => calls++ },
+  });
+  try {
+    for (let i = 0; i < 4; i++) await ui.press("Continue");
+    await ui.press("Done");
+    assert.equal(calls, 0);
+    assert.equal(back, 1);
+  } finally {
+    await ui.cleanup();
+  }
+});
+async function userProviderHarness({ updateError = null, stored = null } = {}) {
+  let value;
+  const writes = [];
+  const row = {
+    id: "user-1",
+    username: "Soon",
+    avatar: "🌱",
+    class_title: "Scholar",
+    onboarding_completed: true,
+    timezone: "Asia/Kuala_Lumpur",
+    level: 1,
+    current_xp: 0,
+    gold: 0,
+  };
+  const storage = {
+    getItem: async () => stored,
+    setItem: async (key, payload) => {
+      writes.push([key, JSON.parse(payload)]);
+    },
+  };
+  const user = { id: "user-1" };
+  const module = load("src/context/UserContext.tsx", {
+    "./AuthContext": { useAuth: () => ({ user }) },
+    "@react-native-async-storage/async-storage": storage,
+    "../../lib/supabase": {
+      supabase: {
+        from: () => {
+          let update = null;
+          const q = {
+            select: () => q,
+            eq: () => q,
+            update: (payload) => {
+              update = payload;
+              return q;
+            },
+            single: async () =>
+              update
+                ? {
+                    data: updateError ? null : { id: row.id, ...update },
+                    error: updateError,
+                  }
+                : { data: row, error: null },
+          };
+          return q;
+        },
+      },
+    },
+  });
+  function Consumer() {
+    value = module.useUser();
+    return null;
+  }
+  let renderer;
+  await act(async () => {
+    renderer = create(
+      React.createElement(
+        module.UserProvider,
+        null,
+        React.createElement(Consumer),
+      ),
+    );
+  });
+  return {
+    value: () => value,
+    writes,
+    run: async (fn) => act(async () => fn(value)),
+    cleanup: async () => act(async () => renderer.unmount()),
+  };
+}
+test("profile save propagates failure instead of falsely reporting success", async () => {
+  const ui = await userProviderHarness({ updateError: Error("Offline") });
+  try {
+    await assert.rejects(
+      ui.value().updateProfile("Changed", "🌱", "Scholar"),
+      /Offline/,
+    );
+    assert.equal(ui.value().profile.username, "Soon");
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("profile save waits for the saved row and updates the current identity", async () => {
+  const ui = await userProviderHarness();
+  try {
+    await ui.run((v) => v.updateProfile(" Changed ", "⭐", "Scholar"));
+    assert.equal(ui.value().profile.username, "Changed");
+    assert.equal(ui.value().profile.avatar, "⭐");
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("device preferences restore and rapid different toggles persist their final values", async () => {
+  const ui = await userProviderHarness({
+    stored: JSON.stringify({ sound: true, haptics: true }),
+  });
+  try {
+    await ui.run((v) => {
+      v.setSoundEnabled(false);
+      v.setHapticsEnabled(false);
+    });
+    assert.equal(ui.value().soundEnabled, false);
+    assert.equal(ui.value().hapticsEnabled, false);
+    assert.deepEqual(ui.writes.at(-1), [
+      "liferpg:preferences:user-1",
+      { sound: false, haptics: false },
+    ]);
+  } finally {
+    await ui.cleanup();
+  }
+});
+function mockSheet(props) {
+  return React.createElement(
+    "Sheet",
+    props,
+    props.visible ? [props.header, props.children, props.overlay] : null,
+  );
+}
+const sheetMocks = {
+  "../components/AppSheet": mockSheet,
+  "../components/SheetConfirmation": host("Confirmation"),
+  "@gorhom/bottom-sheet": {
+    BottomSheetScrollView: host("SheetScroll"),
+    BottomSheetTextInput: host("Input"),
+    TouchableOpacity: host("Button"),
+  },
+};
+async function rewardsHarness(overrides = {}) {
+  const calls = [],
+    saved = [];
+  const user = {
+    profile: {
+      id: "a",
+      timezone: "Asia/Kuala_Lumpur",
+      daily_goal_minutes: 60,
+      gold: 500,
+    },
+    reloadProfile: async () => true,
+  };
+  const service = {
+    getRewards: async () => [{ id: "reward", title: "Coffee", cost_gold: 300 }],
+    getTodayRewardChest: async () => null,
+    openDailyRewardChest: async () => {
+      calls.push("claim");
+      return { success: true, reward_gold: 50 };
+    },
+    createReward: async (title, cost) => {
+      saved.push([title, cost]);
+    },
+    deleteReward: async (id) => {
+      calls.push(["delete", id]);
+    },
+    redeemReward: async (id) => {
+      calls.push(["redeem", id]);
+      return { success: true };
+    },
+    ...overrides,
+  };
+  const ui = await screen("src/app/rewards.tsx", {
+    ...sheetMocks,
+    "expo-router": { useFocusEffect: (fn) => React.useEffect(fn, [fn]) },
+    "../context/UserContext": { useUser: () => user },
+    "../context/TimerContext": { useTimer: () => ({ sessionSummary: null }) },
+    "../hooks/useCharacterData": {
+      useCharacterData: () => ({
+        data: {
+          areas: [],
+          mapping: {},
+          sessions: [session("s", "2026-10-01")],
+        },
+        loading: false,
+        error: false,
+        refresh: async () => {},
+      }),
+    },
+    "../services/rewardService": service,
+    "../services/dailyProgressService": {
+      getTodayProgress: async () => ({
+        completed_minutes: 60,
+        goal_minutes: 60,
+        goal_completed: true,
+      }),
+    },
+  });
+  return { ...ui, calls, saved };
+}
+test("creating a personal reward validates strictly and preserves failed drafts", async () => {
+  let attempts = 0;
+  const ui = await rewardsHarness({
+    createReward: async () => {
+      if (++attempts === 1) throw Error("Offline");
+    },
+  });
+  try {
+    await ui.press("Add a personal reward");
+    await ui.input("Reward name", "Tea");
+    await ui.input("Gold cost", "2.5");
+    await ui.press("Save personal reward");
+    assert.equal(attempts, 0);
+    assert.match(ui.text(), /whole Gold cost/);
+    await ui.input("Gold cost", "20");
+    await ui.press("Save personal reward");
+    assert.match(ui.text(), /Offline/);
+    assert.equal(ui.renderer.root.findAllByType("Input")[0].props.value, "Tea");
+    await ui.press("Save personal reward");
+    assert.equal(attempts, 2);
+    assert.match(ui.text(), /Personal reward saved/);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("dirty reward dismissal asks before closing; discard leaves saved rewards untouched", async () => {
+  const ui = await rewardsHarness();
+  try {
+    await ui.press("Add a personal reward");
+    await ui.input("Reward name", "Tea");
+    await act(async () =>
+      ui.renderer.root.findByType("Sheet").props.onRequestClose(),
+    );
+    const dialog = ui.renderer.root.findByType("Confirmation");
+    assert.equal(dialog.props.confirmLabel, "Discard draft");
+    await act(async () => dialog.props.onConfirm());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
+    assert.deepEqual(ui.saved, []);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("rapid daily bonus claims share one in-flight action", async () => {
+  let resolve,
+    calls = 0;
+  const promise = new Promise((r) => {
+    resolve = r;
+  });
+  const ui = await rewardsHarness({
+    openDailyRewardChest: () => {
+      calls++;
+      return promise;
+    },
+  });
+  try {
+    const handler = ui.renderer.root
+      .findAllByType("Button")
+      .find((b) => text(b) === "Claim daily bonus").props.onPress;
+    await act(async () => {
+      handler();
+      handler();
+    });
+    assert.equal(calls, 1);
+    await act(async () => resolve({ success: true, reward_gold: 50 }));
+    assert.match(ui.text(), /Daily goal recognised/);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("redemption requires confirmation and displays failed persistence without success", async () => {
+  let calls = 0;
+  const ui = await rewardsHarness({
+    redeemReward: async () => {
+      calls++;
+      return { success: false, reason: "insufficient_gold" };
+    },
+  });
+  try {
+    const row = ui.renderer.root
+      .findAllByType("Button")
+      .find((b) => b.props.accessibilityLabel?.startsWith("Coffee,"));
+    await act(async () => row.props.onPress());
+    await ui.press("Redeem reward");
+    assert.equal(calls, 0);
+    await act(async () =>
+      ui.renderer.root.findByType("Confirmation").props.onConfirm(),
+    );
+    assert.equal(calls, 1);
+    assert.match(ui.text(), /balance hasn’t changed/);
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+  } finally {
+    await ui.cleanup();
+  }
+});
+test("Settings prevents logout while a session is running, paused or unresolved", async () => {
+  for (const timer of [
+    { hasOpenSession: true },
+    { isRestoring: true },
+    { restoreError: true },
+  ]) {
+    let calls = 0;
+    const ui = await screen("src/app/settings.tsx", {
+      ...sheetMocks,
+      "expo-router": { useRouter: () => ({ navigate() {} }) },
+      "expo-notifications": {
+        getPermissionsAsync: async () => ({ granted: true }),
+      },
+      "../context/UserContext": {
+        useUser: () => ({
+          profile: { username: "Soon", timezone: "Asia/Kuala_Lumpur" },
+        }),
+      },
+      "../context/AuthContext": {
+        useAuth: () => ({
+          user: { email: "a@b.com" },
+          signOut: async () => {
+            calls++;
+            return {};
+          },
+        }),
+      },
+      "../context/TimerContext": { useTimer: () => timer },
+      "../hooks/useReducedMotion": { useReducedMotion: () => true },
+    });
+    try {
+      const row = ui.renderer.root
+        .findAllByType("Button")
+        .find((b) => text(b).startsWith("Sign out"));
+      await act(async () => row.props.onPress());
+      const confirm = ui.renderer.root
+        .findAllByType("Button")
+        .find((b) => text(b) === "Sign out");
+      assert.equal(confirm.props.disabled, true);
+      await act(async () => confirm.props.onPress());
+      assert.equal(calls, 0);
+    } finally {
+      await ui.cleanup();
+    }
+  }
+});
+test("auth restoration cannot overwrite a newer sign-in event; logout is device-local", async () => {
+  let resolve, listener, value, scope;
+  const restore = new Promise((r) => {
+    resolve = r;
+  });
+  const auth = {
+    getSession: () => restore,
+    onAuthStateChange: (callback) => {
+      listener = callback;
+      return { data: { subscription: { unsubscribe() {} } } };
+    },
+    signOut: async (options) => {
+      scope = options.scope;
+      return { error: null };
+    },
+  };
+  const module = load("src/context/AuthContext.tsx", {
+    "../../lib/supabase": { supabase: { auth } },
+  });
+  function Consumer() {
+    value = module.useAuth();
+    return null;
+  }
+  let renderer;
+  await act(async () => {
+    renderer = create(
+      React.createElement(
+        module.AuthProvider,
+        null,
+        React.createElement(Consumer),
+      ),
+    );
+  });
+  try {
+    await act(async () => listener("SIGNED_IN", { user: { id: "new" } }));
+    await act(async () => resolve({ data: { session: null }, error: null }));
+    assert.equal(value.user.id, "new");
+    await value.signOut();
+    assert.equal(scope, "local");
+  } finally {
+    await act(async () => renderer.unmount());
+  }
+});

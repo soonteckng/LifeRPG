@@ -1,9 +1,4 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import React, { createContext, useContext, useEffect, useState } from "react";
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "../../lib/supabase";
 
@@ -12,7 +7,10 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string) => Promise<{
+  signUp: (
+    email: string,
+    password: string,
+  ) => Promise<{
     error: Error | null;
     needsEmailConfirmation: boolean;
   }>;
@@ -26,24 +24,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data, error }) => {
-      if (error) {
-        console.error("Failed to restore Supabase session:", error);
-      }
+    let live = true;
+    let authEventSeen = false;
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (!live || authEventSeen) return;
+        if (error) {
+          console.error("Failed to restore Supabase session:", error);
+        }
 
-      setSession(data.session);
-      setLoading(false);
-    });
+        setSession(data.session);
+        setLoading(false);
+      })
+      .catch(() => {
+        if (live && !authEventSeen) setLoading(false);
+      });
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
+      authEventSeen = true;
+      if (!live) return;
       console.log("Supabase auth event:", event);
       setSession(session);
       setLoading(false);
     });
 
     return () => {
+      live = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -70,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
 
     return { error };
   };

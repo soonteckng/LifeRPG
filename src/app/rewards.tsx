@@ -1,23 +1,31 @@
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
-import AppSheet from "../components/AppSheet";
-import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import {
-  Alert,
-  Keyboard,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-
-import Header from "../components/Header";
+  BottomSheetScrollView,
+  BottomSheetTextInput,
+  TouchableOpacity as SheetButton,
+} from "@gorhom/bottom-sheet";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Keyboard, Pressable, Text, View } from "react-native";
+import AppSheet from "../components/AppSheet";
+import SheetConfirmation from "../components/SheetConfirmation";
+import {
+  Meter,
+  PersonalButton,
+  PersonalPage,
+  p,
+  type PersonalIcon,
+} from "../components/PersonalUI";
+import { colors } from "../constants/theme";
 import { useUser } from "../context/UserContext";
-import { getTodayProgress } from "../services/dailyProgressService";
+import { useTimer } from "../context/TimerContext";
+import { useCharacterData } from "../hooks/useCharacterData";
+import { earnedMilestones, rewardDraft } from "../utils/characterGrowth";
+import { durationLabel } from "../utils/progressAnalytics";
+import {
+  getTodayProgress,
+  type DailyProgress,
+} from "../services/dailyProgressService";
 import {
   createReward,
   deleteReward,
@@ -29,1339 +37,531 @@ import {
   type RewardChest,
 } from "../services/rewardService";
 
-const DEFAULT_DAILY_CHEST_GOLD = 50;
-
+type Sheet =
+  | { kind: "create" }
+  | { kind: "reward"; reward: Reward }
+  | { kind: "milestone"; id: string }
+  | null;
 export default function RewardsScreen() {
-  const {
-    profile,
-    reloadProfile,
-    hapticsEnabled,
-  } = useUser();
-
-  const [rewards, setRewards] = useState<Reward[]>([]);
-  const [todayChest, setTodayChest] =
-    useState<RewardChest | null>(null);
-
-  const [completedMinutes, setCompletedMinutes] =
-    useState(0);
-  const [goalMinutes, setGoalMinutes] =
-    useState(60);
-  const [goalCompleted, setGoalCompleted] =
-    useState(false);
-
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [openingChest, setOpeningChest] = useState(false);
-
-  const [creatingReward, setCreatingReward] =
-    useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [rewardTitle, setRewardTitle] = useState("");
-  const [rewardCost, setRewardCost] = useState("300");
-
-  const gold = profile?.gold ?? 0;
-
-  const loadData = useCallback(async () => {
+  const { profile, reloadProfile } = useUser();
+  const { sessionSummary } = useTimer();
+  const growth = useCharacterData();
+  const [data, setData] = useState<{
+    rewards: Reward[];
+    chest: RewardChest | null;
+    progress: DailyProgress | null;
+  } | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const generation = useRef(0),
+    focused = useRef(false),
+    lock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [title, setTitle] = useState(""),
+    [cost, setCost] = useState("300");
+  const [draftError, setDraftError] = useState("");
+  const [confirm, setConfirm] = useState<
+    "discard" | "delete" | "redeem" | null
+  >(null);
+  const [notice, setNotice] = useState("");
+  const refresh = useCallback(async () => {
+    const request = ++generation.current;
+    setLoading(true);
     try {
-      setLoading(true);
-
-      const [
-        rewardList,
-        chest,
-        progress,
-      ] = await Promise.all([
+      const [rewards, chest, progress] = await Promise.all([
         getRewards(),
-        getTodayRewardChest(),
-        getTodayProgress(),
+        getTodayRewardChest(profile.timezone),
+        getTodayProgress(profile.timezone),
       ]);
-
-      setRewards(rewardList);
-      setTodayChest(chest);
-
-      setCompletedMinutes(
-        progress?.completed_minutes ?? 0,
-      );
-
-      setGoalMinutes(
-        progress?.goal_minutes ??
-          profile?.daily_goal_minutes ??
-          60,
-      );
-
-      setGoalCompleted(
-        progress?.goal_completed ?? false,
-      );
-
-      await reloadProfile();
-    } catch (error) {
-      console.error(
-        "Failed to load rewards:",
-        error,
-      );
-
-      Alert.alert(
-        "Couldn't load rewards",
-        "Please check your connection and try again.",
-      );
+      if (request === generation.current) {
+        setData({ rewards, chest, progress });
+        setError("");
+      }
+    } catch {
+      if (request === generation.current)
+        setError(
+          "Couldn’t refresh rewards. Check your connection and try again.",
+        );
     } finally {
-      setLoading(false);
+      if (request === generation.current) setLoading(false);
     }
-  }, [
-    profile?.daily_goal_minutes,
-    reloadProfile,
-  ]);
-
+  }, [profile.timezone]);
   useFocusEffect(
     useCallback(() => {
-      loadData();
-    }, [loadData]),
+      focused.current = true;
+      void refresh();
+      return () => {
+        focused.current = false;
+        generation.current++;
+      };
+    }, [refresh]),
   );
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-
-    try {
-      await loadData();
-    } finally {
-      setRefreshing(false);
-    }
-  }, [loadData]);
-
-  const goalProgress = Math.min(
-    1,
-    completedMinutes / Math.max(1, goalMinutes),
+  useEffect(() => {
+    if (sessionSummary && focused.current) void refresh();
+  }, [sessionSummary, refresh]);
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active" && focused.current) void refresh();
+    });
+    return () => sub.remove();
+  }, [refresh]);
+  const totals = earnedMilestones(
+    growth.data?.sessions ?? [],
+    profile.timezone,
   );
-
-  const chestOpened =
-    todayChest !== null &&
-    todayChest.opened_at !== null;
-
-  const chestReady =
-    goalCompleted && !chestOpened;
-
-  const chestGold =
-    todayChest?.reward_gold ??
-    DEFAULT_DAILY_CHEST_GOLD;
-
-  const openChest = async () => {
-    if (!chestReady || openingChest) {
+  const milestone =
+    sheet?.kind === "milestone"
+      ? totals.milestones.find((m) => m.id === sheet.id)
+      : null;
+  const opened = !!data?.chest?.opened_at;
+  const ready = !!data?.progress?.goal_completed && !opened;
+  const close = () => {
+    if (lock.current) return;
+    if (confirm) {
+      setConfirm(null);
       return;
     }
-
-    try {
-      setOpeningChest(true);
-
-      if (hapticsEnabled) {
-        Haptics.impactAsync(
-          Haptics.ImpactFeedbackStyle.Medium,
-        );
-      }
-
-      const result =
-        await openDailyRewardChest();
-
-      if (!result.success) {
-        if (
-          result.reason ===
-          "daily_goal_not_completed"
-        ) {
-          Alert.alert(
-            "Daily Goal not complete",
-            "Complete today's goal first.",
-          );
-        } else if (
-          result.reason === "already_opened"
-        ) {
-          Alert.alert(
-            "Chest already opened",
-            "Today's reward has already been claimed.",
-          );
-        } else {
-          Alert.alert(
-            "Couldn't open chest",
-            "Please try again.",
-          );
-        }
-
-        await loadData();
-        return;
-      }
-
-      if (hapticsEnabled) {
-        Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success,
-        );
-      }
-
-      Alert.alert(
-        "Daily Reward Claimed 🎉",
-        `You received ${
-          result.reward_gold ?? chestGold
-        } Gold.`,
-      );
-
-      await reloadProfile();
-      await loadData();
-    } catch (error) {
-      console.error(
-        "Failed to open reward chest:",
-        error,
-      );
-
-      Alert.alert(
-        "Couldn't open chest",
-        "Please try again.",
-      );
-    } finally {
-      setOpeningChest(false);
-    }
-  };
-
-  const openCreateReward = () => {
-    setRewardTitle("");
-    setRewardCost("300");
-    setCreatingReward(true);
-  };
-
-  const closeCreateReward = () => {
-    if (saving) {
-      return;
-    }
-
-    const dismiss = () => { Keyboard.dismiss(); setCreatingReward(false); };
-    if (rewardTitle.trim() || rewardCost !== "300") {
-      Alert.alert("Discard changes?", "Your personal reward has not been saved.", [
-        { text: "Keep editing", style: "cancel" },
-        { text: "Discard changes", style: "destructive", onPress: dismiss },
-      ]);
-    } else dismiss();
-  };
-
-  const handleCreateReward = async () => {
-    const title = rewardTitle.trim();
-    const cost = Number.parseInt(
-      rewardCost,
-      10,
-    );
-
-    if (!title) {
-      Alert.alert(
-        "Reward name missing",
-        "Give your reward a name first.",
-      );
-      return;
-    }
-
-    if (!Number.isFinite(cost) || cost < 1) {
-      Alert.alert(
-        "Invalid Gold cost",
-        "Enter a Gold cost of at least 1.",
-      );
-      return;
-    }
-
-    try {
-      setSaving(true);
-
-      await createReward(title, cost);
-
-      if (hapticsEnabled) {
-        Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success,
-        );
-      }
-
+    if (sheet?.kind === "create" && (title.trim() || cost !== "300"))
+      setConfirm("discard");
+    else {
       Keyboard.dismiss();
-      setCreatingReward(false);
-      await loadData();
-    } catch (error) {
-      console.error(
-        "Failed to create reward:",
-        error,
-      );
-
-      Alert.alert(
-        "Couldn't create reward",
-        "Please try again.",
-      );
-    } finally {
-      setSaving(false);
+      setSheet(null);
     }
   };
-
-  const handleRedeem = (reward: Reward) => {
-    if (gold < reward.cost_gold) {
-      Alert.alert(
-        "Not enough Gold",
-        `You need ${
-          reward.cost_gold - gold
-        } more Gold.`,
-      );
+  const perform = async (
+    operation: () => Promise<void>,
+    location: "screen" | "sheet",
+  ) => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setDraftError("");
+    generation.current++; // Old refreshes cannot overwrite a successful mutation.
+    try {
+      await operation();
+      await reloadProfile();
+      await refresh();
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Couldn’t save this change. Please try again.";
+      if (location === "sheet") setDraftError(message);
+      else setError(message);
+    } finally {
+      lock.current = false;
+      setBusy(false);
+    }
+  };
+  const claim = () => {
+    if (!ready) return;
+    void perform(async () => {
+      const result = await openDailyRewardChest();
+      if (!result.success) {
+        if (result.reason === "already_opened") {
+          setNotice("Today’s bonus has already been claimed.");
+          return;
+        }
+        throw new Error(
+          "The daily bonus isn’t available yet. Refresh and try again.",
+        );
+      }
+      setNotice(`Daily goal recognised · +${result.reward_gold ?? 0} Gold.`);
+    }, "screen");
+  };
+  const create = () => {
+    const draft = rewardDraft(title, cost);
+    if (draft.error) {
+      setDraftError(draft.error);
       return;
     }
-
-    Alert.alert(
-      "Redeem reward?",
-      `Spend ${reward.cost_gold} Gold on "${reward.title}"?`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Redeem",
-          onPress: async () => {
-            try {
-              if (hapticsEnabled) {
-                Haptics.impactAsync(
-                  Haptics.ImpactFeedbackStyle.Medium,
-                );
-              }
-
-              const result =
-                await redeemReward(reward.id);
-
-              if (!result.success) {
-                Alert.alert(
-                  result.reason ===
-                    "insufficient_gold"
-                    ? "Not enough Gold"
-                    : "Couldn't redeem",
-                  result.reason ===
-                    "insufficient_gold"
-                    ? "You don't have enough Gold."
-                    : "This reward could not be redeemed.",
-                );
-
-                await loadData();
-                return;
-              }
-
-              if (hapticsEnabled) {
-                Haptics.notificationAsync(
-                  Haptics.NotificationFeedbackType.Success,
-                );
-              }
-
-              Alert.alert(
-                "Reward Redeemed 🎉",
-                `"${reward.title}" has been redeemed.`,
-              );
-
-              await reloadProfile();
-              await loadData();
-            } catch (error) {
-              console.error(
-                "Failed to redeem reward:",
-                error,
-              );
-
-              Alert.alert(
-                "Couldn't redeem reward",
-                "Please try again.",
-              );
-            }
-          },
-        },
-      ],
-    );
+    void perform(async () => {
+      await createReward(draft.title!, draft.cost!);
+      Keyboard.dismiss();
+      setSheet(null);
+      setNotice("Personal reward saved.");
+    }, "sheet");
   };
-
-  const handleDelete = (reward: Reward) => {
-    Alert.alert(
-      "Delete reward?",
-      `"${reward.title}" will be permanently removed.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteReward(reward.id);
-
-              if (hapticsEnabled) {
-                Haptics.notificationAsync(
-                  Haptics.NotificationFeedbackType.Success,
-                );
-              }
-
-              await loadData();
-            } catch (error) {
-              console.error(
-                "Failed to delete reward:",
-                error,
-              );
-
-              Alert.alert(
-                "Couldn't delete reward",
-                "Please try again.",
-              );
-            }
-          },
-        },
-      ],
-    );
+  const mutateReward = (kind: "delete" | "redeem") => {
+    if (sheet?.kind !== "reward") return;
+    const reward = sheet.reward;
+    setConfirm(null);
+    void perform(async () => {
+      if (kind === "delete") {
+        await deleteReward(reward.id);
+        setNotice("Personal reward removed.");
+      } else {
+        const result = await redeemReward(reward.id);
+        if (!result.success)
+          throw new Error(
+            result.reason === "insufficient_gold"
+              ? "Not enough Gold yet. Your balance hasn’t changed."
+              : "Couldn’t redeem this reward. Please try again.",
+          );
+        setNotice(`Redeemed · ${result.reward_title ?? reward.title}`);
+      }
+      setSheet(null);
+    }, "sheet");
   };
-
   return (
-    <SafeAreaView style={styles.container}>
-      <Header
-        title="Rewards"
-        subtitle="Earn it. Unlock it. Enjoy it."
-        showBack={true}
-        backTitle="Profile"
-        backRoute="/profile"
-      />
-
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.content}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#818CF8"
+    <PersonalPage
+      title="Rewards"
+      subtitle="Recognise the effort you’ve earned."
+      back
+    >
+      <View style={p.card}>
+        <Text style={p.label}>YOUR MILESTONES</Text>
+        <Text style={[p.title, { fontSize: 25 }]}>
+          Every step leaves a mark.
+        </Text>
+        <Text style={p.body}>
+          Sessions build your character. Returning builds consistency. Reaching
+          your goal earns a separate daily bonus.
+        </Text>
+        {growth.data && (
+          <Text style={p.caption}>
+            {totals.milestones.filter((m) => m.unlocked).length} of{" "}
+            {totals.milestones.length} milestones earned
+          </Text>
+        )}
+      </View>
+      {growth.error && (
+        <View style={p.card}>
+          <Text style={p.error}>
+            Couldn’t refresh milestones.{" "}
+            {growth.data
+              ? "Previously loaded achievements are still shown."
+              : "Please try again."}
+          </Text>
+          <PersonalButton
+            title="Retry milestones"
+            secondary
+            onPress={() => void growth.refresh()}
           />
+        </View>
+      )}
+      {!growth.data ? (
+        <Text style={p.body}>
+          {growth.loading
+            ? "Loading milestones…"
+            : "Your milestones will appear after loading your saved sessions."}
+        </Text>
+      ) : (
+        <View style={{ gap: 10 }}>
+          {totals.milestones.map((m) => (
+            <Pressable
+              key={m.id}
+              accessibilityRole="button"
+              accessibilityLabel={`${m.title}, ${m.unlocked ? "earned" : "in progress"}. View milestone`}
+              onPress={() => setSheet({ kind: "milestone", id: m.id })}
+              style={[p.card, { padding: 16 }]}
+            >
+              <View style={p.inline}>
+                <View
+                  style={[
+                    p.icon,
+                    {
+                      backgroundColor: m.unlocked
+                        ? "rgba(156,220,193,0.1)"
+                        : colors.accentSoft,
+                    },
+                  ]}
+                >
+                  <Ionicons
+                    name={m.icon as PersonalIcon}
+                    size={22}
+                    color={m.unlocked ? "#9CDCC1" : colors.accent}
+                  />
+                </View>
+                <View style={p.flex}>
+                  <Text style={p.rowTitle}>{m.title}</Text>
+                  <Text style={p.caption}>{m.description}</Text>
+                </View>
+                <Ionicons
+                  name={m.unlocked ? "checkmark-circle" : "chevron-forward"}
+                  size={21}
+                  color={m.unlocked ? "#9CDCC1" : colors.muted}
+                />
+              </View>
+              {!m.unlocked && <Meter value={m.progress} />}
+            </Pressable>
+          ))}
+        </View>
+      )}
+      {!!notice && (
+        <View style={p.card}>
+          <Text style={p.body} accessibilityRole="alert">
+            {notice}
+          </Text>
+        </View>
+      )}
+      {!!error && (
+        <View style={p.card}>
+          <Text style={p.error}>{error}</Text>
+          <PersonalButton
+            title="Retry rewards"
+            secondary
+            onPress={() => void refresh()}
+          />
+        </View>
+      )}
+      <View style={p.card}>
+        <Text style={p.label}>DAILY GOAL BONUS</Text>
+        <Text style={p.title}>
+          {opened
+            ? "Today’s bonus is yours."
+            : ready
+              ? "You reached your goal."
+              : "An extra reason to follow through."}
+        </Text>
+        <Text style={p.body}>
+          A completed session counts as showing up. Your daily goal celebrates a
+          further commitment.
+        </Text>
+        {data ? (
+          <>
+            <Meter
+              value={
+                (data.progress?.completed_minutes ?? 0) /
+                Math.max(
+                  1,
+                  data.progress?.goal_minutes ?? profile.daily_goal_minutes,
+                )
+              }
+            />
+            <Text style={p.caption}>
+              {data.progress?.completed_minutes ?? 0} /{" "}
+              {data.progress?.goal_minutes ?? profile.daily_goal_minutes} goal
+              minutes
+            </Text>
+            <PersonalButton
+              title={
+                busy
+                  ? "Please wait…"
+                  : opened
+                    ? "Bonus claimed"
+                    : ready
+                      ? "Claim daily bonus"
+                      : "Reach today’s goal to unlock"
+              }
+              disabled={busy || !ready || !!error}
+              onPress={claim}
+            />
+          </>
+        ) : (
+          <Text style={p.caption}>
+            {loading
+              ? "Loading daily bonus…"
+              : "Daily bonus unavailable until rewards load."}
+          </Text>
+        )}
+      </View>
+      <View style={p.card}>
+        <View style={p.inline}>
+          <View style={p.flex}>
+            <Text style={p.title}>Personal rewards</Text>
+            <Text style={p.caption}>
+              Optional treats you choose for yourself.
+            </Text>
+          </View>
+          <View style={p.pill}>
+            <Text style={p.rowTitle}>{profile.gold} Gold</Text>
+          </View>
+        </View>
+        <Text style={p.body}>
+          Use your earned Gold for a coffee break, a movie or something
+          meaningful to you.
+        </Text>
+        {data?.rewards.map((reward) => (
+          <Pressable
+            key={reward.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${reward.title}, ${reward.cost_gold} Gold. View reward`}
+            style={[p.inline, { paddingVertical: 12 }]}
+            onPress={() => {
+              setDraftError("");
+              setSheet({ kind: "reward", reward });
+            }}
+          >
+            <Ionicons name="gift-outline" size={22} color={colors.accent} />
+            <View style={p.flex}>
+              <Text style={p.rowTitle}>{reward.title}</Text>
+              <Text style={p.caption}>
+                {reward.cost_gold} Gold ·{" "}
+                {profile.gold >= reward.cost_gold
+                  ? "Available"
+                  : `${reward.cost_gold - profile.gold} more to go`}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color={colors.muted} />
+          </Pressable>
+        ))}
+        {data?.rewards.length === 0 && (
+          <Text style={p.caption}>
+            No personal rewards yet. Add one when you have something to look
+            forward to.
+          </Text>
+        )}
+        <PersonalButton
+          title="Add a personal reward"
+          secondary
+          disabled={busy}
+          onPress={() => {
+            setTitle("");
+            setCost("300");
+            setDraftError("");
+            setSheet({ kind: "create" });
+          }}
+        />
+      </View>
+      <AppSheet
+        visible={sheet !== null}
+        onRequestClose={close}
+        guardDismiss={sheet?.kind !== "milestone"}
+        label="Reward details"
+        header={
+          <View style={p.sheetHeader}>
+            <Text style={p.title}>
+              {sheet?.kind === "create"
+                ? "Something to look forward to"
+                : sheet?.kind === "reward"
+                  ? sheet.reward.title
+                  : milestone?.title}
+            </Text>
+          </View>
+        }
+        overlay={
+          confirm ? (
+            <SheetConfirmation
+              destructive={confirm !== "redeem"}
+              title={
+                confirm === "discard"
+                  ? "Discard this reward?"
+                  : confirm === "delete"
+                    ? "Remove this reward?"
+                    : "Redeem this reward?"
+              }
+              message={
+                confirm === "discard"
+                  ? "Your draft hasn’t been saved."
+                  : sheet?.kind === "reward"
+                    ? confirm === "delete"
+                      ? "This removes the personal reward. Your Gold stays unchanged."
+                      : `Spend ${sheet.reward.cost_gold} Gold on ${sheet.reward.title}?`
+                    : ""
+              }
+              confirmLabel={
+                confirm === "discard"
+                  ? "Discard draft"
+                  : confirm === "delete"
+                    ? "Remove reward"
+                    : "Redeem reward"
+              }
+              cancelLabel={confirm === "discard" ? "Keep editing" : "Cancel"}
+              onCancel={() => setConfirm(null)}
+              onConfirm={() => {
+                if (confirm === "discard") {
+                  setConfirm(null);
+                  Keyboard.dismiss();
+                  setSheet(null);
+                } else mutateReward(confirm);
+              }}
+            />
+          ) : undefined
         }
       >
-        {/* GOLD WALLET */}
-        <View style={styles.walletCard}>
-          <View>
-            <Text style={styles.eyebrow}>
-              GOLD WALLET
-            </Text>
-
-            <Text style={styles.goldAmount}>
-              💰 {gold}
-            </Text>
-
-            <Text style={styles.goldCaption}>
-              Earned through completed sessions
-            </Text>
-          </View>
-
-          <View style={styles.walletBadge}>
-            <Text style={styles.walletBadgeText}>
-              REWARD CURRENCY
-            </Text>
-          </View>
-        </View>
-
-        {/* DAILY CHEST */}
-        <View style={styles.featureCard}>
-          <View style={styles.featureTop}>
-            <View
-              style={[
-                styles.featureIconBox,
-                chestReady &&
-                  styles.featureIconBoxReady,
-              ]}
-            >
-              <Text style={styles.featureIcon}>
-                {chestOpened
-                  ? "📦"
-                  : chestReady
-                    ? "🎁"
-                    : "🔒"}
+        <BottomSheetScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={p.sheetBody}
+        >
+          {sheet?.kind === "create" && (
+            <>
+              <Text style={p.body}>
+                Choose a treat and the amount of earned Gold you want to
+                exchange for it.
               </Text>
-            </View>
-
-            <View style={styles.featureInfo}>
-              <Text style={styles.featureTitle}>
-                Daily Reward Chest
-              </Text>
-
-              <Text style={styles.featureDescription}>
-                {chestOpened
-                  ? "Today's reward has already been claimed."
-                  : chestReady
-                    ? `Your chest is ready. Guaranteed +${chestGold} Gold.`
-                    : "Complete today's Daily Goal to unlock it."}
-              </Text>
-            </View>
-
-            <View
-              style={[
-                styles.statusPill,
-                chestReady &&
-                  styles.statusPillReady,
-                chestOpened &&
-                  styles.statusPillDone,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusPillText,
-                  chestReady &&
-                    styles.statusPillTextReady,
-                  chestOpened &&
-                    styles.statusPillTextDone,
-                ]}
+              <Text style={p.rowTitle}>Reward name</Text>
+              <BottomSheetTextInput
+                accessibilityLabel="Reward name"
+                editable={!busy}
+                maxLength={80}
+                style={p.input}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="A coffee and a good book"
+                placeholderTextColor={colors.muted}
+              />
+              <Text style={p.rowTitle}>Gold cost</Text>
+              <BottomSheetTextInput
+                accessibilityLabel="Gold cost"
+                editable={!busy}
+                keyboardType="number-pad"
+                style={p.input}
+                value={cost}
+                onChangeText={setCost}
+              />
+              <PersonalButton
+                title={busy ? "Saving…" : "Save personal reward"}
+                disabled={busy}
+                onPress={create}
+              />
+            </>
+          )}
+          {sheet?.kind === "reward" && (
+            <>
+              <Text style={p.body}>An intentional reward for your effort.</Text>
+              <Text style={p.value}>{sheet.reward.cost_gold} Gold</Text>
+              <Text style={p.caption}>Your balance · {profile.gold} Gold</Text>
+              <PersonalButton
+                title={busy ? "Please wait…" : "Redeem reward"}
+                disabled={busy || profile.gold < sheet.reward.cost_gold}
+                onPress={() => setConfirm("redeem")}
+              />
+              <SheetButton
+                disabled={busy}
+                accessibilityRole="button"
+                style={p.button}
+                onPress={() => setConfirm("delete")}
               >
-                {chestOpened
-                  ? "CLAIMED"
-                  : chestReady
-                    ? "READY"
-                    : "LOCKED"}
+                <Text style={p.buttonText}>Remove personal reward</Text>
+              </SheetButton>
+            </>
+          )}
+          {milestone && (
+            <>
+              <Ionicons
+                name={milestone.icon as PersonalIcon}
+                size={40}
+                color={milestone.unlocked ? "#9CDCC1" : colors.accent}
+              />
+              <Text style={p.body}>{milestone.description}</Text>
+              <Text style={p.title}>
+                {milestone.unlocked
+                  ? "Earned. Yours to keep."
+                  : "Your progress so far"}
               </Text>
-            </View>
-          </View>
-
-          <View style={styles.goalRow}>
-            <Text style={styles.goalLabel}>
-              DAILY GOAL
-            </Text>
-
-            <Text style={styles.goalValue}>
-              {completedMinutes} /{" "}
-              {goalMinutes} min
-            </Text>
-          </View>
-
-          <View style={styles.progressTrack}>
-            <View
-              style={[
-                styles.progressFill,
-                {
-                  width: `${goalProgress * 100}%`,
-                },
-              ]}
-            />
-          </View>
-
-          <View style={styles.featureBottom}>
-            <Text style={styles.featureBottomText}>
-              {chestOpened
-                ? "Come back tomorrow."
-                : chestReady
-                  ? `+${chestGold} Gold guaranteed`
-                  : `${Math.max(
-                      0,
-                      goalMinutes -
-                        completedMinutes,
-                    )} min remaining`}
-            </Text>
-
-            {chestReady && (
-              <TouchableOpacity
-                style={styles.primaryButton}
-                onPress={openChest}
-                disabled={openingChest}
-                activeOpacity={0.85}
-              >
-                <Text style={styles.primaryButtonText}>
-                  {openingChest
-                    ? "OPENING..."
-                    : "OPEN CHEST"}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
-
-        {/* PERSONAL REWARDS */}
-        <View style={styles.sectionHeader}>
-          <View style={styles.sectionTitleGroup}>
-            <Text style={styles.sectionTitle}>
-              PERSONAL REWARDS
-            </Text>
-
-            <Text style={styles.sectionSubtitle}>
-              Real-life treats you choose for yourself
-            </Text>
-          </View>
-
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={openCreateReward}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.addButtonText}>
-              +
-            </Text>
-          </TouchableOpacity>
-        </View>
-
-        {loading ? (
-          <View style={styles.simpleCard}>
-            <Text style={styles.mutedText}>
-              Loading rewards...
-            </Text>
-          </View>
-        ) : rewards.length === 0 ? (
-          <View style={styles.emptyRewardCard}>
-            <Text style={styles.emptyRewardIcon}>
-              🎯
-            </Text>
-
-            <Text style={styles.emptyRewardTitle}>
-              No personal rewards yet
-            </Text>
-
-            <Text style={styles.emptyRewardText}>
-              Create something you genuinely
-              want to earn with your Gold.
-            </Text>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={openCreateReward}
-            >
-              <Text
-                style={styles.secondaryButtonText}
-              >
-                CREATE FIRST REWARD
+              <Meter value={milestone.progress} />
+              <Text style={p.body}>
+                {milestone.unit === "seconds"
+                  ? `${durationLabel(milestone.value)} / ${durationLabel(milestone.target)}`
+                  : `${milestone.value} / ${milestone.target} ${milestone.unit}`}
               </Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          rewards.map((reward) => {
-            const canRedeem =
-              gold >= reward.cost_gold;
-
-            return (
-              <View
-                key={reward.id}
-                style={styles.rewardCard}
-              >
-                <View style={styles.rewardTop}>
-                  <View style={styles.rewardIconBox}>
-                    <Text style={styles.rewardIcon}>
-                      🎁
-                    </Text>
-                  </View>
-
-                  <View style={styles.rewardInfo}>
-                    <Text
-                      style={styles.rewardTitle}
-                      numberOfLines={2}
-                    >
-                      {reward.title}
-                    </Text>
-
-                    <Text style={styles.rewardCost}>
-                      💰 {reward.cost_gold} Gold
-                    </Text>
-                  </View>
-                </View>
-
-                <View style={styles.rewardActionRow}>
-                  <TouchableOpacity
-                    style={[
-                      styles.rewardRedeemButton,
-                      !canRedeem &&
-                        styles.rewardRedeemDisabled,
-                    ]}
-                    onPress={() =>
-                      handleRedeem(reward)
-                    }
-                    disabled={!canRedeem}
-                  >
-                    <Text
-                      style={[
-                        styles.rewardRedeemText,
-                        !canRedeem &&
-                          styles.rewardRedeemTextDisabled,
-                      ]}
-                    >
-                      {canRedeem
-                        ? "REDEEM"
-                        : `NEED ${
-                            reward.cost_gold -
-                            gold
-                          } MORE`}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.deleteButton}
-                    onPress={() =>
-                      handleDelete(reward)
-                    }
-                  >
-                    <Text style={styles.deleteButtonText}>
-                      ✕
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            );
-          })
-        )}
-
-      </ScrollView>
-
-      {/* CREATE PERSONAL REWARD */}
-      <AppSheet visible={creatingReward} onRequestClose={closeCreateReward} guardDismiss label="personal reward"
-        onDismiss={() => { setRewardTitle(""); setRewardCost("300"); }}
-        header={<View style={[styles.modalHeader, { paddingHorizontal: 22, paddingBottom: 16, gap: 12, alignItems: "center" }]}>
-          <TouchableOpacity onPress={closeCreateReward} disabled={saving} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text style={{ color: "#A5B4FC", fontSize: 14 }}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={[styles.modalTitle, { flex: 1, fontSize: 17, textAlign: "center" }]}>New reward</Text>
-          <TouchableOpacity onPress={handleCreateReward} disabled={saving} accessibilityRole="button" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text style={{ color: "#A5B4FC", fontSize: 14, fontWeight: "700" }}>{saving ? "Saving…" : "Save"}</Text>
-          </TouchableOpacity>
-        </View>}>
-        <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingHorizontal: 22, paddingBottom: 40 }}>
-          <Text style={[styles.modalSubtitle, { marginBottom: 22 }]}>Decide what your Gold is worth.</Text>
-          <Text style={styles.inputLabel}>REWARD NAME</Text>
-          <BottomSheetTextInput value={rewardTitle} onChangeText={setRewardTitle} placeholder="e.g. 30-minute gaming session"
-            placeholderTextColor="#64748B" style={styles.input} maxLength={100} editable={!saving} accessibilityLabel="Reward name" />
-          <Text style={styles.inputLabel}>GOLD COST</Text>
-          <BottomSheetTextInput value={rewardCost} onChangeText={setRewardCost} keyboardType="number-pad" placeholder="300"
-            placeholderTextColor="#64748B" style={styles.input} maxLength={5} editable={!saving} accessibilityLabel="Gold cost" />
+              <Text style={p.caption}>
+                Milestones are based on saved completed sessions. Consistency
+                uses your longest recorded run, so a missed day doesn’t remove
+                an earned milestone.
+              </Text>
+            </>
+          )}
+          {!!draftError && (
+            <Text style={p.error} accessibilityRole="alert">
+              {draftError}
+            </Text>
+          )}
         </BottomSheetScrollView>
       </AppSheet>
-    </SafeAreaView>
+    </PersonalPage>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#090D16",
-  },
-
-  content: {
-    paddingHorizontal: 18,
-    paddingBottom: 110,
-  },
-
-  walletCard: {
-    marginTop: 8,
-    padding: 20,
-    borderRadius: 24,
-    backgroundColor: "rgba(245,158,11,0.09)",
-    borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.2)",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-
-  eyebrow: {
-    color: "#A16207",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 1,
-  },
-
-  goldAmount: {
-    color: "#FBBF24",
-    fontSize: 30,
-    fontWeight: "900",
-    marginTop: 3,
-  },
-
-  goldCaption: {
-    color: "#92400E",
-    fontSize: 9,
-    marginTop: 4,
-  },
-
-  walletBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderRadius: 9,
-    backgroundColor: "rgba(245,158,11,0.1)",
-  },
-
-  walletBadgeText: {
-    color: "#FBBF24",
-    fontSize: 7,
-    fontWeight: "900",
-  },
-
-  featureCard: {
-    marginTop: 14,
-    padding: 18,
-    borderRadius: 24,
-    backgroundColor: "rgba(99,102,241,0.11)",
-    borderWidth: 1,
-    borderColor: "rgba(129,140,248,0.24)",
-  },
-
-  featureTop: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  featureIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 17,
-    backgroundColor: "rgba(255,255,255,0.05)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  featureIconBoxReady: {
-    backgroundColor: "rgba(99,102,241,0.22)",
-  },
-
-  featureIcon: {
-    fontSize: 30,
-  },
-
-  featureInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 12,
-    marginRight: 8,
-  },
-
-  featureTitle: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "900",
-  },
-
-  featureDescription: {
-    color: "#94A3B8",
-    fontSize: 10,
-    lineHeight: 15,
-    marginTop: 4,
-  },
-
-  statusPill: {
-    paddingHorizontal: 7,
-    paddingVertical: 5,
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  statusPillReady: {
-    backgroundColor: "rgba(99,102,241,0.18)",
-  },
-
-  statusPillDone: {
-    backgroundColor: "rgba(16,185,129,0.1)",
-  },
-
-  statusPillText: {
-    color: "#64748B",
-    fontSize: 7,
-    fontWeight: "900",
-  },
-
-  statusPillTextReady: {
-    color: "#A5B4FC",
-  },
-
-  statusPillTextDone: {
-    color: "#34D399",
-  },
-
-  goalRow: {
-    marginTop: 17,
-    marginBottom: 7,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-
-  goalLabel: {
-    color: "#64748B",
-    fontSize: 8,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-  },
-
-  goalValue: {
-    color: "#A5B4FC",
-    fontSize: 9,
-    fontWeight: "800",
-  },
-
-  progressTrack: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "rgba(255,255,255,0.07)",
-    overflow: "hidden",
-  },
-
-  progressFill: {
-    height: "100%",
-    borderRadius: 5,
-    backgroundColor: "#6366F1",
-  },
-
-  featureBottom: {
-    marginTop: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-
-  featureBottomText: {
-    flex: 1,
-    color: "#64748B",
-    fontSize: 9,
-  },
-
-  primaryButton: {
-    minWidth: 108,
-    height: 38,
-    borderRadius: 11,
-    backgroundColor: "#6366F1",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 12,
-  },
-
-  primaryButtonText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "900",
-  },
-
-  sectionHeader: {
-    marginTop: 25,
-    marginBottom: 10,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-
-  sectionTitleGroup: {
-    flex: 1,
-  },
-
-  sectionTitle: {
-    color: "#F8FAFC",
-    fontSize: 13,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-
-  sectionSubtitle: {
-    color: "#64748B",
-    fontSize: 9,
-    marginTop: 3,
-  },
-
-  addButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 12,
-    backgroundColor: "rgba(99,102,241,0.15)",
-    borderWidth: 1,
-    borderColor: "rgba(129,140,248,0.24)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  addButtonText: {
-    color: "#A5B4FC",
-    fontSize: 23,
-    fontWeight: "300",
-  },
-
-  counterPill: {
-    paddingHorizontal: 9,
-    paddingVertical: 6,
-    borderRadius: 9,
-    backgroundColor: "rgba(99,102,241,0.1)",
-  },
-
-  counterPillText: {
-    color: "#A5B4FC",
-    fontSize: 8,
-    fontWeight: "900",
-  },
-
-  simpleCard: {
-    padding: 20,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    alignItems: "center",
-  },
-
-  mutedText: {
-    color: "#64748B",
-    fontSize: 10,
-  },
-
-  emptyRewardCard: {
-    padding: 24,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    alignItems: "center",
-  },
-
-  emptyRewardIcon: {
-    fontSize: 31,
-  },
-
-  emptyRewardTitle: {
-    color: "#F8FAFC",
-    fontSize: 14,
-    fontWeight: "900",
-    marginTop: 8,
-  },
-
-  emptyRewardText: {
-    color: "#64748B",
-    fontSize: 10,
-    lineHeight: 15,
-    textAlign: "center",
-    marginTop: 6,
-  },
-
-  secondaryButton: {
-    height: 40,
-    paddingHorizontal: 16,
-    borderRadius: 11,
-    backgroundColor: "rgba(99,102,241,0.14)",
-    borderWidth: 1,
-    borderColor: "rgba(129,140,248,0.22)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 14,
-  },
-
-  secondaryButtonText: {
-    color: "#A5B4FC",
-    fontSize: 9,
-    fontWeight: "900",
-  },
-
-  rewardCard: {
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.045)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-    marginBottom: 9,
-  },
-
-  rewardTop: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  rewardIconBox: {
-    width: 47,
-    height: 47,
-    borderRadius: 14,
-    backgroundColor: "rgba(99,102,241,0.12)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  rewardIcon: {
-    fontSize: 22,
-  },
-
-  rewardInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 11,
-  },
-
-  rewardTitle: {
-    color: "#F8FAFC",
-    fontSize: 12,
-    fontWeight: "800",
-  },
-
-  rewardCost: {
-    color: "#FBBF24",
-    fontSize: 9,
-    fontWeight: "900",
-    marginTop: 4,
-  },
-
-  rewardActionRow: {
-    flexDirection: "row",
-    gap: 8,
-    marginTop: 11,
-  },
-
-  rewardRedeemButton: {
-    flex: 1,
-    height: 39,
-    borderRadius: 11,
-    backgroundColor: "#6366F1",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  rewardRedeemDisabled: {
-    backgroundColor: "rgba(255,255,255,0.05)",
-  },
-
-  rewardRedeemText: {
-    color: "#FFFFFF",
-    fontSize: 9,
-    fontWeight: "900",
-  },
-
-  rewardRedeemTextDisabled: {
-    color: "#475569",
-  },
-
-  deleteButton: {
-    width: 39,
-    height: 39,
-    borderRadius: 11,
-    backgroundColor: "rgba(239,68,68,0.07)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  deleteButtonText: {
-    color: "#F87171",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  milestoneCard: {
-    padding: 14,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.035)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.07)",
-    marginBottom: 9,
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  milestoneCardUnlocked: {
-    backgroundColor: "rgba(99,102,241,0.07)",
-    borderColor: "rgba(129,140,248,0.24)",
-  },
-
-  milestoneIconBox: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    backgroundColor: "rgba(255,255,255,0.04)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  milestoneIconBoxUnlocked: {
-    backgroundColor: "rgba(99,102,241,0.14)",
-  },
-
-  milestoneIcon: {
-    fontSize: 23,
-  },
-
-  milestoneInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 11,
-  },
-
-  milestoneTitleRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  milestoneTitle: {
-    flex: 1,
-    color: "#E2E8F0",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  milestoneTitleLocked: {
-    color: "#94A3B8",
-  },
-
-  milestoneStatus: {
-    color: "#64748B",
-    fontSize: 7,
-    fontWeight: "900",
-  },
-
-  milestoneStatusUnlocked: {
-    color: "#34D399",
-  },
-
-  milestoneDescription: {
-    color: "#64748B",
-    fontSize: 9,
-    lineHeight: 13,
-    marginTop: 3,
-  },
-
-  milestoneProgress: {
-    color: "#818CF8",
-    fontSize: 8,
-    fontWeight: "800",
-    marginTop: 5,
-  },
-
-  futureCard: {
-    marginTop: 16,
-    padding: 15,
-    borderRadius: 19,
-    backgroundColor: "rgba(245,158,11,0.06)",
-    borderWidth: 1,
-    borderColor: "rgba(245,158,11,0.12)",
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  futureIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 13,
-    backgroundColor: "rgba(245,158,11,0.1)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  futureIcon: {
-    fontSize: 22,
-  },
-
-  futureInfo: {
-    flex: 1,
-    minWidth: 0,
-    marginLeft: 11,
-    marginRight: 8,
-  },
-
-  futureTitle: {
-    color: "#F8FAFC",
-    fontSize: 12,
-    fontWeight: "900",
-  },
-
-  futureText: {
-    color: "#64748B",
-    fontSize: 9,
-    lineHeight: 14,
-    marginTop: 3,
-  },
-
-  futureBadge: {
-    paddingHorizontal: 7,
-    paddingVertical: 4,
-    borderRadius: 7,
-    backgroundColor: "rgba(245,158,11,0.08)",
-  },
-
-  futureBadgeText: {
-    color: "#FBBF24",
-    fontSize: 7,
-    fontWeight: "900",
-  },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.76)",
-    justifyContent: "flex-end",
-  },
-
-  modalKeyboard: {
-    width: "100%",
-    justifyContent: "flex-end",
-  },
-
-  modalCard: {
-    backgroundColor: "#0F172A",
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 22,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.08)",
-  },
-
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    justifyContent: "space-between",
-    marginBottom: 18,
-  },
-
-  modalTitle: {
-    color: "#F8FAFC",
-    fontSize: 20,
-    fontWeight: "900",
-  },
-
-  modalSubtitle: {
-    color: "#64748B",
-    fontSize: 10,
-    marginTop: 4,
-  },
-
-  closeButton: {
-    color: "#64748B",
-    fontSize: 19,
-    padding: 4,
-  },
-
-  inputLabel: {
-    color: "#94A3B8",
-    fontSize: 9,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-    marginBottom: 8,
-    marginTop: 13,
-  },
-
-  input: {
-    backgroundColor: "#111C30",
-    borderRadius: 13,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.09)",
-    color: "#F8FAFC",
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    fontSize: 14,
-  },
-
-  createButton: {
-    height: 50,
-    borderRadius: 14,
-    backgroundColor: "#6366F1",
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 23,
-  },
-
-  createButtonDisabled: {
-    opacity: 0.55,
-  },
-
-  createButtonText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 0.5,
-  },
-
-  cancelButton: {
-    height: 42,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  cancelButtonText: {
-    color: "#64748B",
-    fontSize: 11,
-    fontWeight: "800",
-  },
-
-  bottomSpace: {
-    height: 25,
-  },
-});

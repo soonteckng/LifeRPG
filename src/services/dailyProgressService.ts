@@ -10,18 +10,21 @@ export interface DailyProgress {
   created_at: string;
 }
 
-function getTodayDate(): string {
+function getTodayDate(timeZone: string): string {
   return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kuala_Lumpur",
+    timeZone,
   }).format(new Date());
 }
 
-export async function getTodayProgress(): Promise<DailyProgress | null> {
-  const today = getTodayDate();
+export async function getTodayProgress(
+  timeZone = "Asia/Kuala_Lumpur",
+): Promise<DailyProgress | null> {
+  const today = getTodayDate(timeZone);
 
   const { data, error } = await supabase
     .from("daily_progress")
-    .select(`
+    .select(
+      `
       user_id,
       progress_date,
       goal_minutes,
@@ -29,7 +32,8 @@ export async function getTodayProgress(): Promise<DailyProgress | null> {
       goal_completed,
       goal_completed_at,
       created_at
-    `)
+    `,
+    )
     .eq("progress_date", today)
     .maybeSingle();
 

@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -47,8 +48,7 @@ type Detail =
   | { kind: "day"; key: string }
   | { kind: "area"; key: string }
   | { kind: "history" }
-  | { kind: "consistency" }
-  | { kind: "milestones" };
+  | { kind: "consistency" };
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
 const green = "#8FD8B6";
 
@@ -144,6 +144,7 @@ function SessionRow({
 }
 
 export default function ProgressScreen() {
+  const router = useRouter();
   const { profile, hapticsEnabled } = useUser();
   const { sessionSummary } = useTimer();
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
@@ -286,47 +287,13 @@ export default function ProgressScreen() {
       ? "Session history"
       : detail?.kind === "consistency"
         ? "Your consistency"
-        : detail?.kind === "milestones"
-          ? "Milestones"
-          : activeDay
-            ? calendarLabel(activeDay.key, {
-                weekday: "long",
-                month: "short",
-                day: "numeric",
-              })
-            : (activeArea?.title ?? "Details");
-  const milestones = [
-    {
-      title: "First step",
-      description: "Reach level 2",
-      earned: (profile?.level ?? 1) >= 2,
-      icon: "footsteps-outline" as Icon,
-    },
-    {
-      title: "Finding your rhythm",
-      description: "Build a 3-day focus streak",
-      earned: (data?.streak ?? 0) >= 3,
-      icon: "flame-outline" as Icon,
-    },
-    {
-      title: "Growing adventurer",
-      description: "Reach level 5",
-      earned: (profile?.level ?? 1) >= 5,
-      icon: "sparkles-outline" as Icon,
-    },
-    {
-      title: "A week of focus",
-      description: "Build a 7-day focus streak",
-      earned: (data?.streak ?? 0) >= 7,
-      icon: "calendar-outline" as Icon,
-    },
-    {
-      title: "Going further",
-      description: "Reach level 10",
-      earned: (profile?.level ?? 1) >= 10,
-      icon: "ribbon-outline" as Icon,
-    },
-  ];
+        : activeDay
+          ? calendarLabel(activeDay.key, {
+              weekday: "long",
+              month: "short",
+              day: "numeric",
+            })
+          : (activeArea?.title ?? "Details");
   const comparison =
     analytics && analytics.previousSeconds > 0
       ? Math.round(
@@ -779,10 +746,10 @@ export default function ProgressScreen() {
               <Section
                 title="Milestones"
                 action="Explore"
-                onPress={() => open({ kind: "milestones" })}
+                onPress={() => router.navigate("/rewards")}
               />
               <Pressable
-                onPress={() => open({ kind: "milestones" })}
+                onPress={() => router.navigate("/rewards")}
                 accessibilityRole="button"
                 accessibilityLabel="Explore your level and consistency milestones"
                 style={[s.card, s.milestonePreview]}
@@ -795,9 +762,8 @@ export default function ProgressScreen() {
                 <View style={s.flex}>
                   <Text style={s.rowTitle}>Keep growing at your pace</Text>
                   <Text style={s.caption}>
-                    Level {profile?.level ?? 1} ·{" "}
-                    {milestones.filter((m) => m.earned).length} milestones met
-                    now
+                    Level {profile?.level ?? 1} · Earned milestones and personal
+                    rewards
                   </Text>
                 </View>
                 <Ionicons
@@ -841,7 +807,6 @@ export default function ProgressScreen() {
             <Text style={s.sheetTitle}>{detailTitle}</Text>
             {detail?.kind !== "history" &&
               detail?.kind !== "consistency" &&
-              detail?.kind !== "milestones" &&
               !selectedSession && <Text style={s.caption}>{range}</Text>}
           </View>
         }
@@ -920,34 +885,6 @@ export default function ProgressScreen() {
                 XP/gold still use the current whole-minute credit rules; focus
                 time here includes every completed second.
               </Text>
-            </>
-          ) : detail?.kind === "milestones" ? (
-            <>
-              <Text style={s.explain}>
-                A quiet reminder of your growth. Level milestones reflect your
-                saved level; focus milestones reflect your current streak. These
-                don’t grant additional rewards.
-              </Text>
-              {milestones.map((m) => (
-                <View key={m.title} style={s.milestoneRow}>
-                  <View style={[s.sessionIcon, !m.earned && s.unmet]}>
-                    <Ionicons
-                      name={m.icon}
-                      size={22}
-                      color={m.earned ? colors.accent : colors.muted}
-                    />
-                  </View>
-                  <View style={s.flex}>
-                    <Text style={s.rowTitle}>{m.title}</Text>
-                    <Text style={s.caption}>{m.description}</Text>
-                  </View>
-                  <Ionicons
-                    name={m.earned ? "checkmark-circle" : "ellipse-outline"}
-                    size={20}
-                    color={m.earned ? green : colors.muted}
-                  />
-                </View>
-              ))}
             </>
           ) : (
             <>

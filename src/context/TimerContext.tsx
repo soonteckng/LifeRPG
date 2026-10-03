@@ -21,6 +21,7 @@ import { validSessionSeconds } from "../utils/sessionSetup";
 
 // Dynamically load expo-notifications to prevent Expo Go crashes
 let Notifications: any = null;
+let completionSoundEnabled = true;
 
 try {
   // Optional in Expo Go; notification failures must not block the timer.
@@ -36,7 +37,7 @@ try {
         shouldShowAlert: true,
         shouldShowBanner: true,
         shouldShowList: true,
-        shouldPlaySound: true,
+        shouldPlaySound: completionSoundEnabled,
         shouldSetBadge: true,
       }),
     });
@@ -109,7 +110,9 @@ interface TimerContextType {
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
 
 export function TimerProvider({ children }: { children: React.ReactNode }) {
-  const { reloadProfile } = useUser();
+  const { reloadProfile, soundEnabled = true, hapticsEnabled = true } = useUser();
+  const feedback = useRef({ sound: soundEnabled, haptics: hapticsEnabled });
+  useEffect(() => { feedback.current = { sound: soundEnabled, haptics: hapticsEnabled }; completionSoundEnabled = soundEnabled; }, [soundEnabled, hapticsEnabled]);
 
   const [duration, setDuration] = useState(30 * 60);
   const [timeLeft, setTimeLeft] = useState(30 * 60);
@@ -169,13 +172,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       );
 
       await Notifications.setNotificationChannelAsync(
-        COMPLETION_CHANNEL_ID,
+        `${COMPLETION_CHANNEL_ID}-${feedback.current.sound ? "sound" : "silent"}-${feedback.current.haptics ? "haptic" : "quiet"}`,
         {
           name: "Session Finish Alert",
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 500, 250, 500],
-          sound: "default",
-          enableVibrate: true,
+          sound: feedback.current.sound ? "default" : undefined,
+          enableVibrate: feedback.current.haptics,
           showBadge: true,
         },
       );
@@ -221,7 +224,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         });
       }
 
-      await Haptics.notificationAsync(
+      if (feedback.current.haptics) await Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success,
       ).catch(() => {});
 
@@ -494,10 +497,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
             body: questTitle
               ? `Quest "${questTitle}" is complete! Open LifeRPG to see your rewards.`
               : "Your session is complete! Open LifeRPG to see your rewards.",
-            sound: "default",
+            sound: feedback.current.sound ? "default" : undefined,
             priority:
               Notifications.AndroidNotificationPriority?.MAX,
-            channelId: COMPLETION_CHANNEL_ID,
+            channelId: `${COMPLETION_CHANNEL_ID}-${feedback.current.sound ? "sound" : "silent"}-${feedback.current.haptics ? "haptic" : "quiet"}`,
             data: {
               type: "COMPLETION",
             },
@@ -879,3 +882,4 @@ export function useTimer() {
 
   return context;
 }
+

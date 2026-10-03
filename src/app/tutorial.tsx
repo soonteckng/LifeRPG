@@ -1,336 +1,164 @@
-import * as Haptics from "expo-haptics";
+import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import {
-  useRef,
-  useState,
-} from "react";
-import {
-  Dimensions,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-
+import { useEffect, useRef, useState } from "react";
+import { Animated, Text, View } from "react-native";
 import { useUser } from "../context/UserContext";
+import { finishOnboarding } from "../services/onboardingService";
 import {
-  finishOnboarding,
-} from "../services/onboardingService";
-
-const { width } =
-  Dimensions.get("window");
-
-const PAGES = [
+  PersonalButton,
+  PersonalPage,
+  p,
+  type PersonalIcon,
+} from "../components/PersonalUI";
+import { useReducedMotion } from "../hooks/useReducedMotion";
+import { colors } from "../constants/theme";
+export const INTRO_PAGES: {
+  icon: PersonalIcon;
+  title: string;
+  body: string;
+}[] = [
   {
-    icon: "⚡",
-    title: "Sessions",
-    description:
-      "Do whatever helps you make progress. Study, work, code, exercise, read, clean, or simply focus on something important.",
+    icon: "timer-outline",
+    title: "Make time for what matters",
+    body: "Start a free session or choose a quest. Pause when you need to, or minimise the timer while your session continues.",
   },
   {
-    icon: "⭐",
-    title: "XP & Gold",
-    description:
-      "Completed sessions help your character grow and earn Gold that you can use for rewards.",
+    icon: "person-outline",
+    title: "Your effort becomes your character",
+    body: "Life areas collect XP from completed sessions. In Profile, connect them to Strength, Knowledge, Creativity or Balance. Attributes reflect your logged effort.",
   },
   {
-    icon: "🔥",
-    title: "Daily Goal",
-    description:
-      "Build consistency by reaching your Daily Goal. Completing it helps keep your streak alive.",
+    icon: "flame-outline",
+    title: "Showing up counts",
+    body: "Any completed session with focused time makes an active day. Consecutive active days build consistency—even when you don’t reach your daily goal.",
   },
   {
-    icon: "🎯",
-    title: "Quests",
-    description:
-      "Use quests when you want extra structure. They're optional, so you can always start a free session.",
+    icon: "checkmark-circle-outline",
+    title: "Give your day a direction",
+    body: "Quests add optional structure. Your daily goal is a separate commitment, with a bonus when you reach it. Start small and build a rhythm that suits you.",
   },
   {
-    icon: "🎁",
-    title: "Rewards",
-    description:
-      "Turn your progress into something meaningful with Gold, Daily Chests, personal rewards, and milestone rewards.",
+    icon: "ribbon-outline",
+    title: "Keep the progress you earn",
+    body: "Milestones recognise your saved sessions and best consistency. Personal rewards are optional treats you can exchange earned Gold for. A missed day doesn’t erase your character’s growth.",
   },
 ];
-
 export default function TutorialScreen() {
   const router = useRouter();
-  const { reloadProfile } =
-    useUser();
-
-  const flatListRef =
-    useRef<FlatList>(null);
-
-  const [page, setPage] =
-    useState(0);
-
-  const [finishing, setFinishing] =
-    useState(false);
-
-  const isLastPage =
-    page === PAGES.length - 1;
-
-  const handleNext = () => {
-    if (isLastPage) {
-      finish();
+  const { profile, reloadProfile } = useUser();
+  const [page, setPage] = useState(0),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const lock = useRef(false);
+  const reduced = useReducedMotion();
+  const [opacity] = useState(() => new Animated.Value(1));
+  useEffect(() => {
+    if (reduced) {
+      opacity.setValue(1);
       return;
     }
-
-    const nextPage =
-      page + 1;
-
-    flatListRef.current?.scrollToIndex(
-      {
-        index: nextPage,
-        animated: true,
-      },
-    );
-
-    setPage(nextPage);
-
-    Haptics.impactAsync(
-      Haptics.ImpactFeedbackStyle.Light,
-    );
-  };
-
+    opacity.setValue(0.6);
+    const animation = Animated.timing(opacity, {
+      toValue: 1,
+      duration: 180,
+      useNativeDriver: true,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [page, opacity, reduced]);
+  const item = INTRO_PAGES[page];
+  const last = page === INTRO_PAGES.length - 1;
   const finish = async () => {
-    if (finishing) {
+    if (lock.current) return;
+    if (profile.onboarding_completed) {
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
       return;
     }
-
+    lock.current = true;
+    setBusy(true);
+    setError("");
     try {
-      setFinishing(true);
-
       await finishOnboarding();
-      await reloadProfile();
-
-      await Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      );
-
+      if (!(await reloadProfile())) throw new Error("Profile refresh failed");
       router.replace("/");
-    } catch (error) {
-      console.error(
-        "Failed to finish onboarding:",
-        error,
+    } catch {
+      setError(
+        "Couldn’t finish setup. Please check your connection and try again.",
       );
-
-      setFinishing(false);
+    } finally {
+      lock.current = false;
+      setBusy(false);
     }
   };
-
   return (
-    <SafeAreaView style={styles.container}>
-      <FlatList
-        ref={flatListRef}
-        data={PAGES}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        scrollEnabled
-        keyExtractor={(_, index) =>
-          String(index)
-        }
-        onMomentumScrollEnd={(event) => {
-          const nextPage =
-            Math.round(
-              event.nativeEvent.contentOffset
-                .x / width,
-            );
-
-          setPage(nextPage);
-        }}
-        renderItem={({ item }) => (
-          <View style={styles.page}>
-            <View
-              style={styles.iconCircle}
-            >
-              <Text
-                style={styles.pageIcon}
-              >
-                {item.icon}
-              </Text>
-            </View>
-
-            <Text style={styles.pageTitle}>
-              {item.title}
-            </Text>
-
-            <Text
-              style={styles.pageDescription}
-            >
-              {item.description}
-            </Text>
-          </View>
-        )}
-      />
-
-      <View
-        style={styles.bottomSection}
+    <PersonalPage
+      title="A little introduction"
+      subtitle={
+        profile.onboarding_completed
+          ? "A reminder of how LifeRPG works."
+          : "Your first steps, at your pace."
+      }
+      back={profile.onboarding_completed}
+    >
+      <Text style={p.label}>
+        STEP {page + 1} OF {INTRO_PAGES.length}
+      </Text>
+      <Animated.View
+        style={[p.card, { paddingVertical: 36, gap: 24, opacity }]}
       >
-        <View
-          style={styles.indicatorRow}
-        >
-          {PAGES.map(
-            (_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.indicator,
-                  index === page &&
-                    styles.indicatorActive,
-                ]}
-              />
-            ),
-          )}
+        <View style={[p.icon, { width: 72, height: 72, borderRadius: 24 }]}>
+          <Ionicons name={item.icon} size={34} color={colors.accent} />
         </View>
-
-        <Text
-          style={styles.pageCounter}
-        >
-          {page + 1} / {PAGES.length}
+        <Text style={[p.title, { fontSize: 27 }]} accessibilityRole="header">
+          {item.title}
         </Text>
-
-        <TouchableOpacity
-          style={styles.nextButton}
-          onPress={handleNext}
-          disabled={finishing}
-          activeOpacity={0.85}
-        >
-          <Text
-            style={styles.nextButtonText}
-          >
-            {finishing
-              ? "STARTING..."
-              : isLastPage
-                ? "START YOUR JOURNEY"
-                : "NEXT"}
-          </Text>
-        </TouchableOpacity>
-
-        {!isLastPage && (
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={finish}
-            disabled={finishing}
-          >
-            <Text
-              style={styles.skipText}
-            >
-              Skip tutorial
-            </Text>
-          </TouchableOpacity>
-        )}
+        <Text style={[p.body, { fontSize: 17, lineHeight: 27 }]}>
+          {item.body}
+        </Text>
+      </Animated.View>
+      <View style={p.inline}>
+        {INTRO_PAGES.map((_, i) => (
+          <View
+            key={i}
+            style={{
+              height: 4,
+              flex: 1,
+              borderRadius: 2,
+              backgroundColor: i <= page ? colors.accent : colors.line,
+            }}
+          />
+        ))}
       </View>
-    </SafeAreaView>
+      {!!error && (
+        <Text style={p.error} accessibilityRole="alert">
+          {error}
+        </Text>
+      )}
+      <PersonalButton
+        title={
+          busy
+            ? "Finishing setup…"
+            : last
+              ? profile.onboarding_completed
+                ? "Done"
+                : "Start my journey"
+              : "Continue"
+        }
+        disabled={busy}
+        onPress={() => {
+          if (last) void finish();
+          else setPage((current) => current + 1);
+        }}
+      />
+      {page > 0 && (
+        <PersonalButton
+          secondary
+          title="Previous step"
+          disabled={busy}
+          onPress={() => setPage((current) => current - 1)}
+        />
+      )}
+    </PersonalPage>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#090D16",
-  },
-
-  page: {
-    width,
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 34,
-  },
-
-  iconCircle: {
-    width: 130,
-    height: 130,
-    borderRadius: 40,
-    backgroundColor:
-      "rgba(99,102,241,0.14)",
-    borderWidth: 1,
-    borderColor:
-      "rgba(129,140,248,0.25)",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 30,
-  },
-
-  pageIcon: {
-    fontSize: 62,
-  },
-
-  pageTitle: {
-    color: "#F8FAFC",
-    fontSize: 28,
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  pageDescription: {
-    color: "#94A3B8",
-    fontSize: 13,
-    lineHeight: 21,
-    textAlign: "center",
-    marginTop: 14,
-    maxWidth: 330,
-  },
-
-  bottomSection: {
-    paddingHorizontal: 24,
-    paddingBottom: 25,
-    alignItems: "center",
-  },
-
-  indicatorRow: {
-    flexDirection: "row",
-    gap: 6,
-    marginBottom: 9,
-  },
-
-  indicator: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor:
-      "#334155",
-  },
-
-  indicatorActive: {
-    width: 20,
-    backgroundColor: "#818CF8",
-  },
-
-  pageCounter: {
-    color: "#475569",
-    fontSize: 9,
-    fontWeight: "800",
-    marginBottom: 14,
-  },
-
-  nextButton: {
-    width: "100%",
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: "#6366F1",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  nextButtonText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "900",
-    letterSpacing: 0.4,
-  },
-
-  skipButton: {
-    paddingVertical: 12,
-  },
-
-  skipText: {
-    color: "#64748B",
-    fontSize: 10,
-    fontWeight: "800",
-  },
-});
