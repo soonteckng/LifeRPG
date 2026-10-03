@@ -52,41 +52,20 @@ const session = (id, day, seconds = 30) => ({
   xp_earned: 0,
   gold_earned: 0,
 });
-test("attribute grouping reconstructs earned XP and respects exact level thresholds", () => {
-  for (let level = 1; level <= 20; level++)
-    for (const current of [0, 1, level * 50 - 1]) {
-      assert.deepEqual(
-        growth.attributeProgress(
-          growth.lifetimeAreaXP(area(1, level, current)),
-        ),
-        {
-          level,
-          current,
-          required: level * 50,
-          total: 25 * level * (level - 1) + current,
-        },
-      );
-    }
-  assert.equal(growth.attributeProgress(50).level, 2);
+test("Life area growth displays the saved level and XP without a second category system", () => {
+  for (let level = 1; level <= 20; level++) {
+    const original = { ...area(1, level, level * 50 - 1), title: "Knowledge" };
+    const value = growth.lifeAreaGrowth(original);
+    assert.equal(value.title, "Knowledge");
+    assert.equal(value.level, level);
+    assert.equal(value.current, original.current_xp);
+    assert.equal(value.required, level * 50);
+    assert.deepEqual(original, { ...area(1, level, level * 50 - 1), title: "Knowledge" });
+  }
 });
-test("areas are assigned explicitly; switching attributes never changes earned area XP", () => {
-  const areas = [area(1, 3, 12), area(2, 2, 20)];
-  const original = JSON.stringify(areas);
-  assert.equal(growth.characterAttributes(areas, {})[0].total, 0);
-  assert.equal(
-    growth.characterAttributes(areas, { 1: "strength", 2: "strength" })[0]
-      .total,
-    232,
-  );
-  assert.equal(
-    growth.characterAttributes(areas, { 1: "knowledge" })[1].total,
-    162,
-  );
-  assert.equal(JSON.stringify(areas), original);
-  assert.deepEqual(
-    growth.validMapping({ 1: "strength", nope: "strength", 2: "fake" }),
-    { 1: "strength" },
-  );
+test("custom Life areas retain their identity and growth without assigning attributes", () => {
+  const custom = { ...area(42, 3, 12), title: "Learn Mandarin" };
+  assert.deepEqual(growth.lifeAreaGrowth(custom), { ...custom, current: 12, required: 150 });
 });
 test("milestones use exact seconds and deduplicate saved sessions", () => {
   const a = session("a", "2026-10-01", 30),
@@ -761,4 +740,95 @@ test("Settings renders in Expo Go even when notification import would throw", as
     await act(async () => row.props.onPress());
     assert.match(ui.text(), /installed EAS app/);
   } finally { await ui.cleanup(); }
+});
+
+async function profileScreen(overrides = {}) {
+  return screen("src/app/(tabs)/profile.tsx", {
+    "expo-router": { useRouter:()=>({navigate(){}}), useFocusEffect:effect=>React.useEffect(effect,[effect]) },
+    "../../components/PersonalUI":UI,
+    "../../components/CharacterPortrait":host("Portrait"),
+    "../../components/SheetConfirmation":host("Confirm"),
+    "../../components/AppSheet":props=>React.createElement("Sheet",props,props.header,props.children,props.footer,props.overlay),
+    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),BottomSheetTextInput:host("Input"),TouchableOpacity:host("Button")},
+    "../../context/UserContext":{useUser:()=>({profile:{id:"user",username:"Soon",avatar:"⭐",class_title:"",level:3,current_xp:20,timezone:"Asia/Kuala_Lumpur"},updateProfile:async()=>{},reloadProfile:async()=>{}})},
+    "../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:[{id:1,title:"Knowledge",level:2,current_xp:12}],sessions:[]},loading:false,error:false,refresh:async()=>{}})},
+    ...overrides,
+  });
+}
+test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor",async()=>{
+  const ui=await profileScreen();
+  try {
+    assert.match(ui.text(),/Your growth/);
+    assert.match(ui.text(),/KnowledgeLv 2/);
+    assert.doesNotMatch(ui.text(),/Connect areas|No Life areas connected|Explore your progress/);
+    await ui.press("Personalise profile");
+    const sheet=ui.renderer.root.findByType("Sheet");
+    assert.equal(sheet.props.compact,true);
+    assert.equal(sheet.props.guardDismiss,false);
+    const scroll=ui.renderer.root.findByType("SheetScroll");
+    assert.equal(scroll.findAllByType("Button").some(n=>n.props.title==="Save changes"),false);
+    assert.ok(sheet.props.footer);
+    await ui.press("Save changes");
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,false);
+    // The editor is retained for the library's downward exit; it never switches to another layout.
+    assert.equal(ui.renderer.root.findByType("Input").props.value,"Soon");
+  } finally { await ui.cleanup(); }
+});
+test("Profile protects edited drafts and preserves the editor through discard dismissal",async()=>{
+  const ui=await profileScreen();
+  try {
+    await ui.press("Personalise profile");
+    await ui.input("Profile name","New name");
+    assert.equal(ui.renderer.root.findByType("Sheet").props.guardDismiss,true);
+    await act(async()=>ui.renderer.root.findByType("Sheet").props.onRequestClose());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,true);
+    await act(async()=>ui.renderer.root.findByType("Confirm").props.onConfirm());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,false);
+    assert.equal(ui.renderer.root.findByType("Input").props.value,"New name");
+  } finally { await ui.cleanup(); }
+});
+
+test("Android secondary page retains its contents until animated back finishes and ignores repeated back",async()=>{
+  let finish, remove;
+  const calls=[];
+  const navigation={canGoBack:()=>true,goBack:()=>calls.push("back")};
+  const {PersonalPage}=load("src/components/PersonalUI.tsx",{
+    "react-native":{...Native,StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:360}),
+      Animated:{Value:class{constructor(v){this.value=v;}setValue(v){this.value=v;}},View:host("Animated"),
+        timing:(value,config)=>({start(callback){if(config.toValue===360) finish=callback;else{value.setValue(config.toValue);callback?.({finished:true});}},stop(){}})}},
+    "expo-router":{useRouter:()=>({canGoBack:()=>true,back:()=>calls.push("router-back")}),useNavigation:()=>navigation},
+    "expo-router/react-navigation":{usePreventRemove:(_,callback)=>{remove=callback;}},
+    "react-native-safe-area-context":{SafeAreaView:host("Safe"),useSafeAreaInsets:()=>({bottom:24})},
+    "@expo/vector-icons":{Ionicons:host("Icon")},
+    "../hooks/useReducedMotion":{useReducedMotion:()=>false},
+    "./AppHeader":host("Header"),
+  });
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(PersonalPage,{title:"Rewards",subtitle:"Your effort",back:true,animateTransition:true},React.createElement("Text",null,"Saved rewards")));});
+  try {
+    await act(async()=>renderer.root.findByType("Header").props.onBack());
+    await act(async()=>remove());
+    assert.equal(calls.length,0);
+    assert.match(text(renderer.root),/Saved rewards/);
+    await act(async()=>finish({finished:true}));
+    assert.deepEqual(calls,["back"]);
+    assert.match(text(renderer.root),/Saved rewards/);
+  } finally {await act(async()=>renderer.unmount());}
+});
+
+test("character wave is cosmetic and respects reduced motion",async()=>{
+  for(const reduced of [false,true]) {
+    const animations=[];
+    const Portrait=load("src/components/CharacterPortrait.tsx",{
+      "react-native":{...Native,StyleSheet:{create:s=>s},Animated:{Value:class{setValue(){}stopAnimation(){}interpolate(){return 0;}},View:host("Animated"),timing:(_,config)=>({start(){animations.push(config);}})}},
+      "../hooks/useReducedMotion":{useReducedMotion:()=>reduced},
+    }).default;
+    let renderer;
+    await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",level:3,developed:2}));});
+    try {
+      await act(async()=>renderer.root.findByType("Button").props.onPress());
+      assert.equal(animations.length,reduced?0:1);
+      assert.match(renderer.root.findByType("Button").props.accessibilityLabel,/Level 3/);
+    } finally {await act(async()=>renderer.unmount());}
+  }
 });

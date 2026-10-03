@@ -1,23 +1,40 @@
-import { StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import { useReducedMotion } from "../hooks/useReducedMotion";
+import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "../constants/theme";
 
-// Code-native artwork scales with earned Strength. Other attributes add orbit
-// accents. This is an effort avatar, not a measurement of someone's real body.
+// A lightweight character foundation. Growth reflects saved overall effort;
+// waving is cosmetic and never creates XP or changes a session.
 export default function CharacterPortrait({
   avatar,
-  strength = 1,
+  level = 1,
   developed = 0,
 }: {
   avatar: string;
-  strength?: number;
+  level?: number;
   developed?: number;
 }) {
-  const growth = Math.min(14, Math.max(0, strength - 1) * 2);
+  const growth = Math.min(14, Math.max(0, level - 1) * 2);
+  const reduced = useReducedMotion();
+  const [wave] = useState(() => new Animated.Value(0));
+  useEffect(() => () => wave.stopAnimation(), [wave]);
+  const greet = () => {
+    if (reduced) return;
+    wave.stopAnimation();
+    wave.setValue(0);
+    Animated.timing(wave, {
+      toValue: 1,
+      duration: 700,
+      useNativeDriver: true,
+    }).start();
+  };
   return (
-    <View
-      style={s.stage}
-      accessible
-      accessibilityLabel={`Your character. Strength level ${strength}. ${developed} attributes developed.`}
+    <Pressable
+      style={({ pressed }) => [s.stage, pressed && { opacity: 0.85 }]}
+      accessibilityRole="button"
+      onPress={greet}
+      accessibilityLabel={`Your character. Level ${level}. ${developed} Life areas developed.`}
+      accessibilityHint="Tap to wave. This does not change your progress."
     >
       <View style={s.orbit} />
       <View style={s.innerOrbit} />
@@ -28,7 +45,31 @@ export default function CharacterPortrait({
       )}
       <View style={s.floor} />
       <View style={[s.arm, s.leftArm, { width: 22 + growth / 2 }]} />
-      <View style={[s.arm, s.rightArm, { width: 22 + growth / 2 }]} />
+      <Animated.View
+        style={[
+          s.arm,
+          s.rightArm,
+          {
+            width: 22 + growth / 2,
+            transform: [
+              {
+                rotate: reduced
+                  ? "-12deg"
+                  : wave.interpolate({
+                      inputRange: [0, 0.25, 0.5, 0.75, 1],
+                      outputRange: [
+                        "-12deg",
+                        "-65deg",
+                        "-35deg",
+                        "-65deg",
+                        "-12deg",
+                      ],
+                    }),
+              },
+            ],
+          },
+        ]}
+      />
       <View
         style={[s.body, { width: 70 + growth, marginLeft: -(70 + growth) / 2 }]}
       >
@@ -42,7 +83,7 @@ export default function CharacterPortrait({
       <View style={s.badge}>
         <Text style={s.badgeText}>{avatar}</Text>
       </View>
-    </View>
+    </Pressable>
   );
 }
 const s = StyleSheet.create({

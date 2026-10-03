@@ -18,7 +18,7 @@ import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
 import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { sessionNativeOptions, traceSession } from "../utils/sessionTransition";
+import { secondaryNativeOptions, sessionNativeOptions, traceSession } from "../utils/sessionTransition";
 
 export const unstable_settings = { initialRouteName: "(tabs)" };
 
@@ -196,7 +196,7 @@ function AppContent() {
             <Stack.Screen
               name="session"
               dangerouslySingular
-              options={sessionNativeOptions(reducedMotion)}
+              options={sessionNativeOptions()}
             />
             <Stack.Screen
               name="quests"
@@ -208,15 +208,11 @@ function AppContent() {
             />
             <Stack.Screen
               name="rewards"
-              options={{
-                presentation: "card",
-              }}
+              options={secondaryNativeOptions(reducedMotion)}
             />
             <Stack.Screen
               name="settings"
-              options={{
-                presentation: "card",
-              }}
+              options={secondaryNativeOptions(reducedMotion)}
             />
           </Stack.Protected>
           <Stack.Screen

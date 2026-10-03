@@ -187,7 +187,7 @@ test("duration parser rejects ambiguous input rather than silently substituting"
   for(const input of ["1","30","480"]) assert.equal(validatedSessionMinutes(input),Number(input));
 });
 
-async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}) {
+async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android") {
   const calls = [], keyboardListeners = {};
   let exitCallback;
   let keyboard = false, back;
@@ -212,17 +212,18 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       View:host("View"),Text:host("Text"),TextInput:host("Input"),TouchableOpacity:host("Button"),
       ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),ActivityIndicator:host("Spinner"),
       PanResponder:{create:(handlers)=>({panHandlers:handlers})},
-      Platform:{OS:"android"},useWindowDimensions:()=>({height:640,width:320,fontScale:1.5}),
+      Platform:{OS:platform},useWindowDimensions:()=>({height:640,width:320,fontScale:1.5}),
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{Value:class {setValue(){} interpolate(){return 0;}},View:host("AnimatedView"),timing:(_,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else callback?.({finished:true});},stop(){}})},
+      Animated:{Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),TouchableOpacity:host("Button")},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "./AppHeader":p=>React.createElement("Button",{onPress:p.onBack,accessibilityLabel:p.backLabel},p.title),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
     "./DurationPicker":{__esModule:true,default:p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"}),p.interactive&&React.createElement("Button",{onPress:p.onEdit,accessibilityLabel:"Edit duration"},"Edit duration")),DurationEditor:p=>p.visible?React.createElement("DurationSheet",p):null},
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
@@ -599,12 +600,12 @@ test("Session surface stays opaque while the reduced-motion preference resolves"
   const preference={value:true};
   const ui=await screenSetup({}, {}, false, preference);
   const surface=()=>ui.root().findAllByType("AnimatedView").find(n=>n.props.testID==="session-surface");
-  assert.equal(surface().props.style.opacity,1);
+  assert.equal(surface().props.style.opacity.value,1);
   assert.match(surface().props.style.backgroundColor,/^#[0-9a-f]{6}$/i);
   preference.value=false;await ui.update({});
-  assert.equal(surface().props.style.opacity,1);
+  assert.equal(surface().props.style.opacity.value,1);
   preference.value=true;await ui.update({});
-  assert.equal(surface().props.style.opacity,1);
+  assert.equal(surface().props.style.opacity.value,1);
   await ui.cleanup();
 });
 
@@ -657,3 +658,55 @@ test("typed input and presets share applied seconds while linked quests stay rea
 
 
 
+
+test("Session drag follows the finger, cancels back in place and retains timer state until exit", async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,timeLeft:1259},{},true,{value:false});
+  const surface=()=>ui.root().findAllByType("AnimatedView").find(n=>n.props.testID==="session-surface");
+  const safe=()=>ui.root().findByType("SafeArea");
+  const motion=surface().props.style.transform[0].translateY.source;
+  const originalTimer=ui.root().findByType("DurationControl");
+  await act(async()=>{
+    safe().props.onPanResponderGrant();
+    safe().props.onPanResponderMove({}, {dy:64});
+  });
+  assert.equal(motion.value,0.9); // 64 px of a 640 px screen.
+  assert.equal(surface().props.style.opacity.value,0.982);
+  assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
+  await act(async()=>safe().props.onPanResponderRelease({}, {dy:64,vy:0.1}));
+  assert.equal(motion.value,1);
+  assert.equal(ui.root().findByType("DurationControl"),originalTimer);
+  await act(async()=>{
+    safe().props.onPanResponderMove({}, {dy:180});
+    safe().props.onPanResponderRelease({}, {dy:180,vy:0.2});
+  });
+  assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,1259);
+  await ui.finishExit();
+  assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+  assert.equal(ui.calls.some(c=>["pause","reset","seconds"].includes(c[0])),false);
+  await ui.cleanup();
+});
+
+test("an interrupted Session drag settles back without navigation or timer mutation", async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:false,timeLeft:301},{},false,{value:false});
+  const safe=ui.root().findByType("SafeArea");
+  const surface=ui.root().findAllByType("AnimatedView").find(n=>n.props.testID==="session-surface");
+  await act(async()=>safe.props.onPanResponderMove({}, {dy:80}));
+  assert.equal(surface.props.style.transform[0].translateY.source.value,0.875);
+  await act(async()=>safe.props.onPanResponderTerminate());
+  assert.equal(surface.props.style.transform[0].translateY.source.value,1);
+  assert.equal(ui.calls.length,0);
+  await ui.cleanup();
+});
+
+
+test("iOS Session uses one controlled vertical exit and preserves the running timer",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,timeLeft:77},{},true,{value:false},"ios");
+  await ui.press("Minimise session");
+  assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,77);
+  await ui.finishExit();
+  assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+  assert.equal(ui.calls.some(c=>["pause","reset"].includes(c[0])),false);
+  await ui.cleanup();
+});

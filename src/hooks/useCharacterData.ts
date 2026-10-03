@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
@@ -10,7 +9,6 @@ import {
   type ProgressSession,
 } from "../services/progressService";
 import type { Subject } from "../services/taskService";
-import { validMapping, type AreaMapping } from "../utils/characterGrowth";
 
 export function useCharacterData() {
   const { profile } = useUser();
@@ -19,31 +17,22 @@ export function useCharacterData() {
     userId: string;
     areas: Subject[];
     sessions: ProgressSession[];
-    mapping: AreaMapping;
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const generation = useRef(0);
   const focused = useRef(false);
-  const storageKey = `liferpg:character-areas:${profile.id}`;
   const refresh = useCallback(async () => {
     if (!profile.id) return;
     const request = ++generation.current;
     setLoading(true);
     try {
-      const [areas, sessions, stored] = await Promise.all([
+      const [areas, sessions] = await Promise.all([
         getProgressSubjects(),
         getCompletedSessions("1970-01-01T00:00:00Z", new Date().toISOString()),
-        AsyncStorage.getItem(storageKey),
       ]);
-      let mapping: AreaMapping = {};
-      try {
-        mapping = validMapping(stored ? JSON.parse(stored) : {});
-      } catch {
-        /* Invalid device cache does not hide saved growth. */
-      }
       if (request === generation.current) {
-        setData({ userId: profile.id, areas, sessions, mapping });
+        setData({ userId: profile.id, areas, sessions });
         setError(false);
       }
     } catch {
@@ -51,7 +40,7 @@ export function useCharacterData() {
     } finally {
       if (request === generation.current) setLoading(false);
     }
-  }, [profile.id, storageKey]);
+  }, [profile.id]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
@@ -71,25 +60,10 @@ export function useCharacterData() {
     });
     return () => sub.remove();
   }, [refresh]);
-  const saveMapping = async (mapping: AreaMapping) => {
-    // Invalidate an older refresh before it can overwrite the newly saved choice.
-    generation.current++;
-    setLoading(false);
-    await AsyncStorage.setItem(
-      storageKey,
-      JSON.stringify(validMapping(mapping)),
-    );
-    setData((current) =>
-      current?.userId === profile.id
-        ? { ...current, mapping: validMapping(mapping) }
-        : current,
-    );
-  };
   return {
     data: data?.userId === profile.id ? data : null,
     loading,
     error,
     refresh,
-    saveMapping,
   };
 }

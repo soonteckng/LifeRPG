@@ -1,6 +1,29 @@
 # Session redesign
 
-## Latest phone-feedback refinement
+## Current interactive-dismiss refinement
+
+Session now owns vertical entrance, finger-following drag and exit on both
+Android and iOS. Root native animation is disabled for this retained transparent
+route, so native and contained animations do not compete. The opaque content stays
+mounted until exit completes. A short or interrupted swipe settles back without
+navigation or timer mutation; a longer downward swipe or fling minimises from its
+current position. Header dismissal and back use the same exit. No timer data is
+paused, cancelled or reset by minimising.
+
+Drag starts outside the timer control. Header dragging remains available when
+session details are scrolled; inner scrolling, wheels, keyboard, pickers and reward
+layers retain priority. Translation and a mild opacity change follow gesture
+updates without React state updates per movement. Release uses native-driver
+animations. A separate stable opacity value starts at 1, avoiding the earlier
+scalar/animated preference-resolution switch. Reduced motion skips translation
+and fading. The close chevron remains in the shared app navigation header.
+
+Tests verify finger position, cancellation/interruption, retained countdown,
+repeat-close protection, and Android/iOS exit ordering with mocked native APIs.
+This is not device frame-rate or rendered-gesture verification: test both platforms,
+large text, cancelled/fast swipes, nested scrolling and dock exposure on phones.
+
+## Previous phone-feedback refinement
 
 The phone still showed no native dismissal after both card and retained-modal
 attempts. Android now uses a contained Animated translation for entrance (280ms)
@@ -298,3 +321,4 @@ traces; real warnings and errors remain available.
 A regression test covers saved duration, pending/failed completion and paused
 countdown. This follow-up was reviewed through GitHub; automated checks and
 native device validation could not be run without a connected coding workspace.
+

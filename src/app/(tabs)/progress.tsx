@@ -1005,8 +1005,8 @@ const s = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 34,
-    fontWeight: "700",
+    fontSize: 32,
+    fontWeight: "600",
     letterSpacing: -1,
   },
   subtitle: {

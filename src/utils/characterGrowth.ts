@@ -2,72 +2,15 @@ import type { Subject } from "../services/taskService";
 import type { ProgressSession } from "../services/progressService";
 import { dateKey, shiftDay } from "./progressAnalytics";
 
-export const ATTRIBUTES = [
-  {
-    id: "strength",
-    title: "Strength",
-    icon: "barbell-outline",
-    color: "#F5B5A1",
-    description: "Training, movement and physical practice.",
-  },
-  {
-    id: "knowledge",
-    title: "Knowledge",
-    icon: "book-outline",
-    color: "#A5B4FC",
-    description: "Learning, reading and exploring ideas.",
-  },
-  {
-    id: "creativity",
-    title: "Creativity",
-    icon: "color-palette-outline",
-    color: "#D8B4FE",
-    description: "Making, designing and expressing yourself.",
-  },
-  {
-    id: "balance",
-    title: "Balance",
-    icon: "leaf-outline",
-    color: "#9CDCC1",
-    description: "Care, reflection and everyday wellbeing.",
-  },
-] as const;
-export type AttributeId = (typeof ATTRIBUTES)[number]["id"];
-export type AreaMapping = Record<string, AttributeId>;
-export function validMapping(value: unknown): AreaMapping {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return Object.fromEntries(
-    Object.entries(value).filter(
-      ([key, id]) => /^\d+$/.test(key) && ATTRIBUTES.some((a) => a.id === id),
-    ),
-  ) as AreaMapping;
-}
-// Subject levels use the server's existing 50 * level threshold.
-// Reassigning an area changes this presentation, never the underlying earned XP.
-export function lifetimeAreaXP(area: Subject) {
+// Use the saved Life area directly: no parallel categories or device mappings.
+export function lifeAreaGrowth(area: Subject) {
   const level = Math.max(1, Math.floor(area.level || 1));
-  return 25 * level * (level - 1) + Math.max(0, area.current_xp || 0);
-}
-export function attributeProgress(xp: number) {
-  const total = Math.max(0, Math.floor(xp));
-  let level = Math.max(1, Math.floor((1 + Math.sqrt(1 + total / 6.25)) / 2));
-  while (25 * level * (level - 1) > total) level--;
-  const current = total - 25 * level * (level - 1);
-  return { level, current, required: level * 50, total };
-}
-export function characterAttributes(areas: Subject[], mapping: AreaMapping) {
-  return ATTRIBUTES.map((attribute) => {
-    const linked = areas.filter(
-      (area) => mapping[String(area.id)] === attribute.id,
-    );
-    return {
-      ...attribute,
-      areas: linked,
-      ...attributeProgress(
-        linked.reduce((sum, area) => sum + lifetimeAreaXP(area), 0),
-      ),
-    };
-  });
+  return {
+    ...area,
+    level,
+    current: Math.max(0, area.current_xp || 0),
+    required: level * 50,
+  };
 }
 export function earnedMilestones(
   sessions: ProgressSession[],

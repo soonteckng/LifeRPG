@@ -6,27 +6,23 @@ includes that work until its parent lands on main.
 
 ## Product decisions
 
-LifeRPG's character represents the user's recorded effort. It is not an extra
-creature to keep alive, and attributes are not measurements of health, strength
-or intelligence. The first character artwork is a neutral code-native silhouette
-with a personal badge. Earned Strength changes its build subtly; developed
-attributes add an accent. This is the visual foundation, not an extensive avatar
-wardrobe or a complete character animation system.
+LifeRPG's character represents recorded effort. Life areas themselves are the
+character’s stats: Profile displays each cloud-saved area name, level and current
+XP against the existing 50 * level threshold. The confusing second Strength /
+Knowledge / Creativity / Balance mapping system and Connect areas editor have
+been removed. No earned area XP or cloud data is altered. Old device mapping
+entries are no longer read or required; there is no database migration.
 
-Profile now contains the character, overall level, four attributes, the recorded
-effort behind them, and a Rewards entry. Explicitly connect Life areas to Strength,
-Knowledge, Creativity or Balance; do not guess from names and do not add another
-category selector to quests or sessions. Unassigned areas retain all XP. Multiple
-areas may share an attribute. Attribute XP is a display projection of saved area
-levels/current XP, using the existing server threshold of 50 * area level.
-Reassignment changes that projection only. It grants no XP, Gold or new rewards.
+The code-native character is a visual foundation with a personal badge, subtle
+build changes from overall saved level, and an accent for developed Life areas.
+Tap it for a short wave; it never grants XP or changes sessions. Reduced motion
+keeps the character still and retains press feedback. Detailed area-specific
+physiques, outfits and a full animation system remain future character work.
 
-These connections and feedback preferences are per-account **device storage**.
-They are not yet synced between devices. Identity, Life-area XP, account levels,
-Gold and sessions remain cloud-backed. Reinstalling or clearing application data
-can clear connections; reconnecting the areas recovers their projected attribute
-levels from cloud XP. Cross-device connections need an independently tested
-backend migration; no new database schema is assumed here.
+Profile contains the character, overall level, Life-area growth, recorded effort
+and Rewards. Progress remains the dedicated tab; the redundant Explore your
+progress shortcut was removed. Feedback preferences remain per-account device
+storage. Identity, Life-area XP, account levels, Gold and sessions remain cloud-backed.
 
 Rewards prioritises milestones over currency. First session, accumulated focus
 hours, completed-session counts and best consecutive active-day runs are derived
@@ -49,8 +45,22 @@ work, not partially enabled controls.
 - Shared dark/lavender tokens, readable typography, rounded surfaces and icons.
 - Profile/reward editors use AppSheet with its existing handle, downward exit,
   backdrop/back dismissal, keyboard handling and dirty-draft confirmations.
-- Secondary pages use the root native right-to-left entrance and inverse back
-  exit. Page and tutorial content fades respect system reduced motion.
+- Rewards/Settings use matching right-to-left entrance and left-to-right exit.
+  Android uses a retained opaque moving surface and removes the route only after
+  its exit callback; iOS retains native horizontal navigation. No competing native
+  animation runs over Android’s controlled motion. Reduced motion skips translation.
+- Session, Rewards and Settings share the same compact navigation header, 44px
+  controls and centred title. Tab headings align to 20px content gutters.
+- Personalise has one content-sized snap point, a pinned safe-area Save footer,
+  scrollable large-text/keyboard content and interactive keyboard handling. It
+  keeps its editor through dismissal instead of switching layouts mid-animation.
+  Clean drafts use native sheet dismissal; dirty drafts still require confirmation.
+- Reward sheets keep their contents until native modal dismissal. Re-entry waits
+  for dismissal, avoiding a new sheet being cleared by an older close callback.
+- Session drag follows the finger outside the timer wheels; a short/interrupted
+  swipe settles back. A sufficient distance or downward fling finishes minimising
+  from the current position. One stable animated opacity value adds a mild exit
+  fade without a preference-resolution flash. Timer and nested-layer state remain.
 - Profile saves await a returned persisted row; failed saves keep the editor.
 - Profile reads share in-flight work; stale reads cannot undo an identity save.
 - Reward mutations share a synchronous lock and preserve drafts on failure.
@@ -59,7 +69,7 @@ work, not partially enabled controls.
 - Feedback preferences restore across restarts and serialise rapid writes.
   Completion notifications use sound/vibration-specific Android channels. Sound
   changes apply when the next alert is scheduled; existing phone settings may
-  override channel sound. Active-session timer logic and close transitions remain.
+  override channel sound. Active-session timer logic is preserved.
 - Settings includes account, notification permission/status, system motion,
   introduction replay, and device-local sign-out. Sign-out is blocked during open,
   restoring or unresolved sessions; finish/end or resolve the session first.
@@ -75,12 +85,17 @@ work, not partially enabled controls.
 
 ## Automated verification
 
-84 tests: the 64 existing Home/quest/Session/Progress tests plus 20 new tests.
-New coverage includes attribute thresholds and reassignment, seconds/deduplication,
+94 tests pass, including the existing Home/quest/Session/Progress suite.
+Coverage includes saved Life-area levels and thresholds, seconds/deduplication,
 retained consistency milestones, reward cost validation, email confirmation,
 failed/repeated sign-in, onboarding/tutorial failure and replay, profile persistence,
 preference restoration/rapid writes, reward draft/redeem/claim guards, logout
-protection and auth-restoration races. Service/native boundaries are mocked.
+protection and auth-restoration races. Added polish coverage includes a pinned
+profile Save action, retained editor/discard contents, compact sheet snap points
+and stable handles, Android horizontal exit ordering, finger-following and
+cancelled/interrupted Session drags, iOS exit ordering, repeated-close guards,
+opacity stability and reduced-motion character interaction. Service/native
+boundaries are mocked; no measured frame-rate claim is made.
 
 TypeScript and scoped lint pass. Android and iOS JavaScript exports pass using
 `--no-bytecode`; placeholder configuration was used only for the compilation check.
@@ -99,7 +114,7 @@ Use a test account; do not delete a real account or erase earned progress.
    after finishing; confirm onboarding is remembered. Existing accounts go Home.
 3. Wrong password, offline login/registration, profile-fetch failure, logout,
    email-confirmation return and signing into another account. Check that no prior
-   user's name, sessions, preferences, character connections or rewards appear.
+   user's name, sessions, preferences, Life-area growth or rewards appear.
 4. Create/edit/complete/reopen quests. Start linked and free sessions; wheels,
    typed duration/presets, validation, keyboard, pause/resume, minimise/reopen,
    swipe/header/Android back, and active-session dock placement.
@@ -109,8 +124,10 @@ Use a test account; do not delete a real account or erase earned progress.
    Repeat after pause/resume; inspect duplicate or missing alerts.
 6. Complete sub-minute and mixed-second sessions. Verify exact focus time and
    milestones, while goal/XP/Gold retain the documented whole-minute rules.
-7. Connect/reassign/unassign Life areas, verify projected attributes and portrait,
-   save identity, reload/restart. Note device-only connection persistence.
+7. Verify each Life area's saved name, level and XP matches Progress. Tap the
+   character; test reduced motion. Personalise: Save is initially reachable,
+   keyboard leaves fields and Save reachable, extra upward drag creates no blank
+   expansion, and dirty close requires confirmation. Reload/restart after saving.
 8. Claim daily bonus once, retry failures, add personal reward, keyboard/backdrop/
    swipe dirty dismissal, insufficient balance, redeem/remove confirmations and
    refresh failures. Verify existing Gold and personal rewards are retained.
@@ -133,4 +150,5 @@ require an installed/development build. This preview deliberately does not sched
 session alerts. The Expo Go detector distinguishes actual development builds, which
 still load notification APIs. iOS and release builds keep the supported API path.
 Three regression tests cover skipping the package, caching its API in builds and
-Settings fallback. Total suite: 87 passing tests. No package versions were changed.
+Settings fallback. This fix added three regression tests; the current full suite
+has 94 passing tests. No package versions were changed.

@@ -308,6 +308,12 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.enablePanDownToClose, false);
     assert.equal(sheetProps.enableContentPanningGesture, true);
     assert.equal(sheetProps.enableHandlePanningGesture, true);
+    const originalHandle = sheetProps.handleComponent;
+    await act(async () => renderer.update(React.createElement(AppSheet, { ...props, compact: true, header: React.createElement("Text", null, "Personalise") })));
+    assert.equal(sheetProps.snapPoints, undefined);
+    assert.equal(sheetProps.enableDynamicSizing, true);
+    assert.equal(sheetProps.keyboardBehavior, "interactive");
+    assert.equal(sheetProps.handleComponent, originalHandle);
     const handle = renderer.root.findAllByType("View").find((node) => node.props.onAccessibilityAction);
     await act(async () => handle.props.onAccessibilityAction());
     assert.equal(requestedClose, 2);
@@ -470,5 +476,6 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
     global.Date = RealDate; global.setTimeout = realTimeout; global.clearTimeout = realClear;
   }
 });
+
 
 

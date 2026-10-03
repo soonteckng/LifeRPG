@@ -25,7 +25,7 @@ export const INTRO_PAGES: {
   {
     icon: "person-outline",
     title: "Your effort becomes your character",
-    body: "Life areas collect XP from completed sessions. In Profile, connect them to Strength, Knowledge, Creativity or Balance. Attributes reflect your logged effort.",
+    body: "Life areas collect XP from completed sessions. Your Life areas are your character’s stats: view their saved levels and growth in Profile. Levels reflect focused effort you’ve logged.",
   },
   {
     icon: "flame-outline",

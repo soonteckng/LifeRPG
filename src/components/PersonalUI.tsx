@@ -1,13 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import {
+  useCallback,
   useEffect,
+  useRef,
   useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
 import {
   Animated,
+  Platform,
+  useWindowDimensions,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,6 +24,8 @@ import {
 } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { usePreventRemove } from "expo-router/react-navigation";
+import AppHeader from "./AppHeader";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
   title,
@@ -27,65 +33,110 @@ export function PersonalPage({
   children,
   back = false,
   action,
+  animateTransition = false,
 }: {
   title: string;
   subtitle: string;
   children: ReactNode;
   back?: boolean;
   action?: ReactNode;
+  animateTransition?: boolean;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
-  const [opacity] = useState(() => new Animated.Value(1));
+  const navigation = useNavigation();
+  const { width } = useWindowDimensions();
+  const controlled = back && animateTransition && Platform.OS === "android";
+  const [position] = useState(() => new Animated.Value(controlled ? width : 0));
+  const closing = useRef(false);
+  const [exitReady, setExitReady] = useState(false);
   useEffect(() => {
-    if (reduced) {
-      opacity.setValue(1);
-      return;
-    }
-    opacity.setValue(0.65);
-    const animation = Animated.timing(opacity, {
-      toValue: 1,
-      duration: 220,
+    if (!controlled || closing.current) return;
+    const animation = Animated.timing(position, {
+      toValue: 0,
+      duration: reduced ? 0 : 280,
       useNativeDriver: true,
     });
     animation.start();
     return () => animation.stop();
-  }, [opacity, reduced]);
+  }, [controlled, position, reduced]);
+  const close = useCallback(() => {
+    if (closing.current) return;
+    if (!controlled) {
+      if (router.canGoBack()) router.back();
+      else router.replace("/profile");
+      return;
+    }
+    if (!navigation.canGoBack()) {
+      router.replace("/profile");
+      return;
+    }
+    closing.current = true;
+    Animated.timing(position, {
+      toValue: width,
+      duration: reduced ? 0 : 260,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) setExitReady(true);
+      else {
+        closing.current = false;
+        position.setValue(0);
+      }
+    });
+  }, [controlled, navigation, router, position, width, reduced]);
+  usePreventRemove(controlled && !exitReady, close);
+  useEffect(() => {
+    if (exitReady) navigation.goBack();
+  }, [exitReady, navigation]);
   return (
-    <SafeAreaView edges={["top", "left", "right"]} style={p.page}>
-      <View style={p.header}>
+    <Animated.View
+      testID="personal-page-surface"
+      style={{
+        flex: 1,
+        backgroundColor: colors.background,
+        transform: [{ translateX: position }],
+      }}
+    >
+      <SafeAreaView edges={["top", "left", "right"]} style={p.page}>
         {back && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back to Profile"
-            style={p.back}
-            onPress={() =>
-              router.canGoBack() ? router.back() : router.replace("/profile")
-            }
-          >
-            <Ionicons name="chevron-back" color={colors.accent} size={22} />
-          </Pressable>
+          <AppHeader
+            title={title}
+            onBack={close}
+            backLabel="Back to Profile"
+            action={action}
+          />
         )}
-        <View style={p.flex}>
-          <Text style={p.pageTitle} accessibilityRole="header">
-            {title}
-          </Text>
-          <Text style={p.body}>{subtitle}</Text>
-        </View>
-        {action}
-      </View>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={[
-          p.content,
-          { paddingBottom: Math.max(48, insets.bottom + 24) },
-        ]}
-      >
-        <Animated.View style={{ opacity, gap: 20 }}>{children}</Animated.View>
-      </ScrollView>
-    </SafeAreaView>
+        {!back && (
+          <View style={p.header}>
+            <View style={p.flex}>
+              <Text style={p.pageTitle} accessibilityRole="header">
+                {title}
+              </Text>
+              <Text style={p.body}>{subtitle}</Text>
+            </View>
+            {action}
+          </View>
+        )}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={[
+            p.content,
+            { paddingBottom: Math.max(48, insets.bottom + 24) },
+          ]}
+        >
+          <View style={{ gap: 20 }}>
+            {back && (
+              <View style={{ gap: 6, paddingBottom: 4 }}>
+                <Text style={p.body}>{subtitle}</Text>
+              </View>
+            )}
+            {children}
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    </Animated.View>
   );
 }
 export function PersonalRow({
@@ -184,7 +235,7 @@ export function PersonalButton({
 export const p = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
   header: {
-    padding: 22,
+    padding: 20,
     paddingBottom: 14,
     flexDirection: "row",
     alignItems: "center",

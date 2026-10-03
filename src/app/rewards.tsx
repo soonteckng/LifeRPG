@@ -58,6 +58,14 @@ export default function RewardsScreen() {
     lock = useRef(false);
   const [busy, setBusy] = useState(false);
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheetLifecycle = useRef(false);
+  const openSheet = (value: Sheet) => {
+    if (sheetLifecycle.current) return;
+    sheetLifecycle.current = true;
+    setSheet(value);
+    setSheetOpen(true);
+  };
   const [title, setTitle] = useState(""),
     [cost, setCost] = useState("300");
   const [draftError, setDraftError] = useState("");
@@ -126,7 +134,7 @@ export default function RewardsScreen() {
       setConfirm("discard");
     else {
       Keyboard.dismiss();
-      setSheet(null);
+      setSheetOpen(false);
     }
   };
   const perform = async (
@@ -180,7 +188,7 @@ export default function RewardsScreen() {
     void perform(async () => {
       await createReward(draft.title!, draft.cost!);
       Keyboard.dismiss();
-      setSheet(null);
+      setSheetOpen(false);
       setNotice("Personal reward saved.");
     }, "sheet");
   };
@@ -202,7 +210,7 @@ export default function RewardsScreen() {
           );
         setNotice(`Redeemed · ${result.reward_title ?? reward.title}`);
       }
-      setSheet(null);
+      setSheetOpen(false);
     }, "sheet");
   };
   return (
@@ -210,6 +218,7 @@ export default function RewardsScreen() {
       title="Rewards"
       subtitle="Recognise the effort you’ve earned."
       back
+      animateTransition
     >
       <View style={p.card}>
         <Text style={p.label}>YOUR MILESTONES</Text>
@@ -255,7 +264,7 @@ export default function RewardsScreen() {
               key={m.id}
               accessibilityRole="button"
               accessibilityLabel={`${m.title}, ${m.unlocked ? "earned" : "in progress"}. View milestone`}
-              onPress={() => setSheet({ kind: "milestone", id: m.id })}
+              onPress={() => openSheet({ kind: "milestone", id: m.id })}
               style={[p.card, { padding: 16 }]}
             >
               <View style={p.inline}>
@@ -382,7 +391,7 @@ export default function RewardsScreen() {
             style={[p.inline, { paddingVertical: 12 }]}
             onPress={() => {
               setDraftError("");
-              setSheet({ kind: "reward", reward });
+              openSheet({ kind: "reward", reward });
             }}
           >
             <Ionicons name="gift-outline" size={22} color={colors.accent} />
@@ -412,14 +421,23 @@ export default function RewardsScreen() {
             setTitle("");
             setCost("300");
             setDraftError("");
-            setSheet({ kind: "create" });
+            openSheet({ kind: "create" });
           }}
         />
       </View>
       <AppSheet
-        visible={sheet !== null}
+        visible={sheetOpen}
+        onDismiss={() => {
+          sheetLifecycle.current = false;
+          setSheet(null);
+        }}
+        compact
         onRequestClose={close}
-        guardDismiss={sheet?.kind !== "milestone"}
+        guardDismiss={
+          busy ||
+          !!confirm ||
+          (sheet?.kind === "create" && (!!title.trim() || cost !== "300"))
+        }
         label="Reward details"
         header={
           <View style={p.sheetHeader}>
@@ -465,7 +483,7 @@ export default function RewardsScreen() {
                 if (confirm === "discard") {
                   setConfirm(null);
                   Keyboard.dismiss();
-                  setSheet(null);
+                  setSheetOpen(false);
                 } else mutateReward(confirm);
               }}
             />

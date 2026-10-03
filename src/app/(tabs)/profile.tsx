@@ -20,25 +20,20 @@ import {
 import { colors } from "../../constants/theme";
 import { useUser } from "../../context/UserContext";
 import { useCharacterData } from "../../hooks/useCharacterData";
-import {
-  ATTRIBUTES,
-  characterAttributes,
-  earnedMilestones,
-  type AreaMapping,
-} from "../../utils/characterGrowth";
+import { earnedMilestones, lifeAreaGrowth } from "../../utils/characterGrowth";
 import { durationLabel } from "../../utils/progressAnalytics";
 
 const AVATARS = ["🧙‍♂️", "🧝‍♂️", "🏋️", "🧑‍💻", "🎨", "🥷", "🤖", "🌱", "⭐", "🐱"];
 export default function ProfileScreen() {
   const router = useRouter();
   const { profile, updateProfile, reloadProfile } = useUser();
-  const { data, loading, error, refresh, saveMapping } = useCharacterData();
-  const [sheet, setSheet] = useState<"identity" | "areas" | null>(null);
+  const { data, loading, error, refresh } = useCharacterData();
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("");
-  const [mapping, setMapping] = useState<AreaMapping>({});
   const [saving, setSaving] = useState(false);
   const lock = useRef(false);
+  const sheetClosing = useRef(false);
   const [saveError, setSaveError] = useState("");
   const [discard, setDiscard] = useState(false);
   useFocusEffect(
@@ -46,35 +41,30 @@ export default function ProfileScreen() {
       void reloadProfile();
     }, [reloadProfile]),
   );
-  const attributes = characterAttributes(
-    data?.areas ?? [],
-    data?.mapping ?? {},
-  );
+  const areas = (data?.areas ?? []).map(lifeAreaGrowth);
   const totals = earnedMilestones(data?.sessions ?? [], profile.timezone);
   const required = Math.floor(100 * Math.pow(Math.max(1, profile.level), 1.5));
-  const open = (kind: "identity" | "areas") => {
+  const open = () => {
+    if (sheetClosing.current) return;
     setName(profile.username);
     setAvatar(profile.avatar);
-    setMapping(data?.mapping ?? {});
     setSaveError("");
     setDiscard(false);
-    setSheet(kind);
+    setSheetOpen(true);
   };
-  const dirty =
-    sheet === "identity"
-      ? name.trim() !== profile.username || avatar !== profile.avatar
-      : JSON.stringify(mapping) !== JSON.stringify(data?.mapping ?? {});
+  const dirty = name.trim() !== profile.username || avatar !== profile.avatar;
   const close = () => {
     if (lock.current) return;
     if (dirty) setDiscard(true);
     else {
       Keyboard.dismiss();
-      setSheet(null);
+      sheetClosing.current = true;
+      setSheetOpen(false);
     }
   };
   const save = async () => {
     if (lock.current) return;
-    if (sheet === "identity" && (!name.trim() || name.trim().length > 40)) {
+    if (!name.trim() || name.trim().length > 40) {
       setSaveError("Enter a name between 1 and 40 characters.");
       return;
     }
@@ -82,11 +72,10 @@ export default function ProfileScreen() {
     setSaving(true);
     setSaveError("");
     try {
-      if (sheet === "identity")
-        await updateProfile(name.trim(), avatar, profile.class_title);
-      else await saveMapping(mapping);
+      await updateProfile(name.trim(), avatar, profile.class_title);
       Keyboard.dismiss();
-      setSheet(null);
+      sheetClosing.current = true;
+      setSheetOpen(false);
     } catch {
       setSaveError(
         "Couldn’t save your changes. Your draft is here—please try again.",
@@ -120,9 +109,14 @@ export default function ProfileScreen() {
         </View>
         <CharacterPortrait
           avatar={profile.avatar}
-          strength={attributes[0].level}
-          developed={attributes.filter((a) => a.total > 0).length}
+          level={profile.level}
+          developed={
+            areas.filter((area) => area.level > 1 || area.current_xp > 0).length
+          }
         />
+        <Text style={[p.caption, { textAlign: "center" }]}>
+          Tap your character to say hello.
+        </Text>
         <View style={{ alignItems: "center", gap: 6 }}>
           <Text style={[p.title, { fontSize: 26 }]}>{profile.username}</Text>
           <Text style={p.body}>Built one session at a time.</Text>
@@ -131,11 +125,7 @@ export default function ProfileScreen() {
         <Text style={p.caption}>
           {profile.current_xp} / {required} XP to level {profile.level + 1}
         </Text>
-        <PersonalButton
-          title="Personalise profile"
-          secondary
-          onPress={() => open("identity")}
-        />
+        <PersonalButton title="Personalise profile" secondary onPress={open} />
       </View>
       {error && (
         <View style={p.card}>
@@ -154,58 +144,34 @@ export default function ProfileScreen() {
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
       <View style={p.card}>
-        <View style={p.inline}>
-          <Text style={[p.title, p.flex]}>Your attributes</Text>
-          <Pressable
-            disabled={!data}
-            accessibilityRole="button"
-            accessibilityLabel="Connect Life areas to attributes"
-            onPress={() => open("areas")}
-            style={p.pill}
-          >
-            <Text style={p.label}>Connect areas</Text>
-          </Pressable>
-        </View>
+        <Text style={p.title}>Your growth</Text>
         <Text style={p.body}>
-          Choose what each Life area develops. Your earned XP stays with its
-          area.
+          Your Life areas are your character’s stats. Complete sessions in an
+          area to grow its level.
         </Text>
-        {attributes.map((attribute) => (
-          <View key={attribute.id} style={{ gap: 9, paddingVertical: 8 }}>
+        {areas.map((area) => (
+          <View key={area.id} style={{ gap: 9, paddingVertical: 8 }}>
             <View style={p.inline}>
-              <Ionicons
-                name={attribute.icon}
-                size={21}
-                color={attribute.color}
-              />
-              <View style={p.flex}>
-                <Text style={p.rowTitle}>{attribute.title}</Text>
-                <Text style={p.caption}>
-                  {attribute.areas.length
-                    ? attribute.areas.map((a) => a.title).join(" · ")
-                    : "No Life areas connected"}
-                </Text>
+              <View style={p.icon}>
+                <Ionicons name="leaf-outline" size={21} color={colors.accent} />
               </View>
-              <Text style={p.rowTitle}>Lv {attribute.level}</Text>
+              <Text style={[p.rowTitle, p.flex]}>{area.title}</Text>
+              <Text style={p.rowTitle}>Lv {area.level}</Text>
             </View>
-            <Meter
-              value={attribute.current / attribute.required}
-              color={attribute.color}
-            />
+            <Meter value={area.current / area.required} />
             <Text style={p.caption}>
-              {attribute.current} / {attribute.required} XP
+              {area.current} / {area.required} XP to the next level
             </Text>
           </View>
         ))}
-        {data?.areas.some((a) => !data.mapping[String(a.id)]) && (
-          <Text style={p.caption}>
-            Some areas are not connected yet. Their XP is saved and will appear
-            when you connect them.
+        {data && areas.length === 0 && (
+          <Text style={p.body}>
+            Your overall level still grows. Life areas will appear here when
+            available.
           </Text>
         )}
         <Text style={p.caption}>
-          Attributes reflect logged effort, rather than measured fitness or
-          ability.
+          Levels reflect focused effort you’ve logged.
         </Text>
       </View>
       {data && (
@@ -224,12 +190,6 @@ export default function ProfileScreen() {
           <Text style={p.body}>
             {durationLabel(totals.seconds)} invested across your life.
           </Text>
-          <PersonalRow
-            icon="analytics-outline"
-            title="Explore your progress"
-            subtitle="Time, consistency and Life areas"
-            onPress={() => router.navigate("/progress")}
-          />
         </View>
       )}
       <View style={p.card}>
@@ -247,24 +207,34 @@ export default function ProfileScreen() {
         />
       </View>
       <AppSheet
-        visible={sheet !== null}
+        visible={sheetOpen}
         onRequestClose={close}
-        guardDismiss
-        label={
-          sheet === "identity" ? "Personalise profile" : "Connect Life areas"
-        }
+        onDismiss={() => {
+          sheetClosing.current = false;
+        }}
+        guardDismiss={dirty || saving || discard}
+        compact
+        label="Personalise profile"
         header={
           <View style={p.sheetHeader}>
-            <Text style={p.title}>
-              {sheet === "identity"
-                ? "Make it yours"
-                : "Connect your Life areas"}
-            </Text>
-            <Text style={p.body}>
-              {sheet === "identity"
-                ? "Your name and character badge."
-                : "Choose the attribute each area represents."}
-            </Text>
+            <Text style={p.title}>Make it yours</Text>
+            <Text style={p.body}>Your name and character badge.</Text>
+          </View>
+        }
+        footer={
+          <View
+            style={{
+              paddingHorizontal: 22,
+              paddingTop: 12,
+              paddingBottom: 24,
+              backgroundColor: colors.surface,
+            }}
+          >
+            <PersonalButton
+              title={saving ? "Saving…" : "Save changes"}
+              disabled={saving}
+              onPress={() => void save()}
+            />
           </View>
         }
         overlay={
@@ -278,7 +248,8 @@ export default function ProfileScreen() {
               onConfirm={() => {
                 setDiscard(false);
                 Keyboard.dismiss();
-                setSheet(null);
+                sheetClosing.current = true;
+                setSheetOpen(false);
               }}
             />
           ) : undefined
@@ -286,121 +257,47 @@ export default function ProfileScreen() {
       >
         <BottomSheetScrollView
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={p.sheetBody}
+          enableFooterMarginAdjustment
+          contentContainerStyle={[p.sheetBody, { paddingBottom: 12 }]}
         >
-          {sheet === "identity" ? (
-            <>
-              <Text style={p.rowTitle}>Name</Text>
-              <BottomSheetTextInput
-                accessibilityLabel="Profile name"
-                editable={!saving}
-                style={p.input}
-                maxLength={40}
-                value={name}
-                onChangeText={setName}
-              />
-              <Text style={p.rowTitle}>Character badge</Text>
-              <View style={[p.inline, { flexWrap: "wrap" }]}>
-                {AVATARS.map((item) => (
-                  <SheetButton
-                    key={item}
-                    disabled={saving}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Choose ${item}`}
-                    accessibilityState={{ selected: avatar === item }}
-                    onPress={() => setAvatar(item)}
-                    style={[
-                      p.pill,
-                      {
-                        padding: 14,
-                        borderWidth: 1,
-                        borderColor:
-                          avatar === item ? colors.accent : "transparent",
-                      },
-                    ]}
-                  >
-                    <Text style={{ fontSize: 26 }}>{item}</Text>
-                  </SheetButton>
-                ))}
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={p.caption}>
-                These connections are saved for this account on this device.
-                They don’t change quests, XP or rewards.
-              </Text>
-              {data?.areas.length === 0 && (
-                <Text style={p.body}>
-                  No Life areas yet. Your sessions can still grow your overall
-                  level.
-                </Text>
-              )}
-              {data?.areas.map((area) => (
-                <View key={area.id} style={{ gap: 10 }}>
-                  <Text style={p.rowTitle}>
-                    {area.title} · Area level {area.level}
-                  </Text>
-                  <View style={[p.inline, { flexWrap: "wrap" }]}>
-                    {ATTRIBUTES.map((a) => (
-                      <SheetButton
-                        key={a.id}
-                        disabled={saving}
-                        accessibilityRole="button"
-                        accessibilityState={{
-                          selected: mapping[String(area.id)] === a.id,
-                        }}
-                        onPress={() =>
-                          setMapping((current) => ({
-                            ...current,
-                            [String(area.id)]: a.id,
-                          }))
-                        }
-                        style={[
-                          p.pill,
-                          {
-                            borderWidth: 1,
-                            borderColor:
-                              mapping[String(area.id)] === a.id
-                                ? a.color
-                                : "transparent",
-                          },
-                        ]}
-                      >
-                        <Text style={[p.caption, { color: a.color }]}>
-                          {a.title}
-                        </Text>
-                      </SheetButton>
-                    ))}
-                    <SheetButton
-                      disabled={saving}
-                      onPress={() =>
-                        setMapping((current) => {
-                          const next = { ...current };
-                          delete next[String(area.id)];
-                          return next;
-                        })
-                      }
-                      accessibilityRole="button"
-                      style={p.pill}
-                    >
-                      <Text style={p.caption}>Unassigned</Text>
-                    </SheetButton>
-                  </View>
-                </View>
-              ))}
-            </>
-          )}
+          <Text style={p.rowTitle}>Name</Text>
+          <BottomSheetTextInput
+            accessibilityLabel="Profile name"
+            editable={!saving}
+            style={p.input}
+            maxLength={40}
+            value={name}
+            onChangeText={setName}
+          />
+          <Text style={p.rowTitle}>Character badge</Text>
+          <View style={[p.inline, { flexWrap: "wrap" }]}>
+            {AVATARS.map((item) => (
+              <SheetButton
+                key={item}
+                disabled={saving}
+                accessibilityRole="button"
+                accessibilityLabel={`Choose ${item}`}
+                accessibilityState={{ selected: avatar === item }}
+                onPress={() => setAvatar(item)}
+                style={[
+                  p.pill,
+                  {
+                    padding: 14,
+                    borderWidth: 1,
+                    borderColor:
+                      avatar === item ? colors.accent : "transparent",
+                  },
+                ]}
+              >
+                <Text style={{ fontSize: 26 }}>{item}</Text>
+              </SheetButton>
+            ))}
+          </View>
           {!!saveError && (
             <Text style={p.error} accessibilityRole="alert">
               {saveError}
             </Text>
           )}
-          <PersonalButton
-            title={saving ? "Saving…" : "Save changes"}
-            disabled={saving}
-            onPress={() => void save()}
-          />
         </BottomSheetScrollView>
       </AppSheet>
     </PersonalPage>

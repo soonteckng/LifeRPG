@@ -81,6 +81,7 @@ export default function SettingsScreen() {
       title="Settings"
       subtitle="Make focus feel right for you."
       back
+      animateTransition
     >
       <View style={p.card}>
         <Text style={p.label}>FOCUS & FEEDBACK</Text>
