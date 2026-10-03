@@ -156,6 +156,7 @@ const text = (node) =>
   typeof node === "string" ? node : (node.children ?? []).map(text).join("");
 async function screen(file, mocks) {
   const Component = load(file, {
+    "expo": { isRunningInExpoGo: () => false },
     "react-native": Native,
     "react-native-safe-area-context": { SafeAreaView: host("Safe") },
     "@expo/vector-icons": { Ionicons: host("Icon") },
@@ -722,4 +723,42 @@ test("auth restoration cannot overwrite a newer sign-in event; logout is device-
   } finally {
     await act(async () => renderer.unmount());
   }
+});
+
+ test("Android Expo Go never evaluates the notification package entry", () => {
+  const api = load("src/utils/sessionNotifications.ts", {
+    expo: { isRunningInExpoGo: () => true },
+    "react-native": { Platform: { OS: "android" } },
+    // If the loader evaluates this entry, the test fails immediately.
+    get "expo-notifications"() { throw Error("Push entry was evaluated"); },
+  });
+  assert.equal(api.getSessionNotifications(), null);
+});
+test("development/release builds load and reuse the notification API", () => {
+  let imports = 0;
+  const notifications = { getPermissionsAsync: async () => ({ granted: true }) };
+  const api = load("src/utils/sessionNotifications.ts", {
+    expo: { isRunningInExpoGo: () => false },
+    "react-native": { Platform: { OS: "android" } },
+    get "expo-notifications"() { imports++; return notifications; },
+  });
+  assert.equal(api.getSessionNotifications(), notifications);
+  assert.equal(api.getSessionNotifications(), notifications);
+  assert.equal(imports, 1);
+});
+test("Settings renders in Expo Go even when notification import would throw", async () => {
+  const ui = await screen("src/app/settings.tsx", {
+    ...sheetMocks,
+    expo: { isRunningInExpoGo: () => true },
+    "expo-router": { useRouter: () => ({ navigate() {} }) },
+    "../context/UserContext": { useUser: () => ({ profile: { username: "Soon", timezone: "Asia/Kuala_Lumpur" } }) },
+    "../context/AuthContext": { useAuth: () => ({ user: { email: "a@b.com" }, signOut: async () => ({}) }) },
+    "../context/TimerContext": { useTimer: () => ({}) },
+    "../utils/sessionNotifications": { getSessionNotifications: () => null },
+  });
+  try {
+    const row = ui.renderer.root.findAllByType("Button").find(b => text(b).startsWith("Notifications"));
+    await act(async () => row.props.onPress());
+    assert.match(ui.text(), /installed EAS app/);
+  } finally { await ui.cleanup(); }
 });

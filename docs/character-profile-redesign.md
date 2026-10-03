@@ -124,3 +124,13 @@ Use a test account; do not delete a real account or erase earned progress.
 Widgets and iOS Live Activities / Android live session notifications need a
 separate native implementation and new EAS builds. Standard completion alerts
 are retained and must continue alongside those features when they are added.
+
+## Expo Go notification import fix
+
+Android Expo Go skips the notification package entry in the shared runtime loader.
+Settings loads without evaluating that entry, and explains that notification checks
+require an installed/development build. This preview deliberately does not schedule
+session alerts. The Expo Go detector distinguishes actual development builds, which
+still load notification APIs. iOS and release builds keep the supported API path.
+Three regression tests cover skipping the package, caching its API in builds and
+Settings fallback. Total suite: 87 passing tests. No package versions were changed.

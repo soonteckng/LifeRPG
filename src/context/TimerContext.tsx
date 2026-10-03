@@ -1,3 +1,4 @@
+import { getSessionNotifications } from "../utils/sessionNotifications";
 import * as Haptics from "expo-haptics";
 import React, {
   createContext,
@@ -19,15 +20,11 @@ import {
 import { useUser } from "./UserContext";
 import { validSessionSeconds } from "../utils/sessionSetup";
 
-// Dynamically load expo-notifications to prevent Expo Go crashes
-let Notifications: any = null;
+// Optional notification API must never block timer or route loading.
+const Notifications: any = getSessionNotifications();
 let completionSoundEnabled = true;
 
 try {
-  // Optional in Expo Go; notification failures must not block the timer.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  Notifications = require("expo-notifications");
-
   if (
     Notifications &&
     typeof Notifications.setNotificationHandler === "function"
@@ -43,7 +40,7 @@ try {
     });
   }
 } catch {
-  console.warn("expo-notifications module not found or failed to load.");
+  console.warn("Session notification handler could not be configured.");
 }
 
 const ONGOING_NOTIFICATION_ID = "life-rpg-ongoing-timer";

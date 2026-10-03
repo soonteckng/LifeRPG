@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Linking, Switch, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import * as Notifications from "expo-notifications";
+import { getSessionNotifications } from "../utils/sessionNotifications";
 import AppSheet from "../components/AppSheet";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import {
@@ -40,7 +40,12 @@ export default function SettingsScreen() {
     setError("");
     setSheet("notifications");
     try {
-      const result = await Notifications.getPermissionsAsync();
+      const notifications = getSessionNotifications();
+      if (!notifications) {
+        setNotificationStatus("Notification checks are unavailable in this preview. Test session alerts in your installed EAS app or a development build.");
+        return;
+      }
+      const result = await notifications.getPermissionsAsync();
       setNotificationStatus(
         result.granted
           ? "Notifications are allowed on this device."

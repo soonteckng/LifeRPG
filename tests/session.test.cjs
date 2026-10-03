@@ -55,6 +55,7 @@ async function providerSetup(overrides = {}, notifications = null) {
   const reloadProfile = async () => true;
   const { TimerProvider, useTimer } = load("src/context/TimerContext.tsx", {
     "react-native": { Platform: { OS: "android" }, AppState: { addEventListener: (_, fn) => { foreground=fn; return { remove() {} }; } } },
+    "expo": { isRunningInExpoGo: () => false },
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
     "../services/sessionService": service,
@@ -651,6 +652,7 @@ test("typed input and presets share applied seconds while linked quests stay rea
   assert.equal(ui.button("Edit duration"),undefined);
   await ui.cleanup();
 });
+
 
 
 
