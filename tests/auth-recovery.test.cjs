@@ -232,16 +232,18 @@ const native = {
   ActivityIndicator: host("Spinner"), Platform: { OS: "android" },
 };
 const personalUI = { p: {}, PersonalButton: host("Button") };
-async function recoveryScreen(auth, props = {}) {
+async function recoveryScreen(auth, props = {}, options = {}) {
   const Component = load("src/components/RecoveryScreen.tsx", {
-    "react-native": native,
-    "react-native-safe-area-context": { SafeAreaView: host("Safe") },
+    "react-native": { ...native, Platform: { OS: options.os ?? "android" } },
+    "react-native-safe-area-context": { SafeAreaView: host("Safe"), useSafeAreaInsets: () => ({ top: 24, bottom: 34, left: 0, right: 0 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "./PersonalUI": personalUI,
     "../context/AuthContext": { useAuth: () => auth },
   }).default;
   let renderer;
-  await act(async () => { renderer = create(React.createElement(Component, props)); });
+  await act(async () => { renderer = create(React.createElement(Component, props), {
+    createNodeMock: element => element.type === "Scroll" ? { scrollTo: options.scrollTo ?? (() => {}) } : null,
+  }); });
   return {
     renderer,
     input: async (label, value) => act(async () => renderer.root.findAllByType("Input").find(n => n.props.accessibilityLabel === label).props.onChangeText(value)),
@@ -286,6 +288,80 @@ test("new password screen validates confirmation and preserves drafts after prov
     assert.ok(ui.button("Request another recovery email"));
   } finally { await ui.cleanup(); }
 });
+
+test("recovery errors are inline once and reveal their field through keyboard and text layout changes", async () => {
+  for (const os of ["android", "ios"]) {
+    let calls = 0;
+    const scrolls = [];
+    const ui = await recoveryScreen({ recovery: "ready", saveRecoveryPassword: async () => {
+      calls++; throw { status: 500 };
+    } }, {}, { os, scrollTo: value => scrolls.push(value) });
+    const input = label => ui.renderer.root.findAllByType("Input").find(n => n.props.accessibilityLabel === label);
+    const field = label => {
+      let node = input(label).parent;
+      while (node && !(node.type === "View" && node.props.onLayout)) node = node.parent;
+      return node;
+    };
+    const texts = message => ui.renderer.root.findAllByType("Text").filter(n => n.props.children === message);
+    const place = (node, y, height) => node.props.onLayout({ nativeEvent: { layout: { x: 0, y, width: 272, height } } });
+    try {
+      const keyboard = ui.renderer.root.findByType("Keyboard");
+      assert.equal(keyboard.props.behavior, os === "ios" ? "padding" : "height");
+      assert.equal(keyboard.props.keyboardVerticalOffset, 24);
+      const scroll = ui.renderer.root.findByType("Scroll");
+      assert.equal(scroll.props.keyboardShouldPersistTaps, "handled");
+      assert.equal(scroll.props.keyboardDismissMode, "none");
+      assert.equal(scroll.props.contentContainerStyle.flexGrow, 1);
+      await ui.input("New password", "short");
+      await ui.input("Confirm new password", "short");
+      await act(async () => {
+        place(field("New password"), 320, 50);
+        place(field("Confirm new password"), 386, 50);
+        input("Confirm new password").props.onFocus();
+        input("Confirm new password").props.onSubmitEditing();
+      });
+      assert.equal(calls, 0);
+      const short = texts("Use at least 8 characters for your new password.");
+      assert.equal(short.length, 1);
+      assert.ok(field("New password").findAllByType("Text").includes(short[0]));
+      assert.equal(input("New password").props.value, "short");
+      assert.equal(input("Confirm new password").props.submitBehavior, "submit");
+      assert.equal(scrolls.at(-1).y, 308);
+      // Simulate a small keyboard viewport and a reflowed, multi-line error.
+      // These callbacks verify scroll targeting, not native pixel geometry.
+      await act(async () => {
+        place(field("New password"), 250, 150);
+        scroll.props.onLayout({ nativeEvent: { layout: { height: 180 } } });
+        scroll.props.onContentSizeChange(272, 1000);
+      });
+      assert.equal(scrolls.at(-1).y, 238);
+      assert.equal(short[0].props.numberOfLines, undefined);
+      await ui.input("New password", "long-password");
+      await ui.input("Confirm new password", "different");
+      await act(async () => ui.button("Save new password").props.onPress());
+      assert.equal(calls, 0);
+      assert.equal(texts("Use at least 8 characters for your new password.").length, 0);
+      const mismatch = texts("Your passwords do not match.");
+      assert.equal(mismatch.length, 1);
+      assert.ok(field("Confirm new password").findAllByType("Text").includes(mismatch[0]));
+      assert.equal(scrolls.at(-1).y, 374);
+      await ui.input("Confirm new password", "long-password");
+      await act(async () => ui.button("Save new password").props.onPress());
+      assert.equal(calls, 1);
+      assert.equal(texts("Your passwords do not match.").length, 0);
+      const server = texts(recovery.recoveryError({ status: 500 }, true));
+      assert.equal(server.length, 1);
+      let row = server[0].parent;
+      while (row && !(row.type === "View" && row.props.onLayout)) row = row.parent;
+      assert.ok(row.findAllByType("Button").includes(ui.button("Save new password")));
+      await act(async () => place(row, 500, 200));
+      assert.equal(scrolls.at(-1).y, 488);
+      assert.equal(input("New password").props.value, "long-password");
+      assert.equal(input("Confirm new password").props.value, "long-password");
+      assert.equal(ui.button("Save new password").props.disabled, false);
+    } finally { await ui.cleanup(); }
+  }
+});
 test("visibility control keeps the same input value and restores focus with accessible labels", async () => {
   let focusCalls = 0;
   const Component = load("src/components/PasswordInput.tsx", {
@@ -295,12 +371,14 @@ test("visibility control keeps the same input value and restores focus with acce
   global.requestAnimationFrame = fn => { fn(); return 0; };
   let renderer;
   await act(async () => {
-    renderer = create(React.createElement(Component, { value: "typed-value", accessibilityLabel: "Password" }), {
+    renderer = create(React.createElement(Component, { value: "typed-value", accessibilityLabel: "Password", error: "Inline error" }), {
       createNodeMock: element => element.type === "Input" ? { isFocused: () => true, focus: () => { focusCalls++; } } : null,
     });
   });
   try {
     const input = renderer.root.findByType("Input");
+    assert.equal(renderer.root.findByType("Text").props.children, "Inline error");
+    assert.equal(input.parent.parent.findAllByType("Text").length, 0);
     assert.equal(input.props.secureTextEntry, true);
     await act(async () => {
       const button = renderer.root.findByType("Button");
