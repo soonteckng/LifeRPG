@@ -324,7 +324,7 @@ test("Progress rejects stale requests, preserves same-period data on failure and
 
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
-async function screenHarness({ empty = false } = {}) {
+async function screenHarness({ empty = false, historyFailure = false } = {}) {
   const today = dateKey(new Date(), TZ),
     stamp = new Date(Date.now() - 1000).toISOString();
   let refreshes = 0,
@@ -399,6 +399,7 @@ async function screenHarness({ empty = false } = {}) {
     "../../services/progressService": {
       getSessionHistory: async () => {
         historyCalls++;
+        if (historyFailure) throw Error("Offline");
         return { sessions: [session("historic", 60, stamp)], hasMore: false };
       },
     },
@@ -477,6 +478,28 @@ test("empty Progress explains how to begin and still makes full history accessib
     assert.match(ui.text(), /A fresh chapter/);
     await ui.press("View all");
     assert.equal(ui.historyCalls(), 1);
+  } finally {
+    await ui.cleanup();
+  }
+});
+
+test("a history failure does not suppress another day’s empty-state details", async () => {
+  const ui = await screenHarness({ empty: true, historyFailure: true });
+  try {
+    await ui.press("View all");
+    assert.match(ui.text(), /Couldn’t load sessions/);
+    await act(async () => {
+      ui.renderer.root.findByType("Sheet").props.onRequestClose();
+    });
+    await act(async () => {
+      ui.renderer.root.findByType("Sheet").props.onDismiss();
+    });
+    const day = ui.renderer.root
+      .findAllByType("Button")
+      .find((b) => b.props.accessibilityLabel?.includes("no sessions"));
+    await act(async () => day.props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+    assert.match(ui.text(), /No completed sessions/);
   } finally {
     await ui.cleanup();
   }

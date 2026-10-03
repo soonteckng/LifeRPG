@@ -997,21 +997,23 @@ export default function ProgressScreen() {
                   onPress={() => setSelectedSession(session)}
                 />
               ))}
-              {!detailSessions.length && !historyLoading && !historyError && (
-                <Empty
-                  icon="time-outline"
-                  title={
-                    activeDay?.future
-                      ? "Time ahead of you"
-                      : "No completed sessions"
-                  }
-                  body={
-                    activeDay?.future
-                      ? "Your next moments of focus will appear here."
-                      : "Each completed session will become part of your story."
-                  }
-                />
-              )}
+              {!detailSessions.length &&
+                (detail?.kind !== "history" ||
+                  (!historyLoading && !historyError)) && (
+                  <Empty
+                    icon="time-outline"
+                    title={
+                      activeDay?.future
+                        ? "Time ahead of you"
+                        : "No completed sessions"
+                    }
+                    body={
+                      activeDay?.future
+                        ? "Your next moments of focus will appear here."
+                        : "Each completed session will become part of your story."
+                    }
+                  />
+                )}
               {detail?.kind === "history" && (
                 <>
                   {historyLoading && (
