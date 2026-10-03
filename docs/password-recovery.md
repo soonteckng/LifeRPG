@@ -34,13 +34,23 @@ The Supabase client disables persistence/refresh only during server rendering so
 
 The temporary **DEVELOPMENT CALLBACK** display was removed from Forgot password at the user's request after their successful recovery report. Diagnostics belong here rather than in the form. The provider still uses the runtime's `Linking.createURL("auth/recovery")`, not a hardcoded tunnel host. If a freshly requested email reaches `http://localhost:3000`, verify the allowlist in project `msuelivxpsfizkddjjfg` matches the actual hostname callback and inspect the Reset Password template's anchor. The standard template should use `<a href="{{ .ConfirmationURL }}">Reset password</a>`; a SiteURL-based custom anchor can send users to the fallback despite a correct allowlist. Do not substitute a bare RedirectTo anchor, which would omit authentication verification. Ask only for a credential-free development URL or template placeholder, never a real email URL/token.
 
-### Restarting development versus installed builds
+### Normal LAN Expo Go UI testing
+
+```sh
+npx expo start --go --lan
+```
+
+Scan the QR on the same reachable network. Normal launch, login, registration and UI testing do not require a tunnel. The LAN restriction is checked only when requesting recovery email; it does not disable normal authenticated use. Android Expo Go avoids initializing the optional notification package. Local automated tests cover those guards, but QR scanning/login still needs a phone check.
+
+### Optional Expo Go tunnel recovery
 
 For this Expo Go recovery setup, start `npx expo start --go --tunnel --port 8082` and scan that server's QR code. Plain `npx expo start` normally returns to a LAN IP connection: ordinary app use/sign-in remains available, but this project's recovery callback is rejected by Supabase. The guard prevents sending another misleading reset email in that case. The temporary tunnel host can change after restart. If it changes, add the new exact `exp://<hostname>/--/auth/recovery` in Supabase before requesting a fresh email, and keep the tunnel running until recovery is complete. Do not assume an old email can reach a stopped or changed development server.
 
 The current server's credential-free launch URL can be read from the terminal QR text or `http://localhost:8082/_expo/open?platform=android&runtime=expo` (GET only; use the actual Metro port). For Expo Go append `/--/auth/recovery` to the launch URL to form the callback. Do not obtain a callback by copying a token-bearing email URL.
 
-An installed Android/iOS build uses the configured stable scheme `liferpg://auth/recovery`. Add that exact URI to Supabase and verify a build containing the scheme registers it with the OS. The same reset-email/session/new-password provider flow applies without Metro, QR scanning or a tunnel. Installed/native flow remains untested; the user's successful report applies to their Expo Go tunnel test only. A custom scheme requires the app to be installed; there is no automatic installation fallback. See [Expo 57 Linking](https://docs.expo.dev/versions/v57.0.0/sdk/linking/) and [Supabase native deep linking](https://supabase.com/docs/guides/auth/native-mobile-deep-linking).
+### Installed-app recovery without Metro
+
+An installed Android/iOS build uses the configured stable scheme `liferpg://auth/recovery`. Add that exact URI to Supabase and verify a build containing the scheme registers it with the OS. The same reset-email/session/new-password provider flow applies without Metro, QR scanning or a tunnel. Installed/native flow remains untested; the user's successful report applies to their Expo Go tunnel test only. A custom scheme requires the app to be installed; there is no automatic installation fallback. Current config introspection resolves the Android `liferpg` VIEW/BROWSABLE filter and iOS URL scheme; cold/warm callback tests are mocked, not OS/mail evidence. See [installed Android handover](installed-android-testing.md), [Expo 57 Linking](https://docs.expo.dev/versions/v57.0.0/sdk/linking/) and [Supabase native deep linking](https://supabase.com/docs/guides/auth/native-mobile-deep-linking).
 
 Follow-up on 2026-10-04: the saved LAN entry was visible in the user's screenshot but direct invalid-token probes still fell back to localhost. Current [Supabase Auth redirect validation](https://github.com/supabase/auth/blob/master/internal/utilities/request.go) rejects non-loopback IP hosts before matching the allowlist. The source permits same-Site-URL-origin redirects separately; this project's Site URL is localhost, so that exception does not cover its LAN Expo Go URL. The app now stops Expo Go non-loopback IPv4 reset requests before sending email, with instructions to use `--tunnel` or a development build. Tests verify hostname tunnel and installed-build requests still submit their exact callback. The synthetic invalid-token probe tests redirect routing only; it never sends email or modifies an account, and does not prove a real recovery flow succeeds.
 
@@ -73,7 +83,7 @@ Use an existing test account with known saved data; never delete/recreate an acc
 
 Tests cover callback target/type validation, real provider method wiring through mocks, cold/warm callbacks, actual PASSWORD_RECOVERY handling, PKCE event gating, invalid/expired links, persistence failures/restarts, account changes, duplicate requests/saves, save/logout failures, neutral confirmation, validation/draft retention, visibility/focus behavior, and root-gate priority. These tests are not live Supabase/email/device tests.
 
-Full-repository lint has an existing `react-hooks/set-state-in-effect` error at `src/components/DurationPicker.tsx:158`; authentication changes do not modify that file.
+The earlier `DurationPicker.tsx:158` full-lint failure has been resolved in the installed-app readiness work. Full lint, TypeScript and current test evidence are recorded in [installed Android handover](installed-android-testing.md); the checks below are historical.
 
 Validation on 2026-10-03:
 

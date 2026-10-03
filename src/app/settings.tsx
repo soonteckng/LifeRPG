@@ -8,10 +8,11 @@ import { colors } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useTimer } from "../context/TimerContext";
-import { getDailyGoalSettings, scheduleDailyGoal, type DailyGoalSettings } from "../services/dailyGoalService";
+import { getDailyGoalSettings, missingGoalAPI, scheduleDailyGoal, type DailyGoalSettings } from "../services/dailyGoalService";
 import { enableNotifications, readNotificationPermission, type NotificationPermission } from "../services/notificationPermissionService";
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { dateKey } from "../utils/progressAnalytics";
+import { getTodayProgress } from "../services/dailyProgressService";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -22,6 +23,7 @@ export default function SettingsScreen() {
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [goalData, setGoalData] = useState<DailyGoalSettings | null>(null);
   const [goalError, setGoalError] = useState("");
+  const [savedTodayGoal, setSavedTodayGoal] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [savedGoal, setSavedGoal] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -32,10 +34,18 @@ export default function SettingsScreen() {
     try {
       const data = await getDailyGoalSettings();
       if (request === goalGeneration.current) { setGoalData(data); setGoalError(""); }
-    } catch {
-      if (request === goalGeneration.current) setGoalError("Could not load daily goal settings. Your current goal is unchanged. Try again later.");
+    } catch (failure) {
+      // Stored daily targets remain authoritative even without the editing API.
+      const today = await getTodayProgress(profile.timezone).catch(() => null);
+      if (request === goalGeneration.current) {
+        setSavedTodayGoal(today?.goal_minutes ?? null);
+        setGoalData(null);
+        setGoalError(missingGoalAPI(failure)
+          ? "Your daily goal is read-only. Goal changes are not available yet."
+          : "Could not check goal editing availability. Your current goal is unchanged.");
+      }
     }
-  }, []);
+  }, [profile.timezone]);
   const refreshPermission = useCallback(async () => {
     const request = ++permissionGeneration.current;
     const result = await readNotificationPermission();
@@ -63,7 +73,7 @@ export default function SettingsScreen() {
     catch { setError("Could not sign out. Check your connection and try again."); lock.current = false; setBusy(false); }
   };
   const saveGoal = async () => {
-    if (lock.current || !goalData) return;
+    if (lock.current || !goalData?.scheduling_available || goalError) return;
     const minutes = parseDailyGoal(draft), validation = validateDailyGoal(minutes);
     if (validation) { setError(validation); return; }
     lock.current = true; setBusy(true); setError("");
@@ -71,7 +81,12 @@ export default function SettingsScreen() {
       const result = await scheduleDailyGoal(minutes);
       goalGeneration.current++; setGoalData(result); setGoalError("");
       setSavedGoal(`Your ${result.next_goal_minutes}-minute goal starts on ${result.next_effective_date} in ${result.timezone}. Today's target and previous achievements stay unchanged.`);
-    } catch { setError("Could not schedule your goal. Your current goal is unchanged. Check your connection and try again later."); }
+    } catch (failure) {
+      if (missingGoalAPI(failure)) {
+        setGoalData(null);
+        setGoalError("Your daily goal is read-only. Goal changes are not available yet.");
+      } else setError("Could not schedule your goal. Your current goal is unchanged. Check your connection and try again later.");
+    }
     finally { lock.current = false; setBusy(false); }
   };
   const notificationAction = async () => {
@@ -90,13 +105,15 @@ export default function SettingsScreen() {
   };
   const open = (next: typeof sheet) => {
     if (lock.current) return;
+    if (next === "goal" && (!goalData?.scheduling_available || goalError)) return;
     setError(""); setSheet(next);
     if (next === "goal") { setDraft(String(goalData?.next_goal_minutes ?? profile.daily_goal_minutes)); setSavedGoal(""); void loadGoal(); }
     if (next === "notifications") void refreshPermission();
   };
-  const goalSummary = goalError ? "Could not load goal settings" : goalData
+  const canEditGoal = !!goalData?.scheduling_available && !goalError;
+  const goalSummary = goalData
     ? `Today: ${goalData.today_goal_minutes} min${goalData.pending ? ` · ${goalData.next_goal_minutes} min from ${goalData.next_effective_date}` : ""}`
-    : "Loading goal settings...";
+    : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
   return (
     <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition>
       <View style={p.card}>
@@ -113,7 +130,8 @@ export default function SettingsScreen() {
       </View>
       <View style={p.card}>
         <Text style={p.label}>FOCUS & FEEDBACK</Text>
-        <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={() => open("goal")} />
+        <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
+        {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? "Your daily goal is read-only. Goal changes are not available yet." : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
         <PersonalRow icon="volume-medium-outline" title="Completion sound" subtitle="Sound for the session notification"
           trailing={<Switch accessibilityLabel="Completion sound" value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{ false: "#343B4E", true: colors.accentFill }} />} />
@@ -142,13 +160,13 @@ export default function SettingsScreen() {
             <PersonalButton title={busy ? "Signing out..." : "Sign out"} disabled={busy || sessionBlocksLogout} onPress={() => void logout()} />
             <PersonalButton secondary title="Keep me signed in" disabled={busy} onPress={() => setSheet(null)} />
           </> : sheet === "goal" ? <>
-            {goalError ? <><Text style={p.error} accessibilityRole="alert">{goalError}</Text><PersonalButton title="Retry goal loading" onPress={() => void loadGoal()} /></>
+            {!canEditGoal ? <Text style={p.body} accessibilityRole="alert">{goalError || "Goal editing is currently unavailable. Your current goal is unchanged."}</Text>
               : !goalData ? <Text style={p.body}>Loading your goal...</Text> : <>
                 <Text style={p.body}>Today: {goalData.today_goal_minutes} minutes. Changes start on {goalData.next_effective_date} in {goalData.timezone}.</Text>
                 <Text style={p.body}>The target for today and historical achievements stay unchanged. Editing a goal does not award or remove rewards or streaks.</Text>
                 <BottomSheetTextInput accessibilityLabel="Daily focus goal in minutes" style={p.input} keyboardType="number-pad"
                   value={draft} onChangeText={value => { setDraft(value); setSavedGoal(""); }} editable={!busy} maxLength={3}
-                  placeholder="Minutes (1-480)" placeholderTextColor={colors.muted} />
+                  placeholder="Minutes (15-480)" placeholderTextColor={colors.muted} />
                 {!!savedGoal && <Text style={p.body} accessibilityRole="alert">{savedGoal}</Text>}
                 <PersonalButton title={busy ? "Saving..." : "Save daily goal"} disabled={busy || !!savedGoal} onPress={() => void saveGoal()} />
               </>}

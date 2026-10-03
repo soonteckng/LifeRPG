@@ -75,7 +75,7 @@ async function screen(file, mocks) {
     "react-native-safe-area-context": { SafeAreaView: host("Safe") },
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "../hooks/useReducedMotion": { useReducedMotion: () => true },
-    "../services/dailyGoalService": { getDailyGoalSettings: async () => ({ local_date: "2026-10-03", next_effective_date: "2026-10-04", today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false }), scheduleDailyGoal: async () => { throw Error("Not configured"); } },
+    "../services/dailyGoalService": { getDailyGoalSettings: async () => ({ local_date: "2026-10-03", next_effective_date: "2026-10-04", today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false, scheduling_available: true }), scheduleDailyGoal: async () => { throw Error("Not configured"); } },
     "./PersonalUI": UI,
     "../components/PersonalUI": UI,
     "./CharacterPortrait": host("Portrait"),
@@ -109,7 +109,7 @@ async function screen(file, mocks) {
 const goals = load("src/utils/dailyGoal.ts");
 const badges = load("src/constants/characterBadges.ts").CHARACTER_BADGES;
 const goalData = { user_id: "account", local_date: "2026-10-03", next_effective_date: "2026-10-04",
-  today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false };
+  today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false, scheduling_available: true };
 const defer = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 const sheets = {
   "../components/AppSheet": ({ header, children, ...props }) => React.createElement("Sheet", props, header, children),
@@ -130,8 +130,8 @@ async function settings(options = {}) {
     } }) },
     "../context/TimerContext": { useTimer: () => options.timer ?? {} },
     "../services/dailyGoalService": { getDailyGoalSettings: async () => {
-      if (options.loadError) throw Error("Unavailable"); return goalData;
-    }, scheduleDailyGoal: async minutes => {
+      if (options.loadError) throw { code: "PGRST202" }; return options.noCapability ? { ...goalData, scheduling_available: false } : goalData;
+    }, missingGoalAPI: e => e?.code === "PGRST202", scheduleDailyGoal: async minutes => {
       saveCalls++; if (options.wait) await options.wait;
       if (options.saveError) throw Error("Offline");
       return { ...goalData, next_goal_minutes: minutes, pending: true };
@@ -140,14 +140,15 @@ async function settings(options = {}) {
       readNotificationPermission: async () => { reads++; return options.permission?.(reads) ?? { label: "Not allowed", action: "enable", supported: true }; },
       enableNotifications: async () => { enableCalls++; return { label: "Allowed on this device", action: "settings", supported: true }; },
     },
+    "../services/dailyProgressService": { getTodayProgress: async () => options.savedGoal ? { goal_minutes: options.savedGoal } : null },
   });
   return { ...ui, calls: () => ({ saveCalls, signOutCalls, enableCalls, reads, phoneCalls, navigate }),
     foreground: async () => act(async () => foreground("active")) };
 }
 test("shared goal validation rejects fractional, empty and out-of-range targets", () => {
   for (const value of ["", " ", "1.5", "abc", "-30", "480.1"]) assert.ok(goals.validateDailyGoal(goals.parseDailyGoal(value)));
-  for (const value of [0, 481, NaN, 1.5]) assert.ok(goals.validateDailyGoal(value));
-  for (const value of [1, 30, 60, 90, 120, 480]) assert.equal(goals.validateDailyGoal(value), "");
+  for (const value of [0, 1, 14, 481, NaN, 1.5]) assert.ok(goals.validateDailyGoal(value));
+  for (const value of [15, 30, 60, 90, 120, 480]) assert.equal(goals.validateDailyGoal(value), "");
 });
 test("Settings starts with identity, separates logout and contains no inert Motion row", async () => {
   const ui = await settings();
@@ -194,11 +195,25 @@ test("goal save failure preserves the draft and exposes retry without a successf
     assert.equal(ui.renderer.root.findAllByType("Input")[0].props.value, "45");
   } finally { await ui.cleanup(); }
 });
-test("missing goal API exposes a read retry and cannot falsely save", async () => {
-  const ui = await settings({ loadError: true });
+test("missing or unconfirmed goal capability stays read-only without a broken editor", async () => {
+  for (const options of [{ loadError: true }, { noCapability: true }]) {
+    const ui = await settings(options);
+    try {
+      const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily focus goalToday: 60 min");
+      assert.equal(row.props.onPress, undefined);
+      assert.match(ui.text(), /read-only/);
+      assert.doesNotMatch(ui.text(), /Retry goal loading|Save daily goal/);
+      assert.equal(ui.calls().saveCalls, 0);
+      await ui.foreground();
+      assert.equal(ui.calls().saveCalls, 0);
+    } finally { await ui.cleanup(); }
+  }
+});
+test("Settings keeps the saved target for today when goal editing is unavailable", async () => {
+  const ui = await settings({ loadError: true, savedGoal: 90 });
   try {
-    await ui.press("Daily focus goalCould not load goal settings");
-    assert.match(ui.text(), /Retry goal loading/);
+    assert.match(ui.text(), /Today: 90 min/);
+    assert.match(ui.text(), /read-only/);
     assert.equal(ui.calls().saveCalls, 0);
   } finally { await ui.cleanup(); }
 });

@@ -4,7 +4,7 @@ begin;
 create table public.daily_goal_changes (
   user_id uuid not null references public.profiles(id) on delete cascade,
   effective_date date not null,
-  goal_minutes integer not null check (goal_minutes between 1 and 480),
+  goal_minutes integer not null check (goal_minutes between 15 and 480),
   updated_at timestamptz not null default statement_timestamp(),
   primary key (user_id, effective_date)
 );
@@ -33,8 +33,8 @@ begin
   if old.onboarding_completed and new.daily_goal_minutes is distinct from old.daily_goal_minutes then
     raise exception 'Use schedule_daily_goal after onboarding';
   end if;
-  if new.daily_goal_minutes is null or new.daily_goal_minutes < 1 or new.daily_goal_minutes > 480 then
-    raise exception 'Daily goal must be between 1 and 480 whole minutes';
+  if new.daily_goal_minutes is null or new.daily_goal_minutes < 15 or new.daily_goal_minutes > 480 then
+    raise exception 'Daily goal must be between 15 and 480 whole minutes';
   end if;
   return new;
 end;
@@ -77,6 +77,7 @@ begin
     'today_goal_minutes', public.daily_goal_for_date(v_today),
     'next_goal_minutes', public.daily_goal_for_date(v_today + 1),
     'next_effective_date', v_today + 1,
+    'scheduling_available', v_profile.onboarding_completed,
     'pending', exists(select 1 from public.daily_goal_changes
       where user_id = v_user and effective_date = v_today + 1)
   );
@@ -89,8 +90,8 @@ as $fn$
 declare v_user uuid := auth.uid(); v_profile public.profiles%rowtype; v_effective date;
 begin
   if v_user is null then raise exception 'Not authenticated'; end if;
-  if p_goal_minutes is null or p_goal_minutes < 1 or p_goal_minutes > 480 then
-    raise exception 'Daily goal must be between 1 and 480 whole minutes';
+  if p_goal_minutes is null or p_goal_minutes < 15 or p_goal_minutes > 480 then
+    raise exception 'Daily goal must be between 15 and 480 whole minutes';
   end if;
   -- Serialise with session completion, which also locks this profile.
   select * into v_profile from public.profiles where id = v_user for update;

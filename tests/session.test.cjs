@@ -454,7 +454,7 @@ test("header close/minimise uses stack back once without changing active state",
 test("foreground recovery and notifications retain exact remaining seconds",async()=>{
   const scheduled=[];
   const notifications={
-    AndroidImportance:{LOW:1,MAX:5},AndroidNotificationPriority:{MAX:5},
+    AndroidImportance:{LOW:1,MAX:5},AndroidNotificationPriority:{MAX:5},SchedulableTriggerInputTypes:{TIME_INTERVAL:"timeInterval"},
     getPermissionsAsync:async()=>({status:"granted"}),setNotificationHandler:()=>{},
     setNotificationChannelAsync:async()=>{},addNotificationResponseReceivedListener:()=>({remove(){}}),
     dismissNotificationAsync:async()=>{},cancelScheduledNotificationAsync:async()=>{},
@@ -719,4 +719,169 @@ test("mounting the session provider does not prompt for denied notification perm
   });
   try { assert.equal(prompts, 0); }
   finally { await ui.cleanup(); }
+});
+
+function notificationMock() {
+  const requests = [], cancellations = [], dismissals = [], channels = [];
+  return { requests, cancellations, dismissals, channels, api: {
+    AndroidImportance: { LOW: 2, MAX: 5 }, AndroidNotificationPriority: { MAX: 5 },
+    SchedulableTriggerInputTypes: { TIME_INTERVAL: "timeInterval" },
+    getPermissionsAsync: async () => ({ granted: true, status: "granted" }),
+    setNotificationHandler() {}, addNotificationResponseReceivedListener: () => ({ remove() {} }),
+    setNotificationChannelAsync: async (id, config) => { channels.push([id, config]); },
+    cancelScheduledNotificationAsync: async id => { cancellations.push(id); },
+    dismissNotificationAsync: async id => { dismissals.push(id); },
+    scheduleNotificationAsync: async request => { requests.push(request); return request.identifier; },
+  } };
+}
+test("duration draft remains mounted until dismissal, then reopens from the applied value", async () => {
+  const { DurationEditor } = load("src/components/DurationPicker.tsx", {
+    "expo-haptics": {}, "react-native": { ...{ View: host("View"), Text: host("Text"), TouchableOpacity: host("Button") }, StyleSheet: { create: s => s } },
+    "@gorhom/bottom-sheet": { BottomSheetScrollView: host("Scroll"), BottomSheetTextInput: host("Input") },
+    "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 24 }) },
+    "../context/UserContext": {}, "../hooks/useReducedMotion": {},
+    "./AppSheet": props => React.createElement("Sheet", props, props.children),
+  });
+  let renderer, props = { visible: false, seconds: 930, onCancel() {}, onConfirm() {} };
+  await act(async () => { renderer = create(React.createElement(DurationEditor, props)); });
+  try {
+    assert.equal(renderer.toJSON(), null);
+    props = { ...props, visible: true }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
+    await act(async () => renderer.root.findAllByType("Input")[0].props.onChangeText("20"));
+    props = { ...props, visible: false }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
+    assert.equal(renderer.root.findAllByType("Input")[0].props.value, "20");
+    await act(async () => renderer.root.findByType("Sheet").props.onDismiss());
+    assert.equal(renderer.toJSON(), null);
+    props = { ...props, visible: true }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
+    assert.equal(renderer.root.findAllByType("Input")[0].props.value, "15");
+    await act(async () => renderer.root.findByType("Sheet").props.onDismiss());
+    assert.equal(renderer.root.findAllByType("Input").length, 2);
+    props = { ...props, visible: false }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
+    const staleDismiss = renderer.root.findByType("Sheet").props.onDismiss;
+    props = { ...props, visible: true }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
+    await act(async () => staleDismiss());
+    assert.equal(renderer.root.findAllByType("Input").length, 2);
+  } finally { await act(async () => renderer.unmount()); }
+});
+test("Android actual scheduling payloads route ongoing and timed alerts through preference channels", async () => {
+  const api = load("src/services/sessionNotificationService.ts", {});
+  for (const sound of [false, true]) for (const haptics of [false, true]) {
+    const mock = notificationMock(), preferences = { sound, haptics };
+    const lifecycle = api.createSessionNotificationLifecycle(mock.api, "android", preferences);
+    await lifecycle.schedule(930, "Read");
+    const [ongoing, completion] = mock.requests;
+    assert.deepEqual(ongoing.trigger, { channelId: api.ONGOING_CHANNEL_ID });
+    assert.equal(ongoing.content.channelId, undefined);
+    assert.equal(ongoing.content.sound, false);
+    assert.deepEqual(completion.trigger, { type: "timeInterval", seconds: 930, repeats: false, channelId: api.completionChannelId(preferences) });
+    assert.equal(completion.content.channelId, undefined);
+    assert.equal(completion.content.sound, sound ? "default" : false);
+    assert.deepEqual(completion.content.data, { type: "COMPLETION" });
+    const channel = mock.channels.find(([id]) => id === completion.trigger.channelId)[1];
+    assert.equal(channel.sound, sound ? "default" : null);
+    assert.equal(channel.enableVibrate, haptics);
+    assert.equal(mock.channels.find(([id]) => id === api.ONGOING_CHANNEL_ID)[1].sound, null);
+    await lifecycle.clear();
+    assert.deepEqual(mock.cancellations.slice(-2), [api.ONGOING_NOTIFICATION_ID, api.COMPLETION_NOTIFICATION_ID]);
+    assert.deepEqual(mock.dismissals.slice(-2), [api.ONGOING_NOTIFICATION_ID, api.COMPLETION_NOTIFICATION_ID]);
+  }
+});
+test("iOS retains immediate and interval triggers without Android channel fields", async () => {
+  const api = load("src/services/sessionNotificationService.ts", {}), mock = notificationMock();
+  await api.createSessionNotificationLifecycle(mock.api, "ios", { sound: false, haptics: false }).schedule(30);
+  assert.equal(mock.requests[0].trigger, null);
+  assert.deepEqual(mock.requests[1].trigger, { type: "timeInterval", seconds: 30, repeats: false });
+  assert.equal(mock.requests[1].content.priority, undefined);
+  assert.equal(mock.channels.length, 0);
+});
+test("effect reactivation restores scheduling and preference changes apply to the next alert", async () => {
+  const api = load("src/services/sessionNotificationService.ts", {}), mock = notificationMock();
+  const lifecycle = api.createSessionNotificationLifecycle(mock.api, "android", { sound: true, haptics: true });
+  await lifecycle.dispose(); await lifecycle.schedule(30);
+  assert.equal(mock.requests.length, 0);
+  lifecycle.activate(); lifecycle.setPreferences({ sound: false, haptics: false });
+  await lifecycle.schedule(60);
+  assert.equal(mock.requests.at(-1).trigger.channelId, api.completionChannelId({ sound: false, haptics: false }));
+  assert.equal(mock.requests.at(-1).content.sound, false);
+});
+test("late native work and background refresh cannot resurrect notifications after teardown/account switch", async () => {
+  const api = load("src/services/sessionNotificationService.ts", {}), mock = notificationMock(), pending = deferred();
+  const schedule = mock.api.scheduleNotificationAsync;
+  mock.api.scheduleNotificationAsync = async request => { await pending.promise; return schedule(request); };
+  const oldAccount = api.createSessionNotificationLifecycle(mock.api, "android", { sound: true, haptics: true });
+  const starting = oldAccount.schedule(60);
+  await new Promise(resolve => setImmediate(resolve));
+  const refresh = oldAccount.refreshOngoing();
+  const clearing = oldAccount.clear();
+  pending.resolve(); await Promise.all([starting, refresh, clearing]);
+  assert.equal(mock.requests.some(r => r.identifier === api.COMPLETION_NOTIFICATION_ID), false);
+  assert.equal(mock.cancellations.at(-1), api.COMPLETION_NOTIFICATION_ID);
+  const nextAccount = api.createSessionNotificationLifecycle(mock.api, "android", { sound: false, haptics: false });
+  await Promise.all([oldAccount.clear(), nextAccount.schedule(30)]);
+  assert.equal(mock.requests.at(-1).trigger.seconds, 30);
+  await oldAccount.dispose();
+  await nextAccount.schedule(60);
+  const count = mock.requests.length;
+  // A late server RPC returning to the unmounted provider cannot replace alerts.
+  await oldAccount.schedule(90);
+  await oldAccount.refreshOngoing();
+  assert.equal(mock.requests.length, count);
+  assert.equal(mock.requests.at(-1).trigger.seconds, 60);
+});
+test("provider start/pause/resume/end and completion replace or clear both real notification identifiers", async () => {
+  const mock = notificationMock(), ui = await providerSetup({}, mock.api);
+  try {
+    await ui.run(s => s.startTimer(930, "Read"));
+    assert.equal(mock.requests.at(-1).trigger.seconds, 930);
+    await ui.advance(31); await ui.run(s => s.pauseTimer());
+    assert.deepEqual(mock.cancellations.slice(-2), ["life-rpg-ongoing-timer", "life-rpg-completion-timer"]);
+    await ui.run(s => s.resumeTimer());
+    assert.equal(mock.requests.at(-1).trigger.seconds, 899);
+    await ui.run(s => s.resetTimer());
+    assert.deepEqual(mock.dismissals.slice(-2), ["life-rpg-ongoing-timer", "life-rpg-completion-timer"]);
+    await ui.run(s => s.startTimer(30)); await ui.advance(31);
+    assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
+    assert.equal(mock.cancellations.at(-1), "life-rpg-completion-timer");
+  } finally { await ui.cleanup(); }
+});
+test("restore replaces active alerts and clears paused/absent stale alerts", async () => {
+  for (const status of ["active", "paused", null]) {
+    const mock = notificationMock(), ui = await providerSetup({ getOpenActivitySession: async () => status && ({
+      id: "saved", task_id: null, subject_id: null, activity_type: "other", target_duration_seconds: 930,
+      elapsed_seconds: 31, status, notes: "", last_resumed_at: new Date(1_000_000).toISOString(),
+    }) }, mock.api);
+    try {
+      assert.deepEqual(mock.cancellations.slice(-2), ["life-rpg-ongoing-timer", "life-rpg-completion-timer"]);
+      if (status === "active") assert.equal(mock.requests.at(-1).trigger.seconds, 899);
+      else assert.equal(mock.requests.length, 0);
+    } finally { await ui.cleanup(); }
+  }
+});
+test("native scheduling/channel/cancellation failures never turn successful timer actions into failures", async () => {
+  const mock = notificationMock();
+  for (const name of ["setNotificationChannelAsync", "cancelScheduledNotificationAsync", "dismissNotificationAsync", "scheduleNotificationAsync"]) {
+    mock.api[name] = async () => { throw Error("Native unavailable"); };
+  }
+  const ui = await providerSetup({}, mock.api);
+  try {
+    await ui.run(s => s.startTimer(30)); assert.equal(ui.state().isRunning, true);
+    await ui.run(s => s.pauseTimer()); assert.equal(ui.state().isRunning, false);
+    await ui.run(s => s.resumeTimer()); assert.equal(ui.state().isRunning, true);
+    await ui.advance(31);
+    assert.equal(ui.state().actionError, null);
+    assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
+    await ui.run(s => s.resetTimer()); assert.equal(ui.state().hasOpenSession, false);
+  } finally { await ui.cleanup(); }
+});
+test("notification listener initialization failure leaves the timer usable", async () => {
+  const mock = notificationMock();
+  mock.api.addNotificationResponseReceivedListener = () => { throw Error("Unavailable native listener"); };
+  const ui = await providerSetup({}, mock.api);
+  try {
+    await ui.run(s => s.startTimer(30));
+    assert.equal(ui.state().isRunning, true);
+    await ui.advance(31);
+    assert.equal(ui.state().actionError, null);
+    assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
+  } finally { await ui.cleanup(); }
 });

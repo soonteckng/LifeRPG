@@ -16,16 +16,16 @@ Provider references: [signUp](https://supabase.com/docs/reference/javascript/aut
 
 ## Old-email recovery limitation and live testing
 
-The old test email has no inbox the user controls. An email-reset flow cannot prove ownership or recover that account without access to its recovery mailbox. The account has not been deleted, recreated, administratively reset, renamed, or changed. Registering again is not a recovery method.
+The old test email has no inbox the user controls. An email-reset flow cannot prove ownership or recover that account without access to its recovery mailbox. Registering again is not a recovery method. A later, separately authorized one-time email recovery is documented in [administrator recovery](administrator-recovery.md); this installed-app readiness task did not run that helper or modify accounts.
 
-Use a separate, accessible inbox and a dedicated test account for the complete signup/confirmation/login/reset/link/new-password/login cycle. No accessible inbox was supplied in this session. The user prohibited remote account changes, so no new remote test account, live signup, password change, or administrative action was performed. Live email/device tests remain pending and must be performed by the user, or separately authorised for a specified accessible test account. Do not attempt them against the inaccessible old account.
+Use an accessible inbox for the complete signup/confirmation/login/reset/link/new-password/login cycle. The user reported successful Expo Go recovery earlier; installed Android/iOS testing remains pending. This task prohibits remote account changes, so no live signup, password change or administrative action was performed. Do not attempt recovery through the inaccessible mailbox, delete/recreate an account, or use duplicate registration to bypass ownership.
 
 ## Existing Settings improvements
 
 - Account is first and compact: saved name/email, Edit profile, and progress time zone. Existing Settings, Sign out and Replay the introduction are reused.
 - Sign out has its own SESSION ACCESS card and confirmation. Active/paused sessions, restoration, restoration failure, and busy session actions still block logout. Failures can be retried.
 - Onboarding and Profile use the same ten existing emoji values in `src/constants/characterBadges.ts`. Stored selections are not normalised or replaced, including any value outside the catalogue.
-- Daily focus goal uses the shared 1-480 whole-minute validation and explains the server-returned next-local-day effective date. The tutorial now includes goal editing. The editor requires the unapplied scheduling API described in the migration guide; it does not pretend to save when that API is absent.
+- Daily focus goal uses shared 15-480 whole-minute validation matching the live onboarding RPC and profile/daily constraints. With the live scheduling API absent, Settings shows the current goal read-only without a broken editor. Editing requires explicit backend capability; tutorial copy qualifies its availability. See [migration readiness](daily-goal-migration.md).
 - Notifications show permission status, with explicit Enable notifications, Open phone settings, or Retry permission check as appropriate. Foreground return refreshes status. Provisional and temporary iOS permissions are labelled accurately. Permission is not a delivery test.
 - Normal Settings contains no Expo Go/EAS/widget/lock-screen developer copy. Unsupported runtimes say notifications are unavailable and offer no misleading enable action. Permission prompts are initiated by Settings rather than automatically by TimerProvider.
 - The noninteractive Motion row is removed. Existing platform reduced-motion hooks and animation behaviour remain unchanged.

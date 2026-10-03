@@ -132,6 +132,7 @@ const text = (node) =>
   typeof node === "string" ? node : (node.children ?? []).map(text).join("");
 async function screen(file, mocks) {
   const Component = load(file, {
+    "../services/dailyProgressService": { getTodayProgress: async () => null },
     expo: { isRunningInExpoGo: () => false },
     "react-native": Native,
     "react-native-safe-area-context": { SafeAreaView: host("Safe") },

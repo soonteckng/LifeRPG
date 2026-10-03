@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { getSessionNotifications } from "../utils/sessionNotifications";
+import { ONGOING_CHANNEL_ID } from "./sessionNotificationService";
 export interface NotificationPermission {
   label: string;
   action: "enable" | "settings" | "retry" | null;
@@ -21,9 +22,9 @@ export async function enableNotifications() {
   const api = getSessionNotifications();
   if (!api) throw new Error("Notifications are unavailable here.");
   // Android 13 requires a channel before displaying the permission prompt.
-  if (Platform.OS === "android") await api.setNotificationChannelAsync("session-ongoing-channel-v17", {
+  if (Platform.OS === "android") await api.setNotificationChannelAsync(ONGOING_CHANNEL_ID, {
     name: "Active Session Banner", importance: api.AndroidImportance.LOW,
-    sound: undefined, enableVibrate: false, showBadge: false,
+    sound: null, enableVibrate: false, showBadge: false,
   });
   return notificationPermission(await api.requestPermissionsAsync({
     ios: { allowAlert: true, allowBadge: false, allowSound: true },

@@ -11,6 +11,7 @@ declare
   before_history jsonb;
   result jsonb;
   sid uuid;
+  invalid_goal integer;
 begin
   insert into auth.users(id, raw_user_meta_data) values
     (fixture_user, '{"full_name":"Goal contract test"}'::jsonb),
@@ -30,6 +31,7 @@ begin
   if (result->>'today_goal_minutes')::integer <> 90
     or (result->>'next_goal_minutes')::integer <> 30
     or (result->>'next_effective_date')::date <> today+1 then raise exception 'Wrong effective day/target: %',result; end if;
+  if result->>'scheduling_available' <> 'true' then raise exception 'Editing capability missing'; end if;
   select to_jsonb(p) into after_profile from public.profiles p where id=fixture_user;
   if before_profile <> after_profile then raise exception 'Scheduling changed account progress'; end if;
   if before_history <> (select jsonb_agg(to_jsonb(d) order by progress_date) from public.daily_progress d where user_id=fixture_user)
@@ -38,11 +40,20 @@ begin
   if (select count(*) from public.daily_goal_changes where user_id=fixture_user) <> 1
     or public.daily_goal_for_date(today+1) <> 120
     or public.daily_goal_for_date(today-1) <> 60 then raise exception 'Replacement/history mismatch'; end if;
-  begin
-    perform public.schedule_daily_goal(0); raise exception 'Accepted invalid goal';
-  exception when others then
-    if sqlerrm <> 'Daily goal must be between 1 and 480 whole minutes' then raise; end if;
-  end;
+  foreach invalid_goal in array array[null, -1, 0, 1, 14, 481] loop
+    begin
+      perform public.schedule_daily_goal(invalid_goal); raise exception 'Accepted invalid goal';
+    exception when others then
+      if sqlerrm <> 'Daily goal must be between 15 and 480 whole minutes' then raise; end if;
+    end;
+  end loop;
+  perform public.schedule_daily_goal(15);
+  if public.daily_goal_for_date(today+1) <> 15 then raise exception 'Minimum goal rejected'; end if;
+  perform public.schedule_daily_goal(480);
+  if public.daily_goal_for_date(today+1) <> 480 then raise exception 'Maximum goal rejected'; end if;
+  perform public.schedule_daily_goal(120);
+  -- With no saved future progress row, a due schedule carries into later days.
+  if public.daily_goal_for_date(today+2) <> 120 then raise exception 'Due schedule not resolved'; end if;
   sid := public.start_activity_session(60, 'other');
   update public.activity_sessions set elapsed_seconds=60, status='paused', last_resumed_at=null where id=sid and user_id=fixture_user;
   result := public.complete_activity_session(sid);
@@ -51,6 +62,11 @@ begin
     or (result->>'gold_earned')::integer <> 5 then raise exception 'Completion lost target/reward contract'; end if;
   perform set_config('request.jwt.claim.sub', fixture_other::text, true);
   if public.daily_goal_for_date(today+1) = 120 then raise exception 'Other account read scheduled target'; end if;
+  begin
+    perform public.schedule_daily_goal(30); raise exception 'Incomplete onboarding accepted';
+  exception when others then
+    if sqlerrm <> 'Finish onboarding first' then raise; end if;
+  end;
   perform set_config('request.jwt.claim.sub', '', true);
   begin
     perform public.get_daily_goal_settings(); raise exception 'Unauthenticated access accepted';
@@ -71,6 +87,8 @@ begin
   if exists(select 1 from public.daily_goal_changes where user_id <> own_id) then
     raise exception 'RLS exposed another account';
   end if;
+  update public.daily_goal_changes set goal_minutes=30 where user_id=other_id;
+  if found then raise exception 'RLS allowed cross-account update'; end if;
   perform public.schedule_daily_goal(45);
   if public.daily_goal_for_date(today+1) <> 45 then raise exception 'Own scheduled update failed'; end if;
   begin
@@ -103,5 +121,20 @@ end;
 $rls$;
 reset role;
 select 'role-based RLS and baseline goal guard passed' as verification;
+set local role anon;
+select set_config('request.jwt.claim.sub', '', true);
+do $anon$
+begin
+  begin
+    perform public.get_daily_goal_settings(); raise exception 'Anonymous read allowed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.schedule_daily_goal(30); raise exception 'Anonymous scheduling allowed';
+  exception when insufficient_privilege then null;
+  end;
+end;
+$anon$;
+reset role;
 rollback;
 

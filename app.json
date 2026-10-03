@@ -2,14 +2,14 @@
   "expo": {
     "name": "LifeRPG",
     "slug": "LifeRPG",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "liferpg",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0F172A",
     "runtimeVersion": {
-      "policy": "appVersion"
+      "policy": "fingerprint"
     },
     "updates": {
       "url": "https://u.expo.dev/1030d96a-3a08-4d88-91cc-51c892688fea"

@@ -9,6 +9,7 @@ export interface DailyGoalSettings {
   next_goal_minutes: number;
   next_effective_date: string;
   pending: boolean;
+  scheduling_available: boolean;
 }
 export function missingGoalAPI(error: unknown) {
   const code = (error as { code?: string })?.code;
@@ -22,7 +23,8 @@ function goalSettings(data: unknown): DailyGoalSettings {
     throw new Error("Could not read your daily goal. Please try again.");
   if (row.next_effective_date !== shiftDay(row.local_date, 1))
     throw new Error("Could not verify the effective date of your goal. Please try again.");
-  return row;
+  // Older/read-only APIs are not evidence that the scheduling RPC exists.
+  return { ...row, scheduling_available: row.scheduling_available === true };
 }
 export async function getDailyGoalSettings() {
   const { data, error } = await supabase.rpc("get_daily_goal_settings");

@@ -1,7 +1,8 @@
 import { isRunningInExpoGo } from "expo";
 import { Platform } from "react-native";
 
-type NotificationsModule = typeof import("expo-notifications");
+export type SessionNotificationsModule = typeof import("expo-notifications");
+type NotificationsModule = SessionNotificationsModule;
 let cached: NotificationsModule | null | undefined;
 
 // Android Expo Go's package entry can initialise unavailable push functionality
