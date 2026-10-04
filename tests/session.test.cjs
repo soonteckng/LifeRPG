@@ -922,3 +922,20 @@ test("duration changes cannot abandon an in-flight or failed completion", async 
     assert.match(ui.state().actionError, /save/);
   } finally { await ui.cleanup(); }
 });
+
+test("completed setup keeps presets and wheel commits editable before the next Start", async () => {
+  const ui = await providerSetup({ completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0 }) });
+  try {
+    await ui.run(s => s.startTimer(1));
+    await ui.advance(1);
+    await ui.run(s => s.setDurationInMinutes(60));
+    assert.equal(ui.state().duration, 3600);
+    await ui.run(s => s.setDurationInSeconds(2700));
+    assert.equal(ui.state().duration, 2700);
+    await ui.run(s => s.setDurationInSeconds(2715));
+    assert.equal(ui.state().duration, 2715);
+    await ui.run(s => s.startTimer(ui.state().duration));
+    assert.equal(ui.state().hasOpenSession, true);
+    assert.equal(ui.calls.filter(c => c[0] === "start").at(-1)[1].targetDurationSeconds, 2715);
+  } finally { await ui.cleanup(); }
+});

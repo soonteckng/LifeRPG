@@ -192,6 +192,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       const result =
         await completeActivitySession(sessionId);
 
+      // The server has saved this session. Keep its summary, but release the
+      // active identity immediately so it cannot lock a later setup draft.
+      timerSessionIdRef.current = null;
       setHasOpenSession(false);
 
       await reloadProfile().catch(() => false);
@@ -430,8 +433,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     if (Number.isInteger(minutes)) setDurationInSeconds(minutes * 60);
   };
   const setDurationInSeconds = (totalSec: number) => {
-    if (isRunning || actionLock.current || (timerSessionIdRef.current && !sessionSummary)) return;
+    if (isRunning || hasOpenSession || actionLock.current || isRestoring || restoreError || (isCompleted && !sessionSummary)) return;
     if (!validSessionSeconds(totalSec)) return;
+    // Setup has no open server session. Clear a stale completed identity too
+    // (including a draft retained through development Fast Refresh).
+    timerSessionIdRef.current = null;
+    completionHandledRef.current = false;
     // A saved summary can become a new draft. Never abandon a saving/failed
     // completion, and never carry its old server ID into the next Start.
     if (sessionSummary) {
