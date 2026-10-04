@@ -35,7 +35,7 @@ Completion day remains authoritative for midnight-crossing sessions, in the serv
 
 ## Client compatibility
 
-Daily and period reads select owned rows with `*` to obtain additive fields without requesting nonexistent columns from older servers. The client uses exact seconds only with `credit_version = 1` and valid nonnegative integer seconds; zero is valid. Historical version 0 and absent/malformed fields fall back to saved minutes. Completion state carries optional new fields for the next visual phase. Current layouts/copy remain unchanged here; deploying the proposal before the visual phase would leave minute displays and visible Gold in place.
+Daily and period reads select owned rows with `*` to obtain additive fields without requesting nonexistent columns from older servers. The client uses exact seconds only with `credit_version = 1` and valid nonnegative integer seconds; zero is valid. Historical version 0 and absent/malformed fields fall back to saved minutes. Completion views now consume these fields and use legacy displays for older results. Home’s Gold balance remains visible until the planned visual redesign; it is a historical balance, not a new award.
 
 ## Tests and remaining gates
 
@@ -59,3 +59,11 @@ To run server tests, create an EMPTY disposable local Postgres database, set `LI
 Before commit the transaction can roll back completely. After new credits exist, do not delete columns, subtract XP, recalculate history or reset banks. A client rollback retains additive data. Backend rollback needs a separately reviewed forward migration that preserves banks/results and defines how later completions are credited; blindly restoring the old function loses new remainder credit and must not be used as the rollback plan.
 
 No live migration, account write, deployment or native-device verification occurred. SQL remains a proposal. Claude's Home/Progress/Profile visuals, existing bottom navigation and session dock are the next phase.
+
+## Accounting display integration
+
+Home now uses the saved exact daily seconds only for valid version-1 records, including zero and sub-minute values. Legacy/version-0 records keep their minute-credit display. Completion popup and summary distinguish character and Life-area XP, show independent carried seconds, and omit new Gold awards only when the server advertises version 1. Progress history reads additive receipt fields and preserves historical Gold awards. No display calculates or grants XP locally.
+
+CI now includes an isolated PostgreSQL 17 service job for the SQL assertions and simultaneous completion/retry scripts. Its disposable credentials are only for the ephemeral CI database, not Supabase. A green JavaScript job alone is insufficient: the SQL job must pass before considering live rollout. Client/device layout and live schema/grant drift still need review.
+
+The SQL remains unapplied. Downloading client changes does not activate second-based server credit. Deploy the reviewed client to all supported builds before changing backend reward rules; old builds still label Gold and whole-minute credit. Existing accounts, historical rows and balances must be retained. After backend approval, verify new completions through real accounts without re-crediting historical sessions.

@@ -262,7 +262,14 @@ export default function SessionScreen() {
             {timer.hasOpenSession && !timer.isCompleted && <Text style={styles.activeHint}>{timer.isRunning ? "One thing at a time. Your session keeps going when minimised." : "Take your time. Resume whenever you’re ready."}</Text>}
             {timer.isCompleted && timer.sessionSummary && <View style={styles.summary}>
               <Text style={styles.summaryValue}>{durationLabel(timer.sessionSummary.durationSeconds)} completed</Text>
-              <Text style={styles.secondary}>+{timer.sessionSummary.xpEarned} XP · +{timer.sessionSummary.goldEarned} gold</Text>
+              <Text style={styles.secondary}>+{timer.sessionSummary.xpEarned} character XP{timer.sessionSummary.creditVersion === 1
+                ? timer.sessionSummary.areaXpEarned != null ? ` · +${timer.sessionSummary.areaXpEarned} Life area XP` : ""
+                : ` · +${timer.sessionSummary.goldEarned} gold`}</Text>
+              {timer.sessionSummary.creditVersion === 1 && <Text style={styles.helper}>
+                {timer.sessionSummary.characterRemainderSeconds ?? 0}s carried toward your next character XP.
+                {timer.sessionSummary.areaRemainderSeconds != null ? ` ${timer.sessionSummary.areaRemainderSeconds}s carried toward your next Life area XP.` : ""}
+              </Text>}
+              {timer.sessionSummary.goalReachedNow && <Text style={styles.helper}>Daily goal reached.</Text>}
               <Text style={styles.helper}>Your progress has been saved.</Text>
             </View>}
           </Animated.View>

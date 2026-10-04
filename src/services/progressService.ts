@@ -11,6 +11,8 @@ export interface ProgressSession {
   xp_earned: number;
   gold_earned: number;
   completed_at: string | null;
+  credit_version?: number | null;
+  credit_result?: { area_xp_earned?: number | null; character_remainder_seconds?: number; area_remainder_seconds?: number | null; credited_date?: string } | null;
 }
 export interface ProgressGoal {
   progress_date: string;
@@ -20,8 +22,8 @@ export interface ProgressGoal {
   credit_version?: number | null;
   goal_completed: boolean;
 }
-const FIELDS =
-  "id, subject_id, activity_type, duration_seconds, xp_earned, gold_earned, completed_at";
+// Includes optional saved receipts without requesting absent legacy columns.
+const FIELDS = "*";
 const PAGE_SIZE = 500;
 
 export async function getCompletedSessions(

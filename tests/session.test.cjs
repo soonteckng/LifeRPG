@@ -939,3 +939,23 @@ test("completed setup keeps presets and wheel commits editable before the next S
     assert.equal(ui.calls.filter(c => c[0] === "start").at(-1)[1].targetDurationSeconds, 2715);
   } finally { await ui.cleanup(); }
 });
+
+test("saved completion carries independent XP banks and server goal credit without local awards", async () => {
+  let completions = 0;
+  const ui = await providerSetup({ completeActivitySession: async () => { completions++; return ({ ...result, credit_version: 1, duration_seconds: 30, xp_earned: 1, gold_earned: 0, area_xp_earned: 0, character_remainder_seconds: 15, area_remainder_seconds: 30, daily_completed_seconds: 60, goal_reached_now: true, credited_date: "2026-10-04" }); } });
+  try {
+    await ui.run(s => s.startTimer(30));
+    await ui.advance(30);
+    const summary = ui.state().sessionSummary;
+    assert.equal(summary.xpEarned, 1);
+    assert.equal(summary.areaXpEarned, 0);
+    assert.equal(summary.characterRemainderSeconds, 15);
+    assert.equal(summary.areaRemainderSeconds, 30);
+    assert.equal(summary.dailyCompletedSeconds, 60);
+    assert.equal(summary.goalReachedNow, true);
+    await ui.run(s => s.clearCompletionModal());
+    assert.equal(ui.state().sessionSummary, summary);
+    await ui.run(s => s.retryCompletion());
+    assert.equal(completions, 1);
+  } finally { await ui.cleanup(); }
+});

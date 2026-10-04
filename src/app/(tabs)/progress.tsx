@@ -1,3 +1,4 @@
+import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -826,8 +827,10 @@ export default function ProgressScreen() {
               <View style={s.detailRow}>
                 <Text style={s.caption}>Rewards earned</Text>
                 <Text style={s.rowTitle}>
-                  +{selectedSession.xp_earned ?? 0} XP · +
-                  {selectedSession.gold_earned ?? 0} gold
+                  +{selectedSession.xp_earned ?? 0} character XP
+                  {selectedSession.credit_version === 1
+                    ? selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Life area XP` : ""
+                    : ` · +${selectedSession.gold_earned ?? 0} gold`}
                 </Text>
               </View>
               <Text style={s.footnote}>
@@ -860,9 +863,10 @@ export default function ProgressScreen() {
               </Text>
               <Text style={s.explainTitle}>Daily goals are a separate win</Text>
               <Text style={s.explain}>
-                A green dot marks a saved daily-goal achievement. Goals and
-                XP/gold still use the current whole-minute credit rules; focus
-                time here includes every completed second.
+                A green dot marks a saved daily-goal achievement. Focus time includes every completed second.
+                Goal credit follows the saved daily record. Older sessions used whole minutes;
+                sessions credited by the new system count seconds and carry leftover seconds toward XP.
+                Historical rewards and achievements stay unchanged.
               </Text>
             </>
           ) : (
@@ -897,7 +901,7 @@ export default function ProgressScreen() {
                       <Text style={s.goalStatusText}>
                         {activeDay.goal.goal_completed
                           ? "Daily goal reached"
-                          : `${activeDay.goal.completed_minutes} of ${activeDay.goal.goal_minutes} goal minutes credited`}
+                          : `${durationLabel(creditedDailySeconds(activeDay.goal))} of ${activeDay.goal.goal_minutes} min credited`}
                       </Text>
                     </View>
                   )}

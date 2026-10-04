@@ -1,3 +1,4 @@
+import { creditedDailySeconds, hasExactDailyCredit } from "../../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -24,7 +25,7 @@ import {
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { getFocusStreak } from "../../services/progressService";
-import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
+import { DEFAULT_TIMEZONE, durationLabel } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
@@ -38,7 +39,8 @@ export default function HomeScreen() {
   const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = useTimer();
   const { tasks, error: questsError, refresh: refreshQuests } = useQuests();
 
-  const [completedMinutes, setCompletedMinutes] = useState(0);
+  const [completedSeconds, setCompletedSeconds] = useState(0);
+  const [exactCredit, setExactCredit] = useState(false);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [goalCompleted, setGoalCompleted] = useState(false);
@@ -54,7 +56,8 @@ export default function HomeScreen() {
       const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
       if (streak !== undefined) setFocusStreak(streak);
       setTodayGoal(progress?.goal_minutes ?? null);
-      setCompletedMinutes(progress?.completed_minutes ?? 0);
+      setCompletedSeconds(progress ? creditedDailySeconds(progress) : 0);
+      setExactCredit(progress ? hasExactDailyCredit(progress) : false);
       setGoalCompleted(progress?.goal_completed ?? false);
       setLoadError(profileOK === false || streak === undefined);
     } catch {
@@ -70,12 +73,13 @@ export default function HomeScreen() {
   }, [sessionSummary, loadData]);
 
   const dailyGoalMinutes = todayGoal ?? profile?.daily_goal_minutes ?? 60;
-  const safeCompletedMinutes = Math.max(0, completedMinutes);
+  const safeCompletedSeconds = Math.max(0, completedSeconds);
   const goalProgress = Math.min(
     1,
-    safeCompletedMinutes / Math.max(1, dailyGoalMinutes),
+    safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60),
   );
-  const remainingMinutes = Math.max(0, dailyGoalMinutes - safeCompletedMinutes);
+  const remainingSeconds = Math.max(0, dailyGoalMinutes * 60 - safeCompletedSeconds);
+  const remainingMinutes = Math.ceil(remainingSeconds / 60);
 
   const level = profile?.level ?? 1;
   const currentXP = profile?.current_xp ?? 0;
@@ -87,7 +91,7 @@ export default function HomeScreen() {
   );
 
   const greeting = homeWelcome(hour, profile?.username);
-  const isGoalComplete = goalCompleted || remainingMinutes === 0;
+  const isGoalComplete = goalCompleted || remainingSeconds === 0;
   const streakDays = Math.max(0, focusStreak ?? 0);
 
   const openSession = () => {
@@ -169,7 +173,7 @@ export default function HomeScreen() {
           <Text maxFontSizeMultiplier={1.3} style={[styles.goalValue, compact && styles.compactGoalValue]}>
             {isGoalComplete
               ? "Goal complete 🎉"
-              : `${safeCompletedMinutes} / ${dailyGoalMinutes} min`}
+              : exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`}
           </Text>
           <View style={[styles.goalTrack, tight && styles.tightGoalTrack]}>
             <View
@@ -179,7 +183,7 @@ export default function HomeScreen() {
           <Text style={[styles.goalHint, tight && styles.tightGoalHint]} maxFontSizeMultiplier={1.3}>
             {isGoalComplete
               ? "Nice work. Take a moment to enjoy it."
-              : tight ? `${remainingMinutes} minutes to your goal.` : `${remainingMinutes} minutes remaining. One session closer.`}
+              : exactCredit ? `${durationLabel(remainingSeconds)} to your goal.` : tight ? `${remainingMinutes} minutes to your goal.` : `${remainingMinutes} minutes remaining. One session closer.`}
           </Text>
         </View>
 

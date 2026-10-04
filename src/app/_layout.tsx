@@ -104,6 +104,11 @@ function GlobalRewardListener() {
       visible={rewardsVisible}
       xpEarned={sessionSummary?.xpEarned || 0}
       goldEarned={sessionSummary?.goldEarned || 0}
+      creditVersion={sessionSummary?.creditVersion}
+      areaXpEarned={sessionSummary?.areaXpEarned}
+      characterRemainderSeconds={sessionSummary?.characterRemainderSeconds}
+      areaRemainderSeconds={sessionSummary?.areaRemainderSeconds}
+      goalReachedNow={sessionSummary?.goalReachedNow}
       minutesSpent={sessionSummary?.minutesSpent || 0}
       durationSeconds={sessionSummary?.durationSeconds}
       questTitle={sessionSummary?.questTitle}

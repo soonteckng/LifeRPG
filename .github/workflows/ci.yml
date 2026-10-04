@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main]
   push:
-    branches: [main]
+    branches: [main, progression-foundation]
   workflow_dispatch:
 
 permissions:
@@ -41,3 +41,34 @@ jobs:
 
       - name: Lint the full repository
         run: npm run lint
+
+  progression-sql:
+    name: Progression SQL and concurrent completions
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: liferpg_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: liferpg_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U liferpg_test -d liferpg_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      LIFERPG_DISPOSABLE_SQL: "YES"
+      LIFERPG_TEST_DATABASE_URL: postgresql://liferpg_test:disposable_ci_only@localhost:5432/liferpg_test
+    steps:
+      - name: Download repository code
+        uses: actions/checkout@v7
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Validate migration, history and access controls
+        run: bash scripts/test-progression-postgres.sh
+      - name: Validate simultaneous completion and retry
+        run: bash scripts/test-progression-concurrency.sh

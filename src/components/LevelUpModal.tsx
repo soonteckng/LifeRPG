@@ -18,6 +18,11 @@ interface RewardModalProps {
   visible: boolean;
   xpEarned?: number;
   goldEarned?: number;
+  creditVersion?: number;
+  areaXpEarned?: number | null;
+  characterRemainderSeconds?: number;
+  areaRemainderSeconds?: number | null;
+  goalReachedNow?: boolean;
   minutesSpent?: number;
   durationSeconds?: number;
   questTitle?: string;
@@ -32,6 +37,7 @@ export default function LevelUpModal({
   visible,
   xpEarned = 0,
   goldEarned = 0,
+  creditVersion, areaXpEarned, characterRemainderSeconds, areaRemainderSeconds, goalReachedNow,
   minutesSpent = 0,
   durationSeconds,
   questTitle,
@@ -91,14 +97,16 @@ export default function LevelUpModal({
             <View style={styles.rewardBox}>
               <View style={styles.rewardStats}>
                 <View style={styles.rewardStat}>
-                  <Text style={styles.rewardLabel}>XP EARNED</Text>
+                  <Text style={styles.rewardLabel}>CHARACTER XP</Text>
                   <Text style={styles.rewardValue}>+{xpEarned}</Text>
                 </View>
-                <View style={styles.rewardDivider} />
-                <View style={styles.rewardStat}>
-                  <Text style={styles.rewardLabel}>GOLD EARNED</Text>
-                  <Text style={styles.rewardValue}>+{goldEarned}</Text>
-                </View>
+                {(creditVersion !== 1 || areaXpEarned != null) && <>
+                  <View style={styles.rewardDivider} />
+                  <View style={styles.rewardStat}>
+                    <Text style={styles.rewardLabel}>{creditVersion === 1 ? "LIFE AREA XP" : "GOLD EARNED"}</Text>
+                    <Text style={styles.rewardValue}>+{creditVersion === 1 ? areaXpEarned : goldEarned}</Text>
+                  </View>
+                </>}
               </View>
               <View style={styles.xpProgressContainer}>
                 <View style={styles.xpHeader}>
@@ -115,7 +123,12 @@ export default function LevelUpModal({
               </View>
             </View>
 
-            {(durationSeconds ?? minutesSpent * 60) % 60 !== 0 && (
+            {creditVersion === 1 && <Text style={styles.note}>
+              Every second counts toward today’s goal. {characterRemainderSeconds ?? 0}s carried toward your next character XP.
+              {areaRemainderSeconds != null ? ` ${areaRemainderSeconds}s carried toward your next Life area XP.` : ""}
+            </Text>}
+            {goalReachedNow && <Text style={styles.note}>Daily goal reached. Well done.</Text>}
+            {creditVersion !== 1 && (durationSeconds ?? minutesSpent * 60) % 60 !== 0 && (
               <Text style={styles.note}>
                 Exact time is saved. Rewards and today’s goal currently count
                 whole minutes per completed session.

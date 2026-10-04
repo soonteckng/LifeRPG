@@ -165,12 +165,11 @@ begin
     v_session.target_duration_seconds
   );
 
-  -- Whole completed minutes only; sub-minute sessions retain seconds but earn no rewards.
+  -- Compatibility minutes field; exact seconds are credited below.
   v_minutes := floor(v_awarded_seconds / 60.0)::integer;
 
-  -- Current LifeRPG economy:
-  -- 1 minute = 1 XP
-  -- 1 minute = 5 Gold
+  -- Bank exact seconds at 60 seconds per character XP.
+  -- Gold history is preserved; new completions award no Gold.
   v_xp := (v_profile.xp_bank_seconds + v_awarded_seconds) / 60;
   v_character_bank := (v_profile.xp_bank_seconds + v_awarded_seconds) % 60;
   v_gold := 0;
