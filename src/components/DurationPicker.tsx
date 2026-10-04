@@ -1,3 +1,4 @@
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import * as Haptics from "expo-haptics";
@@ -87,6 +88,7 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
   const centre = count * 4;
   const [initialValue] = useState(centre + value);
   const [scrollY] = useState(() => new Animated.Value(initialValue * rowHeight));
+  const reducedMotion = useReducedMotion();
   const { hapticsEnabled } = useUser();
   const data = useMemo(() => Array.from({ length: count * 9 }, (_, index) => index), [count]);
   const indexAt = (offset: number) => Math.max(0, Math.min(data.length - 1, Math.round(offset / rowHeight)));
@@ -101,8 +103,9 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     select(next); setVisible(next); onChange(next, true);
     // Identical neighbours in each cycle make this recenter invisible. It emits
     // no draft change or haptic because programmatic scrolls are ignored.
-    const targetIndex = index < count || index >= count * 8 ? centre + next : index;
-    list.current?.scrollToOffset({ offset: targetIndex * rowHeight, animated: false });
+    if (index < count || index >= count * 8) {
+      list.current?.scrollToOffset({ offset: (centre + next) * rowHeight, animated: false });
+    }
   };
   const adjust = (delta: number) => {
     const next = (selected.current + delta + count) % count;
@@ -129,7 +132,7 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
       getItemLayout={(_, index) => ({ length: rowHeight, offset: (index + 1) * rowHeight, index })}
       ListHeaderComponent={<View style={{ height: rowHeight }} />}
       ListFooterComponent={<View style={{ height: rowHeight }} />}
-      snapToInterval={rowHeight} snapToAlignment="start" disableIntervalMomentum
+      snapToInterval={rowHeight} snapToAlignment="start"
       decelerationRate="fast" showsVerticalScrollIndicator={false} bounces={false}
       windowSize={7} maxToRenderPerBatch={12} removeClippedSubviews={false}
       scrollEventThrottle={1}
@@ -147,7 +150,9 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
       renderItem={({ item }) => <View style={[styles.row, { height: rowHeight }]}>
         <Animated.Text allowFontScaling={false} style={[styles.wheelDigit, { fontSize, height: rowHeight, lineHeight: rowHeight,
           opacity: scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.28, 1, 0.28], extrapolate: "clamp" }),
-
+          transform: [{ perspective: 600 },
+            { scale: reducedMotion ? 1 : scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.68, 1, 0.68], extrapolate: "clamp" }) },
+            { rotateX: reducedMotion ? "0deg" : scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: ["-42deg", "0deg", "42deg"], extrapolate: "clamp" }) }],
         }]}>{String(item % count).padStart(2, "0")}</Animated.Text>
       </View>} />
   </View>;

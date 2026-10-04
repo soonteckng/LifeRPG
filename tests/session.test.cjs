@@ -1029,7 +1029,8 @@ test("virtualized wheel frames include the real header and centre the initial se
       assert.equal(wheel.props.ListHeaderComponent.props.style.height, height);
       assert.equal(wheel.props.snapToAlignment, "start");
       const digit = wheel.props.renderItem({item:index + 1}).props.children;
-      assert.equal(digit.props.style[1].transform, undefined, "digit baselines must not rotate out of the selection box");
+      assert.equal(digit.props.style[1].transform.find(value => "rotateX" in value).rotateX, "0deg", "reduced motion keeps digit baselines flat");
+      assert.notEqual(wheel.props.disableIntervalMomentum, true, "normal flings should retain native momentum");
     }
   } finally { await act(async () => renderer.unmount()); }
 });
