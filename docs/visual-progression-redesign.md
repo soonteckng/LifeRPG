@@ -30,3 +30,8 @@ Profile uses the reference's small bust portrait, floating edit/settings actions
 Session now uses the reference's setup hierarchy: editable wheels, 15/25/45/60-minute presets, direct Life-area chips and an optional Quest row. A running/paused timer has a teal circle, quest title, Pause/Resume beside a separate End control, and honest cancellation copy. Saved completion shows a check ring, actual focused duration and saved XP; Done/New session remain unchanged. Wheels/countdown stay mounted across setup/running/paused, and their commit/validation logic is unchanged. Typed duration, picker/keyboard/back priority, interactive swipe-down, reduced motion, restoration and completion retry safeguards remain. The completion popup adopts the same arc and flatter reward presentation.
 
 No database/account changes or native dependencies/configuration changed in this follow-up. Unimplemented accessories, earned cosmetic titles and a new Life-area onboarding selection step were not invented to imitate sample data. Native layouts, especially large text, long names, running ring alignment and transitions, still require phone observation. No EAS Update was published.
+
+
+### Home proportions with a short quest list
+
+Home fills its measured viewport above the existing tabs/dock. The goal section absorbs spare height, the ring scales to about 55% of content width (bounded for short screens and large text), and the streak/level chips follow the quest section near the bottom. No fixed empty quest reservation or overlay over the tab bar is added. Overflow remains scrollable on small screens/large text. Other screens, quest management and navigation are unchanged in this follow-up. Phone verification of zero, one, two and three quests remains required.

@@ -34,10 +34,8 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { height, fontScale } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const compact = height - insets.top - insets.bottom < 700 || fontScale > 1.15;
-  const tight = height - insets.top - insets.bottom < 610 || fontScale > 1.5;
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
   const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = useTimer();
@@ -54,6 +52,12 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
+  // Size against the actual Home viewport: the tabs and active-session dock
+  // already reserve their own space and must not be counted a second time.
+  const availableHeight = viewportHeight || Math.max(280, height - insets.top - insets.bottom - 96);
+  const goalSize = Math.round(Math.max(144, Math.min(
+    (width - 40) * 0.55, availableHeight * 0.36, fontScale > 1.5 ? 160 : 232,
+  )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -120,6 +124,7 @@ export default function HomeScreen() {
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
         contentContainerStyle={styles.content}>
         <ContentReveal>
+        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
           <View style={styles.identityRow}>
             <CharacterMark size={52} />
             <View style={styles.identity}>
@@ -132,7 +137,7 @@ export default function HomeScreen() {
             <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
           </TouchableOpacity>}
           <View style={styles.goalSection}>
-            <GoalRing seconds={safeCompletedSeconds} targetMinutes={dailyGoalMinutes} compact={compact || tight}
+            <GoalRing seconds={safeCompletedSeconds} targetMinutes={dailyGoalMinutes} size={goalSize}
               label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
               ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
@@ -165,6 +170,7 @@ export default function HomeScreen() {
               <Text style={styles.chipText}>{streakDays > 0 ? `${streakDays} days` : "A fresh start"}</Text></View>
             <View style={styles.chip}><Text style={styles.chipText}>Level {level}</Text></View>
           </View>
+        </View>
         </ContentReveal>
       </ScrollView>
       <QuestSheet visible={questsVisible} onClose={() => setQuestsVisible(false)} />
@@ -175,11 +181,12 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
+  layout: { flexGrow: 1 },
   identityRow: { flexDirection: "row", gap: 14, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
   greeting: { color: colors.text, fontSize: 18, fontWeight: "600", letterSpacing: -0.4 },
   subtitle: { color: colors.secondary, fontSize: 13, lineHeight: 20, marginTop: 5 },
-  goalSection: { alignItems: "center", paddingTop: 22, paddingBottom: 16, gap: 12 },
+  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 24, paddingBottom: 20, gap: 16 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 14, lineHeight: 21, maxWidth: 290 },
   primaryButton: { backgroundColor: "#E5E4FF", minHeight: 54, borderRadius: 18, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 17, fontWeight: "600" },
@@ -193,7 +200,7 @@ const styles = StyleSheet.create({
   questTime: { color: colors.secondary, fontSize: 13 },
   emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 16 },
   emptyText: { flex: 1, color: colors.secondary, fontSize: 13, lineHeight: 20 },
-  footer: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 14 },
+  footer: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 16 },
   chip: { flexDirection: "row", gap: 6, alignItems: "center", borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 8 },
   chipText: { color: colors.secondary, fontSize: 12, fontWeight: "500" },
   retry: { marginTop: 12, paddingVertical: 10 },

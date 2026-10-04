@@ -2,10 +2,10 @@ import { StyleSheet, Text, View } from "react-native";
 import { colors } from "../constants/theme";
 import ProgressRing from "./ProgressRing";
 
-export default function GoalRing({ seconds, targetMinutes, compact = false, label }: {
-  seconds: number; targetMinutes: number; compact?: boolean; label: string;
+export default function GoalRing({ seconds, targetMinutes, compact = false, size: requestedSize, label }: {
+  seconds: number; targetMinutes: number; compact?: boolean; size?: number; label: string;
 }) {
-  const size = compact ? 156 : 172;
+  const size = requestedSize ?? (compact ? 156 : 172);
   const progress = Math.max(0, Math.min(1, seconds / Math.max(1, targetMinutes * 60)));
   const clock = `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
   return <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal"
