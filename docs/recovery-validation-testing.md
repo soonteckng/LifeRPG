@@ -6,7 +6,7 @@ Local verification: all 152 existing and updated tests passed; `npm run typechec
 
 Installed-device checks remain pending. Use a build containing this change on Android and iOS, including a small screen and the largest supported system text setting:
 
-1. Open an existing valid recovery link. Enter matching passwords shorter than eight characters. With the keyboard open, tap Save or use the confirmation keyboard submit key. Verify the error appears directly under New password, automatically scrolls into view, and appears only once.
+1. Open an existing valid recovery link. Enter matching passwords shorter than eight characters. With the keyboard open, tap Save or use the confirmation keyboard submit key. Verify the error appears directly under New password and appears only once. The recovery title should stay visible; already-visible fields should not jump to the top. Obscured fields/errors should scroll only enough to become visible.
 2. Enter passwords of at least eight characters that differ. Verify the error appears under Confirm new password, scrolls into view, and both values remain intact.
 3. Keep the keyboard open and scroll to Save. Verify the entire form and all actions can be reached without dismissing the keyboard. Repeat while focusing each input, rotating the device, and using large text; errors and button labels should wrap without clipping.
 4. Toggle both password visibility controls before and after validation. Verify values and toggle state survive, and a focused input retains focus.
@@ -15,3 +15,5 @@ Installed-device checks remain pending. Use a build containing this change on An
 7. Check request-email validation and request failures: one inline email validation message, one server message near Send, and no duplicate invalid-link message.
 
 No installed Android/iOS device checks were performed for this change.
+
+The sign-in page has a fixed, non-scrollable layout. At reduced available heights it hides the decorative portrait, and at keyboard-sized heights it hides the hero copy and reduces spacing. Check that opening and closing the keyboard preserves inputs and restores the decorative content, and that Sign in and Forgot password remain accessible.

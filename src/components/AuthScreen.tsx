@@ -3,7 +3,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
+  View,
   Text,
   TextInput,
 } from "react-native";
@@ -24,6 +24,9 @@ export default function AuthScreen() {
     [error, setError] = useState("");
   const lock = useRef(false);
   const [forgot, setForgot] = useState(false);
+  const [availableHeight, setAvailableHeight] = useState<number | null>(null);
+  const compact = availableHeight !== null && availableHeight < 700;
+  const tight = availableHeight !== null && availableHeight < 500;
   const submit = async () => {
     if (lock.current) return;
     setMessage("");
@@ -67,24 +70,25 @@ export default function AuthScreen() {
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <ScrollView
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{
-            flexGrow: 1,
-            padding: 24,
-            paddingBottom: 40,
-            justifyContent: "center",
-            gap: 16,
+        <View
+          testID="auth-surface"
+          onLayout={(event) => setAvailableHeight(event.nativeEvent.layout.height)}
+          style={{
+            flex: 1,
+            padding: tight ? 16 : 24,
+            paddingBottom: tight ? 16 : 40,
+            justifyContent: tight ? "flex-start" : "center",
+            gap: tight ? 8 : 16,
           }}
         >
           <Text style={p.label}>LIFERPG</Text>
-          <Text style={[p.pageTitle, { fontSize: 36 }]}>
+          {!tight && <Text style={[p.pageTitle, { fontSize: 36 }]}>
             Your effort.{"\n"}Your character.
-          </Text>
-          <Text style={p.body}>
+          </Text>}
+          {!tight && <Text style={p.body}>
             Make time for what matters. See yourself grow.
-          </Text>
-          <CharacterPortrait avatar="🌱" />
+          </Text>}
+          {!compact && <CharacterPortrait avatar="🌱" />}
           <Text style={p.title}>
             {register ? "Create your account" : "Welcome back"}
           </Text>
@@ -115,7 +119,9 @@ export default function AuthScreen() {
             onChangeText={setPassword}
             onSubmitEditing={() => void submit()}
           />
-          {!register && <PersonalButton secondary title="Forgot password?" disabled={busy} onPress={() => setForgot(true)} />}
+          {!register && (tight ? <Pressable accessibilityRole="button" disabled={busy} onPress={() => setForgot(true)} style={{ paddingVertical: 6 }}>
+            <Text style={[p.body, { color: colors.accent }]}>Forgot password?</Text>
+          </Pressable> : <PersonalButton secondary title="Forgot password?" disabled={busy} onPress={() => setForgot(true)} />)}
           {!!error && (
             <Text style={p.error} accessibilityRole="alert">
               {error}
@@ -136,7 +142,7 @@ export default function AuthScreen() {
           <Pressable
             disabled={busy}
             accessibilityRole="button"
-            style={{ padding: 14, alignItems: "center" }}
+            style={{ padding: tight ? 6 : 14, alignItems: "center" }}
             onPress={() => {
               setRegister((current) => !current);
               setError("");
@@ -149,7 +155,7 @@ export default function AuthScreen() {
                 : "New here? Create an account"}
             </Text>
           </Pressable>
-        </ScrollView>
+        </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );

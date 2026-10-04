@@ -206,8 +206,14 @@ test("failed login exposes error, preserves inputs and allows retry", async () =
     },
   });
   try {
+    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 0);
     await ui.input("Email", "person@example.com");
     await ui.input("Password", "password");
+    const surface = ui.renderer.root.findAllByType("View").find(n => n.props.testID === "auth-surface");
+    await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 450 } } }));
+    assert.equal(ui.renderer.root.findAllByType("Portrait").length, 0);
+    assert.match(ui.text(), /Welcome back/);
+    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 0);
     await ui.press("Sign in");
     assert.match(ui.text(), /Offline/);
     assert.equal(
@@ -216,6 +222,8 @@ test("failed login exposes error, preserves inputs and allows retry", async () =
     );
     await ui.press("Sign in");
     assert.equal(calls, 2);
+    await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 800 } } }));
+    assert.equal(ui.renderer.root.findAllByType("Portrait").length, 1);
   } finally {
     await ui.cleanup();
   }

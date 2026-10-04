@@ -312,9 +312,11 @@ test("recovery errors are inline once and reveal their field through keyboard an
       assert.equal(scroll.props.keyboardShouldPersistTaps, "handled");
       assert.equal(scroll.props.keyboardDismissMode, "none");
       assert.equal(scroll.props.contentContainerStyle.flexGrow, 1);
+      assert.equal(scroll.findAllByType("Text").some(n => n.props.accessibilityRole === "header"), false);
       await ui.input("New password", "short");
       await ui.input("Confirm new password", "short");
       await act(async () => {
+        scroll.props.onLayout({ nativeEvent: { layout: { height: 600 } } });
         place(field("New password"), 320, 50);
         place(field("Confirm new password"), 386, 50);
         input("Confirm new password").props.onFocus();
@@ -326,7 +328,7 @@ test("recovery errors are inline once and reveal their field through keyboard an
       assert.ok(field("New password").findAllByType("Text").includes(short[0]));
       assert.equal(input("New password").props.value, "short");
       assert.equal(input("Confirm new password").props.submitBehavior, "submit");
-      assert.equal(scrolls.at(-1).y, 308);
+      assert.equal(scrolls.length, 0, "visible fields must not scroll to the top on focus or validation");
       // Simulate a small keyboard viewport and a reflowed, multi-line error.
       // These callbacks verify scroll targeting, not native pixel geometry.
       await act(async () => {
@@ -334,7 +336,7 @@ test("recovery errors are inline once and reveal their field through keyboard an
         scroll.props.onLayout({ nativeEvent: { layout: { height: 180 } } });
         scroll.props.onContentSizeChange(272, 1000);
       });
-      assert.equal(scrolls.at(-1).y, 238);
+      assert.equal(scrolls.at(-1).y, 232);
       assert.equal(short[0].props.numberOfLines, undefined);
       await ui.input("New password", "long-password");
       await ui.input("Confirm new password", "different");
@@ -344,7 +346,7 @@ test("recovery errors are inline once and reveal their field through keyboard an
       const mismatch = texts("Your passwords do not match.");
       assert.equal(mismatch.length, 1);
       assert.ok(field("Confirm new password").findAllByType("Text").includes(mismatch[0]));
-      assert.equal(scrolls.at(-1).y, 374);
+      assert.equal(scrolls.at(-1).y, 268);
       await ui.input("Confirm new password", "long-password");
       await act(async () => ui.button("Save new password").props.onPress());
       assert.equal(calls, 1);

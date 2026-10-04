@@ -16,15 +16,25 @@ export default function RecoveryScreen({ requestOnly = false, onBack }: { reques
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollView>(null);
   const target = useRef<string | null>(null);
-  const positions = useRef<Record<string, number>>({});
-  // Layout changes include keyboard resizing and wrapped errors at large font sizes.
-  // Keep the field/error at the top; the rest of the form remains freely scrollable.
+  const positions = useRef<Record<string, { y: number; height: number }>>({});
+  const viewport = useRef(0);
+  const offset = useRef(0);
+  // Only move enough to expose obscured content. Never align a visible field
+  // to the top merely because it gained focus or the keyboard opened.
   const reveal = () => {
-    const y = target.current ? positions.current[target.current] : undefined;
-    if (y !== undefined) scroll.current?.scrollTo({ y: Math.max(0, y - 12), animated: false });
+    const rect = target.current ? positions.current[target.current] : undefined;
+    if (!rect || !viewport.current) return;
+    let y = offset.current;
+    if (rect.y < y) y = Math.max(0, rect.y - 12);
+    else if (rect.y + rect.height > y + viewport.current - 12)
+      y = Math.max(0, rect.height > viewport.current - 24 ? rect.y - 12 : rect.y + rect.height - viewport.current + 12);
+    if (y !== offset.current) {
+      offset.current = y;
+      scroll.current?.scrollTo({ y, animated: false });
+    }
   };
   const layout = (field: string, event: LayoutChangeEvent) => {
-    positions.current[field] = event.nativeEvent.layout.y;
+    positions.current[field] = event.nativeEvent.layout;
     if (target.current === field) reveal();
   };
   const focus = (field: string) => { target.current = field; reveal(); };
@@ -63,13 +73,17 @@ export default function RecoveryScreen({ requestOnly = false, onBack }: { reques
   return (
     <SafeAreaView style={p.page}>
       <KeyboardAvoidingView style={{ flex: 1 }} keyboardVerticalOffset={insets.top} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-        <ScrollView ref={scroll} style={{ flex: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="none"
-          onLayout={reveal} onContentSizeChange={reveal}
-          contentContainerStyle={{ flexGrow: 1, justifyContent: "center", padding: 24, paddingBottom: 48, gap: 16 }}>
+        <View style={{ paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, gap: 16 }}>
           <Text style={p.label}>LIFERPG</Text>
           <Text style={p.pageTitle} accessibilityRole="header">
             {checking ? "Checking recovery link" : success ? "Password updated" : requesting ? "Reset your password" : "Set new password"}
           </Text>
+        </View>
+        <ScrollView ref={scroll} style={{ flex: 1 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="none"
+          bounces={false} overScrollMode="never" scrollEventThrottle={16}
+          onScroll={(event) => { offset.current = event.nativeEvent.contentOffset.y; }}
+          onLayout={(event) => { viewport.current = event.nativeEvent.layout.height; reveal(); }} onContentSizeChange={reveal}
+          contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 24, paddingTop: 8, paddingBottom: 48, gap: 16 }}>
           {checking ? <><ActivityIndicator color={colors.accent} /><Text style={p.body}>Verifying your recovery link...</Text></> : <>
             {success ? <Text style={p.body} accessibilityRole="alert">Your password was saved. Return to sign in with your new password.</Text> : <>
               {invalid && <Text style={p.error} accessibilityRole="alert">{recoveryLinkError}</Text>}
