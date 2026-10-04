@@ -1,5 +1,6 @@
+import { Text, TextInput } from "./AppText";
 import { useRef, useState } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, View, type LayoutChangeEvent } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, View, type LayoutChangeEvent } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { colors } from "../constants/theme";

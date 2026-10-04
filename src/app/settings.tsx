@@ -1,5 +1,6 @@
+import { Text } from "../components/AppText";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Switch, Text, View } from "react-native";
+import { AppState, Linking, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
 import AppSheet from "../components/AppSheet";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";

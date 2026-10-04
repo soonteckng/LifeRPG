@@ -1,6 +1,8 @@
+import { Text } from "./AppText";
 import { useEffect, useState } from "react";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { characterAccent } from "../utils/characterAppearance";
 import { colors } from "../constants/theme";
 
 // A lightweight character foundation. Growth reflects saved overall effort;
@@ -9,16 +11,21 @@ export default function CharacterPortrait({
   avatar,
   level = 1,
   developed = 0,
+  size = 176,
 }: {
   avatar: string;
   level?: number;
   developed?: number;
+  size?: number;
 }) {
+  const accent = characterAccent(avatar);
   const growth = Math.min(14, Math.max(0, level - 1) * 2);
   const reduced = useReducedMotion();
   const [wave] = useState(() => new Animated.Value(0));
+  const [expression, setExpression] = useState(0);
   useEffect(() => () => wave.stopAnimation(), [wave]);
   const greet = () => {
+    setExpression(value => (value + 1) % 3);
     if (reduced) return;
     wave.stopAnimation();
     wave.setValue(0);
@@ -30,13 +37,13 @@ export default function CharacterPortrait({
   };
   return (
     <Pressable
-      style={({ pressed }) => [s.stage, pressed && { opacity: 0.85 }]}
+      style={({ pressed }) => [s.stage, { width: size, height: size }, pressed && { opacity: 0.85 }]}
       accessibilityRole="button"
       onPress={greet}
       accessibilityLabel={`Your character. Level ${level}. ${developed} Life areas developed.`}
-      accessibilityHint="Tap to wave. This does not change your progress."
+      accessibilityHint="Tap to greet your character and change its expression."
     >
-      <View style={{ width: 220, height: 220, position: "absolute", top: -54, left: -54, transform: [{ scale: 112 / 220 }] }}>
+      <View testID="character-canvas" style={{ width: 220, height: 220, alignItems: "center", position: "absolute", top: (size - 220) / 2, left: (size - 220) / 2, transform: [{ scale: size / 220 }] }}>
       <View style={s.orbit} />
       {developed > 0 && (
         <View style={s.star}>
@@ -73,12 +80,12 @@ export default function CharacterPortrait({
         style={[s.body, { width: 112 + growth, marginLeft: -(112 + growth) / 2 }]}
       >
       </View>
-      <View style={s.head}>
+      <Animated.View style={[s.head, { transform: [{ rotate: reduced ? "0deg" : wave.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["0deg", "8deg", "0deg"] }) }] }]}>
         <View style={s.glasses}><View style={s.lens} /><View style={s.bridge} /><View style={s.lens} /></View>
-        <View style={s.smile} />
-      </View>
-      <View style={s.scarf} />
-      <View style={s.badge}>
+        <View style={[s.smile, expression === 1 && { width: 22, height: 9, borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }, expression === 2 && { width: 10, height: 10, borderRadius: 5 }]} />
+      </Animated.View>
+      <View style={[s.scarf, { backgroundColor: accent }]} />
+      <View style={[s.badge, { borderColor: accent }]} accessibilityLabel={`Character badge ${avatar}`}>
         <Text style={s.badgeText}>{avatar}</Text>
       </View>
       </View>
@@ -100,7 +107,8 @@ const s = StyleSheet.create({
     borderRadius: 102,
     borderWidth: 0,
     backgroundColor: "#191D2B",
-    top: 0,
+    top: 8,
+    left: 8,
   },
   innerOrbit: {
     position: "absolute",
@@ -121,6 +129,7 @@ const s = StyleSheet.create({
   head: {
     position: "absolute",
     top: 30,
+    left: 70,
     width: 80,
     height: 86,
     borderRadius: 40,
@@ -134,7 +143,7 @@ const s = StyleSheet.create({
   lens: { width: 24, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#626AB1" },
   bridge: { width: 6, height: 3, backgroundColor: "#626AB1" },
   smile: { marginTop: 8, width: 16, height: 4, borderRadius: 2, backgroundColor: "#626AB1" },
-  scarf: { position: "absolute", top: 110, width: 112, height: 22, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
+  scarf: { position: "absolute", top: 110, left: 54, width: 112, height: 22, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
   face: {
     width: 25,
     height: 13,
@@ -184,10 +193,10 @@ const s = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    right: 12,
-    bottom: 22,
-    width: 45,
-    height: 45,
+    right: 0,
+    bottom: 4,
+    width: 58,
+    height: 58,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.line,
@@ -195,7 +204,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  badgeText: { fontSize: 25 },
+  badgeText: { fontSize: 34 },
   star: { position: "absolute", top: 12, right: 32 },
   starText: { color: colors.accent, fontSize: 22 },
 });

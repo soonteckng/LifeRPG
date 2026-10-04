@@ -1,11 +1,13 @@
+import { Text } from "./AppText";
+import { characterAccent } from "../utils/characterAppearance";
 import { StyleSheet, View } from "react-native";
 
 // The same portrait palette at a compact scale for Home's identity row.
-export default function CharacterMark({ size = 52 }: { size?: number }) {
-  return <View style={{ width: size, height: size, overflow: "hidden", borderRadius: size / 2 }} importantForAccessibility="no-hide-descendants"><View style={[s.stage, { transform: [{ scale: size / 64 }], marginTop: (size - 64) / 2, marginLeft: (size - 64) / 2 }]}>
-    <View style={s.body} /><View style={s.head} /><View style={s.scarf} />
+export default function CharacterMark({ size = 52, avatar = "🌱" }: { size?: number; avatar?: string }) {
+  return <View style={{ width: size, height: size, borderRadius: size / 2 }} importantForAccessibility="no-hide-descendants"><View style={[s.stage, { transform: [{ scale: size / 64 }], marginTop: (size - 64) / 2, marginLeft: (size - 64) / 2 }]}>
+    <View style={s.body} /><View style={s.head} /><View style={[s.scarf, { backgroundColor: characterAccent(avatar) }]} />
     <View style={[s.eye, { left: 23 }]} /><View style={[s.eye, { right: 23 }]} />
-  </View></View>;
+  </View><View style={{ position: "absolute", right: -3, bottom: -3, width: size * 0.46, height: size * 0.46, alignItems: "center", justifyContent: "center", borderRadius: size * 0.16, backgroundColor: "#191D2B", borderWidth: 1, borderColor: characterAccent(avatar) }}><Text style={{ fontSize: size * 0.31 }} allowFontScaling={false}>{avatar}</Text></View></View>;
 }
 const s = StyleSheet.create({
   stage: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#1B1E2D", overflow: "hidden" },

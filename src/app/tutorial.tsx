@@ -1,7 +1,8 @@
+import { Text } from "../components/AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Text, View } from "react-native";
+import { Animated, View } from "react-native";
 import { useUser } from "../context/UserContext";
 import { finishOnboarding } from "../services/onboardingService";
 import {

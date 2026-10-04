@@ -1,9 +1,11 @@
+import { timerLayout } from "../utils/timerLayout";
+import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import ProgressRing from "./ProgressRing";
@@ -28,8 +30,9 @@ export default function SessionScreen() {
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
   const { width, height, fontScale } = useWindowDimensions();
-  const timerFontSize = Math.min(56 * Math.min(fontScale, 1.25), (Math.min(252, width - 48) - 22) / 1.86);
-  const ringTop = 12 + Math.ceil(20 * fontScale) + Math.ceil(timerFontSize * 1.25) * 1.5 - 126;
+  const { controlWidth, labelHeight, rowHeight } = timerLayout(width, height, fontScale);
+  const ringSize = Math.min(height < 700 ? 252 : 300, width - 48);
+  const ringTop = 36 + labelHeight + rowHeight * 1.5 - ringSize / 2;
   const [picker, setPicker] = useState<Picker>(null);
   const [durationRevision, setDurationRevision] = useState(0);
   const durationEpoch = useRef(0);
@@ -205,7 +208,7 @@ export default function SessionScreen() {
     else start();
   };
   const title = timer.sessionSummary?.questTitle || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : "Free session");
-  const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "● Session running" : "Paused" : "Ready when you are";
+  const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
@@ -218,17 +221,17 @@ export default function SessionScreen() {
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <AppHeader title={phase === "setup" ? "New session" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} />
+      <AppHeader centered={phase !== "setup"} title={phase === "setup" ? "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, height < 700 && styles.compactAnchor]}>
-          <View pointerEvents="none" style={[styles.ringLayer, { top: phase === "completed" && sessionSummary ? 12 : ringTop }]}>
-            {phase !== "setup" && <ProgressRing size={phase === "completed" && sessionSummary ? 120 : 252}
+        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, { minHeight: Math.min(360, height * 0.49) }]}>
+          <View pointerEvents="none" style={[styles.ringLayer, { top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
+            {phase !== "setup" && <ProgressRing size={phase === "completed" && sessionSummary ? 144 : ringSize}
               progress={phase === "completed" && sessionSummary ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : "#25C9B8"}>
-              {phase === "completed" && sessionSummary && <Ionicons name="checkmark" size={42} color={colors.accent} />}
+              {phase === "completed" && sessionSummary && <Ionicons name="checkmark" size={52} color={colors.accent} />}
             </ProgressRing>}
           </View>
-          <View style={[styles.timerControl, phase === "completed" && !!sessionSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary ? "no-hide-descendants" : "auto"}>
+          <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary ? "no-hide-descendants" : "auto"}>
             <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
               compact caption={phase === "setup" ? undefined : `of ${sessionTime(timer.duration)}`}
               revision={durationRevision}
@@ -238,9 +241,9 @@ export default function SessionScreen() {
               onEdit={() => { if (!wheelBusyRef.current) setPicker("duration"); }} />
           </View>
           {phase === "completed" && sessionSummary && <View style={styles.completedTime}>
-            <Text style={styles.secondary}>Time focused</Text><Text style={styles.summaryValue}>{durationLabel(sessionSummary.durationSeconds)}</Text>
+            <Text style={styles.secondary}>Time focused</Text><Text style={[styles.summaryValue, { fontSize: 38 }]}>{durationLabel(sessionSummary.durationSeconds)}</Text>
           </View>}
-          <Text style={[styles.status, { minHeight: Math.ceil(18 * fontScale) }]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Goal reached for today" : "Your progress has been saved." : status}</Text>
+          <Text style={[styles.status, { minHeight: Math.ceil(23 * fontScale) }]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
         </View>
@@ -288,12 +291,9 @@ export default function SessionScreen() {
                 <Text style={styles.label}>+{timer.sessionSummary.creditVersion === 1 ? timer.sessionSummary.areaXpEarned ?? 0 : timer.sessionSummary.xpEarned} XP</Text>
               </View>
               <View style={styles.summaryRow}><Text style={styles.secondary}>Character XP</Text><Text style={styles.label}>+{timer.sessionSummary.xpEarned}</Text></View>
-              {timer.sessionSummary.creditVersion === 1 && <Text style={styles.helper}>
-                {timer.sessionSummary.characterRemainderSeconds ?? 0}s carried toward your next character XP.
-                {timer.sessionSummary.areaRemainderSeconds != null ? ` ${timer.sessionSummary.areaRemainderSeconds}s carried toward your next Life area XP.` : ""}
-              </Text>}
+              <View style={styles.summaryRow}><Text style={styles.secondary}>Focus day</Text><Text style={[styles.label, { color: "#38C9B3" }]}>Recorded ✓</Text></View>
               {timer.sessionSummary.creditVersion !== 1 && timer.sessionSummary.goldEarned > 0 && <Text style={styles.helper}>+{timer.sessionSummary.goldEarned} gold · Historical reward</Text>}
-              <Text style={styles.helper}>Counted toward the day this session finished.</Text>
+
             </View>}
           </Animated.View>
         </ScrollView>
@@ -349,8 +349,8 @@ function SheetChoice({ label, detail, onPress }: { label: string; detail?: strin
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
-  completedTime: { position: "absolute", top: 156, left: 0, right: 0, alignItems: "center", gap: 6 },
-  activeTitle: { color: colors.text, fontSize: 16, fontWeight: "500", textAlign: "center", marginTop: 18 },
+  completedTime: { position: "absolute", top: 196, left: 0, right: 0, alignItems: "center", gap: 6 },
+  activeTitle: { color: colors.text, fontSize: 20, fontWeight: "500", textAlign: "center", marginTop: 6 },
   areaSection: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
   areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   areaChip: { minHeight: 44, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", borderRadius: 22, backgroundColor: colors.surface },
@@ -360,10 +360,10 @@ const styles = StyleSheet.create({
   activePrimary: { backgroundColor: colors.surface },
   endControl: { width: 54, minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.surface },
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
-  timerAnchor: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 4, alignItems: "center", flexShrink: 0 },
+  timerAnchor: { paddingHorizontal: 24, paddingTop: 28, paddingBottom: 8, alignItems: "center", flexShrink: 0 },
   compactAnchor: { paddingTop: 0, paddingBottom: 4 },
-  timerControl: { width: 252, maxWidth: "100%", paddingTop: 8 },
-  status: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18 },
+  timerControl: { width: 286, maxWidth: "100%", paddingTop: 8 },
+  status: { color: "#38C9B3", fontSize: 16, textAlign: "center", lineHeight: 23, marginTop: 8 },
   body: { paddingHorizontal: 24, paddingBottom: 20 },
   secondary: { color: colors.secondary, fontSize: 16, lineHeight: 23 },
   setup: { gap: 12, marginTop: 0 },
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
   primary: { minHeight: 54, padding: 14, borderRadius: 16, backgroundColor: "#25C9B8", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "600" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
-  summary: { gap: 8, marginTop: 4, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "600", letterSpacing: -0.7 },
+  summary: { gap: 14, marginTop: 4, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "600", letterSpacing: -0.7 },
   pickerTitle: { color: colors.text, fontSize: 21, fontWeight: "600", paddingHorizontal: 24, paddingBottom: 16 },
   pickerBody: { paddingHorizontal: 24, paddingBottom: 40 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },

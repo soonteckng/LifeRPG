@@ -40,3 +40,23 @@ Home fills its measured viewport above the existing tabs/dock. The goal section 
 ### Visual weight and timer alignment refinement
 
 Home increases the ring's diameter, stroke and clock size along with greeting, goal hint, Start, quest and chip typography. Section gaps are tighter. Session presets are centred, category labels are larger, and the redundant area picker entrance is omitted when all areas fit in the visible chips; it remains available for more than six areas. Timer columns are wider for three-digit minute values. Wheel and countdown text use explicit row-height boxes, centred vertical alignment, no Android font padding and no automatic scroll insets. Running-ring placement follows the same font/grid measurements. Snapping, duration validation, keyboard/back priority and timer identity are preserved. These are code changes; visible digit alignment and visual density still require phone verification.
+
+
+## Cross-screen alignment and reporting refinement
+
+The next refinement covers the supplied Claude quest-list reference and the earlier Session setup/running/completion reference. Existing navigation-bar geometry, session identity, accounting, cancellation, authentication and storage contracts are preserved.
+
+| Request | Implementation |
+| --- | --- |
+| Scrolling digits align with selection rectangle | Real header/footer rows replace implicit list padding. `getItemLayout` includes the header, initial scrolling targets the preceding row, and settling explicitly snaps to a whole-row offset. Removed 3D rotation of digits. |
+| Running timer looks like the reference | Single contiguous countdown centred inside the teal ring; shared measured geometry for the wheel and ring; compact geometry for shorter phones. |
+| Completion presentation | Full-screen themed message with lavender check ring, focused duration, saved XP rows and Done. Summary remains available. Daily goal text is conditional on the actual saved outcome. Focus-day confirmation does not fabricate a streak count. |
+| Recent sessions mismatch | Sessions entry opens only the selected period; all-time history is a separate explicit action inside the sheet. Zero in a new week can be correct after local Monday rollover. |
+| Mixed category chart colours | Daily bars stack exact per-area seconds, including each area's saved colour. Equal General/Knowledge minutes occupy equal coloured segments. |
+| Week/Month visual and placement | Full-width blue selected segment; a readable date-navigation row below it. |
+| Quest sheet reference | Larger heading, plus control, Today/All pills, coloured row markers, compact metadata and outlined play icon. Existing Edit/Delete safeguards remain available. Done today opens completed quests. Add/Edit retain their established fields and keyboard handling. |
+| Header coherence | Shared header chrome and large heading typography for Progress, Milestones and standard personal pages. Pushed pages retain a real back affordance; Session's active heading is centred like the reference. |
+| Character | Explicit centred head/orbit/scarf anchors, larger portrait and visible badge, badge-driven accent and Home badge, plus waving/nodding/three facial expressions. Auth and onboarding reuse the same portrait. |
+| App typography | Shared text/input primitives use iOS System (native San Francisco) and Android's native system font. Readable supporting text has a 14-point minimum. Timer line height is preserved exactly; no Apple font files or extra dependencies are bundled. |
+
+Automated checks cover mixed chart segments, period-scoped history, local week rollover, list frame offsets, portrait centring/badge changes, readable typography and non-mutating completion dismissal, alongside the existing session/auth/quest suites. Android/iOS JavaScript exports check bundling. These are not native screenshot or animation tests: confirm wheel centring after fast and slow scrolling, small screens, large text, safe areas, sheet gestures and completion presentation on installed devices.

@@ -1,7 +1,8 @@
+import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
@@ -32,3 +33,4 @@ const styles = StyleSheet.create({
   title: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "500" },
   time: { color: colors.accent, fontSize: 16, fontWeight: "600", flexShrink: 1, fontVariant: ["tabular-nums"] },
 });
+

@@ -1,4 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Text } from "./AppText";
+import { StyleSheet, View } from "react-native";
 import { colors } from "../constants/theme";
 import ProgressRing from "./ProgressRing";
 

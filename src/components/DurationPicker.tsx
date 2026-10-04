@@ -1,12 +1,13 @@
+import { timerLayout } from "../utils/timerLayout";
+import { Text } from "./AppText";
 import * as Haptics from "expo-haptics";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { Animated, FlatList, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useUser } from "../context/UserContext";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 import { durationLabel, parseDurationFields, sessionTime, validSessionSeconds } from "../utils/sessionSetup";
 
 type Props = {
@@ -23,9 +24,7 @@ export default function DurationPicker(props: Props) {
 
 function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, onEdit, compact = false, caption }: Props) {
   const { width, height, fontScale } = useWindowDimensions();
-  const fontSize = Math.min((compact ? 56 : height < 700 ? 54 : 64) * Math.min(fontScale, 1.25), compact ? (Math.min(252, width - 48) - 22) / 1.86 : (width - 64) / 3.7);
-  const rowHeight = Math.ceil(fontSize * 1.25);
-  const labelHeight = Math.ceil(20 * fontScale);
+  const { fontSize, rowHeight, labelHeight } = timerLayout(width, height, fontScale, compact);
   const [draft, setDraft] = useState(seconds);
   const draftRef = useRef(seconds);
   const moving = useRef(new Set<string>());
@@ -48,7 +47,7 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
   };
   const begin = (column: string) => { moving.current.add(column); onBusy(true); };
   return <View testID="duration-display">
-    <View style={[styles.labels, { height: labelHeight }, compact && !interactive && { opacity: 0 }]}><Text style={styles.unit}>Minutes</Text><View style={styles.colonWidth} /><Text style={styles.unit}>Seconds</Text></View>
+    <View style={[styles.labels, { height: labelHeight }, compact && !interactive && { opacity: 0 }]}><Text style={styles.unit} maxFontSizeMultiplier={1.4}>Minutes</Text><View style={styles.colonWidth} /><Text style={styles.unit} maxFontSizeMultiplier={1.4}>Seconds</Text></View>
     <View style={{ height: rowHeight * 3 }}>
       {interactive && <View pointerEvents="none" style={[styles.selectionBand, { top: rowHeight, height: rowHeight }]} />}
       {interactive && <View style={styles.wheels}>
@@ -60,15 +59,16 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
       </View>}
       <View pointerEvents="none" testID="session-countdown" accessible accessibilityLabel={sessionTime(shown)}
         style={[styles.digits, { top: rowHeight, height: rowHeight }]}>
-        <Text allowFontScaling={false} style={[styles.digit, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(minutes).padStart(2, "0")}</Text>
-        <Text allowFontScaling={false} style={[styles.colon, { fontSize, height: rowHeight, lineHeight: rowHeight }]}>:</Text>
-        <Text allowFontScaling={false} style={[styles.digit, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(remainder).padStart(2, "0")}</Text>
+        <Text allowFontScaling={false} style={[styles.digit, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: 0 }]}>{String(minutes).padStart(2, "0")}</Text>
+        <Text allowFontScaling={false} style={[styles.colon, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: interactive ? 1 : 0 }]}>:</Text>
+        <Text allowFontScaling={false} style={[styles.digit, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: 0 }]}>{String(remainder).padStart(2, "0")}</Text>
+        <Text allowFontScaling={false} style={{ position: "absolute", width: "100%", height: rowHeight, lineHeight: rowHeight, includeFontPadding: false, textAlignVertical: "center", textAlign: "center", fontVariant: ["tabular-nums"], color: colors.text, fontSize, fontWeight: "500", opacity: interactive ? 0 : 1 }}>{sessionTime(shown)}</Text>
       </View>
     </View>
     {compact && !interactive && caption && <Text style={{ position: "absolute", top: labelHeight + rowHeight * 2 + 8, width: "100%", textAlign: "center", color: colors.secondary, fontSize: 15 }}>{caption}</Text>}
     <View style={styles.editSlot}>
       {interactive && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit duration" onPress={onEdit} style={styles.edit}>
-        <Text style={[styles.editText, !valid && styles.error]}>{valid ? compact ? "Scroll the wheels or tap to type a time" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
+        <Text style={[styles.editText, !valid && styles.error]}>{valid ? compact ? "Scroll to set duration · Tap to type" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
       </TouchableOpacity>}
     </View>
   </View>;
@@ -87,7 +87,6 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
   const centre = count * 4;
   const [initialValue] = useState(centre + value);
   const [scrollY] = useState(() => new Animated.Value(initialValue * rowHeight));
-  const reducedMotion = useReducedMotion();
   const { hapticsEnabled } = useUser();
   const data = useMemo(() => Array.from({ length: count * 9 }, (_, index) => index), [count]);
   const indexAt = (offset: number) => Math.max(0, Math.min(data.length - 1, Math.round(offset / rowHeight)));
@@ -102,9 +101,8 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     select(next); setVisible(next); onChange(next, true);
     // Identical neighbours in each cycle make this recenter invisible. It emits
     // no draft change or haptic because programmatic scrolls are ignored.
-    if (index < count || index >= count * 8) {
-      list.current?.scrollToOffset({ offset: (centre + next) * rowHeight, animated: false });
-    }
+    const targetIndex = index < count || index >= count * 8 ? centre + next : index;
+    list.current?.scrollToOffset({ offset: targetIndex * rowHeight, animated: false });
   };
   const adjust = (delta: number) => {
     const next = (selected.current + delta + count) % count;
@@ -127,9 +125,11 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     <Animated.FlatList ref={list} data={data} style={{ height: rowHeight * 3 }}
       accessible={false} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden
       automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
-      initialScrollIndex={initialValue} initialNumToRender={7} keyExtractor={String}
-      getItemLayout={(_, index) => ({ length: rowHeight, offset: index * rowHeight, index })}
-      contentContainerStyle={{ paddingVertical: rowHeight }} snapToInterval={rowHeight}
+      initialScrollIndex={initialValue - 1} initialNumToRender={7} keyExtractor={String}
+      getItemLayout={(_, index) => ({ length: rowHeight, offset: (index + 1) * rowHeight, index })}
+      ListHeaderComponent={<View style={{ height: rowHeight }} />}
+      ListFooterComponent={<View style={{ height: rowHeight }} />}
+      snapToInterval={rowHeight} snapToAlignment="start" disableIntervalMomentum
       decelerationRate="fast" showsVerticalScrollIndicator={false} bounces={false}
       windowSize={7} maxToRenderPerBatch={12} removeClippedSubviews={false}
       scrollEventThrottle={1}
@@ -147,9 +147,7 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
       renderItem={({ item }) => <View style={[styles.row, { height: rowHeight }]}>
         <Animated.Text allowFontScaling={false} style={[styles.wheelDigit, { fontSize, height: rowHeight, lineHeight: rowHeight,
           opacity: scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.28, 1, 0.28], extrapolate: "clamp" }),
-          transform: [{ perspective: 600 },
-            { scale: reducedMotion ? 1 : scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.68, 1, 0.68], extrapolate: "clamp" }) },
-            { rotateX: reducedMotion ? "0deg" : scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: ["-42deg", "0deg", "42deg"], extrapolate: "clamp" }) }],
+
         }]}>{String(item % count).padStart(2, "0")}</Animated.Text>
       </View>} />
   </View>;

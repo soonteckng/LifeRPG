@@ -1,5 +1,6 @@
+import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
-import { lifeAreaColor } from "../../utils/lifeAreaColor";
+import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -9,16 +10,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  AppState,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -34,6 +26,7 @@ import {
 } from "../../services/progressService";
 import {
   buildProgress,
+  sessionAreaSegments,
   calendarLabel,
   dateKey,
   DEFAULT_TIMEZONE,
@@ -49,6 +42,7 @@ type Detail =
   | { kind: "day"; key: string }
   | { kind: "area"; key: string }
   | { kind: "history" }
+  | { kind: "period" }
   | { kind: "consistency" };
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
 const green = "#8FD8B6";
@@ -246,10 +240,8 @@ export default function ProgressScreen() {
       }
     }
   };
-  const openHistory = () => {
-    open({ kind: "history" });
-    void loadHistory(true);
-  };
+  const openHistory = () => open({ kind: "period" });
+  const openAllHistory = () => { open({ kind: "history" }); void loadHistory(true); };
   const currentPeriod = period.end >= today;
   const range = `${calendarLabel(period.start)} – ${calendarLabel(period.end, { month: "short", day: "numeric", year: "numeric" })}`;
   const peak = Math.max(1, ...(analytics?.days.map((d) => d.seconds) ?? []));
@@ -264,11 +256,13 @@ export default function ProgressScreen() {
   const detailSessions =
     detail?.kind === "history"
       ? history
+      : detail?.kind === "period" ? analytics?.sessions ?? []
       : (activeDay?.sessions ?? activeArea?.sessions ?? []);
   const detailTitle = selectedSession
     ? "Session details"
+    : detail?.kind === "period" ? `Sessions · ${mode === "week" ? "Week" : "Month"}`
     : detail?.kind === "history"
-      ? "Session history"
+      ? "All session history"
       : detail?.kind === "consistency"
         ? "Your consistency"
         : activeDay
@@ -295,6 +289,7 @@ export default function ProgressScreen() {
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
+      <AppHeader title="Progress" />
       <ScrollView
         contentContainerStyle={s.page}
         refreshControl={
@@ -305,10 +300,6 @@ export default function ProgressScreen() {
           />
         }
       >
-        <View style={s.header}>
-          <Text style={s.title} accessibilityRole="header">Progress</Text>
-
-        </View>
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           {(["week", "month"] as const).map((value) => (
@@ -455,26 +446,15 @@ export default function ProgressScreen() {
                       style={[s.chartDay, mode === "week" && s.weekDay]}
                     >
                       <View style={s.barTrack}>
-                        <View
-                          style={[
-                            s.bar,
-                            {
-                              height: day.seconds
-                                ? Math.max(5, (day.seconds / peak) * 88)
-                                : 3,
-                              backgroundColor: day.future
-                                ? "#282E3B"
-                                : day.seconds
-                                  ? (() => {
-                                    const totals = new Map<number | null, number>();
-                                    for (const session of day.sessions) totals.set(session.subject_id, (totals.get(session.subject_id) ?? 0) + session.duration_seconds);
-                                    const id = [...totals].sort((a, b) => b[1] - a[1])[0]?.[0];
-                                    return lifeAreaColor(id, data.areas.find(area => area.id === id)?.color_code);
-                                  })()
-                                  : "#3A4152",
-                            },
-                          ]}
-                        />
+                        <View testID={`focus-bar-${day.key}`} style={[s.bar, {
+                          height: day.seconds ? Math.max(5, (day.seconds / peak) * 88) : 3,
+                          backgroundColor: day.future ? "#282E3B" : "#3A4152",
+                        }]}>
+                          {sessionAreaSegments(day.sessions, data.areas).map(segment => (
+                            <View key={segment.key} testID={`focus-segment-${day.key}-${segment.key}`}
+                              style={{ flex: segment.seconds, backgroundColor: segment.color }} />
+                          ))}
+                        </View>
                       </View>
                       <Text
                         style={[s.dayLabel, day.key === today && s.todayLabel]}
@@ -590,9 +570,9 @@ export default function ProgressScreen() {
                   />
                 )}
               </View>
-              <Pressable onPress={openHistory} accessibilityRole="button" accessibilityLabel="View all recent sessions" style={s.historyEntrance}>
-                <Text style={s.rowTitle}>Recent sessions</Text>
-                <Text style={[s.caption, s.flex, { textAlign: "right" }]}>{analytics.sessions.length} this {mode}</Text>
+              <Pressable onPress={openHistory} accessibilityRole="button" accessibilityLabel="View sessions in selected period" style={s.historyEntrance}>
+                <Text style={s.rowTitle}>Sessions</Text>
+                <Text style={[s.caption, s.flex, { textAlign: "right" }]}>{analytics.sessions.length} completed</Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
               </Pressable>
               <Section
@@ -659,9 +639,7 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
-              <Text style={s.footnote}>
-                Every completed second counts toward your goal. Character and Life-area XP bank seconds independently; each 60 seconds earns 1 XP. Historical goal credit is preserved.
-              </Text>
+
             </ContentReveal>
           )
         )}
@@ -755,7 +733,7 @@ export default function ProgressScreen() {
                 <Text style={s.summaryValue}>{data?.streak ?? 0} days</Text>
                 <Text style={s.rowTitle}>Current focus streak</Text>
               </View>
-              <View style={s.detailRow}><Text style={s.caption}>Sessions this {mode}</Text><Text style={s.rowTitle}>{analytics?.sessions.length ?? 0}</Text></View>
+              <View style={s.detailRow}><Text style={s.caption}>Sessions</Text><Text style={s.rowTitle}>{analytics?.sessions.length ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Focus days this {mode}</Text><Text style={s.rowTitle}>{analytics?.activeDays ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Goal days this {mode}</Text><Text style={s.rowTitle}>{analytics?.goalDays ?? 0}</Text></View>
               <Text style={s.explainTitle}>Showing up counts</Text>
@@ -780,7 +758,8 @@ export default function ProgressScreen() {
             </>
           ) : (
             <>
-              {detail?.kind !== "history" && (
+              {detail?.kind === "period" && <Pressable accessibilityRole="button" accessibilityLabel="View all session history" onPress={openAllHistory} style={s.loadMore}><Text style={s.link}>View all history</Text></Pressable>}
+              {detail?.kind !== "history" && detail?.kind !== "period" && (
                 <>
                   <Text style={s.detailTotal}>
                     {durationLabel(
@@ -885,11 +864,11 @@ export default function ProgressScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  periodToolbar: { flexDirection: "row", alignItems: "center", flexWrap: "wrap" },
+  periodToolbar: { flexDirection: "column", alignItems: "stretch", flexWrap: "wrap" },
   areaSummary: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 0 },
   areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
   historyEntrance: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48, borderBottomWidth: 1, borderBottomColor: colors.line },
-  page: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 },
+  page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },
   header: { marginBottom: 8 },
   title: {
@@ -900,10 +879,10 @@ const s = StyleSheet.create({
   },
   segment: {
     flexDirection: "row",
-    backgroundColor: "transparent",
-    borderRadius: 18,
-    padding: 0,
-    alignSelf: "flex-start",
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 3,
+    alignSelf: "stretch",
     minWidth: 126,
   },
   segmentButton: {
@@ -913,13 +892,13 @@ const s = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 18,
   },
-  segmentSelected: { backgroundColor: "#2A3047" },
+  segmentSelected: { backgroundColor: "#29334E" },
   segmentText: { color: colors.secondary, fontSize: 14, fontWeight: "600" },
-  segmentActive: { color: colors.text },
+  segmentActive: { color: "#B8C8FF" },
   periodNav: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1, minWidth: 0, marginLeft: 8,
+    minWidth: 0, width: "100%",
   },
   navButton: {
     width: 44,
@@ -934,8 +913,8 @@ const s = StyleSheet.create({
     minHeight: 44,
     justifyContent: "center",
   },
-  periodTitle: { color: colors.secondary, fontWeight: "500", fontSize: 11 },
-  caption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  periodTitle: { color: colors.secondary, fontWeight: "500", fontSize: 15 },
+  caption: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
   hero: {
     paddingTop: 8, paddingBottom: 10,
   },
@@ -949,13 +928,13 @@ const s = StyleSheet.create({
   },
   heroDescription: {
     color: colors.secondary,
-    fontSize: 13,
+    fontSize: 15,
     lineHeight: 20,
     marginTop: 2,
   },
   comparisonNote: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 14,
     lineHeight: 17,
     marginTop: 4,
   },
@@ -968,8 +947,8 @@ const s = StyleSheet.create({
   },
   sectionTitle: {
     color: colors.text,
-    fontSize: 15,
-    fontWeight: "500",
+    fontSize: 18,
+    fontWeight: "600",
     marginBottom: 0,
   },
   sectionAction: {
@@ -978,7 +957,7 @@ const s = StyleSheet.create({
     gap: 2,
     minHeight: 44,
   },
-  link: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   card: {
     paddingVertical: 8,
     borderBottomWidth: 1,
@@ -1002,8 +981,9 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
-  bar: { width: "100%", maxWidth: 28, borderRadius: 5 },
-  dayLabel: { color: colors.secondary, fontSize: 12 },
+  bar: {
+    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 28, borderRadius: 5 },
+  dayLabel: { color: colors.secondary, fontSize: 14 },
   todayLabel: { color: colors.accent, fontWeight: "700" },
   goalDot: { width: 7, height: 7, borderRadius: 4 },
   dayStatus: { height: 24, justifyContent: "center", alignItems: "center", marginTop: 4 },
@@ -1019,7 +999,7 @@ const s = StyleSheet.create({
   legendDot: { width: 6, height: 6, borderRadius: 3 },
   chartEmpty: {
     color: colors.secondary,
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 19,
     marginTop: 12,
   },
@@ -1061,7 +1041,7 @@ const s = StyleSheet.create({
   weekdayLabel: {
     width: "14.285%",
     textAlign: "center",
-    fontSize: 11,
+    fontSize: 14,
     color: colors.muted,
   },
   calendarBlank: { backgroundColor: "transparent" },
@@ -1070,7 +1050,7 @@ const s = StyleSheet.create({
   calendarToday: { borderColor: colors.accent },
   calendarNumber: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 14,
     fontVariant: ["tabular-nums"],
   },
   futureText: { color: colors.muted },
@@ -1091,7 +1071,7 @@ const s = StyleSheet.create({
   },
   rowValue: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
@@ -1121,7 +1101,7 @@ const s = StyleSheet.create({
   },
   emptyBody: {
     color: colors.secondary,
-    fontSize: 13,
+    fontSize: 15,
     lineHeight: 21,
     textAlign: "center",
     maxWidth: 290,
@@ -1134,7 +1114,7 @@ const s = StyleSheet.create({
   },
   footnote: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 14,
     lineHeight: 18,
     marginTop: 18,
     textAlign: "center",
@@ -1193,7 +1173,7 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
   },
-  goalStatusText: { color: colors.secondary, fontSize: 13, flex: 1 },
+  goalStatusText: { color: colors.secondary, fontSize: 15, flex: 1 },
   explainTitle: {
     color: colors.text,
     fontSize: 17,

@@ -1,6 +1,7 @@
+import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { colors } from "../constants/theme";
 
 // One navigation bar for pushed pages and the full-screen Session.
@@ -11,16 +12,18 @@ export default function AppHeader({
   dismiss = false,
   backLabel = "Go back",
   action,
+  centered = false,
 }: {
   title: string;
-  onBack: () => void;
+  onBack?: () => void;
   dismiss?: boolean;
   backLabel?: string;
   action?: ReactNode;
+  centered?: boolean;
 }) {
   return (
     <View style={s.bar}>
-      <Pressable
+      {onBack && <Pressable
         onPress={onBack}
         accessibilityRole="button"
         accessibilityLabel={backLabel}
@@ -32,21 +35,21 @@ export default function AppHeader({
           size={24}
           color={colors.text}
         />
-      </Pressable>
-      <Text style={s.title} accessibilityRole="header" numberOfLines={1}>
+      </Pressable>}
+      <Text style={[s.title, centered && { textAlign: "center", fontSize: 18 }]} accessibilityRole="header" numberOfLines={1}>
         {title}
       </Text>
-      <View style={s.control}>{action}</View>
+      {(action || centered) && <View style={s.control}>{action}</View>}
     </View>
   );
 }
 const s = StyleSheet.create({
   bar: {
-    minHeight: 56,
+    minHeight: 64,
     paddingHorizontal: 20,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 8,
   },
   control: {
     width: 44,
@@ -58,8 +61,8 @@ const s = StyleSheet.create({
     flex: 1,
     textAlign: "left",
     color: colors.text,
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: "600",
-    letterSpacing: -0.3,
+    letterSpacing: -0.7,
   },
 });

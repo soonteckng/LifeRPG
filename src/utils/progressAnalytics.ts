@@ -201,3 +201,20 @@ export function buildProgress(
   };
 }
 
+
+export function sessionAreaSegments(
+  sessions: ProgressSession[],
+  areas: { id: number; title: string; color_code?: string | null }[],
+) {
+  const groups = new Map<string, { key: string; title: string; seconds: number; color: string }>();
+  for (const session of sessions) {
+    if (!Number.isFinite(session.duration_seconds) || session.duration_seconds <= 0) continue;
+    const area = areas.find(item => item.id === session.subject_id);
+    const title = sessionCategory(session, areas);
+    const key = area ? `area:${area.id}` : `legacy:${title}`;
+    const group = groups.get(key) ?? { key, title, seconds: 0, color: lifeAreaColor(area?.id, area?.color_code) };
+    group.seconds += session.duration_seconds;
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => a.key.localeCompare(b.key));
+}

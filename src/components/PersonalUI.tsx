@@ -1,3 +1,4 @@
+import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRouter } from "expo-router";
 import {
@@ -8,16 +9,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import {
-  Animated,
-  Platform,
-  useWindowDimensions,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Animated, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -107,22 +99,12 @@ export function PersonalPage({
           <AppHeader
             title={title}
             onBack={close}
-            backLabel="Back to Profile"
+            backLabel="Go back"
             action={action}
           />
         )}
         {floatingAction && <View style={{ position: "absolute", top: insets.top + 8, right: 20, zIndex: 1 }}>{action}</View>}
-        {!back && !floatingAction && (
-          <View style={[p.header, compact && { paddingTop: 8, paddingBottom: 4 }]}>
-            <View style={p.flex}>
-              <Text style={[p.pageTitle, compact && { fontSize: 26 }]} accessibilityRole="header">
-                {title}
-              </Text>
-              {!!subtitle && <Text style={p.body}>{subtitle}</Text>}
-            </View>
-            {action}
-          </View>
-        )}
+        {!back && !floatingAction && <AppHeader title={title} action={action} />}
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}

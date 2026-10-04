@@ -1003,3 +1003,37 @@ test("character wave is cosmetic and respects reduced motion", async () => {
     }
   }
 });
+
+test("portrait centres its head and a changed badge updates the Home identity", async () => {
+  const styles = [];
+  const mocks = {"react-native": {...Native, StyleSheet:{ create: value => { styles.push(value); return value; } }, Animated:{...Native.Animated, Value:class {setValue(){} stopAnimation(){} interpolate(){return 0;}}}}, "../hooks/useReducedMotion":{useReducedMotion:()=>true}};
+  const Portrait = load("src/components/CharacterPortrait.tsx", mocks).default;
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",size:176}));});
+  try {
+    const portraitStyles = styles.find(style=>style.head?.width===80);
+    assert.equal(portraitStyles.head.left + portraitStyles.head.width / 2, 110);
+    const canvas=renderer.root.findAllByType("View").find(node=>node.props.testID==="character-canvas");
+    assert.equal(canvas.props.style.left + canvas.props.style.width / 2, 88);
+  } finally {await act(async()=>renderer.unmount());}
+  const Mark=load("src/components/CharacterMark.tsx",mocks).default;
+  await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
+  try {
+    assert.match(text(renderer.root),/⭐/);
+    await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🐱",size:58})));
+    assert.match(text(renderer.root),/🐱/);
+    assert.doesNotMatch(text(renderer.root),/⭐/);
+  } finally {await act(async()=>renderer.unmount());}
+});
+test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {
+  const AppText=load("src/components/AppText.tsx",{"react-native":{...Native,Platform:{OS:"ios"}}}).Text;
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(AppText,{style:{fontSize:11,lineHeight:16}},"Caption"));});
+  try {
+    let style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
+    assert.equal(style.fontFamily,"System"); assert.equal(style.fontSize,14); assert.ok(style.lineHeight>=18);
+    await act(async()=>renderer.update(React.createElement(AppText,{allowFontScaling:false,style:{fontSize:60,lineHeight:75,height:75}},"25:00")));
+    style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
+    assert.equal(style.lineHeight,75); assert.equal(style.height,75);
+  } finally {await act(async()=>renderer.unmount());}
+});

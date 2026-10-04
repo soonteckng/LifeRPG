@@ -1,12 +1,7 @@
+import { Text } from "../components/AppText";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import {
-  BackHandler,
-  Platform,
-  ActivityIndicator,
-  Text,
-  View,
-} from "react-native";
+import { BackHandler, Platform, ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 

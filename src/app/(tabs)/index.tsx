@@ -1,3 +1,4 @@
+import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import GoalRing from "../../components/GoalRing";
 import CharacterMark from "../../components/CharacterMark";
@@ -13,14 +14,7 @@ import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
-import {
-  ScrollView,
-  useWindowDimensions,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ScrollView, useWindowDimensions, StyleSheet, TouchableOpacity, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -126,7 +120,7 @@ export default function HomeScreen() {
         <ContentReveal>
         <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
           <View style={styles.identityRow}>
-            <CharacterMark size={58} />
+            <CharacterMark size={58} avatar={profile?.avatar ?? "🌱"} />
             <View style={styles.identity}>
               <Text style={styles.greeting} accessibilityRole="header" numberOfLines={2}>{greeting}</Text>
               <Text style={styles.subtitle}>{profile?.class_title || "Growing through focus"}</Text>

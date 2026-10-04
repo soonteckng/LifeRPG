@@ -1,3 +1,4 @@
+import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { Ionicons } from "@expo/vector-icons";
@@ -8,7 +9,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Keyboard, Pressable, Text, View } from "react-native";
+import { Keyboard, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
 import SheetConfirmation from "../../components/SheetConfirmation";
@@ -120,7 +121,6 @@ export default function ProfileScreen() {
         <View style={{ alignItems: "center", gap: 6 }}>
           <Text style={[p.title, { fontSize: 23 }]}>{profile.username}</Text>
           <Text style={p.body}>Level {profile.level}</Text>
-          <Text style={[p.caption, { textAlign: "center" }]}>Reflects the effort you record, not your ability.</Text>
         </View>
 
         <Text style={[p.caption, { textAlign: "center" }]}>

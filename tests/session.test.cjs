@@ -520,8 +520,8 @@ test("integrated wheels ignore programmatic scrolls, commit on settling, and kee
   for(const seconds of [1,30,930,6000,28800]){
     props={...props,seconds,interactive:true,revision:props.revision+1};
     await act(async()=>renderer.update(React.createElement(Picker,props)));
-    assert.equal(wheels()[0].props.initialScrollIndex % 481,Math.floor(seconds/60));
-    assert.equal(wheels()[1].props.initialScrollIndex % 60,seconds%60);
+    assert.equal((wheels()[0].props.initialScrollIndex + 1) % 481,Math.floor(seconds/60));
+    assert.equal((wheels()[1].props.initialScrollIndex + 1) % 60,seconds%60);
   }
   await act(async()=>renderer.unmount());
 });
@@ -1013,4 +1013,46 @@ test("wheel digit boxes share the snap row height and disable automatic content 
     assert.equal(textStyle.textAlignVertical,"center");
   }
   await act(async()=>renderer.unmount());
+});
+
+
+test("virtualized wheel frames include the real header and centre the initial selected row", async () => {
+  const { default: Picker } = durationModule([]);
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Picker, {seconds:930, interactive:true, compact:true, revision:0, onCommit(){}, onBusy(){}, onValidity(){}, onEdit(){}})); });
+  try {
+    for (const wheel of renderer.root.findAllByType("Wheel")) {
+      const { snapToInterval: height, initialScrollIndex: index, getItemLayout } = wheel.props;
+      const initialOffset = getItemLayout(null, index).offset;
+      assert.equal(getItemLayout(null, 0).offset, height, "header is part of every item frame");
+      assert.equal(getItemLayout(null, index + 1).offset - initialOffset, height, "selected item occupies the centre row");
+      assert.equal(wheel.props.ListHeaderComponent.props.style.height, height);
+      assert.equal(wheel.props.snapToAlignment, "start");
+      const digit = wheel.props.renderItem({item:index + 1}).props.children;
+      assert.equal(digit.props.style[1].transform, undefined, "digit baselines must not rotate out of the selection box");
+    }
+  } finally { await act(async () => renderer.unmount()); }
+});
+
+test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
+  const calls=[];
+  const Modal=load("src/components/LevelUpModal.tsx",{
+    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s}},
+    "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "@expo/vector-icons":{Ionicons:host("Icon")},
+    "./ProgressRing":host("Ring"),
+    "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
+    "../hooks/useReducedMotion":{useReducedMotion:()=>true},
+    "expo-haptics":{},
+  }).default;
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
+  const text=node=>typeof node==="string"?node:(node.children??[]).map(text).join("");
+  try {
+    assert.match(text(renderer.root),/1 min 30 sec/);
+    assert.match(text(renderer.root),/Character XP\+1/);
+    assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
+    await act(async()=>renderer.root.findByType("Button").props.onPress());
+    assert.deepEqual(calls,["close"]);
+  } finally {await act(async()=>renderer.unmount());}
 });

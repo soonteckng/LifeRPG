@@ -1,5 +1,6 @@
+import { Text } from "./AppText";
 import { useEffect, useState, type ReactNode } from "react";
-import { AccessibilityInfo, Animated, StyleSheet, Text, View } from "react-native";
+import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import { colors } from "../constants/theme";
 

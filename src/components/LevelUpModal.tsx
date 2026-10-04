@@ -1,17 +1,12 @@
+import { Text } from "./AppText";
 import { useUser } from "../context/UserContext";
 import { durationLabel } from "../utils/sessionSetup";
 import ProgressRing from "./ProgressRing";
 import { colors } from "../constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
-import {
-  StyleSheet,
-  Text,
-  View,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-} from "react-native";
+import { StyleSheet, View, Modal, TouchableOpacity, ScrollView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
@@ -34,241 +29,55 @@ interface RewardModalProps {
   onClose: () => void;
 }
 
-export default function LevelUpModal({
-  visible,
-  xpEarned = 0,
-  goldEarned = 0,
-  creditVersion, areaXpEarned, characterRemainderSeconds, areaRemainderSeconds, goalReachedNow,
-  minutesSpent = 0,
-  durationSeconds,
-  questTitle,
-  isLevelUp = false,
-  newLevel = 1,
-  currentXP = 0,
-  requiredXP = 100,
-  onClose,
+export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
+  creditVersion, areaXpEarned, goalReachedNow, minutesSpent = 0, durationSeconds,
+  questTitle, isLevelUp = false, newLevel = 1, currentXP = 0, requiredXP = 100, onClose,
 }: RewardModalProps) {
-  const reducedMotion = useReducedMotion();
+  const reduced = useReducedMotion();
   const { hapticsEnabled } = useUser();
   useEffect(() => {
-    if (visible && hapticsEnabled) {
-      void Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      ).catch(() => {});
-    }
+    if (visible && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, hapticsEnabled]);
-
-  const xpPercent = Math.min(
-    100,
-    Math.round((currentXP / Math.max(1, requiredXP)) * 100),
-  );
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType={reducedMotion ? "none" : "fade"}
-      onRequestClose={onClose}
-    >
-      <View style={styles.overlay}>
-        <View style={styles.card} accessibilityViewIsModal>
-          <ScrollView
-            style={styles.contentScroll}
-            contentContainerStyle={styles.contentBody}
-          >
-            <View style={styles.symbol}><ProgressRing size={76} progress={1} stroke={6}>
-              <Ionicons
-                name={isLevelUp ? "sparkles-outline" : "checkmark"}
-                size={30}
-                color={colors.accent}
-              />
-            </ProgressRing></View>
-            <Text style={styles.title}>
-              {isLevelUp ? "Level up!" : "Session complete"}
-            </Text>
-
-            <Text style={styles.congratsText}>
-              {questTitle || "Free session"}
-            </Text>
-            <Text style={styles.duration}>
-              {durationLabel(durationSeconds ?? minutesSpent * 60)}
-            </Text>
-            <Text style={styles.congratsText}>Time well spent.</Text>
-
-            <View style={styles.rewardBox}>
-              <View style={styles.rewardStats}>
-                <View style={styles.rewardStat}>
-                  <Text style={styles.rewardLabel}>CHARACTER XP</Text>
-                  <Text style={styles.rewardValue}>+{xpEarned}</Text>
-                </View>
-                {(creditVersion !== 1 || areaXpEarned != null) && <>
-                  <View style={styles.rewardDivider} />
-                  <View style={styles.rewardStat}>
-                    <Text style={styles.rewardLabel}>{creditVersion === 1 ? "LIFE AREA XP" : "GOLD EARNED"}</Text>
-                    <Text style={styles.rewardValue}>+{creditVersion === 1 ? areaXpEarned : goldEarned}</Text>
-                  </View>
-                </>}
-              </View>
-              <View style={styles.xpProgressContainer}>
-                <View style={styles.xpHeader}>
-                  <Text style={styles.xpLabel}>Level {newLevel}</Text>
-                  <Text style={styles.xpPercentText}>
-                    {Math.max(0, requiredXP - currentXP)} XP to next level
-                  </Text>
-                </View>
-                <View style={styles.xpBarBg}>
-                  <View
-                    style={[styles.xpBarFill, { width: `${xpPercent}%` }]}
-                  />
-                </View>
-              </View>
-            </View>
-
-            {creditVersion === 1 && <Text style={styles.note}>
-              Every second counts toward today’s goal. {characterRemainderSeconds ?? 0}s carried toward your next character XP.
-              {areaRemainderSeconds != null ? ` ${areaRemainderSeconds}s carried toward your next Life area XP.` : ""}
-            </Text>}
-            {goalReachedNow && <Text style={styles.note}>Daily goal reached. Well done.</Text>}
-            {creditVersion !== 1 && (durationSeconds ?? minutesSpent * 60) % 60 !== 0 && (
-              <Text style={styles.note}>
-                Exact time is saved. Rewards and today’s goal currently count
-                whole minutes per completed session.
-              </Text>
-            )}
-          </ScrollView>
-          <TouchableOpacity
-            accessibilityRole="button"
-            style={styles.claimBtn}
-            onPress={onClose}
-          >
-            <Text style={styles.claimBtnText}>Continue</Text>
-          </TouchableOpacity>
-        </View>
+  return <Modal visible={visible} transparent animationType={reduced ? "none" : "fade"} onRequestClose={onClose}>
+    <SafeAreaView style={s.surface} accessibilityViewIsModal>
+      <View style={s.page}>
+        <Text style={s.title} accessibilityRole="header">{isLevelUp ? "Level up!" : "Session complete"}</Text>
+        <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+          <View style={s.hero}>
+            <ProgressRing size={144} progress={1} stroke={8}>
+              <Ionicons name={isLevelUp ? "sparkles-outline" : "checkmark"} size={52} color={colors.accent} />
+            </ProgressRing>
+            <Text style={s.caption}>Time focused</Text>
+            <Text style={s.time}>{durationLabel(durationSeconds ?? minutesSpent * 60)}</Text>
+            {!!questTitle && <Text style={s.quest}>{questTitle}</Text>}
+            {goalReachedNow && <Text style={s.success}>Daily goal reached</Text>}
+          </View>
+          <View style={s.rows}>
+            <View style={s.row}><Text style={s.caption}>Character XP</Text><Text style={s.value}>+{xpEarned}</Text></View>
+            {creditVersion === 1 && areaXpEarned != null && <View style={s.row}><Text style={s.caption}>Life area XP</Text><Text style={s.value}>+{areaXpEarned}</Text></View>}
+            {creditVersion !== 1 && goldEarned > 0 && <View style={s.row}><Text style={s.caption}>Historical gold</Text><Text style={s.value}>+{goldEarned}</Text></View>}
+            <View style={s.row}><Text style={s.caption}>Focus day</Text><Text style={s.success}>Recorded ✓</Text></View>
+            <View style={s.row}><Text style={s.caption}>Level {newLevel}</Text><Text style={s.caption}>{Math.max(0, requiredXP - currentXP)} XP to next level</Text></View>
+          </View>
+        </ScrollView>
+        <TouchableOpacity accessibilityRole="button" style={s.done} onPress={onClose}><Text style={s.doneText}>Done</Text></TouchableOpacity>
       </View>
-    </Modal>
-  );
+    </SafeAreaView>
+  </Modal>;
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.60)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  card: {
-    width: "100%",
-    maxWidth: 420,
-    maxHeight: "88%",
-    backgroundColor: colors.surface,
-    borderRadius: 24,
-    padding: 22,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  symbol: {
-    width: 76,
-    height: 76,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  duration: {
-    fontSize: 30,
-    fontWeight: "500",
-    color: colors.text,
-    textAlign: "center",
-    marginTop: 20,
-  },
-  note: {
-    color: colors.secondary,
-    fontSize: 12,
-    lineHeight: 18,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  title: {
-    color: "#F8FAFC",
-    fontSize: 25,
-    fontWeight: "600",
-    letterSpacing: -0.5,
-  },
-  congratsText: {
-    color: colors.secondary,
-    fontSize: 13,
-    textAlign: "center",
-    marginTop: 6,
-    lineHeight: 18,
-  },
-  contentScroll: { width: "100%", flexShrink: 1 },
-  contentBody: { alignItems: "center", paddingBottom: 4 },
-  rewardBox: {
-    backgroundColor: "transparent",
-    borderRadius: 0,
-    paddingVertical: 14,
-    width: "100%",
-    marginVertical: 16,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: colors.line,
-    gap: 18,
-  },
-  rewardStats: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-around",
-    minHeight: 70,
-  },
-  rewardStat: { flex: 1, alignItems: "center", gap: 8 },
-  rewardDivider: {
-    height: 48,
-    width: StyleSheet.hairlineWidth,
-    backgroundColor: colors.line,
-  },
-  rewardLabel: {
-    color: colors.secondary,
-    fontSize: 12,
-    fontWeight: "700",
-    letterSpacing: 0.5,
-  },
-  rewardValue: {
-    color: colors.text,
-    fontSize: 30,
-    fontWeight: "600",
-    fontVariant: ["tabular-nums"],
-  },
-  xpProgressContainer: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: "#1E293B",
-  },
-  xpHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 4,
-  },
-  xpLabel: { color: colors.accent, fontSize: 11, fontWeight: "bold" },
-  xpPercentText: { color: colors.secondary, fontSize: 11, fontWeight: "700" },
-  xpBarBg: {
-    height: 8,
-    backgroundColor: "#1E293B",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  xpBarFill: {
-    height: "100%",
-    backgroundColor: colors.accentFill,
-    borderRadius: 4,
-  },
-  claimBtn: {
-    backgroundColor: "#E5E4FF",
-    width: "100%",
-    paddingVertical: 14,
-    borderRadius: 14,
-    alignItems: "center",
-  },
-  claimBtnText: { color: colors.background, fontWeight: "600", fontSize: 16 },
+const s = StyleSheet.create({
+  surface: { flex: 1, backgroundColor: colors.background },
+  page: { flex: 1, width: "100%", maxWidth: 580, alignSelf: "center", paddingHorizontal: 24, paddingVertical: 16 },
+  title: { color: colors.text, fontSize: 28, fontWeight: "600", letterSpacing: -0.7 },
+  body: { flexGrow: 1, justifyContent: "center", paddingVertical: 24, gap: 28 },
+  hero: { alignItems: "center", gap: 14 },
+  time: { color: colors.text, fontSize: 42, fontWeight: "500", letterSpacing: -1, fontVariant: ["tabular-nums"] },
+  caption: { color: colors.secondary, fontSize: 16, lineHeight: 23, flexShrink: 1 },
+  quest: { color: colors.text, fontSize: 19, textAlign: "center" },
+  success: { color: "#38C9B3", fontSize: 16, fontWeight: "500" },
+  rows: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14, gap: 16 },
+  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14, minHeight: 32 },
+  value: { color: colors.text, fontSize: 19, fontWeight: "600" },
+  done: { minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#E5E4FF", marginTop: 12 },
+  doneText: { color: colors.background, fontSize: 18, fontWeight: "600" },
 });
