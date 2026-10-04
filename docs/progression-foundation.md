@@ -39,11 +39,11 @@ Daily and period reads select owned rows with `*` to obtain additive fields with
 
 ## Tests and remaining gates
 
-Client verification: TypeScript, full lint and 162 tests passed. Four new tests cover XP banks, capability/zero fallback, daily reads after reopening, and Focus-day qualification. Existing authentication, recovery, quest, session and character tests pass.
+Client verification: TypeScript, full lint and 166 tests passed. Coverage includes XP banks, capability/zero fallback, daily reads after reopening, Home exact-second display, saved completion receipts, next-session setup and Focus-day qualification. Existing authentication, recovery, quest, session and character tests pass.
 
 `scripts/test-progression-pglite.cjs` executed the SQL bootstrap, live function snapshot, pre-rollout synthetic fixtures, migration proposal and transactional assertions in an isolated in-memory PGlite 0.5.8 PostgreSQL WASM engine. It passed sub-minute/mixed credit, independent awards, original daily target, goal crossing, exact accumulation, legacy/new retries, Gold preservation, ownership denial, actual authenticated-role RLS reads/write rejection, anonymous RPC denial, cancellation, multiple level-ups, duration caps and timezone/DST date checks. PGlite is NOT an app dependency or native module. Its synthetic schema is not a complete Supabase clone and cannot validate real extensions/auth triggers or two-connection concurrency.
 
-Full server PostgreSQL and multi-connection tests have **not executed**: this workspace lacks PostgreSQL/Docker and package installation did not succeed. `test-progression-postgres.sh` and `test-progression-concurrency.sh` are reproducible harnesses for a disposable empty local database only. Concurrent completion and duplicate retry coverage is provided but remains a deployment gate. Goal-edit races belong to the separately reviewed future scheduling migration; this proposal does not add that API.
+Full PostgreSQL 17 and multi-connection tests **passed in GitHub Actions run 37207805702** on 2026-10-04 for code commit c8f2815. The isolated service executed `test-progression-postgres.sh` and `test-progression-concurrency.sh`, including simultaneous completions and duplicate retries. This tests a synthetic schema based on the inspected live contract, not a full Supabase environment. Live schema/grant drift, backup readiness and installed-device behavior remain deployment gates. Goal-edit races belong to the separately reviewed future scheduling migration; this proposal does not add that API.
 
 To run the optional WASM test independently: install `@electric-sql/pglite@0.5.8` in a temporary directory, set NODE_PATH to its node_modules, then run `node scripts/test-progression-pglite.cjs`. Do not add it to app dependencies.
 
@@ -52,7 +52,7 @@ To run server tests, create an EMPTY disposable local Postgres database, set `LI
 ## Deployment order and rollback
 
 1. Review/reconcile live schema, defaults, grants, RLS and functions again. Rehearse real PostgreSQL/concurrency and failure rollback; no remote application is authorized by this document.
-2. Release compatible client support, then finish the visual phase (seconds display and actual award labels) behind capability fallback.
+2. Release the compatible accounting displays (seconds and actual award labels) behind capability fallback. The broader visual redesign is separate.
 3. Under an agreed write pause, deploy the reviewed proposal as one managed migration. Verify snapshot/backup and record the timestamp and schema revision. New progression columns must remain unwritable by anon/authenticated clients; the proposal aborts on conflicting write grants for either role. Review custom roles separately.
 4. Verify installed Android/iOS reads/restart, restored sessions and once-only rewards using dedicated synthetic test accounts in staging first.
 
