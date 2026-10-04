@@ -3,7 +3,7 @@ import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import * as Haptics from "expo-haptics";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { Animated, FlatList, PixelRatio, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -25,7 +25,12 @@ export default function DurationPicker(props: Props) {
 
 function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, onEdit, compact = false, caption }: Props) {
   const { width, height, fontScale } = useWindowDimensions();
-  const { fontSize, rowHeight, labelHeight } = timerLayout(width, height, fontScale, compact);
+  const geometry = timerLayout(width, height, fontScale, compact);
+  const { fontSize, labelHeight } = geometry;
+  // Native cells are measured in physical pixels. A fractional pixel stride
+  // compounds over the virtualized looping list and shifts the two columns
+  // differently. Use the same pixel-aligned stride for cells, frames and snaps.
+  const rowHeight = interactive ? PixelRatio.roundToNearestPixel(geometry.rowHeight) : geometry.rowHeight;
   const [draft, setDraft] = useState(seconds);
   const draftRef = useRef(seconds);
   const moving = useRef(new Set<string>());
@@ -96,15 +101,18 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     if (next !== selected.current && hapticsEnabled) void Haptics.selectionAsync().catch(() => {});
     selected.current = next;
   };
-  const settle = (index: number) => {
+  const settle = (index: number, offset = index * rowHeight) => {
     if (!userScroll.current) return;
     userScroll.current = false;
     const next = index % count;
     select(next); setVisible(next); onChange(next, true);
     // Identical neighbours in each cycle make this recenter invisible. It emits
     // no draft change or haptic because programmatic scrolls are ignored.
-    if (index < count || index >= count * 8) {
-      list.current?.scrollToOffset({ offset: (centre + next) * rowHeight, animated: false });
+    const targetOffset = (index < count || index >= count * 8 ? centre + next : index) * rowHeight;
+    // Some native fling endings stop just off the snap boundary. Correct only
+    // that residual offset; an already aligned fling never gets another scroll.
+    if (Math.abs(offset - targetOffset) > 0.5 / PixelRatio.get()) {
+      list.current?.scrollToOffset({ offset: targetOffset, animated: false });
     }
   };
   const adjust = (delta: number) => {
@@ -112,7 +120,7 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     // Accessible adjustments reposition synchronously. Programmatic onScroll
     // events never enter the user-scroll path.
     list.current?.scrollToOffset({ offset: (centre + next) * rowHeight, animated: false });
-    userScroll.current = true; onBegin(); settle(next);
+    userScroll.current = true; onBegin(); settle(centre + next);
   };
   const scrollListener = (event: { nativeEvent: { contentOffset: { y: number } } }) => {
     if (!userScroll.current) return;
@@ -144,9 +152,9 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
         const next = indexAt(offset);
         // A stationary release at a snap point has no momentum-end event.
         // Otherwise native snapping owns settling and Start remains disabled.
-        if (event.nativeEvent.velocity?.y === 0 && Math.abs(offset - next * rowHeight) < 0.5) settle(next);
+        if (event.nativeEvent.velocity?.y === 0 && Math.abs(offset - next * rowHeight) < 0.5) settle(next, offset);
       }}
-      onMomentumScrollEnd={(event) => { if (!dragging.current) settle(indexAt(event.nativeEvent.contentOffset.y)); }}
+      onMomentumScrollEnd={(event) => { if (!dragging.current) settle(indexAt(event.nativeEvent.contentOffset.y), event.nativeEvent.contentOffset.y); }}
       renderItem={({ item }) => <View style={[styles.row, { height: rowHeight }]}>
         <Animated.Text allowFontScaling={false} style={[styles.wheelDigit, { fontSize, height: rowHeight, lineHeight: rowHeight,
           opacity: scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.28, 1, 0.28], extrapolate: "clamp" }),

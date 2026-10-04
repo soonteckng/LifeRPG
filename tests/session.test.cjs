@@ -471,7 +471,11 @@ test("foreground recovery and notifications retain exact remaining seconds",asyn
   assert.equal(scheduled.filter(n=>n.trigger?.seconds).at(-1).trigger.seconds,899);
   await ui.cleanup();
 });
-function durationModule(calls = [], hapticsEnabled = false) {
+function durationModule(calls = [], hapticsEnabled = false, scrolls = []) {
+  const Wheel = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({scrollToOffset:request=>scrolls.push(request)}));
+    return React.createElement("Wheel", props);
+  });
   return load("src/components/DurationPicker.tsx",{
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll"),BottomSheetTextInput:host("Input")},
     "./AppSheet":function Sheet(props) {
@@ -481,8 +485,8 @@ function durationModule(calls = [], hapticsEnabled = false) {
       return props.visible ? React.createElement("Sheet",props,props.header,props.children) : null;
     },
     "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),TextInput:host("Input"),Modal:host("Modal"),ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),
-      Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:host("Wheel"),event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
-      FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
+      Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:Wheel,event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
+      PixelRatio:{get:()=>2.625,roundToNearestPixel:value=>Math.round(value*2.625)/2.625},FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
     "react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:24}),SafeAreaView:host("SafeArea")},
     "expo-haptics":{selectionAsync:async()=>calls.push("haptic")},
     "../context/UserContext":{useUser:()=>({hapticsEnabled})},
@@ -1025,7 +1029,8 @@ test("virtualized wheel frames include the real header and centre the initial se
       const { snapToInterval: height, initialScrollIndex: index, getItemLayout } = wheel.props;
       const initialOffset = getItemLayout(null, index).offset;
       assert.equal(getItemLayout(null, 0).offset, height, "header is part of every item frame");
-      assert.equal(getItemLayout(null, index + 1).offset - initialOffset, height, "selected item occupies the centre row");
+      assert.ok(Math.abs(getItemLayout(null, index + 1).offset - initialOffset - height) < 1e-8, "selected item occupies the centre row");
+      assert.ok(Math.abs(height * 2.625 - Math.round(height * 2.625)) < 1e-8, "fractional-density phones use whole physical pixel rows");
       assert.equal(wheel.props.ListHeaderComponent.props.style.height, height);
       assert.equal(wheel.props.snapToAlignment, "start");
       const digit = wheel.props.renderItem({item:index + 1}).props.children;
@@ -1055,5 +1060,28 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
     await act(async()=>renderer.root.findByType("Button").props.onPress());
     assert.deepEqual(calls,["close"]);
+  } finally {await act(async()=>renderer.unmount());}
+});
+
+
+test("wheel settlement corrects a residual native offset without scrolling aligned flings", async () => {
+  const scrolls=[];
+  const {default:Picker}=durationModule([],false,scrolls);
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Picker,{seconds:930,interactive:true,revision:0,onCommit(){},onBusy(){},onValidity(){},onEdit(){}}));});
+  try {
+    const wheel=()=>renderer.root.findAllByType("Wheel")[0];
+    const height=wheel().props.snapToInterval;
+    const index=wheel().props.initialScrollIndex+2;
+    const finish=async(offset)=>{
+      await act(async()=>wheel().props.onScrollBeginDrag());
+      await act(async()=>wheel().props.onScrollEndDrag({nativeEvent:{contentOffset:{y:offset},velocity:{y:1}}}));
+      await act(async()=>wheel().props.onMomentumScrollEnd({nativeEvent:{contentOffset:{y:offset}}}));
+    };
+    await finish((index+0.2)*height);
+    assert.deepEqual(scrolls,[{offset:index*height,animated:false}]);
+    scrolls.length=0;
+    await finish(index*height);
+    assert.deepEqual(scrolls,[]);
   } finally {await act(async()=>renderer.unmount());}
 });
