@@ -156,9 +156,9 @@ test("Settings starts with identity, separates logout and contains no inert Moti
   const ui = await settings();
   try {
     const labels = ui.renderer.root.findAllByType("Text").map(n => text(n));
-    assert.equal(labels[0], "ACCOUNT");
+    assert.equal(labels[0], "Account");
     assert.match(ui.text(), /test@example.com/);
-    assert.match(ui.text(), /SESSION ACCESS/);
+    assert.match(ui.text(), /Session access/);
     assert.doesNotMatch(ui.text(), /Edit profile/);
     assert.match(ui.text(), /midnight in this time zone/);
     assert.doesNotMatch(ui.text(), /Motion|EAS|Expo Go|native build|widgets/);

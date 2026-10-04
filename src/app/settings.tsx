@@ -120,20 +120,15 @@ export default function SettingsScreen() {
     : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
   return (
     <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition>
-      <View style={p.card}>
-        <Text style={p.label}>ACCOUNT</Text>
+      <View style={sectionStyle}>
+        <Text style={p.label}>Account</Text>
         <PersonalRow icon="person-circle-outline" title={profile.username} subtitle={user?.email ?? "Signed in"} />
         <View style={p.divider} />
         <PersonalRow icon="globe-outline" title="Progress time zone" subtitle={profile.timezone} />
         <Text style={p.caption}>Your day resets at midnight in this time zone. It keeps daily goals, streaks and session history on the same clock.</Text>
       </View>
-      <View style={[p.card, { borderColor: colors.line }]}>
-        <Text style={p.label}>SESSION ACCESS</Text>
-        <PersonalRow icon="log-out-outline" title="Sign out"
-          subtitle={sessionBlocksLogout ? "Finish or end your session first" : "Your saved progress stays with your account"} onPress={() => open("signout")} />
-      </View>
-      <View style={p.card}>
-        <Text style={p.label}>FOCUS & FEEDBACK</Text>
+      <View style={sectionStyle}>
+        <Text style={p.label}>Focus & feedback</Text>
         <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
         {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
@@ -145,13 +140,18 @@ export default function SettingsScreen() {
         {preferenceError && <Text style={p.error}>{preferenceError}</Text>}
         <Text style={p.caption}>These preferences are saved for your account on this device. Sound changes apply when the next session alert is scheduled. Phone notification settings can override sound.</Text>
       </View>
-      <View style={p.card}>
-        <Text style={p.label}>YOUR EXPERIENCE</Text>
+      <View style={sectionStyle}>
+        <Text style={p.label}>Help & notifications</Text>
         <PersonalRow icon="notifications-outline" title="Notifications" subtitle={permission?.label ?? "Checking permission..."} onPress={() => open("notifications")} />
         <View style={p.divider} />
         <PersonalRow icon="compass-outline" title="Replay the introduction" subtitle="Sessions, growth, goals and rewards" onPress={() => router.navigate("/tutorial")} />
       </View>
 
+      <View style={sectionStyle}>
+        <Text style={p.label}>Session access</Text>
+        <PersonalRow icon="log-out-outline" title="Sign out"
+          subtitle={sessionBlocksLogout ? "Finish or end your session first" : "Your saved progress stays with your account"} onPress={() => open("signout")} />
+      </View>
       <Text style={p.caption}>LifeRPG · Your effort, reflected. Character attributes describe recorded practice and consistency.</Text>
       <AppSheet label={sheet === "signout" ? "Sign out" : sheet === "goal" ? "Daily focus goal" : "Notifications"}
         visible={sheet !== null} guardDismiss={busy} onRequestClose={() => { if (!busy) setSheet(null); }}
@@ -187,3 +187,5 @@ export default function SettingsScreen() {
     </PersonalPage>
   );
 }
+
+const sectionStyle = { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 4 };

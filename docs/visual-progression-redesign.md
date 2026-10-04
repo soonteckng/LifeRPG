@@ -1,6 +1,6 @@
 # Visual progression redesign
 
-## Changes
+## Initial visual pass (follow-up below supersedes these layouts)
 
 Home uses a compact portrait identity, a native-view segmented daily-goal ring with exact credited time and a large Start/Continue action. Three pending quests preview the existing quest sheet, with View all/Add discoverable. Focus streak and level are quiet footer chips. Gold balance no longer occupies Home; the balance remains stored. Overflow scroll remains available on small screens/large text.
 
@@ -19,3 +19,14 @@ The live accounting migration is recorded in progression-foundation.md. Do not r
 Phone checks: complete two NEW 30-second sessions in the same area; goal advances by a total of 60 seconds, character and area banks pay 1 XP across the pair (starting banks can change per-session awards), no new Gold. Test presets/wheels, a subsequent session, pause/minimise/reopen, full history and tutorial replay. Check goal ring labels, long names/quests, large fonts, profile editor keyboard, week/month charts, reduced motion and existing sheet dismissal directions.
 
 Native layout and motion still need Android/iOS observation. Earned accessories with manual equipment and richer character artwork remain a later feature; this phase does not claim they exist.
+
+
+## Reference-alignment follow-up
+
+Home now matches the reference's smaller continuous arc, compact identity, single goal hint, broad Start button, flat quest preview and footer chips. Progress places the selected period/date in one compact toolbar, followed immediately by total time and the entire chart; the allocation strip and history entrance follow. Extra session/focus-day/goal-day counts remain in the Consistency detail sheet. Historical date navigation, area/day drilldowns and full history still work. The chart's code-level default-text budget is tested; this is not a device measurement.
+
+Profile uses the reference's small bust portrait, floating edit/settings actions, username/level, short effort disclaimer, thin Life-area meters and compact milestones. The profile editor and its fixed Save footer remain intact. Settings uses flat groups; milestones use Starting, Consistency and Time invested with actual saved rules. The quest sheet gains Today/All tabs while retaining editing, Start and protected deletion.
+
+Session now uses the reference's setup hierarchy: editable wheels, 15/25/45/60-minute presets, direct Life-area chips and an optional Quest row. A running/paused timer has a teal circle, quest title, Pause/Resume beside a separate End control, and honest cancellation copy. Saved completion shows a check ring, actual focused duration and saved XP; Done/New session remain unchanged. Wheels/countdown stay mounted across setup/running/paused, and their commit/validation logic is unchanged. Typed duration, picker/keyboard/back priority, interactive swipe-down, reduced motion, restoration and completion retry safeguards remain. The completion popup adopts the same arc and flatter reward presentation.
+
+No database/account changes or native dependencies/configuration changed in this follow-up. Unimplemented accessories, earned cosmetic titles and a new Life-area onboarding selection step were not invented to imitate sample data. Native layouts, especially large text, long names, running ring alignment and transitions, still require phone observation. No EAS Update was published.

@@ -361,6 +361,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
   let refreshes = 0,
     haptics = 0,
     historyCalls = 0;
+  let progressStyles;
   const Native = {
     View: host("View"),
     Text: host("Text"),
@@ -368,7 +369,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
     ScrollView: host("Scroll"),
     RefreshControl: host("Refresh"),
     ActivityIndicator: host("Spinner"),
-    StyleSheet: { create: (s) => s },
+    StyleSheet: { create: (s) => { if (s.chart) progressStyles = s; return s; } },
     AppState: { addEventListener: () => ({ remove() {} }) },
     Animated: {
       Value: class {
@@ -446,6 +447,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
   const buttons = () => renderer.root.findAllByType("Button");
   return {
     today,
+    styles: () => progressStyles,
     renderer,
     text: () => text(renderer.root),
     historyCalls: () => historyCalls,
@@ -487,7 +489,7 @@ test("full history loads on demand and saved session details do not mutate rewar
   const ui = await screenHarness();
   try {
     assert.equal(ui.historyCalls(), 0);
-    await ui.press("View all");
+    await ui.press("View all recent sessions");
     assert.equal(ui.historyCalls(), 1);
     const row = ui.renderer.root
       .findAllByType("Button")
@@ -508,8 +510,8 @@ test("empty Progress explains how to begin and still makes full history accessib
   const ui = await screenHarness({ empty: true });
   try {
     assert.match(ui.text(), /Every completed session counts/);
-    assert.match(ui.text(), /A fresh chapter/);
-    await ui.press("View all");
+    assert.match(ui.text(), /Room to grow/);
+    await ui.press("View all recent sessions");
     assert.equal(ui.historyCalls(), 1);
   } finally {
     await ui.cleanup();
@@ -519,7 +521,7 @@ test("empty Progress explains how to begin and still makes full history accessib
 test("a history failure does not suppress another day’s empty-state details", async () => {
   const ui = await screenHarness({ empty: true, historyFailure: true });
   try {
-    await ui.press("View all");
+    await ui.press("View all recent sessions");
     assert.match(ui.text(), /Couldn’t load sessions/);
     await act(async () => {
       ui.renderer.root.findByType("Sheet").props.onRequestClose();
@@ -538,3 +540,37 @@ test("a history failure does not suppress another day’s empty-state details", 
   }
 });
 
+
+test("compact Progress keeps the chart before allocation and opens area drilldowns", async()=>{
+  const ui=await screenHarness();
+  try {
+    const text=ui.text();
+    assert.ok(text.indexOf("30s") < text.indexOf("Dot · focus day"));
+    assert.ok(text.indexOf("Dot · focus day") < text.indexOf("Where it went"));
+    assert.ok(text.indexOf("Where it went") < text.indexOf("Recent sessions"));
+    const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
+    assert.ok(area);
+    await act(async()=>area.props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,true);
+    assert.ok(ui.renderer.root.findAllByType("Button").some(n=>n.props.accessibilityLabel?.endsWith("View session")));
+  } finally { await ui.cleanup(); }
+});
+
+
+test("Progress chart uses a compact first-screen layout budget", async()=>{
+  const ui=await screenHarness();
+  try {
+    const s=ui.styles();
+    // Structural budget for default text, not a native layout/animation measurement.
+    // Includes two comparison lines on a narrow phone.
+    const aboveChart = s.page.paddingTop + Math.ceil(s.title.fontSize * 1.3) + s.header.marginBottom
+      + s.segmentButton.minHeight + s.hero.paddingTop + Math.ceil(s.focusValue.fontSize * 1.3)
+      + s.focusValue.marginTop + s.heroDescription.marginTop + s.heroDescription.lineHeight * 2
+      + s.hero.paddingBottom;
+    const chart = s.card.paddingVertical * 2 + s.caption.lineHeight + s.chartHeader.marginBottom
+      + s.chart.paddingTop + s.barTrack.height + s.barTrack.marginBottom + Math.ceil(s.dayLabel.fontSize * 1.3)
+      + s.dayStatus.height + s.dayStatus.marginTop + s.legend.marginTop + s.caption.lineHeight;
+    assert.ok(aboveChart + chart < 440, `chart budget ${aboveChart + chart}px`);
+    assert.equal(s.periodNav.paddingVertical, undefined);
+  } finally { await ui.cleanup(); }
+});

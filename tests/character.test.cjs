@@ -123,7 +123,7 @@ const UI = {
   Meter: host("Meter"),
   PersonalRow: ({ title, subtitle, ...props }) =>
     React.createElement("Button", props, title, subtitle),
-  PersonalPage: host("Page"),
+  PersonalPage: ({ action, children, ...props }) => React.createElement("Page", props, action, children),
   PersonalButton: ({ title, ...props }) =>
     React.createElement("Button", props, title),
   p: {},
@@ -163,7 +163,7 @@ async function screen(file, mocks) {
       act(async () =>
         renderer.root
           .findAllByType("Button")
-          .find((n) => n.props.title === title || text(n) === title)
+          .find((n) => n.props.title === title || n.props.accessibilityLabel === title || text(n) === title)
           .props.onPress(),
       ),
     cleanup: async () => act(async () => renderer.unmount()),

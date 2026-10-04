@@ -1,5 +1,6 @@
 import { useUser } from "../context/UserContext";
 import { durationLabel } from "../utils/sessionSetup";
+import ProgressRing from "./ProgressRing";
 import { colors } from "../constants/theme";
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect } from "react";
@@ -75,13 +76,13 @@ export default function LevelUpModal({
             style={styles.contentScroll}
             contentContainerStyle={styles.contentBody}
           >
-            <View style={styles.symbol}>
+            <View style={styles.symbol}><ProgressRing size={76} progress={1} stroke={6}>
               <Ionicons
                 name={isLevelUp ? "sparkles-outline" : "checkmark"}
                 size={30}
                 color={colors.accent}
               />
-            </View>
+            </ProgressRing></View>
             <Text style={styles.title}>
               {isLevelUp ? "Level up!" : "Session complete"}
             </Text>
@@ -168,13 +169,11 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
   },
   symbol: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    backgroundColor: colors.accentSoft,
+    width: 76,
+    height: 76,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 18,
+    marginBottom: 12,
   },
   duration: {
     fontSize: 30,
@@ -206,12 +205,13 @@ const styles = StyleSheet.create({
   contentScroll: { width: "100%", flexShrink: 1 },
   contentBody: { alignItems: "center", paddingBottom: 4 },
   rewardBox: {
-    backgroundColor: colors.accentSoft,
-    borderRadius: 20,
-    padding: 20,
+    backgroundColor: "transparent",
+    borderRadius: 0,
+    paddingVertical: 14,
     width: "100%",
-    marginVertical: 20,
-    borderWidth: 1,
+    marginVertical: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
     borderColor: colors.line,
     gap: 18,
   },
@@ -264,7 +264,7 @@ const styles = StyleSheet.create({
     borderRadius: 4,
   },
   claimBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: "#E5E4FF",
     width: "100%",
     paddingVertical: 14,
     borderRadius: 14,

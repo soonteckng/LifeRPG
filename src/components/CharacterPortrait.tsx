@@ -36,21 +36,20 @@ export default function CharacterPortrait({
       accessibilityLabel={`Your character. Level ${level}. ${developed} Life areas developed.`}
       accessibilityHint="Tap to wave. This does not change your progress."
     >
+      <View style={{ width: 220, height: 220, position: "absolute", top: -54, left: -54, transform: [{ scale: 112 / 220 }] }}>
       <View style={s.orbit} />
-      <View style={s.innerOrbit} />
       {developed > 0 && (
         <View style={s.star}>
           <Text style={s.starText}>✦</Text>
         </View>
       )}
-      <View style={s.floor} />
-      <View style={[s.arm, s.leftArm, { width: 22 + growth / 2 }]} />
+      <View style={[s.arm, s.leftArm, { width: 28 + growth / 2 }]} />
       <Animated.View
         style={[
           s.arm,
           s.rightArm,
           {
-            width: 22 + growth / 2,
+            width: 28 + growth / 2,
             transform: [
               {
                 rotate: reduced
@@ -71,27 +70,26 @@ export default function CharacterPortrait({
         ]}
       />
       <View
-        style={[s.body, { width: 70 + growth, marginLeft: -(70 + growth) / 2 }]}
+        style={[s.body, { width: 112 + growth, marginLeft: -(112 + growth) / 2 }]}
       >
-        <View style={s.chestMark} />
       </View>
       <View style={s.head}>
         <View style={s.glasses}><View style={s.lens} /><View style={s.bridge} /><View style={s.lens} /></View>
         <View style={s.smile} />
       </View>
       <View style={s.scarf} />
-      <View style={[s.leg, { left: "50%", marginLeft: -27 }]} />
-      <View style={[s.leg, { left: "50%", marginLeft: 6 }]} />
       <View style={s.badge}>
         <Text style={s.badgeText}>{avatar}</Text>
+      </View>
       </View>
     </Pressable>
   );
 }
 const s = StyleSheet.create({
   stage: {
-    height: 220,
-    width: "100%",
+    height: 112,
+    width: 112,
+    alignSelf: "center",
     position: "relative",
     alignItems: "center",
   },
@@ -122,10 +120,10 @@ const s = StyleSheet.create({
   },
   head: {
     position: "absolute",
-    top: 28,
-    width: 47,
-    height: 52,
-    borderRadius: 23,
+    top: 30,
+    width: 80,
+    height: 86,
+    borderRadius: 40,
     backgroundColor: "#CED7FF",
     borderWidth: 3,
     borderColor: "#A5B4FC",
@@ -133,10 +131,10 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   glasses: { flexDirection: "row", alignItems: "center", marginTop: 8 },
-  lens: { width: 13, height: 12, borderRadius: 6, borderWidth: 2, borderColor: "#626AB1" },
-  bridge: { width: 4, height: 2, backgroundColor: "#626AB1" },
-  smile: { marginTop: 5, width: 9, height: 3, borderRadius: 2, backgroundColor: "#626AB1" },
-  scarf: { position: "absolute", top: 80, width: 80, height: 13, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
+  lens: { width: 24, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#626AB1" },
+  bridge: { width: 6, height: 3, backgroundColor: "#626AB1" },
+  smile: { marginTop: 8, width: 16, height: 4, borderRadius: 2, backgroundColor: "#626AB1" },
+  scarf: { position: "absolute", top: 110, width: 112, height: 22, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
   face: {
     width: 25,
     height: 13,
@@ -147,8 +145,8 @@ const s = StyleSheet.create({
   body: {
     position: "absolute",
     left: "50%",
-    top: 83,
-    height: 74,
+    top: 122,
+    height: 84,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderBottomLeftRadius: 16,
@@ -169,13 +167,13 @@ const s = StyleSheet.create({
   },
   arm: {
     position: "absolute",
-    top: 91,
-    height: 65,
+    top: 136,
+    height: 54,
     borderRadius: 13,
     backgroundColor: "#737FB9",
   },
-  leftArm: { left: "50%", marginLeft: -54, transform: [{ rotate: "12deg" }] },
-  rightArm: { left: "50%", marginLeft: 30, transform: [{ rotate: "-12deg" }] },
+  leftArm: { left: "50%", marginLeft: -70, transform: [{ rotate: "12deg" }] },
+  rightArm: { left: "50%", marginLeft: 42, transform: [{ rotate: "-12deg" }] },
   leg: {
     position: "absolute",
     top: 148,

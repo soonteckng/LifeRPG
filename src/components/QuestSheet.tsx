@@ -170,11 +170,13 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         </Pressable>
       </View>
       <View style={styles.subheadingRow}>
-        <Text style={styles.subtitle}>{scope === "today" ? `${unfinished.length} remaining` : `${available.length} quests · your own pace`}</Text>
-        <Pressable style={styles.scopeButton} onPress={() => { setScope(scope === "today" ? "all" : "today"); setMessage(null); }} accessibilityRole="button">
-          <Text style={styles.linkSmall}>{scope === "today" ? "All quests" : "Today"}</Text>
-          <Ionicons name={scope === "today" ? "chevron-forward" : "chevron-back"} size={13} color={colors.accent} />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["today", "all"] as const).map(value => <Pressable key={value} style={[styles.scopeButton, scope === value && { backgroundColor: colors.accentSoft }]}
+            onPress={() => { setScope(value); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
+            <Text style={styles.linkSmall}>{value === "today" ? "Today" : "All quests"}</Text>
+          </Pressable>)}
+        </View>
+        <Text style={styles.subtitle}>{scope === "today" ? `${unfinished.length} remaining` : `${available.length} quests`}</Text>
       </View>
       {timer.hasOpenSession && (
         <Pressable style={styles.sessionNotice} onPress={() => start()} accessibilityRole="button">
@@ -313,12 +315,12 @@ function Choice({ label, selected, onPress, accessibilityLabel }: { label: strin
 const styles = StyleSheet.create({
   header: { paddingHorizontal: 22, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   headingRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 12 },
-  title: { color: colors.text, fontSize: 23, fontWeight: "700", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
+  title: { color: colors.text, fontSize: 21, fontWeight: "600", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
   add: { minHeight: 44, flexDirection: "row", gap: 4, alignItems: "center" },
   addText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 12, fontWeight: "400", flexShrink: 1 },
-  scopeButton: { minHeight: 44, flexDirection: "row", gap: 4, alignItems: "center" },
+  scopeButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 22, flexDirection: "row", gap: 4, alignItems: "center" },
   linkSmall: { color: colors.accent, fontSize: 12, fontWeight: "600" },
   sessionNotice: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between", paddingVertical: 12 },
   noticeText: { color: colors.secondary, fontSize: 12, flexShrink: 1 },
@@ -337,7 +339,7 @@ const styles = StyleSheet.create({
   meta: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   schedule: { color: colors.muted, fontSize: 11, lineHeight: 16 },
   startContainer: { marginLeft: "auto", flexShrink: 0 },
-  start: { minWidth: 96, minHeight: 50, paddingHorizontal: 18, justifyContent: "center", borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", gap: 5 },
+  start: { minWidth: 72, minHeight: 48, paddingHorizontal: 10, justifyContent: "center", borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", gap: 5 },
   startText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   empty: { paddingVertical: 30, gap: 10, alignItems: "flex-start" },
   emptyTitle: { fontSize: 20, lineHeight: 27, fontWeight: "600", color: colors.text },

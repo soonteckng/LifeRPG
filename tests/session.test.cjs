@@ -359,11 +359,11 @@ test("back dismisses keyboard, then picker, then the screen without resetting",a
 
 test("completed screen offers Done and New session while retaining the summary",async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{questTitle:"Read",minutesSpent:30,durationSeconds:1800,xpEarned:30,goldEarned:5}});
-  assert.match(ui.output(),/30 min completed/);
+  assert.match(ui.output(),/Time focused30 min/);
   assert.ok(ui.button("Done")); assert.ok(ui.button("New session"));
   await ui.press("Done");
   assert.deepEqual(ui.calls,[["summary-viewed"],["dismiss"]]);
-  assert.match(ui.output(),/30 min completed/);
+  assert.match(ui.output(),/Time focused30 min/);
   await ui.cleanup();
 });
 test("seconds survive countdown boundaries, pause, minimise and completion once", async()=>{
@@ -646,8 +646,8 @@ test("typed input and presets share applied seconds while linked quests stay rea
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(6000));
   await ui.update({duration:6000,timeLeft:6000});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,6000);
-  await ui.press("30 minutes");await ui.update({duration:1800,timeLeft:1800});
-  assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
+  await ui.press("25 minutes");await ui.update({duration:1500,timeLeft:1500});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,1500);
   await ui.update({linkedTaskId:7,duration:930});
   assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
   assert.equal(ui.button("Edit duration"),undefined);
@@ -958,4 +958,26 @@ test("saved completion carries independent XP banks and server goal credit witho
     await ui.run(s => s.retryCompletion());
     assert.equal(completions, 1);
   } finally { await ui.cleanup(); }
+});
+
+test("compact Session chips select the saved Life area without touching quest or duration", async()=>{
+  const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
+  await ui.press("Select Study");
+  assert.deepEqual(ui.calls,[["area",2]]);
+  await ui.update({targetAttributeId:2});
+  assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
+  await ui.press("25 minutes");
+  assert.deepEqual(ui.calls.at(-1),["seconds",1500]);
+  await ui.update({duration:1500,timeLeft:1500});
+  await ui.press("Start");
+  assert.deepEqual(ui.calls.at(-1),["start",1500,undefined]);
+  await ui.cleanup();
+});
+
+test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
+  const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0,creditVersion:1,areaXpEarned:null}});
+  assert.match(ui.output(),/General\+0 XPCharacter XP\+1/);
+  assert.ok(ui.button("Done"));
+  assert.ok(ui.button("New session"));
+  await ui.cleanup();
 });

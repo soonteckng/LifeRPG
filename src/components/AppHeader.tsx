@@ -56,9 +56,9 @@ const s = StyleSheet.create({
   },
   title: {
     flex: 1,
-    textAlign: "center",
+    textAlign: "left",
     color: colors.text,
-    fontSize: 17,
+    fontSize: 22,
     fontWeight: "600",
     letterSpacing: -0.3,
   },

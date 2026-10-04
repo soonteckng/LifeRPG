@@ -100,7 +100,7 @@ export default function RewardsScreen() {
       accessibilityRole="button"
       accessibilityLabel={`${milestone.title}, ${milestone.unlocked ? "earned" : "in progress"}. View milestone`}
       onPress={() => open(milestone)}
-      style={{ paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 12 }}
+      style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 6 }}
     >
       <View style={p.inline}>
         <View
@@ -142,28 +142,12 @@ export default function RewardsScreen() {
   return (
     <PersonalPage
       title="Milestones"
-      subtitle="A collection of the effort you’ve put in."
+      subtitle=""
+      compact
       back
       animateTransition
     >
-      <View style={{ gap: 12, paddingBottom: 22, borderBottomWidth: 1, borderBottomColor: colors.line }}>
-        <Text style={p.label}>EARNED THROUGH EFFORT</Text>
-        <Text style={[p.title, { fontSize: 25 }]}>
-          Small steps become part of you.
-        </Text>
-        <Text style={p.body}>
-          Complete sessions. Make time for your Life areas. Your character
-          grows, and milestones unlock along the way.
-        </Text>
-        {growth.data && (
-          <View style={p.inline}>
-            <Text style={p.value}>{earned.length}</Text>
-            <Text style={p.body}>
-              of {totals.milestones.length} milestones earned
-            </Text>
-          </View>
-        )}
-      </View>
+      <Text style={p.caption}>Your collection · {earned.length} of {totals.milestones.length} earned</Text>
       {growth.error && (
         <View style={p.card}>
           <Text style={p.error}>
@@ -187,33 +171,14 @@ export default function RewardsScreen() {
         </Text>
       ) : (
         <>
-          <View style={{ gap: 12 }}>
-            <Text style={p.title}>Your collection</Text>
-            {earned.length ? (
-              earned.map(row)
-            ) : (
-              <View style={p.card}>
-                <Ionicons
-                  name="ribbon-outline"
-                  size={30}
-                  color={colors.accent}
-                />
-                <Text style={p.rowTitle}>
-                  Your first milestone is one session away.
-                </Text>
-                <Text style={p.body}>
-                  Finish any session with focused time. It counts, even before
-                  you reach your daily goal.
-                </Text>
-              </View>
-            )}
-          </View>
-          {!!upcoming.length && (
-            <View style={{ gap: 12 }}>
-              <Text style={p.title}>Next milestones</Text>
-              {upcoming.map(row)}
-            </View>
-          )}
+          {[
+            { title: "Starting", ids: ["first", "ten"] },
+            { title: "Consistency", ids: ["return", "week"] },
+            { title: "Time invested", ids: ["hour", "tenhours"] },
+          ].map(group => <View key={group.title} style={{ gap: 4, paddingTop: 4 }}>
+            <Text style={p.body}>{group.title}</Text>
+            {totals.milestones.filter(m => group.ids.includes(m.id)).map(row)}
+          </View>)}
           {!upcoming.length && (
             <View style={p.card}>
               <Text style={p.title}>A collection worth being proud of.</Text>

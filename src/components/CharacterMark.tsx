@@ -1,11 +1,11 @@
 import { StyleSheet, View } from "react-native";
 
 // The same portrait palette at a compact scale for Home's identity row.
-export default function CharacterMark() {
-  return <View style={s.stage} importantForAccessibility="no-hide-descendants">
+export default function CharacterMark({ size = 52 }: { size?: number }) {
+  return <View style={{ width: size, height: size, overflow: "hidden", borderRadius: size / 2 }} importantForAccessibility="no-hide-descendants"><View style={[s.stage, { transform: [{ scale: size / 64 }], marginTop: (size - 64) / 2, marginLeft: (size - 64) / 2 }]}>
     <View style={s.body} /><View style={s.head} /><View style={s.scarf} />
     <View style={[s.eye, { left: 23 }]} /><View style={[s.eye, { right: 23 }]} />
-  </View>;
+  </View></View>;
 }
 const s = StyleSheet.create({
   stage: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#1B1E2D", overflow: "hidden" },

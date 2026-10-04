@@ -91,8 +91,11 @@ export default function ProfileScreen() {
   return (
     <PersonalPage
       title="Profile"
-      subtitle="A reflection of your effort."
+      subtitle=""
+      compact floatingAction
       action={
+        <View style={p.inline}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Personalise profile" onPress={open} style={p.back}><Ionicons name="create-outline" size={22} color={colors.accent} /></Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open Settings"
@@ -101,10 +104,11 @@ export default function ProfileScreen() {
         >
           <Ionicons name="settings-outline" size={23} color={colors.accent} />
         </Pressable>
+        </View>
       }
     >
-      <ContentReveal><View style={{ gap: 16 }}>
-      <View style={{ gap: 14, paddingTop: 8, paddingBottom: 24 }}>
+      <ContentReveal><View style={{ gap: 10 }}>
+      <View style={{ gap: 8, paddingTop: 0, paddingBottom: 10 }}>
         <CharacterPortrait
           avatar={profile.avatar}
           level={profile.level}
@@ -112,19 +116,17 @@ export default function ProfileScreen() {
             areas.filter((area) => area.level > 1 || area.current_xp > 0).length
           }
         />
-        <Text style={[p.caption, { textAlign: "center" }]}>
-          Tap your character to say hello.
-        </Text>
+
         <View style={{ alignItems: "center", gap: 6 }}>
-          <Text style={[p.title, { fontSize: 26 }]}>{profile.username}</Text>
-          <Text style={p.body}>Level {profile.level} · Built one session at a time.</Text>
+          <Text style={[p.title, { fontSize: 23 }]}>{profile.username}</Text>
+          <Text style={p.body}>Level {profile.level}</Text>
           <Text style={[p.caption, { textAlign: "center" }]}>Reflects the effort you record, not your ability.</Text>
         </View>
-        <Meter value={profile.current_xp / required} />
-        <Text style={p.caption}>
+
+        <Text style={[p.caption, { textAlign: "center" }]}>
           {profile.current_xp} / {required} XP to level {profile.level + 1}
         </Text>
-        <PersonalButton title="Personalise profile" secondary onPress={open} />
+
       </View>
       {error && (
         <View style={p.card}>
@@ -142,22 +144,18 @@ export default function ProfileScreen() {
         </View>
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-      <View style={{ gap: 12, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 22, paddingBottom: 18 }}>
+      <View style={{ gap: 6, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 12, paddingBottom: 10 }}>
         <Text style={p.title}>Your Life areas</Text>
-        <Text style={p.body}>
-          Your character’s stats grow with the areas you make time for.
-        </Text>
+
         {areas.map((area) => (
-          <View key={area.id} style={{ gap: 9, paddingVertical: 8 }}>
+          <View key={area.id} accessible accessibilityLabel={`${area.title}, level ${area.level}, ${area.current} of ${area.required} XP to the next level`} style={{ gap: 6, paddingVertical: 5 }}>
             <View style={p.inline}>
               <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: lifeAreaColor(area.id, area.color_code) }} />
               <Text style={[p.rowTitle, p.flex]}>{area.title}</Text>
               <Text style={p.rowTitle}>Lv {area.level}</Text>
             </View>
             <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} />
-            <Text style={p.caption}>
-              {area.current} / {area.required} XP to the next level
-            </Text>
+
           </View>
         ))}
         {data && areas.length === 0 && (
@@ -166,21 +164,19 @@ export default function ProfileScreen() {
             available.
           </Text>
         )}
-        <Text style={p.caption}>
-          Levels reflect focused effort you’ve logged.
-        </Text>
+
       </View>
-      <View style={{ gap: 14, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 22 }}>
+      <View style={{ gap: 8, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 8 }}>
         <View style={p.inline}><Text style={[p.title, p.flex]}>Milestones</Text>
           <Pressable onPress={() => router.navigate("/rewards")} accessibilityRole="button" accessibilityLabel="View milestones" style={{ minHeight: 44, justifyContent: "center" }}>
             <Text style={{ color: colors.accent, fontSize: 13 }}>View all →</Text>
           </Pressable>
         </View>
-        <Text style={p.body}>{data ? `${totals.milestones.filter(m => m.unlocked).length} earned. Small wins, yours to keep.` : "Your achievements will appear here."}</Text>
+
         <View style={[p.inline, { flexWrap: "wrap", gap: 10 }]}>
           {totals.milestones.map(m => <Pressable key={m.id} onPress={() => router.navigate("/rewards")}
             accessibilityRole="button" accessibilityLabel={`${m.title}, ${m.unlocked ? "earned" : "in progress"}. View milestones`}
-            style={{ width: 48, height: 48, borderRadius: 15, borderWidth: 1, borderColor: m.unlocked ? "rgba(56,201,179,0.3)" : colors.line, backgroundColor: m.unlocked ? "rgba(56,201,179,0.1)" : colors.surface, justifyContent: "center", alignItems: "center" }}>
+            style={{ width: 40, height: 44, borderRadius: 12, borderWidth: 1, borderColor: m.unlocked ? "rgba(56,201,179,0.3)" : colors.line, backgroundColor: m.unlocked ? "rgba(56,201,179,0.1)" : colors.surface, justifyContent: "center", alignItems: "center" }}>
             <Ionicons name={m.unlocked ? m.icon as import("../../components/PersonalUI").PersonalIcon : "lock-closed-outline"} size={22} color={m.unlocked ? "#38C9B3" : colors.muted} />
           </Pressable>)}
         </View>
@@ -270,7 +266,7 @@ export default function ProfileScreen() {
                   },
                 ]}
               >
-                <Text style={{ fontSize: 26 }}>{item}</Text>
+                <Text style={{ fontSize: 23 }}>{item}</Text>
               </SheetButton>
             ))}
           </View>

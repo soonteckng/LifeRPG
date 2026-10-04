@@ -34,6 +34,8 @@ export function PersonalPage({
   back = false,
   action,
   animateTransition = false,
+  compact = false,
+  floatingAction = false,
 }: {
   title: string;
   subtitle: string;
@@ -41,6 +43,8 @@ export function PersonalPage({
   back?: boolean;
   action?: ReactNode;
   animateTransition?: boolean;
+  compact?: boolean;
+  floatingAction?: boolean;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -107,13 +111,14 @@ export function PersonalPage({
             action={action}
           />
         )}
-        {!back && (
-          <View style={p.header}>
+        {floatingAction && <View style={{ position: "absolute", top: insets.top + 8, right: 20, zIndex: 1 }}>{action}</View>}
+        {!back && !floatingAction && (
+          <View style={[p.header, compact && { paddingTop: 8, paddingBottom: 4 }]}>
             <View style={p.flex}>
-              <Text style={p.pageTitle} accessibilityRole="header">
+              <Text style={[p.pageTitle, compact && { fontSize: 26 }]} accessibilityRole="header">
                 {title}
               </Text>
-              <Text style={p.body}>{subtitle}</Text>
+              {!!subtitle && <Text style={p.body}>{subtitle}</Text>}
             </View>
             {action}
           </View>
@@ -126,10 +131,10 @@ export function PersonalPage({
             { paddingBottom: Math.max(48, insets.bottom + 24) },
           ]}
         >
-          <View style={{ gap: 20 }}>
+          <View style={{ gap: compact ? 12 : 20 }}>
             {back && (
               <View style={{ gap: 6, paddingBottom: 4 }}>
-                <Text style={p.body}>{subtitle}</Text>
+                {!!subtitle && <Text style={p.body}>{subtitle}</Text>}
               </View>
             )}
             {children}

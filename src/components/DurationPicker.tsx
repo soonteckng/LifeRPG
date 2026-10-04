@@ -10,7 +10,7 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { durationLabel, parseDurationFields, sessionTime, validSessionSeconds } from "../utils/sessionSetup";
 
 type Props = {
-  seconds: number; interactive: boolean; revision: number;
+  seconds: number; interactive: boolean; revision: number; compact?: boolean; caption?: string;
   onCommit: (seconds: number) => void; onBusy: (busy: boolean) => void;
   onValidity: (valid: boolean) => void; onEdit: () => void;
 };
@@ -21,9 +21,9 @@ export default function DurationPicker(props: Props) {
   return <DurationDisplay {...props} key={props.revision} />;
 }
 
-function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, onEdit }: Props) {
+function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, onEdit, compact = false, caption }: Props) {
   const { width, height, fontScale } = useWindowDimensions();
-  const fontSize = Math.min((height < 700 ? 54 : 64) * Math.min(fontScale, 1.25), (width - 64) / 3.7);
+  const fontSize = Math.min((compact ? 48 : height < 700 ? 54 : 64) * Math.min(fontScale, 1.25), (width - 64) / 3.7);
   const rowHeight = Math.ceil(fontSize * 1.12);
   const [draft, setDraft] = useState(seconds);
   const draftRef = useRef(seconds);
@@ -47,7 +47,7 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
   };
   const begin = (column: string) => { moving.current.add(column); onBusy(true); };
   return <View testID="duration-display">
-    <View style={styles.labels}><Text style={styles.unit}>Minutes</Text><View style={styles.colonWidth} /><Text style={styles.unit}>Seconds</Text></View>
+    <View style={[styles.labels, compact && !interactive && { opacity: 0 }]}><Text style={styles.unit}>Minutes</Text><View style={styles.colonWidth} /><Text style={styles.unit}>Seconds</Text></View>
     <View style={{ height: rowHeight * 3 }}>
       {interactive && <View pointerEvents="none" style={[styles.selectionBand, { top: rowHeight, height: rowHeight }]} />}
       {interactive && <View style={styles.wheels}>
@@ -64,9 +64,10 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
         <Text allowFontScaling={false} style={[styles.digit, { fontSize, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(remainder).padStart(2, "0")}</Text>
       </View>
     </View>
+    {compact && !interactive && caption && <Text style={{ position: "absolute", top: 22 + rowHeight * 2, width: "100%", textAlign: "center", color: colors.secondary, fontSize: 13 }}>{caption}</Text>}
     <View style={styles.editSlot}>
       {interactive && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit duration" onPress={onEdit} style={styles.edit}>
-        <Text style={[styles.editText, !valid && styles.error]}>{valid ? "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
+        <Text style={[styles.editText, !valid && styles.error]}>{valid ? compact ? "Scroll the wheels or tap to type a time" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
       </TouchableOpacity>}
     </View>
   </View>;
