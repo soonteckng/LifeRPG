@@ -2,6 +2,7 @@ import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { type } from "../constants/typography";
 import { colors } from "../constants/theme";
 
 // One navigation bar for pushed pages and the full-screen Session.
@@ -60,9 +61,6 @@ const s = StyleSheet.create({
   title: {
     flex: 1,
     textAlign: "left",
-    color: colors.text,
-    fontSize: 28,
-    fontWeight: "600",
-    letterSpacing: -0.7,
+    ...type.pageTitle,
   },
 });

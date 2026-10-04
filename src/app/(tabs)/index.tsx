@@ -50,7 +50,7 @@ export default function HomeScreen() {
   // already reserve their own space and must not be counted a second time.
   const availableHeight = viewportHeight || Math.max(280, height - insets.top - insets.bottom - 96);
   const goalSize = Math.round(Math.max(144, Math.min(
-    (width - 40) * 0.70, availableHeight * 0.40, fontScale > 1.5 ? 160 : 280,
+    (width - 40) * 0.60, availableHeight * 0.36, fontScale > 1.5 ? 160 : 232,
   )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
@@ -85,7 +85,7 @@ export default function HomeScreen() {
     [tasks],
   );
 
-  const greeting = homeWelcome(hour, profile?.username);
+  const greeting = homeWelcome(hour < 5 ? 18 : hour, profile?.username?.trim().split(/\s+/)[0]);
   const isGoalComplete = goalCompleted || remainingSeconds === 0;
   const streakDays = Math.max(0, focusStreak ?? 0);
 
@@ -120,10 +120,10 @@ export default function HomeScreen() {
         <ContentReveal>
         <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
           <View style={styles.identityRow}>
-            <CharacterMark size={58} avatar={profile?.avatar ?? "🌱"} />
+            <CharacterMark size={44} avatar={profile?.avatar ?? "🌱"} />
             <View style={styles.identity}>
-              <Text style={styles.greeting} accessibilityRole="header" numberOfLines={2}>{greeting}</Text>
-              <Text style={styles.subtitle}>{profile?.class_title || "Growing through focus"}</Text>
+              <Text style={styles.greeting} accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)} accessibilityRole="header" numberOfLines={1}>{greeting}</Text>
+              <Text style={styles.subtitle} numberOfLines={1}>{profile?.class_title || "Growing through focus"}</Text>
             </View>
           </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -135,11 +135,11 @@ export default function HomeScreen() {
               label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
               ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
-          </View>
           <TouchableOpacity style={styles.primaryButton} onPress={startFreeSession} activeOpacity={0.88} accessibilityRole="button">
             <Ionicons name="play-outline" size={22} color="#171827" />
             <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : "Start session"}</Text>
           </TouchableOpacity>
+          </View>
           <View style={styles.questHeading}>
             <Text style={styles.sectionTitle}>{"Today's quests"}</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Today's quests, ${activeTasks.length} pending`}
@@ -176,26 +176,26 @@ const styles = StyleSheet.create({
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
   layout: { flexGrow: 1 },
-  identityRow: { flexDirection: "row", gap: 14, alignItems: "center" },
+  identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
-  greeting: { color: colors.text, fontSize: 23, fontWeight: "600", letterSpacing: -0.4 },
-  subtitle: { color: colors.secondary, fontSize: 15, lineHeight: 21, marginTop: 4 },
-  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 16, paddingBottom: 14, gap: 12 },
+  greeting: { color: colors.text, fontSize: 20, fontWeight: "500", letterSpacing: -0.4 },
+  subtitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
+  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 16, paddingBottom: 16, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  primaryButton: { backgroundColor: "#E5E4FF", minHeight: 58, borderRadius: 18, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
-  primaryButtonText: { color: "#171827", fontSize: 19, fontWeight: "600" },
-  questHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 },
-  sectionTitle: { color: colors.secondary, fontSize: 17, fontWeight: "500" },
+  primaryButton: { backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
+  questHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 16 },
+  sectionTitle: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
   allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44 },
-  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
-  questRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line, paddingVertical: 8 },
+  link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
+  questRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   questTitle: { color: colors.text, fontSize: 17, fontWeight: "500", flex: 1 },
   questTime: { color: colors.secondary, fontSize: 15 },
   emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 16 },
   emptyText: { flex: 1, color: colors.secondary, fontSize: 13, lineHeight: 20 },
   footer: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 16 },
-  chip: { flexDirection: "row", gap: 6, alignItems: "center", borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 8 },
+  chip: { flexDirection: "row", gap: 6, alignItems: "center", borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 12, minHeight: 36, paddingVertical: 8 },
   chipText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
   retry: { marginTop: 12, paddingVertical: 10 },
   retryText: { color: colors.danger, fontSize: 13 },

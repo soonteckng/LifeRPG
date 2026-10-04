@@ -13,8 +13,8 @@ function flatten(style: TextProps["style"]): Record<string, unknown> {
 export const Text = forwardRef<NativeText, TextProps>(function AppText({ style, ...props }, ref) {
   const applied = flatten(style);
   const size = typeof applied.fontSize === "number" ? applied.fontSize : 16;
-  const readableSize = props.allowFontScaling === false ? size : Math.max(14, size);
-  const lineHeight = typeof applied.lineHeight === "number" && readableSize > size ? Math.max(applied.lineHeight, readableSize * 1.35) : undefined;
+  const readableSize = props.allowFontScaling === false ? size : Math.max(13, size);
+  const lineHeight = typeof applied.lineHeight === "number" && readableSize > size ? Math.max(applied.lineHeight, Math.ceil(readableSize * 1.35)) : undefined;
   return <NativeText {...props} ref={ref} style={[{ fontFamily: systemFont, fontSize: 16 }, style,
     { fontSize: readableSize, ...(lineHeight ? { lineHeight } : {}) }]} />;
 });

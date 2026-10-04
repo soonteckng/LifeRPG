@@ -208,6 +208,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   const quests = {tasks:[{id:7,title:"A long quest title worth finishing",target_minutes:30,subject_id:1,is_due_today:true,is_completed_today:false}],
     subjects:[{id:1,title:"General"}],loading:false,error:false,refresh:async()=>{},...questOverrides};
   const Screen=load("src/components/SessionScreen.tsx",{
+    "react-native-svg":{__esModule:true,default:host("Svg"),Circle:host("Circle")},
     "react-native":{
       View:host("View"),Text:host("Text"),TextInput:host("Input"),TouchableOpacity:host("Button"),
       ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),ActivityIndicator:host("Spinner"),
@@ -216,7 +217,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
+      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
@@ -981,7 +982,8 @@ test("compact Session chips select the saved Life area without touching quest or
 
 test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0,creditVersion:1,areaXpEarned:null}});
-  assert.match(ui.output(),/General\+0 XPCharacter XP\+1/);
+  assert.match(ui.output(),/Character XP\+1/);
+  assert.doesNotMatch(ui.output(),/Life area XP|General\+1 XP/);
   assert.ok(ui.button("Done"));
   assert.ok(ui.button("New session"));
   await ui.cleanup();
@@ -1043,7 +1045,7 @@ test("virtualized wheel frames include the real header and centre the initial se
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
   const Modal=load("src/components/LevelUpModal.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s}},
+    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./ProgressRing":host("Ring"),

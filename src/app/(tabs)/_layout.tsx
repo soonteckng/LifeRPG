@@ -1,3 +1,4 @@
+import { colors } from "../../constants/theme";
 import SessionTabBar from "../../components/SessionTabBar";
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
@@ -13,7 +14,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarStyle: styles.tabBar,
         tabBarItemStyle: styles.tabItem,
-        tabBarActiveTintColor: "#F8FAFC",
+        tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: "#8B93A7",
         tabBarLabelStyle: styles.tabLabel,
         tabBarHideOnKeyboard: true,
@@ -71,9 +72,9 @@ const styles = StyleSheet.create({
   tabBar: {
     height: 66,
     borderRadius: 24,
-    backgroundColor: "rgba(20, 24, 34, 0.94)",
+    backgroundColor: "rgba(20, 24, 34, 0.78)",
     borderTopWidth: 0,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.07)",
     paddingTop: 7,
     paddingBottom: Platform.OS === "ios" ? 8 : 7,
@@ -87,9 +88,9 @@ const styles = StyleSheet.create({
   },
 
   tabLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontFamily: Platform.OS === "ios" ? "System" : undefined,
-    fontWeight: "700",
+    fontWeight: "500",
     marginTop: 1,
   },
 

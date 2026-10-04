@@ -377,7 +377,9 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   const reloadProfile = async () => true;
   const refreshQuests = async () => {};
   const Home = load("src/app/(tabs)/index.tsx", {
-    "react-native": { ...native, ScrollView: host("ScrollView"), TouchableOpacity: host("Pressable"), useWindowDimensions: () => ({ height: 640, width: 320, fontScale: 2 }) },
+    "../hooks/useReducedMotion": {useReducedMotion: () => true},
+    "react-native-svg": {__esModule:true, default:host("Svg"), Circle:host("Circle")},
+    "react-native": { ...native, Animated: {createAnimatedComponent:c=>c, Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}}}, ScrollView: host("ScrollView"), TouchableOpacity: host("Pressable"), useWindowDimensions: () => ({ height: 640, width: 320, fontScale: 2 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "expo-haptics": {}, "expo-router": { useRouter: () => ({ push() {} }) },
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },

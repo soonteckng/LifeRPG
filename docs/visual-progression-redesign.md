@@ -60,3 +60,79 @@ The next refinement covers the supplied Claude quest-list reference and the earl
 | App typography | Shared text/input primitives use iOS System (native San Francisco) and Android's native system font. Readable supporting text has a 14-point minimum. Timer line height is preserved exactly; no Apple font files or extra dependencies are bundled. |
 
 Automated checks cover mixed chart segments, period-scoped history, local week rollover, list frame offsets, portrait centring/badge changes, readable typography and non-mutating completion dismissal, alongside the existing session/auth/quest suites. Android/iOS JavaScript exports check bundling. These are not native screenshot or animation tests: confirm wheel centring after fast and slow scrolling, small screens, large text, safe areas, sheet gestures and completion presentation on installed devices.
+
+
+## Visual polish pass from main
+
+Baseline: `main` at `a56b5ff78b9a426da8707b80aa3d24f93bed2004`. Reviewed AGENTS.md, CLAUDE.md and this document before editing. All six new attachments are Android device screenshots; no new mockup file was included in that set. The hierarchy guidance in the request and the documented prior references guide this pass.
+
+### Scope and delivery
+
+Initially prepared locally without committing, as requested. The owner subsequently authorised committing and publishing this pass on the separate `visual-polish` branch for Expo Go review. No EAS builds/updates, migrations, account edits or remote database calls were made. The approved SVG dependency changes package.json and package-lock.json. App.json, progression/context/service code, SQL, route definitions and transition/gesture handlers are unchanged. The root layout changes only the data already supplied to the reward presentation; it does not alter navigation. The display palette does not rewrite saved colours.
+
+**Step 1 is approved and implemented.** `react-native-svg` 15.15.4 replaces the segmented View arc in the shared ProgressRing. Two SVG circles draw a track and round-capped progress arc from twelve o’clock. Progress updates use the existing 220 ms rhythm; reduced motion updates immediately. GoalRing API and host accessibility values are preserved. Expo Go includes SVG; the installed APK needs a fresh native build, since OTA cannot add this native module. No cloud build or update was published.
+
+### Steps and checks
+
+Each completed step was followed by TypeScript, full Expo lint and the full interaction/unit suite. Checks that initially failed due to intentional palette/text presentation changes or missing native mock properties were corrected; the final runs below pass. Tests still exercise session and account behaviour and do not measure native rendering.
+
+| Step | Result and files changed | Checks |
+| --- | --- | --- |
+| 1 — Rings | `ProgressRing`, package manifests, Session/Home test mocks and `tests/rings.test.cjs`. Shared SVG arc, round caps, zero-progress dot suppression, reduced-motion support. | Typecheck, full lint, 183/183 tests. Native rendering still needs phone observation. |
+| 2 — Type | `src/constants/typography.ts`; `AppText`, `AppHeader`, `PersonalUI`, `GoalRing`, `DurationPicker`, `LevelUpModal`, `QuestSheet`, `SessionScreen`, `SessionTabBar`, `SheetConfirmation`, `LaunchIntro`; tab layout and Home/Profile/Progress; `tests/character.test.cjs`. Medium weights replace heavy labels/titles. Hero numbers retain 600; readable text is at least 13. | Typecheck, full lint, 180/180 tests. |
+| 3 — Sizes/spacing | Home and Progress; `SessionScreen`, `PersonalUI`. Compact segmented/chip surfaces remain inside full 44-point hit areas. Shared screen margins are 20; rows are at least 52; the chart is 64 points high with at most one active day, otherwise 88. | Typecheck, full lint, 180/180 tests. |
+| 4 — Colours | `src/utils/lifeAreaColor.ts`, `src/constants/theme.ts`, `SessionScreen`, `DurationPicker`, Progress, `tests/progress.test.cjs`. Source hues map to a calm display palette. Indigo/lavender areas become sky blue; area labels retain category identity. Hints use secondary, unselected chips neutral, primary actions lavender. | Typecheck, full lint, 180/180 tests. |
+| 5 — Avatar badge | `CharacterPortrait`, `CharacterMark`, `tests/character.test.cjs`. Remove visible emoji overlays; stored badge values and all editor choices remain. Scarves retain badge-specific colouring. | Typecheck, full lint, 180/180 tests. |
+| 6 — Home | `src/app/(tabs)/index.tsx`. One 44-point avatar, 20-point greeting with a short display name, one secondary line. The full name remains available to screen readers. Ring/hint/Start form one group; measured viewport and overflow logic are retained. | Typecheck, full lint, 180/180 tests (rerun after the final mock correction). |
+| 7 — Tabs/dividers | Tab layout; `SessionTabBar`, `PersonalUI`, `DurationPicker`, `QuestSheet`, `SheetConfirmation`, Home/Profile/Progress/Session; `tests/character.test.cjs`. Hairline decorative dividers, lighter translucent tab surface, 12-point medium labels and accent icons/labels. A non-interactive native-View fade softens content at the dock edge. | Typecheck, full lint, 180/180 tests. |
+| 8 — Session/completion | `src/components/CompletionDetails.tsx`, `SessionScreen`, `LevelUpModal`, root layout, `tests/session.test.cjs`. Shared completion hero/rows, resolved quest name, area tint and honest goal row. Running timer is centred in its available region; setup/active titles use the same left-aligned header. Redundant visual running status is removed; pause description, saving/errors and live announcements remain. | Typecheck, full lint, 180/180 tests. |
+| 9 — Profile | Profile; `CharacterPortrait`, `PersonalUI`. Smaller portrait/body, softer silhouette, existing mouth/expressions, saved class title, short effort disclaimer, aligned edit/settings toolbar, quiet sections. Existing decorative sparkle is retained; no unimplemented sparkle action was invented. | Typecheck, full lint, 180/180 tests. |
+
+The minimum readable size is 13, except tab labels explicitly requested at 12. Existing fixed timer digits and existing scaling caps remain; no new font-scaling disable was introduced. Smaller control surfaces are decorative children inside 44-point touch wrappers, rather than relying on hitSlop outside parent bounds.
+
+### Two completion presentations
+
+`GlobalRewardListener` in `src/app/_layout.tsx` opens `LevelUpModal` when rewards are visible. `SessionScreen` retains the saved completion beneath it. They are separate states/surfaces by design, not two award calls. `CompletionHero` and `CompletionRows` now supply both surfaces. Closing the popup still only closes it; Done/New session on the retained summary keep their existing behaviour. A genuine level-up can still use the existing Level up heading and sparkle icon.
+
+The generic stored fallback `Quest session` is not written over. The presentation resolves the linked quest from existing loaded data; a free session is labelled Free session. Existing independent area/character awards and historical gold remain readable. No reward calculation or award retry guard changed.
+
+**Exact remaining-goal text is deferred.** The saved summary contains `dailyCompletedSeconds`, `creditedDate` and `goalReachedNow`, but not the historical target. Using the profile's current goal could mislabel an older completed day. The new goal row says Goal reached when the server confirms a newly reached goal, otherwise Progress saved. It does not claim that a previously reached goal was missed. Adding exact remainder requires supplying a verified target/date to the presentation; this pass does not add a query or change saved data to manufacture it.
+
+### Contrast on #0B0D13
+
+Calculated from sRGB relative luminance, not measured from a phone screenshot:
+
+| Text/palette | Contrast |
+| --- | --- |
+| Secondary #A1A8B8 | 8.15:1 |
+| Muted #8992A6 | 6.22:1 |
+| Neutral chip text #C5CCDC | 12.06:1 |
+| Accent #A5B4FC | 9.74:1 |
+| Teal #2DD4BF | 10.43:1 |
+| Coral #F0997B | 8.83:1 |
+| Sky blue #79BCE8 | 9.41:1 |
+| Amber #E8C26A | 11.43:1 |
+| Rose #E58BB1 | 8.01:1 |
+
+Colours are accompanied by labels and existing selection/achievement semantics. Colour alone is not proof of accessibility.
+
+### Optional Inter decision
+
+Inter was not added. Native system faces need no extra font load or assets and preserve the current iOS system typography. Bundling separate 400/500/600/700 files would increase APK and OTA asset payloads; exact bytes depend on the selected font files. Runtime loading requires waiting during startup to avoid a font flash and mapping every weight to its own Android family. Runtime-loaded font assets can be delivered with a compatible OTA runtime; a build-time font plugin needs a native rebuild. Check the project's fingerprint compatibility before publishing. Native fonts are the lower-risk choice for this pass. Adding Inter awaits an explicit choice, not an assumption.
+
+### Verification and phone observation
+
+Final TypeScript, full lint and 183 tests pass. Android/iOS JavaScript exports passed with --no-bytecode, using placeholder public build values; no backend calls were made. These exports verify module bundling, not installed APK behaviour or Hermes bytecode/native rendering. App icon/splash binaries were not changed or reviewed; exports used the existing local assets, not downloaded GitHub binaries.
+
+No after-change device screen, gesture, frame rate, TalkBack/VoiceOver or installed build was observed. The supplied screenshots show BEFORE state only. Do not claim the new screen density, tab fade, ring quality or finger motion has been visually verified.
+
+Phone checklist:
+
+- Home with 0/1/2/3 quests, long names and font scaling: greeting stays within two visible lines; ring/hint/Start stay together; measured overflow is reachable.
+- Week/Month selected controls have compact visible surfaces and reachable full touch areas. Verify a single bar, mixed categories, long legends, historical navigation and every drilldown.
+- Profile: portrait/name/class title/areas/milestones; badge selection saves and colours the scarf without an emoji overlay; editor Save/footer/keyboard remain usable.
+- Setup wheels/presets/typed duration: alignment and fluidity are preserved. Check short screens and large text before starting.
+- Running/paused: timer remains mounted, descriptor and Pause/Resume are clear, End/minimise/back/swipe retain existing safeguards. Saving and failure states must remain visible.
+- Complete linked and free sessions, including a genuine level-up and historical completion: popup and retained summary share visual rows, resolve names honestly, close without new awards, and support Done/New session.
+- Check large-text completion wrapping, tab fade/content edge, native font weights, secondary contrast in ambient light, reduced motion and TalkBack/VoiceOver announcements.
+- After a native rebuild: observe Home/running/completion ring edges at zero/partial/full progress, 12-o'clock start and reduced motion on Android/iOS. The implementation is complete; native visual verification remains outstanding.

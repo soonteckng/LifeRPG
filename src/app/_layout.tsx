@@ -13,7 +13,8 @@ import LevelUpModal from "../components/LevelUpModal";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider, useTimer } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
-import { QuestProvider } from "../context/QuestContext";
+import { lifeAreaColor } from "../utils/lifeAreaColor";
+import { QuestProvider, useQuests } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { secondaryNativeOptions, sessionNativeOptions, traceSession } from "../utils/sessionTransition";
 
@@ -81,8 +82,13 @@ function GlobalRewardListener() {
     completedLevelUp,
     clearCompletionModal,
     rewardsVisible,
+    linkedTaskId,
+    targetAttributeId,
   } = useTimer();
   const { profile, reloadProfile } = useUser();
+  const {tasks, subjects} = useQuests();
+  const quest = tasks.find(task => task.id === linkedTaskId);
+  const area = subjects.find(subject => subject.id === targetAttributeId);
 
   useEffect(() => {
     if (sessionSummary || completedLevelUp) {
@@ -106,7 +112,9 @@ function GlobalRewardListener() {
       goalReachedNow={sessionSummary?.goalReachedNow}
       minutesSpent={sessionSummary?.minutesSpent || 0}
       durationSeconds={sessionSummary?.durationSeconds}
-      questTitle={sessionSummary?.questTitle}
+      questTitle={linkedTaskId != null ? quest?.title || (sessionSummary?.questTitle !== "Quest session" ? sessionSummary?.questTitle : "Quest") : "Free session"}
+      areaTitle={area?.title}
+      areaColor={lifeAreaColor(targetAttributeId,area?.color_code)}
       isLevelUp={!!completedLevelUp?.leveledUp}
       newLevel={completedLevelUp?.newLevel || currentLevel}
       currentXP={currentXP}

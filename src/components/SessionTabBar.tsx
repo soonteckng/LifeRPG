@@ -17,6 +17,9 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const { hasOpenSession, isRunning, isCompleted, sessionSummary } = timer;
   const dock = sessionDockState(timer);
   return <View style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+    <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={styles.fade}>
+      {Array.from({length:16}, (_, index) => <View key={index} style={{flex:1, backgroundColor: colors.background, opacity: (index + 1) / 16}} />)}
+    </View>
     {(hasOpenSession || (sessionSummary && !timer.summaryViewed)) && <TouchableOpacity style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
       <Ionicons name={dock.icon} size={20} color={colors.accent} />
@@ -28,9 +31,10 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   </View>;
 }
 const styles = StyleSheet.create({
+  fade: { position: "absolute", top: -24, left: 0, right: 0, height: 24 },
   dock: { backgroundColor: colors.background, paddingHorizontal: 18, paddingTop: 8, gap: 8 },
-  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.accent },
+  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.accentSoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.accent },
   title: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "500" },
-  time: { color: colors.accent, fontSize: 16, fontWeight: "600", flexShrink: 1, fontVariant: ["tabular-nums"] },
+  time: { color: colors.accent, fontSize: 16, fontWeight: "500", flexShrink: 1, fontVariant: ["tabular-nums"] },
 });
 
