@@ -322,6 +322,37 @@ test("Progress rejects stale requests, preserves same-period data on failure and
   await act(async () => renderer.unmount());
 });
 
+test("returning to Progress reuses fresh data; off-tab completion invalidates the cache", async () => {
+  let value, focus, blur, calls = 0;
+  const { useProgressData } = load("src/hooks/useProgressData.ts", {
+    "expo-router": { useFocusEffect: fn => React.useEffect(() => { focus = fn; blur = fn(); return blur; }, [fn]) },
+    "react-native": { AppState: { addEventListener: () => ({ remove() {} }) } },
+    "../services/progressService": {
+      getCompletedSessions: async () => { calls++; return [session("saved", 60)]; },
+      getProgressGoals: async () => [], getProgressSubjects: async () => areas, getFocusStreak: async () => 2,
+    },
+  });
+  function Capture({ completion }) {
+    value = useProgressData(periodFor("week", "2026-10-03", TZ, now), TZ, completion);
+    return null;
+  }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Capture)); });
+  try {
+    assert.equal(calls, 1);
+    await act(async () => { blur(); blur = focus(); });
+    assert.equal(calls, 1);
+    assert.equal(value.loading, false);
+    assert.equal(value.data.sessions[0].id, "saved");
+    blur();
+    await act(async () => renderer.update(React.createElement(Capture, { completion: { id: "new" } })));
+    assert.equal(calls, 1);
+    await act(async () => { blur = focus(); });
+    assert.equal(calls, 2);
+    assert.equal(value.data.sessions[0].id, "saved");
+  } finally { await act(async () => renderer.unmount()); }
+});
+
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
 async function screenHarness({ empty = false, historyFailure = false } = {}) {

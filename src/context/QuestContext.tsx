@@ -42,7 +42,8 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
   const pendingRefresh = useRef<Promise<void> | null>(null);
-  const refresh = useCallback(() => {
+  const refresh = useCallback(function refresh(fresh = false): Promise<void> {
+    if (fresh && pendingRefresh.current) return pendingRefresh.current.then(() => refresh(), () => refresh());
     if (!pendingRefresh.current) {
       pendingRefresh.current = loadQuests().finally(() => { pendingRefresh.current = null; });
     }
@@ -54,7 +55,7 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
       ? current.map((item) => item.id === task.id ? task : item) : [task, ...current]);
   }, []);
   // Session completion is an external persistence event; reload its server-derived schedule and completion state.
-  useEffect(() => { if (sessionSummary) void refresh(); }, [sessionSummary, refresh]);
+  useEffect(() => { if (sessionSummary) void refresh(true); }, [sessionSummary, refresh]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });
     return () => subscription.remove();

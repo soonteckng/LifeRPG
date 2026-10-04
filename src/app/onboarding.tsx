@@ -24,7 +24,7 @@ export default function OnboardingScreen() {
     profile.username === "Hero" ? "" : profile.username,
   );
   const [avatar, setAvatar] = useState(profile.avatar || "🌱");
-  const [goal, setGoal] = useState(profile.daily_goal_minutes || 60);
+  const [goal, setGoal] = useState(Math.max(30, profile.daily_goal_minutes || 60));
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const lock = useRef(false);

@@ -9,7 +9,7 @@ import { colors } from "../constants/theme";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
-import { createTask, deleteTask, setTaskCompletion, updateTask, type Task } from "../services/taskService";
+import { createTask, deleteTask, updateTask, type Task } from "../services/taskService";
 import { DAYS, DURATIONS, draftKey, makeQuestDraft, questParams, validateQuestDraft, type QuestDraft } from "../utils/questDraft";
 import AppSheet from "./AppSheet";
 import SheetConfirmation, { type SheetConfirmationProps } from "./SheetConfirmation";
@@ -111,13 +111,6 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     });
   };
   const activeQuest = !!editor?.task && timer.hasOpenSession && timer.linkedTaskId === editor.task.id;
-  const changeCompletion = (task: Task) => {
-    if (timer.hasOpenSession && timer.linkedTaskId === task.id) return;
-    void mutate(async () => {
-      upsert(await setTaskCompletion(task, !task.is_completed_today));
-      setMessage(task.is_completed_today ? "Quest reopened." : "Quest marked complete.");
-    });
-  };
   const requestDelete = (task: Task) => {
     if (mutationLock.current) return;
     Keyboard.dismiss();
@@ -146,10 +139,11 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     else onClose();
   };
 
-  const today = tasks.filter((task) => task.is_due_today);
-  const unfinished = today.filter((task) => !task.is_completed_today);
-  const shown = (scope === "today" ? today : tasks).slice().sort((a, b) =>
-    Number(a.is_completed_today) - Number(b.is_completed_today) || Number(b.is_due_today) - Number(a.is_due_today));
+  const available = tasks.filter((task) => !task.is_completed_today && (task.is_recurring || !task.is_completed));
+  const today = available.filter((task) => task.is_due_today);
+  const unfinished = today;
+  const shown = (scope === "today" ? today : available).slice().sort((a, b) =>
+    Number(b.is_due_today) - Number(a.is_due_today));
 
   const editorHeader = editor ? (
     <View>
@@ -176,7 +170,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         </Pressable>
       </View>
       <View style={styles.subheadingRow}>
-        <Text style={styles.subtitle}>{scope === "today" ? `${unfinished.length} remaining · ${today.length - unfinished.length} complete` : `${tasks.length} quests · your own pace`}</Text>
+        <Text style={styles.subtitle}>{scope === "today" ? `${unfinished.length} remaining` : `${available.length} quests · your own pace`}</Text>
         <Pressable style={styles.scopeButton} onPress={() => { setScope(scope === "today" ? "all" : "today"); setMessage(null); }} accessibilityRole="button">
           <Text style={styles.linkSmall}>{scope === "today" ? "All quests" : "Today"}</Text>
           <Ionicons name={scope === "today" ? "chevron-forward" : "chevron-back"} size={13} color={colors.accent} />
@@ -274,18 +268,15 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
             </Pressable>}
             {loading ? <ActivityIndicator color={colors.accent} style={styles.loading} /> : error && tasks.length === 0 ? null : shown.length === 0 ? (
               <View style={styles.empty}>
-                <Text style={styles.emptyTitle}>{tasks.length ? "Nothing scheduled for today." : "Create your first quest."}</Text>
-                <Text style={styles.emptyText}>{tasks.length ? "Your other quests are in All quests." : "Give one thing your attention today."}</Text>
-                <Pressable style={styles.emptyAdd} onPress={() => tasks.length ? setScope("all") : openEditor(null)} accessibilityRole="button"><Text style={styles.addText}>{tasks.length ? "View all quests" : "Add quest"}</Text></Pressable>
+                <Text style={styles.emptyTitle}>{available.length ? "Nothing scheduled for today." : tasks.length ? "All done for today." : "Create your first quest."}</Text>
+                <Text style={styles.emptyText}>{available.length ? "Your other quests are in All quests." : tasks.length ? "Completed quests are saved in your session history. Repeating quests return when they are due again." : "Give one thing your attention today."}</Text>
+                <Pressable style={styles.emptyAdd} onPress={() => available.length ? setScope("all") : openEditor(null)} accessibilityRole="button"><Text style={styles.addText}>{available.length ? "View all quests" : "Add quest"}</Text></Pressable>
               </View>
             ) : <>
               {scope === "today" && unfinished.length === 0 && <Text style={styles.doneMessage}>All done for today.</Text>}
               {shown.map((task) => {
                 const subject = subjects.find((item) => item.id === task.subject_id);
                 return <View key={task.id} style={styles.questRow}>
-                  <Pressable style={styles.completeButton} onPress={() => changeCompletion(task)} disabled={busy || (timer.hasOpenSession && timer.linkedTaskId === task.id)} accessibilityRole="checkbox" accessibilityState={{ checked: task.is_completed_today, disabled: busy || (timer.hasOpenSession && timer.linkedTaskId === task.id) }} accessibilityLabel={`${task.is_completed_today ? "Mark unfinished" : "Mark complete"}: ${task.title}`}>
-                    <Ionicons name={task.is_completed_today ? "checkmark-circle" : "ellipse-outline"} size={23} color={task.is_completed_today ? colors.accent : colors.muted} />
-                  </Pressable>
                   <View style={styles.questMainContainer}><Pressable style={styles.questMain} onPress={() => openEditor(task)} accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`}
                     accessibilityHint="Edit name, duration, repeat, and life area">
                     <View style={styles.questTitleRow}>

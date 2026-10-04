@@ -31,10 +31,12 @@ export function useProgressData(
   const generation = useRef(0);
   const focused = useRef(false);
   const lastDay = useRef(period.today);
+  const lastLoaded = useRef<{ key: string; at: number } | null>(null);
+  const lastCompletion = useRef(completion);
   const bounds = queryBounds(period);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (quiet = false) => {
     const request = ++generation.current;
-    setLoading(true);
+    if (!quiet) setLoading(true);
     try {
       const [sessions, goals, areas, streak] = await Promise.all([
         getCompletedSessions(bounds.since, bounds.until),
@@ -44,6 +46,7 @@ export function useProgressData(
       ]);
       if (generation.current === request) {
         setData({ key, sessions, goals, areas, streak });
+        lastLoaded.current = { key, at: Date.now() };
         setErrorKey(null);
       }
     } catch {
@@ -55,26 +58,32 @@ export function useProgressData(
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
-      void refresh();
+      const cached = lastLoaded.current;
+      if (!cached || cached.key !== key || Date.now() - cached.at > 60_000)
+        void refresh(cached?.key === key);
       return () => {
         focused.current = false;
         generation.current++;
       };
-    }, [refresh]),
+    }, [refresh, key]),
   );
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
-      if (state === "active" && focused.current) void refresh();
+      if (state === "active" && focused.current) void refresh(true);
     });
     return () => subscription.remove();
   }, [refresh]);
   useEffect(() => {
-    if (completion && focused.current) void refresh();
+    if (lastCompletion.current === completion) return;
+    lastCompletion.current = completion;
+    lastLoaded.current = null;
+    if (completion && focused.current) void refresh(true);
   }, [completion, refresh]);
   useEffect(() => {
     if (lastDay.current !== period.today) {
       lastDay.current = period.today;
-      if (focused.current) void refresh();
+      lastLoaded.current = null;
+      if (focused.current) void refresh(true);
     }
   }, [period.today, refresh]);
   useEffect(

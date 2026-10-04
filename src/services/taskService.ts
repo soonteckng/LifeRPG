@@ -311,33 +311,3 @@ export async function deleteTask(
   }
 }
 
-export async function setTaskCompletion(
-  task: Task,
-  completed: boolean,
-): Promise<Task> {
-  const userId = await getCurrentUserId();
-  const now = new Date().toISOString();
-  const today = getToday();
-
-  const { data, error } = await supabase
-    .from("tasks")
-    .update({
-      is_completed: completed,
-      last_completed_date: completed ? today : null,
-      completed_at: completed ? now : null,
-      updated_at: now,
-    })
-    .eq("id", task.id)
-    .eq("user_id", userId)
-    .select(
-      "id, title, difficulty, is_completed, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id, last_completed_date, created_at, updated_at, completed_at",
-    )
-    .single();
-
-  if (error) {
-    console.error("Failed to update task completion:", error);
-    throw error;
-  }
-
-  return mapTask(data);
-}

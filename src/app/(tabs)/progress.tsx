@@ -8,7 +8,6 @@ import * as Haptics from "expo-haptics";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Animated,
   AppState,
   Pressable,
   RefreshControl,
@@ -26,7 +25,6 @@ import { colors } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
-import { useReducedMotion } from "../../hooks/useReducedMotion";
 import {
   getSessionHistory,
   type ProgressSession,
@@ -148,7 +146,6 @@ export default function ProgressScreen() {
   const { profile, hapticsEnabled } = useUser();
   const { sessionSummary } = useTimer();
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
-  const reduced = useReducedMotion();
   const insets = useSafeAreaInsets();
   const [today, setToday] = useState(() => dateKey(new Date(), timeZone));
   const [mode, setMode] = useState<PeriodMode>("week");
@@ -181,7 +178,6 @@ export default function ProgressScreen() {
     historyBefore = useRef(""),
     historyRequest = useRef(0),
     historyBusy = useRef(false);
-  const [reveal] = useState(() => new Animated.Value(1));
   const sheetScroll =
     useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
   useEffect(() => {
@@ -196,21 +192,6 @@ export default function ProgressScreen() {
       subscription.remove();
     };
   }, [timeZone]);
-  useEffect(() => {
-    reveal.stopAnimation();
-    if (reduced || !data) {
-      reveal.setValue(1);
-      return;
-    }
-    reveal.setValue(0.35);
-    const animation = Animated.timing(reveal, {
-      toValue: 1,
-      duration: 240,
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [data, reduced, reveal]);
   useEffect(
     () => () => {
       historyRequest.current++;
@@ -322,8 +303,7 @@ export default function ProgressScreen() {
         }
       >
         <View style={s.header}>
-          <Text style={s.eyebrow}>YOUR JOURNEY</Text>
-          <Text style={s.title}>Progress</Text>
+          <Text style={s.title} accessibilityRole="header">Progress</Text>
           <Text style={s.subtitle}>Small moments. Meaningful momentum.</Text>
         </View>
         <View style={s.segment} accessibilityRole="tablist">
@@ -433,7 +413,7 @@ export default function ProgressScreen() {
           </View>
         ) : (
           analytics && (
-            <Animated.View style={{ opacity: reveal }}>
+            <View>
               <View style={s.hero}>
                 <View style={s.heroTop}>
                   <Text style={s.overline}>FOCUS TIME</Text>
@@ -466,19 +446,19 @@ export default function ProgressScreen() {
                 )}
                 <View style={s.heroStats}>
                   <View style={s.stat}>
-                    <Text style={s.statNumber}>
+                    <Text style={[s.statNumber, { color: "#C4B5FD" }]}>
                       {analytics.sessions.length}
                     </Text>
                     <Text style={s.caption}>Sessions</Text>
                   </View>
                   <View style={s.statDivider} />
                   <View style={s.stat}>
-                    <Text style={s.statNumber}>{analytics.activeDays}</Text>
+                    <Text style={[s.statNumber, { color: "#7DD3FC" }]}>{analytics.activeDays}</Text>
                     <Text style={s.caption}>Active days</Text>
                   </View>
                   <View style={s.statDivider} />
                   <View style={s.stat}>
-                    <Text style={s.statNumber}>{analytics.goalDays}</Text>
+                    <Text style={[s.statNumber, { color: green }]}>{analytics.goalDays}</Text>
                     <Text style={s.caption}>Goal days</Text>
                   </View>
                 </View>
@@ -775,7 +755,7 @@ export default function ProgressScreen() {
                 Focus time includes seconds. Daily-goal credit and rewards
                 follow the current whole-minute rules.
               </Text>
-            </Animated.View>
+            </View>
           )
         )}
       </ScrollView>
@@ -1051,9 +1031,9 @@ const s = StyleSheet.create({
   periodTitle: { color: colors.text, fontWeight: "600", fontSize: 15 },
   caption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   hero: {
-    backgroundColor: "#191D30",
+    backgroundColor: "#211D38",
     borderWidth: 1,
-    borderColor: "rgba(165,180,252,0.18)",
+    borderColor: "rgba(196,181,253,0.28)",
     borderRadius: 24,
     padding: 22,
   },

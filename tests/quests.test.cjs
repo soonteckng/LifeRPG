@@ -60,7 +60,6 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     createTask: async (params) => { calls.push(["create", params]); if (failSave) throw Error("Offline"); return saved(10, params); },
     updateTask: async (id, params) => { calls.push(["update", id, params]); if (failSave) throw Error("Offline"); return saved(id, params); },
     deleteTask: async (id) => { calls.push(["delete", id]); },
-    setTaskCompletion: async (item, complete) => ({ ...item, is_completed_today: complete, is_completed: complete }),
   };
   const QuestSheet = load("src/components/QuestSheet.tsx", {
     "react-native": { ...native, Alert: { alert: (...args) => alerts.push(args) } },
@@ -95,7 +94,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
   const text = (node) => typeof node === "string" ? node : (node.children ?? []).map(text).join("");
   const button = (label) => renderer.root.findAllByType("Pressable").findLast((node) => node.props.accessibilityLabel === label || text(node) === label);
   return {
-    calls, alerts, button, tasks: () => currentTasks, failSave: () => { failSave = true; },
+    calls, alerts, button, renderer, tasks: () => currentTasks, failSave: () => { failSave = true; },
     sheets: () => renderer.root.findAllByType("Sheet"),
     count: () => currentTasks.filter((item) => item.is_due_today && !item.is_completed_today).length,
     press: async (label) => { const node = button(label); assert.ok(node, `Missing button: ${label}`); await act(async () => node.props.onPress()); },
@@ -204,19 +203,22 @@ test("list stays mounted beneath the editor and through scope changes", async ()
   await ui.cleanup();
 });
 
-test("complete, reopen, and delete update today's count immediately", async () => {
-  const ui = await setup([task()]);
-  await ui.press("Mark complete: Read a chapter");
-  assert.equal(ui.count(), 0);
-  assert.match(ui.output(), /All done for today/);
-  assert.equal(ui.button("Start Read a chapter"), undefined);
-  await ui.press("Mark unfinished: Read a chapter");
-  assert.equal(ui.count(), 1);
-  await ui.press("Delete Read a chapter");
-  await ui.alertAction("Delete quest");
-  assert.equal(ui.tasks().length, 0);
-  assert.equal(ui.count(), 0);
-  await ui.cleanup();
+test("completed quests are hidden in both scopes, without manual completion controls", async () => {
+  const ui = await setup([
+    task({ title: "Finished once", is_completed: true, is_completed_today: true }),
+    task({ id: 2, title: "Finished daily", is_recurring: true, is_completed: true, is_completed_today: true }),
+    task({ id: 3, title: "Due again", is_recurring: true, is_completed: true, is_completed_today: false }),
+  ]);
+  try {
+    assert.equal(ui.button("Edit Finished once"), undefined);
+    assert.equal(ui.button("Edit Finished daily"), undefined);
+    assert.ok(ui.button("Start Due again"));
+    await ui.press("All quests");
+    assert.equal(ui.button("Edit Finished once"), undefined);
+    assert.equal(ui.button("Edit Finished daily"), undefined);
+    assert.ok(ui.button("Edit Due again"));
+    assert.equal(ui.renderer.root.findAllByType("Pressable").some(n => n.props.accessibilityRole === "checkbox"), false);
+  } finally { await ui.cleanup(); }
 });
 
 test("Start configures a quest session and navigates only after dismissal", async () => {
@@ -235,7 +237,7 @@ test("an open or paused session is continued without replacing its task, duratio
   await ui.press("Delete Read a chapter");
   assert.match(ui.output(), /Finish or cancel its session/);
   await ui.alertAction("Keep quest");
-  assert.equal(ui.button("Mark complete: Read a chapter").props.disabled, true);
+  assert.equal(ui.button("Mark complete: Read a chapter"), undefined);
   await ui.press("Your current session is still open.Continue");
   assert.deepEqual(ui.calls, []);
   await ui.finishDismiss();
@@ -438,6 +440,29 @@ test("concurrent refreshes share work and a completion refresh waits for stale w
   assert.equal(calls, 2);
   finishers[1]("fresh");
   assert.equal(await fresh, "fresh");
+});
+
+test("quest completion during an old refresh queues a fresh server read", async () => {
+  let state, summary = null;
+  const finishers = [];
+  const { QuestProvider, useQuests } = load("src/context/QuestContext.tsx", {
+    "react-native": { AppState: { addEventListener: () => ({ remove() {} }) } },
+    "./TimerContext": { useTimer: () => ({ sessionSummary: summary }) },
+    "../services/taskService": { getTasks: () => new Promise(resolve => finishers.push(resolve)), getSubjects: async () => subjects },
+  });
+  function Capture() { state = useQuests(); return null; }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(QuestProvider, null, React.createElement(Capture))); });
+  try {
+    let pending;
+    await act(async () => { pending = state.refresh(); });
+    summary = { id: "completed-session" };
+    await act(async () => renderer.update(React.createElement(QuestProvider, null, React.createElement(Capture))));
+    await act(async () => { finishers[0]([task()]); await pending; });
+    assert.equal(finishers.length, 2);
+    await act(async () => finishers[1]([task({ is_completed: true, is_completed_today: true })]));
+    assert.equal(state.tasks[0].is_completed_today, true);
+  } finally { await act(async () => renderer.unmount()); }
 });
 
 test("Home updates on focus, foreground and a clock boundary; unfocused Home does not fetch", async () => {

@@ -13,6 +13,7 @@ import Constants from "expo-constants";
 import { PersonalButton, p } from "../components/PersonalUI";
 import AuthScreen from "../components/AuthScreen";
 import RecoveryScreen from "../components/RecoveryScreen";
+import LaunchIntro from "../components/LaunchIntro";
 import LevelUpModal from "../components/LevelUpModal";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider, useTimer } from "../context/TimerContext";
@@ -335,9 +336,9 @@ function AuthGate() {
 export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AuthProvider>
+      <LaunchIntro><AuthProvider>
         <AuthGate />
-      </AuthProvider>
+      </AuthProvider></LaunchIntro>
     </GestureHandlerRootView>
   );
 }

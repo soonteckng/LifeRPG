@@ -410,6 +410,7 @@ test("root gate renders recovery before mounting account or onboarding providers
       "../components/PersonalUI": personalUI,
       "../components/AuthScreen": host("Login"),
       "../components/RecoveryScreen": host("Recovery"),
+      "../components/LaunchIntro": props => props.children,
       "../components/LevelUpModal": host("Reward"),
       "../context/AuthContext": {
         AuthProvider: props => props.children,
@@ -427,6 +428,51 @@ test("root gate renders recovery before mounting account or onboarding providers
       assert.equal(accountMounts, 0);
     } finally { await act(async () => renderer.unmount()); }
   }
+});
+
+test("LifeRPG intro covers signed-out and signed-in content and releases it after animation", async () => {
+  for (const destination of ["Login", "Home"]) {
+    let finish, hides = 0;
+    const Component = load("src/components/LaunchIntro.tsx", {
+      "react-native": { ...native, StyleSheet: { create: s => s, absoluteFill: {} },
+        AccessibilityInfo: { isReduceMotionEnabled: async () => false },
+        Animated: {
+          Value: class { setValue() {} }, View: host("Animated"), timing: () => ({}), spring: () => ({}),
+          parallel: () => ({}), delay: () => ({}), sequence: () => ({ start: fn => { finish = fn; }, stop() {} }),
+        } },
+      "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => { hides++; } },
+    }).default;
+    let renderer;
+    await act(async () => { renderer = create(React.createElement(Component, null, React.createElement(destination))); });
+    try {
+      const overlay = renderer.root.findAllByType("View").find(n => n.props.testID === "launch-intro");
+      assert.ok(overlay);
+      assert.equal(renderer.root.findAllByType(destination).length, 1);
+      assert.ok(renderer.root.findAllByType("View").some(n => n.props.importantForAccessibility === "no-hide-descendants"));
+      await act(async () => overlay.props.onLayout());
+      assert.equal(hides, 1);
+      await act(async () => finish({ finished: true }));
+      assert.equal(renderer.root.findAllByType("View").some(n => n.props.testID === "launch-intro"), false);
+      assert.equal(renderer.root.findAllByType(destination).length, 1);
+    } finally { await act(async () => renderer.unmount()); }
+  }
+});
+
+test("reduced-motion launch skips animation and shows the app after a brief brand frame", async () => {
+  let animations = 0;
+  const Component = load("src/components/LaunchIntro.tsx", {
+    "react-native": { ...native, StyleSheet: { create: s => s, absoluteFill: {} },
+      AccessibilityInfo: { isReduceMotionEnabled: async () => true },
+      Animated: { Value: class { setValue() {} }, View: host("Animated"), sequence: () => { animations++; } } },
+    "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => {} },
+  }).default;
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Component, null, React.createElement("Home"))); });
+  try {
+    await act(async () => new Promise(resolve => setTimeout(resolve, 400)));
+    assert.equal(animations, 0);
+    assert.equal(renderer.root.findAllByType("View").some(n => n.props.testID === "launch-intro"), false);
+  } finally { await act(async () => renderer.unmount()); }
 });
 test("an unrelated account sign-in during recovery invalidates password editing", async () => {
   const ui = await provider({ session, marker: session.user.id });

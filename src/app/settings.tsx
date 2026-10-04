@@ -73,7 +73,7 @@ export default function SettingsScreen() {
     catch { setError("Could not sign out. Check your connection and try again."); lock.current = false; setBusy(false); }
   };
   const saveGoal = async () => {
-    if (lock.current || !goalData?.scheduling_available || goalError) return;
+    if (lock.current || !goalData?.scheduling_available || !goalData.weekly_limit_available || !goalData.can_change_goal || goalError) return;
     const minutes = parseDailyGoal(draft), validation = validateDailyGoal(minutes);
     if (validation) { setError(validation); return; }
     lock.current = true; setBusy(true); setError("");
@@ -86,6 +86,7 @@ export default function SettingsScreen() {
         setGoalData(null);
         setGoalError("Your daily goal is read-only. Goal changes are not available yet.");
       } else setError("Could not schedule your goal. Your current goal is unchanged. Check your connection and try again later.");
+      void loadGoal();
     }
     finally { lock.current = false; setBusy(false); }
   };
@@ -105,12 +106,15 @@ export default function SettingsScreen() {
   };
   const open = (next: typeof sheet) => {
     if (lock.current) return;
-    if (next === "goal" && (!goalData?.scheduling_available || goalError)) return;
+    if (next === "goal" && (!goalData?.scheduling_available || !goalData.weekly_limit_available || !goalData.can_change_goal || goalError)) return;
     setError(""); setSheet(next);
     if (next === "goal") { setDraft(String(goalData?.next_goal_minutes ?? profile.daily_goal_minutes)); setSavedGoal(""); void loadGoal(); }
     if (next === "notifications") void refreshPermission();
   };
-  const canEditGoal = !!goalData?.scheduling_available && !goalError;
+  const canEditGoal = !!goalData?.scheduling_available && goalData.weekly_limit_available && goalData.can_change_goal && !goalError;
+  const goalAvailability = goalData?.weekly_limit_available && goalData.next_change_at && !goalData.can_change_goal
+    ? `You can change your goal again on ${new Intl.DateTimeFormat(undefined, { timeZone: profile.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(goalData.next_change_at))}.`
+    : "Your daily goal is read-only. Goal changes are not available yet.";
   const goalSummary = goalData
     ? `Today: ${goalData.today_goal_minutes} min${goalData.pending ? ` · ${goalData.next_goal_minutes} min from ${goalData.next_effective_date}` : ""}`
     : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
@@ -119,9 +123,9 @@ export default function SettingsScreen() {
       <View style={p.card}>
         <Text style={p.label}>ACCOUNT</Text>
         <PersonalRow icon="person-circle-outline" title={profile.username} subtitle={user?.email ?? "Signed in"} />
-        <PersonalRow icon="create-outline" title="Edit profile" subtitle="Your name and character badge" onPress={() => router.navigate("/profile")} />
         <View style={p.divider} />
         <PersonalRow icon="globe-outline" title="Progress time zone" subtitle={profile.timezone} />
+        <Text style={p.caption}>Your day resets at midnight in this time zone. It keeps daily goals, streaks and session history on the same clock.</Text>
       </View>
       <View style={[p.card, { borderColor: colors.line }]}>
         <Text style={p.label}>SESSION ACCESS</Text>
@@ -131,7 +135,7 @@ export default function SettingsScreen() {
       <View style={p.card}>
         <Text style={p.label}>FOCUS & FEEDBACK</Text>
         <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
-        {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? "Your daily goal is read-only. Goal changes are not available yet." : "Checking whether goal editing is available...")}</Text>}
+        {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
         <PersonalRow icon="volume-medium-outline" title="Completion sound" subtitle="Sound for the session notification"
           trailing={<Switch accessibilityLabel="Completion sound" value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{ false: "#343B4E", true: colors.accentFill }} />} />
@@ -160,14 +164,15 @@ export default function SettingsScreen() {
             <PersonalButton title={busy ? "Signing out..." : "Sign out"} disabled={busy || sessionBlocksLogout} onPress={() => void logout()} />
             <PersonalButton secondary title="Keep me signed in" disabled={busy} onPress={() => setSheet(null)} />
           </> : sheet === "goal" ? <>
-            {!canEditGoal ? <Text style={p.body} accessibilityRole="alert">{goalError || "Goal editing is currently unavailable. Your current goal is unchanged."}</Text>
+            {!!savedGoal && <Text style={p.body} accessibilityRole="alert">{savedGoal}</Text>}
+            {!canEditGoal ? <Text style={p.body} accessibilityRole="alert">{goalError || goalAvailability}</Text>
               : !goalData ? <Text style={p.body}>Loading your goal...</Text> : <>
                 <Text style={p.body}>Today: {goalData.today_goal_minutes} minutes. Changes start on {goalData.next_effective_date} in {goalData.timezone}.</Text>
                 <Text style={p.body}>The target for today and historical achievements stay unchanged. Editing a goal does not award or remove rewards or streaks.</Text>
+                <Text style={p.body}>Choose at least 30 minutes per day. You can change this once every seven days.</Text>
                 <BottomSheetTextInput accessibilityLabel="Daily focus goal in minutes" style={p.input} keyboardType="number-pad"
                   value={draft} onChangeText={value => { setDraft(value); setSavedGoal(""); }} editable={!busy} maxLength={3}
-                  placeholder="Minutes (15-480)" placeholderTextColor={colors.muted} />
-                {!!savedGoal && <Text style={p.body} accessibilityRole="alert">{savedGoal}</Text>}
+                  placeholder="Minutes (30-480)" placeholderTextColor={colors.muted} />
                 <PersonalButton title={busy ? "Saving..." : "Save daily goal"} disabled={busy || !!savedGoal} onPress={() => void saveGoal()} />
               </>}
           </> : <>

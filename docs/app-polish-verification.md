@@ -1,0 +1,17 @@
+# Settings, launch, quests and Progress changes
+
+The progress time zone is functional: client analytics, daily goals, history and streaks use local calendar dates. The server completion proposal also converts timestamps using the profile time zone. Quest scheduling currently uses the existing Kuala Lumpur default in taskService; this change does not introduce a time-zone editor. Settings explains the daily boundary and removes the redundant Edit profile shortcut.
+
+Goal selections now require 30–480 whole minutes. Existing saved targets below 30 remain readable. Editing requires both scheduling and weekly-limit capability from the server. The rolling cooldown is seven full days from the last successful change, independent of the phone clock; new targets start the next local day. A failed save does not consume the cooldown.
+
+`daily-goal-weekly-limit.sql` is an unapplied local proposal on top of `daily-goal-scheduling.sql`. It adds server capability/readiness fields, locks the profile while checking changes, enforces the cooldown on direct table inserts/updates as well as the RPC, and sets the change timestamp server-side. No live database, Supabase configuration, accounts or deployment were changed. Goal editing stays read-only on older servers until the reviewed backend is installed. The SQL tests have not been executed: no disposable Postgres/Docker runtime is available here.
+
+Before a future rollout, reconcile the proposals with the actual schema/functions and run the existing session/scheduling tests before applying the weekly proposal, then run `tests/daily-goal-weekly-limit.sql` in a disposable database. Test two authenticated connections scheduling at once: one should succeed, the other should wait for the profile lock and reject on cooldown. Also test completion during scheduling, DST/time-zone boundaries, existing sub-30 goals, anonymous and cross-user access. Preserve history/economy; do not use real accounts as fixtures.
+
+Progress keeps recent data on tab re-entry and refreshes quietly on foreground, stale cache, completion or a date boundary. Pull-to-refresh still works. The repeated opacity fade was removed. Completed one-off quests and today's completed repeating quests are hidden in both quest scopes; repeating quests return on later due days. Manual completion/reopen controls and their client write helper are removed. Completion during an older quest fetch queues a fresh server read.
+
+The LifeRPG intro runs once per app launch, before either the signed-out or signed-in interface is exposed. Auth restoration continues underneath the overlay. Reduced motion uses a short static brand frame. Backgrounding an ongoing session does not replay the intro. Native splash handoff and motion require an installed release-build check; Expo Go cannot verify the full native splash experience.
+
+Device checks still required: cold-launch signed in/out and recovery links, reduce-motion preference, small screens/large text, tab switches with no spinner/fade, pull refresh and offline retry, completion while the quest list is open, recurring quests the next day, header consistency and colour contrast. Automated component tests exercise state/requests with native mocks; they do not verify native pixels or actual backend enforcement.
+
+Local checks passed: all 158 tests, `npm run typecheck`, and `npm run lint`. No commit or push was made. Changes remain on the current `main` branch.
