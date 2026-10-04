@@ -38,6 +38,14 @@ export interface CompletedSessionResult {
   daily_completed_minutes: number;
   daily_goal_completed: boolean;
   streak_count: number;
+  credit_version?: number;
+  character_xp_earned?: number;
+  area_xp_earned?: number | null;
+  character_remainder_seconds?: number;
+  area_remainder_seconds?: number | null;
+  daily_completed_seconds?: number;
+  goal_reached_now?: boolean;
+  credited_date?: string;
 }
 
 async function callRpc<T>(

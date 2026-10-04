@@ -50,6 +50,13 @@ interface SessionSummary {
   minutesSpent: number;
   durationSeconds: number;
   questTitle?: string;
+  creditVersion?: number;
+  areaXpEarned?: number | null;
+  characterRemainderSeconds?: number;
+  areaRemainderSeconds?: number | null;
+  dailyCompletedSeconds?: number;
+  goalReachedNow?: boolean;
+  creditedDate?: string;
 }
 
 interface TimerContextType {
@@ -194,6 +201,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         goldEarned: result.gold_earned,
         minutesSpent: result.minutes ?? Math.floor(result.duration_seconds / 60),
         durationSeconds: result.duration_seconds,
+        creditVersion: result.credit_version,
+        areaXpEarned: result.area_xp_earned,
+        characterRemainderSeconds: result.character_remainder_seconds,
+        areaRemainderSeconds: result.area_remainder_seconds,
+        dailyCompletedSeconds: result.daily_completed_seconds,
+        goalReachedNow: result.goal_reached_now,
+        creditedDate: result.credited_date,
         questTitle:
           activeQuestTitleRef.current ??
           "Quest session",

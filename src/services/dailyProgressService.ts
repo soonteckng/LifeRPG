@@ -7,6 +7,8 @@ export interface DailyProgress {
   progress_date: string;
   goal_minutes: number;
   completed_minutes: number;
+  completed_seconds?: number | null;
+  credit_version?: number | null;
   goal_completed: boolean;
   goal_completed_at: string | null;
   created_at: string;
@@ -25,17 +27,9 @@ export async function getTodayProgress(
 
   const { data, error } = await supabase
     .from("daily_progress")
-    .select(
-      `
-      user_id,
-      progress_date,
-      goal_minutes,
-      completed_minutes,
-      goal_completed,
-      goal_completed_at,
-      created_at
-    `,
-    )
+    // A wildcard includes additive credit fields without requesting missing
+    // columns on older servers. RLS still limits rows to the signed-in user.
+    .select("*")
     .eq("progress_date", today)
     .maybeSingle();
 
