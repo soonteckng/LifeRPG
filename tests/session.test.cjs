@@ -885,3 +885,40 @@ test("notification listener initialization failure leaves the timer usable", asy
     assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
   } finally { await ui.cleanup(); }
 });
+
+ test("Home setup after a saved one-second completion releases the old ID and starts once", async () => {
+  let starts = 0;
+  const ui = await providerSetup({
+    startActivitySession: async () => `session-${++starts}`,
+    completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0, xp_earned: 0, gold_earned: 0 }),
+  });
+  try {
+    await ui.run(s => s.startTimer(1));
+    await ui.advance(1);
+    assert.ok(ui.state().sessionSummary);
+    await ui.run(s => s.clearCompletionModal());
+    await ui.run(s => { s.setLinkedTaskId(null); s.setDurationInMinutes(30); });
+    assert.equal(ui.state().isCompleted, false);
+    await ui.run(s => s.startTimer(1800));
+    assert.equal(starts, 2);
+    assert.equal(ui.state().hasOpenSession, true);
+    assert.equal(ui.calls.filter(c => c[0] === "cancel").length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test("duration changes cannot abandon an in-flight or failed completion", async () => {
+  const pending = deferred();
+  const ui = await providerSetup({ completeActivitySession: () => pending.promise });
+  try {
+    await ui.run(s => s.startTimer(1));
+    await ui.advance(1);
+    await ui.run(s => s.setDurationInMinutes(30));
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(ui.state().duration, 1);
+    await ui.run(() => pending.reject(Error("Offline")));
+    await ui.run(s => s.setDurationInMinutes(30));
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(ui.state().duration, 1);
+    assert.match(ui.state().actionError, /save/);
+  } finally { await ui.cleanup(); }
+});

@@ -430,8 +430,16 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     if (Number.isInteger(minutes)) setDurationInSeconds(minutes * 60);
   };
   const setDurationInSeconds = (totalSec: number) => {
-    if (isRunning || actionLock.current || (timerSessionIdRef.current && !completionHandledRef.current)) return;
+    if (isRunning || actionLock.current || (timerSessionIdRef.current && !sessionSummary)) return;
     if (!validSessionSeconds(totalSec)) return;
+    // A saved summary can become a new draft. Never abandon a saving/failed
+    // completion, and never carry its old server ID into the next Start.
+    if (sessionSummary) {
+      timerSessionIdRef.current = null;
+      completionHandledRef.current = false;
+      activeQuestTitleRef.current = undefined;
+      setRewardsVisible(false);
+    }
     setSessionSummary(null);
     setCompletedLevelUp(null);
     setIsCompleted(false);
