@@ -21,6 +21,7 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
       if (!name.startsWith(".")) return require(name);
       const target = path.resolve(path.dirname(filename), name);
       const ext = ["", ".ts", ".tsx"].find((e) => fs.existsSync(target + e));
@@ -775,6 +776,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
 
 async function profileScreen(overrides = {}) {
   return screen("src/app/(tabs)/profile.tsx", {
+    "../../context/TimerContext": {useTimer: () => ({})},
     "expo-router": {
       useRouter: () => ({ navigate() {} }),
       useFocusEffect: (effect) => React.useEffect(effect, [effect]),

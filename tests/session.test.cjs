@@ -1087,3 +1087,12 @@ test("wheel settlement corrects a residual native offset without scrolling align
     assert.deepEqual(scrolls,[]);
   } finally {await act(async()=>renderer.unmount());}
 });
+
+
+test("floating dock reserves the safe area and only visible banners",()=>{
+  const {floatingTabInset}=load("src/utils/floatingTabInset.ts",{});
+  assert.equal(floatingTabInset(66,34,{}),108);
+  assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),142);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),142);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),86);
+});

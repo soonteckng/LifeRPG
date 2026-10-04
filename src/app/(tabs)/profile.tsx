@@ -1,3 +1,6 @@
+import { useTimer } from "../../context/TimerContext";
+import { floatingTabInset } from "../../utils/floatingTabInset";
+import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
@@ -30,6 +33,8 @@ import { CHARACTER_BADGES } from "../../constants/characterBadges";
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const timer = useTimer();
+  const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { profile, updateProfile, reloadProfile } = useUser();
   const { data, loading, error, refresh } = useCharacterData();
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -91,6 +96,7 @@ export default function ProfileScreen() {
   };
   return (
     <PersonalPage
+      bottomContentInset={tabBarHeight}
       title="Profile"
       subtitle=""
       compact floatingAction

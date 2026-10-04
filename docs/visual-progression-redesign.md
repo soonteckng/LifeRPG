@@ -136,3 +136,17 @@ Phone checklist:
 - Complete linked and free sessions, including a genuine level-up and historical completion: popup and retained summary share visual rows, resolve names honestly, close without new awards, and support Done/New session.
 - Check large-text completion wrapping, tab fade/content edge, native font weights, secondary contrast in ambient light, reduced motion and TalkBack/VoiceOver announcements.
 - After a native rebuild: observe Home/running/completion ring edges at zero/partial/full progress, 12-o'clock start and reduced motion on Android/iOS. The implementation is complete; native visual verification remains outstanding.
+
+
+## Device-feedback follow-up
+
+After Expo Go testing, the owner requested these corrections on `visual-polish`:
+
+- Week/Month labels use the same explicit 20-point line height and no Android font padding to hold a common baseline.
+- Session's timer anchor no longer expands to consume spare space. Its shared stage is sized from the ring and wheel geometry, keeping timer nodes/layout stable between setup, running and paused while exposing more setup controls.
+- Clean quest editors use native pan-down dismissal and content sizing. Dirty editors keep the existing discard safeguard; downward motion from the handle or scroll top follows translation directly, then the library settles the sheet before the guard. Scrolls starting within the form remain library-owned.
+- One-off completion is no longer synonymous with completion today: `taskService` derives today's state from the saved date/timestamp in the existing Kuala Lumpur reporting timezone. Unknown dates are not invented as today. The Today/All selector does not widen Done today to historical completions. No persisted task or reward data changed.
+- Remove the strip/fade above the tab pill. The wrapper is transparent, absolutely positioned and passes touches through empty space. Home/Progress/Profile scroll padding accounts for the pill, safe area and only visible session banners, so their last content can scroll clear of the floating elements.
+- Badge rework remains future work as requested.
+
+TypeScript, full lint and 187/187 tests passed after these changes. Android JavaScript export with --no-bytecode also passed. Tests cover date filtering in both list scopes, native clean-editor dismissal versus dirty guarding, guarded drag/scroll priority, dock padding, and existing session/quest behaviour. Actual label alignment, timer density and drag smoothness require another phone observation; no physical device was available in this workspace. The earlier scope table describes the original pass; this explicitly requested follow-up also corrects the client-side task completion-date derivation and sheet gesture handling.

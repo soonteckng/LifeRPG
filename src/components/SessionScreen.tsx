@@ -33,7 +33,8 @@ export default function SessionScreen() {
   const { width, height, fontScale } = useWindowDimensions();
   const { controlWidth, labelHeight, rowHeight } = timerLayout(width, height, fontScale);
   const ringSize = Math.min(height < 700 ? 252 : 300, width - 48);
-  const ringTop = 36 + labelHeight + rowHeight * 1.5 - ringSize / 2;
+  const timerStageHeight = Math.max(300, ringSize + 24, labelHeight + rowHeight * 3 + 44);
+  const ringTop = 12 + labelHeight + rowHeight * 1.5 - ringSize / 2;
   const [picker, setPicker] = useState<Picker>(null);
   const [durationRevision, setDurationRevision] = useState(0);
   const durationEpoch = useRef(0);
@@ -224,8 +225,8 @@ export default function SessionScreen() {
       <Stack.Screen options={{ gestureEnabled: false }} />
       <AppHeader title={phase === "setup" ? "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, { minHeight: Math.min(360, height * 0.49) }]}>
-          <View style={[styles.timerStage, {height:Math.min(360,height*0.49)}]}>
+        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, { minHeight: timerStageHeight }]}>
+          <View style={[styles.timerStage, {height:timerStageHeight}]}>
           <View pointerEvents="none" style={[styles.ringLayer, { top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
             {phase !== "setup" && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
               progress={Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
@@ -344,7 +345,7 @@ const styles = StyleSheet.create({
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },
   completedHero: { position: "absolute", top: 24, left: 0, right: 0 },
-  timerStage: { width: "100%", alignItems: "center", paddingTop: 28 },
+  timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },
   completedTime: { position: "absolute", top: 196, left: 0, right: 0, alignItems: "center", gap: 6 },
   activeTitle: { color: colors.secondary, fontSize: 16, fontWeight: "500", textAlign: "center", marginTop: 6 },
   areaSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
@@ -358,7 +359,7 @@ const styles = StyleSheet.create({
   activePrimary: { backgroundColor: colors.surface },
   endControl: { width: 54, minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.surface },
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
-  timerAnchor: { flex: 1, paddingHorizontal: 20, paddingBottom: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  timerAnchor: { paddingHorizontal: 20, paddingBottom: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   compactAnchor: { paddingTop: 0, paddingBottom: 4 },
   timerControl: { width: 286, maxWidth: "100%", paddingTop: 8 },
   status: { color:colors.secondary, fontSize:16, lineHeight:23, textAlign:"center", marginTop:8 },

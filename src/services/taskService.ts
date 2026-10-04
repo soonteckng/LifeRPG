@@ -82,7 +82,11 @@ function mapTask(row: any): Task {
 
   const isCompletedToday = isRecurring
     ? row.last_completed_date === today
-    : Boolean(row.is_completed);
+    : Boolean(row.is_completed) && (
+        row.last_completed_date === today ||
+        (row.completed_at && Number.isFinite(new Date(row.completed_at).getTime()) &&
+          new Intl.DateTimeFormat("en-CA", { timeZone: TIME_ZONE }).format(new Date(row.completed_at)) === today)
+      );
 
   return {
     id: Number(row.id),
@@ -107,7 +111,7 @@ function mapTask(row: any): Task {
       row.repeat_rule ?? "once",
     ),
 
-    is_completed_today: isCompletedToday,
+    is_completed_today: Boolean(isCompletedToday),
   };
 }
 

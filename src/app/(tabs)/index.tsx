@@ -1,3 +1,4 @@
+import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import GoalRing from "../../components/GoalRing";
@@ -14,6 +15,7 @@ import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
+import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { ScrollView, useWindowDimensions, StyleSheet, TouchableOpacity, View } from "react-native";
 import {
   SafeAreaView,
@@ -30,9 +32,11 @@ export default function HomeScreen() {
   const router = useRouter();
   const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const timer = useTimer();
+  const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
-  const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = useTimer();
+  const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = timer;
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
@@ -48,7 +52,7 @@ export default function HomeScreen() {
   const [contentHeight, setContentHeight] = useState(0);
   // Size against the actual Home viewport: the tabs and active-session dock
   // already reserve their own space and must not be counted a second time.
-  const availableHeight = viewportHeight || Math.max(280, height - insets.top - insets.bottom - 96);
+  const availableHeight = (viewportHeight ? viewportHeight - tabBarHeight : 0) || Math.max(280, height - insets.top - insets.bottom - 96);
   const goalSize = Math.round(Math.max(144, Math.min(
     (width - 40) * 0.60, availableHeight * 0.36, fontScale > 1.5 ? 160 : 232,
   )));
@@ -116,9 +120,9 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
-        contentContainerStyle={styles.content}>
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
+        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - tabBarHeight - 28) }]}>
           <View style={styles.identityRow}>
             <CharacterMark size={44} avatar={profile?.avatar ?? "🌱"} />
             <View style={styles.identity}>

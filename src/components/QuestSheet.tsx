@@ -205,7 +205,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         {editor && <AppSheet visible={editorVisible} onRequestClose={requestClose}
           onDismiss={() => { setEditor(null); setFormError(null); focusedField.current = null;
             if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
-          guardDismiss maxHeightRatio={0.94} label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
+          guardDismiss={dirty || busy || !!confirmation} compact maxHeightRatio={0.94} label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
           <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
             contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>

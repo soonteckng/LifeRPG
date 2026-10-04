@@ -29,6 +29,7 @@ export function PersonalPage({
   animateTransition = false,
   compact = false,
   floatingAction = false,
+  bottomContentInset = 0,
 }: {
   title: string;
   subtitle: string;
@@ -38,6 +39,7 @@ export function PersonalPage({
   animateTransition?: boolean;
   compact?: boolean;
   floatingAction?: boolean;
+  bottomContentInset?: number;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -111,7 +113,7 @@ export function PersonalPage({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             p.content,
-            { paddingBottom: Math.max(48, insets.bottom + 24) },
+            { paddingBottom: Math.max(48, insets.bottom + 24, bottomContentInset + 24) },
           ]}
         >
           <View style={{ gap: compact ? 12 : 20 }}>

@@ -21,6 +21,7 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const extension = ["", ".ts", ".tsx"].find((ext) => fs.existsSync(target + ext));
@@ -519,3 +520,75 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
 
 
 
+
+test("Done today excludes older one-off completions when loaded from persistence", async () => {
+  const today = new Intl.DateTimeFormat('en-CA', {timeZone:'Asia/Kuala_Lumpur'}).format(new Date());
+  const rows = [
+    task({id:1, is_completed:true, last_completed_date:today, completed_at:new Date().toISOString()}),
+    task({id:2, is_completed:true, last_completed_date:'2000-01-01', completed_at:'2000-01-01T12:00:00Z'}),
+    task({id:3, is_completed:true, last_completed_date:null, completed_at:new Date().toISOString()}),
+    task({id:4, is_completed:true, last_completed_date:null, completed_at:null}),
+    task({id:5, is_recurring:true, repeat_rule:'daily', last_completed_date:'2000-01-01'}),
+  ];
+  const service = load('src/services/taskService.ts', {
+    '../../lib/supabase': {supabase:{from:()=>({select:()=>({order:async()=>({data:rows,error:null})})})}},
+  });
+  const saved = await service.getTasks();
+  assert.deepEqual(saved.filter(item=>item.is_completed_today).map(item=>item.id).sort(), [1,3]);
+  const ui = await setup(saved);
+  await ui.press('All quests');
+  await ui.press('View completed quests');
+  const json = ui.output();
+  assert.match(json,/Done today/);
+  assert.ok(ui.button('Edit Read a chapter'));
+  assert.equal(ui.renderer.root.findAllByType('Pressable').filter(node=>node.props.accessibilityLabel==='Edit Read a chapter').length,2);
+  await ui.cleanup();
+});
+
+test("clean quest editors use native drag dismissal, dirty drafts retain the discard guard", async () => {
+  const ui=await setup([]);
+  await ui.press('Add quest');
+  const editor=()=>ui.renderer.root.findAllByType('Sheet').find(node=>node.props.label==='quest editor');
+  assert.equal(editor().props.guardDismiss,false);
+  assert.equal(editor().props.compact,true);
+  await ui.type('Quest name','Unsaved quest');
+  assert.equal(editor().props.guardDismiss,true);
+  await act(async()=>editor().props.onRequestClose());
+  assert.match(ui.output(),/Discard changes/);
+  await ui.cleanup();
+});
+
+test('guarded sheet pull tracks the finger at the list top and leaves inner scrolling to the library', async () => {
+  let handlers, closeRequests=0, libraryChanges=0;
+  const shared = value => ({get:()=>value,set:next=>{value=next;}});
+  const position=shared(300), scroll=shared({contentOffsetY:0});
+  const Sheet=React.forwardRef((props, ref)=>{
+    handlers=props.gestureEventsHandlersHook();
+    React.useImperativeHandle(ref,()=>({close(){}}));
+    return React.createElement('Panel',props,props.children);
+  });
+  const AppSheet=load('src/components/AppSheet.tsx',{
+    '@gorhom/bottom-sheet': {__esModule:true,default:Sheet,BottomSheetBackdrop:host('Backdrop'),BottomSheetFooter:host('Footer'),GESTURE_SOURCE:{HANDLE:1,CONTENT:2},
+      useBottomSheetInternal:()=>({animatedPosition:position,animatedScrollableState:scroll}),
+      useGestureEventsHandlersDefault:()=>({handleOnStart(){},handleOnChange(){libraryChanges++;},handleOnEnd(){position.set(300);}})},
+    'react-native': {...native,Modal:host('Modal'),Platform:{OS:'android'},useWindowDimensions:()=>({height:800})},
+    'react-native-gesture-handler': {GestureHandlerRootView:host('GestureRoot')},
+    'react-native-reanimated': {ReduceMotion:{System:'system'},runOnJS:fn=>fn,useSharedValue:value=>React.useState(()=>shared(value))[0]},
+    'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:16})},
+  }).default;
+  let tree;
+  await act(async()=>{tree=create(React.createElement(AppSheet,{visible:true,guardDismiss:true,label:'editor',header:null,onRequestClose:()=>closeRequests++}));});
+  handlers.handleOnStart(1,{translationY:0});
+  handlers.handleOnChange(1,{translationY:90});
+  assert.equal(position.get(),390);
+  handlers.handleOnEnd(1,{translationY:90});
+  assert.equal(position.get(),300);
+  assert.equal(closeRequests,1);
+  scroll.set({contentOffsetY:100});
+  handlers.handleOnStart(2,{translationY:0});
+  handlers.handleOnChange(2,{translationY:90});
+  handlers.handleOnEnd(2,{translationY:90});
+  assert.equal(closeRequests,1);
+  assert.equal(libraryChanges,2);
+  await act(async()=>tree.unmount());
+});

@@ -1,9 +1,11 @@
+import { floatingTabInset } from "../../utils/floatingTabInset";
 import { type } from "../../constants/typography";
 import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
 import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -140,11 +142,14 @@ function SessionRow({
 }
 
 export default function ProgressScreen() {
+  const timer = useTimer();
   const router = useRouter();
   const { profile, hapticsEnabled } = useUser();
-  const { sessionSummary } = useTimer();
+  const { sessionSummary } = timer;
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const insets = useSafeAreaInsets();
+  const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
+
   const [today, setToday] = useState(() => dateKey(new Date(), timeZone));
   const [mode, setMode] = useState<PeriodMode>("week");
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -293,7 +298,7 @@ export default function ProgressScreen() {
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
       <AppHeader title="Progress" />
       <ScrollView
-        contentContainerStyle={s.page}
+        contentContainerStyle={[s.page, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={
           <RefreshControl
             refreshing={loading && !!data}
@@ -894,10 +899,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 18,
+    position: "relative",
   },
   segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, bottom: 4, borderRadius: 12, backgroundColor: colors.surface },
   segmentSelected: { position: "absolute", left: 3, right: 3, top: 7, bottom: 7, borderRadius: 9, backgroundColor: "#29334E" },
-  segmentText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
+  segmentText: { includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
   segmentActive: { color: "#B8C8FF" },
   periodNav: {
     flexDirection: "row",
