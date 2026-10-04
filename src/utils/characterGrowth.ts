@@ -1,6 +1,6 @@
 import type { Subject } from "../services/taskService";
 import type { ProgressSession } from "../services/progressService";
-import { dateKey, shiftDay } from "./progressAnalytics";
+import { focusDay, bestFocusStreak } from "./focusDays";
 
 // Use the saved Life area directly: no parallel categories or device mappings.
 export function lifeAreaGrowth(area: Subject) {
@@ -20,26 +20,16 @@ export function earnedMilestones(
     ...new Map(
       sessions
         .filter(
-          (s) =>
-            s.duration_seconds > 0 &&
-            s.completed_at &&
-            Number.isFinite(new Date(s.completed_at).getTime()),
+          (s) => focusDay(s, timeZone) !== null,
         )
         .map((s) => [s.id, s]),
     ).values(),
   ];
   const seconds = unique.reduce((sum, s) => sum + s.duration_seconds, 0);
   const days = [
-    ...new Set(unique.map((s) => dateKey(new Date(s.completed_at!), timeZone))),
+    ...new Set(unique.map((s) => focusDay(s, timeZone)!)),
   ].sort();
-  let bestStreak = 0,
-    run = 0,
-    previous = "";
-  for (const day of days) {
-    run = previous && shiftDay(previous, 1) === day ? run + 1 : 1;
-    bestStreak = Math.max(bestStreak, run);
-    previous = day;
-  }
+  const bestStreak = bestFocusStreak(days);
   const definitions = [
     {
       id: "first",

@@ -87,9 +87,11 @@ const styles = StyleSheet.create({
   },
 
   tabLabel: {
-    fontSize: 11,
+    fontSize: 13,
+    fontFamily: Platform.OS === "ios" ? "System" : undefined,
     fontWeight: "700",
     marginTop: 1,
   },
 
 });
+

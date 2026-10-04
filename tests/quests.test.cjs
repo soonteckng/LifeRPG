@@ -372,7 +372,7 @@ test("continuing from a protected row waits for list dismissal", async () => {
 });
 
 test("Home preserves loaded progress on failure and exposes a retry instead of a permanent refresh button", async () => {
-  let refresh, failed = false, progressMinutes = 25, summary = null;
+  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {};
   const name = "A long welcoming username with several words";
   const reloadProfile = async () => true;
   const refreshQuests = async () => {};
@@ -382,11 +382,12 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "expo-haptics": {}, "expo-router": { useRouter: () => ({ push() {} }) },
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "../../components/QuestSheet": () => null,
+    "../../components/ContentReveal": ({ children }) => children,
     "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
-    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes }; } },
+    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, ...creditFields }; } },
     "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
   }).default;
   let renderer;
@@ -408,6 +409,15 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   failed = false;
   await act(async () => retry().props.onPress());
   assert.equal(retry(), undefined);
+  creditFields = { credit_version: 1, completed_seconds: 30 };
+  await act(async () => refresh());
+  assert.match(output(), /30s \/ 60 min/);
+  creditFields.completed_seconds = 60;
+  await act(async () => refresh());
+  assert.match(output(), /1m \/ 60 min/);
+  creditFields.completed_seconds = 0;
+  await act(async () => refresh());
+  assert.match(output(), /0m \/ 60 min/);
   await act(async () => renderer.unmount());
 });
 

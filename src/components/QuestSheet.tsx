@@ -1,10 +1,12 @@
+import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity as Pressable } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Keyboard, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { colors } from "../constants/theme";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
@@ -24,6 +26,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [scope, setScope] = useState(initialScope);
+  const [showDone, setShowDone] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -142,7 +145,8 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const available = tasks.filter((task) => !task.is_completed_today && (task.is_recurring || !task.is_completed));
   const today = available.filter((task) => task.is_due_today);
   const unfinished = today;
-  const shown = (scope === "today" ? today : available).slice().sort((a, b) =>
+  const done = tasks.filter(task => task.is_completed_today);
+  const shown = (showDone ? done : scope === "today" ? today : available).slice().sort((a, b) =>
     Number(b.is_due_today) - Number(a.is_due_today));
 
   const editorHeader = editor ? (
@@ -163,18 +167,19 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const listHeader = (
     <View style={styles.header}>
       <View style={styles.headingRow}>
-        <Text style={styles.title} accessibilityRole="header">{scope === "today" ? "Today's quests" : "All quests"}</Text>
+        <Text style={styles.title} accessibilityRole="header">{showDone ? "Done today" : scope === "today" ? "Today's quests" : "All quests"}</Text>
         <Pressable style={styles.add} onPress={() => openEditor(null)} accessibilityRole="button" accessibilityLabel="Add quest">
-          <Ionicons name="add" size={18} color={colors.accent} />
-          <Text style={styles.addText}>Add quest</Text>
+          <Ionicons name="add" size={28} color={colors.accent} />
         </Pressable>
       </View>
       <View style={styles.subheadingRow}>
-        <Text style={styles.subtitle}>{scope === "today" ? `${unfinished.length} remaining` : `${available.length} quests · your own pace`}</Text>
-        <Pressable style={styles.scopeButton} onPress={() => { setScope(scope === "today" ? "all" : "today"); setMessage(null); }} accessibilityRole="button">
-          <Text style={styles.linkSmall}>{scope === "today" ? "All quests" : "Today"}</Text>
-          <Ionicons name={scope === "today" ? "chevron-forward" : "chevron-back"} size={13} color={colors.accent} />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          {(["today", "all"] as const).map(value => <Pressable key={value} style={[styles.scopeButton, scope === value && { backgroundColor: colors.accentSoft }]}
+            onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
+            <Text style={styles.linkSmall}>{value === "today" ? "Today" : "All"}</Text>
+          </Pressable>)}
+        </View>
+        <Text style={styles.subtitle}>{showDone ? `${done.length} completed` : scope === "today" ? `${unfinished.length} remaining` : `${available.length} quests`}</Text>
       </View>
       {timer.hasOpenSession && (
         <Pressable style={styles.sessionNotice} onPress={() => start()} accessibilityRole="button">
@@ -188,9 +193,13 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const confirmationOverlay = confirmation ? <SheetConfirmation {...confirmation} onCancel={() => setConfirmation(null)} /> : null;
   return (
     <AppSheet visible={visible} onRequestClose={requestClose} onDismiss={() => {
-      setEditor(null); setEditorVisible(false); setFormError(null); setScope(initialScope); setMessage(null);
+      setEditor(null); setEditorVisible(false); setFormError(null); setScope(initialScope); setShowDone(false); setMessage(null);
       const next = afterDismiss.current; afterDismiss.current = null; onDismiss?.(!!next); next?.();
-    }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader}
+    }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader} compact
+      footer={done.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={showDone ? "Show unfinished quests" : "View completed quests"}
+        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+        <Text style={styles.link}>{showDone ? "Back to quests" : `Done today (${done.length})`}</Text><Ionicons name="chevron-forward" size={20} color={colors.accent} />
+      </Pressable> : undefined}
       overlay={<>
         {!editor && confirmationOverlay}
         {editor && <AppSheet visible={editorVisible} onRequestClose={requestClose}
@@ -243,7 +252,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
             </View>
             <View style={styles.field}>
               <Text style={styles.label}>Life area</Text>
-              <Text style={styles.helper}>Quests and their sessions are linked to this life area.</Text>
+
               <View style={styles.options}>
                 <Choice label="General" selected={editor.draft.subjectId === null || subjects.find((subject) => subject.id === editor.draft.subjectId)?.title === "General"}
                   onPress={() => updateDraft({ subjectId: null })} />
@@ -257,7 +266,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           </BottomSheetScrollView>
         </AppSheet>}
       </>}>
-      <BottomSheetScrollView contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
 
           <>
             {!editor && formError && <Text style={styles.headerError} accessibilityRole="alert">{formError}</Text>}
@@ -277,17 +286,17 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
               {shown.map((task) => {
                 const subject = subjects.find((item) => item.id === task.subject_id);
                 return <View key={task.id} style={styles.questRow}>
+                  <View style={[styles.areaDot, { backgroundColor: lifeAreaColor(task.subject_id, subject?.color_code) }]} />
                   <View style={styles.questMainContainer}><Pressable style={styles.questMain} onPress={() => openEditor(task)} accessibilityRole="button" accessibilityLabel={`Edit ${task.title}`}
                     accessibilityHint="Edit name, duration, repeat, and life area">
                     <View style={styles.questTitleRow}>
                       <Text style={[styles.questTitle, task.is_completed_today && styles.completed]}>{task.title}</Text>
                       <Ionicons name="create-outline" size={16} color={colors.muted} />
                     </View>
-                    <Text style={styles.meta}>{subject?.title ?? "General"} · {task.target_minutes || 30} min</Text>
-                    <Text style={styles.schedule}>{task.is_completed_today ? "Completed" : !task.is_due_today ? "Upcoming · " : ""}{!task.is_completed_today && (task.repeat_rule === "daily" ? "Every day" : task.repeat_rule === "once" ? "Doesn’t repeat" : task.repeat_rule.split(",").join(", "))}</Text>
+                    <Text style={styles.meta}>{task.target_minutes || 30} min · {subject?.title ?? "General"}{task.repeat_rule === "daily" ? " · Repeats daily" : task.repeat_rule !== "once" ? ` · ${task.repeat_rule.split(",").join(", ")}` : ""}{!task.is_due_today && !task.is_completed_today ? " · Upcoming" : ""}</Text>
                   </Pressable></View>
                   {!task.is_completed_today && task.is_due_today && !timer.hasOpenSession && <View style={styles.startContainer}><Pressable style={styles.start} onPress={() => start(task)} accessibilityRole="button" accessibilityLabel={`Start ${task.title}`}>
-                    <Ionicons name="play" size={14} color={colors.accent} /><Text style={styles.startText}>Start</Text>
+                    <Ionicons name="play-outline" size={23} color={colors.accent} />
                   </Pressable></View>}
                   <Pressable style={styles.deleteButton} onPress={() => requestDelete(task)} disabled={busy}
                     accessibilityRole="button" accessibilityLabel={`Delete ${task.title}`}>
@@ -311,33 +320,35 @@ function Choice({ label, selected, onPress, accessibilityLabel }: { label: strin
 }
 
 const styles = StyleSheet.create({
+  areaDot: { width: 10, height: 10, borderRadius: 5 },
+  doneFooter: { paddingHorizontal: 22, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   header: { paddingHorizontal: 22, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   headingRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 12 },
-  title: { color: colors.text, fontSize: 23, fontWeight: "700", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
+  title: { color: colors.text, fontSize: 24, fontWeight: "600", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
   add: { minHeight: 44, flexDirection: "row", gap: 4, alignItems: "center" },
   addText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
-  subtitle: { color: colors.secondary, fontSize: 12, fontWeight: "400", flexShrink: 1 },
-  scopeButton: { minHeight: 44, flexDirection: "row", gap: 4, alignItems: "center" },
-  linkSmall: { color: colors.accent, fontSize: 12, fontWeight: "600" },
+  subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
+  scopeButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 22, flexDirection: "row", gap: 4, alignItems: "center" },
+  linkSmall: { color: colors.accent, fontSize: 14, fontWeight: "600" },
   sessionNotice: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between", paddingVertical: 12 },
-  noticeText: { color: colors.secondary, fontSize: 12, flexShrink: 1 },
+  noticeText: { color: colors.secondary, fontSize: 14, flexShrink: 1 },
   body: { paddingHorizontal: 22 },
   completeButton: { minWidth: 44, minHeight: 48, alignItems: "center", justifyContent: "center" },
   deleteButton: { minWidth: 44, minHeight: 50, alignItems: "center", justifyContent: "center" },
   loading: { marginVertical: 45 },
   doneMessage: { color: colors.accent, fontSize: 18, fontWeight: "600", paddingTop: 20, paddingBottom: 8 },
-  editHint: { color: colors.muted, fontSize: 11, marginTop: 14, marginBottom: 2 },
+  editHint: { color: colors.muted, fontSize: 14, marginTop: 14, marginBottom: 2 },
   questRow: { width: "100%", justifyContent: "space-between", flexDirection: "row", alignItems: "center", gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   questMainContainer: { flex: 1, minWidth: 0 },
-  questMain: { width: "100%", paddingVertical: 18, gap: 5 },
+  questMain: { width: "100%", paddingVertical: 12, gap: 4 },
   questTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   questTitle: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1, lineHeight: 22 },
   completed: { color: colors.secondary },
-  meta: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
-  schedule: { color: colors.muted, fontSize: 11, lineHeight: 16 },
+  meta: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
+  schedule: { color: colors.muted, fontSize: 14, lineHeight: 16 },
   startContainer: { marginLeft: "auto", flexShrink: 0 },
-  start: { minWidth: 96, minHeight: 50, paddingHorizontal: 18, justifyContent: "center", borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", gap: 5 },
+  start: { minWidth: 44, minHeight: 48, paddingHorizontal: 10, justifyContent: "center", borderRadius: 12, backgroundColor: "transparent", flexDirection: "row", alignItems: "center", gap: 5 },
   startText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   empty: { paddingVertical: 30, gap: 10, alignItems: "flex-start" },
   emptyTitle: { fontSize: 20, lineHeight: 27, fontWeight: "600", color: colors.text },
@@ -346,7 +357,7 @@ const styles = StyleSheet.create({
   editorHeader: { justifyContent: "space-between", flexWrap: "wrap", paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   headerAction: { minHeight: 44, paddingHorizontal: 6, justifyContent: "center" },
   link: { color: colors.accent, fontSize: 15 },
-  editorTitle: { color: colors.text, fontSize: 17, fontWeight: "600", paddingHorizontal: 22, paddingBottom: 8, textAlign: "center" },
+  editorTitle: { color: colors.text, fontSize: 24, fontWeight: "600", paddingHorizontal: 22, paddingBottom: 8, textAlign: "left" },
   save: { minWidth: 120, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.accent, justifyContent: "center", alignItems: "center" },
   saveText: { color: colors.background, fontSize: 14, fontWeight: "700" },
   form: { gap: 14, paddingTop: 12 },
@@ -360,12 +371,12 @@ const styles = StyleSheet.create({
   options: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: { minHeight: 44, minWidth: 46, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.line, justifyContent: "center", alignItems: "center" },
   choiceSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  choiceText: { color: colors.secondary, fontSize: 13 },
+  choiceText: { color: colors.secondary, fontSize: 15 },
   choiceTextSelected: { color: colors.accent, fontWeight: "600" },
-  helper: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
-  headerError: { color: colors.danger, fontSize: 13, lineHeight: 19, paddingHorizontal: 22, paddingBottom: 12 },
+  helper: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
+  headerError: { color: colors.danger, fontSize: 15, lineHeight: 19, paddingHorizontal: 22, paddingBottom: 12 },
   errorBanner: { paddingVertical: 14, gap: 10 },
-  message: { paddingTop: 14, color: colors.accent, fontSize: 12, lineHeight: 18 },
+  message: { paddingTop: 14, color: colors.accent, fontSize: 14, lineHeight: 18 },
   actions: { backgroundColor: colors.surface, paddingHorizontal: 22, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8 },
   actionRow: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 10 },
   deleteText: { color: colors.danger, fontSize: 15 },

@@ -1,10 +1,11 @@
-import { useRef, useState } from "react";
-import { Pressable, Text, TextInput, View, type TextInputProps } from "react-native";
+import { Text, TextInput } from "./AppText";
+import { useRef, useState, type ComponentRef } from "react";
+import { Pressable, View, type TextInputProps } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../constants/theme";
 import { p } from "./PersonalUI";
 export default function PasswordInput({ error, ...props }: TextInputProps & { error?: string }) {
-  const input = useRef<TextInput>(null);
+  const input = useRef<ComponentRef<typeof TextInput>>(null);
   const [visible, setVisible] = useState(false);
   const hadFocus = useRef(false);
   return (

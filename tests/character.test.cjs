@@ -123,7 +123,7 @@ const UI = {
   Meter: host("Meter"),
   PersonalRow: ({ title, subtitle, ...props }) =>
     React.createElement("Button", props, title, subtitle),
-  PersonalPage: host("Page"),
+  PersonalPage: ({ action, children, ...props }) => React.createElement("Page", props, action, children),
   PersonalButton: ({ title, ...props }) =>
     React.createElement("Button", props, title),
   p: {},
@@ -163,7 +163,7 @@ async function screen(file, mocks) {
       act(async () =>
         renderer.root
           .findAllByType("Button")
-          .find((n) => n.props.title === title || text(n) === title)
+          .find((n) => n.props.title === title || n.props.accessibilityLabel === title || text(n) === title)
           .props.onPress(),
       ),
     cleanup: async () => act(async () => renderer.unmount()),
@@ -538,7 +538,7 @@ test("a sub-minute completed session earns a milestone before the independent da
       .findAllByType("Button")
       .find((n) => n.props.accessibilityLabel?.startsWith("First step,"));
     assert.match(first.props.accessibilityLabel, /earned/);
-    assert.match(ui.text(), /0 \/ 60 goal minutes/);
+    assert.match(ui.text(), /0m \/ 60 min/);
     assert.doesNotMatch(ui.text(), /Daily goal achieved/);
     await act(async () => first.props.onPress());
     assert.match(ui.text(), /Earned automatically/);
@@ -600,7 +600,7 @@ test("daily-goal read failure is retryable and does not hide earned milestones",
 test("a new day with no saved goal row shows the user's goal without inventing an achievement", async () => {
   const ui = await rewardsHarness({ getTodayProgress: async () => null });
   try {
-    assert.match(ui.text(), /0 \/ 60 goal minutes/);
+    assert.match(ui.text(), /0m \/ 60 min/);
     assert.doesNotMatch(
       ui.text(),
       /Daily goal achieved|Couldn’t refresh today’s goal/,
@@ -830,7 +830,7 @@ async function profileScreen(overrides = {}) {
 test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
   const ui = await profileScreen();
   try {
-    assert.match(ui.text(), /Your growth/);
+    assert.match(ui.text(), /Your Life areas/);
     assert.match(ui.text(), /KnowledgeLv 2/);
     assert.doesNotMatch(
       ui.text(),
@@ -1002,4 +1002,38 @@ test("character wave is cosmetic and respects reduced motion", async () => {
       await act(async () => renderer.unmount());
     }
   }
+});
+
+test("portrait centres its head and a changed badge updates the Home identity", async () => {
+  const styles = [];
+  const mocks = {"react-native": {...Native, StyleSheet:{ create: value => { styles.push(value); return value; } }, Animated:{...Native.Animated, Value:class {setValue(){} stopAnimation(){} interpolate(){return 0;}}}}, "../hooks/useReducedMotion":{useReducedMotion:()=>true}};
+  const Portrait = load("src/components/CharacterPortrait.tsx", mocks).default;
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",size:176}));});
+  try {
+    const portraitStyles = styles.find(style=>style.head?.width===80);
+    assert.equal(portraitStyles.head.left + portraitStyles.head.width / 2, 110);
+    const canvas=renderer.root.findAllByType("View").find(node=>node.props.testID==="character-canvas");
+    assert.equal(canvas.props.style.left + canvas.props.style.width / 2, 88);
+  } finally {await act(async()=>renderer.unmount());}
+  const Mark=load("src/components/CharacterMark.tsx",mocks).default;
+  await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
+  try {
+    assert.match(text(renderer.root),/⭐/);
+    await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🐱",size:58})));
+    assert.match(text(renderer.root),/🐱/);
+    assert.doesNotMatch(text(renderer.root),/⭐/);
+  } finally {await act(async()=>renderer.unmount());}
+});
+test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {
+  const AppText=load("src/components/AppText.tsx",{"react-native":{...Native,Platform:{OS:"ios"}}}).Text;
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(AppText,{style:{fontSize:11,lineHeight:16}},"Caption"));});
+  try {
+    let style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
+    assert.equal(style.fontFamily,"System"); assert.equal(style.fontSize,14); assert.ok(style.lineHeight>=18);
+    await act(async()=>renderer.update(React.createElement(AppText,{allowFontScaling:false,style:{fontSize:60,lineHeight:75,height:75}},"25:00")));
+    style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
+    assert.equal(style.lineHeight,75); assert.equal(style.height,75);
+  } finally {await act(async()=>renderer.unmount());}
 });

@@ -1,4 +1,5 @@
-import { StyleSheet, View, Text, TouchableOpacity } from 'react-native';
+import { Text } from "./AppText";
+import { StyleSheet, View, TouchableOpacity } from "react-native";
 import { Href, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../context/UserContext';

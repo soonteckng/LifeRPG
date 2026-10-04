@@ -1,7 +1,8 @@
+import { Text } from "../components/AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Text, View } from "react-native";
+import { Animated, View } from "react-native";
 import { useUser } from "../context/UserContext";
 import { finishOnboarding } from "../services/onboardingService";
 import {
@@ -25,7 +26,7 @@ export const INTRO_PAGES: {
   {
     icon: "person-outline",
     title: "Your effort becomes your character",
-    body: "Life areas collect XP from completed sessions. Your Life areas are your character’s stats: view their saved levels and growth in Profile. Levels reflect focused effort you’ve logged.",
+    body: "Every completed second counts toward your daily goal. Character and Life areas each carry leftover seconds forward: 60 seconds earns 1 XP. Life areas collect their own XP from completed sessions. Your Life areas are your character’s stats: view their saved levels and growth in Profile. Levels reflect focused effort you’ve logged.",
   },
   {
     icon: "flame-outline",

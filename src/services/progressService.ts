@@ -1,6 +1,7 @@
 import { supabase } from "../../lib/supabase";
 import { dateKey, shiftDay } from "../utils/progressAnalytics";
 import type { Subject } from "./taskService";
+import { focusDay } from "../utils/focusDays";
 
 export interface ProgressSession {
   id: string;
@@ -10,15 +11,19 @@ export interface ProgressSession {
   xp_earned: number;
   gold_earned: number;
   completed_at: string | null;
+  credit_version?: number | null;
+  credit_result?: { area_xp_earned?: number | null; character_remainder_seconds?: number; area_remainder_seconds?: number | null; credited_date?: string } | null;
 }
 export interface ProgressGoal {
   progress_date: string;
   goal_minutes: number;
   completed_minutes: number;
+  completed_seconds?: number | null;
+  credit_version?: number | null;
   goal_completed: boolean;
 }
-const FIELDS =
-  "id, subject_id, activity_type, duration_seconds, xp_earned, gold_earned, completed_at";
+// Includes optional saved receipts without requesting absent legacy columns.
+const FIELDS = "*";
 const PAGE_SIZE = 500;
 
 export async function getCompletedSessions(
@@ -50,7 +55,7 @@ export async function getProgressGoals(
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await supabase
       .from("daily_progress")
-      .select("progress_date, goal_minutes, completed_minutes, goal_completed")
+      .select("*")
       .gte("progress_date", start)
       .lte("progress_date", end)
       .order("progress_date", { ascending: true })
@@ -105,8 +110,8 @@ export async function getFocusStreak(
       .range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
     for (const row of data ?? []) {
-      if (!row.completed_at) continue;
-      const key = dateKey(new Date(row.completed_at), timeZone);
+      const key = focusDay(row, timeZone, now);
+      if (!key) continue;
       if (streak === 0 && key === shiftDay(today, -1)) expected = key;
       if (key === expected) {
         streak++;

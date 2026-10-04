@@ -1,3 +1,7 @@
+import { Text } from "../../components/AppText";
+import ContentReveal from "../../components/ContentReveal";
+import AppHeader from "../../components/AppHeader";
+import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -6,16 +10,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  AppState,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -31,6 +26,7 @@ import {
 } from "../../services/progressService";
 import {
   buildProgress,
+  sessionAreaSegments,
   calendarLabel,
   dateKey,
   DEFAULT_TIMEZONE,
@@ -46,6 +42,7 @@ type Detail =
   | { kind: "day"; key: string }
   | { kind: "area"; key: string }
   | { kind: "history" }
+  | { kind: "period" }
   | { kind: "consistency" };
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
 const green = "#8FD8B6";
@@ -243,10 +240,8 @@ export default function ProgressScreen() {
       }
     }
   };
-  const openHistory = () => {
-    open({ kind: "history" });
-    void loadHistory(true);
-  };
+  const openHistory = () => open({ kind: "period" });
+  const openAllHistory = () => { open({ kind: "history" }); void loadHistory(true); };
   const currentPeriod = period.end >= today;
   const range = `${calendarLabel(period.start)} – ${calendarLabel(period.end, { month: "short", day: "numeric", year: "numeric" })}`;
   const peak = Math.max(1, ...(analytics?.days.map((d) => d.seconds) ?? []));
@@ -261,11 +256,13 @@ export default function ProgressScreen() {
   const detailSessions =
     detail?.kind === "history"
       ? history
+      : detail?.kind === "period" ? analytics?.sessions ?? []
       : (activeDay?.sessions ?? activeArea?.sessions ?? []);
   const detailTitle = selectedSession
     ? "Session details"
+    : detail?.kind === "period" ? `Sessions · ${mode === "week" ? "Week" : "Month"}`
     : detail?.kind === "history"
-      ? "Session history"
+      ? "All session history"
       : detail?.kind === "consistency"
         ? "Your consistency"
         : activeDay
@@ -288,10 +285,11 @@ export default function ProgressScreen() {
       ? "Your time adds up, one session at a time."
       : comparison === 0
         ? "Matching your previous pace."
-        : `${Math.abs(comparison)}% ${comparison > 0 ? "more" : "less"} focus time than the previous ${mode}.`;
+        : `${Math.abs(comparison)}% ${comparison > 0 ? "more" : "less"} focus time versus the same days of the previous ${mode}.`;
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
+      <AppHeader title="Progress" />
       <ScrollView
         contentContainerStyle={s.page}
         refreshControl={
@@ -302,10 +300,7 @@ export default function ProgressScreen() {
           />
         }
       >
-        <View style={s.header}>
-          <Text style={s.title} accessibilityRole="header">Progress</Text>
-          <Text style={s.subtitle}>Small moments. Meaningful momentum.</Text>
-        </View>
+        <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           {(["week", "month"] as const).map((value) => (
             <Pressable
@@ -346,17 +341,10 @@ export default function ProgressScreen() {
             accessibilityRole="button"
             accessibilityLabel={`Showing ${range}. Return to this ${mode}`}
           >
-            <Text style={s.periodTitle}>
-              {currentPeriod
-                ? `This ${mode}`
-                : mode === "month"
-                  ? calendarLabel(period.start, {
-                      month: "long",
-                      year: "numeric",
-                    })
-                  : "Earlier week"}
+            <Text style={s.periodTitle} numberOfLines={1}>
+              {mode === "month" ? calendarLabel(period.start, { month: "short", year: "numeric" }) : `${calendarLabel(period.start)} – ${calendarLabel(period.end)}`}
             </Text>
-            <Text style={s.caption}>{range}</Text>
+
           </Pressable>
           <Pressable
             style={s.navButton}
@@ -375,6 +363,7 @@ export default function ProgressScreen() {
               size={20}
             />
           </Pressable>
+        </View>
         </View>
         {error && (
           <View style={s.error}>
@@ -413,18 +402,8 @@ export default function ProgressScreen() {
           </View>
         ) : (
           analytics && (
-            <View>
+            <ContentReveal>
               <View style={s.hero}>
-                <View style={s.heroTop}>
-                  <Text style={s.overline}>FOCUS TIME</Text>
-                  <View style={s.iconBubble}>
-                    <Ionicons
-                      name="time-outline"
-                      size={20}
-                      color={colors.accent}
-                    />
-                  </View>
-                </View>
                 <Text
                   style={s.focusValue}
                   adjustsFontSizeToFit
@@ -433,40 +412,12 @@ export default function ProgressScreen() {
                 >
                   {durationLabel(analytics.seconds)}
                 </Text>
-                <Text style={s.heroDescription}>
+                <Text style={s.heroDescription} accessibilityLabel={`${comparisonLabel}${analytics.previousSeconds > 0 ? ` First ${analytics.comparisonDays} days compared; ${durationLabel(analytics.previousSeconds)} previously.` : ""}`}>
                   {analytics.sessions.length
                     ? comparisonLabel
                     : "Make a little space for what matters."}
                 </Text>
-                {analytics.previousSeconds > 0 && (
-                  <Text style={s.comparisonNote}>
-                    {`First ${analytics.comparisonDays} days compared`} ·{" "}
-                    {durationLabel(analytics.previousSeconds)} previously
-                  </Text>
-                )}
-                <View style={s.heroStats}>
-                  <View style={s.stat}>
-                    <Text style={[s.statNumber, { color: "#C4B5FD" }]}>
-                      {analytics.sessions.length}
-                    </Text>
-                    <Text style={s.caption}>Sessions</Text>
-                  </View>
-                  <View style={s.statDivider} />
-                  <View style={s.stat}>
-                    <Text style={[s.statNumber, { color: "#7DD3FC" }]}>{analytics.activeDays}</Text>
-                    <Text style={s.caption}>Active days</Text>
-                  </View>
-                  <View style={s.statDivider} />
-                  <View style={s.stat}>
-                    <Text style={[s.statNumber, { color: green }]}>{analytics.goalDays}</Text>
-                    <Text style={s.caption}>Goal days</Text>
-                  </View>
-                </View>
               </View>
-              <Section
-                title="Your rhythm"
-                subtitle="Tap a day to explore your focus time"
-              />
               <View style={s.card}>
                 <View style={s.chartHeader}>
                   <Text style={s.caption}>
@@ -491,25 +442,19 @@ export default function ProgressScreen() {
                       key={day.key}
                       onPress={() => open({ kind: "day", key: day.key })}
                       accessibilityRole="button"
-                      accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length} sessions${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
+                      accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length ? `${day.sessions.length} sessions` : "no sessions"}${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
                       style={[s.chartDay, mode === "week" && s.weekDay]}
                     >
                       <View style={s.barTrack}>
-                        <View
-                          style={[
-                            s.bar,
-                            {
-                              height: day.seconds
-                                ? Math.max(5, (day.seconds / peak) * 110)
-                                : 3,
-                              backgroundColor: day.future
-                                ? "#282E3B"
-                                : day.seconds
-                                  ? colors.accent
-                                  : "#3A4152",
-                            },
-                          ]}
-                        />
+                        <View testID={`focus-bar-${day.key}`} style={[s.bar, {
+                          height: day.seconds ? Math.max(5, (day.seconds / peak) * 88) : 3,
+                          backgroundColor: day.future ? "#282E3B" : "#3A4152",
+                        }]}>
+                          {sessionAreaSegments(day.sessions, data.areas).map(segment => (
+                            <View key={segment.key} testID={`focus-segment-${day.key}-${segment.key}`}
+                              style={{ flex: segment.seconds, backgroundColor: segment.color }} />
+                          ))}
+                        </View>
                       </View>
                       <Text
                         style={[s.dayLabel, day.key === today && s.todayLabel]}
@@ -521,16 +466,10 @@ export default function ProgressScreen() {
                             : { day: "numeric" },
                         )}
                       </Text>
-                      <View
-                        style={[
-                          s.goalDot,
-                          {
-                            backgroundColor: day.goal?.goal_completed
-                              ? green
-                              : "transparent",
-                          },
-                        ]}
-                      />
+                      <View style={s.dayStatus}>
+                        {day.goal?.goal_completed ? <View style={s.goalCheck}><Ionicons name="checkmark" size={12} color={colors.background} /></View>
+                          : <View style={[s.goalDot, { backgroundColor: day.sessions.length ? colors.accent : colors.line }]} />}
+                      </View>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -539,13 +478,14 @@ export default function ProgressScreen() {
                     <View
                       style={[s.legendDot, { backgroundColor: colors.accent }]}
                     />
-                    <Text style={s.caption}>Focus time</Text>
+                    <Text style={s.caption}>Dot · focus day</Text>
                   </View>
                   <View style={s.legendItem}>
                     <View style={[s.legendDot, { backgroundColor: green }]} />
-                    <Text style={s.caption}>Goal reached</Text>
+                    <Text style={s.caption}>Check · goal reached</Text>
                   </View>
                 </View>
+
                 {!analytics.sessions.length && (
                   <Text style={s.chartEmpty}>
                     No sessions in this {mode} yet. Every completed session
@@ -553,43 +493,7 @@ export default function ProgressScreen() {
                   </Text>
                 )}
               </View>
-              <Section
-                title="Consistency"
-                action="How it works"
-                onPress={() => open({ kind: "consistency" })}
-              />
-              <Pressable
-                onPress={() => open({ kind: "consistency" })}
-                accessibilityRole="button"
-                accessibilityLabel={`${data.streak}-day focus streak. Learn about focus and daily goals`}
-                style={s.consistency}
-              >
-                <View style={s.streakIcon}>
-                  <Ionicons
-                    name="flame-outline"
-                    size={27}
-                    color={colors.accent}
-                  />
-                </View>
-                <View style={s.flex}>
-                  <Text style={s.streakNumber}>
-                    {data.streak > 0
-                      ? `${data.streak}-day focus streak`
-                      : "Your next day starts here"}
-                  </Text>
-                  <Text style={s.caption}>
-                    {data.streak
-                      ? "A little time, day after day."
-                      : "Complete any session to begin."}
-                  </Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={colors.muted}
-                />
-              </Pressable>
-              <View style={[s.card, s.calendarCard]}>
+              {mode === "month" && <View style={[s.card, s.calendarCard]}>
                 <View style={s.calendarWeekdays}>
                   {["M", "T", "W", "T", "F", "S", "S"].map((label, index) => (
                     <Text key={index} style={s.weekdayLabel}>
@@ -640,48 +544,24 @@ export default function ProgressScreen() {
                   <Text style={s.caption}>Filled · active day</Text>
                   <Text style={s.caption}>Green dot · goal reached</Text>
                 </View>
-              </View>
+              </View>}
               <Section
-                title="Life areas"
-                subtitle="Where you made time this period"
+                title="Where it went"
+
               />
               <View style={s.card}>
+                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 9, borderRadius: 5, overflow: "hidden", marginBottom: 8 }}>
+                  {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}
+                </View>}
                 {analytics.areas.length ? (
-                  analytics.areas.map((area) => (
-                    <Pressable
-                      key={area.key}
-                      onPress={() => open({ kind: "area", key: area.key })}
-                      accessibilityRole="button"
-                      accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}. View sessions`}
-                      style={s.areaRow}
-                    >
-                      <View style={s.areaHeading}>
-                        <View
-                          style={[s.areaDot, { backgroundColor: area.color }]}
-                        />
-                        <Text style={[s.rowTitle, s.flex]}>{area.title}</Text>
-                        <Text style={s.rowValue}>
-                          {durationLabel(area.seconds)}
-                        </Text>
-                        <Ionicons
-                          name="chevron-forward"
-                          size={15}
-                          color={colors.muted}
-                        />
-                      </View>
-                      <View style={s.areaTrack}>
-                        <View
-                          style={[
-                            s.areaFill,
-                            {
-                              width: `${(area.seconds / analytics.seconds) * 100}%`,
-                              backgroundColor: area.color,
-                            },
-                          ]}
-                        />
-                      </View>
-                    </Pressable>
-                  ))
+                  <View style={s.areaSummary}>
+                    {analytics.areas.map((area) => <Pressable key={area.key}
+                      onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
+                      accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}. View sessions`} style={s.areaSummaryItem}>
+                      <View style={[s.areaDot, { backgroundColor: area.color }]} />
+                      <Text style={s.caption}>{area.title} {durationLabel(area.seconds)}</Text>
+                    </Pressable>)}
+                  </View>
                 ) : (
                   <Empty
                     icon="leaf-outline"
@@ -690,39 +570,47 @@ export default function ProgressScreen() {
                   />
                 )}
               </View>
+              <Pressable onPress={openHistory} accessibilityRole="button" accessibilityLabel="View sessions in selected period" style={s.historyEntrance}>
+                <Text style={s.rowTitle}>Sessions</Text>
+                <Text style={[s.caption, s.flex, { textAlign: "right" }]}>{analytics.sessions.length} completed</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+              </Pressable>
               <Section
-                title="Recent sessions"
-                action="View all"
-                onPress={openHistory}
+                title="Consistency"
+                action="How it works"
+                onPress={() => open({ kind: "consistency" })}
               />
-              <View style={s.card}>
-                {analytics.sessions.length ? (
-                  analytics.sessions.slice(0, 4).map((session) => (
-                    <SessionRow
-                      key={session.id}
-                      session={session}
-                      areas={data.areas}
-                      timeZone={timeZone}
-                      onPress={() => {
-                        open({
-                          kind: "day",
-                          key: dateKey(
-                            new Date(session.completed_at!),
-                            timeZone,
-                          ),
-                        });
-                        setSelectedSession(session);
-                      }}
-                    />
-                  ))
-                ) : (
-                  <Empty
-                    icon="checkmark-circle-outline"
-                    title="A fresh chapter"
-                    body="Finish a session and it will appear here, even if it’s just a few seconds."
+              <Pressable
+                onPress={() => open({ kind: "consistency" })}
+                accessibilityRole="button"
+                accessibilityLabel={`${data.streak}-day focus streak. Learn about focus and daily goals`}
+                style={s.consistency}
+              >
+                <View style={s.streakIcon}>
+                  <Ionicons
+                    name="flame-outline"
+                    size={27}
+                    color={colors.accent}
                   />
-                )}
-              </View>
+                </View>
+                <View style={s.flex}>
+                  <Text style={s.streakNumber}>
+                    {data.streak > 0
+                      ? `${data.streak}-day focus streak`
+                      : "Your next day starts here"}
+                  </Text>
+                  <Text style={s.caption}>
+                    {data.streak
+                      ? "A little time, day after day."
+                      : "Complete any session to begin."}
+                  </Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={colors.muted}
+                />
+              </Pressable>
               <Section
                 title="Milestones"
                 action="Explore"
@@ -751,11 +639,8 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
-              <Text style={s.footnote}>
-                Focus time includes seconds. Daily-goal credit and rewards
-                follow the current whole-minute rules.
-              </Text>
-            </View>
+
+            </ContentReveal>
           )
         )}
       </ScrollView>
@@ -826,8 +711,10 @@ export default function ProgressScreen() {
               <View style={s.detailRow}>
                 <Text style={s.caption}>Rewards earned</Text>
                 <Text style={s.rowTitle}>
-                  +{selectedSession.xp_earned ?? 0} XP · +
-                  {selectedSession.gold_earned ?? 0} gold
+                  +{selectedSession.xp_earned ?? 0} character XP
+                  {selectedSession.credit_version === 1
+                    ? selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Life area XP` : ""
+                    : ` · +${selectedSession.gold_earned ?? 0} gold`}
                 </Text>
               </View>
               <Text style={s.footnote}>
@@ -846,6 +733,9 @@ export default function ProgressScreen() {
                 <Text style={s.summaryValue}>{data?.streak ?? 0} days</Text>
                 <Text style={s.rowTitle}>Current focus streak</Text>
               </View>
+              <View style={s.detailRow}><Text style={s.caption}>Sessions</Text><Text style={s.rowTitle}>{analytics?.sessions.length ?? 0}</Text></View>
+              <View style={s.detailRow}><Text style={s.caption}>Focus days this {mode}</Text><Text style={s.rowTitle}>{analytics?.activeDays ?? 0}</Text></View>
+              <View style={s.detailRow}><Text style={s.caption}>Goal days this {mode}</Text><Text style={s.rowTitle}>{analytics?.goalDays ?? 0}</Text></View>
               <Text style={s.explainTitle}>Showing up counts</Text>
               <Text style={s.explain}>
                 Complete any session to mark an active day. A 30-second session
@@ -860,14 +750,16 @@ export default function ProgressScreen() {
               </Text>
               <Text style={s.explainTitle}>Daily goals are a separate win</Text>
               <Text style={s.explain}>
-                A green dot marks a saved daily-goal achievement. Goals and
-                XP/gold still use the current whole-minute credit rules; focus
-                time here includes every completed second.
+                A green dot marks a saved daily-goal achievement. Focus time includes every completed second.
+                Goal credit follows the saved daily record. Older sessions used whole minutes;
+                sessions credited by the new system count seconds and carry leftover seconds toward XP.
+                Historical rewards and achievements stay unchanged.
               </Text>
             </>
           ) : (
             <>
-              {detail?.kind !== "history" && (
+              {detail?.kind === "period" && <Pressable accessibilityRole="button" accessibilityLabel="View all session history" onPress={openAllHistory} style={s.loadMore}><Text style={s.link}>View all history</Text></Pressable>}
+              {detail?.kind !== "history" && detail?.kind !== "period" && (
                 <>
                   <Text style={s.detailTotal}>
                     {durationLabel(
@@ -897,7 +789,7 @@ export default function ProgressScreen() {
                       <Text style={s.goalStatusText}>
                         {activeDay.goal.goal_completed
                           ? "Daily goal reached"
-                          : `${activeDay.goal.completed_minutes} of ${activeDay.goal.goal_minutes} goal minutes credited`}
+                          : `${durationLabel(creditedDailySeconds(activeDay.goal))} of ${activeDay.goal.goal_minutes} min credited`}
                       </Text>
                     </View>
                   )}
@@ -972,48 +864,41 @@ export default function ProgressScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  page: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 28 },
+  periodToolbar: { flexDirection: "column", alignItems: "stretch", flexWrap: "wrap" },
+  areaSummary: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 0 },
+  areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
+  historyEntrance: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48, borderBottomWidth: 1, borderBottomColor: colors.line },
+  page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },
-  header: { marginBottom: 24 },
-  eyebrow: {
-    color: colors.accent,
-    fontSize: 11,
-    letterSpacing: 2,
-    fontWeight: "600",
-    marginBottom: 8,
-  },
+  header: { marginBottom: 8 },
   title: {
     color: colors.text,
-    fontSize: 32,
+    fontSize: 26,
     fontWeight: "600",
     letterSpacing: -1,
-  },
-  subtitle: {
-    color: colors.secondary,
-    fontSize: 14,
-    lineHeight: 22,
-    marginTop: 6,
   },
   segment: {
     flexDirection: "row",
     backgroundColor: colors.surface,
     borderRadius: 14,
-    padding: 4,
+    padding: 3,
+    alignSelf: "stretch",
+    minWidth: 126,
   },
   segmentButton: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 44,
     alignItems: "center",
     justifyContent: "center",
-    borderRadius: 10,
+    borderRadius: 18,
   },
-  segmentSelected: { backgroundColor: "#2A3047" },
+  segmentSelected: { backgroundColor: "#29334E" },
   segmentText: { color: colors.secondary, fontSize: 14, fontWeight: "600" },
-  segmentActive: { color: colors.text },
+  segmentActive: { color: "#B8C8FF" },
   periodNav: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 18,
+    minWidth: 0, width: "100%",
   },
   navButton: {
     width: 44,
@@ -1024,41 +909,18 @@ const s = StyleSheet.create({
   periodCenter: {
     flex: 1,
     alignItems: "center",
-    gap: 4,
+    minWidth: 0,
     minHeight: 44,
     justifyContent: "center",
   },
-  periodTitle: { color: colors.text, fontWeight: "600", fontSize: 15 },
-  caption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  periodTitle: { color: colors.secondary, fontWeight: "500", fontSize: 15 },
+  caption: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
   hero: {
-    backgroundColor: "#211D38",
-    borderWidth: 1,
-    borderColor: "rgba(196,181,253,0.28)",
-    borderRadius: 24,
-    padding: 22,
-  },
-  heroTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  overline: {
-    fontSize: 11,
-    fontWeight: "600",
-    letterSpacing: 1.5,
-    color: colors.accent,
-  },
-  iconBubble: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
+    paddingTop: 8, paddingBottom: 10,
   },
   focusValue: {
     color: colors.text,
-    fontSize: 43,
+    fontSize: 34,
     fontWeight: "600",
     letterSpacing: -1.4,
     marginTop: 6,
@@ -1066,44 +928,28 @@ const s = StyleSheet.create({
   },
   heroDescription: {
     color: colors.secondary,
-    fontSize: 13,
+    fontSize: 15,
     lineHeight: 20,
-    marginTop: 8,
+    marginTop: 2,
   },
   comparisonNote: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 14,
     lineHeight: 17,
     marginTop: 4,
-  },
-  heroStats: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 22,
-    paddingTop: 18,
-    borderTopWidth: 1,
-    borderTopColor: colors.line,
-  },
-  stat: { flex: 1, gap: 3 },
-  statNumber: { color: colors.text, fontSize: 21, fontWeight: "600" },
-  statDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: colors.line,
-    marginRight: 14,
   },
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginTop: 26,
-    marginBottom: 12,
+    marginTop: 12,
+    marginBottom: 4,
   },
   sectionTitle: {
     color: colors.text,
     fontSize: 18,
     fontWeight: "600",
-    marginBottom: 3,
+    marginBottom: 0,
   },
   sectionAction: {
     flexDirection: "row",
@@ -1111,13 +957,11 @@ const s = StyleSheet.create({
     gap: 2,
     minHeight: 44,
   },
-  link: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.line,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
   },
   chartHeader: {
     flexDirection: "row",
@@ -1131,28 +975,31 @@ const s = StyleSheet.create({
   chartDay: { width: 38, alignItems: "center", paddingHorizontal: 5 },
   weekDay: { flex: 1, minWidth: 30 },
   barTrack: {
-    height: 116,
+    height: 92,
     width: "100%",
     justifyContent: "flex-end",
     alignItems: "center",
-    marginBottom: 10,
+    marginBottom: 4,
   },
-  bar: { width: "100%", maxWidth: 28, borderRadius: 5 },
-  dayLabel: { color: colors.secondary, fontSize: 12 },
+  bar: {
+    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 28, borderRadius: 5 },
+  dayLabel: { color: colors.secondary, fontSize: 14 },
   todayLabel: { color: colors.accent, fontWeight: "700" },
-  goalDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6 },
+  goalDot: { width: 7, height: 7, borderRadius: 4 },
+  dayStatus: { height: 24, justifyContent: "center", alignItems: "center", marginTop: 4 },
+  goalCheck: { width: 18, height: 18, borderRadius: 9, justifyContent: "center", alignItems: "center", backgroundColor: "#7BDCC4" },
   legend: {
     flexDirection: "row",
     justifyContent: "space-between",
     flexWrap: "wrap",
     gap: 8,
-    marginTop: 16,
+    marginTop: 4,
   },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendDot: { width: 6, height: 6, borderRadius: 3 },
   chartEmpty: {
     color: colors.secondary,
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 19,
     marginTop: 12,
   },
@@ -1160,11 +1007,8 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    padding: 16,
-    borderRadius: 20,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
+    paddingVertical: 8,
+    borderBottomWidth: 1, borderBottomColor: colors.line,
   },
   streakIcon: {
     width: 48,
@@ -1197,7 +1041,7 @@ const s = StyleSheet.create({
   weekdayLabel: {
     width: "14.285%",
     textAlign: "center",
-    fontSize: 11,
+    fontSize: 14,
     color: colors.muted,
   },
   calendarBlank: { backgroundColor: "transparent" },
@@ -1206,7 +1050,7 @@ const s = StyleSheet.create({
   calendarToday: { borderColor: colors.accent },
   calendarNumber: {
     color: colors.text,
-    fontSize: 12,
+    fontSize: 14,
     fontVariant: ["tabular-nums"],
   },
   futureText: { color: colors.muted },
@@ -1218,8 +1062,6 @@ const s = StyleSheet.create({
     position: "absolute",
     bottom: 4,
   },
-  areaRow: { paddingVertical: 12 },
-  areaHeading: { flexDirection: "row", alignItems: "center", gap: 9 },
   areaDot: { height: 8, width: 8, borderRadius: 4 },
   rowTitle: {
     color: colors.text,
@@ -1229,17 +1071,10 @@ const s = StyleSheet.create({
   },
   rowValue: {
     color: colors.text,
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "600",
     fontVariant: ["tabular-nums"],
   },
-  areaTrack: {
-    height: 4,
-    backgroundColor: "#252B38",
-    borderRadius: 2,
-    marginTop: 12,
-  },
-  areaFill: { height: 4, borderRadius: 2 },
   sessionRow: {
     flexDirection: "row",
     gap: 10,
@@ -1266,7 +1101,7 @@ const s = StyleSheet.create({
   },
   emptyBody: {
     color: colors.secondary,
-    fontSize: 13,
+    fontSize: 15,
     lineHeight: 21,
     textAlign: "center",
     maxWidth: 290,
@@ -1279,7 +1114,7 @@ const s = StyleSheet.create({
   },
   footnote: {
     color: colors.muted,
-    fontSize: 11,
+    fontSize: 14,
     lineHeight: 18,
     marginTop: 18,
     textAlign: "center",
@@ -1338,7 +1173,7 @@ const s = StyleSheet.create({
     gap: 8,
     paddingVertical: 16,
   },
-  goalStatusText: { color: colors.secondary, fontSize: 13, flex: 1 },
+  goalStatusText: { color: colors.secondary, fontSize: 15, flex: 1 },
   explainTitle: {
     color: colors.text,
     fontSize: 17,
@@ -1347,15 +1182,6 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   explain: { color: colors.secondary, fontSize: 14, lineHeight: 23 },
-  milestoneRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 78,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-  },
-  unmet: { backgroundColor: colors.line },
   historySpinner: { marginVertical: 20 },
   errorText: {
     color: colors.secondary,

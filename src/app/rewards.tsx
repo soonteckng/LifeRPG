@@ -1,8 +1,10 @@
+import { Text } from "../components/AppText";
+import { creditedDailySeconds } from "../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Pressable, Text, View } from "react-native";
+import { AppState, Pressable, View } from "react-native";
 import AppSheet from "../components/AppSheet";
 import {
   Meter,
@@ -99,7 +101,7 @@ export default function RewardsScreen() {
       accessibilityRole="button"
       accessibilityLabel={`${milestone.title}, ${milestone.unlocked ? "earned" : "in progress"}. View milestone`}
       onPress={() => open(milestone)}
-      style={[p.card, { padding: 18 }]}
+      style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 6 }}
     >
       <View style={p.inline}>
         <View
@@ -141,28 +143,12 @@ export default function RewardsScreen() {
   return (
     <PersonalPage
       title="Milestones"
-      subtitle="A collection of the effort you’ve put in."
+      subtitle=""
+      compact
       back
       animateTransition
     >
-      <View style={p.card}>
-        <Text style={p.label}>EARNED THROUGH EFFORT</Text>
-        <Text style={[p.title, { fontSize: 25 }]}>
-          Small steps become part of you.
-        </Text>
-        <Text style={p.body}>
-          Complete sessions. Make time for your Life areas. Your character
-          grows, and milestones unlock along the way.
-        </Text>
-        {growth.data && (
-          <View style={p.inline}>
-            <Text style={p.value}>{earned.length}</Text>
-            <Text style={p.body}>
-              of {totals.milestones.length} milestones earned
-            </Text>
-          </View>
-        )}
-      </View>
+      <Text style={p.caption}>Your collection · {earned.length} of {totals.milestones.length} earned</Text>
       {growth.error && (
         <View style={p.card}>
           <Text style={p.error}>
@@ -186,33 +172,14 @@ export default function RewardsScreen() {
         </Text>
       ) : (
         <>
-          <View style={{ gap: 12 }}>
-            <Text style={p.title}>Your collection</Text>
-            {earned.length ? (
-              earned.map(row)
-            ) : (
-              <View style={p.card}>
-                <Ionicons
-                  name="ribbon-outline"
-                  size={30}
-                  color={colors.accent}
-                />
-                <Text style={p.rowTitle}>
-                  Your first milestone is one session away.
-                </Text>
-                <Text style={p.body}>
-                  Finish any session with focused time. It counts, even before
-                  you reach your daily goal.
-                </Text>
-              </View>
-            )}
-          </View>
-          {!!upcoming.length && (
-            <View style={{ gap: 12 }}>
-              <Text style={p.title}>Next milestones</Text>
-              {upcoming.map(row)}
-            </View>
-          )}
+          {[
+            { title: "Starting", ids: ["first", "ten"] },
+            { title: "Consistency", ids: ["return", "week"] },
+            { title: "Time invested", ids: ["hour", "tenhours"] },
+          ].map(group => <View key={group.title} style={{ gap: 4, paddingTop: 4 }}>
+            <Text style={p.body}>{group.title}</Text>
+            {totals.milestones.filter(m => group.ids.includes(m.id)).map(row)}
+          </View>)}
           {!upcoming.length && (
             <View style={p.card}>
               <Text style={p.title}>A collection worth being proud of.</Text>
@@ -239,13 +206,13 @@ export default function RewardsScreen() {
           <>
             <Meter
               value={
-                (goal?.completed_minutes ?? 0) /
-                Math.max(1, goal?.goal_minutes ?? profile.daily_goal_minutes)
+                (goal ? creditedDailySeconds(goal) : 0) /
+                Math.max(1, (goal?.goal_minutes ?? profile.daily_goal_minutes) * 60)
               }
             />
             <Text style={p.caption}>
-              {goal?.completed_minutes ?? 0} /{" "}
-              {goal?.goal_minutes ?? profile.daily_goal_minutes} goal minutes
+              {durationLabel(goal ? creditedDailySeconds(goal) : 0)} /{" "}
+              {goal?.goal_minutes ?? profile.daily_goal_minutes} min
             </Text>
             {!!goal?.goal_completed && (
               <View style={p.inline}>

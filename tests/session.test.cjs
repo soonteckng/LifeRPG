@@ -344,7 +344,7 @@ test("custom picker changes setup only on confirm; Retry uses exact seconds",asy
 
 test("back dismisses keyboard, then picker, then the screen without resetting",async()=>{
   const ui=await screenSetup();
-  await ui.press("Choose life area");
+  await ui.press("Choose a quest");
   await ui.keyboard();
   await ui.back();
   assert.equal(ui.root().findAllByType("Sheet").length,1);
@@ -359,11 +359,11 @@ test("back dismisses keyboard, then picker, then the screen without resetting",a
 
 test("completed screen offers Done and New session while retaining the summary",async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{questTitle:"Read",minutesSpent:30,durationSeconds:1800,xpEarned:30,goldEarned:5}});
-  assert.match(ui.output(),/30 min completed/);
+  assert.match(ui.output(),/Time focused30 min/);
   assert.ok(ui.button("Done")); assert.ok(ui.button("New session"));
   await ui.press("Done");
   assert.deepEqual(ui.calls,[["summary-viewed"],["dismiss"]]);
-  assert.match(ui.output(),/30 min completed/);
+  assert.match(ui.output(),/Time focused30 min/);
   await ui.cleanup();
 });
 test("seconds survive countdown boundaries, pause, minimise and completion once", async()=>{
@@ -433,7 +433,8 @@ test("dock distinguishes running, paused, saving, failed and completed without c
 test("free setup has one Life area category and a discoverable optional quest row",async()=>{
   const ui=await screenSetup();
   assert.ok(ui.button("Choose a quest"));
-  assert.ok(ui.button("Choose life area"));
+  assert.ok(ui.button("Select General"));
+  assert.equal(ui.button("Choose life area"),undefined);
   assert.equal(ui.button("Choose activity"),undefined);
   assert.match(ui.output(),/Optional/);
   await ui.press("Choose a quest");
@@ -470,7 +471,11 @@ test("foreground recovery and notifications retain exact remaining seconds",asyn
   assert.equal(scheduled.filter(n=>n.trigger?.seconds).at(-1).trigger.seconds,899);
   await ui.cleanup();
 });
-function durationModule(calls = [], hapticsEnabled = false) {
+function durationModule(calls = [], hapticsEnabled = false, scrolls = []) {
+  const Wheel = React.forwardRef((props, ref) => {
+    React.useImperativeHandle(ref, () => ({scrollToOffset:request=>scrolls.push(request)}));
+    return React.createElement("Wheel", props);
+  });
   return load("src/components/DurationPicker.tsx",{
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll"),BottomSheetTextInput:host("Input")},
     "./AppSheet":function Sheet(props) {
@@ -480,8 +485,8 @@ function durationModule(calls = [], hapticsEnabled = false) {
       return props.visible ? React.createElement("Sheet",props,props.header,props.children) : null;
     },
     "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),TextInput:host("Input"),Modal:host("Modal"),ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),
-      Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:host("Wheel"),event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
-      FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
+      Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:Wheel,event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
+      PixelRatio:{get:()=>2.625,roundToNearestPixel:value=>Math.round(value*2.625)/2.625},FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
     "react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:24}),SafeAreaView:host("SafeArea")},
     "expo-haptics":{selectionAsync:async()=>calls.push("haptic")},
     "../context/UserContext":{useUser:()=>({hapticsEnabled})},
@@ -519,8 +524,8 @@ test("integrated wheels ignore programmatic scrolls, commit on settling, and kee
   for(const seconds of [1,30,930,6000,28800]){
     props={...props,seconds,interactive:true,revision:props.revision+1};
     await act(async()=>renderer.update(React.createElement(Picker,props)));
-    assert.equal(wheels()[0].props.initialScrollIndex % 481,Math.floor(seconds/60));
-    assert.equal(wheels()[1].props.initialScrollIndex % 60,seconds%60);
+    assert.equal((wheels()[0].props.initialScrollIndex + 1) % 481,Math.floor(seconds/60));
+    assert.equal((wheels()[1].props.initialScrollIndex + 1) % 60,seconds%60);
   }
   await act(async()=>renderer.unmount());
 });
@@ -646,8 +651,8 @@ test("typed input and presets share applied seconds while linked quests stay rea
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(6000));
   await ui.update({duration:6000,timeLeft:6000});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,6000);
-  await ui.press("30 minutes");await ui.update({duration:1800,timeLeft:1800});
-  assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
+  await ui.press("25 minutes");await ui.update({duration:1500,timeLeft:1500});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,1500);
   await ui.update({linkedTaskId:7,duration:930});
   assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
   assert.equal(ui.button("Edit duration"),undefined);
@@ -884,4 +889,199 @@ test("notification listener initialization failure leaves the timer usable", asy
     assert.equal(ui.state().actionError, null);
     assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
   } finally { await ui.cleanup(); }
+});
+
+ test("Home setup after a saved one-second completion releases the old ID and starts once", async () => {
+  let starts = 0;
+  const ui = await providerSetup({
+    startActivitySession: async () => `session-${++starts}`,
+    completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0, xp_earned: 0, gold_earned: 0 }),
+  });
+  try {
+    await ui.run(s => s.startTimer(1));
+    await ui.advance(1);
+    assert.ok(ui.state().sessionSummary);
+    await ui.run(s => s.clearCompletionModal());
+    await ui.run(s => { s.setLinkedTaskId(null); s.setDurationInMinutes(30); });
+    assert.equal(ui.state().isCompleted, false);
+    await ui.run(s => s.startTimer(1800));
+    assert.equal(starts, 2);
+    assert.equal(ui.state().hasOpenSession, true);
+    assert.equal(ui.calls.filter(c => c[0] === "cancel").length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test("duration changes cannot abandon an in-flight or failed completion", async () => {
+  const pending = deferred();
+  const ui = await providerSetup({ completeActivitySession: () => pending.promise });
+  try {
+    await ui.run(s => s.startTimer(1));
+    await ui.advance(1);
+    await ui.run(s => s.setDurationInMinutes(30));
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(ui.state().duration, 1);
+    await ui.run(() => pending.reject(Error("Offline")));
+    await ui.run(s => s.setDurationInMinutes(30));
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(ui.state().duration, 1);
+    assert.match(ui.state().actionError, /save/);
+  } finally { await ui.cleanup(); }
+});
+
+test("completed setup keeps presets and wheel commits editable before the next Start", async () => {
+  const ui = await providerSetup({ completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0 }) });
+  try {
+    await ui.run(s => s.startTimer(1));
+    await ui.advance(1);
+    await ui.run(s => s.setDurationInMinutes(60));
+    assert.equal(ui.state().duration, 3600);
+    await ui.run(s => s.setDurationInSeconds(2700));
+    assert.equal(ui.state().duration, 2700);
+    await ui.run(s => s.setDurationInSeconds(2715));
+    assert.equal(ui.state().duration, 2715);
+    await ui.run(s => s.startTimer(ui.state().duration));
+    assert.equal(ui.state().hasOpenSession, true);
+    assert.equal(ui.calls.filter(c => c[0] === "start").at(-1)[1].targetDurationSeconds, 2715);
+  } finally { await ui.cleanup(); }
+});
+
+test("saved completion carries independent XP banks and server goal credit without local awards", async () => {
+  let completions = 0;
+  const ui = await providerSetup({ completeActivitySession: async () => { completions++; return ({ ...result, credit_version: 1, duration_seconds: 30, xp_earned: 1, gold_earned: 0, area_xp_earned: 0, character_remainder_seconds: 15, area_remainder_seconds: 30, daily_completed_seconds: 60, goal_reached_now: true, credited_date: "2026-10-04" }); } });
+  try {
+    await ui.run(s => s.startTimer(30));
+    await ui.advance(30);
+    const summary = ui.state().sessionSummary;
+    assert.equal(summary.xpEarned, 1);
+    assert.equal(summary.areaXpEarned, 0);
+    assert.equal(summary.characterRemainderSeconds, 15);
+    assert.equal(summary.areaRemainderSeconds, 30);
+    assert.equal(summary.dailyCompletedSeconds, 60);
+    assert.equal(summary.goalReachedNow, true);
+    await ui.run(s => s.clearCompletionModal());
+    assert.equal(ui.state().sessionSummary, summary);
+    await ui.run(s => s.retryCompletion());
+    assert.equal(completions, 1);
+  } finally { await ui.cleanup(); }
+});
+
+test("compact Session chips select the saved Life area without touching quest or duration", async()=>{
+  const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
+  await ui.press("Select Study");
+  assert.deepEqual(ui.calls,[["area",2]]);
+  await ui.update({targetAttributeId:2});
+  assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
+  await ui.press("25 minutes");
+  assert.deepEqual(ui.calls.at(-1),["seconds",1500]);
+  await ui.update({duration:1500,timeLeft:1500});
+  await ui.press("Start");
+  assert.deepEqual(ui.calls.at(-1),["start",1500,undefined]);
+  await ui.cleanup();
+});
+
+test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
+  const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0,creditVersion:1,areaXpEarned:null}});
+  assert.match(ui.output(),/General\+0 XPCharacter XP\+1/);
+  assert.ok(ui.button("Done"));
+  assert.ok(ui.button("New session"));
+  await ui.cleanup();
+});
+
+test("five visible Life areas need no More sheet; additional areas remain selectable",async()=>{
+  const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
+  const ui=await screenSetup({}, {subjects});
+  for(const area of subjects) assert.ok(ui.button(`Select ${area.title}`));
+  assert.equal(ui.button("Choose life area"),undefined);
+  await ui.press("Select Area 5");
+  assert.deepEqual(ui.calls.at(-1),["area",5]);
+  await ui.cleanup();
+  const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
+  await extra.press("Choose life area");
+  await extra.press("Seven");
+  assert.deepEqual(extra.calls.at(-1),["area",7]);
+  await extra.cleanup();
+});
+
+test("wheel digit boxes share the snap row height and disable automatic content insets",async()=>{
+  const {default:Picker}=durationModule();
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Picker,{seconds:28800,interactive:true,compact:true,revision:0,onCommit:()=>{},onBusy:()=>{},onValidity:()=>{},onEdit:()=>{}}));});
+  for(const wheel of renderer.root.findAllByType("Wheel")) {
+    assert.equal(wheel.props.automaticallyAdjustContentInsets,false);
+    assert.equal(wheel.props.contentInsetAdjustmentBehavior,"never");
+    const row=wheel.props.renderItem({item:wheel.props.initialScrollIndex});
+    const textStyle=Object.assign({},...row.props.children.props.style);
+    assert.equal(textStyle.height,wheel.props.snapToInterval);
+    assert.equal(textStyle.lineHeight,wheel.props.snapToInterval);
+    assert.equal(textStyle.includeFontPadding,false);
+    assert.equal(textStyle.textAlignVertical,"center");
+  }
+  await act(async()=>renderer.unmount());
+});
+
+
+test("virtualized wheel frames include the real header and centre the initial selected row", async () => {
+  const { default: Picker } = durationModule([]);
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Picker, {seconds:930, interactive:true, compact:true, revision:0, onCommit(){}, onBusy(){}, onValidity(){}, onEdit(){}})); });
+  try {
+    for (const wheel of renderer.root.findAllByType("Wheel")) {
+      const { snapToInterval: height, initialScrollIndex: index, getItemLayout } = wheel.props;
+      const initialOffset = getItemLayout(null, index).offset;
+      assert.equal(getItemLayout(null, 0).offset, height, "header is part of every item frame");
+      assert.ok(Math.abs(getItemLayout(null, index + 1).offset - initialOffset - height) < 1e-8, "selected item occupies the centre row");
+      assert.ok(Math.abs(height * 2.625 - Math.round(height * 2.625)) < 1e-8, "fractional-density phones use whole physical pixel rows");
+      assert.equal(wheel.props.ListHeaderComponent.props.style.height, height);
+      assert.equal(wheel.props.snapToAlignment, "start");
+      const digit = wheel.props.renderItem({item:index + 1}).props.children;
+      assert.equal(digit.props.style[1].transform.find(value => "rotateX" in value).rotateX, "0deg", "reduced motion keeps digit baselines flat");
+      assert.notEqual(wheel.props.disableIntervalMomentum, true, "normal flings should retain native momentum");
+    }
+  } finally { await act(async () => renderer.unmount()); }
+});
+
+test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
+  const calls=[];
+  const Modal=load("src/components/LevelUpModal.tsx",{
+    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s}},
+    "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "@expo/vector-icons":{Ionicons:host("Icon")},
+    "./ProgressRing":host("Ring"),
+    "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
+    "../hooks/useReducedMotion":{useReducedMotion:()=>true},
+    "expo-haptics":{},
+  }).default;
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
+  const text=node=>typeof node==="string"?node:(node.children??[]).map(text).join("");
+  try {
+    assert.match(text(renderer.root),/1 min 30 sec/);
+    assert.match(text(renderer.root),/Character XP\+1/);
+    assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
+    await act(async()=>renderer.root.findByType("Button").props.onPress());
+    assert.deepEqual(calls,["close"]);
+  } finally {await act(async()=>renderer.unmount());}
+});
+
+
+test("wheel settlement corrects a residual native offset without scrolling aligned flings", async () => {
+  const scrolls=[];
+  const {default:Picker}=durationModule([],false,scrolls);
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Picker,{seconds:930,interactive:true,revision:0,onCommit(){},onBusy(){},onValidity(){},onEdit(){}}));});
+  try {
+    const wheel=()=>renderer.root.findAllByType("Wheel")[0];
+    const height=wheel().props.snapToInterval;
+    const index=wheel().props.initialScrollIndex+2;
+    const finish=async(offset)=>{
+      await act(async()=>wheel().props.onScrollBeginDrag());
+      await act(async()=>wheel().props.onScrollEndDrag({nativeEvent:{contentOffset:{y:offset},velocity:{y:1}}}));
+      await act(async()=>wheel().props.onMomentumScrollEnd({nativeEvent:{contentOffset:{y:offset}}}));
+    };
+    await finish((index+0.2)*height);
+    assert.deepEqual(scrolls,[{offset:index*height,animated:false}]);
+    scrolls.length=0;
+    await finish(index*height);
+    assert.deepEqual(scrolls,[]);
+  } finally {await act(async()=>renderer.unmount());}
 });

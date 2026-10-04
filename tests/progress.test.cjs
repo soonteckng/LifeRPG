@@ -154,7 +154,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#A5B4FC",
+    "#F29D82",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -355,12 +355,13 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
 
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
-async function screenHarness({ empty = false, historyFailure = false } = {}) {
+async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows } = {}) {
   const today = dateKey(new Date(), TZ),
     stamp = new Date(Date.now() - 1000).toISOString();
   let refreshes = 0,
     haptics = 0,
     historyCalls = 0;
+  let progressStyles;
   const Native = {
     View: host("View"),
     Text: host("Text"),
@@ -368,7 +369,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
     ScrollView: host("Scroll"),
     RefreshControl: host("Refresh"),
     ActivityIndicator: host("Spinner"),
-    StyleSheet: { create: (s) => s },
+    StyleSheet: { create: (s) => { if (s.chart) progressStyles = s; return s; } },
     AppState: { addEventListener: () => ({ remove() {} }) },
     Animated: {
       Value: class {
@@ -412,13 +413,14 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
       useTimer: () => ({ sessionSummary: null }),
     },
     "../../hooks/useReducedMotion": { useReducedMotion: () => true },
+    "../hooks/useReducedMotion": { useReducedMotion: () => true },
     "../../hooks/useProgressData": {
       useProgressData: (period) => ({
         data: {
           key: period.start,
-          sessions: empty ? [] : [session("a", 30, stamp)],
+          sessions: empty ? [] : sessionRows ?? [session("a", 30, stamp)],
           goals: [],
-          areas,
+          areas: areaRows ?? areas,
           streak: empty ? 0 : 2,
         },
         loading: false,
@@ -445,6 +447,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
   const buttons = () => renderer.root.findAllByType("Button");
   return {
     today,
+    styles: () => progressStyles,
     renderer,
     text: () => text(renderer.root),
     historyCalls: () => historyCalls,
@@ -486,7 +489,8 @@ test("full history loads on demand and saved session details do not mutate rewar
   const ui = await screenHarness();
   try {
     assert.equal(ui.historyCalls(), 0);
-    await ui.press("View all");
+    await ui.press("View sessions in selected period");
+    await ui.press("View all session history");
     assert.equal(ui.historyCalls(), 1);
     const row = ui.renderer.root
       .findAllByType("Button")
@@ -498,7 +502,7 @@ test("full history loads on demand and saved session details do not mutate rewar
     await act(async () => row.props.onPress());
     assert.match(ui.text(), /already saved/);
     await ui.press("Back to sessions");
-    assert.match(ui.text(), /Session history/);
+    assert.match(ui.text(), /All session history/);
   } finally {
     await ui.cleanup();
   }
@@ -507,8 +511,9 @@ test("empty Progress explains how to begin and still makes full history accessib
   const ui = await screenHarness({ empty: true });
   try {
     assert.match(ui.text(), /Every completed session counts/);
-    assert.match(ui.text(), /A fresh chapter/);
-    await ui.press("View all");
+    assert.match(ui.text(), /Room to grow/);
+    await ui.press("View sessions in selected period");
+    await ui.press("View all session history");
     assert.equal(ui.historyCalls(), 1);
   } finally {
     await ui.cleanup();
@@ -518,7 +523,8 @@ test("empty Progress explains how to begin and still makes full history accessib
 test("a history failure does not suppress another day’s empty-state details", async () => {
   const ui = await screenHarness({ empty: true, historyFailure: true });
   try {
-    await ui.press("View all");
+    await ui.press("View sessions in selected period");
+    await ui.press("View all session history");
     assert.match(ui.text(), /Couldn’t load sessions/);
     await act(async () => {
       ui.renderer.root.findByType("Sheet").props.onRequestClose();
@@ -537,3 +543,75 @@ test("a history failure does not suppress another day’s empty-state details", 
   }
 });
 
+
+test("compact Progress keeps the chart before allocation and opens area drilldowns", async()=>{
+  const ui=await screenHarness();
+  try {
+    const text=ui.text();
+    assert.ok(text.indexOf("30s") < text.indexOf("Dot · focus day"));
+    assert.ok(text.indexOf("Dot · focus day") < text.indexOf("Where it went"));
+    assert.ok(text.indexOf("Where it went") < text.indexOf("Sessions"));
+    const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
+    assert.ok(area);
+    await act(async()=>area.props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible,true);
+    assert.ok(ui.renderer.root.findAllByType("Button").some(n=>n.props.accessibilityLabel?.endsWith("View session")));
+  } finally { await ui.cleanup(); }
+});
+
+
+test("Progress chart uses a compact first-screen layout budget", async()=>{
+  const ui=await screenHarness();
+  try {
+    const s=ui.styles();
+    // Structural budget for default text, not a native layout/animation measurement.
+    // Includes two comparison lines on a narrow phone.
+    const aboveChart = s.page.paddingTop + Math.ceil(s.title.fontSize * 1.3) + s.header.marginBottom
+      + s.segmentButton.minHeight + s.hero.paddingTop + Math.ceil(s.focusValue.fontSize * 1.3)
+      + s.focusValue.marginTop + s.heroDescription.marginTop + s.heroDescription.lineHeight * 2
+      + s.hero.paddingBottom;
+    const chart = s.card.paddingVertical * 2 + s.caption.lineHeight + s.chartHeader.marginBottom
+      + s.chart.paddingTop + s.barTrack.height + s.barTrack.marginBottom + Math.ceil(s.dayLabel.fontSize * 1.3)
+      + s.dayStatus.height + s.dayStatus.marginTop + s.legend.marginTop + s.caption.lineHeight;
+    assert.ok(aboveChart + chart < 440, `chart budget ${aboveChart + chart}px`);
+    assert.equal(s.periodNav.paddingVertical, undefined);
+  } finally { await ui.cleanup(); }
+});
+
+
+test("mixed Life areas retain proportional colours in a day instead of becoming the dominant area", async () => {
+  const stamp = new Date(Date.now() - 1000).toISOString();
+  const ui = await screenHarness({
+    sessionRows: [session("general", 60, stamp, 2), session("knowledge", 60, stamp, 1)],
+    areaRows: [{ id: 2, title: "General", color_code: "#F29D82" }, { id: 1, title: "Knowledge", color_code: "#B7ABEC" }],
+  });
+  try {
+    const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
+    assert.equal(segments.length, 2);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#B7ABEC", 60], ["#F29D82", 60]]);
+    await ui.press("View sessions in selected period");
+    assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
+    const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
+    assert.equal(rows.length, 2);
+  } finally { await ui.cleanup(); }
+});
+test("empty selected period stays empty until all-history is explicitly requested", async () => {
+  const ui = await screenHarness({ empty: true });
+  try {
+    await ui.press("View sessions in selected period");
+    assert.equal(ui.historyCalls(), 0);
+    assert.equal(ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session")).length, 0);
+    await ui.press("View all session history");
+    assert.equal(ui.historyCalls(), 1);
+    assert.match(ui.text(), /All session history/);
+  } finally { await ui.cleanup(); }
+});
+test("local Monday week rollover excludes Sunday while month retains both dates", () => {
+  const clock = new Date("2026-10-04T16:31:00Z");
+  const rows = [session("sunday", 60, "2026-10-04T15:00:00Z"), session("monday", 60, "2026-10-04T16:10:00Z")];
+  const week = buildProgress(periodFor("week", "2026-10-05", TZ, clock), rows, [], TZ, areas, clock);
+  const month = buildProgress(periodFor("month", "2026-10-05", TZ, clock), rows, [], TZ, areas, clock);
+  assert.deepEqual(week.sessions.map(row => row.id), ["monday"]);
+  assert.equal(week.seconds, 60);
+  assert.equal(month.seconds, 120);
+});

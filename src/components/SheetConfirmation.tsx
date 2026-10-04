@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Text } from "./AppText";
+import { Pressable, StyleSheet, View } from "react-native";
 import { colors } from "../constants/theme";
 
 export interface SheetConfirmationProps {

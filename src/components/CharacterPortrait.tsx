@@ -1,6 +1,8 @@
+import { Text } from "./AppText";
 import { useEffect, useState } from "react";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
+import { Animated, Pressable, StyleSheet, View } from "react-native";
+import { characterAccent } from "../utils/characterAppearance";
 import { colors } from "../constants/theme";
 
 // A lightweight character foundation. Growth reflects saved overall effort;
@@ -9,16 +11,21 @@ export default function CharacterPortrait({
   avatar,
   level = 1,
   developed = 0,
+  size = 176,
 }: {
   avatar: string;
   level?: number;
   developed?: number;
+  size?: number;
 }) {
+  const accent = characterAccent(avatar);
   const growth = Math.min(14, Math.max(0, level - 1) * 2);
   const reduced = useReducedMotion();
   const [wave] = useState(() => new Animated.Value(0));
+  const [expression, setExpression] = useState(0);
   useEffect(() => () => wave.stopAnimation(), [wave]);
   const greet = () => {
+    setExpression(value => (value + 1) % 3);
     if (reduced) return;
     wave.stopAnimation();
     wave.setValue(0);
@@ -30,27 +37,26 @@ export default function CharacterPortrait({
   };
   return (
     <Pressable
-      style={({ pressed }) => [s.stage, pressed && { opacity: 0.85 }]}
+      style={({ pressed }) => [s.stage, { width: size, height: size }, pressed && { opacity: 0.85 }]}
       accessibilityRole="button"
       onPress={greet}
       accessibilityLabel={`Your character. Level ${level}. ${developed} Life areas developed.`}
-      accessibilityHint="Tap to wave. This does not change your progress."
+      accessibilityHint="Tap to greet your character and change its expression."
     >
+      <View testID="character-canvas" style={{ width: 220, height: 220, alignItems: "center", position: "absolute", top: (size - 220) / 2, left: (size - 220) / 2, transform: [{ scale: size / 220 }] }}>
       <View style={s.orbit} />
-      <View style={s.innerOrbit} />
       {developed > 0 && (
         <View style={s.star}>
           <Text style={s.starText}>✦</Text>
         </View>
       )}
-      <View style={s.floor} />
-      <View style={[s.arm, s.leftArm, { width: 22 + growth / 2 }]} />
+      <View style={[s.arm, s.leftArm, { width: 28 + growth / 2 }]} />
       <Animated.View
         style={[
           s.arm,
           s.rightArm,
           {
-            width: 22 + growth / 2,
+            width: 28 + growth / 2,
             transform: [
               {
                 rotate: reduced
@@ -71,25 +77,26 @@ export default function CharacterPortrait({
         ]}
       />
       <View
-        style={[s.body, { width: 70 + growth, marginLeft: -(70 + growth) / 2 }]}
+        style={[s.body, { width: 112 + growth, marginLeft: -(112 + growth) / 2 }]}
       >
-        <View style={s.chestMark} />
       </View>
-      <View style={s.head}>
-        <View style={s.face} />
-      </View>
-      <View style={[s.leg, { left: "50%", marginLeft: -27 }]} />
-      <View style={[s.leg, { left: "50%", marginLeft: 6 }]} />
-      <View style={s.badge}>
+      <Animated.View style={[s.head, { transform: [{ rotate: reduced ? "0deg" : wave.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["0deg", "8deg", "0deg"] }) }] }]}>
+        <View style={s.glasses}><View style={s.lens} /><View style={s.bridge} /><View style={s.lens} /></View>
+        <View style={[s.smile, expression === 1 && { width: 22, height: 9, borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }, expression === 2 && { width: 10, height: 10, borderRadius: 5 }]} />
+      </Animated.View>
+      <View style={[s.scarf, { backgroundColor: accent }]} />
+      <View style={[s.badge, { borderColor: accent }]} accessibilityLabel={`Character badge ${avatar}`}>
         <Text style={s.badgeText}>{avatar}</Text>
+      </View>
       </View>
     </Pressable>
   );
 }
 const s = StyleSheet.create({
   stage: {
-    height: 220,
-    width: "100%",
+    height: 112,
+    width: 112,
+    alignSelf: "center",
     position: "relative",
     alignItems: "center",
   },
@@ -98,9 +105,10 @@ const s = StyleSheet.create({
     width: 204,
     height: 204,
     borderRadius: 102,
-    borderWidth: 1,
-    borderColor: "rgba(165,180,252,0.15)",
-    top: 0,
+    borderWidth: 0,
+    backgroundColor: "#191D2B",
+    top: 8,
+    left: 8,
   },
   innerOrbit: {
     position: "absolute",
@@ -120,16 +128,22 @@ const s = StyleSheet.create({
   },
   head: {
     position: "absolute",
-    top: 28,
-    width: 47,
-    height: 52,
-    borderRadius: 23,
+    top: 30,
+    left: 70,
+    width: 80,
+    height: 86,
+    borderRadius: 40,
     backgroundColor: "#CED7FF",
     borderWidth: 3,
     borderColor: "#A5B4FC",
     alignItems: "center",
     justifyContent: "center",
   },
+  glasses: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  lens: { width: 24, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#626AB1" },
+  bridge: { width: 6, height: 3, backgroundColor: "#626AB1" },
+  smile: { marginTop: 8, width: 16, height: 4, borderRadius: 2, backgroundColor: "#626AB1" },
+  scarf: { position: "absolute", top: 110, left: 54, width: 112, height: 22, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
   face: {
     width: 25,
     height: 13,
@@ -140,8 +154,8 @@ const s = StyleSheet.create({
   body: {
     position: "absolute",
     left: "50%",
-    top: 83,
-    height: 74,
+    top: 122,
+    height: 84,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     borderBottomLeftRadius: 16,
@@ -162,13 +176,13 @@ const s = StyleSheet.create({
   },
   arm: {
     position: "absolute",
-    top: 91,
-    height: 65,
+    top: 136,
+    height: 54,
     borderRadius: 13,
     backgroundColor: "#737FB9",
   },
-  leftArm: { left: "50%", marginLeft: -54, transform: [{ rotate: "12deg" }] },
-  rightArm: { left: "50%", marginLeft: 30, transform: [{ rotate: "-12deg" }] },
+  leftArm: { left: "50%", marginLeft: -70, transform: [{ rotate: "12deg" }] },
+  rightArm: { left: "50%", marginLeft: 42, transform: [{ rotate: "-12deg" }] },
   leg: {
     position: "absolute",
     top: 148,
@@ -179,10 +193,10 @@ const s = StyleSheet.create({
   },
   badge: {
     position: "absolute",
-    right: 12,
-    bottom: 22,
-    width: 45,
-    height: 45,
+    right: 0,
+    bottom: 4,
+    width: 58,
+    height: 58,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.line,
@@ -190,7 +204,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  badgeText: { fontSize: 25 },
+  badgeText: { fontSize: 34 },
   star: { position: "absolute", top: 12, right: 32 },
   starText: { color: colors.accent, fontSize: 22 },
 });
