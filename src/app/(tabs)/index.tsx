@@ -56,7 +56,7 @@ export default function HomeScreen() {
   // already reserve their own space and must not be counted a second time.
   const availableHeight = viewportHeight || Math.max(280, height - insets.top - insets.bottom - 96);
   const goalSize = Math.round(Math.max(144, Math.min(
-    (width - 40) * 0.55, availableHeight * 0.36, fontScale > 1.5 ? 160 : 232,
+    (width - 40) * 0.70, availableHeight * 0.40, fontScale > 1.5 ? 160 : 280,
   )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
@@ -126,7 +126,7 @@ export default function HomeScreen() {
         <ContentReveal>
         <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
           <View style={styles.identityRow}>
-            <CharacterMark size={52} />
+            <CharacterMark size={58} />
             <View style={styles.identity}>
               <Text style={styles.greeting} accessibilityRole="header" numberOfLines={2}>{greeting}</Text>
               <Text style={styles.subtitle}>{profile?.class_title || "Growing through focus"}</Text>
@@ -184,25 +184,25 @@ const styles = StyleSheet.create({
   layout: { flexGrow: 1 },
   identityRow: { flexDirection: "row", gap: 14, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
-  greeting: { color: colors.text, fontSize: 18, fontWeight: "600", letterSpacing: -0.4 },
-  subtitle: { color: colors.secondary, fontSize: 13, lineHeight: 20, marginTop: 5 },
-  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 24, paddingBottom: 20, gap: 16 },
-  goalHint: { textAlign: "center", color: colors.secondary, fontSize: 14, lineHeight: 21, maxWidth: 290 },
-  primaryButton: { backgroundColor: "#E5E4FF", minHeight: 54, borderRadius: 18, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
-  primaryButtonText: { color: "#171827", fontSize: 17, fontWeight: "600" },
-  questHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 14 },
-  sectionTitle: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
+  greeting: { color: colors.text, fontSize: 23, fontWeight: "600", letterSpacing: -0.4 },
+  subtitle: { color: colors.secondary, fontSize: 15, lineHeight: 21, marginTop: 4 },
+  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 16, paddingBottom: 14, gap: 12 },
+  goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
+  primaryButton: { backgroundColor: "#E5E4FF", minHeight: 58, borderRadius: 18, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButtonText: { color: "#171827", fontSize: 19, fontWeight: "600" },
+  questHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 10 },
+  sectionTitle: { color: colors.secondary, fontSize: 17, fontWeight: "500" },
   allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44 },
-  link: { color: colors.accent, fontSize: 13, fontWeight: "600" },
-  questRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line, paddingVertical: 8 },
+  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  questRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: 1, borderBottomColor: colors.line, paddingVertical: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  questTitle: { color: colors.text, fontSize: 15, fontWeight: "500", flex: 1 },
-  questTime: { color: colors.secondary, fontSize: 13 },
+  questTitle: { color: colors.text, fontSize: 17, fontWeight: "500", flex: 1 },
+  questTime: { color: colors.secondary, fontSize: 15 },
   emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 16 },
   emptyText: { flex: 1, color: colors.secondary, fontSize: 13, lineHeight: 20 },
   footer: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 16 },
   chip: { flexDirection: "row", gap: 6, alignItems: "center", borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 12, paddingVertical: 8 },
-  chipText: { color: colors.secondary, fontSize: 12, fontWeight: "500" },
+  chipText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
   retry: { marginTop: 12, paddingVertical: 10 },
   retryText: { color: colors.danger, fontSize: 13 },
 });

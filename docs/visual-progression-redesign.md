@@ -35,3 +35,8 @@ No database/account changes or native dependencies/configuration changed in this
 ### Home proportions with a short quest list
 
 Home fills its measured viewport above the existing tabs/dock. The goal section absorbs spare height, the ring scales to about 55% of content width (bounded for short screens and large text), and the streak/level chips follow the quest section near the bottom. No fixed empty quest reservation or overlay over the tab bar is added. Overflow remains scrollable on small screens/large text. Other screens, quest management and navigation are unchanged in this follow-up. Phone verification of zero, one, two and three quests remains required.
+
+
+### Visual weight and timer alignment refinement
+
+Home increases the ring's diameter, stroke and clock size along with greeting, goal hint, Start, quest and chip typography. Section gaps are tighter. Session presets are centred, category labels are larger, and the redundant area picker entrance is omitted when all areas fit in the visible chips; it remains available for more than six areas. Timer columns are wider for three-digit minute values. Wheel and countdown text use explicit row-height boxes, centred vertical alignment, no Android font padding and no automatic scroll insets. Running-ring placement follows the same font/grid measurements. Snapping, duration validation, keyboard/back priority and timer identity are preserved. These are code changes; visible digit alignment and visual density still require phone verification.

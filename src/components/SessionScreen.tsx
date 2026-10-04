@@ -27,7 +27,9 @@ export default function SessionScreen() {
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
-  const { height, fontScale } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
+  const timerFontSize = Math.min(56 * Math.min(fontScale, 1.25), (Math.min(252, width - 48) - 22) / 1.86);
+  const ringTop = 12 + Math.ceil(20 * fontScale) + Math.ceil(timerFontSize * 1.25) * 1.5 - 126;
   const [picker, setPicker] = useState<Picker>(null);
   const [durationRevision, setDurationRevision] = useState(0);
   const durationEpoch = useRef(0);
@@ -219,8 +221,8 @@ export default function SessionScreen() {
       <AppHeader title={phase === "setup" ? "New session" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, height < 700 && styles.compactAnchor]}>
-          <View pointerEvents="none" style={styles.ringLayer}>
-            {phase !== "setup" && <ProgressRing size={phase === "completed" && sessionSummary ? 120 : 216}
+          <View pointerEvents="none" style={[styles.ringLayer, { top: phase === "completed" && sessionSummary ? 12 : ringTop }]}>
+            {phase !== "setup" && <ProgressRing size={phase === "completed" && sessionSummary ? 120 : 252}
               progress={phase === "completed" && sessionSummary ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : "#25C9B8"}>
               {phase === "completed" && sessionSummary && <Ionicons name="checkmark" size={42} color={colors.accent} />}
@@ -266,7 +268,7 @@ export default function SessionScreen() {
                       style={[styles.areaChip, item.id === timer.targetAttributeId && styles.selected]}>
                       <Text style={[styles.link, item.id === timer.targetAttributeId && { color: "#25C9B8" }]}>{item.title}</Text>
                     </TouchableOpacity>)}
-                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose life area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><Text style={styles.link}>More</Text></TouchableOpacity>
+                    {subjects.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose life area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><Text style={styles.link}>See all areas</Text></TouchableOpacity>}
                   </View>
                 </View>
               </>}
@@ -347,7 +349,7 @@ function SheetChoice({ label, detail, onPress }: { label: string; detail?: strin
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
-  completedTime: { position: "absolute", top: 140, left: 0, right: 0, alignItems: "center", gap: 6 },
+  completedTime: { position: "absolute", top: 156, left: 0, right: 0, alignItems: "center", gap: 6 },
   activeTitle: { color: colors.text, fontSize: 16, fontWeight: "500", textAlign: "center", marginTop: 18 },
   areaSection: { borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
   areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -360,16 +362,16 @@ const styles = StyleSheet.create({
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
   timerAnchor: { paddingHorizontal: 24, paddingTop: 4, paddingBottom: 4, alignItems: "center", flexShrink: 0 },
   compactAnchor: { paddingTop: 0, paddingBottom: 4 },
-  timerControl: { width: 208, maxWidth: "100%", paddingTop: 8 },
+  timerControl: { width: 252, maxWidth: "100%", paddingTop: 8 },
   status: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18 },
   body: { paddingHorizontal: 24, paddingBottom: 20 },
-  secondary: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
+  secondary: { color: colors.secondary, fontSize: 16, lineHeight: 23 },
   setup: { gap: 12, marginTop: 0 },
-  label: { color: colors.text, fontSize: 15, flexShrink: 1 },
-  link: { color: colors.accent, fontSize: 14, fontWeight: "500" },
+  label: { color: colors.text, fontSize: 17, flexShrink: 1 },
+  link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18 },
-  choiceValue: { color: colors.secondary, flex: 1, textAlign: "right", fontSize: 14 },
-  presets: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingBottom: 4 },
+  choiceValue: { color: colors.secondary, flex: 1, textAlign: "right", fontSize: 16 },
+  presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
   preset: { minWidth: 44, minHeight: 44, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 22, backgroundColor: colors.surface },
   selected: { backgroundColor: "rgba(37,201,184,0.13)" },
   questRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, minHeight: 48, borderTopWidth: 1, borderTopColor: colors.line },

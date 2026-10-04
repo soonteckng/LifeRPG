@@ -23,8 +23,9 @@ export default function DurationPicker(props: Props) {
 
 function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, onEdit, compact = false, caption }: Props) {
   const { width, height, fontScale } = useWindowDimensions();
-  const fontSize = Math.min((compact ? 48 : height < 700 ? 54 : 64) * Math.min(fontScale, 1.25), (width - 64) / 3.7);
-  const rowHeight = Math.ceil(fontSize * 1.12);
+  const fontSize = Math.min((compact ? 56 : height < 700 ? 54 : 64) * Math.min(fontScale, 1.25), compact ? (Math.min(252, width - 48) - 22) / 1.86 : (width - 64) / 3.7);
+  const rowHeight = Math.ceil(fontSize * 1.25);
+  const labelHeight = Math.ceil(20 * fontScale);
   const [draft, setDraft] = useState(seconds);
   const draftRef = useRef(seconds);
   const moving = useRef(new Set<string>());
@@ -47,7 +48,7 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
   };
   const begin = (column: string) => { moving.current.add(column); onBusy(true); };
   return <View testID="duration-display">
-    <View style={[styles.labels, compact && !interactive && { opacity: 0 }]}><Text style={styles.unit}>Minutes</Text><View style={styles.colonWidth} /><Text style={styles.unit}>Seconds</Text></View>
+    <View style={[styles.labels, { height: labelHeight }, compact && !interactive && { opacity: 0 }]}><Text style={styles.unit}>Minutes</Text><View style={styles.colonWidth} /><Text style={styles.unit}>Seconds</Text></View>
     <View style={{ height: rowHeight * 3 }}>
       {interactive && <View pointerEvents="none" style={[styles.selectionBand, { top: rowHeight, height: rowHeight }]} />}
       {interactive && <View style={styles.wheels}>
@@ -59,12 +60,12 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
       </View>}
       <View pointerEvents="none" testID="session-countdown" accessible accessibilityLabel={sessionTime(shown)}
         style={[styles.digits, { top: rowHeight, height: rowHeight }]}>
-        <Text allowFontScaling={false} style={[styles.digit, { fontSize, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(minutes).padStart(2, "0")}</Text>
-        <Text allowFontScaling={false} style={[styles.colon, { fontSize, lineHeight: rowHeight }]}>:</Text>
-        <Text allowFontScaling={false} style={[styles.digit, { fontSize, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(remainder).padStart(2, "0")}</Text>
+        <Text allowFontScaling={false} style={[styles.digit, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(minutes).padStart(2, "0")}</Text>
+        <Text allowFontScaling={false} style={[styles.colon, { fontSize, height: rowHeight, lineHeight: rowHeight }]}>:</Text>
+        <Text allowFontScaling={false} style={[styles.digit, { fontSize, height: rowHeight, lineHeight: rowHeight, opacity: interactive ? 0 : 1 }]}>{String(remainder).padStart(2, "0")}</Text>
       </View>
     </View>
-    {compact && !interactive && caption && <Text style={{ position: "absolute", top: 22 + rowHeight * 2, width: "100%", textAlign: "center", color: colors.secondary, fontSize: 13 }}>{caption}</Text>}
+    {compact && !interactive && caption && <Text style={{ position: "absolute", top: labelHeight + rowHeight * 2 + 8, width: "100%", textAlign: "center", color: colors.secondary, fontSize: 15 }}>{caption}</Text>}
     <View style={styles.editSlot}>
       {interactive && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit duration" onPress={onEdit} style={styles.edit}>
         <Text style={[styles.editText, !valid && styles.error]}>{valid ? compact ? "Scroll the wheels or tap to type a time" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
@@ -125,6 +126,7 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     onAccessibilityAction={(event) => adjust(event.nativeEvent.actionName === "increment" ? 1 : -1)}>
     <Animated.FlatList ref={list} data={data} style={{ height: rowHeight * 3 }}
       accessible={false} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden
+      automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
       initialScrollIndex={initialValue} initialNumToRender={7} keyExtractor={String}
       getItemLayout={(_, index) => ({ length: rowHeight, offset: index * rowHeight, index })}
       contentContainerStyle={{ paddingVertical: rowHeight }} snapToInterval={rowHeight}
@@ -143,7 +145,7 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
       }}
       onMomentumScrollEnd={(event) => { if (!dragging.current) settle(indexAt(event.nativeEvent.contentOffset.y)); }}
       renderItem={({ item }) => <View style={[styles.row, { height: rowHeight }]}>
-        <Animated.Text allowFontScaling={false} style={[styles.wheelDigit, { fontSize, lineHeight: rowHeight,
+        <Animated.Text allowFontScaling={false} style={[styles.wheelDigit, { fontSize, height: rowHeight, lineHeight: rowHeight,
           opacity: scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.28, 1, 0.28], extrapolate: "clamp" }),
           transform: [{ perspective: 600 },
             { scale: reducedMotion ? 1 : scrollY.interpolate({ inputRange: [(item - 1) * rowHeight, item * rowHeight, (item + 1) * rowHeight], outputRange: [0.68, 1, 0.68], extrapolate: "clamp" }) },
@@ -200,14 +202,14 @@ function EditorDraft({ seconds, onCancel, onConfirm }: Omit<EditorProps, "visibl
 }
 
 const styles = StyleSheet.create({
-  labels: { flexDirection: "row", alignItems: "center" }, unit: { flex: 1, textAlign: "center", color: colors.secondary, fontSize: 13 },
+  labels: { flexDirection: "row", alignItems: "center" }, unit: { flex: 1, textAlign: "center", color: colors.secondary, fontSize: 15 },
   wheels: { flexDirection: "row" }, wheel: { flex: 1 }, colonWidth: { width: 22 },
-  selectionBand: { position: "absolute", left: 4, right: 4, borderRadius: 18, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.line },
+  selectionBand: { position: "absolute", left: 0, right: 0, borderRadius: 18, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.line },
   row: { alignItems: "center", justifyContent: "center" }, adjacent: { color: colors.muted, fontVariant: ["tabular-nums"] },
-  wheelDigit: { color: colors.text, textAlign: "center", fontWeight: "500", fontVariant: ["tabular-nums"] },
+  wheelDigit: { width: "100%", includeFontPadding: false, textAlignVertical: "center", color: colors.text, textAlign: "center", fontWeight: "500", fontVariant: ["tabular-nums"] },
   digits: { position: "absolute", left: 0, right: 0, flexDirection: "row", alignItems: "center" },
-  digit: { flex: 1, textAlign: "center", color: colors.text, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  colon: { width: 22, textAlign: "center", color: colors.text, fontWeight: "300" },
+  digit: { flex: 1, includeFontPadding: false, textAlignVertical: "center", textAlign: "center", color: colors.text, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  colon: { width: 22, includeFontPadding: false, textAlignVertical: "center", textAlign: "center", color: colors.text, fontWeight: "300" },
   editSlot: { minHeight: 44, justifyContent: "center" }, edit: { minHeight: 44, alignItems: "center", justifyContent: "center" },
   editText: { color: colors.accent, fontSize: 15, fontWeight: "500" }, error: { color: colors.danger },
   pickerHeader: { paddingHorizontal: 24, paddingBottom: 8 },

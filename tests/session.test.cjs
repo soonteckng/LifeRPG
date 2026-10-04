@@ -344,7 +344,7 @@ test("custom picker changes setup only on confirm; Retry uses exact seconds",asy
 
 test("back dismisses keyboard, then picker, then the screen without resetting",async()=>{
   const ui=await screenSetup();
-  await ui.press("Choose life area");
+  await ui.press("Choose a quest");
   await ui.keyboard();
   await ui.back();
   assert.equal(ui.root().findAllByType("Sheet").length,1);
@@ -433,7 +433,8 @@ test("dock distinguishes running, paused, saving, failed and completed without c
 test("free setup has one Life area category and a discoverable optional quest row",async()=>{
   const ui=await screenSetup();
   assert.ok(ui.button("Choose a quest"));
-  assert.ok(ui.button("Choose life area"));
+  assert.ok(ui.button("Select General"));
+  assert.equal(ui.button("Choose life area"),undefined);
   assert.equal(ui.button("Choose activity"),undefined);
   assert.match(ui.output(),/Optional/);
   await ui.press("Choose a quest");
@@ -980,4 +981,36 @@ test("completed Session never labels unassigned character XP as a Life-area awar
   assert.ok(ui.button("Done"));
   assert.ok(ui.button("New session"));
   await ui.cleanup();
+});
+
+test("five visible Life areas need no More sheet; additional areas remain selectable",async()=>{
+  const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
+  const ui=await screenSetup({}, {subjects});
+  for(const area of subjects) assert.ok(ui.button(`Select ${area.title}`));
+  assert.equal(ui.button("Choose life area"),undefined);
+  await ui.press("Select Area 5");
+  assert.deepEqual(ui.calls.at(-1),["area",5]);
+  await ui.cleanup();
+  const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
+  await extra.press("Choose life area");
+  await extra.press("Seven");
+  assert.deepEqual(extra.calls.at(-1),["area",7]);
+  await extra.cleanup();
+});
+
+test("wheel digit boxes share the snap row height and disable automatic content insets",async()=>{
+  const {default:Picker}=durationModule();
+  let renderer;
+  await act(async()=>{renderer=create(React.createElement(Picker,{seconds:28800,interactive:true,compact:true,revision:0,onCommit:()=>{},onBusy:()=>{},onValidity:()=>{},onEdit:()=>{}}));});
+  for(const wheel of renderer.root.findAllByType("Wheel")) {
+    assert.equal(wheel.props.automaticallyAdjustContentInsets,false);
+    assert.equal(wheel.props.contentInsetAdjustmentBehavior,"never");
+    const row=wheel.props.renderItem({item:wheel.props.initialScrollIndex});
+    const textStyle=Object.assign({},...row.props.children.props.style);
+    assert.equal(textStyle.height,wheel.props.snapToInterval);
+    assert.equal(textStyle.lineHeight,wheel.props.snapToInterval);
+    assert.equal(textStyle.includeFontPadding,false);
+    assert.equal(textStyle.textAlignVertical,"center");
+  }
+  await act(async()=>renderer.unmount());
 });
