@@ -1,3 +1,4 @@
+import { creditedDailySeconds } from "../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useFocusEffect } from "expo-router";
@@ -99,7 +100,7 @@ export default function RewardsScreen() {
       accessibilityRole="button"
       accessibilityLabel={`${milestone.title}, ${milestone.unlocked ? "earned" : "in progress"}. View milestone`}
       onPress={() => open(milestone)}
-      style={[p.card, { padding: 18 }]}
+      style={{ paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 12 }}
     >
       <View style={p.inline}>
         <View
@@ -145,7 +146,7 @@ export default function RewardsScreen() {
       back
       animateTransition
     >
-      <View style={p.card}>
+      <View style={{ gap: 12, paddingBottom: 22, borderBottomWidth: 1, borderBottomColor: colors.line }}>
         <Text style={p.label}>EARNED THROUGH EFFORT</Text>
         <Text style={[p.title, { fontSize: 25 }]}>
           Small steps become part of you.
@@ -239,13 +240,13 @@ export default function RewardsScreen() {
           <>
             <Meter
               value={
-                (goal?.completed_minutes ?? 0) /
-                Math.max(1, goal?.goal_minutes ?? profile.daily_goal_minutes)
+                (goal ? creditedDailySeconds(goal) : 0) /
+                Math.max(1, (goal?.goal_minutes ?? profile.daily_goal_minutes) * 60)
               }
             />
             <Text style={p.caption}>
-              {goal?.completed_minutes ?? 0} /{" "}
-              {goal?.goal_minutes ?? profile.daily_goal_minutes} goal minutes
+              {durationLabel(goal ? creditedDailySeconds(goal) : 0)} /{" "}
+              {goal?.goal_minutes ?? profile.daily_goal_minutes} min
             </Text>
             {!!goal?.goal_completed && (
               <View style={p.inline}>

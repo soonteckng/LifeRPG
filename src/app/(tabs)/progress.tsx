@@ -1,3 +1,5 @@
+import ContentReveal from "../../components/ContentReveal";
+import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -414,7 +416,7 @@ export default function ProgressScreen() {
           </View>
         ) : (
           analytics && (
-            <View>
+            <ContentReveal>
               <View style={s.hero}>
                 <View style={s.heroTop}>
                   <Text style={s.overline}>FOCUS TIME</Text>
@@ -455,7 +457,7 @@ export default function ProgressScreen() {
                   <View style={s.statDivider} />
                   <View style={s.stat}>
                     <Text style={[s.statNumber, { color: "#7DD3FC" }]}>{analytics.activeDays}</Text>
-                    <Text style={s.caption}>Active days</Text>
+                    <Text style={s.caption}>Focus days</Text>
                   </View>
                   <View style={s.statDivider} />
                   <View style={s.stat}>
@@ -492,7 +494,7 @@ export default function ProgressScreen() {
                       key={day.key}
                       onPress={() => open({ kind: "day", key: day.key })}
                       accessibilityRole="button"
-                      accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length} sessions${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
+                      accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length ? `${day.sessions.length} sessions` : "no sessions"}${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
                       style={[s.chartDay, mode === "week" && s.weekDay]}
                     >
                       <View style={s.barTrack}>
@@ -506,7 +508,12 @@ export default function ProgressScreen() {
                               backgroundColor: day.future
                                 ? "#282E3B"
                                 : day.seconds
-                                  ? colors.accent
+                                  ? (() => {
+                                    const totals = new Map<number | null, number>();
+                                    for (const session of day.sessions) totals.set(session.subject_id, (totals.get(session.subject_id) ?? 0) + session.duration_seconds);
+                                    const id = [...totals].sort((a, b) => b[1] - a[1])[0]?.[0];
+                                    return lifeAreaColor(id, data.areas.find(area => area.id === id)?.color_code);
+                                  })()
                                   : "#3A4152",
                             },
                           ]}
@@ -522,16 +529,10 @@ export default function ProgressScreen() {
                             : { day: "numeric" },
                         )}
                       </Text>
-                      <View
-                        style={[
-                          s.goalDot,
-                          {
-                            backgroundColor: day.goal?.goal_completed
-                              ? green
-                              : "transparent",
-                          },
-                        ]}
-                      />
+                      <View style={s.dayStatus}>
+                        {day.goal?.goal_completed ? <View style={s.goalCheck}><Ionicons name="checkmark" size={12} color={colors.background} /></View>
+                          : <View style={[s.goalDot, { backgroundColor: day.sessions.length ? colors.accent : colors.line }]} />}
+                      </View>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -540,13 +541,14 @@ export default function ProgressScreen() {
                     <View
                       style={[s.legendDot, { backgroundColor: colors.accent }]}
                     />
-                    <Text style={s.caption}>Focus time</Text>
+                    <Text style={s.caption}>Dot · focus day</Text>
                   </View>
                   <View style={s.legendItem}>
                     <View style={[s.legendDot, { backgroundColor: green }]} />
-                    <Text style={s.caption}>Goal reached</Text>
+                    <Text style={s.caption}>Check · goal reached</Text>
                   </View>
                 </View>
+                <Text style={[s.caption, { marginTop: 10 }]}>Bar colour shows the Life area you focused on most that day.</Text>
                 {!analytics.sessions.length && (
                   <Text style={s.chartEmpty}>
                     No sessions in this {mode} yet. Every completed session
@@ -590,7 +592,7 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
-              <View style={[s.card, s.calendarCard]}>
+              {mode === "month" && <View style={[s.card, s.calendarCard]}>
                 <View style={s.calendarWeekdays}>
                   {["M", "T", "W", "T", "F", "S", "S"].map((label, index) => (
                     <Text key={index} style={s.weekdayLabel}>
@@ -641,12 +643,15 @@ export default function ProgressScreen() {
                   <Text style={s.caption}>Filled · active day</Text>
                   <Text style={s.caption}>Green dot · goal reached</Text>
                 </View>
-              </View>
+              </View>}
               <Section
-                title="Life areas"
+                title="Where it went"
                 subtitle="Where you made time this period"
               />
               <View style={s.card}>
+                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 9, borderRadius: 5, overflow: "hidden", marginBottom: 14 }}>
+                  {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}
+                </View>}
                 {analytics.areas.length ? (
                   analytics.areas.map((area) => (
                     <Pressable
@@ -756,7 +761,7 @@ export default function ProgressScreen() {
                 Focus time includes seconds. Daily-goal credit and rewards
                 follow the current whole-minute rules.
               </Text>
-            </View>
+            </ContentReveal>
           )
         )}
       </ScrollView>
@@ -1001,8 +1006,10 @@ const s = StyleSheet.create({
   segment: {
     flexDirection: "row",
     backgroundColor: colors.surface,
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 4,
+    alignSelf: "flex-start",
+    minWidth: 184,
   },
   segmentButton: {
     flex: 1,
@@ -1035,11 +1042,9 @@ const s = StyleSheet.create({
   periodTitle: { color: colors.text, fontWeight: "600", fontSize: 15 },
   caption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   hero: {
-    backgroundColor: "#211D38",
-    borderWidth: 1,
-    borderColor: "rgba(196,181,253,0.28)",
-    borderRadius: 24,
-    padding: 22,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
   },
   heroTop: {
     flexDirection: "row",
@@ -1117,11 +1122,9 @@ const s = StyleSheet.create({
   },
   link: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   card: {
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: colors.line,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
   },
   chartHeader: {
     flexDirection: "row",
@@ -1144,7 +1147,9 @@ const s = StyleSheet.create({
   bar: { width: "100%", maxWidth: 28, borderRadius: 5 },
   dayLabel: { color: colors.secondary, fontSize: 12 },
   todayLabel: { color: colors.accent, fontWeight: "700" },
-  goalDot: { width: 5, height: 5, borderRadius: 3, marginTop: 6 },
+  goalDot: { width: 7, height: 7, borderRadius: 4 },
+  dayStatus: { height: 24, justifyContent: "center", alignItems: "center", marginTop: 4 },
+  goalCheck: { width: 18, height: 18, borderRadius: 9, justifyContent: "center", alignItems: "center", backgroundColor: "#7BDCC4" },
   legend: {
     flexDirection: "row",
     justifyContent: "space-between",

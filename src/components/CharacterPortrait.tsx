@@ -76,8 +76,10 @@ export default function CharacterPortrait({
         <View style={s.chestMark} />
       </View>
       <View style={s.head}>
-        <View style={s.face} />
+        <View style={s.glasses}><View style={s.lens} /><View style={s.bridge} /><View style={s.lens} /></View>
+        <View style={s.smile} />
       </View>
+      <View style={s.scarf} />
       <View style={[s.leg, { left: "50%", marginLeft: -27 }]} />
       <View style={[s.leg, { left: "50%", marginLeft: 6 }]} />
       <View style={s.badge}>
@@ -98,8 +100,8 @@ const s = StyleSheet.create({
     width: 204,
     height: 204,
     borderRadius: 102,
-    borderWidth: 1,
-    borderColor: "rgba(165,180,252,0.15)",
+    borderWidth: 0,
+    backgroundColor: "#191D2B",
     top: 0,
   },
   innerOrbit: {
@@ -130,6 +132,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  glasses: { flexDirection: "row", alignItems: "center", marginTop: 8 },
+  lens: { width: 13, height: 12, borderRadius: 6, borderWidth: 2, borderColor: "#626AB1" },
+  bridge: { width: 4, height: 2, backgroundColor: "#626AB1" },
+  smile: { marginTop: 5, width: 9, height: 3, borderRadius: 2, backgroundColor: "#626AB1" },
+  scarf: { position: "absolute", top: 80, width: 80, height: 13, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
   face: {
     width: 25,
     height: 13,

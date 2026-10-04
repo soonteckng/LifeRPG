@@ -154,7 +154,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#A5B4FC",
+    "#F29D82",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -412,6 +412,7 @@ async function screenHarness({ empty = false, historyFailure = false } = {}) {
       useTimer: () => ({ sessionSummary: null }),
     },
     "../../hooks/useReducedMotion": { useReducedMotion: () => true },
+    "../hooks/useReducedMotion": { useReducedMotion: () => true },
     "../../hooks/useProgressData": {
       useProgressData: (period) => ({
         data: {

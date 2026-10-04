@@ -1,4 +1,4 @@
-# Progression foundation — UNAPPLIED backend proposal
+# Progression foundation — backend activated
 
 Based on main `f4946cdd5e61e284f297497c20979e214783e5f7`, 2026-10-04. This phase prepares accounting and compatible data reads. It does not implement Claude's screen redesign, accessories or goal scheduling.
 
@@ -58,7 +58,7 @@ To run server tests, create an EMPTY disposable local Postgres database, set `LI
 
 Before commit the transaction can roll back completely. After new credits exist, do not delete columns, subtract XP, recalculate history or reset banks. A client rollback retains additive data. Backend rollback needs a separately reviewed forward migration that preserves banks/results and defines how later completions are credited; blindly restoring the old function loses new remainder credit and must not be used as the rollback plan.
 
-No live migration, account write, deployment or native-device verification occurred. SQL remains a proposal. Claude's Home/Progress/Profile visuals, existing bottom navigation and session dock are the next phase.
+This statement describes the initial foundation phase only: no live changes occurred at that point. The later approved activation is recorded below. Claude's Home/Progress/Profile visuals, existing bottom navigation and session dock are the next phase.
 
 ## Accounting display integration
 
@@ -66,4 +66,12 @@ Home now uses the saved exact daily seconds only for valid version-1 records, in
 
 CI now includes an isolated PostgreSQL 17 service job for the SQL assertions and simultaneous completion/retry scripts. Its disposable credentials are only for the ephemeral CI database, not Supabase. A green JavaScript job alone is insufficient: the SQL job must pass before considering live rollout. Client/device layout and live schema/grant drift still need review.
 
-The SQL remains unapplied. Downloading client changes does not activate second-based server credit. Deploy the reviewed client to all supported builds before changing backend reward rules; old builds still label Gold and whole-minute credit. Existing accounts, historical rows and balances must be retained. After backend approval, verify new completions through real accounts without re-crediting historical sessions.
+The SQL was subsequently applied with explicit approval; see Live activation below. Downloading client changes alone does not change a different backend project. Deploy the reviewed client to all supported builds before changing backend reward rules; old builds still label Gold and whole-minute credit. Existing accounts, historical rows and balances must be retained. After backend approval, verify new completions through real accounts without re-crediting historical sessions.
+
+## Live activation — 2026-10-04
+
+User explicitly approved the live migration. Supabase applied `20261004141444 exact_seconds_progression_credit` to project `msuelivxpsfizkddjjfg`. Immediately before application, all five session functions matched the reviewed snapshot and no credit columns existed. The migration used 5-second lock/60-second statement limits and in-transaction hashes to abort if existing account/progression row contents changed (excluding added columns). Those preservation checks passed before commit.
+
+Post-application catalog checks confirmed all six credit columns, valid profile banks, preserved historical minute baselines, authenticated receipt/daily-second reads, blocked anonymous completion, authenticated completion access and blocked direct client bank writes. No sessions were created or completed on behalf of real accounts. End-to-end real-account/device completion still requires the user to complete NEW sessions after activation. Historical discarded seconds are not reconstructed. Older installed clients retain compatibility fields but should be updated for accurate second/XP explanations.
+
+Security advisors before and after application returned the same legacy anonymous SECURITY DEFINER exposure warnings (onboarding, trigger function, reward chest/redemption), intended authenticated RPC exposure warnings, and disabled leaked-password protection. No unrelated permissions or authentication settings were modified. Separate follow-up review: https://supabase.com/docs/guides/database/database-linter?lint=0028_anon_security_definer_function_executable and https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection.

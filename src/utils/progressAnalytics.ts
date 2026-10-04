@@ -1,3 +1,4 @@
+import { lifeAreaColor } from "./lifeAreaColor";
 import type {
   ProgressGoal,
   ProgressSession,
@@ -176,9 +177,7 @@ export function buildProgress(
       key,
       title,
       color:
-        area?.color_code && /^#[0-9a-f]{6}$/i.test(area.color_code)
-          ? area.color_code
-          : "#A5B4FC",
+        lifeAreaColor(area?.id, area?.color_code),
       seconds: 0,
       sessions: [],
     };
@@ -201,3 +200,4 @@ export function buildProgress(
     comparisonDays,
   };
 }
+

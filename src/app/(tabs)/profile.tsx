@@ -1,3 +1,5 @@
+import ContentReveal from "../../components/ContentReveal";
+import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -15,7 +17,6 @@ import {
   Meter,
   PersonalButton,
   PersonalPage,
-  PersonalRow,
   p,
 } from "../../components/PersonalUI";
 import { colors } from "../../constants/theme";
@@ -102,13 +103,8 @@ export default function ProfileScreen() {
         </Pressable>
       }
     >
-      <View style={p.card}>
-        <View style={p.inline}>
-          <Text style={[p.label, p.flex]}>YOUR CHARACTER</Text>
-          <View style={p.pill}>
-            <Text style={p.rowTitle}>Level {profile.level}</Text>
-          </View>
-        </View>
+      <ContentReveal><View style={{ gap: 16 }}>
+      <View style={{ gap: 14, paddingTop: 8, paddingBottom: 24 }}>
         <CharacterPortrait
           avatar={profile.avatar}
           level={profile.level}
@@ -121,7 +117,8 @@ export default function ProfileScreen() {
         </Text>
         <View style={{ alignItems: "center", gap: 6 }}>
           <Text style={[p.title, { fontSize: 26 }]}>{profile.username}</Text>
-          <Text style={p.body}>Built one session at a time.</Text>
+          <Text style={p.body}>Level {profile.level} · Built one session at a time.</Text>
+          <Text style={[p.caption, { textAlign: "center" }]}>Reflects the effort you record, not your ability.</Text>
         </View>
         <Meter value={profile.current_xp / required} />
         <Text style={p.caption}>
@@ -145,22 +142,19 @@ export default function ProfileScreen() {
         </View>
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-      <View style={p.card}>
-        <Text style={p.title}>Your growth</Text>
+      <View style={{ gap: 12, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 22, paddingBottom: 18 }}>
+        <Text style={p.title}>Your Life areas</Text>
         <Text style={p.body}>
-          Your Life areas are your character’s stats. Complete sessions in an
-          area to grow its level.
+          Your character’s stats grow with the areas you make time for.
         </Text>
         {areas.map((area) => (
           <View key={area.id} style={{ gap: 9, paddingVertical: 8 }}>
             <View style={p.inline}>
-              <View style={p.icon}>
-                <Ionicons name="leaf-outline" size={21} color={colors.accent} />
-              </View>
+              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: lifeAreaColor(area.id, area.color_code) }} />
               <Text style={[p.rowTitle, p.flex]}>{area.title}</Text>
               <Text style={p.rowTitle}>Lv {area.level}</Text>
             </View>
-            <Meter value={area.current / area.required} />
+            <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} />
             <Text style={p.caption}>
               {area.current} / {area.required} XP to the next level
             </Text>
@@ -176,38 +170,23 @@ export default function ProfileScreen() {
           Levels reflect focused effort you’ve logged.
         </Text>
       </View>
-      {data && (
-        <View style={p.card}>
-          <Text style={p.title}>The effort behind your character</Text>
-          <View style={[p.inline, { flexWrap: "wrap" }]}>
-            <View style={p.flex}>
-              <Text style={p.value}>{totals.sessions}</Text>
-              <Text style={p.caption}>Sessions completed</Text>
-            </View>
-            <View style={p.flex}>
-              <Text style={p.value}>{totals.days}</Text>
-              <Text style={p.caption}>Days you showed up</Text>
-            </View>
-          </View>
-          <Text style={p.body}>
-            {durationLabel(totals.seconds)} invested across your life.
-          </Text>
+      <View style={{ gap: 14, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: 22 }}>
+        <View style={p.inline}><Text style={[p.title, p.flex]}>Milestones</Text>
+          <Pressable onPress={() => router.navigate("/rewards")} accessibilityRole="button" accessibilityLabel="View milestones" style={{ minHeight: 44, justifyContent: "center" }}>
+            <Text style={{ color: colors.accent, fontSize: 13 }}>View all →</Text>
+          </Pressable>
         </View>
-      )}
-      <View style={p.card}>
-        <Text style={p.title}>Milestones</Text>
-        <Text style={p.body}>
-          {data
-            ? `${totals.milestones.filter((m) => m.unlocked).length} milestones earned. Your achievements stay with you.`
-            : "Recognise the effort you’ve put in."}
-        </Text>
-        <PersonalRow
-          icon="ribbon-outline"
-          title="View milestones"
-          subtitle="Achievements earned through your effort"
-          onPress={() => router.navigate("/rewards")}
-        />
+        <Text style={p.body}>{data ? `${totals.milestones.filter(m => m.unlocked).length} earned. Small wins, yours to keep.` : "Your achievements will appear here."}</Text>
+        <View style={[p.inline, { flexWrap: "wrap", gap: 10 }]}>
+          {totals.milestones.map(m => <Pressable key={m.id} onPress={() => router.navigate("/rewards")}
+            accessibilityRole="button" accessibilityLabel={`${m.title}, ${m.unlocked ? "earned" : "in progress"}. View milestones`}
+            style={{ width: 48, height: 48, borderRadius: 15, borderWidth: 1, borderColor: m.unlocked ? "rgba(56,201,179,0.3)" : colors.line, backgroundColor: m.unlocked ? "rgba(56,201,179,0.1)" : colors.surface, justifyContent: "center", alignItems: "center" }}>
+            <Ionicons name={m.unlocked ? m.icon as import("../../components/PersonalUI").PersonalIcon : "lock-closed-outline"} size={22} color={m.unlocked ? "#38C9B3" : colors.muted} />
+          </Pressable>)}
+        </View>
+        {data && <Text style={[p.caption, { paddingTop: 12 }]}>{durationLabel(totals.seconds)} across {totals.sessions} sessions · {totals.days} focus days</Text>}
       </View>
+      </View></ContentReveal>
       <AppSheet
         visible={sheetOpen}
         onRequestClose={close}
@@ -305,3 +284,4 @@ export default function ProfileScreen() {
     </PersonalPage>
   );
 }
+

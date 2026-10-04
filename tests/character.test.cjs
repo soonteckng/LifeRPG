@@ -538,7 +538,7 @@ test("a sub-minute completed session earns a milestone before the independent da
       .findAllByType("Button")
       .find((n) => n.props.accessibilityLabel?.startsWith("First step,"));
     assert.match(first.props.accessibilityLabel, /earned/);
-    assert.match(ui.text(), /0 \/ 60 goal minutes/);
+    assert.match(ui.text(), /0m \/ 60 min/);
     assert.doesNotMatch(ui.text(), /Daily goal achieved/);
     await act(async () => first.props.onPress());
     assert.match(ui.text(), /Earned automatically/);
@@ -600,7 +600,7 @@ test("daily-goal read failure is retryable and does not hide earned milestones",
 test("a new day with no saved goal row shows the user's goal without inventing an achievement", async () => {
   const ui = await rewardsHarness({ getTodayProgress: async () => null });
   try {
-    assert.match(ui.text(), /0 \/ 60 goal minutes/);
+    assert.match(ui.text(), /0m \/ 60 min/);
     assert.doesNotMatch(
       ui.text(),
       /Daily goal achieved|Couldn’t refresh today’s goal/,
@@ -830,7 +830,7 @@ async function profileScreen(overrides = {}) {
 test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
   const ui = await profileScreen();
   try {
-    assert.match(ui.text(), /Your growth/);
+    assert.match(ui.text(), /Your Life areas/);
     assert.match(ui.text(), /KnowledgeLv 2/);
     assert.doesNotMatch(
       ui.text(),

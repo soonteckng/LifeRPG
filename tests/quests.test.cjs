@@ -382,6 +382,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "expo-haptics": {}, "expo-router": { useRouter: () => ({ push() {} }) },
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "../../components/QuestSheet": () => null,
+    "../../components/ContentReveal": ({ children }) => children,
     "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },

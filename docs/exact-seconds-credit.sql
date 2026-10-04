@@ -1,10 +1,22 @@
--- UNAPPLIED PROPOSAL. Standalone against the live contract snapshot, NOT the goal proposals.
+-- Applied with user approval to msuelivxpsfizkddjjfg on 2026-10-04.
+-- Supabase migration 20261004141444 exact_seconds_progression_credit.
+-- Standalone against the live contract snapshot, NOT the goal proposals.
 -- Rehearse locally and reconcile live definitions/permissions before deployment.
 -- Execute as one transaction. Strong locks establish the completion boundary;
 -- in-flight legacy completions finish before baseline capture.
 begin;
+set local lock_timeout = '5s';
+set local statement_timeout = '60s';
 lock table public.profiles, public.subjects, public.daily_progress, public.activity_sessions
 in access exclusive mode;
+-- Verify existing account/progression rows stay byte-for-byte equivalent after
+-- removing only the added columns. Checks remain inside the locked transaction.
+create temporary table progression_before on commit drop as
+select 'profiles' as table_key, md5(coalesce(string_agg(to_jsonb(t)::text, '' order by to_jsonb(t)::text),'')) as signature from public.profiles t
+union all select 'subjects', md5(coalesce(string_agg(to_jsonb(t)::text, '' order by to_jsonb(t)::text),'')) from public.subjects t
+union all select 'daily_progress', md5(coalesce(string_agg(to_jsonb(t)::text, '' order by to_jsonb(t)::text),'')) from public.daily_progress t
+union all select 'activity_sessions', md5(coalesce(string_agg(to_jsonb(t)::text, '' order by to_jsonb(t)::text),'')) from public.activity_sessions t;
+
 alter table public.profiles add column xp_bank_seconds integer not null default 0
   check (xp_bank_seconds between 0 and 59);
 alter table public.subjects add column xp_bank_seconds integer not null default 0
@@ -411,4 +423,16 @@ $function$;
 
 revoke all on function public.complete_activity_session(uuid) from public, anon;
 grant execute on function public.complete_activity_session(uuid) to authenticated;
+do $preservation$
+begin
+ if exists (
+   select 1 from progression_before b join (
+    select 'profiles' as table_key, md5(coalesce(string_agg((to_jsonb(t)-'xp_bank_seconds')::text, '' order by (to_jsonb(t)-'xp_bank_seconds')::text),'')) as signature from public.profiles t
+    union all select 'subjects', md5(coalesce(string_agg((to_jsonb(t)-'xp_bank_seconds')::text, '' order by (to_jsonb(t)-'xp_bank_seconds')::text),'')) from public.subjects t
+    union all select 'daily_progress', md5(coalesce(string_agg((to_jsonb(t)-'completed_seconds'-'credit_version')::text, '' order by (to_jsonb(t)-'completed_seconds'-'credit_version')::text),'')) from public.daily_progress t
+    union all select 'activity_sessions', md5(coalesce(string_agg((to_jsonb(t)-'credit_version'-'credit_result')::text, '' order by (to_jsonb(t)-'credit_version'-'credit_result')::text),'')) from public.activity_sessions t
+   ) a using(table_key) where a.signature <> b.signature
+ ) then raise exception 'Historical data preservation check failed'; end if;
+end;
+$preservation$;
 commit;
