@@ -1,6 +1,7 @@
+import Pressable from "./MotionPressable";
 import { Text, TextInput } from "./AppText";
 import { useRef, useState, type ComponentRef } from "react";
-import { Pressable, View, type TextInputProps } from "react-native";
+import { View, type TextInputProps } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../constants/theme";
 import { p } from "./PersonalUI";

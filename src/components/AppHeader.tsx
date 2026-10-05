@@ -1,7 +1,8 @@
+import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { type } from "../constants/typography";
 import { colors } from "../constants/theme";
 

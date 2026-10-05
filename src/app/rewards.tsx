@@ -1,10 +1,11 @@
+import Pressable from "../components/MotionPressable";
 import { Text } from "../components/AppText";
 import { creditedDailySeconds } from "../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Pressable, View } from "react-native";
+import { AppState, View } from "react-native";
 import AppSheet from "../components/AppSheet";
 import {
   Meter,

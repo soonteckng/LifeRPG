@@ -1,3 +1,4 @@
+import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
@@ -16,7 +17,7 @@ import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { ScrollView, useWindowDimensions, StyleSheet, TouchableOpacity, View } from "react-native";
+import { ScrollView, useWindowDimensions, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -139,7 +140,7 @@ export default function HomeScreen() {
               label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
               ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={startFreeSession} activeOpacity={0.88} accessibilityRole="button">
+          <TouchableOpacity style={styles.primaryButton} onPress={startFreeSession} accessibilityRole="button">
             <Ionicons name="play-outline" size={22} color="#171827" />
             <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : "Start session"}</Text>
           </TouchableOpacity>
@@ -186,7 +187,7 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
   goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 16, paddingBottom: 16, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  primaryButton: { backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
   questHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 16 },
   sectionTitle: { color: colors.secondary, fontSize: 14, fontWeight: "500" },

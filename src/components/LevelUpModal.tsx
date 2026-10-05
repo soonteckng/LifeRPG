@@ -1,9 +1,10 @@
+import TouchableOpacity from "./MotionPressable";
 import { Text } from "./AppText";
 import { useUser } from "../context/UserContext";
 import { CompletionHero, CompletionRows } from "./CompletionDetails";
 import { colors } from "../constants/theme";
 import { useEffect } from "react";
-import { StyleSheet, View, Modal, TouchableOpacity, ScrollView } from "react-native";
+import { StyleSheet, View, Modal, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -56,6 +57,6 @@ const s = StyleSheet.create({
   page: { flex: 1, width: "100%", maxWidth: 580, alignSelf: "center", paddingHorizontal: 20, paddingVertical: 16 },
   title: { color: colors.text, fontSize: 28, fontWeight: "500", letterSpacing: -0.7 },
   body: { flexGrow: 1, justifyContent: "center", paddingVertical: 24, gap: 32 },
-  done: { minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#E5E4FF", marginTop: 12 },
+  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#E5E4FF", marginTop: 12 },
   doneText: { color: colors.background, fontSize: 18, fontWeight: "500" },
 });

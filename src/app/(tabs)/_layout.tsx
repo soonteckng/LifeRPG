@@ -1,6 +1,7 @@
+import GlassSurface from "../../components/GlassSurface";
 import { colors } from "../../constants/theme";
 import SessionTabBar from "../../components/SessionTabBar";
-import { Ionicons } from "@expo/vector-icons";
+import TabIcon from "../../components/TabIcon";
 import { Tabs } from "expo-router";
 import { Platform, StyleSheet } from "react-native";
 
@@ -13,6 +14,7 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: styles.tabBar,
+        tabBarBackground: () => <GlassSurface radius={24} />,
         tabBarItemStyle: styles.tabItem,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: "#8B93A7",
@@ -24,8 +26,8 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="home-outline" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} name="home-outline" size={22} color={color} />
           ),
         }}
       />
@@ -34,8 +36,8 @@ export default function TabsLayout() {
         name="progress"
         options={{
           title: "Progress",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="stats-chart-outline" size={21} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} name="stats-chart-outline" size={21} color={color} />
           ),
         }}
       />
@@ -44,8 +46,8 @@ export default function TabsLayout() {
         name="profile"
         options={{
           title: "Profile",
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="person-outline" size={22} color={color} />
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} name="person-outline" size={22} color={color} />
           ),
         }}
       />
@@ -72,14 +74,17 @@ const styles = StyleSheet.create({
   tabBar: {
     height: 66,
     borderRadius: 24,
-    backgroundColor: "rgba(20, 24, 34, 0.78)",
+    backgroundColor: "transparent",
     borderTopWidth: 0,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     borderColor: "rgba(255,255,255,0.07)",
     paddingTop: 7,
     paddingBottom: Platform.OS === "ios" ? 8 : 7,
     elevation: 0,
-    shadowColor: "transparent",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
   },
 
   tabItem: {

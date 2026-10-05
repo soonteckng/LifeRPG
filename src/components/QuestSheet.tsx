@@ -1,3 +1,4 @@
+import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity as Pressable } from "@gorhom/bottom-sheet";
@@ -173,8 +174,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         </Pressable>
       </View>
       <View style={styles.subheadingRow}>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["today", "all"] as const).map(value => <Pressable key={value} style={[styles.scopeButton, scope === value && { backgroundColor: colors.accentSoft }]}
+        <View style={styles.scopeGroup}>
+          <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} style={styles.scopeSelection} /></View>
+          {(["today", "all"] as const).map(value => <Pressable key={value} style={styles.scopeButton}
             onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
             <Text style={styles.linkSmall}>{value === "today" ? "Today" : "All"}</Text>
           </Pressable>)}
@@ -329,7 +331,10 @@ const styles = StyleSheet.create({
   addText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
-  scopeButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 22, flexDirection: "row", gap: 4, alignItems: "center" },
+  scopeGroup: { position:"relative", width:160, minHeight:44, flexDirection:"row" },
+  scopeTrack: { position:"absolute", left:0, right:0, top:4, height:36, borderRadius:12, backgroundColor:"#1D2638", overflow:"hidden" },
+  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:"#354467", borderRadius:11, borderWidth:3, borderColor:"#1D2638" },
+  scopeButton: { flex:1, minHeight:44, paddingHorizontal:8, alignItems:"center", justifyContent:"center" },
   linkSmall: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   sessionNotice: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between", paddingVertical: 12 },
   noticeText: { color: colors.secondary, fontSize: 14, flexShrink: 1 },

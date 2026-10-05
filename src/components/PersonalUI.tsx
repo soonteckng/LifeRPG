@@ -1,3 +1,4 @@
+import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRouter } from "expo-router";
@@ -9,7 +10,7 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { Animated, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Platform, useWindowDimensions, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -295,11 +296,13 @@ export const p = StyleSheet.create({
     minHeight: 50,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: colors.accent,
+    backgroundColor: "#E5E4FF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 15, fontWeight: "500", color: colors.background },
+  buttonText: { fontSize: 16, fontWeight: "500", color: colors.background },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,

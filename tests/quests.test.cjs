@@ -21,6 +21,9 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
+      if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
+      if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
       if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
@@ -289,7 +292,7 @@ for (const platform of ["ios", "android"]) {
       return React.createElement("Panel", props, React.createElement(props.handleComponent), props.children, props.footerComponent && React.createElement(props.footerComponent));
     });
     const AppSheet = load("src/components/AppSheet.tsx", {
-      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
+      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, useBottomSheetSpringConfigs:c=>c, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
       "react-native": { ...native, Modal: host("Modal"), Platform: { OS: platform },
         PanResponder: { create: (handlers) => ({ panHandlers: handlers }) }, useWindowDimensions: () => ({ height: 800 }) },
       "react-native-gesture-handler": { GestureHandlerRootView: host("GestureRoot") },
@@ -303,6 +306,8 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.enableDynamicSizing, true);
     assert.equal(sheetProps.enablePanDownToClose, true);
     assert.equal(sheetProps.overrideReduceMotion, "system");
+    assert.equal(sheetProps.animationConfigs.damping, 38);
+    assert.equal(sheetProps.animationConfigs.overshootClamping, true);
     assert.equal(sheetProps.android_keyboardInputMode, "adjustResize");
     // Native back and backdrop use the same guarded request, before any unmount.
     await act(async () => renderer.root.findByType("Modal").props.onRequestClose());
@@ -568,7 +573,7 @@ test('guarded sheet pull tracks the finger at the list top and leaves inner scro
     return React.createElement('Panel',props,props.children);
   });
   const AppSheet=load('src/components/AppSheet.tsx',{
-    '@gorhom/bottom-sheet': {__esModule:true,default:Sheet,BottomSheetBackdrop:host('Backdrop'),BottomSheetFooter:host('Footer'),GESTURE_SOURCE:{HANDLE:1,CONTENT:2},
+    '@gorhom/bottom-sheet': {__esModule:true,default:Sheet,useBottomSheetSpringConfigs:c=>c,BottomSheetBackdrop:host('Backdrop'),BottomSheetFooter:host('Footer'),GESTURE_SOURCE:{HANDLE:1,CONTENT:2},
       useBottomSheetInternal:()=>({animatedPosition:position,animatedScrollableState:scroll}),
       useGestureEventsHandlersDefault:()=>({handleOnStart(){},handleOnChange(){libraryChanges++;},handleOnEnd(){position.set(300);}})},
     'react-native': {...native,Modal:host('Modal'),Platform:{OS:'android'},useWindowDimensions:()=>({height:800})},

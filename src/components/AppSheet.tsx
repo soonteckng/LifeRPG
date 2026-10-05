@@ -3,6 +3,7 @@ import BottomSheet, {
   BottomSheetFooter,
   GESTURE_SOURCE,
   useBottomSheetInternal,
+  useBottomSheetSpringConfigs,
   useGestureEventsHandlersDefault,
   type BottomSheetBackdropProps,
   type BottomSheetFooterProps,
@@ -29,7 +30,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ReduceMotion, runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../constants/theme";
+import { motion } from "../constants/motion";
 
 interface Props {
   visible: boolean;
@@ -136,6 +137,7 @@ export default function AppSheet({
   footer,
   label,
 }: Props) {
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const ref = useRef<BottomSheet>(null);
   const [mounted, setMounted] = useState(visible);
   const [previousVisible, setPreviousVisible] = useState(visible);
@@ -254,6 +256,7 @@ export default function AppSheet({
             <BottomSheet
               ref={ref}
               index={0}
+              animationConfigs={animationConfigs}
               snapPoints={snapPoints}
               enableDynamicSizing={compact || !expanded}
               maxDynamicContentSize={Math.min(
@@ -294,7 +297,9 @@ export default function AppSheet({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   surface: {
-    backgroundColor: colors.surface,
+    backgroundColor: "#171E2B",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(225,235,255,0.16)",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
   },

@@ -21,6 +21,9 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
+      if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
+      if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
       if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
       if (!name.startsWith(".")) return require(name);
       const target = path.resolve(path.dirname(filename), name);
@@ -630,11 +633,11 @@ test('Week and Month use identical label/button geometry and one separate select
     const track=ui.renderer.root.findByProps({testID:'period-track'});
     assert.equal(track.props.style.height,36);
     assert.equal(track.props.style.overflow,'hidden');
-    assert.equal(track.findByProps({testID:'period-selection'}).props.style[0].top,0);
-    assert.equal(track.findByProps({testID:'period-selection'}).props.style[0].bottom,0);
-    assert.equal(track.findByProps({testID:'period-selection'}).props.style[1].left,'0%');
+    assert.equal(track.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[0].top,0);
+    assert.equal(track.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[0].bottom,0);
+    assert.equal(track.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[1].left,'0%');
     await act(async()=>buttons()[1].props.onPress());
-    assert.equal(ui.renderer.root.findByProps({testID:'period-selection'}).props.style[1].left,'50%');
+    assert.equal(ui.renderer.root.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[1].left,'50%');
     assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
   } finally {await ui.cleanup();}
 });

@@ -1,3 +1,4 @@
+import TouchableOpacity from "./MotionPressable";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
@@ -5,7 +6,7 @@ import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import ProgressRing from "./ProgressRing";
@@ -382,7 +383,7 @@ const styles = StyleSheet.create({
   questRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, minHeight: 48, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   actions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 4 },
-  primary: { minHeight: 54, padding: 14, borderRadius: 16, backgroundColor: "#E5E4FF", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
+  primary: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.18)", minHeight: 54, padding: 14, borderRadius: 16, backgroundColor: "#E5E4FF", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },

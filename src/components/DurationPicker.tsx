@@ -1,9 +1,10 @@
+import TouchableOpacity from "./MotionPressable";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import * as Haptics from "expo-haptics";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, PixelRatio, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { Animated, FlatList, PixelRatio, StyleSheet, View, useWindowDimensions } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

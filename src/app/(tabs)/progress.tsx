@@ -1,3 +1,5 @@
+import SlidingSelection from "../../components/SlidingSelection";
+import Pressable from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { type } from "../../constants/typography";
 import { Text } from "../../components/AppText";
@@ -13,7 +15,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -310,7 +312,7 @@ export default function ProgressScreen() {
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
-            <View testID="period-selection" style={[s.segmentSelected, { left: mode === "week" ? "0%" : "50%" }]} />
+            <SlidingSelection testID="period-selection" index={mode === "week" ? 0 : 1} style={s.segmentSelected} />
           </View>
           {(["week", "month"] as const).map((value) => (
             <Pressable
@@ -906,7 +908,7 @@ const s = StyleSheet.create({
     position: "relative",
   },
   segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, height: 36, borderRadius: 12, overflow: "hidden", backgroundColor: colors.surface },
-  segmentSelected: { position: "absolute", width: "50%", top: 0, bottom: 0, borderRadius: 9, backgroundColor: "#29334E", borderWidth: 3, borderColor: colors.surface },
+  segmentSelected: { position: "absolute", width: "50%", top: 0, bottom: 0, borderRadius: 9, backgroundColor: "#354467", borderWidth: 3, borderColor: colors.surface },
   segmentText: { width: "100%", textAlign: "center", margin: 0, padding: 0, includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
   segmentActive: { color: "#B8C8FF" },
   periodNav: {

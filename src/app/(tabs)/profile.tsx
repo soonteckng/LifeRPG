@@ -1,3 +1,4 @@
+import Pressable from "../../components/MotionPressable";
 import { useTimer } from "../../context/TimerContext";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
@@ -12,7 +13,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Keyboard, Pressable, StyleSheet, View } from "react-native";
+import { Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
 import SheetConfirmation from "../../components/SheetConfirmation";

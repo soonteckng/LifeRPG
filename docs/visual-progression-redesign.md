@@ -164,3 +164,26 @@ TypeScript/full lint and all 190 tests pass. Android and iOS JavaScript exports 
 ### Screenshot correction: selected period pill bounds
 
 The supplied Android screenshot shows the selected blue pill extending beneath the outer period track. Earlier label-only/independent-decoration adjustments did not address this geometry. The selection is now a child of a single clipped 36-point track, with top/bottom both zero and an inset drawn by its border. The enclosing touch row explicitly has a relative position and minimum height 44. This prevents two independently sized absolute surfaces from using different vertical bounds; label and touch behaviour are unchanged. The regression test now checks track containment and shared vertical bounds, rather than checking only identical text styles. Actual device rendering needs another observation.
+
+## App-wide glass material and interaction pass
+
+The owner confirmed the period alignment fix and requested a more readable glass-like nav bar and fluid app-wide interaction, before any feature rework.
+
+| Area | Visual/motion change |
+| --- | --- |
+| Floating navigation | Shared GlassSurface with denser Android shading, subtle diagonal sheen and a fine rim; supported iOS uses the existing expo-glass-effect native material. Active icons settle gently. No strip/fade above the pill or opaque surrounding dock. |
+| Progress | The corrected, clipped Week/Month track is retained. Its measured selection now glides using a native-driven spring; labels/hit areas stay stationary. |
+| Quests | Today/All receives the same sliding-selection motion. Bottom-sheet-native buttons stay library-owned to preserve pan/scroll coordination. |
+| Home/Session | Restrained reversible press feedback on primary actions, quest entries, presets, Life area chips and duration-edit controls. Wheel scrolling/alignment and session exits are unchanged. |
+| Profile/Settings/Milestones | Shared press feedback on rows, header actions and primary/secondary controls; shared primary colour/edge treatment. Existing character animation and badge storage remain. |
+| Authentication/Recovery/Onboarding/Tutorial | Shared buttons and password visibility controls gain the same press feedback. No account, routing, validation, keyboard or onboarding logic changed. |
+| Sheets/Confirmations | One critically damped settling profile for existing sheets, honouring system reduced motion; denser sheet surfaces and a glass-styled confirmation background. Dirty drafts, scroll priority and dismissal callbacks remain. |
+| Content | Existing content reveal becomes subtler (0.94 to 1 opacity); no new hidden-screen flash or route replacement. |
+
+`MotionPressable` interrupts springs and reverses on release, uses the native driver and returns directly to rest when disabled/reduced motion is enabled. `SlidingSelection` measures its own width and drives transform only; it never changes text layout or blocks state updates. Tab icon motion follows the same selection spring. Decorative materials do not receive touches or accessibility focus.
+
+**Platform honesty:** Android's material is a translucent shaded surface at 94% base opacity, with vector highlights, rather than a claimed real-time blur/refraction. The existing Expo glass package supports native liquid glass on compatible iOS. Its import is guarded to avoid evaluating a native entry on Android; incompatible/unavailable iOS uses the shaded fallback. iOS Reduce Transparency forces an opaque surface and removes the sheen/native glass. No new dependency, build configuration, SQL, account, reward calculation or persistence changes were introduced.
+
+Verification: TypeScript, full lint and 193/193 tests pass. Android/iOS JavaScript exports pass with --no-bytecode. New tests render the shared motion/material components against native boundaries: press/release/callbacks/disabled/reduced motion, measured selection and interrupted springs, Android native-import avoidance, supported/unsupported iOS and reduced transparency. Existing auth, quest, wheel, completion and restoration tests still pass. These do not measure native frames or confirm phone appearance.
+
+Phone observation required: nav readability over chart/text, icon selection, rapid Week/Month and Today/All taps, keyboard open/close, dirty/clean sheet drags and scrolling, short/large screens and large text, all session states and completion, disabled/loading buttons, reduced motion and iOS Reduce Transparency/native glass. Device screenshots or an installed build were not available during this pass.
