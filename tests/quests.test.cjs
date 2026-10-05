@@ -380,7 +380,7 @@ test("continuing from a protected row waits for list dismissal", async () => {
 });
 
 test("Home preserves loaded progress on failure and exposes a retry instead of a permanent refresh button", async () => {
-  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {}, homeTasks = [];
+  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {}, homeTasks = [], openSession = false;
   const name = "A long welcoming username with several words";
   const reloadProfile = async () => true;
   const refreshQuests = async () => {};
@@ -394,7 +394,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../components/QuestSheet": host("QuestPreviewSheet"),
     "../../components/ContentReveal": ({ children }) => children,
     "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
-    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
+    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, ...creditFields }; } },
@@ -416,6 +416,15 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
   assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17", "home-quest-18"]);
+  const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.style[1].marginBottom;
+  const initialMargin = viewportMargin();
+  openSession = true;
+  await act(async () => renderer.update(React.createElement(Home)));
+  assert.equal(viewportMargin(), initialMargin + 56);
+  assert.equal(renderer.root.findByProps({testID: "home-layout"}).props.style[1].minHeight, 0);
+  openSession = false;
+  await act(async () => renderer.update(React.createElement(Home)));
+  assert.equal(viewportMargin(), initialMargin);
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
   await act(async () => refresh());
@@ -641,4 +650,40 @@ test("reopening Home's quest sheet restores Today after All or Done today", asyn
   assert.equal(ui.button("Edit Already done"), undefined);
   assert.ok(ui.button("Edit Read a chapter"));
   await ui.cleanup();
+});
+
+test("Home dock clearance uses native height and rejects stale banner or text-scale measurements", async () => {
+  const {FloatingDockProvider, useMeasureFloatingDock, useFloatingDockHeight, floatingDockKey} = load("src/context/FloatingDockContext.tsx", {});
+  let banner = false, scale = 1, measure;
+  const key = () => floatingDockKey(banner, 24, 390, scale);
+  function Consumer() {
+    measure = useMeasureFloatingDock();
+    return React.createElement("DockSpace", {height: useFloatingDockHeight(key(), banner ? 154 : 98)});
+  }
+  function Harness() { return React.createElement(FloatingDockProvider, null, React.createElement(Consumer)); }
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Harness)); });
+  const height = () => renderer.root.findByType("DockSpace").props.height;
+  assert.equal(height(), 98);
+  await act(async () => measure(key(), 104));
+  assert.equal(height(), 104);
+  banner = true;
+  await act(async () => renderer.update(React.createElement(Harness)));
+  assert.equal(height(), 154);
+  await act(async () => measure(key(), 180));
+  assert.equal(height(), 180);
+  await act(async () => measure(key(), 0));
+  assert.equal(height(), 180);
+  const oldKey = key();
+  scale = 2;
+  await act(async () => renderer.update(React.createElement(Harness)));
+  assert.equal(height(), 154);
+  await act(async () => measure(oldKey, 180));
+  assert.equal(height(), 154);
+  await act(async () => measure(key(), 210));
+  assert.equal(height(), 210);
+  banner = false;
+  await act(async () => renderer.update(React.createElement(Harness)));
+  assert.equal(height(), 98);
+  await act(async () => renderer.unmount());
 });

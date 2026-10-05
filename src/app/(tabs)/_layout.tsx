@@ -1,3 +1,4 @@
+import { FloatingDockProvider } from "../../context/FloatingDockContext";
 import GlassSurface from "../../components/GlassSurface";
 import { colors } from "../../constants/theme";
 import SessionTabBar from "../../components/SessionTabBar";
@@ -7,7 +8,7 @@ import { Platform, StyleSheet } from "react-native";
 
 export default function TabsLayout() {
   return (
-    <Tabs
+    <FloatingDockProvider><Tabs
       tabBar={(props) => <SessionTabBar {...props} />}
       initialRouteName="index"
       backBehavior="initialRoute"
@@ -66,7 +67,7 @@ export default function TabsLayout() {
           href: null,
         }}
       />
-    </Tabs>
+    </Tabs></FloatingDockProvider>
   );
 }
 
