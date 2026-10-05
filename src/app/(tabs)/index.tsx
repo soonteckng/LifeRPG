@@ -1,3 +1,4 @@
+import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
 import { questLists } from "../../utils/questLists";
 import TouchableOpacity from "../../components/MotionPressable";
@@ -108,6 +109,16 @@ export default function HomeScreen() {
     router.navigate("/session");
   };
 
+  const openQuestSession = (task: Task) => {
+    // Existing sessions and unresolved completion/restoration always win.
+    if (!hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !sessionSummary)) {
+      setLinkedTaskId(task.id);
+      setDurationInMinutes(task.target_minutes || 30);
+      setTargetAttributeId(task.subject_id ?? null);
+    }
+    openSession();
+  };
+
   const startFreeSession = () => {
     if (hasOpenSession) {
       openSession();
@@ -167,8 +178,8 @@ export default function HomeScreen() {
               const tint = lifeAreaColor(task.subject_id, area?.color_code);
               return <TouchableOpacity key={task.id} style={[styles.questRow, index > 0 && styles.questDivider]}
                 testID={`home-quest-${task.id}`} accessibilityRole="button"
-                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${area?.title ?? "General"}. Open quests to edit or start`}
-                onPress={() => setQuestsVisible(true)}>
+                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${area?.title ?? "General"}. ${hasOpenSession ? "Continue current session" : "Open session setup"}`}
+                onPress={() => openQuestSession(task)}>
                 <View style={[styles.questIcon, { backgroundColor: `${tint}18` }]}>
                   <Ionicons name="flag-outline" size={20} color={tint} />
                 </View>

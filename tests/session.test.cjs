@@ -315,6 +315,9 @@ test("quest setup is compact, keeps its association during loading, and never st
   assert.equal(ui.button("Choose life area"),undefined);
   assert.equal(ui.button("15 minutes"),undefined);
   assert.ok(ui.button("Change quest"));
+  assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
+  assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+  assert.equal(ui.root().findByProps({testID:"session-timer-anchor"}).props.style[1].flex,1);
   assert.equal(ui.calls.length,0);
   await ui.press("Start");
   assert.deepEqual(ui.calls.at(-1),["start",2700,"A long quest title worth finishing"]);

@@ -19,7 +19,7 @@ import DurationPicker, { DurationEditor } from "./DurationPicker";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { durationLabel, validSessionSeconds, sessionTime } from "../utils/sessionSetup";
+import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
 
 type Picker = "duration" | "quest" | "area" | null;
@@ -253,19 +253,19 @@ export default function SessionScreen() {
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "setup" ? "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "setup" ? isQuest ? "Quest session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, phase !== "setup" && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
+        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
-            {phase !== "setup" && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
-              progress={Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              color={phase === "completed" ? colors.accent : "#25C9B8"} />}
+            {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
+              progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
+              color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : "#25C9B8"} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary ? "no-hide-descendants" : "auto"}>
             <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
-              compact caption={phase === "setup" ? undefined : `of ${sessionTime(timer.duration)}`}
+              compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`}
               revision={durationRevision}
               onCommit={(seconds) => { if (durationEpoch.current === durationRevision && !locked) timer.setDurationInSeconds(seconds); }}
               onBusy={(busy) => { if (durationEpoch.current === durationRevision) { wheelBusyRef.current = busy; setWheelBusy(busy); } }}
@@ -280,7 +280,7 @@ export default function SessionScreen() {
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
           </Animated.View>
         </View>
-        <ScrollView style={phase === "setup" ? styles.flex : styles.activeDetails} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
+        <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{timer.isRunning ? isQuest ? title : `${area?.title ?? "General"} · Free session` : `${title} · Paused`}</Text>}
             {phase === "setup" && <View style={styles.setup}>
@@ -310,13 +310,25 @@ export default function SessionScreen() {
                   </View>
                 </View>
               </>}
-              <TouchableOpacity disabled={locked} style={styles.questRow} onPress={() => setPicker("quest")}
-                accessibilityRole="button" accessibilityLabel={isQuest ? "Change quest" : "Choose a quest"}>
-                <Text style={styles.secondary}>Quest{!isQuest && <Text style={styles.helper}> · Optional</Text>}</Text>
-                <Text style={[styles.choiceValue, { color: isQuest ? colors.text : colors.secondary }]} numberOfLines={2}>{isQuest ? title : "None"}</Text>
+              {isQuest ? <>
+                <TouchableOpacity disabled={locked} style={styles.selectedQuestCard} onPress={() => setPicker("quest")}
+                  accessibilityRole="button" accessibilityLabel="Change quest" accessibilityHint={`Selected quest: ${title}`}>
+                  <View style={[styles.selectedQuestIcon, { backgroundColor: lifeAreaColor(timer.targetAttributeId, area?.color_code) + "18" }]}>
+                    <Ionicons name="flag-outline" size={23} color={lifeAreaColor(timer.targetAttributeId, area?.color_code)} />
+                  </View>
+                  <View style={styles.selectedQuestContent}>
+                    <Text style={styles.selectedQuestTitle}>{title}</Text>
+                    <Text style={[styles.selectedQuestArea, {color: lifeAreaColor(timer.targetAttributeId, area?.color_code)}]}>{area?.title ?? "General"}</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+                </TouchableOpacity>
+                <Action disabled={locked} label="Switch to free session" onPress={switchToFree} />
+              </> : <TouchableOpacity disabled={locked} style={styles.questRow} onPress={() => setPicker("quest")}
+                accessibilityRole="button" accessibilityLabel="Choose a quest">
+                <Text style={styles.secondary}>Quest<Text style={styles.helper}> · Optional</Text></Text>
+                <Text style={styles.choiceValue}>None</Text>
                 <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
-              </TouchableOpacity>
-              {isQuest && <><Text style={styles.secondary}>{area?.title ?? "General"} · {durationLabel(timer.duration)}</Text><Action disabled={locked} label="Switch to free session" onPress={switchToFree} /></>}
+              </TouchableOpacity>}
             </View>}
 
             {timer.isCompleted && timer.sessionSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
@@ -410,6 +422,11 @@ const styles = StyleSheet.create({
   presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
   preset: { minWidth: 44, minHeight: 44, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 22 },
   selected: { backgroundColor: colors.accentSoft },
+  selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  selectedQuestIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },
+  selectedQuestTitle: { color: colors.text, fontSize: 19, lineHeight: 25, fontWeight: "500", letterSpacing: -0.3 },
+  selectedQuestArea: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
   questRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, minHeight: 48, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   actions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 4 },
