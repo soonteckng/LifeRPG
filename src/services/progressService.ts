@@ -6,6 +6,7 @@ import { focusDay } from "../utils/focusDays";
 export interface ProgressSession {
   id: string;
   subject_id: number | null;
+  task_id?: number | null;
   activity_type: string;
   duration_seconds: number;
   xp_earned: number;
@@ -120,4 +121,19 @@ export async function getFocusStreak(
     }
     if (!data || data.length < PAGE_SIZE) return streak;
   }
+}
+
+// A bounded, owner-filtered lookup, separate from Progress's paginated history.
+// RLS still applies; never reuse one account's choice for another account.
+export type QuickStartSession = Pick<ProgressSession, "id" | "task_id" | "subject_id" | "duration_seconds" | "completed_at">;
+
+export async function getLastFreeSession(userId: string, now = new Date()): Promise<QuickStartSession | null> {
+  const { data, error } = await supabase.from("activity_sessions")
+    .select("id, task_id, subject_id, activity_type, duration_seconds, completed_at")
+    .eq("user_id", userId).eq("status", "completed").is("task_id", null)
+    .gte("duration_seconds", 300).lte("duration_seconds", 480 * 60)
+    .lte("completed_at", now.toISOString())
+    .order("completed_at", { ascending: false }).order("id", { ascending: false }).limit(1);
+  if (error) throw error;
+  return data?.[0] ?? null;
 }

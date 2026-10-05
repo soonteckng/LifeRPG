@@ -230,3 +230,43 @@ Home's individual quest rows now configure the linked task, inherited duration a
 Quest setup now shows a centred planned-duration ring, a selected-quest card with readable title and area, Change quest affordance and Switch to free session. It uses a Quest session header and avoids repeating the quest title/duration in plain rows. The duration remains inherited/read-only; running and free-session wheel behavior remain unchanged. On small/large-text screens, quest details can scroll while the primary Start remains outside the scroll region.
 
 Regression checks cover direct Home entry and blockers, no automatic Start, timed list configuration, reduced-motion setting and quest metadata/read-only duration. Phone observation is still required for actual sheet resizing, long titles and visual composition.
+
+
+## Home Quick Start — 5 October 2026
+
+Home now has a compact focus card beneath the daily-goal ring. It shows the
+exact planned duration and Life area before the primary Start focus action;
+Change duration or area opens the existing free-session setup. The card changes
+to In focus/Paused, remaining duration and Continue session for open sessions.
+The ring scales slightly smaller to make room for the explicit choice and the
+secondary control. Existing floating dock measurement, Home quests, native
+modal navigation, press motion and reduced-motion handling remain in use.
+
+The last completed **free** session of at least five minutes and at most eight
+hours provides the default, preserving seconds. The lookup is bounded to one
+row, explicitly filtered by account and ignores future completion dates. The
+fallback is 30 minutes in General; a removed area also falls back to General.
+A history lookup failure does not prevent use of this visible default. This is
+a default choice, not a new minimum duration: the existing setup still permits
+short sessions.
+
+Quick Start passes a complete free-session draft atomically through the timer
+provider and its existing synchronous submission lock, RPC and notification
+lifecycle. It cannot accidentally inherit a quest, old Activity or notes from
+setup. Navigation follows successful creation; a failed start retains its exact
+choice on Home with Retry start. Saved completion can start anew without
+cancelling or awarding the previous session again. Unresolved completion,
+restoration and open sessions remain protected. No backend schema, progression,
+notification settings or dependencies change in this phase.
+
+Verification: 207 automated tests, TypeScript and full lint passed locally.
+Added cases cover owner-filtered/bounded history, free-only defaults, missing
+areas, exact seconds, rapid taps, failed starts/retry, Change setup, active/paused
+continuation and completion safeguards. Native primitives and network
+boundaries are mocked; these tests do not prove visual layout or delivery.
+
+Still needs phone observation: Home proportions at normal/large text on small
+and large screens; long area names; loading and Retry presentation; immediate
+start followed by the existing upward Session presentation; reduced motion;
+installed-build completion notifications and foreground/background recovery.
+No live backend query, migration, account modification or device test was run.

@@ -1187,3 +1187,50 @@ test("reduced motion keeps phase controls readable and skips timer relocation an
   assert.ok(ui.button("Pause"));
   await ui.cleanup();
 });
+
+test("Quick Start atomically replaces stale quest draft, blocks rapid starts, and preserves exact settings on retry", async () => {
+  const pending=deferred(); let count=0; const drafts=[];
+  const ui=await providerSetup({startActivitySession: params => { drafts.push(params); return ++count === 1 ? pending.promise : Promise.resolve("quick-session"); }});
+  try {
+    await ui.run(s => {s.setLinkedTaskId(99);s.setTargetAttributeId(9);s.setActivityType("read");s.setNotes("quest notes");});
+    let start;
+    await ui.run(s => {start=s.startFreeTimer(1859,3);void s.startFreeTimer(900,4);});
+    assert.equal(count,1);
+    assert.deepEqual(drafts[0], {targetDurationSeconds:1859,activityType:"other",taskId:null,subjectId:3,notes:""});
+    await ui.run(async () => {pending.reject(Error("Offline")); assert.equal(await start,false);});
+    assert.equal(ui.state().duration,1859);
+    assert.equal(ui.state().targetAttributeId,3);
+    assert.equal(ui.state().linkedTaskId,null);
+    await ui.run(s => s.retryAction());
+    assert.deepEqual(drafts[1],drafts[0]);
+    assert.equal(ui.state().hasOpenSession,true);
+    await ui.run(s => s.pauseTimer());
+    await ui.run(async s => assert.equal(await s.startFreeTimer(900,null),false));
+    assert.equal(count,2);
+    assert.equal(ui.state().duration,1859);
+  } finally {await ui.cleanup();}
+});
+test("Quick Start can begin after saved completion without cancelling or awarding again", async () => {
+  let count=0; const ui=await providerSetup({startActivitySession:async()=>`id-${++count}`});
+  try {
+    await ui.run(s=>s.startTimer(1)); await ui.advance(1);
+    assert.ok(ui.state().sessionSummary);
+    await ui.run(async s=>assert.equal(await s.startFreeTimer(1800,null),true));
+    assert.equal(count,2);
+    assert.equal(ui.state().sessionSummary,null);
+    assert.equal(ui.state().rewardsVisible,false);
+    assert.equal(ui.calls.filter(c=>c[0]==="cancel").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="complete").length,1);
+  } finally {await ui.cleanup();}
+});
+test("Quick Start cannot discard failed completion or restoration and rejects invalid duration", async () => {
+  const ui=await providerSetup({completeActivitySession:async()=>{throw Error("Offline");}});
+  try {
+    await ui.run(async s=>assert.equal(await s.startFreeTimer(0,null),false));
+    await ui.run(s=>s.startTimer(1)); await ui.advance(1);
+    assert.equal(ui.state().sessionSummary,null);
+    await ui.run(async s=>assert.equal(await s.startFreeTimer(1800,null),false));
+    assert.equal(ui.state().isCompleted,true);
+    assert.equal(ui.calls.filter(c=>c[0]==="start").length,1);
+  } finally {await ui.cleanup();}
+});

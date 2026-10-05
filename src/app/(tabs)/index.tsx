@@ -5,6 +5,7 @@ import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
+import { validSessionSeconds, durationLabel as sessionDurationLabel } from "../../utils/sessionSetup";
 import GoalRing from "../../components/GoalRing";
 import CharacterMark from "../../components/CharacterMark";
 import ContentReveal from "../../components/ContentReveal";
@@ -12,7 +13,7 @@ import { creditedDailySeconds, hasExactDailyCredit } from "../../utils/progressi
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
@@ -28,7 +29,7 @@ import {
 
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
-import { getFocusStreak } from "../../services/progressService";
+import { getLastFreeSession, type QuickStartSession, getFocusStreak } from "../../services/progressService";
 import { DEFAULT_TIMEZONE, durationLabel } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
@@ -44,7 +45,33 @@ export default function HomeScreen() {
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
   const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = timer;
-  const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
+  const { tasks, subjects = [], loading: areasLoading, error: questsError, refresh: refreshQuests } = useQuests();
+
+  const [lastFree, setLastFree] = useState<{ owner: string; session: QuickStartSession | null } | null>(null);
+  const [quickStarting, setQuickStarting] = useState(false);
+  const [attempt, setAttempt] = useState<{ owner: string; seconds: number; areaId: number | null; title: string } | null>(null);
+  const [quickError, setQuickError] = useState(false);
+  const quickLock = useRef(false);
+  const owner = profile?.id ?? "";
+  useEffect(() => {
+    let cancelled = false;
+    if (owner) void getLastFreeSession(owner).then(session => {
+      if (!cancelled) setLastFree({ owner, session });
+    }).catch(() => { /* A history outage leaves the explicit 30-minute default usable. */ });
+    return () => { cancelled = true; };
+  }, [owner, sessionSummary]);
+  const candidate = lastFree?.owner === owner ? lastFree.session : null;
+  const previous = candidate && candidate.task_id == null && candidate.duration_seconds >= 300 && validSessionSeconds(candidate.duration_seconds) ? candidate : null;
+  const rememberedSeconds = previous?.duration_seconds ?? 1800;
+  const general = subjects.find(area => area.title.trim().toLowerCase() === "general");
+  const quickArea = subjects.find(area => area.id === previous?.subject_id) ?? general;
+  const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
+  const quickSeconds = retainedAttempt?.seconds ?? rememberedSeconds;
+  const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
+  const quickTitle = retainedAttempt?.title ?? quickArea?.title ?? "General";
+  const activeSubject = subjects.find(area => area.id === timer.targetAttributeId);
+  const activeArea = activeSubject?.title ?? "General";
+  const blocked = !!(timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !sessionSummary));
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
   const [exactCredit, setExactCredit] = useState(false);
@@ -61,7 +88,7 @@ export default function HomeScreen() {
   // Its measured height must not also be subtracted from this reduced viewport.
   const availableHeight = viewportHeight || Math.max(280, height - insets.top - dockHeight - 8);
   const goalSize = Math.round(Math.max(144, Math.min(
-    (width - 40) * 0.60, availableHeight * 0.36, fontScale > 1.5 ? 160 : 232,
+    (width - 40) * 0.60, availableHeight * 0.29, fontScale > 1.5 ? 160 : 232,
   )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
@@ -119,16 +146,31 @@ export default function HomeScreen() {
     openSession();
   };
 
-  const startFreeSession = () => {
-    if (hasOpenSession) {
-      openSession();
-      return;
+  const changeSession = () => {
+    setQuickError(false);
+    setAttempt(null);
+    if (!hasOpenSession && !blocked && !quickLock.current) {
+      setLinkedTaskId(null);
+      setTargetAttributeId(quickAreaId);
+      timer.setActivityType("other");
+      timer.setNotes("");
+      timer.setDurationInSeconds(quickSeconds);
     }
-
-    setLinkedTaskId(null);
-    setTargetAttributeId(null);
-    setDurationInMinutes(30);
     openSession();
+  };
+  const startFreeSession = async () => {
+    if (hasOpenSession) { openSession(); return; }
+    if (quickLock.current || blocked || areasLoading) return;
+    quickLock.current = true;
+    setAttempt({ owner, seconds: quickSeconds, areaId: quickAreaId, title: quickTitle });
+    setQuickStarting(true);
+    setQuickError(false);
+    try {
+      const started = await timer.startFreeTimer(quickSeconds, quickAreaId);
+      if (started) openSession();
+      else setQuickError(true);
+    } catch { setQuickError(true); }
+    finally { quickLock.current = false; setQuickStarting(false); }
   };
 
   return (
@@ -156,10 +198,27 @@ export default function HomeScreen() {
               label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
               ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={startFreeSession} accessibilityRole="button">
-            <Ionicons name="play-outline" size={22} color="#171827" />
-            <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : "Start session"}</Text>
-          </TouchableOpacity>
+          <View style={styles.focusCard} testID="home-quick-start">
+            <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
+            <View style={styles.focusChoice}>
+              <View style={[styles.focusDot, { backgroundColor: lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code) }]} />
+              <Text style={styles.focusValue}>{hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}</Text>
+              <Text style={styles.focusArea}>· {hasOpenSession ? activeArea : quickTitle}</Text>
+            </View>
+            <TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
+              testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
+              accessibilityRole="button" accessibilityState={{ disabled: quickStarting || (!hasOpenSession && (blocked || !!areasLoading)), busy: quickStarting }}
+              accessibilityLabel={hasOpenSession ? "Continue session" : `Start ${sessionDurationLabel(quickSeconds)}, ${quickTitle}`}>
+              <Ionicons name="play-outline" size={22} color="#171827" />
+              <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
+            </TouchableOpacity>
+            {!hasOpenSession && <TouchableOpacity testID="home-change-focus" style={styles.changeButton} onPress={changeSession}
+              disabled={quickStarting || !!timer.actionBusy} accessibilityRole="button" accessibilityLabel={blocked ? "Check session status" : "Change duration or area"}>
+              <Text style={styles.link}>{blocked ? "Check session status" : "Change duration or area"}</Text>
+              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+            </TouchableOpacity>}
+            {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
+          </View>
           </View>
           <View style={styles.questCard} testID="home-quest-card">
             <View style={styles.questHeading}>
@@ -220,6 +279,14 @@ const styles = StyleSheet.create({
   subtitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
   goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 16, paddingBottom: 16, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
+  focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 16, gap: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  focusChoice: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, paddingBottom: 4 },
+  focusDot: { width: 7, height: 7, borderRadius: 4 },
+  focusValue: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  focusArea: { color: colors.secondary, fontSize: 16, lineHeight: 22, flexShrink: 1 },
+  changeButton: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  quickError: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
   questCard: { marginTop: 12, borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },

@@ -172,6 +172,8 @@ function serviceHarness(respond) {
       const query = {};
       for (const method of [
         "select",
+        "is",
+        "limit",
         "eq",
         "gte",
         "lte",
@@ -640,4 +642,16 @@ test('Week and Month use identical label/button geometry and one separate select
     assert.equal(ui.renderer.root.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[1].left,'50%');
     assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
   } finally {await ui.cleanup();}
+});
+
+test("Quick Start history is bounded, owner filtered and excludes quests, tiny sessions and future completions", async () => {
+  const row = {...session("free", 1859), task_id: null};
+  const {service, calls} = serviceHarness(() => ({data:[row], error:null}));
+  assert.deepEqual(await service.getLastFreeSession("owner-a", now), row);
+  const filters = calls[0].filters;
+  for (const expected of [["eq","user_id","owner-a"],["eq","status","completed"],["is","task_id",null],["gte","duration_seconds",300],["lte","duration_seconds",28800],["lte","completed_at",now.toISOString()],["limit",1]]) {
+    assert.ok(filters.some(filter => JSON.stringify(filter) === JSON.stringify(expected)));
+  }
+  assert.equal(await serviceHarness(() => ({data:[],error:null})).service.getLastFreeSession("owner-b",now), null);
+  await assert.rejects(serviceHarness(() => ({error:Error("Offline")})).service.getLastFreeSession("owner-a",now), /Offline/);
 });
