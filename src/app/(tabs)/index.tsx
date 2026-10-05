@@ -187,9 +187,9 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
-        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
+        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 32 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - dockHeight - 28) }]}>
+        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - dockHeight - 44) }]}>
           <View style={styles.headerBlock}>
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>

@@ -87,6 +87,8 @@ test('Home starter makes the task smaller and starts once with its title, instru
  })).default;
  let opened=0;const props={owner:'owner',subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],disabled:false,onStarted:()=>opened++,onFree(){},onQuest(){},onPreferences(){}};
  const ui=await render(Card,props);await ui.press('Make it smaller');assert.match(text(ui.tree.root),/Read one page/);
+ await ui.press('Use original task');assert.match(text(ui.tree.root),/Review one topic/);assert.doesNotMatch(text(ui.tree.root),/Read one page/);
+ await ui.press('Make it smaller');assert.match(text(ui.tree.root),/Read one page/);
  await act(async()=>{const button=ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start');void button.props.onPress();void button.props.onPress();});
  assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,300);assert.equal(calls[0].area,2);assert.equal(opened,0);
  await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
@@ -98,7 +100,9 @@ test('explicitly choosing a starter overrides a scheduled quest; missing Knowled
  })).default;
  let questOpens=0;const ui=await render(Card,{owner:'owner',subjects:[{id:1,title:'General'}],quest:{id:7,title:'My assignment',target_minutes:30,subject_id:1},disabled:false,onStarted(){},onFree(){},onQuest(){questOpens++;},onPreferences(){}});
  await ui.press('Open quest');assert.equal(questOpens,1);
- await ui.press('Choose another');await ui.press('Try one practice question10 minutes');
+ await ui.press('Choose another');
+ assert.doesNotMatch(text(ui.tree.root), /Try one practice question/);
+ await ui.press('Practise what you’re learning');await ui.press('Try one practice question10 minutes');
  assert.match(text(ui.tree.root),/Try one practice question/);assert.doesNotMatch(text(ui.tree.root),/My assignment/);
  await ui.press('Start focusing');assert.deepEqual(calls,[['practice-question',1]]);await ui.cleanup();
 });
@@ -130,7 +134,7 @@ test('new users can select an assignment direction before the introduction',asyn
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async()=>{}},
  })).default;
- const ui=await render(Screen);await ui.press('Study and assignmentsA few manageable steps to help you begin.');await ui.press('Move an assignment forwardFind a manageable next step.');await ui.press('Continue');await ui.press('Continue to the introduction');
+ const ui=await render(Screen);await ui.press('Study and assignmentsA few manageable steps to help you begin.');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue to the introduction');
  const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'assignments');await ui.cleanup();
 });
 test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
@@ -183,4 +187,27 @@ test('ambiguous quest-save failure refreshes existing quests before another inse
   '../services/taskService':{createTask:async()=>{inserts++;throw Error('response lost');}},
  })).default;
  const ui=await render(Save,{inSheet:true});await ui.press('Save for later');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button')[0].props.disabled,true);await ui.cleanup();
+});
+
+test('preference Save remains in a safe-area footer outside the scrolling choices and saves the selected need',async()=>{
+ let value={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false},saved=null,closed=0;
+ const Sheet=load('src/components/GuidedPreferenceSheet.tsx',mocks({
+  './AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children,React.createElement('Footer',null,props.footer)):null,
+  '../hooks/useGuidedPreference':{useGuidedPreference:()=>({value,ready:true,error:false,busy:false,save:async next=>{saved=next;return true;}})},
+ })).default;
+ const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});
+ const scroll=ui.tree.root.findByType('Scroll');assert.equal(scroll.props.enableFooterMarginAdjustment,true);assert.equal(scroll.props.showsVerticalScrollIndicator,true);
+ assert.equal(scroll.findAllByType('Button').some(button=>text(button)==='Save preferences'),false);
+ const footer=ui.tree.root.findByType('Footer');assert.equal(footer.findAllByType('Button').filter(button=>button.props.testID==='save-guided-preferences').length,1);
+ assert.equal(footer.findByType('View').props.style.paddingBottom,36);
+ await ui.press('Practise what you’re learning');await ui.press('Save preferences');assert.equal(saved.need,'practice');assert.equal(saved.templateId,'practice-question');assert.equal(closed,1);await ui.cleanup();
+});
+
+test('preference save failure keeps the draft and footer available for retry',async()=>{
+ let attempts=0,closed=0;const initial={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
+ const Sheet=load('src/components/GuidedPreferenceSheet.tsx',mocks({
+  './AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children,React.createElement('Footer',null,props.footer)):null,
+  '../hooks/useGuidedPreference':{useGuidedPreference:()=>{const[error,setError]=React.useState(false);return{value:initial,ready:true,error,busy:false,save:async next=>{assert.equal(next.need,'assignments');if(++attempts===1){setError(true);return false;}return true;}};}},
+ })).default;
+ const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});await ui.press('Move an assignment forward');await ui.press('Save preferences');assert.equal(closed,0);assert.match(text(ui.tree.root),/Couldn’t save or load/);await ui.press('Save preferences');assert.equal(closed,1);assert.equal(attempts,2);await ui.cleanup();
 });

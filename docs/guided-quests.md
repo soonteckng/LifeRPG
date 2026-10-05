@@ -60,3 +60,12 @@ Phone observation is still required; mocked native tests cannot prove visual qua
 No new native dependencies are needed. Expo Go remains supported. An EAS Update can deliver this JavaScript/assets change to an installed build with a compatible runtime/channel; this work does not publish an update or build an APK.
 
 Validated locally: **230/230 tests**, TypeScript, full lint and Android/iOS Hermes bundle exports passed. Exports used placeholder public environment values and performed no live authentication or database writes. The focused suggestion suite also verifies that Retry retains its original area if available areas change after failure. Installed-device behavior remains unverified.
+
+## Guided-flow refinement after phone feedback
+
+- Smaller tasks now have **Use original task**, restoring the original workload and duration without visiting the catalogue. The selection still persists per account.
+- Preference choices are compact radio-style rows with clear selected states. Save preferences lives in a measured, opaque safe-area footer outside the scroll area. Footer margin adjustment reserves its height, and a scroll indicator remains available for large text/small screens.
+- Home's final content gets 16 additional pixels of clearance above the measured floating dock, including its existing system safe-area reservation. The minimum-height layout is adjusted by the same amount so the last quest is not pushed down by flexible empty space.
+- Choose another now opens the current study category and presents four relevant alternatives. Review, Assignments and Practice tabs retain access to all twelve tasks; changing the browse tab alone does not save a preference. Choosing a task saves the category and task together. Content uses the existing reduced-motion-aware reveal.
+
+Verification: **232/232 tests**, TypeScript and full lint passed. Tests exercise smaller/original reversal, category browsing and selection, pinned Save submission and failed-save retry. Actual footer positioning, three-button Android navigation clearance and large-font scrolling still require phone observation. No reward, backend, authentication or native-dependency changes.
