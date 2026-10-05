@@ -265,6 +265,40 @@ test("many quests and long titles remain individually editable with distinct Sta
   await ui.cleanup();
 });
 
+test("quest list keeps its bottom gap through the installed library's footer adjustment in Today and All", async () => {
+  const hookFile = path.join(require.resolve("@gorhom/bottom-sheet/package.json"), "..", "src/hooks/useBottomSheetContentContainerStyle.ts");
+  let footerHeight = 0;
+  const { useBottomSheetContentContainerStyle } = load(path.relative(path.resolve(__dirname, ".."), hookFile), {
+    "react-native": { Platform: { OS: "android" }, StyleSheet: { compose: (a, b) => [a, b] } },
+    "react-native-reanimated": {
+      runOnJS: callback => callback,
+      useAnimatedReaction: (read, update) => React.useEffect(() => { update(read(), null); }, [footerHeight]),
+    },
+    "./useBottomSheetInternal": { useBottomSheetInternal: () => ({ animatedLayoutState: { get: () => ({ footerHeight }) } }) },
+  });
+  function Adjusted({ style }) {
+    const adjusted = useBottomSheetContentContainerStyle(true, style);
+    return React.createElement("Adjusted", { style: Object.assign({}, ...adjusted) });
+  }
+  const ui = await setup([task(), task({ id: 2, title: "Completed", is_completed: true, is_completed_today: true })]);
+  const listStyle = () => ui.renderer.root.findAllByType("ScrollView")[0].props.contentContainerStyle;
+  let renderer;
+  try {
+    await act(async () => { renderer = create(React.createElement(Adjusted, { style: listStyle() })); });
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 40);
+    await ui.press("All quests");
+    footerHeight = 72;
+    await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    await ui.press("View completed quests");
+    await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+  } finally {
+    if (renderer) await act(async () => renderer.unmount());
+    await ui.cleanup();
+  }
+});
+
 test("an in-flight refresh cannot overwrite a successfully saved or deleted quest", async () => {
   let resolveTasks, state;
   const { QuestProvider, useQuests } = load("src/context/QuestContext.tsx", {

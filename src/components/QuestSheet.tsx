@@ -268,7 +268,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           </BottomSheetScrollView>
         </AppSheet>}
       </>}>
-      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
+      {/* Footer adjustment in bottom-sheet 5.2 expects an object; an array loses
+          its numeric paddingBottom when the library reserves footer space. */}
+      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ ...styles.body, paddingBottom: Math.max(insets.bottom, 16) + 24 }}>
 
           <>
             {!editor && formError && <Text style={styles.headerError} accessibilityRole="alert">{formError}</Text>}
