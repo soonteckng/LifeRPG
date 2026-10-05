@@ -199,7 +199,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       const next = afterDismiss.current; afterDismiss.current = null; onDismiss?.(!!next); next?.();
     }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader} compact motionMode="timed"
       footer={done.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={showDone ? "Show unfinished quests" : "View completed quests"}
-        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
         <Text style={styles.link}>{showDone ? "Back to quests" : `Done today (${done.length})`}</Text><Ionicons name="chevron-forward" size={20} color={colors.accent} />
       </Pressable> : undefined}
       overlay={<>
@@ -268,7 +268,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           </BottomSheetScrollView>
         </AppSheet>}
       </>}>
-      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 24 }]}>
 
           <>
             {!editor && formError && <Text style={styles.headerError} accessibilityRole="alert">{formError}</Text>}

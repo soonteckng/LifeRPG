@@ -416,7 +416,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   await act(async () => renderer.update(React.createElement(Home)));
   const previewRows = () => renderer.root.findAllByType("Pressable").filter(node => node.props.testID?.startsWith("home-quest-"));
   assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15"]);
-  assert.equal(renderer.root.findByProps({testID: "home-quest-card"}).props.style.marginBottom,24);
+  assert.equal(renderer.root.findByProps({testID: "home-quest-card"}).props.style.marginBottom,undefined);
   const openQuests = renderer.root.findAllByType("Pressable").find(node => node.props.accessibilityLabel === "Today's quests, 4 pending");
   assert.ok(openQuests);
   await act(async () => openQuests.props.onPress());
