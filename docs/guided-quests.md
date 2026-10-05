@@ -6,7 +6,7 @@ Branch: `feature/guided-quests`, based on main `f31fc27a8a49b185ecd1606a012d2572
 
 LifeRPG offers a manageable next action to people who do not want to organise a quest before beginning. This version develops one direction, **Study and assignments**. Other directions are intentionally absent until useful content exists. Choosing **Just let me focus**, or skipping suggestions, retains the existing Quick Start experience.
 
-The three studying needs are revision, assignments and practice. Three curated work blocks provide a useful starting instruction: Review your notes, Work on an assignment, and Practise questions. Each defaults to 30 minutes, with an optional 10-minute version. Users start once and keep working; individual questions do not need separate app interactions. Preferences save the default study mode. Choose another and Try 10 minutes override only the current Home visit, without saving a new default. Choosing another block also overrides a scheduled quest for that visit. Suggestions remain user-controlled and do not claim to know a deadline, subject, mastery level or learning outcome.
+The three studying needs are revision, assignments and practice. Three curated work blocks provide a useful starting instruction: Review your notes, Work on an assignment, and Practise questions. Each defaults to 30 minutes, with an optional 10-minute version. Users start once and keep working; individual questions do not need separate app interactions. Preferences save the default study mode. Choose another and the 30 min / 10 min duration selector change the current Home suggestion without saving a new default. Personal quests remain independent choices below the suggestion. Suggestions remain user-controlled and do not claim to know a deadline, subject, mastery level or learning outcome.
 
 ## New users
 
@@ -18,7 +18,7 @@ The introduction explains suggestions, smaller steps, free focus, saving a quest
 
 A dismissible invitation introduces suggestions without sending existing users through onboarding. Settings → Focus suggestions can enable, disable or change the direction at any time.
 
-When enabled, a compact exact-time goal indicator supports the main suggestion card, leaving more space for personal quests. An actionable scheduled quest takes priority and explicitly opens its existing setup for review. Otherwise a starter task starts directly, using its duration and Knowledge where that Life area exists. Missing Knowledge falls back to General; the displayed area matches the recorded area. No Life areas are created or guessed from a title.
+When enabled, a compact exact-time goal indicator supports the main suggestion card. Creating, scheduling or saving a personal quest never replaces Suggested focus. Its primary action starts the selected study block directly, using its duration and Knowledge where that Life area exists. Personal quests stay individually selectable in Today's quests below, opening their existing setup for review. Missing Knowledge falls back to General; the displayed area matches the recorded area. No Life areas are created or guessed from a title.
 
 An open running/paused session always shows Continue instead. Restoration, unresolved completion and busy actions prevent a new start. Free focus and existing quest management remain available. A failed suggestion Start retains its exact draft for retry.
 
@@ -44,7 +44,7 @@ Early End still cancels and earns no credit. Crediting actual time for an explic
 
 ## Verification and phone acceptance
 
-Automated tests cover catalogue/metadata validation, account isolation, storage failure and retry, duplicate writes, guided Start draft ownership and failure, restoration and completion identity, smaller tasks, explicit selection over a personal quest, skip/selected onboarding and saving once. Existing regression tests remain required.
+Automated tests cover catalogue/metadata validation, account isolation, storage failure and retry, duplicate writes, guided Start draft ownership and failure, restoration and completion identity, shorter blocks, suggestions coexisting with independently selectable personal quests, skip/selected onboarding and saving once. Existing regression tests remain required.
 
 Phone observation is still required; mocked native tests cannot prove visual quality or gestures:
 
@@ -63,10 +63,10 @@ Validated locally: **230/230 tests**, TypeScript, full lint and Android/iOS Herm
 
 ## Current guided-flow refinement after phone feedback
 
-- Preferences mean the saved default; the temporary picker says **For this session only. Your default stays in Settings.** The same three work blocks are available there. Shorter/original time choices say **Try 10 minutes / Use 30 minutes**. They do not write preferences. New onboarding and tutorial wording explain this distinction.
+- Preferences mean the saved default; the temporary picker says **For this session only. Your default stays in Settings.** The same three work blocks are available there. A compact **30 min / 10 min** selector changes the current block length without writing preferences. Choose another and Free focus appear as readable icon actions beneath the primary Start button.
 - Older saved preferences map the previous microtask IDs to their matching work block. Historical session snapshots retain their original ID, title, instruction and exact duration. No quests, sessions or backend rows are rewritten.
 - Choose another uses AppSheet's existing bounded 220ms timing animation instead of its spring tail. Reduced motion, gesture dismissal and keyboard/back priorities remain unchanged. Native smoothness is not proven by mocked tests.
 - Preferences use compact radio rows and a pinned, measured safe-area Save footer. Large text can scroll with footer space reserved.
-- Home shows one preview quest on compact screens/large text and up to two otherwise. The quest card itself has 24px of bottom margin and 12px of bottom padding, in addition to measured dock/safe-area scroll clearance. View all still exposes the full list. Previous extra scroll padding alone did not address the reported crowded final row.
+- Home shows one preview quest on compact screens/large text and up to two otherwise. View all exposes the full list. The extra Home margin was removed after clarification that the crowded final row was in the Today / All quests popup. That popup now has 12px of additional clearance in its list and Done today footer, retaining safe-area and measured-footer reservations.
 
 Verification: **234/234 tests**, TypeScript, full lint and Android/iOS Hermes exports passed locally. Compatibility, non-persisting temporary selection, full-block start/restoration, and compact Home preview clearance have regression coverage. Phone checks remain necessary for animation settling, quest clearance with three-button navigation, and large-font layouts. No new dependencies or backend/reward changes.

@@ -217,8 +217,8 @@ export default function HomeScreen() {
               label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
               ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text></>}
-          {useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} quest={activeTasks[0]} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
-            onStarted={openSession} onQuest={openQuestSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={styles.focusCard} testID="home-quick-start">
+          {useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
+            onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={styles.focusCard} testID="home-quick-start">
             <View style={styles.focusTopRow}>
               <View style={styles.focusInfo}>
                 <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>

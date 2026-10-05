@@ -30,6 +30,7 @@ function mocks(extra={}) {return {
   'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({bottom:24,top:24})},
   './AppText':{Text:host('Text')},'../components/AppText':{Text:host('Text'),TextInput:host('Input')},
   './ContentReveal':props=>props.children,
+  './SlidingSelection':host('Selection'),
   './AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children):null,
   './PersonalUI':{p:{button:{},secondaryButton:{},rowTitle:{},caption:{},error:{},title:{},body:{}}},
   '../components/PersonalUI':{p:{},PersonalButton:props=>React.createElement('Button',{...props},props.title)},
@@ -93,13 +94,13 @@ test('Home starter makes the task smaller and starts once with its title, instru
  assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,0);
  await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
 });
-test('explicitly choosing a starter overrides a scheduled quest; missing Knowledge honestly falls back to General',async()=>{
+test('suggested focus uses its selected block and falls back to General when Knowledge is missing',async()=>{
  const calls=[];const Card=load('src/components/GuidedFocusCard.tsx',mocks({
   '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
   '../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,area)=>{calls.push([focus.templateId,area]);return true;}})},
  })).default;
- let questOpens=0;const ui=await render(Card,{owner:'owner',subjects:[{id:1,title:'General'}],quest:{id:7,title:'My assignment',target_minutes:30,subject_id:1},disabled:false,onStarted(){},onFree(){},onQuest(){questOpens++;},onPreferences(){}});
- await ui.press('Open quest');assert.equal(questOpens,1);
+ const ui=await render(Card,{owner:'owner',subjects:[{id:1,title:'General'}],disabled:false,onStarted(){},onFree(){},onPreferences(){}});
+ assert.match(text(ui.tree.root),/Suggested focus/);assert.match(text(ui.tree.root),/Review your notes/);
  await ui.press('Choose another');
  assert.equal(ui.tree.root.findByType('Sheet').props.motionMode,'timed');
  await ui.press('Practise questions30 minutes · One uninterrupted block');
@@ -152,8 +153,10 @@ test('Save for later writes one quest with the chosen area and duration, without
  await act(async()=>pending.resolve({id:9}));assert.equal(upserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
 });
 
-test('Home keeps the guided card mounted while Start makes the timer active, then opens Session after success',async()=>{
+test('creating a personal quest keeps the suggestion and its Start; the quest remains independently selectable below',async()=>{
  const db=storage(),pending=deferred(),routes=[];
+ const quest={id:7,title:'My assignment',target_minutes:45,subject_id:2,is_due_today:true,is_completed:false,is_completed_today:false};
+ let homeTasks=[];const setupCalls=[];
  db.values.set('liferpg:guided:v1:owner',JSON.stringify({version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false}));
  const Context=React.createContext(null);
  const Home=load('src/app/(tabs)/index.tsx',mocks({
@@ -165,13 +168,18 @@ test('Home keeps the guided card mounted while Start makes the timer active, the
   '../../components/GoalRing':host('GoalRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon',level:1,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
   '../../context/TimerContext':{useTimer:()=>React.useContext(Context)},'../context/TimerContext':{useTimer:()=>React.useContext(Context)},
-  '../../context/QuestContext':{useQuests:()=>({tasks:[],subjects:[{id:2,title:'Knowledge'}],loading:false,refresh:async()=>{}})},
+  '../../context/QuestContext':{useQuests:()=>({tasks:homeTasks,subjects:[{id:2,title:'Knowledge'}],loading:false,refresh:async()=>{}})},
   '../../services/progressService':{getLastFreeSession:async()=>null,getFocusStreak:async()=>0},'../../services/dailyProgressService':{getTodayProgress:async()=>null},'../../hooks/useHomeLifecycle':{useHomeLifecycle:()=>12},
   '../../components/GuidedPreferenceSheet':()=>null,
  })).default;
  const api=load('src/constants/guidedQuests.ts');let starts=0;
- function Harness(){const[state,set]=React.useState({hasOpenSession:false,isRunning:false,actionBusy:false,notes:'',duration:600,timeLeft:600,targetAttributeId:null});return React.createElement(Context.Provider,{value:{...state,startSuggestedTimer:async(focus,area)=>{starts++;set({...state,hasOpenSession:true,isRunning:true,notes:api.encodeSuggestedFocus(focus),targetAttributeId:area});return pending.promise;}}},React.createElement(Home));}
+ function Harness(){const[state,set]=React.useState({hasOpenSession:false,isRunning:false,actionBusy:false,notes:'',duration:600,timeLeft:600,targetAttributeId:null});return React.createElement(Context.Provider,{value:{...state,setNotes:()=>{},setLinkedTaskId:id=>setupCalls.push(['task',id]),setDurationInMinutes:minutes=>setupCalls.push(['minutes',minutes]),setTargetAttributeId:area=>setupCalls.push(['area',area]),startSuggestedTimer:async(focus,area)=>{starts++;assert.equal(focus.templateId,'review-topic');set({...state,hasOpenSession:true,isRunning:true,notes:api.encodeSuggestedFocus(focus),targetAttributeId:area});return pending.promise;}}},React.createElement(Home));}
  const ui=await render(Harness);
+ homeTasks=[quest];await ui.update({});
+ const card=()=>ui.tree.root.findAllByType('View').find(node=>node.props.testID==='guided-focus-card');
+ assert.match(text(card()),/Suggested focus/);assert.match(text(card()),/Review your notes/);assert.doesNotMatch(text(card()),/My assignment|Open quest/);
+ const questButton=ui.tree.root.findAllByType('Button').find(node=>node.props.testID==='home-quest-7');assert.ok(questButton);
+ await act(async()=>questButton.props.onPress());assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.equal(starts,0);assert.deepEqual(routes,['/session']);routes.length=0;
  await act(async()=>{void ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start').props.onPress();});
  assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,[]);
  await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.match(text(ui.tree.root),/Continue session/);await ui.cleanup();
