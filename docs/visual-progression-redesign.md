@@ -203,3 +203,12 @@ Regression coverage checks historical completions, recurring eligibility, upcomi
 Home now ends its scroll viewport above the floating dock instead of relying only on scroll-end padding. Its streak/level footer cannot draw beneath the running/paused/completion bar; short devices can scroll the reduced viewport. Ring sizing uses this already-reduced viewport, avoiding subtracting the dock twice. The navigation pill remains independently floating with a transparent wrapper and no external strip/fade.
 
 A tab-scoped FloatingDockProvider receives actual native wrapper heights. Measurements are keyed to visible banner, safe bottom, device width and font scale; Home uses a conservative estimate until the matching layout is available. No session or account state is changed. Test Home with an active and paused session, completion dock, large text and rotation on-device.
+
+
+### Quest scope geometry and setup-to-running motion
+
+Today/All now uses equal native View slots around the gesture-handler touchables. Each touchable fills its own slot instead of relying on flex on an inner animated touchable child. The track clips its moving highlight and grows with the row; both labels share line height and Android font-padding settings. Selected text uses the primary text colour. The existing scope logic and sheet-native gesture handling remain intact.
+
+Session phase motion now covers the visible header, ring, running title and action controls (280ms native opacity), rather than only a detail container empty during running. The permanently mounted timer stage measures its relative layout position and animates an inverse offset back to zero (300ms) when setup changes to the centred running layout. It does not rebuild or resize duration wheels. First layout and reduced motion skip relocation; countdown ticks do not replay the phase reveal. Start RPC, retry/locking, navigation and timer state are unchanged.
+
+Tests exercise free and quest starts, loading-to-success phase changes, mounted-node continuity, measured relocation, countdown updates, reduced motion and equal scope slots. Device observation is still needed for Android gesture-handler wrapper sizing, large text, actual animation timing and any one-frame layout artefacts.

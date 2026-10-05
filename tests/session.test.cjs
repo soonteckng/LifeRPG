@@ -191,7 +191,7 @@ test("duration parser rejects ambiguous input rather than silently substituting"
 });
 
 async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android") {
-  const calls = [], keyboardListeners = {};
+  const calls = [], keyboardListeners = {}, animations = [];
   let exitCallback;
   let keyboard = false, back;
   let state = {
@@ -220,7 +220,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
+      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){animations.push({...config,from:value.value});if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
@@ -239,7 +239,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   const text=(node)=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label);
   return {
-    calls,button,root:()=>renderer.root,output:()=>text(renderer.root),
+    calls,animations,button,root:()=>renderer.root,output:()=>text(renderer.root),
     press:async(label)=>{const node=button(label);assert.ok(node,label);await act(async()=>node.props.onPress());},
     update:async(changes)=>{state={...state,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
     keyboard:async()=>{keyboard=true;await act(async()=>keyboardListeners.keyboardDidShow());},
@@ -1134,5 +1134,51 @@ test('Session completion keeps level-up information in its single retained resul
   assert.match(ui.output(),/Level up · Level 3/);
   assert.ok(ui.button('Done'));
   assert.ok(ui.button('New session'));
+  await ui.cleanup();
+});
+
+
+test("free and quest starts reveal visible controls and settle the same mounted timer stage", async () => {
+  for (const linkedTaskId of [null, 7]) {
+    const ui = await screenSetup({linkedTaskId}, {}, false, {value:false});
+    const control = ui.root().findByType("DurationControl");
+    const stage = ui.root().findByProps({testID:"session-timer-stage"});
+    await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:4}}}));
+    assert.equal(ui.animations.some(a => a.duration === 300), false);
+    ui.animations.length = 0; // Ignore the route entry animation already verified elsewhere.
+    await ui.press("Start");
+    assert.equal(ui.calls.filter(c => c[0] === "start").length, 1);
+    await ui.update({actionBusy:true});
+    assert.equal(ui.animations.some(a => a.duration === 280 && a.from === 0), false);
+    await ui.update({actionBusy:false,hasOpenSession:true,isRunning:true,timeLeft:1800});
+    assert.equal(ui.root().findByType("DurationControl"), control);
+    assert.equal(ui.root().findByProps({testID:"session-timer-stage"}), stage);
+    assert.ok(ui.animations.some(a => a.duration === 280 && a.from === 0 && a.toValue === 1 && a.useNativeDriver));
+    const details = ui.root().findByProps({testID:"session-details-motion"});
+    const actions = ui.root().findByProps({testID:"session-actions-motion"});
+    assert.equal(details.props.style.opacity, actions.props.style[1].opacity);
+    await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:104}}}));
+    assert.ok(ui.animations.some(a => a.duration === 300 && a.from === -100 && a.toValue === 0 && a.useNativeDriver));
+    const phaseAnimations = () => ui.animations.filter(a => a.duration === 280 || a.duration === 300).length;
+    const count = phaseAnimations();
+    await ui.update({timeLeft:1799});
+    assert.equal(phaseAnimations(), count);
+    assert.equal(control.props.seconds, 1799);
+    await ui.update({isRunning:false});
+    assert.ok(ui.button("Resume"));
+    assert.equal(ui.root().findByType("DurationControl"), control);
+    await ui.cleanup();
+  }
+});
+
+test("reduced motion keeps phase controls readable and skips timer relocation animation", async () => {
+  const ui = await screenSetup({}, {}, false, {value:true});
+  const stage = ui.root().findByProps({testID:"session-timer-stage"});
+  await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:4}}}));
+  await ui.update({hasOpenSession:true,isRunning:true});
+  await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:104}}}));
+  assert.equal(ui.animations.some(a => a.duration === 280 || a.duration === 300), false);
+  assert.equal(ui.root().findByProps({testID:"session-actions-motion"}).props.style[1].opacity.value, 1);
+  assert.ok(ui.button("Pause"));
   await ui.cleanup();
 });

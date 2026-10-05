@@ -174,10 +174,12 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       <View style={styles.subheadingRow}>
         <View style={styles.scopeGroup}>
           <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} style={styles.scopeSelection} /></View>
-          {(["today", "all"] as const).map(value => <Pressable key={value} style={styles.scopeButton}
-            onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
-            <Text style={styles.linkSmall}>{value === "today" ? "Today" : "All"}</Text>
-          </Pressable>)}
+          {(["today", "all"] as const).map(value => <View key={value} style={styles.scopeSlot}>
+            <Pressable style={styles.scopeButton}
+              onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
+              <Text style={[styles.scopeLabel, scope === value && styles.scopeLabelSelected]}>{value === "today" ? "Today" : "All"}</Text>
+            </Pressable>
+          </View>)}
         </View>
         <Text style={styles.subtitle}>{showDone ? `${done.length} completed` : scope === "today" ? `${unfinished.length} remaining` : `${available.length} quests`}</Text>
       </View>
@@ -329,10 +331,13 @@ const styles = StyleSheet.create({
   addText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
-  scopeGroup: { position:"relative", width:160, minHeight:44, flexDirection:"row" },
-  scopeTrack: { position:"absolute", left:0, right:0, top:4, height:36, borderRadius:12, backgroundColor:"#1D2638", overflow:"hidden" },
+  scopeGroup: { position:"relative", width:176, maxWidth:"100%", minHeight:44, flexDirection:"row", alignItems:"stretch" },
+  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:"#1D2638", overflow:"hidden" },
   scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:"#354467", borderRadius:11, borderWidth:3, borderColor:"#1D2638" },
-  scopeButton: { flex:1, minHeight:44, paddingHorizontal:8, alignItems:"center", justifyContent:"center" },
+  scopeSlot: { flex:1, minWidth:0 },
+  scopeButton: { width:"100%", minHeight:44, paddingHorizontal:8, paddingVertical:8, alignItems:"center", justifyContent:"center" },
+  scopeLabel: { color:colors.neutral, fontSize:15, lineHeight:20, fontWeight:"500", includeFontPadding:false, textAlign:"center", textAlignVertical:"center" },
+  scopeLabelSelected: { color:colors.text },
   linkSmall: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   sessionNotice: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between", paddingVertical: 12 },
   noticeText: { color: colors.secondary, fontSize: 14, flexShrink: 1 },
