@@ -3,6 +3,7 @@ import BottomSheet, {
   BottomSheetFooter,
   GESTURE_SOURCE,
   useBottomSheetInternal,
+  useBottomSheetSpringConfigs,
   useGestureEventsHandlersDefault,
   type BottomSheetBackdropProps,
   type BottomSheetFooterProps,
@@ -29,7 +30,7 @@ import {
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { ReduceMotion, runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors } from "../constants/theme";
+import { motion } from "../constants/motion";
 
 interface Props {
   visible: boolean;
@@ -80,9 +81,10 @@ function SheetHandle() {
 // confirmation. Only intercept a downward release from the handle or list top.
 function useDismissGestures() {
   const { guarded, requestClose } = useContext(DismissContext);
-  const { animatedScrollableState } = useBottomSheetInternal();
+  const { animatedScrollableState, animatedPosition } = useBottomSheetInternal();
   const defaults = useGestureEventsHandlersDefault();
   const startedAtTop = useSharedValue(false);
+  const startPosition = useSharedValue(0);
   const handleOnStart = useCallback<GestureEventHandlerCallbackType>(
     (source, event) => {
       "worklet";
@@ -91,8 +93,23 @@ function useDismissGestures() {
           animatedScrollableState.get().contentOffsetY <= 0,
       );
       defaults.handleOnStart(source, event);
+      startPosition.set(animatedPosition.get());
     },
-    [animatedScrollableState, defaults, startedAtTop],
+    [animatedScrollableState, animatedPosition, defaults, startedAtTop, startPosition],
+  );
+  const handleOnChange = useCallback<GestureEventHandlerCallbackType>(
+    (source, event) => {
+      "worklet";
+      defaults.handleOnChange(source, event);
+      // Dirty drafts cannot close natively, but their surface should still track
+      // a downward pull one-to-one. The default release restores its snap point
+      // before our existing discard guard runs; scrolling stays library-owned.
+      if (guarded && startedAtTop.get() && event.translationY > 0 &&
+          (source === GESTURE_SOURCE.HANDLE || animatedScrollableState.get().contentOffsetY <= 0)) {
+        animatedPosition.set(startPosition.get() + event.translationY);
+      }
+    },
+    [animatedPosition, animatedScrollableState, defaults, guarded, startedAtTop, startPosition],
   );
   const handleOnEnd = useCallback<GestureEventHandlerCallbackType>(
     (source, event) => {
@@ -103,7 +120,7 @@ function useDismissGestures() {
     },
     [defaults, guarded, requestClose, startedAtTop],
   );
-  return { ...defaults, handleOnStart, handleOnEnd };
+  return { ...defaults, handleOnStart, handleOnChange, handleOnEnd };
 }
 
 export default function AppSheet({
@@ -120,6 +137,7 @@ export default function AppSheet({
   footer,
   label,
 }: Props) {
+  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const ref = useRef<BottomSheet>(null);
   const [mounted, setMounted] = useState(visible);
   const [previousVisible, setPreviousVisible] = useState(visible);
@@ -238,6 +256,7 @@ export default function AppSheet({
             <BottomSheet
               ref={ref}
               index={0}
+              animationConfigs={animationConfigs}
               snapPoints={snapPoints}
               enableDynamicSizing={compact || !expanded}
               maxDynamicContentSize={Math.min(
@@ -278,7 +297,9 @@ export default function AppSheet({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   surface: {
-    backgroundColor: colors.surface,
+    backgroundColor: "#171E2B",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(225,235,255,0.16)",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
   },

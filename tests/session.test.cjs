@@ -22,6 +22,9 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
+      if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
+      if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const extension = ["", ".ts", ".tsx"].find((ext) => fs.existsSync(target + ext));
@@ -208,6 +211,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   const quests = {tasks:[{id:7,title:"A long quest title worth finishing",target_minutes:30,subject_id:1,is_due_today:true,is_completed_today:false}],
     subjects:[{id:1,title:"General"}],loading:false,error:false,refresh:async()=>{},...questOverrides};
   const Screen=load("src/components/SessionScreen.tsx",{
+    "react-native-svg":{__esModule:true,default:host("Svg"),Circle:host("Circle")},
     "react-native":{
       View:host("View"),Text:host("Text"),TextInput:host("Input"),TouchableOpacity:host("Button"),
       ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),ActivityIndicator:host("Spinner"),
@@ -216,7 +220,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
+      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
@@ -272,17 +276,18 @@ test("downward session swipe uses the existing animated close and inner sheets t
   await ui.cleanup();
 });
 
-test("timer anchor and countdown stay mounted with identical layout across setup, running and paused",async()=>{
+test("timer nodes stay mounted; running and paused share a flexible centred layout",async()=>{
   const ui=await screenSetup();
   const anchor=ui.root().findAllByType("View").find((n)=>n.props.testID==="session-timer-anchor");
   const countdown=ui.root().findAllByType("View").find((n)=>n.props.testID==="session-countdown");
   const layout=JSON.stringify(anchor.props.style);
   await ui.update({hasOpenSession:true,isRunning:true,timeLeft:1800});
   assert.equal(ui.root().findAllByType("View").find((n)=>n.props.testID==="session-timer-anchor"),anchor);
-  assert.equal(JSON.stringify(anchor.props.style),layout);
+  assert.notEqual(JSON.stringify(anchor.props.style),layout);
+  const activeLayout=JSON.stringify(anchor.props.style);
   assert.equal(ui.root().findAllByType("View").find((n)=>n.props.testID==="session-countdown"),countdown);
   await ui.update({isRunning:false,timeLeft:1795});
-  assert.equal(JSON.stringify(anchor.props.style),layout);
+  assert.equal(JSON.stringify(anchor.props.style),activeLayout);
   assert.ok(ui.button("Resume"));
   assert.equal(ui.button("Choose activity"),undefined);
   await ui.cleanup();
@@ -981,7 +986,8 @@ test("compact Session chips select the saved Life area without touching quest or
 
 test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0,creditVersion:1,areaXpEarned:null}});
-  assert.match(ui.output(),/General\+0 XPCharacter XP\+1/);
+  assert.match(ui.output(),/Character XP\+1/);
+  assert.doesNotMatch(ui.output(),/Life area XP|General\+1 XP/);
   assert.ok(ui.button("Done"));
   assert.ok(ui.button("New session"));
   await ui.cleanup();
@@ -1043,7 +1049,7 @@ test("virtualized wheel frames include the real header and centre the initial se
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
   const Modal=load("src/components/LevelUpModal.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s}},
+    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./ProgressRing":host("Ring"),
@@ -1084,4 +1090,49 @@ test("wheel settlement corrects a residual native offset without scrolling align
     await finish(index*height);
     assert.deepEqual(scrolls,[]);
   } finally {await act(async()=>renderer.unmount());}
+});
+
+
+test("floating dock reserves the safe area and only visible banners",()=>{
+  const {floatingTabInset}=load("src/utils/floatingTabInset.ts",{});
+  assert.equal(floatingTabInset(66,34,{}),108);
+  assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),142);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),142);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),86);
+});
+
+test('open Session consumes popup visibility without clearing completion; outside Session keeps the popup',async()=>{
+  for(const pathname of ['/session','/timer','/progress','/']) {
+    const saved={id:'saved',durationSeconds:90,minutesSpent:1,xpEarned:1,goldEarned:0};
+    let timer={sessionSummary:saved,rewardsVisible:true,linkedTaskId:null,targetAttributeId:1,completedLevelUp:{leveledUp:true,newLevel:2}};
+    let clearCalls=0,reloads=0;
+    const clear=()=>{clearCalls++;timer={...timer,rewardsVisible:false};};
+    const Listener=load('src/components/GlobalRewardListener.tsx',{
+      'expo-router':{usePathname:()=>pathname},
+      './LevelUpModal':host('Rewards'),
+      '../context/TimerContext':{useTimer:()=>({...timer,clearCompletionModal:clear})},
+      '../context/UserContext':{useUser:()=>({profile:{level:2,current_xp:1},reloadProfile:()=>{reloads++;}})},
+      '../context/QuestContext':{useQuests:()=>({tasks:[],subjects:[{id:1,title:'Knowledge',color_code:null}]})},
+    }).default;
+    let tree;await act(async()=>{tree=create(React.createElement(Listener));});
+    const inside=pathname==='/session'||pathname==='/timer';
+    assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
+    assert.equal(clearCalls,inside?1:0);
+    assert.equal(timer.sessionSummary,saved);
+    assert.equal(reloads,1);
+    await act(async()=>tree.update(React.createElement(Listener)));
+    assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
+    assert.equal(clearCalls,inside?1:0);
+    assert.equal(tree.root.findByType('Rewards').props.xpEarned,1);
+    assert.equal(tree.root.findByType('Rewards').props.isLevelUp,true);
+    await act(async()=>tree.unmount());
+  }
+});
+
+test('Session completion keeps level-up information in its single retained result',async()=>{
+  const ui=await screenSetup({isCompleted:true,sessionSummary:{durationSeconds:90,minutesSpent:1,xpEarned:1,goldEarned:0},completedLevelUp:{leveledUp:true,newLevel:3}});
+  assert.match(ui.output(),/Level up · Level 3/);
+  assert.ok(ui.button('Done'));
+  assert.ok(ui.button('New session'));
+  await ui.cleanup();
 });

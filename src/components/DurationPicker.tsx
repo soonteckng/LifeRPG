@@ -1,9 +1,10 @@
+import TouchableOpacity from "./MotionPressable";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import * as Haptics from "expo-haptics";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, PixelRatio, StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
+import { Animated, FlatList, PixelRatio, StyleSheet, View, useWindowDimensions } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -74,7 +75,7 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
     {compact && !interactive && caption && <Text style={{ position: "absolute", top: labelHeight + rowHeight * 2 + 8, width: "100%", textAlign: "center", color: colors.secondary, fontSize: 15 }}>{caption}</Text>}
     <View style={styles.editSlot}>
       {interactive && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit duration" onPress={onEdit} style={styles.edit}>
-        <Text style={[styles.editText, !valid && styles.error]}>{valid ? compact ? "Scroll to set duration · Tap to type" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
+        <Text style={[styles.wheelHint, !valid && styles.error]}>{valid ? compact ? "Scroll or tap here to set duration" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
       </TouchableOpacity>}
     </View>
   </View>;
@@ -215,20 +216,21 @@ function EditorDraft({ seconds, onCancel, onConfirm }: Omit<EditorProps, "visibl
 const styles = StyleSheet.create({
   labels: { flexDirection: "row", alignItems: "center" }, unit: { flex: 1, textAlign: "center", color: colors.secondary, fontSize: 15 },
   wheels: { flexDirection: "row" }, wheel: { flex: 1 }, colonWidth: { width: 22 },
-  selectionBand: { position: "absolute", left: 0, right: 0, borderRadius: 18, backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.line },
+  selectionBand: { position: "absolute", left: 0, right: 0, borderRadius: 18, backgroundColor: colors.accentSoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   row: { alignItems: "center", justifyContent: "center" }, adjacent: { color: colors.muted, fontVariant: ["tabular-nums"] },
   wheelDigit: { width: "100%", includeFontPadding: false, textAlignVertical: "center", color: colors.text, textAlign: "center", fontWeight: "500", fontVariant: ["tabular-nums"] },
   digits: { position: "absolute", left: 0, right: 0, flexDirection: "row", alignItems: "center" },
   digit: { flex: 1, includeFontPadding: false, textAlignVertical: "center", textAlign: "center", color: colors.text, fontWeight: "500", fontVariant: ["tabular-nums"] },
   colon: { width: 22, includeFontPadding: false, textAlignVertical: "center", textAlign: "center", color: colors.text, fontWeight: "300" },
   editSlot: { minHeight: 44, justifyContent: "center" }, edit: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  wheelHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "400" },
   editText: { color: colors.accent, fontSize: 15, fontWeight: "500" }, error: { color: colors.danger },
   pickerHeader: { paddingHorizontal: 24, paddingBottom: 8 },
   editorBody: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 20, gap: 16 },
   footer: { flexDirection: "row", gap: 12, paddingHorizontal: 24, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   button: { flex: 1, minHeight: 48, justifyContent: "center", alignItems: "center", borderRadius: 14, backgroundColor: colors.background },
-  primary: { backgroundColor: colors.accent }, disabled: { opacity: 0.45 }, primaryText: { color: colors.background, fontSize: 15, fontWeight: "600" },
-  title: { color: colors.text, fontSize: 21, fontWeight: "600" }, fields: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  primary: { backgroundColor: colors.accent }, disabled: { opacity: 0.45 }, primaryText: { color: colors.background, fontSize: 15, fontWeight: "500" },
+  title: { color: colors.text, fontSize: 21, fontWeight: "500" }, fields: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
   field: { flex: 1, minWidth: 100, gap: 8 }, fieldLabel: { color: colors.secondary, fontSize: 15 },
   input: { color: colors.text, backgroundColor: colors.background, borderRadius: 12, padding: 12, minHeight: 52, fontSize: 24, fontVariant: ["tabular-nums"] },
   hint: { color: colors.secondary, fontSize: 14 },

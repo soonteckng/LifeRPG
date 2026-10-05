@@ -1,3 +1,4 @@
+import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation, useRouter } from "expo-router";
@@ -9,11 +10,12 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { Animated, Platform, useWindowDimensions, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Platform, useWindowDimensions, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
+import { type } from "../constants/typography";
 import { colors } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { usePreventRemove } from "expo-router/react-navigation";
@@ -28,6 +30,7 @@ export function PersonalPage({
   animateTransition = false,
   compact = false,
   floatingAction = false,
+  bottomContentInset = 0,
 }: {
   title: string;
   subtitle: string;
@@ -37,6 +40,7 @@ export function PersonalPage({
   animateTransition?: boolean;
   compact?: boolean;
   floatingAction?: boolean;
+  bottomContentInset?: number;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -103,14 +107,14 @@ export function PersonalPage({
             action={action}
           />
         )}
-        {floatingAction && <View style={{ position: "absolute", top: insets.top + 8, right: 20, zIndex: 1 }}>{action}</View>}
+        {floatingAction && <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection:"row", justifyContent:"flex-end", alignItems:"center" }}>{action}</View>}
         {!back && !floatingAction && <AppHeader title={title} action={action} />}
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             p.content,
-            { paddingBottom: Math.max(48, insets.bottom + 24) },
+            { paddingBottom: Math.max(48, insets.bottom + 24, bottomContentInset + 24) },
           ]}
         >
           <View style={{ gap: compact ? 12 : 20 }}>
@@ -231,13 +235,13 @@ export const p = StyleSheet.create({
   pageTitle: {
     color: colors.text,
     fontSize: 32,
-    fontWeight: "600",
+    fontWeight: "500",
     letterSpacing: -1,
   },
   content: { padding: 20, paddingTop: 8, paddingBottom: 48 },
   flex: { flex: 1, minWidth: 0 },
   back: {
-    width: 40,
+    width: 44,
     height: 44,
     alignItems: "center",
     justifyContent: "center",
@@ -246,32 +250,33 @@ export const p = StyleSheet.create({
     padding: 20,
     backgroundColor: colors.surface,
     borderRadius: 24,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
     gap: 12,
   },
   title: {
     color: colors.text,
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: "500",
     letterSpacing: -0.4,
   },
-  body: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
-  caption: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+  sectionLabel: { ...type.section },
+  body: { ...type.body, color: colors.secondary },
+  caption: { ...type.caption },
   label: {
     color: colors.accent,
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "500",
     letterSpacing: 1,
   },
   row: {
-    minHeight: 64,
-    paddingVertical: 12,
+    minHeight: 52,
+    paddingVertical: 8,
     flexDirection: "row",
     gap: 12,
     alignItems: "center",
   },
-  rowTitle: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  rowTitle: { color: colors.text, fontSize: 16, fontWeight: "500" },
   icon: {
     width: 40,
     height: 40,
@@ -291,25 +296,27 @@ export const p = StyleSheet.create({
     minHeight: 50,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: colors.accent,
+    backgroundColor: "#E5E4FF",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 15, fontWeight: "600", color: colors.background },
+  buttonText: { fontSize: 16, fontWeight: "500", color: colors.background },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,
     padding: 14,
     borderRadius: 14,
     backgroundColor: colors.background,
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
     color: colors.text,
     fontSize: 16,
   },
   error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
-  sheetHeader: { paddingHorizontal: 22, paddingBottom: 12, gap: 6 },
-  sheetBody: { paddingHorizontal: 22, paddingBottom: 30, gap: 16 },
+  sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 },
+  sheetBody: { paddingHorizontal: 20, paddingBottom: 30, gap: 16 },
   divider: { height: 1, backgroundColor: colors.line },
   inline: { flexDirection: "row", alignItems: "center", gap: 12 },
   pill: {
@@ -321,7 +328,7 @@ export const p = StyleSheet.create({
   value: {
     color: colors.text,
     fontSize: 28,
-    fontWeight: "600",
+    fontWeight: "500",
     fontVariant: ["tabular-nums"],
   },
 });

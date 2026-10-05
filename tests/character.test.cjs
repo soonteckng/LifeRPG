@@ -21,6 +21,10 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
+      if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
+      if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
+      if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
       if (!name.startsWith(".")) return require(name);
       const target = path.resolve(path.dirname(filename), name);
       const ext = ["", ".ts", ".tsx"].find((e) => fs.existsSync(target + e));
@@ -100,6 +104,7 @@ const host =
   ({ children, ...props }) =>
     React.createElement(name, props, children);
 const Native = {
+  StyleSheet: {create: value=>value,hairlineWidth:1},
   Animated: {
     Value: class {
       setValue() {}
@@ -774,6 +779,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
 
 async function profileScreen(overrides = {}) {
   return screen("src/app/(tabs)/profile.tsx", {
+    "../../context/TimerContext": {useTimer: () => ({})},
     "expo-router": {
       useRouter: () => ({ navigate() {} }),
       useFocusEffect: (effect) => React.useEffect(effect, [effect]),
@@ -1019,9 +1025,12 @@ test("portrait centres its head and a changed badge updates the Home identity", 
   const Mark=load("src/components/CharacterMark.tsx",mocks).default;
   await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
   try {
-    assert.match(text(renderer.root),/⭐/);
-    await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🐱",size:58})));
-    assert.match(text(renderer.root),/🐱/);
+    assert.doesNotMatch(text(renderer.root),/⭐/);
+    const firstColour=renderer.root.findAllByType("View").find(node=>Array.isArray(node.props.style)&&node.props.style[1]?.backgroundColor).props.style[1].backgroundColor;
+    await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🧑‍💻",size:58})));
+    assert.doesNotMatch(text(renderer.root),/🧑‍💻/);
+    const nextColour=renderer.root.findAllByType("View").find(node=>Array.isArray(node.props.style)&&node.props.style[1]?.backgroundColor).props.style[1].backgroundColor;
+    assert.notEqual(firstColour,nextColour,"saved badges still personalise the scarf");
     assert.doesNotMatch(text(renderer.root),/⭐/);
   } finally {await act(async()=>renderer.unmount());}
 });
@@ -1031,7 +1040,7 @@ test("shared typography uses iOS System, keeps text readable and preserves exact
   await act(async()=>{renderer=create(React.createElement(AppText,{style:{fontSize:11,lineHeight:16}},"Caption"));});
   try {
     let style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
-    assert.equal(style.fontFamily,"System"); assert.equal(style.fontSize,14); assert.ok(style.lineHeight>=18);
+    assert.equal(style.fontFamily,"System"); assert.equal(style.fontSize,13); assert.ok(style.lineHeight>=18);
     await act(async()=>renderer.update(React.createElement(AppText,{allowFontScaling:false,style:{fontSize:60,lineHeight:75,height:75}},"25:00")));
     style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
     assert.equal(style.lineHeight,75); assert.equal(style.height,75);

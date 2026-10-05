@@ -1,6 +1,7 @@
+import Pressable from "./MotionPressable";
 import { Text, TextInput } from "./AppText";
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, View } from "react-native";
+import { KeyboardAvoidingView, Platform, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { PersonalButton, p } from "./PersonalUI";

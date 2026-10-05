@@ -1,3 +1,5 @@
+import { questLists } from "../utils/questLists";
+import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity as Pressable } from "@gorhom/bottom-sheet";
@@ -142,12 +144,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     else onClose();
   };
 
-  const available = tasks.filter((task) => !task.is_completed_today && (task.is_recurring || !task.is_completed));
-  const today = available.filter((task) => task.is_due_today);
+  const { available, today, done } = questLists(tasks);
   const unfinished = today;
-  const done = tasks.filter(task => task.is_completed_today);
-  const shown = (showDone ? done : scope === "today" ? today : available).slice().sort((a, b) =>
-    Number(b.is_due_today) - Number(a.is_due_today));
+  const shown = showDone ? done : scope === "today" ? today : available;
 
   const editorHeader = editor ? (
     <View>
@@ -173,8 +172,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         </Pressable>
       </View>
       <View style={styles.subheadingRow}>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          {(["today", "all"] as const).map(value => <Pressable key={value} style={[styles.scopeButton, scope === value && { backgroundColor: colors.accentSoft }]}
+        <View style={styles.scopeGroup}>
+          <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} style={styles.scopeSelection} /></View>
+          {(["today", "all"] as const).map(value => <Pressable key={value} style={styles.scopeButton}
             onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
             <Text style={styles.linkSmall}>{value === "today" ? "Today" : "All"}</Text>
           </Pressable>)}
@@ -205,7 +205,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         {editor && <AppSheet visible={editorVisible} onRequestClose={requestClose}
           onDismiss={() => { setEditor(null); setFormError(null); focusedField.current = null;
             if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
-          guardDismiss maxHeightRatio={0.94} label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
+          guardDismiss={dirty || busy || !!confirmation} compact maxHeightRatio={0.94} label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
           <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
             contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
@@ -321,63 +321,66 @@ function Choice({ label, selected, onPress, accessibilityLabel }: { label: strin
 
 const styles = StyleSheet.create({
   areaDot: { width: 10, height: 10, borderRadius: 5 },
-  doneFooter: { paddingHorizontal: 22, paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  header: { paddingHorizontal: 22, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  doneFooter: { paddingHorizontal: 20, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  header: { paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   headingRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 12 },
-  title: { color: colors.text, fontSize: 24, fontWeight: "600", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
+  title: { color: colors.text, fontSize: 24, fontWeight: "500", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
   add: { minHeight: 44, flexDirection: "row", gap: 4, alignItems: "center" },
-  addText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
+  addText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
-  scopeButton: { minHeight: 44, paddingHorizontal: 14, borderRadius: 22, flexDirection: "row", gap: 4, alignItems: "center" },
-  linkSmall: { color: colors.accent, fontSize: 14, fontWeight: "600" },
+  scopeGroup: { position:"relative", width:160, minHeight:44, flexDirection:"row" },
+  scopeTrack: { position:"absolute", left:0, right:0, top:4, height:36, borderRadius:12, backgroundColor:"#1D2638", overflow:"hidden" },
+  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:"#354467", borderRadius:11, borderWidth:3, borderColor:"#1D2638" },
+  scopeButton: { flex:1, minHeight:44, paddingHorizontal:8, alignItems:"center", justifyContent:"center" },
+  linkSmall: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   sessionNotice: { flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between", paddingVertical: 12 },
   noticeText: { color: colors.secondary, fontSize: 14, flexShrink: 1 },
-  body: { paddingHorizontal: 22 },
+  body: { paddingHorizontal: 20 },
   completeButton: { minWidth: 44, minHeight: 48, alignItems: "center", justifyContent: "center" },
   deleteButton: { minWidth: 44, minHeight: 50, alignItems: "center", justifyContent: "center" },
   loading: { marginVertical: 45 },
-  doneMessage: { color: colors.accent, fontSize: 18, fontWeight: "600", paddingTop: 20, paddingBottom: 8 },
+  doneMessage: { color: colors.accent, fontSize: 18, fontWeight: "500", paddingTop: 20, paddingBottom: 8 },
   editHint: { color: colors.muted, fontSize: 14, marginTop: 14, marginBottom: 2 },
   questRow: { width: "100%", justifyContent: "space-between", flexDirection: "row", alignItems: "center", gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   questMainContainer: { flex: 1, minWidth: 0 },
   questMain: { width: "100%", paddingVertical: 12, gap: 4 },
   questTitleRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  questTitle: { color: colors.text, fontSize: 16, fontWeight: "600", flexShrink: 1, lineHeight: 22 },
+  questTitle: { color: colors.text, fontSize: 16, fontWeight: "500", flexShrink: 1, lineHeight: 22 },
   completed: { color: colors.secondary },
   meta: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
   schedule: { color: colors.muted, fontSize: 14, lineHeight: 16 },
   startContainer: { marginLeft: "auto", flexShrink: 0 },
   start: { minWidth: 44, minHeight: 48, paddingHorizontal: 10, justifyContent: "center", borderRadius: 12, backgroundColor: "transparent", flexDirection: "row", alignItems: "center", gap: 5 },
-  startText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  startText: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   empty: { paddingVertical: 30, gap: 10, alignItems: "flex-start" },
-  emptyTitle: { fontSize: 20, lineHeight: 27, fontWeight: "600", color: colors.text },
+  emptyTitle: { fontSize: 20, lineHeight: 27, fontWeight: "500", color: colors.text },
   emptyText: { fontSize: 14, lineHeight: 21, color: colors.secondary, maxWidth: 300 },
   emptyAdd: { minHeight: 44, justifyContent: "center", paddingHorizontal: 14, backgroundColor: colors.accentSoft, borderRadius: 10, marginTop: 5 },
   editorHeader: { justifyContent: "space-between", flexWrap: "wrap", paddingHorizontal: 16, paddingBottom: 12, flexDirection: "row", alignItems: "center", gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   headerAction: { minHeight: 44, paddingHorizontal: 6, justifyContent: "center" },
   link: { color: colors.accent, fontSize: 15 },
-  editorTitle: { color: colors.text, fontSize: 24, fontWeight: "600", paddingHorizontal: 22, paddingBottom: 8, textAlign: "left" },
+  editorTitle: { color: colors.text, fontSize: 24, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 8, textAlign: "left" },
   save: { minWidth: 120, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.accent, justifyContent: "center", alignItems: "center" },
-  saveText: { color: colors.background, fontSize: 14, fontWeight: "700" },
+  saveText: { color: colors.background, fontSize: 14, fontWeight: "500" },
   form: { gap: 14, paddingTop: 12 },
   field: { gap: 8 },
-  label: { color: colors.text, fontSize: 14, fontWeight: "600" },
-  input: { color: colors.text, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: 1, borderColor: colors.line, borderRadius: 12, minHeight: 50, padding: 14, fontSize: 16, textAlignVertical: "top" },
+  label: { color: colors.text, fontSize: 14, fontWeight: "500" },
+  input: { color: colors.text, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: 12, minHeight: 50, padding: 14, fontSize: 16, textAlignVertical: "top" },
   daysRow: { flexDirection: "row", gap: 4 },
   dayContainer: { flex: 1, minWidth: 0 },
-  day: { minHeight: 44, borderRadius: 10, borderWidth: 1, borderColor: colors.line, alignItems: "center", justifyContent: "center" },
+  day: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, alignItems: "center", justifyContent: "center" },
   dayText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  choice: { minHeight: 44, minWidth: 46, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: 1, borderColor: colors.line, justifyContent: "center", alignItems: "center" },
+  choice: { minHeight: 44, minWidth: 46, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, justifyContent: "center", alignItems: "center" },
   choiceSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   choiceText: { color: colors.secondary, fontSize: 15 },
-  choiceTextSelected: { color: colors.accent, fontWeight: "600" },
+  choiceTextSelected: { color: colors.accent, fontWeight: "500" },
   helper: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
-  headerError: { color: colors.danger, fontSize: 15, lineHeight: 19, paddingHorizontal: 22, paddingBottom: 12 },
+  headerError: { color: colors.danger, fontSize: 15, lineHeight: 19, paddingHorizontal: 20, paddingBottom: 12 },
   errorBanner: { paddingVertical: 14, gap: 10 },
   message: { paddingTop: 14, color: colors.accent, fontSize: 14, lineHeight: 18 },
-  actions: { backgroundColor: colors.surface, paddingHorizontal: 22, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8 },
+  actions: { backgroundColor: colors.surface, paddingHorizontal: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8 },
   actionRow: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 10 },
   deleteText: { color: colors.danger, fontSize: 15 },
   disabled: { opacity: 0.4 },

@@ -21,6 +21,10 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
+      if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
+      if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
+      if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
       if (!name.startsWith(".")) return require(name);
       const target = path.resolve(path.dirname(filename), name);
       const ext = ["", ".ts", ".tsx"].find((e) => fs.existsSync(target + e));
@@ -154,7 +158,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#F29D82",
+    "#F0997B",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -588,7 +592,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
   try {
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
-    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#B7ABEC", 60], ["#F29D82", 60]]);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BCE8", 60], ["#F0997B", 60]]);
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
     const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
@@ -614,4 +618,26 @@ test("local Monday week rollover excludes Sunday while month retains both dates"
   assert.deepEqual(week.sessions.map(row => row.id), ["monday"]);
   assert.equal(week.seconds, 60);
   assert.equal(month.seconds, 120);
+});
+
+test('Week and Month use identical label/button geometry and one separate selection surface',async()=>{
+  const ui=await screenHarness();
+  try {
+    const buttons=()=>ui.renderer.root.findAllByType('Button').filter(node=>['Week view','Month view'].includes(node.props.accessibilityLabel));
+    assert.equal(buttons().length,2);
+    assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
+    assert.equal(buttons()[0].findAllByType('View').length,0);
+    assert.equal(buttons()[1].findAllByType('View').length,0);
+    const labels=buttons().map(node=>node.findByType('Text'));
+    assert.deepEqual(labels[0].props.style[1][0],labels[1].props.style[1][0]);
+    const track=ui.renderer.root.findByProps({testID:'period-track'});
+    assert.equal(track.props.style.height,36);
+    assert.equal(track.props.style.overflow,'hidden');
+    assert.equal(track.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[0].top,0);
+    assert.equal(track.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[0].bottom,0);
+    assert.equal(track.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[1].left,'0%');
+    await act(async()=>buttons()[1].props.onPress());
+    assert.equal(ui.renderer.root.findAllByType('View').find(node=>node.props.testID==='period-selection').props.style[1].left,'50%');
+    assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
+  } finally {await ui.cleanup();}
 });

@@ -22,6 +22,9 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
+      if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
+      if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
       if (!name.startsWith(".")) return require(name);
       const target = path.resolve(path.dirname(filename), name);
       const ext = ["", ".ts", ".tsx"].find((e) => fs.existsSync(target + e));
@@ -411,7 +414,7 @@ test("root gate renders recovery before mounting account or onboarding providers
       "../components/AuthScreen": host("Login"),
       "../components/RecoveryScreen": host("Recovery"),
       "../components/LaunchIntro": props => props.children,
-      "../components/LevelUpModal": host("Reward"),
+      "../components/GlobalRewardListener": host("Reward"),
       "../context/AuthContext": {
         AuthProvider: props => props.children,
         useAuth: () => ({ user: recovery === "none" ? null : session.user, loading: false, recovery }),

@@ -1,7 +1,8 @@
+import Pressable from "../components/MotionPressable";
 import { Text, TextInput } from "../components/AppText";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { saveOnboardingProfile } from "../services/onboardingService";
 import { useUser } from "../context/UserContext";

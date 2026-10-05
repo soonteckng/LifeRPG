@@ -9,9 +9,9 @@ import { PersonalButton, p } from "../components/PersonalUI";
 import AuthScreen from "../components/AuthScreen";
 import RecoveryScreen from "../components/RecoveryScreen";
 import LaunchIntro from "../components/LaunchIntro";
-import LevelUpModal from "../components/LevelUpModal";
+import GlobalRewardListener from "../components/GlobalRewardListener";
 import { AuthProvider, useAuth } from "../context/AuthContext";
-import { TimerProvider, useTimer } from "../context/TimerContext";
+import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
 import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
@@ -75,46 +75,6 @@ function GlobalBackHandler() {
   return null;
 }
 
-function GlobalRewardListener() {
-  const {
-    sessionSummary,
-    completedLevelUp,
-    clearCompletionModal,
-    rewardsVisible,
-  } = useTimer();
-  const { profile, reloadProfile } = useUser();
-
-  useEffect(() => {
-    if (sessionSummary || completedLevelUp) {
-      reloadProfile();
-    }
-  }, [sessionSummary, completedLevelUp, reloadProfile]);
-
-  const currentXP = profile?.current_xp || 0;
-  const currentLevel = profile?.level || 1;
-  const requiredXP = Math.floor(100 * Math.pow(currentLevel, 1.5));
-
-  return (
-    <LevelUpModal
-      visible={rewardsVisible}
-      xpEarned={sessionSummary?.xpEarned || 0}
-      goldEarned={sessionSummary?.goldEarned || 0}
-      creditVersion={sessionSummary?.creditVersion}
-      areaXpEarned={sessionSummary?.areaXpEarned}
-      characterRemainderSeconds={sessionSummary?.characterRemainderSeconds}
-      areaRemainderSeconds={sessionSummary?.areaRemainderSeconds}
-      goalReachedNow={sessionSummary?.goalReachedNow}
-      minutesSpent={sessionSummary?.minutesSpent || 0}
-      durationSeconds={sessionSummary?.durationSeconds}
-      questTitle={sessionSummary?.questTitle}
-      isLevelUp={!!completedLevelUp?.leveledUp}
-      newLevel={completedLevelUp?.newLevel || currentLevel}
-      currentXP={currentXP}
-      requiredXP={requiredXP}
-      onClose={clearCompletionModal}
-    />
-  );
-}
 
 function AppContent() {
   const reducedMotion = useReducedMotion();

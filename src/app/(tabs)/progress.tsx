@@ -1,8 +1,13 @@
+import SlidingSelection from "../../components/SlidingSelection";
+import Pressable from "../../components/MotionPressable";
+import { floatingTabInset } from "../../utils/floatingTabInset";
+import { type } from "../../constants/typography";
 import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
 import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { useRouter } from "expo-router";
+import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -10,7 +15,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -139,11 +144,14 @@ function SessionRow({
 }
 
 export default function ProgressScreen() {
+  const timer = useTimer();
   const router = useRouter();
   const { profile, hapticsEnabled } = useUser();
-  const { sessionSummary } = useTimer();
+  const { sessionSummary } = timer;
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const insets = useSafeAreaInsets();
+  const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
+
   const [today, setToday] = useState(() => dateKey(new Date(), timeZone));
   const [mode, setMode] = useState<PeriodMode>("week");
   const [anchor, setAnchor] = useState<string | null>(null);
@@ -245,6 +253,7 @@ export default function ProgressScreen() {
   const currentPeriod = period.end >= today;
   const range = `${calendarLabel(period.start)} – ${calendarLabel(period.end, { month: "short", day: "numeric", year: "numeric" })}`;
   const peak = Math.max(1, ...(analytics?.days.map((d) => d.seconds) ?? []));
+  const chartHeight = (analytics?.days.filter(day => day.seconds > 0).length ?? 0) <= 1 ? 64 : 88;
   const activeDay =
     detail?.kind === "day"
       ? analytics?.days.find((d) => d.key === detail.key)
@@ -291,7 +300,7 @@ export default function ProgressScreen() {
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
       <AppHeader title="Progress" />
       <ScrollView
-        contentContainerStyle={s.page}
+        contentContainerStyle={[s.page, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={
           <RefreshControl
             refreshing={loading && !!data}
@@ -302,6 +311,9 @@ export default function ProgressScreen() {
       >
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
+          <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
+            <SlidingSelection testID="period-selection" index={mode === "week" ? 0 : 1} style={s.segmentSelected} />
+          </View>
           {(["week", "month"] as const).map((value) => (
             <Pressable
               key={value}
@@ -312,7 +324,7 @@ export default function ProgressScreen() {
               accessibilityRole="tab"
               accessibilityState={{ selected: mode === value }}
               accessibilityLabel={value === "week" ? "Week view" : "Month view"}
-              style={[s.segmentButton, mode === value && s.segmentSelected]}
+              style={s.segmentButton}
             >
               <Text style={[s.segmentText, mode === value && s.segmentActive]}>
                 {value === "week" ? "Week" : "Month"}
@@ -445,9 +457,9 @@ export default function ProgressScreen() {
                       accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length ? `${day.sessions.length} sessions` : "no sessions"}${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
                       style={[s.chartDay, mode === "week" && s.weekDay]}
                     >
-                      <View style={s.barTrack}>
+                      <View style={[s.barTrack, {height: chartHeight + 4}]}>
                         <View testID={`focus-bar-${day.key}`} style={[s.bar, {
-                          height: day.seconds ? Math.max(5, (day.seconds / peak) * 88) : 3,
+                          height: day.seconds ? Math.max(5, (day.seconds / peak) * chartHeight) : 3,
                           backgroundColor: day.future ? "#282E3B" : "#3A4152",
                         }]}>
                           {sessionAreaSegments(day.sessions, data.areas).map(segment => (
@@ -864,24 +876,26 @@ export default function ProgressScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  periodToolbar: { flexDirection: "column", alignItems: "stretch", flexWrap: "wrap" },
+  periodToolbar: { flexDirection: "column", alignItems: "stretch" },
   areaSummary: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 0 },
   areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
-  historyEntrance: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48, borderBottomWidth: 1, borderBottomColor: colors.line },
+  historyEntrance: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },
   header: { marginBottom: 8 },
   title: {
     color: colors.text,
     fontSize: 26,
-    fontWeight: "600",
+    fontWeight: "500",
     letterSpacing: -1,
   },
   segment: {
+    position: "relative",
+    minHeight: 44,
     flexDirection: "row",
-    backgroundColor: colors.surface,
-    borderRadius: 14,
-    padding: 3,
+    padding: 0,
+    alignItems: "stretch",
+    marginBottom: 8,
     alignSelf: "stretch",
     minWidth: 126,
   },
@@ -891,9 +905,11 @@ const s = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: 18,
+    position: "relative",
   },
-  segmentSelected: { backgroundColor: "#29334E" },
-  segmentText: { color: colors.secondary, fontSize: 14, fontWeight: "600" },
+  segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, height: 36, borderRadius: 12, overflow: "hidden", backgroundColor: colors.surface },
+  segmentSelected: { position: "absolute", width: "50%", top: 0, bottom: 0, borderRadius: 9, backgroundColor: "#354467", borderWidth: 3, borderColor: colors.surface },
+  segmentText: { width: "100%", textAlign: "center", margin: 0, padding: 0, includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
   segmentActive: { color: "#B8C8FF" },
   periodNav: {
     flexDirection: "row",
@@ -920,7 +936,7 @@ const s = StyleSheet.create({
   },
   focusValue: {
     color: colors.text,
-    fontSize: 34,
+    fontSize: 48,
     fontWeight: "600",
     letterSpacing: -1.4,
     marginTop: 6,
@@ -942,13 +958,11 @@ const s = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 32,
+    marginBottom: 12,
   },
   sectionTitle: {
-    color: colors.text,
-    fontSize: 18,
-    fontWeight: "600",
+    ...type.section,
     marginBottom: 0,
   },
   sectionAction: {
@@ -957,10 +971,10 @@ const s = StyleSheet.create({
     gap: 2,
     minHeight: 44,
   },
-  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   card: {
     paddingVertical: 8,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
   },
   chartHeader: {
@@ -984,7 +998,7 @@ const s = StyleSheet.create({
   bar: {
     overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 28, borderRadius: 5 },
   dayLabel: { color: colors.secondary, fontSize: 14 },
-  todayLabel: { color: colors.accent, fontWeight: "700" },
+  todayLabel: { color: colors.accent, fontWeight: "500" },
   goalDot: { width: 7, height: 7, borderRadius: 4 },
   dayStatus: { height: 24, justifyContent: "center", alignItems: "center", marginTop: 4 },
   goalCheck: { width: 18, height: 18, borderRadius: 9, justifyContent: "center", alignItems: "center", backgroundColor: "#7BDCC4" },
@@ -1008,7 +1022,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingVertical: 8,
-    borderBottomWidth: 1, borderBottomColor: colors.line,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line,
   },
   streakIcon: {
     width: 48,
@@ -1021,7 +1035,7 @@ const s = StyleSheet.create({
   streakNumber: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "500",
     marginBottom: 4,
   },
   calendarCard: { marginTop: 10 },
@@ -1034,7 +1048,7 @@ const s = StyleSheet.create({
     backgroundColor: "#1C2230",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: "transparent",
   },
   calendarWeekdays: { flexDirection: "row", marginBottom: 8 },
@@ -1072,7 +1086,7 @@ const s = StyleSheet.create({
   rowValue: {
     color: colors.text,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "500",
     fontVariant: ["tabular-nums"],
   },
   sessionRow: {
@@ -1081,7 +1095,7 @@ const s = StyleSheet.create({
     alignItems: "center",
     minHeight: 70,
     paddingVertical: 12,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
   },
   sessionIcon: {
@@ -1096,7 +1110,7 @@ const s = StyleSheet.create({
   emptyTitle: {
     color: colors.text,
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "500",
     textAlign: "center",
   },
   emptyBody: {
@@ -1134,7 +1148,7 @@ const s = StyleSheet.create({
   sheetTitle: {
     color: colors.text,
     fontSize: 22,
-    fontWeight: "600",
+    fontWeight: "500",
     marginBottom: 5,
   },
   sheetBack: {
@@ -1148,7 +1162,7 @@ const s = StyleSheet.create({
   summaryValue: {
     color: colors.text,
     fontSize: 36,
-    fontWeight: "600",
+    fontWeight: "500",
     letterSpacing: -1,
   },
   detailRow: {
@@ -1157,14 +1171,14 @@ const s = StyleSheet.create({
     gap: 12,
     justifyContent: "space-between",
     paddingVertical: 16,
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.line,
   },
   detailValue: { flexShrink: 1 },
   detailTotal: {
     color: colors.text,
     fontSize: 32,
-    fontWeight: "600",
+    fontWeight: "500",
     marginBottom: 5,
   },
   goalStatus: {
@@ -1177,7 +1191,7 @@ const s = StyleSheet.create({
   explainTitle: {
     color: colors.text,
     fontSize: 17,
-    fontWeight: "600",
+    fontWeight: "500",
     marginTop: 20,
     marginBottom: 8,
   },

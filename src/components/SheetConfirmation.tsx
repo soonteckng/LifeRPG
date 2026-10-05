@@ -1,5 +1,7 @@
+import GlassSurface from "./GlassSurface";
+import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
-import { Pressable, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { colors } from "../constants/theme";
 
 export interface SheetConfirmationProps {
@@ -19,6 +21,7 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
     <View style={styles.overlay} accessibilityViewIsModal onAccessibilityEscape={props.onCancel}>
       <Pressable style={styles.scrim} onPress={props.onCancel} accessibilityLabel={props.cancelLabel} accessibilityRole="button" />
       <View style={styles.dialog}>
+        <GlassSurface radius={22} />
         <Text style={styles.title} accessibilityRole="header">{props.title}</Text>
         <Text style={styles.message}>{props.message}</Text>
         <Pressable style={[styles.confirm, props.destructive === false && { backgroundColor: colors.accentSoft }]} onPress={props.onConfirm} accessibilityRole="button">
@@ -35,12 +38,12 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
 const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFill, zIndex: 100, elevation: 20, alignItems: "center", justifyContent: "center", padding: 24 },
   scrim: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.65)" },
-  dialog: { width: "100%", maxWidth: 360, padding: 24, borderRadius: 22, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  title: { color: colors.text, fontSize: 21, fontWeight: "600", marginBottom: 10 },
+  dialog: { width: "100%", maxWidth: 360, padding: 24, borderRadius: 22, backgroundColor: "transparent" },
+  title: { color: colors.text, fontSize: 21, fontWeight: "500", marginBottom: 10 },
   message: { color: colors.secondary, fontSize: 14, lineHeight: 21, marginBottom: 24 },
   confirm: { minHeight: 48, padding: 12, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "rgba(252,165,165,0.12)" },
-  confirmText: { color: colors.danger, fontSize: 15, fontWeight: "600" },
+  confirmText: { color: colors.danger, fontSize: 15, fontWeight: "500" },
   cancel: { minHeight: 48, marginTop: 8, padding: 12, alignItems: "center", justifyContent: "center" },
-  cancelText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  cancelText: { color: colors.accent, fontSize: 15, fontWeight: "500" },
 });
 

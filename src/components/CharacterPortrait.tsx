@@ -77,7 +77,7 @@ export default function CharacterPortrait({
         ]}
       />
       <View
-        style={[s.body, { width: 112 + growth, marginLeft: -(112 + growth) / 2 }]}
+        style={[s.body, { width: 94 + growth, marginLeft: -(94 + growth) / 2 }]}
       >
       </View>
       <Animated.View style={[s.head, { transform: [{ rotate: reduced ? "0deg" : wave.interpolate({ inputRange: [0, 0.5, 1], outputRange: ["0deg", "8deg", "0deg"] }) }] }]}>
@@ -85,9 +85,6 @@ export default function CharacterPortrait({
         <View style={[s.smile, expression === 1 && { width: 22, height: 9, borderBottomLeftRadius: 12, borderBottomRightRadius: 12 }, expression === 2 && { width: 10, height: 10, borderRadius: 5 }]} />
       </Animated.View>
       <View style={[s.scarf, { backgroundColor: accent }]} />
-      <View style={[s.badge, { borderColor: accent }]} accessibilityLabel={`Character badge ${avatar}`}>
-        <Text style={s.badgeText}>{avatar}</Text>
-      </View>
       </View>
     </Pressable>
   );
@@ -143,7 +140,7 @@ const s = StyleSheet.create({
   lens: { width: 24, height: 22, borderRadius: 11, borderWidth: 2, borderColor: "#626AB1" },
   bridge: { width: 6, height: 3, backgroundColor: "#626AB1" },
   smile: { marginTop: 8, width: 16, height: 4, borderRadius: 2, backgroundColor: "#626AB1" },
-  scarf: { position: "absolute", top: 110, left: 54, width: 112, height: 22, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
+  scarf: { position: "absolute", top: 110, left: 58, width: 104, height: 20, borderRadius: 8, backgroundColor: "#38C9B3", zIndex: 3 },
   face: {
     width: 25,
     height: 13,
@@ -154,15 +151,15 @@ const s = StyleSheet.create({
   body: {
     position: "absolute",
     left: "50%",
-    top: 122,
-    height: 84,
+    top: 124,
+    height: 68,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderBottomLeftRadius: 16,
-    borderBottomRightRadius: 16,
-    backgroundColor: "#909AD7",
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+    backgroundColor: "#929BC7",
     borderWidth: 2,
-    borderColor: "#B9C5F5",
+    borderColor: "#ADB7DF",
     alignItems: "center",
     justifyContent: "center",
     zIndex: 2,
@@ -191,20 +188,6 @@ const s = StyleSheet.create({
     borderRadius: 9,
     backgroundColor: "#737FB9",
   },
-  badge: {
-    position: "absolute",
-    right: 0,
-    bottom: 4,
-    width: 58,
-    height: 58,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badgeText: { fontSize: 34 },
   star: { position: "absolute", top: 12, right: 32 },
   starText: { color: colors.accent, fontSize: 22 },
 });
