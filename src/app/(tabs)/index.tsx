@@ -123,7 +123,8 @@ export default function HomeScreen() {
     [tasks],
   );
 
-  const greeting = homeWelcome(hour < 5 ? 18 : hour, profile?.username?.trim().split(/\s+/)[0]);
+  const firstName = profile?.username?.trim().split(/\s+/)[0] || "Hero";
+  const greeting = homeWelcome(hour < 5 ? 18 : hour, firstName).split(",")[0];
   const isGoalComplete = goalCompleted || remainingSeconds === 0;
   const streakDays = Math.max(0, focusStreak ?? 0);
 
@@ -182,11 +183,18 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
         <ContentReveal>
         <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - dockHeight - 28) }]}>
-          <View style={styles.identityRow}>
-            <CharacterMark size={44} avatar={profile?.avatar ?? "🌱"} />
-            <View style={styles.identity}>
-              <Text style={styles.greeting} accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)} accessibilityRole="header" numberOfLines={1}>{greeting}</Text>
-              <Text style={styles.subtitle} numberOfLines={1}>{profile?.class_title || "Growing through focus"}</Text>
+          <View style={styles.headerBlock}>
+            <View style={styles.identityRow}>
+              <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
+                <Text style={styles.greeting}>{greeting}</Text>
+                <Text style={styles.name} numberOfLines={1}>{firstName}</Text>
+              </View>
+              <View style={styles.avatarFrame}><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></View>
+            </View>
+            <View style={styles.identityMeta}>
+              <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
+              <View style={styles.metaDivider} />
+              <Text style={styles.metaText}>Level {level}</Text>
             </View>
           </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -199,11 +207,20 @@ export default function HomeScreen() {
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
               ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
           <View style={styles.focusCard} testID="home-quick-start">
-            <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
-            <View style={styles.focusChoice}>
-              <View style={[styles.focusDot, { backgroundColor: lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code) }]} />
-              <Text style={styles.focusValue}>{hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}</Text>
-              <Text style={styles.focusArea}>· {hasOpenSession ? activeArea : quickTitle}</Text>
+            <View style={styles.focusTopRow}>
+              <View style={styles.focusInfo}>
+                <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
+                <View style={styles.focusChoice}>
+                  <View style={[styles.focusDot, { backgroundColor: lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code) }]} />
+                  <Text style={styles.focusValue}>{hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}</Text>
+                  <Text style={styles.focusArea}>· {hasOpenSession ? activeArea : quickTitle}</Text>
+                </View>
+              </View>
+              {!hasOpenSession && <TouchableOpacity testID="home-change-focus" style={styles.changeButton} onPress={changeSession}
+                disabled={quickStarting || !!timer.actionBusy} accessibilityRole="button" accessibilityLabel={blocked ? "Check session status" : "Change duration or area"}>
+                <Ionicons name={blocked ? "alert-circle-outline" : "options-outline"} size={17} color={colors.accent} />
+                <Text style={styles.link}>{blocked ? "Check" : "Change"}</Text>
+              </TouchableOpacity>}
             </View>
             <TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
               testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
@@ -212,11 +229,6 @@ export default function HomeScreen() {
               <Ionicons name="play-outline" size={22} color="#171827" />
               <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
             </TouchableOpacity>
-            {!hasOpenSession && <TouchableOpacity testID="home-change-focus" style={styles.changeButton} onPress={changeSession}
-              disabled={quickStarting || !!timer.actionBusy} accessibilityRole="button" accessibilityLabel={blocked ? "Check session status" : "Change duration or area"}>
-              <Text style={styles.link}>{blocked ? "Check session status" : "Change duration or area"}</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
-            </TouchableOpacity>}
             {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
           </View>
           </View>
@@ -256,11 +268,6 @@ Your quests will appear here.</Text>
               <Ionicons name="chevron-forward" size={17} color={colors.secondary} />
             </TouchableOpacity>}
           </View>
-          <View style={styles.footer}>
-            <View style={styles.chip}><Ionicons name="flame-outline" size={16} color={colors.accent} />
-              <Text style={styles.chipText}>{streakDays > 0 ? `${streakDays} days` : "A fresh start"}</Text></View>
-            <View style={styles.chip}><Text style={styles.chipText}>Level {level}</Text></View>
-          </View>
         </View>
         </ContentReveal>
       </ScrollView>
@@ -275,17 +282,25 @@ const styles = StyleSheet.create({
   layout: { flexGrow: 1 },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
-  greeting: { color: colors.text, fontSize: 20, fontWeight: "500", letterSpacing: -0.4 },
-  subtitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, marginTop: 4 },
-  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 16, paddingBottom: 16, gap: 12 },
+  headerBlock: { gap: 12, paddingTop: 4 },
+  greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "400" },
+  name: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 },
+  avatarFrame: { width: 60, height: 60, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 },
+  identityStat: { flexDirection: "row", alignItems: "center", gap: 5 },
+  metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
+  metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
+  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 24, paddingBottom: 8, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 16, gap: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  focusTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  focusInfo: { flex: 1, minWidth: 0, gap: 4 },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  focusChoice: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, paddingBottom: 4 },
+  focusChoice: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
   focusDot: { width: 7, height: 7, borderRadius: 4 },
-  focusValue: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  focusValue: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500", fontVariant: ["tabular-nums"] },
   focusArea: { color: colors.secondary, fontSize: 16, lineHeight: 22, flexShrink: 1 },
-  changeButton: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 4 },
+  changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   quickError: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
@@ -304,9 +319,6 @@ const styles = StyleSheet.create({
   questMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 12 },
   emptyText: { flex: 1, color: colors.secondary, fontSize: 14, lineHeight: 21 },
-  footer: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 16 },
-  chip: { flexDirection: "row", gap: 6, alignItems: "center", borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 12, minHeight: 36, paddingVertical: 8 },
-  chipText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
   retry: { marginTop: 12, paddingVertical: 10 },
   retryText: { color: colors.danger, fontSize: 13 },
 });

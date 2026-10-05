@@ -3,10 +3,12 @@ import GlassSurface from "../../components/GlassSurface";
 import { colors } from "../../constants/theme";
 import SessionTabBar from "../../components/SessionTabBar";
 import TabIcon from "../../components/TabIcon";
+import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { Tabs } from "expo-router";
 import { Platform, StyleSheet } from "react-native";
 
 export default function TabsLayout() {
+  const reducedMotion = useReducedMotion();
   return (
     <FloatingDockProvider><Tabs
       tabBar={(props) => <SessionTabBar {...props} />}
@@ -14,6 +16,9 @@ export default function TabsLayout() {
       backBehavior="initialRoute"
       screenOptions={{
         headerShown: false,
+        animation: reducedMotion ? "none" : "fade",
+        transitionSpec: { animation: "timing", config: { duration: reducedMotion ? 0 : 180 } },
+        sceneStyle: { backgroundColor: colors.background },
         tabBarStyle: styles.tabBar,
         tabBarBackground: () => <GlassSurface radius={24} />,
         tabBarItemStyle: styles.tabItem,

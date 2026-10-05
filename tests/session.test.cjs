@@ -1328,3 +1328,16 @@ test("Ended notice retains the running/paused screen and exact countdown through
     }finally{await ui.cleanup();}
   }
 });
+
+test("Themed quest picker selects the existing quest settings, closes, and never starts automatically",async()=>{
+  const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
+  try {
+    await ui.press("Choose a quest");
+    assert.match(ui.output(),/45 min · Knowledge/);
+    assert.equal(ui.button("Choose Tomorrow"),undefined);
+    await ui.press("Choose Read and reflect");
+    assert.deepEqual(ui.calls,[["task",9],["area",2],["duration",45]]);
+    assert.equal(ui.root().findAllByType("Sheet").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
+  }finally{await ui.cleanup();}
+});

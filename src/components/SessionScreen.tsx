@@ -307,10 +307,10 @@ export default function SessionScreen() {
               </View>}
               {!isQuest && <>
                 <View style={styles.presets}>{PRESETS.map((value) => <TouchableOpacity key={value} disabled={locked}
-                  style={styles.preset} onPress={() => selectMinutes(value)}
+                  style={[styles.preset, fontScale > 1.3 && styles.presetLarge]} onPress={() => selectMinutes(value)}
                   accessibilityRole="button" accessibilityLabel={`${value} minutes`} accessibilityState={{ selected: minutes === value }}>
-                  <View pointerEvents="none" style={[styles.presetSurface, minutes === value && styles.selected]} />
-                  <Text style={[styles.link, minutes === value && { color: colors.accent }]}>{value}</Text>
+                  <View pointerEvents="none" style={[styles.presetSurface, minutes === value && styles.presetSelected]} />
+                  <Text style={[styles.presetText, minutes === value && styles.presetTextSelected]}>{value}</Text>
                 </TouchableOpacity>)}</View>
                 <View style={styles.areaSection}>
                   <Text style={styles.secondary}>Life area</Text>
@@ -373,16 +373,34 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={!sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices"
+      <AppSheet visible={!sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
         header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Life area"}</Text>}>
-        <BottomSheetScrollView contentContainerStyle={styles.pickerBody}>
+        <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <SheetChoice label="General" onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
           {picker === "area" && subjects.filter((item) => item.title !== "General").map((item) => <SheetChoice key={item.id} label={item.title} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
-          {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => <SheetChoice key={item.id} label={item.title} detail={`${item.target_minutes || 30} min · ${subjects.find((subject) => subject.id === item.subject_id)?.title ?? "General"}`} onPress={() => {
-            timer.setLinkedTaskId(item.id); timer.setTargetAttributeId(item.subject_id ?? general?.id ?? null);
-            timer.setDurationInMinutes(item.target_minutes || 30); setPicker(null);
-          }} />)}
-          {picker === "quest" && !tasks.some((item) => item.is_due_today && !item.is_completed_today) && <Text style={styles.secondary}>{loading ? "Loading quests…" : "No unfinished quests available today."}</Text>}
+          {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => {
+            const questArea = subjects.find(subject => subject.id === item.subject_id);
+            const tint = lifeAreaColor(item.subject_id, questArea?.color_code);
+            const selected = timer.linkedTaskId === item.id;
+            return <SheetButton key={item.id} style={[styles.questPickerCard, selected && styles.questPickerSelected]}
+              accessibilityRole="button" accessibilityLabel={`Choose ${item.title}`} accessibilityState={{selected}}
+              onPress={() => {
+                timer.setLinkedTaskId(item.id); timer.setTargetAttributeId(item.subject_id ?? general?.id ?? null);
+                timer.setDurationInMinutes(item.target_minutes || 30); setPicker(null);
+              }}>
+              <View style={[styles.questPickerIcon, {backgroundColor: `${tint}18`}]}><Ionicons name="flag-outline" size={21} color={tint} /></View>
+              <View style={styles.selectedQuestContent}>
+                <Text style={styles.questPickerTitle}>{item.title}</Text>
+                <Text style={styles.questPickerMeta}>{item.target_minutes || 30} min · {questArea?.title ?? "General"}</Text>
+              </View>
+              <Ionicons name={selected ? "checkmark-circle" : "chevron-forward"} size={20} color={selected ? colors.accent : colors.secondary} />
+            </SheetButton>;
+          })}
+          {picker === "quest" && !tasks.some((item) => item.is_due_today && !item.is_completed_today) && <View style={styles.questPickerEmpty}>
+            <Ionicons name="flag-outline" size={28} color={colors.accent} />
+            <Text style={styles.questPickerTitle}>{loading ? "Loading quests…" : "No quests for today"}</Text>
+            {!loading && <Text style={styles.secondary}>You can still start a free session.</Text>}
+          </View>}
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
@@ -434,7 +452,7 @@ const styles = StyleSheet.create({
   areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   areaChip: { minHeight: 44, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", borderRadius: 20 },
   chipSurface: { position: "absolute", left: 0, right: 0, top: 4, bottom: 4, borderRadius: 20, backgroundColor: colors.surface },
-  presetSurface: { position: "absolute", width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface },
+  presetSurface: { position: "absolute", left: 0, right: 0, top: 2, bottom: 2, borderRadius: 14, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   areaDot: { width: 8, height: 8, borderRadius: 4 },
   summaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   actionRow: { flexDirection: "row", gap: 10 },
@@ -456,8 +474,18 @@ const styles = StyleSheet.create({
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   choiceValue: { color: colors.secondary, flex: 1, textAlign: "right", fontSize: 16 },
   presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
-  preset: { minWidth: 44, minHeight: 44, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 22 },
-  selected: { backgroundColor: colors.accentSoft },
+  preset: { flex: 1, maxWidth: 76, minWidth: 52, minHeight: 48, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 14 },
+  presetLarge: { minWidth: 80, maxWidth: 110, minHeight: 58 },
+  presetSelected: { backgroundColor: "#D9DEFF", borderColor: "#E5E8FF", borderWidth: 1 },
+  presetText: { color: colors.neutral, fontSize: 17, lineHeight: 23, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  presetTextSelected: { color: "#171827", fontWeight: "600" },
+  questPickerBody: { gap: 10 },
+  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 14, borderRadius: 18, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  questPickerSelected: { borderColor: colors.accent, backgroundColor: "#20283D" },
+  questPickerIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
+  questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  questPickerEmpty: { alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 28 },
   selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
   selectedQuestIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },

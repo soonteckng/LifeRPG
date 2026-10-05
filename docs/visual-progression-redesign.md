@@ -320,3 +320,38 @@ through its existing controlled exit before navigation reveals Home.
 covers running and paused backgrounds, frozen countdown/layout after cancellation,
 no setup controls beneath the popup, button placement and delayed navigation.
 Real-phone spacing and native animations still need observation.
+
+
+### Home hierarchy, preset selection, quest picker and tab motion
+
+Home now separates the quiet time-based greeting from a larger first name, with
+a framed character at the right. Focus streak and level sit directly beneath
+the identity instead of repeating as a separate bottom row. The goal section
+begins eight points lower. Quick Start's Change action shares the duration/area
+row, reducing the card height and leaving more initial-screen room for quests.
+The page retains its full scroll surface and measured floating-dock clearance;
+large text and smaller screens can scroll rather than clip controls. Phone
+observation is still needed to confirm exactly how many quest rows are visible.
+
+Session presets use a solid pale-lavender selected surface with dark, heavier
+numerals, versus neutral unselected surfaces. Larger text uses wider/taller
+wrapping targets. Existing press springs and accessibility selected states stay
+in place. No duration parsing, wheel geometry or submission logic changed.
+
+Choose a quest now presents content-sized themed cards with Life-area flag
+icons, title, duration/area detail and selection indicators. Long titles wrap;
+empty and loading states use the same visual vocabulary. Selecting a quest still
+only configures the existing Session draft and closes the picker. Today's/All
+quest-management sheets were not edited.
+
+The tab navigator now uses its built-in 180ms crossfade, with the existing icon
+spring. Reduced motion disables the scene transition. Tab route identities,
+history policy and Session navigation are retained; no remount-based animation
+or new native dependency was introduced.
+
+Verification: 214 automated tests, TypeScript and full lint pass locally.
+Regression coverage includes themed picker selection without auto-start and
+reduced-motion tab options while retaining route identities, alongside existing
+Home, timer, completion/cancellation, account and progression tests. Native
+visual polish, first-screen quest visibility and rapid tab transitions still
+need Android/iOS phone observation; no device appearance is claimed here.
