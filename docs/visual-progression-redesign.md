@@ -299,3 +299,24 @@ same-callback swipe closure), early-End success/failure and the unchanged saved
 completion data. Native motion and dock appearance still require phone checking,
 especially iOS modal dismissal, small-screen sheet scrolling and reduced motion.
 No new dependency, backend migration or live account changes were made.
+
+
+### Ended notice follow-up: preserve its outgoing Session background
+
+A successful cancellation previously reset the live timer and caused Session to
+render its setup screen behind the ended notice. Session now retains a local
+presentation snapshot of the running/paused timer (including remaining seconds,
+quest and Life area) until dismissal completes. This snapshot is presentation
+only: the backend session stays cancelled, notifications stay cleared and no XP
+or focus credit is added. Failed cancellation continues using the live timer.
+
+The short ended notice now measures its message and Done button together in the
+sheet's scroll content, instead of positioning Done as an overlapping footer.
+Title/body/button share 20-point horizontal margins; bottom padding includes the
+phone safe area. The popup exits first, then the retained Session moves downward
+through its existing controlled exit before navigation reveals Home.
+
+212 automated tests, TypeScript and full lint passed locally. The new regression
+covers running and paused backgrounds, frozen countdown/layout after cancellation,
+no setup controls beneath the popup, button placement and delayed navigation.
+Real-phone spacing and native animations still need observation.

@@ -226,7 +226,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),TouchableOpacity:host("Button")},
-    "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
     "./AppHeader":p=>React.createElement("Button",{onPress:p.onBack,accessibilityLabel:p.backLabel},p.title),
     "./LevelUpModal":host("CompletionPopup"),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
@@ -1056,7 +1056,7 @@ test("completion message shows saved exact duration and awards; Done only closes
   const calls=[];
   const Modal=load("src/components/LevelUpModal.tsx",{
     "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
-    "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
     "@expo/vector-icons":{Ionicons:host("Icon")},
@@ -1284,7 +1284,7 @@ test("Successful early End shows a cancellation popup; failed End keeps the acti
     await ui.update({hasOpenSession:false,isRunning:false,actionBusy:false,actionError:null});
     const popup=ui.root().findAllByType("Sheet").find(s=>s.props.label==="session ended");
     assert.ok(popup);
-    assert.match(ui.output(),/No focus time or rewards were saved/);
+    assert.match(ui.output(),/No focus time or XP were recorded/);
     await act(async()=>popup.props.onRequestClose());
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
     const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];
@@ -1300,4 +1300,31 @@ test("Swipe completion dismissal also exits once when close and native dismissal
     await act(async()=>{popup.props.onClose();popup.props.onDismiss();popup.props.onDismiss();});
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
   }finally{await ui.cleanup();}
+});
+
+test("Ended notice retains the running/paused screen and exact countdown through popup and screen dismissal",async()=>{
+  for(const isRunning of [true,false]) {
+    const ui=await screenSetup({hasOpenSession:true,isRunning,duration:1800,timeLeft:827}, {}, true);
+    try {
+      const stage=ui.root().findByProps({testID:"session-timer-anchor"}).props.style;
+      await ui.press("End session");
+      await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+      await ui.update({hasOpenSession:false,isRunning:false,timeLeft:1800,actionBusy:false,actionError:null});
+      assert.deepEqual(ui.root().findByProps({testID:"session-timer-anchor"}).props.style,stage);
+      assert.equal(ui.root().findByType("DurationControl").props.seconds,827);
+      assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+      assert.doesNotMatch(ui.output(),/New session|Ready when you are|Change duration|15 minutes/);
+      const sheet=ui.root().findAllByType("Sheet").find(node=>node.props.label==="session ended");
+      assert.equal(sheet.props.footer,undefined, "short notice's button stays in measured content rather than an overlapping footer");
+      assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
+      await ui.press("Done ending session");
+      assert.equal(ui.root().findByType("DurationControl").props.seconds,827);
+      const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];
+      await act(async()=>closingSheet.props.onDismiss());
+      assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0, "retain Session until its downward exit finishes");
+      await ui.finishExit();
+      assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+      assert.equal(ui.calls.filter(c=>c[0]==="reset").length,1);
+    }finally{await ui.cleanup();}
+  }
 });

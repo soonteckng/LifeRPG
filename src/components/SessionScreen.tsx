@@ -7,7 +7,7 @@ import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import LevelUpModal from "./LevelUpModal";
 import ProgressRing from "./ProgressRing";
@@ -27,7 +27,15 @@ type Picker = "duration" | "quest" | "area" | null;
 const PRESETS = [15, 30, 45, 60];
 
 export default function SessionScreen() {
-  const timer = useTimer();
+  const liveTimer = useTimer();
+  const [endRequested, setEndRequested] = useState(false);
+  const [endedClosing, setEndedClosing] = useState(false);
+  const [endSnapshot, setEndSnapshot] = useState<Pick<typeof liveTimer, "duration" | "timeLeft" | "isRunning" | "linkedTaskId" | "targetAttributeId" | "activityType"> | null>(null);
+  const cancellationSaved = endRequested && !liveTimer.actionBusy && !liveTimer.hasOpenSession && !liveTimer.actionError && !liveTimer.isCompleted;
+  // Backend cancellation is final, but keep the outgoing active layout behind
+  // its notice until both the popup and this screen have finished leaving.
+  const timer = useMemo(() => cancellationSaved && endSnapshot ? { ...liveTimer, ...endSnapshot, hasOpenSession: true } : liveTimer, [cancellationSaved, endSnapshot, liveTimer]);
+  const insets = useSafeAreaInsets();
   const { sessionSummary, rewardsVisible, acknowledgeSummary } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const navigation = useNavigation();
@@ -48,9 +56,7 @@ export default function SessionScreen() {
   const durationValidRef = useRef(true);
   const [wheelBusy, setWheelBusy] = useState(false);
   const [durationValid, setDurationValid] = useState(true);
-  const [endRequested, setEndRequested] = useState(false);
-  const [endedClosing, setEndedClosing] = useState(false);
-  const endedVisible = endRequested && !endedClosing && !timer.actionBusy && !timer.hasOpenSession && !timer.actionError && !timer.isCompleted;
+  const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const wheelBounds = useRef({ top: 0, bottom: 0 });
@@ -254,7 +260,7 @@ export default function SessionScreen() {
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
-  const disabled = timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
+  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
   const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
@@ -380,14 +386,16 @@ export default function SessionScreen() {
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
-      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.5}
-        header={<Text style={styles.pickerTitle}>Session ended</Text>}
+      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.6}
+        header={<Text style={styles.endedTitle}>Session ended</Text>}
         onRequestClose={() => { endedDismissRequested.current = true; setEndedClosing(true); }}
-        onDismiss={() => { if (endedDismissRequested.current) minimise("session-ended"); }}
-        footer={<TouchableOpacity style={[styles.primary, {marginHorizontal:20, marginBottom:12}]} accessibilityRole="button"
-          onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); }}><Text style={styles.primaryText}>Done</Text></TouchableOpacity>}>
-        <BottomSheetScrollView contentContainerStyle={styles.pickerBody}>
-          <Text style={styles.secondary}>This session was cancelled. No focus time or rewards were saved.</Text>
+        onDismiss={() => { if (endedDismissRequested.current) minimise("session-ended"); }}>
+        <BottomSheetScrollView showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.endedBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]}>
+          <View style={styles.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
+          <Text style={styles.secondary}>This session was cancelled. No focus time or XP were recorded.</Text>
+          <SheetButton style={styles.primary} accessibilityRole="button" accessibilityLabel="Done ending session"
+            onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); }}><Text style={styles.primaryText}>Done</Text></SheetButton>
         </BottomSheetScrollView>
       </AppSheet>
       <LevelUpModal visible={!!sessionSummary && rewardsVisible}
@@ -400,7 +408,7 @@ export default function SessionScreen() {
         onDismiss={() => { if (completionDismissRequested.current) minimise("completion"); }} />
       <DurationEditor visible={!sessionSummary && picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
       {confirmEnd && !sessionSummary && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
-        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndRequested(true); void timer.resetTimer(); }} />}
+        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndSnapshot({duration:timer.duration, timeLeft:timer.timeLeft, isRunning:timer.isRunning, linkedTaskId:timer.linkedTaskId, targetAttributeId:timer.targetAttributeId, activityType:timer.activityType}); setEndRequested(true); void liveTimer.resetTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
   );
@@ -462,6 +470,9 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },
+  endedTitle: {color:colors.text, fontSize:24, lineHeight:30, fontWeight:"500", paddingHorizontal:20, paddingBottom:12},
+  endedBody: {paddingHorizontal:20, gap:16},
+  endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center"},
   pickerTitle: { color: colors.text, fontSize: 21, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 16 },
   pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },
