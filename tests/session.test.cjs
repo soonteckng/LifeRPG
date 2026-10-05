@@ -636,7 +636,7 @@ test("Android keeps Session mounted until exit finishes and rejects repeated clo
 test("viewed completion hides its dock without hiding a running session",async()=>{
   let timer={hasOpenSession:false,isCompleted:true,sessionSummary:{},summaryViewed:false};
   const Dock=load("src/components/SessionTabBar.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s}},
+    "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:390,fontScale:1})},
     "expo-router":{useRouter:()=>({navigate:()=>{}})},"expo-router/js-tabs":{BottomTabBar:host("Tabs")},
     "@expo/vector-icons":{Ionicons:host("Icon")},"react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:0})},
     "../context/TimerContext":{useTimer:()=>timer},

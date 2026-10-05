@@ -1,8 +1,9 @@
+import { floatingDockKey, useMeasureFloatingDock } from "../context/FloatingDockContext";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
-import { StyleSheet, TouchableOpacity, View } from "react-native";
+import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
@@ -16,8 +17,12 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const timer = useTimer();
   const { hasOpenSession, isRunning, isCompleted, sessionSummary } = timer;
   const dock = sessionDockState(timer);
-  return <View pointerEvents="box-none" style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-    {(hasOpenSession || (sessionSummary && !timer.summaryViewed)) && <TouchableOpacity style={styles.banner} onPress={() => router.navigate("/session")}
+  const measure = useMeasureFloatingDock();
+  const { width, fontScale } = useWindowDimensions();
+  const bannerVisible = !!(hasOpenSession || (sessionSummary && !timer.summaryViewed));
+  const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale);
+  return <View pointerEvents="box-none" onLayout={event => measure?.(layoutKey, event.nativeEvent.layout.height)} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+    {bannerVisible && <TouchableOpacity style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
       <Ionicons name={dock.icon} size={20} color={colors.accent} />
       <Text style={styles.title}>{dock.label}</Text>

@@ -1,3 +1,4 @@
+import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
 import { questLists } from "../../utils/questLists";
 import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
@@ -35,7 +36,10 @@ export default function HomeScreen() {
   const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const timer = useTimer();
-  const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
+  const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
+  const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
+  const dockKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale);
+  const dockHeight = useFloatingDockHeight(dockKey, dockEstimate);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
   const { setLinkedTaskId, setDurationInMinutes, setTargetAttributeId, hasOpenSession, sessionSummary } = timer;
@@ -52,9 +56,9 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  // Size against the actual Home viewport: the tabs and active-session dock
-  // already reserve their own space and must not be counted a second time.
-  const availableHeight = (viewportHeight ? viewportHeight - tabBarHeight : 0) || Math.max(280, height - insets.top - insets.bottom - 96);
+  // Home's scroll viewport ends above the floating dock, including its banner.
+  // Its measured height must not also be subtracted from this reduced viewport.
+  const availableHeight = viewportHeight || Math.max(280, height - insets.top - dockHeight - 8);
   const goalSize = Math.round(Math.max(144, Math.min(
     (width - 40) * 0.60, availableHeight * 0.36, fontScale > 1.5 ? 160 : 232,
   )));
@@ -118,13 +122,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <ScrollView style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
+      <ScrollView testID="home-viewport" style={[styles.viewport, { marginBottom: dockHeight + 8 }]} scrollEnabled={contentHeight > viewportHeight + 1}
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
-        contentContainerStyle={[styles.content, { paddingBottom: tabBarHeight + 16 }]}>
+        contentContainerStyle={styles.content}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - tabBarHeight - 28) }]}>
+        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
           <View style={styles.identityRow}>
             <CharacterMark size={44} avatar={profile?.avatar ?? "🌱"} />
             <View style={styles.identity}>

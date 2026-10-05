@@ -196,3 +196,10 @@ Home and QuestSheet now consume `questLists` for the same unfinished-today membe
 Home now groups the preview in a compact rounded surface, uses a 20/26 heading, a remaining count, area-tinted icons, 17/23 quest names and 14/20 duration/area metadata. The card fits its contents rather than reserving empty row space. Existing row taps still open management; no new persistence or session actions were introduced.
 
 Regression coverage checks historical completions, recurring eligibility, upcoming quests, stable ordering, live completion updates to the preview, and reopening scope. Native appearance, long titles and large text remain phone-observation requirements.
+
+
+### Home clearance above the active-session dock
+
+Home now ends its scroll viewport above the floating dock instead of relying only on scroll-end padding. Its streak/level footer cannot draw beneath the running/paused/completion bar; short devices can scroll the reduced viewport. Ring sizing uses this already-reduced viewport, avoiding subtracting the dock twice. The navigation pill remains independently floating with a transparent wrapper and no external strip/fade.
+
+A tab-scoped FloatingDockProvider receives actual native wrapper heights. Measurements are keyed to visible banner, safe bottom, device width and font scale; Home uses a conservative estimate until the matching layout is available. No session or account state is changed. Test Home with an active and paused session, completion dock, large text and rotation on-device.
