@@ -14,6 +14,7 @@ export default function GlobalRewardListener() {
     completedLevelUp,
     clearCompletionModal,
     rewardsVisible,
+    acknowledgeSummary,
     linkedTaskId,
     targetAttributeId,
   } = useTimer();
@@ -28,11 +29,6 @@ export default function GlobalRewardListener() {
     }
   }, [sessionSummary, completedLevelUp, reloadProfile]);
 
-  useEffect(() => {
-    // The open Session already presents the saved result. Consume only the
-    // popup visibility so navigating away cannot reveal that result again.
-    if (insideSession && sessionSummary && rewardsVisible) clearCompletionModal();
-  }, [insideSession, sessionSummary, rewardsVisible, clearCompletionModal]);
 
   const currentXP = profile?.current_xp || 0;
   const currentLevel = profile?.level || 1;
@@ -57,7 +53,7 @@ export default function GlobalRewardListener() {
       newLevel={completedLevelUp?.newLevel || currentLevel}
       currentXP={currentXP}
       requiredXP={requiredXP}
-      onClose={clearCompletionModal}
+      onClose={() => { clearCompletionModal(); acknowledgeSummary(); }}
     />
   );
 }

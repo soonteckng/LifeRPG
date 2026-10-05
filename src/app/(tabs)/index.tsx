@@ -84,9 +84,9 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  // Home's scroll viewport ends above the floating dock, including its banner.
-  // Its measured height must not also be subtracted from this reduced viewport.
-  const availableHeight = viewportHeight || Math.max(280, height - insets.top - dockHeight - 8);
+  // Content paints behind the floating dock; only scroll padding reserves
+  // clearance for the final row. Size the hero against the unobstructed space.
+  const availableHeight = Math.max(280, (viewportHeight || height - insets.top) - dockHeight - 8);
   const goalSize = Math.round(Math.max(144, Math.min(
     (width - 40) * 0.60, availableHeight * 0.29, fontScale > 1.5 ? 160 : 232,
   )));
@@ -175,13 +175,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <ScrollView testID="home-viewport" style={[styles.viewport, { marginBottom: dockHeight + 8 }]} scrollEnabled={contentHeight > viewportHeight + 1}
+      <ScrollView testID="home-viewport" style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
-        contentContainerStyle={styles.content}>
+        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - 28) }]}>
+        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - dockHeight - 28) }]}>
           <View style={styles.identityRow}>
             <CharacterMark size={44} avatar={profile?.avatar ?? "🌱"} />
             <View style={styles.identity}>

@@ -270,3 +270,32 @@ and large screens; long area names; loading and Retry presentation; immediate
 start followed by the existing upward Session presentation; reduced motion;
 installed-build completion notifications and foreground/background recovery.
 No live backend query, migration, account modification or device test was run.
+
+
+### Quick Start phone feedback: floating dock, popups and presets
+
+Home's scroll surface now extends behind the floating dock. The dock's measured
+height is reserved as scroll-content bottom padding instead of a viewport
+margin, removing the blank footer block while keeping the last rows reachable.
+The hero still uses the unobstructed height, avoiding a second dock subtraction.
+The session banner itself remains opaque and readable.
+
+Completion now uses the shared animated, content-sized AppSheet with a fixed
+Done footer, downward swipe, backdrop/back dismissal and existing reduced-motion
+rules. Session owns its popup while open; the global listener presents the same
+popup outside Session. No visibility is consumed merely by entering Session.
+The inline result is hidden during initial popup presentation and dismissal;
+Done/dismissal exits Session only after the sheet closes, without a second result
+page. Saved results remain retained, without reset or repeat awards.
+
+A successful early End uses a separate Session ended sheet stating that the
+session was cancelled and no time/rewards were saved. Failed cancellation shows
+no success notice and keeps the active timer. Cancellation/reward semantics have
+not changed. Quick duration presets are now 15, 30, 45 and 60 minutes.
+
+TypeScript, full lint and 211 automated tests pass locally. Added checks cover
+preset/default selection, popup ownership, once-only close ordering (including
+same-callback swipe closure), early-End success/failure and the unchanged saved
+completion data. Native motion and dock appearance still require phone checking,
+especially iOS modal dismissal, small-screen sheet scrolling and reduced motion.
+No new dependency, backend migration or live account changes were made.

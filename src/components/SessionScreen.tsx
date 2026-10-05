@@ -9,6 +9,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
+import LevelUpModal from "./LevelUpModal";
 import ProgressRing from "./ProgressRing";
 import { CompletionHero, CompletionRows } from "./CompletionDetails";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
@@ -23,7 +24,7 @@ import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
 
 type Picker = "duration" | "quest" | "area" | null;
-const PRESETS = [15, 25, 45, 60];
+const PRESETS = [15, 30, 45, 60];
 
 export default function SessionScreen() {
   const timer = useTimer();
@@ -36,6 +37,10 @@ export default function SessionScreen() {
   const ringSize = Math.min(height < 700 ? 252 : 300, width - 48);
   const timerStageHeight = Math.max(300, ringSize + 24, labelHeight + rowHeight * 3 + 44);
   const ringTop = 12 + labelHeight + rowHeight * 1.5 - ringSize / 2;
+  const completionDismissRequested = useRef(false);
+  const endedDismissRequested = useRef(false);
+  const [completionClosing, setCompletionClosing] = useState(false);
+  const hideCompletedSummary = !!sessionSummary && (rewardsVisible || completionClosing);
   const [picker, setPicker] = useState<Picker>(null);
   const [durationRevision, setDurationRevision] = useState(0);
   const durationEpoch = useRef(0);
@@ -43,6 +48,9 @@ export default function SessionScreen() {
   const durationValidRef = useRef(true);
   const [wheelBusy, setWheelBusy] = useState(false);
   const [durationValid, setDurationValid] = useState(true);
+  const [endRequested, setEndRequested] = useState(false);
+  const [endedClosing, setEndedClosing] = useState(false);
+  const endedVisible = endRequested && !endedClosing && !timer.actionBusy && !timer.hasOpenSession && !timer.actionError && !timer.isCompleted;
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const wheelBounds = useRef({ top: 0, bottom: 0 });
@@ -98,6 +106,7 @@ export default function SessionScreen() {
   const phase = timer.isCompleted ? "completed" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
     if (task && timer.hasOpenSession) timer.resolveQuestTitle(task.id, task.title);
@@ -120,13 +129,14 @@ export default function SessionScreen() {
   }, [phase, reducedMotion, opacity]);
 
   const dismissLayer = useCallback(() => {
+    if (completionClosing || endedClosing) return false;
     if (Keyboard.isVisible() || keyboardVisible) { Keyboard.dismiss(); return true; }
     if (picker) { setPicker(null); return true; }
     if (confirmEnd) { setConfirmEnd(false); return true; }
     return false;
-  }, [keyboardVisible, picker, confirmEnd]);
+  }, [keyboardVisible, picker, confirmEnd, completionClosing, endedClosing]);
   const minimise = useCallback((source = "header") => {
-    const layerDismissed = dismissLayer();
+    const layerDismissed = source === "completion" || source === "session-ended" ? false : dismissLayer();
     const state = navigation.getState();
     traceSession("close request", { source, layerDismissed, alreadyClosing: closing.current, navigator: state?.key, activeRoute: state?.routes[state.index]?.key, reducedMotion });
     if (layerDismissed) {
@@ -194,7 +204,7 @@ export default function SessionScreen() {
     }) as never);
     return () => { start(); end(); };
   }, [navigation]);
-  usePreventRemove(!!picker || keyboardVisible || confirmEnd || !exitReady, () => {
+  usePreventRemove((!completionClosing && !endedClosing && (!!picker || keyboardVisible || confirmEnd)) || !exitReady, () => {
     traceSession("removal deferred", { picker, keyboardVisible, confirmEnd, exitReady });
     minimise("navigation-back");
   });
@@ -259,11 +269,11 @@ export default function SessionScreen() {
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
-            {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
+            {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary && !hideCompletedSummary) && <ProgressRing size={ringSize}
               progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : "#25C9B8"} />}
           </Animated.View>
-          <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary ? "no-hide-descendants" : "auto"}>
+          <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && !hideCompletedSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary && !hideCompletedSummary ? "no-hide-descendants" : "auto"}>
             <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
               compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`}
               revision={durationRevision}
@@ -272,7 +282,7 @@ export default function SessionScreen() {
               onValidity={(valid) => { if (durationEpoch.current === durationRevision) { durationValidRef.current = valid; setDurationValid(valid); } }}
               onEdit={() => { if (!wheelBusyRef.current) setPicker("duration"); }} />
           </View>
-          {phase === "completed" && sessionSummary && <View style={styles.completedHero}>
+          {phase === "completed" && sessionSummary && !hideCompletedSummary && <View style={styles.completedHero}>
             <CompletionHero seconds={sessionSummary.durationSeconds} title={title} levelUp={!!timer.completedLevelUp?.leveledUp} />
           </View>}
           <Text style={[styles.status, (phase === "running" || phase === "paused" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
@@ -331,7 +341,7 @@ export default function SessionScreen() {
               </TouchableOpacity>}
             </View>}
 
-            {timer.isCompleted && timer.sessionSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
+            {timer.isCompleted && timer.sessionSummary && !hideCompletedSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
               {timer.completedLevelUp?.leveledUp && <Text style={styles.levelUp} accessibilityLiveRegion="polite">Level up · Level {timer.completedLevelUp.newLevel}</Text>}
             </>}
           </Animated.View>
@@ -341,7 +351,7 @@ export default function SessionScreen() {
             <Text style={styles.error} accessibilityRole="alert">{timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one."}</Text>
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
-          {timer.isCompleted ? <>
+          {timer.isCompleted ? !hideCompletedSummary && <>
             <TouchableOpacity style={[styles.primary, { backgroundColor: "#E5E4FF" }]} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
             {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
           </> : <>
@@ -357,7 +367,7 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={picker === "quest" || picker === "area"} onRequestClose={() => setPicker(null)} label="session choices"
+      <AppSheet visible={!sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices"
         header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Life area"}</Text>}>
         <BottomSheetScrollView contentContainerStyle={styles.pickerBody}>
           {picker === "area" && <SheetChoice label="General" onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
@@ -370,9 +380,27 @@ export default function SessionScreen() {
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
-      <DurationEditor visible={picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
-      {confirmEnd && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
-        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); void timer.resetTimer(); }} />}
+      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.5}
+        header={<Text style={styles.pickerTitle}>Session ended</Text>}
+        onRequestClose={() => { endedDismissRequested.current = true; setEndedClosing(true); }}
+        onDismiss={() => { if (endedDismissRequested.current) minimise("session-ended"); }}
+        footer={<TouchableOpacity style={[styles.primary, {marginHorizontal:20, marginBottom:12}]} accessibilityRole="button"
+          onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); }}><Text style={styles.primaryText}>Done</Text></TouchableOpacity>}>
+        <BottomSheetScrollView contentContainerStyle={styles.pickerBody}>
+          <Text style={styles.secondary}>This session was cancelled. No focus time or rewards were saved.</Text>
+        </BottomSheetScrollView>
+      </AppSheet>
+      <LevelUpModal visible={!!sessionSummary && rewardsVisible}
+        durationSeconds={sessionSummary?.durationSeconds} xpEarned={sessionSummary?.xpEarned}
+        goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}
+        areaXpEarned={sessionSummary?.areaXpEarned} goalReachedNow={sessionSummary?.goalReachedNow}
+        questTitle={title} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId, area?.color_code)}
+        isLevelUp={!!timer.completedLevelUp?.leveledUp} newLevel={timer.completedLevelUp?.newLevel}
+        onClose={() => { completionDismissRequested.current = true; setCompletionClosing(true); timer.clearCompletionModal(); acknowledgeSummary(); }}
+        onDismiss={() => { if (completionDismissRequested.current) minimise("completion"); }} />
+      <DurationEditor visible={!sessionSummary && picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
+      {confirmEnd && !sessionSummary && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
+        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndRequested(true); void timer.resetTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
   );

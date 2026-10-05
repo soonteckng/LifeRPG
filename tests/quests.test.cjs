@@ -427,7 +427,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
   assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17", "home-quest-18"]);
-  const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.style[1].marginBottom;
+  const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.contentContainerStyle[1].paddingBottom;
   const initialMargin = viewportMargin();
   openSession = true;
   await act(async () => renderer.update(React.createElement(Home)));
