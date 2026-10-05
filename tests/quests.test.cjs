@@ -687,3 +687,23 @@ test("Home dock clearance uses native height and rejects stale banner or text-sc
   assert.equal(height(), 98);
   await act(async () => renderer.unmount());
 });
+
+
+test("Today and All occupy equal native containers with identical full-width touch targets", async () => {
+  const ui = await setup([task(), task({id:2, title:"Upcoming", is_due_today:false})]);
+  const today = ui.button("Today"), all = ui.button("All quests");
+  assert.equal(today.props.style.width, "100%");
+  assert.equal(today.props.style.flex, undefined);
+  assert.deepEqual(today.props.style, all.props.style);
+  const slots = ui.renderer.root.findAllByType("View").filter(node => node.props.style?.flex === 1 && node.props.style?.minWidth === 0 && node.findAllByType("Pressable").some(button => ["Today", "All quests"].includes(button.props.accessibilityLabel)));
+  assert.equal(slots.length, 2);
+  assert.deepEqual(slots[0].props.style, slots[1].props.style);
+  assert.equal(today.props.accessibilityState.selected, true);
+  assert.equal(all.props.accessibilityState.selected, false);
+  await ui.press("All quests");
+  assert.equal(ui.button("All quests").props.accessibilityState.selected, true);
+  assert.ok(ui.button("Edit Upcoming"));
+  await ui.press("Today");
+  assert.equal(ui.button("Edit Upcoming"), undefined);
+  await ui.cleanup();
+});

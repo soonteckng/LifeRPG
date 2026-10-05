@@ -5,7 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
@@ -62,6 +62,31 @@ export default function SessionScreen() {
     if (sessionSummary && !rewardsVisible) acknowledgeSummary();
   }, [sessionSummary, rewardsVisible, acknowledgeSummary]));
   const [opacity] = useState(() => new Animated.Value(1));
+  const [timerTranslate] = useState(() => new Animated.Value(0));
+  const stageY = useRef<number | null>(null);
+  const stageAnimation = useRef<Animated.CompositeAnimation | null>(null);
+  const lastPhase = useRef<string | null>(null);
+  useEffect(() => () => stageAnimation.current?.stop(), []);
+  useEffect(() => {
+    if (reducedMotion) {
+      stageAnimation.current?.stop();
+      timerTranslate.setValue(0);
+    }
+  }, [reducedMotion, timerTranslate]);
+  const settleTimerStage = (nextY: number) => {
+    const previousY = stageY.current;
+    stageY.current = nextY;
+    stageAnimation.current?.stop();
+    if (previousY === null || reducedMotion || Math.abs(previousY - nextY) < 1) {
+      timerTranslate.setValue(0);
+      return;
+    }
+    // Offset the newly laid-out stage to its old location, then settle to zero.
+    // The duration control stays mounted; this never animates wheel geometry.
+    timerTranslate.setValue(previousY - nextY);
+    stageAnimation.current = Animated.timing(timerTranslate, { toValue: 0, duration: 300, useNativeDriver: true });
+    stageAnimation.current.start();
+  };
 
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
   const general = subjects.find((item) => item.title === "General");
@@ -82,10 +107,14 @@ export default function SessionScreen() {
     const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
     return () => { show.remove(); hide.remove(); };
   }, []);
-  useEffect(() => {
-    // Surrounding controls fade; the timer stays mounted outside this animation.
-    opacity.setValue(reducedMotion ? 1 : 0);
-    const animation = Animated.timing(opacity, { toValue: 1, duration: reducedMotion ? 0 : 180, useNativeDriver: true });
+  useLayoutEffect(() => {
+    const changed = lastPhase.current !== null && lastPhase.current !== phase;
+    lastPhase.current = phase;
+    opacity.stopAnimation();
+    if (reducedMotion || !changed) { opacity.setValue(1); return; }
+    // Animate the visible ring, header and controls, not just the empty details.
+    opacity.setValue(0);
+    const animation = Animated.timing(opacity, { toValue: 1, duration: 280, useNativeDriver: true });
     animation.start();
     return () => animation.stop();
   }, [phase, reducedMotion, opacity]);
@@ -224,15 +253,16 @@ export default function SessionScreen() {
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <AppHeader title={phase === "setup" ? "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} />
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "setup" ? "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, phase !== "setup" && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
-          <View style={[styles.timerStage, {height:timerStageHeight}]}>
-          <View pointerEvents="none" style={[styles.ringLayer, { top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
+          <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
+            style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
+          <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
             {phase !== "setup" && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
               progress={Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : "#25C9B8"} />}
-          </View>
+          </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary ? "no-hide-descendants" : "auto"}>
             <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
               compact caption={phase === "setup" ? undefined : `of ${sessionTime(timer.duration)}`}
@@ -248,11 +278,11 @@ export default function SessionScreen() {
           <Text style={[styles.status, (phase === "running" || phase === "paused" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
-          </View>
+          </Animated.View>
         </View>
         <ScrollView style={phase === "setup" ? styles.flex : styles.activeDetails} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
+          <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{timer.isRunning ? isQuest ? title : `${area?.title ?? "General"} · Free session` : `${title} · Paused`}</Text>}
-          <Animated.View style={{ opacity }}>
             {phase === "setup" && <View style={styles.setup}>
               {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
@@ -294,7 +324,7 @@ export default function SessionScreen() {
             </>}
           </Animated.View>
         </ScrollView>
-        <View style={styles.actions}>
+        <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}]}>
           {(timer.actionError || timer.restoreError) && <View>
             <Text style={styles.error} accessibilityRole="alert">{timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one."}</Text>
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
@@ -313,7 +343,7 @@ export default function SessionScreen() {
             </View>
             {timer.hasOpenSession && <Text style={styles.cancelHint}>Ending now doesn’t save this session.</Text>}
           </>}
-        </View>
+        </Animated.View>
       </KeyboardAvoidingView>
       <AppSheet visible={picker === "quest" || picker === "area"} onRequestClose={() => setPicker(null)} label="session choices"
         header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Life area"}</Text>}>
