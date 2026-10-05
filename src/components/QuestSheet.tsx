@@ -173,7 +173,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       </View>
       <View style={styles.subheadingRow}>
         <View style={styles.scopeGroup}>
-          <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} style={styles.scopeSelection} /></View>
+          <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} settling={scope === "all" ? "quick" : "standard"} style={styles.scopeSelection} /></View>
           {(["today", "all"] as const).map(value => <View key={value} style={styles.scopeSlot}>
             <Pressable style={styles.scopeButton}
               onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>

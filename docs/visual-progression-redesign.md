@@ -212,3 +212,10 @@ Today/All now uses equal native View slots around the gesture-handler touchables
 Session phase motion now covers the visible header, ring, running title and action controls (280ms native opacity), rather than only a detail container empty during running. The permanently mounted timer stage measures its relative layout position and animates an inverse offset back to zero (300ms) when setup changes to the centred running layout. It does not rebuild or resize duration wheels. First layout and reduced motion skip relocation; countdown ticks do not replay the phase reveal. Start RPC, retry/locking, navigation and timer state are unchanged.
 
 Tests exercise free and quest starts, loading-to-success phase changes, mounted-node continuity, measured relocation, countdown updates, reduced motion and equal scope slots. Device observation is still needed for Android gesture-handler wrapper sizing, large text, actual animation timing and any one-frame layout artefacts.
+
+
+### Shorter Today-to-All settling and opaque session dock
+
+Quest scope selection uses a quicker clamped spring toward All (stiffness 460, mass 0.65, shorter settling tail); returning to Today retains the existing spring. The same measured travel distance and equal touch slots remain. Progress selections retain their current motion.
+
+The active-session banner now has an opaque tinted #20283D surface and a subtle accent edge. Its pressed opacity remains 1, so tab content cannot pass through even while tapping. The navigation pill and transparent space around the dock are unchanged. Verify subjective spring timing and readability over Home, Progress and Profile on-phone.
