@@ -1,3 +1,4 @@
+import { questLists } from "../../utils/questLists";
 import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
@@ -86,7 +87,7 @@ export default function HomeScreen() {
   const level = profile?.level ?? 1;
 
   const activeTasks = useMemo(
-    () => tasks.filter((task) => task.is_due_today && !task.is_completed_today),
+    () => questLists(tasks).today,
     [tasks],
   );
 
@@ -145,25 +146,42 @@ export default function HomeScreen() {
             <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : "Start session"}</Text>
           </TouchableOpacity>
           </View>
-          <View style={styles.questHeading}>
-            <Text style={styles.sectionTitle}>{"Today's quests"}</Text>
-            <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Today's quests, ${activeTasks.length} pending`}
-              onPress={() => setQuestsVisible(true)} style={styles.allButton}>
-              <Text style={styles.link}>{activeTasks.length ? "View all" : "Add a quest"}</Text>
-              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
-            </TouchableOpacity>
+          <View style={styles.questCard} testID="home-quest-card">
+            <View style={styles.questHeading}>
+              <View style={styles.questHeadingText}>
+                <Text style={styles.sectionTitle} accessibilityRole="header">{"Today's quests"}</Text>
+                <Text style={styles.questCount}>{activeTasks.length ? `${activeTasks.length} remaining` : "Make room for what matters"}</Text>
+              </View>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Today's quests, ${activeTasks.length} pending`}
+                onPress={() => setQuestsVisible(true)} style={styles.allButton}>
+                <Text style={styles.link}>{activeTasks.length ? "View all" : "Add quest"}</Text>
+                <Ionicons name="chevron-forward" size={15} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
+            {activeTasks.slice(0, 3).map((task, index) => {
+              const area = subjects.find(subject => subject.id === task.subject_id);
+              const tint = lifeAreaColor(task.subject_id, area?.color_code);
+              return <TouchableOpacity key={task.id} style={[styles.questRow, index > 0 && styles.questDivider]}
+                testID={`home-quest-${task.id}`} accessibilityRole="button"
+                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${area?.title ?? "General"}. Open quests to edit or start`}
+                onPress={() => setQuestsVisible(true)}>
+                <View style={[styles.questIcon, { backgroundColor: `${tint}18` }]}>
+                  <Ionicons name="flag-outline" size={20} color={tint} />
+                </View>
+                <View style={styles.questDetail}>
+                  <Text style={styles.questTitle} numberOfLines={2}>{task.title}</Text>
+                  <Text style={styles.questMeta} numberOfLines={1}>{task.target_minutes || 30} min · {area?.title ?? "General"}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={17} color={colors.secondary} />
+              </TouchableOpacity>;
+            })}
+            {activeTasks.length === 0 && <TouchableOpacity style={styles.emptyQuest} onPress={() => setQuestsVisible(true)} accessibilityRole="button" accessibilityLabel="Open today's quests">
+              <View style={styles.questIcon}><Ionicons name="flag-outline" size={20} color={colors.accent} /></View>
+              <Text style={styles.emptyText}>Choose one thing to focus on.
+Your quests will appear here.</Text>
+              <Ionicons name="chevron-forward" size={17} color={colors.secondary} />
+            </TouchableOpacity>}
           </View>
-          {activeTasks.slice(0, 3).map((task) => <TouchableOpacity key={task.id} style={styles.questRow}
-            accessibilityRole="button" accessibilityLabel={`${task.title}. Open quests to edit or start`}
-            onPress={() => setQuestsVisible(true)}>
-            <View style={[styles.dot, { backgroundColor: lifeAreaColor(task.subject_id, subjects.find(area => area.id === task.subject_id)?.color_code) }]} />
-            <Text style={styles.questTitle} numberOfLines={2}>{task.title}</Text>
-            <Text style={styles.questTime}>{task.target_minutes || 30} min</Text>
-          </TouchableOpacity>)}
-          {activeTasks.length === 0 && <TouchableOpacity style={styles.emptyQuest} onPress={() => setQuestsVisible(true)} accessibilityRole="button">
-            <Ionicons name="flag-outline" size={20} color={colors.secondary} />
-            <Text style={styles.emptyText}>Focus freely, or give your next session a purpose.</Text>
-          </TouchableOpacity>}
           <View style={styles.footer}>
             <View style={styles.chip}><Ionicons name="flame-outline" size={16} color={colors.accent} />
               <Text style={styles.chipText}>{streakDays > 0 ? `${streakDays} days` : "A fresh start"}</Text></View>
@@ -189,16 +207,21 @@ const styles = StyleSheet.create({
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
   primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
-  questHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 16 },
-  sectionTitle: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
-  allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44 },
+  questCard: { marginTop: 12, borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
+  questHeadingText: { flex: 1, minWidth: 0, gap: 4 },
+  sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", letterSpacing: -0.3 },
+  questCount: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44, paddingLeft: 4 },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
-  questRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, paddingVertical: 8 },
-  dot: { width: 8, height: 8, borderRadius: 4 },
-  questTitle: { color: colors.text, fontSize: 17, fontWeight: "500", flex: 1 },
-  questTime: { color: colors.secondary, fontSize: 15 },
-  emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 16 },
-  emptyText: { flex: 1, color: colors.secondary, fontSize: 13, lineHeight: 20 },
+  questRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  questDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(225,235,255,0.08)" },
+  questIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(175,169,236,0.10)", alignItems: "center", justifyContent: "center" },
+  questDetail: { flex: 1, minWidth: 0, gap: 3 },
+  questTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
+  questMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 12 },
+  emptyText: { flex: 1, color: colors.secondary, fontSize: 14, lineHeight: 21 },
   footer: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 16 },
   chip: { flexDirection: "row", gap: 6, alignItems: "center", borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 12, minHeight: 36, paddingVertical: 8 },
   chipText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },

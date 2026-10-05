@@ -51,7 +51,7 @@ const native = { View: host("View"), Text: host("Text"), Pressable: host("Pressa
 
 async function setup(initialTasks = [], hasOpenSession = false) {
   const calls = [], alerts = [];
-  let currentTasks, failSave = false;
+  let currentTasks, changeVisible, failSave = false;
   const Context = React.createContext(null);
   const timer = { hasOpenSession, linkedTaskId: hasOpenSession ? 1 : null,
     setLinkedTaskId: (value) => calls.push(["task", value]),
@@ -85,6 +85,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
   function Harness() {
     const [tasks, setTasks] = React.useState(initialTasks);
     const [visible, setVisible] = React.useState(true);
+    changeVisible = setVisible;
     currentTasks = tasks;
     const value = { tasks, subjects, loading: false, refreshing: false, error: false,
       refresh: React.useCallback(async () => {}, []),
@@ -106,6 +107,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     input: (label) => renderer.root.findAllByType("Input").find((node) => node.props.accessibilityLabel === label)?.props.value,
     alertAction: async (label) => { const action = button(label); assert.ok(action); await act(async () => action.props.onPress()); },
     dismiss: async () => { await act(async () => renderer.root.findAllByType("Sheet").at(-1).props.onRequestClose()); },
+    reopen: async () => { await act(async () => changeVisible(true)); },
     finishDismiss: async () => { await act(async () => renderer.root.findByType("Sheet").props.onDismiss()); },
     output: () => text(renderer.root),
     cleanup: async () => { await act(async () => renderer.unmount()); },
@@ -378,7 +380,7 @@ test("continuing from a protected row waits for list dismissal", async () => {
 });
 
 test("Home preserves loaded progress on failure and exposes a retry instead of a permanent refresh button", async () => {
-  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {};
+  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {}, homeTasks = [];
   const name = "A long welcoming username with several words";
   const reloadProfile = async () => true;
   const refreshQuests = async () => {};
@@ -389,9 +391,9 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "expo-haptics": {}, "expo-router": { useRouter: () => ({ push() {} }) },
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
-    "../../components/QuestSheet": () => null,
+    "../../components/QuestSheet": host("QuestPreviewSheet"),
     "../../components/ContentReveal": ({ children }) => children,
-    "../../context/QuestContext": { useQuests: () => ({ tasks: [], error: false, refresh: refreshQuests }) },
+    "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: false, sessionSummary: summary }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
@@ -402,6 +404,18 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   await act(async () => { renderer = create(React.createElement(Home)); });
   const output = () => JSON.stringify(renderer.toJSON());
   const retry = () => renderer.root.findAllByType("Pressable").find((node) => node.props.accessibilityLabel === "Retry loading Home");
+  homeTasks = [task({id: 12, title: "Completed earlier", is_completed: true}), task({id: 13, title: "Tomorrow", is_due_today: false}), task({id: 14, title: "Finished today", is_completed_today: true}), task({id: 15, title: "Read now"}), task({id: 16, title: "Repeat today", is_recurring: true, is_completed: true}), task({id: 17, title: "Third quest"}), task({id: 18, title: "Fourth quest"})];
+  await act(async () => renderer.update(React.createElement(Home)));
+  const previewRows = () => renderer.root.findAllByType("Pressable").filter(node => node.props.testID?.startsWith("home-quest-"));
+  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15", "home-quest-16", "home-quest-17"]);
+  assert.ok(renderer.root.findByProps({testID: "home-quest-card"}));
+  const openQuests = renderer.root.findAllByType("Pressable").find(node => node.props.accessibilityLabel === "Today's quests, 4 pending");
+  assert.ok(openQuests);
+  await act(async () => openQuests.props.onPress());
+  assert.equal(renderer.root.findByType("QuestPreviewSheet").props.visible, true);
+  homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
+  await act(async () => renderer.update(React.createElement(Home)));
+  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17", "home-quest-18"]);
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
   await act(async () => refresh());
@@ -596,4 +610,35 @@ test('guarded sheet pull tracks the finger at the list top and leaves inner scro
   assert.equal(closeRequests,1);
   assert.equal(libraryChanges,2);
   await act(async()=>tree.unmount());
+});
+
+
+test("Home and sheet share today's unfinished scope, preserving order and excluding historical one-off completions", () => {
+  const { questLists } = load("src/utils/questLists.ts", {});
+  const input = [task({id: 10, is_due_today: false}), task({id: 3}), task({id: 4, is_completed: true}), task({id: 5, is_completed_today: true}), task({id: 6, is_recurring: true, is_completed: true}), task({id: 7})];
+  const {today, available, done} = questLists(input);
+  assert.deepEqual(today.map(item => item.id), [3, 6, 7]);
+  assert.deepEqual(available.map(item => item.id), [3, 6, 7, 10]);
+  assert.deepEqual(done.map(item => item.id), [5]);
+  assert.deepEqual(input.map(item => item.id), [10, 3, 4, 5, 6, 7]);
+});
+
+
+test("reopening Home's quest sheet restores Today after All or Done today", async () => {
+  const ui = await setup([task(), task({id: 2, title: "Upcoming", is_due_today: false}), task({id: 3, title: "Already done", is_completed_today: true})]);
+  await ui.press("All quests");
+  assert.ok(ui.button("Edit Upcoming"));
+  await ui.dismiss();
+  await ui.finishDismiss();
+  await ui.reopen();
+  assert.equal(ui.button("Edit Upcoming"), undefined);
+  assert.ok(ui.button("Edit Read a chapter"));
+  await ui.press("View completed quests");
+  assert.ok(ui.button("Edit Already done"));
+  await ui.dismiss();
+  await ui.finishDismiss();
+  await ui.reopen();
+  assert.equal(ui.button("Edit Already done"), undefined);
+  assert.ok(ui.button("Edit Read a chapter"));
+  await ui.cleanup();
 });

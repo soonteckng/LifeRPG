@@ -1,3 +1,4 @@
+import { questLists } from "../utils/questLists";
 import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
@@ -143,12 +144,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     else onClose();
   };
 
-  const available = tasks.filter((task) => !task.is_completed_today && (task.is_recurring || !task.is_completed));
-  const today = available.filter((task) => task.is_due_today);
+  const { available, today, done } = questLists(tasks);
   const unfinished = today;
-  const done = tasks.filter(task => task.is_completed_today);
-  const shown = (showDone ? done : scope === "today" ? today : available).slice().sort((a, b) =>
-    Number(b.is_due_today) - Number(a.is_due_today));
+  const shown = showDone ? done : scope === "today" ? today : available;
 
   const editorHeader = editor ? (
     <View>

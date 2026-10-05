@@ -187,3 +187,12 @@ The owner confirmed the period alignment fix and requested a more readable glass
 Verification: TypeScript, full lint and 193/193 tests pass. Android/iOS JavaScript exports pass with --no-bytecode. New tests render the shared motion/material components against native boundaries: press/release/callbacks/disabled/reduced motion, measured selection and interrupted springs, Android native-import avoidance, supported/unsupported iOS and reduced transparency. Existing auth, quest, wheel, completion and restoration tests still pass. These do not measure native frames or confirm phone appearance.
 
 Phone observation required: nav readability over chart/text, icon selection, rapid Week/Month and Today/All taps, keyboard open/close, dirty/clean sheet drags and scrolling, short/large screens and large text, all session states and completion, disabled/loading buttons, reduced motion and iOS Reduce Transparency/native glass. Device screenshots or an installed build were not available during this pass.
+
+
+### Home quest preview consistency and card
+
+Home and QuestSheet now consume `questLists` for the same unfinished-today membership and order. Completed one-off quests cannot leak into the Home preview; recurring quests remain eligible when due and unfinished today. Home previews the first three and counts the full list. The existing dismissal reset restores Today and exits Done today when Home reopens the sheet; regression coverage now verifies this. Switching scopes inside the open sheet still updates in place.
+
+Home now groups the preview in a compact rounded surface, uses a 20/26 heading, a remaining count, area-tinted icons, 17/23 quest names and 14/20 duration/area metadata. The card fits its contents rather than reserving empty row space. Existing row taps still open management; no new persistence or session actions were introduced.
+
+Regression coverage checks historical completions, recurring eligibility, upcoming quests, stable ordering, live completion updates to the preview, and reopening scope. Native appearance, long titles and large text remain phone-observation requirements.
