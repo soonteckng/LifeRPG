@@ -219,3 +219,14 @@ Tests exercise free and quest starts, loading-to-success phase changes, mounted-
 Quest scope selection uses a quicker clamped spring toward All (stiffness 460, mass 0.65, shorter settling tail); returning to Today retains the existing spring. The same measured travel distance and equal touch slots remain. Progress selections retain their current motion.
 
 The active-session banner now has an opaque tinted #20283D surface and a subtle accent edge. Its pressed opacity remains 1, so tab content cannot pass through even while tapping. The navigation pill and transparent space around the dock are unchanged. Verify subjective spring timing and readability over Home, Progress and Profile on-phone.
+
+
+### Quest-sheet height timing, direct Home entry and quest setup
+
+The extra upward slide when changing Today to All comes from dynamic sheet height, separate from the segmented highlight. The quest list opts into Gorhom's 220ms timing configuration (cubic ease-out) instead of an open-ended spring tail. Other sheets retain the shared spring, and native finger-follow gestures, guarded dismissal and system reduced motion remain intact.
+
+Home's individual quest rows now configure the linked task, inherited duration and area and navigate directly to /session. View all remains the management entry. Row taps never start automatically or mutate active/paused sessions, restoring sessions, in-flight actions or an unsaved completion; those states reopen Session instead. Saved completion can become a new draft through the existing duration setter.
+
+Quest setup now shows a centred planned-duration ring, a selected-quest card with readable title and area, Change quest affordance and Switch to free session. It uses a Quest session header and avoids repeating the quest title/duration in plain rows. The duration remains inherited/read-only; running and free-session wheel behavior remain unchanged. On small/large-text screens, quest details can scroll while the primary Start remains outside the scroll region.
+
+Regression checks cover direct Home entry and blockers, no automatic Start, timed list configuration, reduced-motion setting and quest metadata/read-only duration. Phone observation is still required for actual sheet resizing, long titles and visual composition.

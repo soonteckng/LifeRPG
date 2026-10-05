@@ -4,6 +4,7 @@ import BottomSheet, {
   GESTURE_SOURCE,
   useBottomSheetInternal,
   useBottomSheetSpringConfigs,
+  useBottomSheetTimingConfigs,
   useGestureEventsHandlersDefault,
   type BottomSheetBackdropProps,
   type BottomSheetFooterProps,
@@ -28,9 +29,11 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ReduceMotion, runOnJS, useSharedValue } from "react-native-reanimated";
+import { Easing, ReduceMotion, runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "../constants/motion";
+
+const listTiming = { duration: 220, easing: Easing.out(Easing.cubic) };
 
 interface Props {
   visible: boolean;
@@ -44,6 +47,7 @@ interface Props {
   // Content-sized editors must not gain an extra tall snap point.
   compact?: boolean;
   maxHeightRatio?: number;
+  motionMode?: "spring" | "timed";
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
   label: string;
@@ -133,11 +137,14 @@ export default function AppSheet({
   expanded = false,
   compact = false,
   maxHeightRatio = 0.82,
+  motionMode = "spring",
   overlay,
   footer,
   label,
 }: Props) {
-  const animationConfigs = useBottomSheetSpringConfigs(motion.sheet);
+  const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
+  const timingConfigs = useBottomSheetTimingConfigs(listTiming);
+  const animationConfigs = motionMode === "timed" ? timingConfigs : springConfigs;
   const ref = useRef<BottomSheet>(null);
   const [mounted, setMounted] = useState(visible);
   const [previousVisible, setPreviousVisible] = useState(visible);

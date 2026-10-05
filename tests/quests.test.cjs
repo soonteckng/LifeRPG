@@ -294,11 +294,11 @@ for (const platform of ["ios", "android"]) {
       return React.createElement("Panel", props, React.createElement(props.handleComponent), props.children, props.footerComponent && React.createElement(props.footerComponent));
     });
     const AppSheet = load("src/components/AppSheet.tsx", {
-      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, useBottomSheetSpringConfigs:c=>c, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
+      "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, useBottomSheetSpringConfigs:c=>c,useBottomSheetTimingConfigs:c=>c, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
       "react-native": { ...native, Modal: host("Modal"), Platform: { OS: platform },
         PanResponder: { create: (handlers) => ({ panHandlers: handlers }) }, useWindowDimensions: () => ({ height: 800 }) },
       "react-native-gesture-handler": { GestureHandlerRootView: host("GestureRoot") },
-      "react-native-reanimated": { ReduceMotion: { System: "system" } },
+      "react-native-reanimated": { Easing:{out:fn=>fn,cubic:v=>v}, ReduceMotion: { System: "system" } },
       "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 44, bottom: 34 }) },
     }).default;
     const props = { visible: true, label: "quests", header: React.createElement("Text", null, "Today's quests"),
@@ -310,6 +310,10 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.overrideReduceMotion, "system");
     assert.equal(sheetProps.animationConfigs.damping, 38);
     assert.equal(sheetProps.animationConfigs.overshootClamping, true);
+    await act(async () => renderer.update(React.createElement(AppSheet, {...props, motionMode:"timed"})));
+    assert.equal(sheetProps.animationConfigs.duration, 220);
+    assert.equal(sheetProps.overrideReduceMotion, "system");
+
     assert.equal(sheetProps.android_keyboardInputMode, "adjustResize");
     // Native back and backdrop use the same guarded request, before any unmount.
     await act(async () => renderer.root.findByType("Modal").props.onRequestClose());
@@ -380,7 +384,8 @@ test("continuing from a protected row waits for list dismissal", async () => {
 });
 
 test("Home preserves loaded progress on failure and exposes a retry instead of a permanent refresh button", async () => {
-  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {}, homeTasks = [], openSession = false;
+  let refresh, failed = false, progressMinutes = 25, summary = null, creditFields = {}, homeTasks = [], openSession = false, homeFlags = {};
+  const sessionCalls = [];
   const name = "A long welcoming username with several words";
   const reloadProfile = async () => true;
   const refreshQuests = async () => {};
@@ -389,12 +394,13 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "react-native-svg": {__esModule:true, default:host("Svg"), Circle:host("Circle")},
     "react-native": { ...native, Animated: {createAnimatedComponent:c=>c, Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}}}, ScrollView: host("ScrollView"), TouchableOpacity: host("Pressable"), useWindowDimensions: () => ({ height: 640, width: 320, fontScale: 2 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
-    "expo-haptics": {}, "expo-router": { useRouter: () => ({ push() {} }) },
+    "expo-haptics": {}, "expo-router": { useRouter: () => ({ navigate: route => sessionCalls.push(["navigate",route]) }) },
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "../../components/QuestSheet": host("QuestPreviewSheet"),
     "../../components/ContentReveal": ({ children }) => children,
     "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
-    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary }) },
+    "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary, ...homeFlags,
+      setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, ...creditFields }; } },
@@ -413,6 +419,11 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.ok(openQuests);
   await act(async () => openQuests.props.onPress());
   assert.equal(renderer.root.findByType("QuestPreviewSheet").props.visible, true);
+  await act(async () => previewRows()[0].props.onPress());
+  assert.deepEqual(sessionCalls, [["task",15],["duration",30],["area",2],["navigate","/session"]]);
+  assert.equal(renderer.root.findByType("QuestPreviewSheet").props.visible, false);
+  sessionCalls.length = 0;
+
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
   assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17", "home-quest-18"]);
@@ -421,10 +432,23 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   openSession = true;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin + 56);
+  await act(async () => previewRows()[0].props.onPress());
+  assert.deepEqual(sessionCalls, [["navigate","/session"]]);
+  sessionCalls.length = 0;
+
   assert.equal(renderer.root.findByProps({testID: "home-layout"}).props.style[1].minHeight, 0);
   openSession = false;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin);
+  for (const flags of [{isRestoring:true},{restoreError:true},{actionBusy:true},{isCompleted:true}]) {
+    homeFlags = flags;
+    await act(async () => renderer.update(React.createElement(Home)));
+    await act(async () => previewRows()[0].props.onPress());
+    assert.deepEqual(sessionCalls, [["navigate","/session"]]);
+    sessionCalls.length = 0;
+  }
+  homeFlags = {};
+  await act(async () => renderer.update(React.createElement(Home)));
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
   await act(async () => refresh());
@@ -596,12 +620,12 @@ test('guarded sheet pull tracks the finger at the list top and leaves inner scro
     return React.createElement('Panel',props,props.children);
   });
   const AppSheet=load('src/components/AppSheet.tsx',{
-    '@gorhom/bottom-sheet': {__esModule:true,default:Sheet,useBottomSheetSpringConfigs:c=>c,BottomSheetBackdrop:host('Backdrop'),BottomSheetFooter:host('Footer'),GESTURE_SOURCE:{HANDLE:1,CONTENT:2},
+    '@gorhom/bottom-sheet': {__esModule:true,default:Sheet,useBottomSheetSpringConfigs:c=>c,useBottomSheetTimingConfigs:c=>c,BottomSheetBackdrop:host('Backdrop'),BottomSheetFooter:host('Footer'),GESTURE_SOURCE:{HANDLE:1,CONTENT:2},
       useBottomSheetInternal:()=>({animatedPosition:position,animatedScrollableState:scroll}),
       useGestureEventsHandlersDefault:()=>({handleOnStart(){},handleOnChange(){libraryChanges++;},handleOnEnd(){position.set(300);}})},
     'react-native': {...native,Modal:host('Modal'),Platform:{OS:'android'},useWindowDimensions:()=>({height:800})},
     'react-native-gesture-handler': {GestureHandlerRootView:host('GestureRoot')},
-    'react-native-reanimated': {ReduceMotion:{System:'system'},runOnJS:fn=>fn,useSharedValue:value=>React.useState(()=>shared(value))[0]},
+    'react-native-reanimated': {Easing:{out:fn=>fn,cubic:v=>v},ReduceMotion:{System:'system'},runOnJS:fn=>fn,useSharedValue:value=>React.useState(()=>shared(value))[0]},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:16})},
   }).default;
   let tree;
@@ -692,6 +716,7 @@ test("Home dock clearance uses native height and rejects stale banner or text-sc
 test("Today and All occupy equal native containers with identical full-width touch targets", async () => {
   const ui = await setup([task(), task({id:2, title:"Upcoming", is_due_today:false})]);
   const today = ui.button("Today"), all = ui.button("All quests");
+  assert.equal(ui.sheets()[0].props.motionMode,"timed");
   assert.equal(today.props.style.width, "100%");
   assert.equal(today.props.style.flex, undefined);
   assert.deepEqual(today.props.style, all.props.style);
