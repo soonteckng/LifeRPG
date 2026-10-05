@@ -21,7 +21,7 @@ export const INTRO_PAGES: {
   {
     icon: "timer-outline",
     title: "A manageable next step",
-    body: "Enable study suggestions to get a concrete task with its time already chosen. Make it smaller or choose another. Start directly, without creating a quest. Free focus is always available.",
+    body: "Choose a default study mode for suggested focus blocks. Start once and stay with your work; there is no need to log each question. Choose another overrides the mode for that session. Shorter blocks and free focus remain available.",
   },
   {
     icon: "person-outline",

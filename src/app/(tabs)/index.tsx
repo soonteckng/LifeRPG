@@ -262,7 +262,7 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={15} color={colors.accent} />
               </TouchableOpacity>
             </View>
-            {activeTasks.slice(0, 3).map((task, index) => {
+            {activeTasks.slice(0, availableHeight < 600 || fontScale > 1.3 ? 1 : 2).map((task, index) => {
               const area = subjects.find(subject => subject.id === task.subject_id);
               const tint = lifeAreaColor(task.subject_id, area?.color_code);
               return <TouchableOpacity key={task.id} style={[styles.questRow, index > 0 && styles.questDivider]}
@@ -330,7 +330,7 @@ const styles = StyleSheet.create({
   quickError: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
-  questCard: { marginTop: 12, borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  questCard: { marginTop: 12, marginBottom: 24, borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
   questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
   questHeadingText: { flex: 1, minWidth: 0, gap: 4 },
   sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", letterSpacing: -0.3 },

@@ -364,4 +364,8 @@ Session instructions, saved titles in Progress, and an optional Save for later c
 
 ### Guided choices and dock clearance follow-up
 
-After device feedback, the preference sheet uses compact radio-style choices and a pinned safe-area Save footer with scroll space reserved for its measured height. Home adds 16 pixels above the floating dock. Smaller starter tasks can return to their original workload and time. Alternatives are grouped into Review / Assignments / Practice, initially showing the selected direction instead of the entire catalogue. Existing AppSheet gestures and reduced-motion-aware reveals are retained. Native positioning and animation remain phone-observation requirements; local typecheck/lint and 232 tests passed.
+The latest revision replaces question-sized tasks with three uninterrupted 30-minute focus blocks and optional 10-minute versions. Preferences are saved defaults; Choose another is a temporary override. The tutorial explains starting once and staying with the work. Existing historical suggestion snapshots are preserved.
+
+Choose another uses the existing 220ms timed sheet transition to avoid the spring's long settling tail. Home caps previews at one row on compact screens/large text and two otherwise, with 24px beneath the quest card itself plus existing measured dock/safe-area clearance. The preference sheet retains compact radio choices and a pinned Save footer. No new dependencies, timer-wheel changes, navigation changes or backend mutations.
+
+Verification: 234 tests, typecheck, full lint and Android/iOS Hermes exports passed. Native timing, three-button navigation clearance and large-font appearance still require phone observation.

@@ -1352,11 +1352,11 @@ test("guided Start owns its exact free draft, blocks duplicates and retains meta
   await ui.run(async s => { assert.equal(await s.startSuggestedTimer(focus, 2), true); assert.equal(await s.startSuggestedTimer(focus, 2), false); });
   const starts = ui.calls.filter(([name]) => name === "start");
   assert.equal(starts.length, 1);
-  assert.equal(starts[0][1].targetDurationSeconds, 300);
+  assert.equal(starts[0][1].targetDurationSeconds, 600);
   assert.equal(starts[0][1].taskId, null);
   assert.equal(starts[0][1].subjectId, 2);
   assert.equal(readSuggestedFocus(starts[0][1].notes).title, focus.title);
-  await ui.advance(301);
+  await ui.advance(601);
   assert.equal(ui.state().sessionSummary.suggestion.title, focus.title);
   assert.equal(ui.state().sessionSummary.sessionId, "session-1");
   assert.equal(ui.state().sessionSummary.questTitle, focus.title);
@@ -1368,7 +1368,7 @@ test("guided Start owns its exact free draft, blocks duplicates and retains meta
 test("restored guided sessions retain their instruction and completion title", async () => {
   const { suggestedFocus, encodeSuggestedFocus } = load("src/constants/guidedQuests.ts", {});
   const focus = suggestedFocus("practice-question");
-  const ui = await providerSetup({ getOpenActivitySession: async () => ({ id:"restored-guided", status:"paused", task_id:null, subject_id:2, activity_type:"other", target_duration_seconds:600, elapsed_seconds:590, notes:encodeSuggestedFocus(focus) }) });
+  const ui = await providerSetup({ getOpenActivitySession: async () => ({ id:"restored-guided", status:"paused", task_id:null, subject_id:2, activity_type:"other", target_duration_seconds:1800, elapsed_seconds:1790, notes:encodeSuggestedFocus(focus) }) });
   assert.equal(ui.state().timeLeft,10);
   assert.equal(ui.state().notes,encodeSuggestedFocus(focus));
   await ui.run(s => s.resumeTimer());
@@ -1387,10 +1387,10 @@ test("guided failure keeps the draft for exact retry and cannot replace a paused
   await ui.run(async s=>assert.equal(await s.startSuggestedTimer(focus,null),false));
   assert.equal(readSuggestedFocus(ui.state().notes).templateId,focus.templateId);
   await ui.run(s=>s.retryAction());
-  assert.equal(ui.state().duration,300);
+  assert.equal(ui.state().duration,600);
   await ui.run(s=>s.pauseTimer());
   await ui.run(async s=>assert.equal(await s.startSuggestedTimer(suggestedFocus("continue-assignment"),2),false));
-  assert.equal(ui.state().duration,300);
+  assert.equal(ui.state().duration,600);
   assert.equal(ui.state().isRunning,false);
   assert.equal(attempts,2);
   await ui.cleanup();

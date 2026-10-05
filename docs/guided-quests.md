@@ -6,7 +6,7 @@ Branch: `feature/guided-quests`, based on main `f31fc27a8a49b185ecd1606a012d2572
 
 LifeRPG offers a manageable next action to people who do not want to organise a quest before beginning. This version develops one direction, **Study and assignments**. Other directions are intentionally absent until useful content exists. Choosing **Just let me focus**, or skipping suggestions, retains the existing Quick Start experience.
 
-The three studying needs are revision, assignments and practice. Twelve curated templates provide concrete first instructions. “Make it smaller” changes the workload and selects five minutes; it does not merely shorten the same task. Choosing another starter overrides a scheduled quest for that Home visit. Suggestions remain user-controlled and do not claim to know a deadline, subject, mastery level or learning outcome.
+The three studying needs are revision, assignments and practice. Three curated work blocks provide a useful starting instruction: Review your notes, Work on an assignment, and Practise questions. Each defaults to 30 minutes, with an optional 10-minute version. Users start once and keep working; individual questions do not need separate app interactions. Preferences save the default study mode. Choose another and Try 10 minutes override only the current Home visit, without saving a new default. Choosing another block also overrides a scheduled quest for that visit. Suggestions remain user-controlled and do not claim to know a deadline, subject, mastery level or learning outcome.
 
 ## New users
 
@@ -61,11 +61,12 @@ No new native dependencies are needed. Expo Go remains supported. An EAS Update 
 
 Validated locally: **230/230 tests**, TypeScript, full lint and Android/iOS Hermes bundle exports passed. Exports used placeholder public environment values and performed no live authentication or database writes. The focused suggestion suite also verifies that Retry retains its original area if available areas change after failure. Installed-device behavior remains unverified.
 
-## Guided-flow refinement after phone feedback
+## Current guided-flow refinement after phone feedback
 
-- Smaller tasks now have **Use original task**, restoring the original workload and duration without visiting the catalogue. The selection still persists per account.
-- Preference choices are compact radio-style rows with clear selected states. Save preferences lives in a measured, opaque safe-area footer outside the scroll area. Footer margin adjustment reserves its height, and a scroll indicator remains available for large text/small screens.
-- Home's final content gets 16 additional pixels of clearance above the measured floating dock, including its existing system safe-area reservation. The minimum-height layout is adjusted by the same amount so the last quest is not pushed down by flexible empty space.
-- Choose another now opens the current study category and presents four relevant alternatives. Review, Assignments and Practice tabs retain access to all twelve tasks; changing the browse tab alone does not save a preference. Choosing a task saves the category and task together. Content uses the existing reduced-motion-aware reveal.
+- Preferences mean the saved default; the temporary picker says **For this session only. Your default stays in Settings.** The same three work blocks are available there. Shorter/original time choices say **Try 10 minutes / Use 30 minutes**. They do not write preferences. New onboarding and tutorial wording explain this distinction.
+- Older saved preferences map the previous microtask IDs to their matching work block. Historical session snapshots retain their original ID, title, instruction and exact duration. No quests, sessions or backend rows are rewritten.
+- Choose another uses AppSheet's existing bounded 220ms timing animation instead of its spring tail. Reduced motion, gesture dismissal and keyboard/back priorities remain unchanged. Native smoothness is not proven by mocked tests.
+- Preferences use compact radio rows and a pinned, measured safe-area Save footer. Large text can scroll with footer space reserved.
+- Home shows one preview quest on compact screens/large text and up to two otherwise. The quest card itself has 24px of bottom margin and 12px of bottom padding, in addition to measured dock/safe-area scroll clearance. View all still exposes the full list. Previous extra scroll padding alone did not address the reported crowded final row.
 
-Verification: **232/232 tests**, TypeScript and full lint passed. Tests exercise smaller/original reversal, category browsing and selection, pinned Save submission and failed-save retry. Actual footer positioning, three-button Android navigation clearance and large-font scrolling still require phone observation. No reward, backend, authentication or native-dependency changes.
+Verification: **234/234 tests**, TypeScript, full lint and Android/iOS Hermes exports passed locally. Compatibility, non-persisting temporary selection, full-block start/restoration, and compact Home preview clearance have regression coverage. Phone checks remain necessary for animation settling, quest clearance with three-button navigation, and large-font layouts. No new dependencies or backend/reward changes.

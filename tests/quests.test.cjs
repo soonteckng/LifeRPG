@@ -415,8 +415,8 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   homeTasks = [task({id: 12, title: "Completed earlier", is_completed: true}), task({id: 13, title: "Tomorrow", is_due_today: false}), task({id: 14, title: "Finished today", is_completed_today: true}), task({id: 15, title: "Read now"}), task({id: 16, title: "Repeat today", is_recurring: true, is_completed: true}), task({id: 17, title: "Third quest"}), task({id: 18, title: "Fourth quest"})];
   await act(async () => renderer.update(React.createElement(Home)));
   const previewRows = () => renderer.root.findAllByType("Pressable").filter(node => node.props.testID?.startsWith("home-quest-"));
-  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15", "home-quest-16", "home-quest-17"]);
-  assert.ok(renderer.root.findByProps({testID: "home-quest-card"}));
+  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15"]);
+  assert.equal(renderer.root.findByProps({testID: "home-quest-card"}).props.style.marginBottom,24);
   const openQuests = renderer.root.findAllByType("Pressable").find(node => node.props.accessibilityLabel === "Today's quests, 4 pending");
   assert.ok(openQuests);
   await act(async () => openQuests.props.onPress());
@@ -428,7 +428,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
 
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17", "home-quest-18"]);
+  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16"]);
   const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.contentContainerStyle[1].paddingBottom;
   const initialMargin = viewportMargin();
   openSession = true;

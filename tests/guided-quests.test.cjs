@@ -40,10 +40,10 @@ async function render(Component,props={}) {let tree;await act(async()=>{tree=cre
  tree,press:async label=>act(async()=>{const button=tree.root.findAllByType('Button').find(node=>text(node)===label||node.props.accessibilityLabel===label);assert.ok(button,`Missing ${label}`);assert.notEqual(button.props.disabled,true,`${label} disabled`);await button.props.onPress();}),
  update:async props=>act(async()=>tree.update(React.createElement(Component,props))),cleanup:async()=>act(async()=>tree.unmount())};}
 
-test('twelve curated suggestions have valid durations and a genuinely smaller workload',()=>{
+test('three work blocks support uninterrupted focus and a shorter option',()=>{
  const api=load('src/constants/guidedQuests.ts');
- assert.equal(api.STARTER_QUESTS.length,12);assert.equal(new Set(api.STARTER_QUESTS.map(task=>task.id)).size,12);
- for(const task of api.STARTER_QUESTS){const full=api.suggestedFocus(task.id),small=api.suggestedFocus(task.id,true);assert.ok(full.seconds>=300);assert.ok(small.seconds<=full.seconds);assert.notEqual(small.instruction,full.instruction);assert.notEqual(small.title,full.title);assert.equal(api.readSuggestedFocus(api.encodeSuggestedFocus(small)).title,small.title);}
+ assert.equal(api.STARTER_QUESTS.length,3);assert.equal(new Set(api.STARTER_QUESTS.map(task=>task.id)).size,3);
+ for(const task of api.STARTER_QUESTS){const full=api.suggestedFocus(task.id),small=api.suggestedFocus(task.id,true);assert.equal(full.seconds,1800);assert.equal(small.seconds,600);assert.notEqual(small.instruction,full.instruction);assert.notEqual(small.title,full.title);assert.equal(api.readSuggestedFocus(api.encodeSuggestedFocus(small)).title,small.title);}
 });
 test('metadata preserves wording, rejects corrupt or unknown payloads and never interprets ordinary notes',()=>{
  const api=load('src/constants/guidedQuests.ts');
@@ -86,11 +86,11 @@ test('Home starter makes the task smaller and starts once with its title, instru
   '../context/TimerContext':{useTimer:()=>({startSuggestedTimer:(focus,area)=>{calls.push({focus,area});return pending.promise;}})},
  })).default;
  let opened=0;const props={owner:'owner',subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],disabled:false,onStarted:()=>opened++,onFree(){},onQuest(){},onPreferences(){}};
- const ui=await render(Card,props);await ui.press('Make it smaller');assert.match(text(ui.tree.root),/Read one page/);
- await ui.press('Use original task');assert.match(text(ui.tree.root),/Review one topic/);assert.doesNotMatch(text(ui.tree.root),/Read one page/);
- await ui.press('Make it smaller');assert.match(text(ui.tree.root),/Read one page/);
+ const ui=await render(Card,props);await ui.press('Try 10 minutes');assert.match(text(ui.tree.root),/A short review/);
+ await ui.press('Use 30 minutes');assert.match(text(ui.tree.root),/Review your notes/);assert.doesNotMatch(text(ui.tree.root),/A short review/);
+ await ui.press('Try 10 minutes');assert.match(text(ui.tree.root),/A short review/);
  await act(async()=>{const button=ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start');void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,300);assert.equal(calls[0].area,2);assert.equal(opened,0);
+ assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,0);
  await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
 });
 test('explicitly choosing a starter overrides a scheduled quest; missing Knowledge honestly falls back to General',async()=>{
@@ -101,9 +101,9 @@ test('explicitly choosing a starter overrides a scheduled quest; missing Knowled
  let questOpens=0;const ui=await render(Card,{owner:'owner',subjects:[{id:1,title:'General'}],quest:{id:7,title:'My assignment',target_minutes:30,subject_id:1},disabled:false,onStarted(){},onFree(){},onQuest(){questOpens++;},onPreferences(){}});
  await ui.press('Open quest');assert.equal(questOpens,1);
  await ui.press('Choose another');
- assert.doesNotMatch(text(ui.tree.root), /Try one practice question/);
- await ui.press('Practise what you’re learning');await ui.press('Try one practice question10 minutes');
- assert.match(text(ui.tree.root),/Try one practice question/);assert.doesNotMatch(text(ui.tree.root),/My assignment/);
+ assert.equal(ui.tree.root.findByType('Sheet').props.motionMode,'timed');
+ await ui.press('Practise questions30 minutes · One uninterrupted block');
+ assert.match(text(ui.tree.root),/Practise questions/);assert.doesNotMatch(text(ui.tree.root),/My assignment/);
  await ui.press('Start focusing');assert.deepEqual(calls,[['practice-question',1]]);await ui.cleanup();
 });
 test('failed guided start retains the exact choice for Retry and never navigates on failure',async()=>{
@@ -134,7 +134,7 @@ test('new users can select an assignment direction before the introduction',asyn
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async()=>{}},
  })).default;
- const ui=await render(Screen);await ui.press('Study and assignmentsA few manageable steps to help you begin.');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue to the introduction');
+ const ui=await render(Screen);await ui.press('Study and assignments');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue to the introduction');
  const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'assignments');await ui.cleanup();
 });
 test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
@@ -148,7 +148,7 @@ test('Save for later writes one quest with the chosen area and duration, without
   '../services/taskService':{createTask:params=>{calls.push(params);return pending.promise;}},
  })).default;
  const ui=await render(Save,{inSheet:true});await act(async()=>{const button=ui.tree.root.findAllByType('Button')[0];void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.deepEqual(calls[0],{title:focus.title,targetMinutes:5,subjectId:2,repeatRule:'once',difficulty:'easy'});
+ assert.equal(calls.length,1);assert.deepEqual(calls[0],{title:focus.title,targetMinutes:10,subjectId:2,repeatRule:'once',difficulty:'easy'});
  await act(async()=>pending.resolve({id:9}));assert.equal(upserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
 });
 
@@ -183,7 +183,7 @@ test('ambiguous quest-save failure refreshes existing quests before another inse
   '@react-native-async-storage/async-storage':db.api,
   '../context/UserContext':{useUser:()=>({profile:{id:'save-owner'}})},
   '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'save-session',suggestion:focus}})},
-  '../context/QuestContext':{useQuests:()=>{const[tasks,setTasks]=React.useState([]);return{tasks,upsert(){},refresh:async()=>setTasks([{title:focus.title,subject_id:2,target_minutes:10,is_completed:false}])};}},
+  '../context/QuestContext':{useQuests:()=>{const[tasks,setTasks]=React.useState([]);return{tasks,upsert(){},refresh:async()=>setTasks([{title:focus.title,subject_id:2,target_minutes:30,is_completed:false}])};}},
   '../services/taskService':{createTask:async()=>{inserts++;throw Error('response lost');}},
  })).default;
  const ui=await render(Save,{inSheet:true});await ui.press('Save for later');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button')[0].props.disabled,true);await ui.cleanup();
@@ -210,4 +210,26 @@ test('preference save failure keeps the draft and footer available for retry',as
   '../hooks/useGuidedPreference':{useGuidedPreference:()=>{const[error,setError]=React.useState(false);return{value:initial,ready:true,error,busy:false,save:async next=>{assert.equal(next.need,'assignments');if(++attempts===1){setError(true);return false;}return true;}};}},
  })).default;
  const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});await ui.press('Move an assignment forward');await ui.press('Save preferences');assert.equal(closed,0);assert.match(text(ui.tree.root),/Couldn’t save or load/);await ui.press('Save preferences');assert.equal(closed,1);assert.equal(attempts,2);await ui.cleanup();
+});
+
+
+test('legacy preferences map to work blocks while historical session snapshots retain their wording and duration',()=>{
+ const api=load('src/constants/guidedQuests.ts');
+ const prefs=load('src/services/guidedPreferenceService.ts',{'@react-native-async-storage/async-storage':storage().api});
+ const pref=prefs.parseGuidedPreference(JSON.stringify({version:1,enabled:true,invited:true,need:'practice',templateId:'retry-mistake',smaller:true}));
+ assert.equal(pref.templateId,'practice-question');assert.equal(pref.smaller,false);
+ const old={templateId:'retry-mistake',need:'practice',title:'Retry a question you missed',instruction:'Try again.',seconds:300,smaller:true};
+ assert.deepEqual(api.readSuggestedFocus(api.encodeSuggestedFocus(old)),old);
+});
+
+test('choosing another block or shortening it never rewrites the saved default',async()=>{
+ let saves=0;const initial={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
+ const Card=load('src/components/GuidedFocusCard.tsx',mocks({
+  '../hooks/useGuidedPreference':{useGuidedPreference:()=>({value:initial,ready:true,error:false,busy:false,save:async()=>{saves++;return true;}})},
+  '../context/TimerContext':{useTimer:()=>({})},
+ })).default;
+ const props={owner:'owner',subjects:[],disabled:false,onStarted(){},onFree(){},onQuest(){},onPreferences(){}};
+ let ui=await render(Card,props);await ui.press('Choose another');await ui.press('Practise questions30 minutes · One uninterrupted block');await ui.press('Try 10 minutes');
+ assert.match(text(ui.tree.root),/A short practice session/);assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
+ await ui.cleanup();ui=await render(Card,props);assert.match(text(ui.tree.root),/Review your notes/);await ui.cleanup();
 });

@@ -1,13 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { STARTER_QUESTS, type StudyNeed } from "../constants/guidedQuests";
+import { STARTER_QUESTS, LEGACY_STARTER_NEEDS, type StudyNeed } from "../constants/guidedQuests";
 export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: StudyNeed; templateId: string; smaller: boolean }
 export const DEFAULT_GUIDED_PREFERENCE: GuidedPreference = { version: 1, enabled: false, invited: false, need: "revision", templateId: "review-topic", smaller: false };
 export function parseGuidedPreference(raw: string | null): GuidedPreference {
   try {
     const value = JSON.parse(raw ?? "null");
-    const template = STARTER_QUESTS.find(task => task.id === value?.templateId && task.need === value?.need);
+    const template = STARTER_QUESTS.find(task => (task.id === value?.templateId || task.need === LEGACY_STARTER_NEEDS[value?.templateId]) && task.need === value?.need);
     if (value?.version !== 1 || !template || typeof value.enabled !== "boolean" || typeof value.invited !== "boolean" || typeof value.smaller !== "boolean") return { ...DEFAULT_GUIDED_PREFERENCE };
-    return { version: 1, enabled: value.enabled, invited: value.invited, need: template.need, templateId: template.id, smaller: value.smaller };
+    return { version: 1, enabled: value.enabled, invited: value.invited, need: template.need, templateId: template.id, smaller: false };
   } catch { return { ...DEFAULT_GUIDED_PREFERENCE }; }
 }
 interface State { value: GuidedPreference; ready: boolean; error: boolean; busy: boolean }

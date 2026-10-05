@@ -14,9 +14,9 @@ export default function GuidedChoice({ value, onChange, disabled = false }: { va
   </Button>;
   return <View style={s.group}>
     <Text style={s.heading}>What would you like help with?</Text>
-    {direction(true, "Study and assignments", "A few manageable steps to help you begin.")}
+    {direction(true, "Study and assignments", "A suggested focus block to help you begin.")}
     {direction(false, "Just let me focus", "Keep free focus and your own quests.")}
-    {value.enabled && <><View style={s.divider} /><Text style={s.heading}>What would help you right now?</Text>{STUDY_NEEDS.map(need => <Button key={need.id} disabled={disabled}
+    {value.enabled && <><View style={s.divider} /><Text style={s.heading}>Your default focus</Text>{STUDY_NEEDS.map(need => <Button key={need.id} disabled={disabled}
       accessibilityRole="button" accessibilityLabel={need.title} accessibilityHint={need.hint} accessibilityState={{ selected: value.need === need.id }}
       onPress={() => onChange({ ...value, need: need.id, templateId: STARTER_QUESTS.find(task => task.need === need.id)!.id, smaller: false })}
       style={[s.row, s.needRow, value.need === need.id && s.selected]}>
