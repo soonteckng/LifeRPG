@@ -58,14 +58,15 @@ test('selection uses measured geometry, interrupts previous spring and updates i
   let tree;await act(async()=>{tree=create(React.createElement(Pill,{index:0,style:{width:'50%',top:0,bottom:0}}));});
   const frame=()=>tree.root.findByType('AnimatedView');
   await act(async()=>frame().props.onLayout({nativeEvent:{layout:{width:150}}}));
-  await act(async()=>tree.update(React.createElement(Pill,{index:1,style:{width:'50%',top:0,bottom:0}})));
+  await act(async()=>tree.update(React.createElement(Pill,{index:1,settling:"quick",style:{width:'50%',top:0,bottom:0}})));
   assert.equal(frame().props.style[1].left,0);
   assert.deepEqual(frame().props.style[1].transform[0].translateX.config.outputRange,[0,150]);
   assert.equal(frame().props.style[1].transform[0].translateX.source.value,1);
   assert.equal(frame().props.pointerEvents,'none');
-  if(reduced)assert.equal(n.springs.length,0);else assert.ok(n.springs[0].stopped);
+  if(reduced)assert.equal(n.springs.length,0);else {assert.ok(n.springs[0].stopped);assert.equal(n.springs.at(-1).config.stiffness,460);assert.equal(n.springs.at(-1).config.overshootClamping,true);assert.equal(n.springs.at(-1).config.restDisplacementThreshold,0.008);}
   await act(async()=>tree.update(React.createElement(Pill,{index:0})));
   assert.equal(frame().props.style[1].transform[0].translateX.source.value,0);
+  if(!reduced)assert.equal(n.springs.at(-1).config.stiffness,300);
   await act(async()=>tree.unmount());
   if(!reduced)assert.equal(n.springs.at(-1).stopped,true);
  }
