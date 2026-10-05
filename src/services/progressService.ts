@@ -8,6 +8,7 @@ export interface ProgressSession {
   subject_id: number | null;
   task_id?: number | null;
   activity_type: string;
+  notes?: string | null;
   duration_seconds: number;
   xp_earned: number;
   gold_earned: number;

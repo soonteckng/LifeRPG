@@ -1,3 +1,5 @@
+import { readSuggestedFocus } from "../constants/guidedQuests";
+import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
@@ -107,6 +109,7 @@ export default function SessionScreen() {
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
   const locked = timer.hasOpenSession || timer.isCompleted || timer.actionBusy || timer.isRestoring;
   const isQuest = timer.linkedTaskId !== null;
+  const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && !task;
   const minutes = timer.duration / 60;
   const phase = timer.isCompleted ? "completed" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
@@ -255,7 +258,7 @@ export default function SessionScreen() {
     else if (timer.hasOpenSession) void timer.retryAction();
     else start();
   };
-  const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : "Free session");
+  const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : suggestion?.title ?? "Free session");
   const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
@@ -298,7 +301,8 @@ export default function SessionScreen() {
         </View>
         <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
-          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{timer.isRunning ? isQuest ? title : `${area?.title ?? "General"} · Free session` : `${title} · Paused`}</Text>}
+          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{timer.isRunning ? isQuest || suggestion ? title : `${area?.title ?? "General"} · Free session` : `${title} · Paused`}</Text>}
+            {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={styles.secondary}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setup}>
               {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
@@ -348,6 +352,7 @@ export default function SessionScreen() {
             </View>}
 
             {timer.isCompleted && timer.sessionSummary && !hideCompletedSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
+              <SaveSuggestedQuest />
               {timer.completedLevelUp?.leveledUp && <Text style={styles.levelUp} accessibilityLiveRegion="polite">Level up · Level {timer.completedLevelUp.newLevel}</Text>}
             </>}
           </Animated.View>
@@ -440,6 +445,7 @@ function SheetChoice({ label, detail, onPress }: { label: string; detail?: strin
 }
 
 const styles = StyleSheet.create({
+  suggestionInstruction: { padding: 14, borderRadius: 16, backgroundColor: colors.surface, marginTop: 8, marginBottom: 12 },
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },

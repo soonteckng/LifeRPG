@@ -22,6 +22,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -41,6 +43,7 @@ function load(file, mocks = {}, cache = new Map()) {
 }
 const host = name => function Host({ children, ...props }) { return React.createElement(name, props, children); };
 const Native = {
+  StyleSheet: { create: x => x, hairlineWidth: 0.5 },
   Animated: {
     Value: class {
       setValue() {}
@@ -296,18 +299,20 @@ test("goal service validates before requesting a server-computed effective date"
   assert.equal(result.next_effective_date, "2026-10-04");
   assert.deepEqual(calls, [["schedule_daily_goal", { p_goal_minutes: 90 }]]);
 });
-test("onboarding shares all ten badge values and preserves a saved choice on retry", async () => {
+test("optional onboarding preserves a saved character badge and keeps the ten-badge catalogue", async () => {
   assert.equal(badges.length, 10);
   assert.equal(new Set(badges).size, 10);
+  let saved;
   const ui = await screen("src/app/onboarding.tsx", {
     "expo-router": { useRouter: () => ({ replace() {} }) },
-    "../context/UserContext": { useUser: () => ({ profile: { username: "Hero", avatar: badges[9], daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
-    "../services/onboardingService": { saveOnboardingProfile: async () => { throw Error("Offline"); } },
+    "../context/UserContext": { useUser: () => ({ profile: { id: "onboarding-badge", username: "Soon", avatar: badges[9], daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
+    "../services/onboardingService": { saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
   });
   try {
-    const choices = ui.renderer.root.findAllByType("Button").filter(n => n.props.accessibilityLabel?.startsWith("Choose "));
-    assert.equal(choices.length, 10);
-    assert.equal(choices.find(n => n.props.accessibilityState.selected).props.accessibilityLabel, "Choose " + badges[9]);
+    await ui.press("Skip suggestions");
+    await ui.press("Continue to the introduction");
+    assert.equal(saved[1],badges[9]);
+    assert.match(ui.text(), /Couldn’t save/);
   } finally { await ui.cleanup(); }
 });
 test("permission interpretation distinguishes quiet, temporary, granted and denied states", () => {

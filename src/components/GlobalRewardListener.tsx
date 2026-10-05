@@ -46,7 +46,7 @@ export default function GlobalRewardListener() {
       goalReachedNow={sessionSummary?.goalReachedNow}
       minutesSpent={sessionSummary?.minutesSpent || 0}
       durationSeconds={sessionSummary?.durationSeconds}
-      questTitle={linkedTaskId != null ? quest?.title || (sessionSummary?.questTitle !== "Quest session" ? sessionSummary?.questTitle : "Quest") : "Free session"}
+      questTitle={linkedTaskId != null ? quest?.title || (sessionSummary?.questTitle !== "Quest session" ? sessionSummary?.questTitle : "Quest") : sessionSummary?.suggestion?.title ?? "Free session"}
       areaTitle={area?.title}
       areaColor={lifeAreaColor(targetAttributeId,area?.color_code)}
       isLevelUp={!!completedLevelUp?.leveledUp}

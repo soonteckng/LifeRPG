@@ -355,3 +355,9 @@ reduced-motion tab options while retaining route identities, alongside existing
 Home, timer, completion/cancellation, account and progression tests. Native
 visual polish, first-screen quest visibility and rapid tab transitions still
 need Android/iOS phone observation; no device appearance is claimed here.
+
+## Guided next steps — October 6, 2026
+
+`feature/guided-quests` adds optional study suggestions without replacing custom quests or free focus. In guided mode Home uses a compact goal indicator and a concrete action card; free-focus mode retains the tested ring/Quick Start hierarchy. New and existing users can select revision, assignments or practice, make a task smaller, choose another or disable suggestions in Settings. New controls reuse MotionPressable, ContentReveal and AppSheet's existing motion/reduced-motion rules; the timer wheel and root navigation are unchanged.
+
+Session instructions, saved titles in Progress, and an optional Save for later completion action complete the flow. The existing shared completion popup remains the sole immediate completion presentation. Character, rewards and early cancellation semantics remain unchanged. See `docs/guided-quests.md` for persistence details, limitations and the full phone checklist. No native appearance, small-phone fit or gesture smoothness is claimed without observation.

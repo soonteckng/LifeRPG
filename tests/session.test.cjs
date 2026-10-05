@@ -22,6 +22,8 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -1340,4 +1342,56 @@ test("Themed quest picker selects the existing quest settings, closes, and never
     assert.equal(ui.root().findAllByType("Sheet").length,0);
     assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
   }finally{await ui.cleanup();}
+});
+
+test("guided Start owns its exact free draft, blocks duplicates and retains metadata through completion", async () => {
+  const ui = await providerSetup();
+  const { suggestedFocus, readSuggestedFocus } = load("src/constants/guidedQuests.ts", {});
+  const focus = suggestedFocus("assignment-outline", true);
+  await ui.run(s => { s.setLinkedTaskId(88); s.setTargetAttributeId(44); s.setNotes("old quest draft"); });
+  await ui.run(async s => { assert.equal(await s.startSuggestedTimer(focus, 2), true); assert.equal(await s.startSuggestedTimer(focus, 2), false); });
+  const starts = ui.calls.filter(([name]) => name === "start");
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0][1].targetDurationSeconds, 300);
+  assert.equal(starts[0][1].taskId, null);
+  assert.equal(starts[0][1].subjectId, 2);
+  assert.equal(readSuggestedFocus(starts[0][1].notes).title, focus.title);
+  await ui.advance(301);
+  assert.equal(ui.state().sessionSummary.suggestion.title, focus.title);
+  assert.equal(ui.state().sessionSummary.sessionId, "session-1");
+  assert.equal(ui.state().sessionSummary.questTitle, focus.title);
+  await ui.run(s => { s.clearCompletionModal(); s.acknowledgeSummary(); });
+  assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
+  await ui.cleanup();
+});
+
+test("restored guided sessions retain their instruction and completion title", async () => {
+  const { suggestedFocus, encodeSuggestedFocus } = load("src/constants/guidedQuests.ts", {});
+  const focus = suggestedFocus("practice-question");
+  const ui = await providerSetup({ getOpenActivitySession: async () => ({ id:"restored-guided", status:"paused", task_id:null, subject_id:2, activity_type:"other", target_duration_seconds:600, elapsed_seconds:590, notes:encodeSuggestedFocus(focus) }) });
+  assert.equal(ui.state().timeLeft,10);
+  assert.equal(ui.state().notes,encodeSuggestedFocus(focus));
+  await ui.run(s => s.resumeTimer());
+  await ui.advance(11);
+  assert.equal(ui.state().sessionSummary.questTitle,focus.title);
+  assert.equal(ui.state().sessionSummary.suggestion.instruction,focus.instruction);
+  assert.equal(ui.state().sessionSummary.sessionId,"restored-guided");
+  await ui.cleanup();
+});
+
+test("guided failure keeps the draft for exact retry and cannot replace a paused session", async () => {
+  let attempts=0;
+  const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw Error("Offline");return "guided-retry";}});
+  const {suggestedFocus,readSuggestedFocus}=load("src/constants/guidedQuests.ts",{});
+  const focus=suggestedFocus("review-topic",true);
+  await ui.run(async s=>assert.equal(await s.startSuggestedTimer(focus,null),false));
+  assert.equal(readSuggestedFocus(ui.state().notes).templateId,focus.templateId);
+  await ui.run(s=>s.retryAction());
+  assert.equal(ui.state().duration,300);
+  await ui.run(s=>s.pauseTimer());
+  await ui.run(async s=>assert.equal(await s.startSuggestedTimer(suggestedFocus("continue-assignment"),2),false));
+  assert.equal(ui.state().duration,300);
+  assert.equal(ui.state().isRunning,false);
+  assert.equal(attempts,2);
+  await ui.cleanup();
 });

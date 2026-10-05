@@ -1,3 +1,4 @@
+import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
 import { Text } from "./AppText";
 import { useUser } from "../context/UserContext";
@@ -50,6 +51,7 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
     <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} />
       <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, goldEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} />
+      <SaveSuggestedQuest inSheet />
     </BottomSheetScrollView>
   </AppSheet>;
 }

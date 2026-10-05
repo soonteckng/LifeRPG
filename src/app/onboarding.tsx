@@ -1,3 +1,6 @@
+import GuidedChoice from "../components/GuidedChoice";
+import { useGuidedPreference } from "../hooks/useGuidedPreference";
+import { DEFAULT_GUIDED_PREFERENCE } from "../services/guidedPreferenceService";
 import Pressable from "../components/MotionPressable";
 import { Text, TextInput } from "../components/AppText";
 import { useRouter } from "expo-router";
@@ -10,14 +13,16 @@ import { PersonalButton, p } from "../components/PersonalUI";
 import CharacterPortrait from "../components/CharacterPortrait";
 import { colors } from "../constants/theme";
 import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
-import { CHARACTER_BADGES } from "../constants/characterBadges";
 export default function OnboardingScreen() {
   const router = useRouter();
+  const [step, setStep] = useState(0);
+  const [direction, setDirection] = useState({ ...DEFAULT_GUIDED_PREFERENCE, invited: true });
   const { profile, reloadProfile } = useUser();
+  const guided = useGuidedPreference(profile.id ?? "");
   const [name, setName] = useState(
     profile.username === "Hero" ? "" : profile.username,
   );
-  const [avatar, setAvatar] = useState(profile.avatar || "🌱");
+  const avatar = profile.avatar || "🌱";
   const [goal, setGoal] = useState(Math.max(30, profile.daily_goal_minutes || 60));
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
@@ -34,6 +39,7 @@ export default function OnboardingScreen() {
     setBusy(true);
     setError("");
     try {
+      if (!(await guided.save(direction))) throw new Error("Suggestion preferences could not be saved");
       await saveOnboardingProfile(
         name.trim(),
         avatar,
@@ -62,7 +68,13 @@ export default function OnboardingScreen() {
           contentContainerStyle={{ padding: 24, paddingBottom: 40, gap: 18 }}
         >
           <Text style={p.label}>WELCOME TO LIFERPG</Text>
-          <Text style={p.pageTitle}>Start with you.</Text>
+          <Text style={p.pageTitle}>{step === 0 ? "A little direction." : "Start with you."}</Text>
+          {step === 0 ? <>
+            <Text style={p.body}>You can start with a suggestion or focus your own way. Change this anytime in Settings.</Text>
+            <GuidedChoice value={direction} onChange={setDirection} />
+            <PersonalButton title="Continue" onPress={() => setStep(1)} />
+            <PersonalButton secondary title="Skip suggestions" onPress={() => { setDirection({ ...DEFAULT_GUIDED_PREFERENCE, invited: true }); setStep(1); }} />
+          </> : <>
           <Text style={p.body}>
             Your character will grow through the time you invest in your life.
           </Text>
@@ -78,34 +90,10 @@ export default function OnboardingScreen() {
             value={name}
             onChangeText={setName}
           />
-          <Text style={p.rowTitle}>Choose a character badge</Text>
-          <View style={[p.inline, { flexWrap: "wrap" }]}>
-            {CHARACTER_BADGES.map((item) => (
-              <Pressable
-                key={item}
-                disabled={busy}
-                accessibilityRole="button"
-                accessibilityLabel={`Choose ${item}`}
-                accessibilityState={{ selected: avatar === item }}
-                onPress={() => setAvatar(item)}
-                style={[
-                  p.pill,
-                  {
-                    padding: 16,
-                    borderWidth: 1,
-                    borderColor:
-                      avatar === item ? colors.accent : "transparent",
-                  },
-                ]}
-              >
-                <Text style={{ fontSize: 28 }}>{item}</Text>
-              </Pressable>
-            ))}
-          </View>
-          <Text style={p.rowTitle}>A daily goal you can return to</Text>
+          <Text style={p.body}>You can personalise your character in Profile later.</Text>
+          <Text style={p.rowTitle}>Your starting daily goal</Text>
           <Text style={p.body}>
-            This is a starting point, not a measure of your worth. Any completed
-            session counts as showing up.
+            Keep the default or choose another starting point. Smaller sessions still count as showing up.
           </Text>
           <View style={[p.inline, { flexWrap: "wrap" }]}>
             {DAILY_GOAL_PRESETS.map((minutes) => (
@@ -135,9 +123,12 @@ export default function OnboardingScreen() {
           )}
           <PersonalButton
             title={busy ? "Saving…" : "Continue to the introduction"}
-            disabled={busy}
+            disabled={busy || !guided.ready}
             onPress={() => void next()}
           />
+          {!guided.ready && guided.error && <PersonalButton secondary title="Retry loading preferences" onPress={() => void guided.retry()} />}
+          <PersonalButton secondary title="Back to direction" disabled={busy} onPress={() => setStep(0)} />
+          </>}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

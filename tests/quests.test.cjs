@@ -21,6 +21,8 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -400,7 +402,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../components/ContentReveal": ({ children }) => children,
     "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary, ...homeFlags,
-      setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
+      setNotes: () => {}, setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, ...creditFields }; } },

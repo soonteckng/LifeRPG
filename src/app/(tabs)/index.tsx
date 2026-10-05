@@ -1,3 +1,6 @@
+import GuidedFocusCard from "../../components/GuidedFocusCard";
+import GuidedPreferenceSheet from "../../components/GuidedPreferenceSheet";
+import { useGuidedPreference } from "../../hooks/useGuidedPreference";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
 import { questLists } from "../../utils/questLists";
@@ -53,6 +56,9 @@ export default function HomeScreen() {
   const [quickError, setQuickError] = useState(false);
   const quickLock = useRef(false);
   const owner = profile?.id ?? "";
+  const guided = useGuidedPreference(owner);
+  const [guidedSettings, setGuidedSettings] = useState(false);
+  const useGuidance = guided.ready && guided.value.enabled;
   useEffect(() => {
     let cancelled = false;
     if (owner) void getLastFreeSession(owner).then(session => {
@@ -88,7 +94,7 @@ export default function HomeScreen() {
   // clearance for the final row. Size the hero against the unobstructed space.
   const availableHeight = Math.max(280, (viewportHeight || height - insets.top) - dockHeight - 8);
   const goalSize = Math.round(Math.max(144, Math.min(
-    (width - 40) * 0.60, availableHeight * 0.29, fontScale > 1.5 ? 160 : 232,
+    (width - 40) * 0.60, availableHeight * 0.29, useGuidance ? 144 : fontScale > 1.5 ? 160 : 232,
   )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
@@ -140,6 +146,7 @@ export default function HomeScreen() {
   const openQuestSession = (task: Task) => {
     // Existing sessions and unresolved completion/restoration always win.
     if (!hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !sessionSummary)) {
+      timer.setNotes("");
       setLinkedTaskId(task.id);
       setDurationInMinutes(task.target_minutes || 30);
       setTargetAttributeId(task.subject_id ?? null);
@@ -201,12 +208,17 @@ export default function HomeScreen() {
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
             <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
           </TouchableOpacity>}
-          <View style={styles.goalSection}>
-            <GoalRing seconds={safeCompletedSeconds} targetMinutes={dailyGoalMinutes} size={goalSize}
+          <View style={[styles.goalSection, useGuidance && styles.guidedGoalSection]}>
+            {useGuidance ? <View style={styles.guidedGoal} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}>
+              <View style={styles.guidedGoalHeading}><Text style={styles.focusHeading}>Today’s focus</Text><Text style={styles.questMeta}>{durationLabel(safeCompletedSeconds)} / {dailyGoalMinutes} min</Text></View>
+              <View style={styles.guidedTrack}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
+              {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
+            </View> : <><GoalRing seconds={safeCompletedSeconds} targetMinutes={dailyGoalMinutes} size={goalSize}
               label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
             <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
-              ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
-          <View style={styles.focusCard} testID="home-quick-start">
+              ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text></>}
+          {useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} quest={activeTasks[0]} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
+            onStarted={openSession} onQuest={openQuestSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={styles.focusCard} testID="home-quick-start">
             <View style={styles.focusTopRow}>
               <View style={styles.focusInfo}>
                 <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
@@ -230,8 +242,14 @@ export default function HomeScreen() {
               <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
             </TouchableOpacity>
             {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
+          </View>}
           </View>
-          </View>
+          {guided.ready && !guided.value.invited && !hasOpenSession && <View style={styles.invitation}>
+            <TouchableOpacity onPress={() => setGuidedSettings(true)} accessibilityRole="button" style={styles.invitationMain}>
+              <Text style={styles.link}>Want help choosing your next step?</Text><Text style={styles.questMeta}>Try a few study suggestions.</Text>
+            </TouchableOpacity>
+            <TouchableOpacity disabled={guided.busy} onPress={() => void guided.save({ ...guided.value, invited: true })} accessibilityRole="button" accessibilityLabel="Dismiss suggestion invitation" style={styles.changeButton}><Ionicons name="close" size={18} color={colors.secondary} /></TouchableOpacity>
+          </View>}
           <View style={styles.questCard} testID="home-quest-card">
             <View style={styles.questHeading}>
               <View style={styles.questHeadingText}>
@@ -271,11 +289,19 @@ Your quests will appear here.</Text>
         </View>
         </ContentReveal>
       </ScrollView>
+      <GuidedPreferenceSheet owner={owner} visible={guidedSettings} onClose={() => setGuidedSettings(false)} />
       <QuestSheet visible={questsVisible} onClose={() => setQuestsVisible(false)} />
     </SafeAreaView>
   );
 }
 const styles = StyleSheet.create({
+  guidedGoalSection: { flexGrow: 0, paddingTop: 20, gap: 16 },
+  guidedGoal: { width: "100%", gap: 8 },
+  guidedGoalHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" },
+  guidedTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: "hidden" },
+  guidedFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
+  invitation: { marginTop: 12, padding: 12, borderRadius: 16, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 8 },
+  invitationMain: { flex: 1, gap: 4, minHeight: 44, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },

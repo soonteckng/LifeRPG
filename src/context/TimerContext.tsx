@@ -1,3 +1,4 @@
+import { readSuggestedFocus, encodeSuggestedFocus, suggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { getSessionNotifications } from "../utils/sessionNotifications";
 import * as Haptics from "expo-haptics";
 import React, {
@@ -45,6 +46,8 @@ try {
 }
 
 interface SessionSummary {
+  sessionId?: string;
+  suggestion?: SuggestedFocus;
   xpEarned: number;
   goldEarned: number;
   minutesSpent: number;
@@ -92,6 +95,7 @@ interface TimerContextType {
 
   startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
   startFreeTimer: (totalSeconds: number, subjectId: number | null) => Promise<boolean>;
+  startSuggestedTimer: (focus: SuggestedFocus, subjectId: number | null) => Promise<boolean>;
   pauseTimer: () => Promise<void>;
   resumeTimer: () => Promise<void>;
   resetTimer: () => Promise<void>;
@@ -201,6 +205,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       await reloadProfile().catch(() => false);
 
       setSessionSummary({
+        sessionId,
+        suggestion: linkedTaskId === null ? readSuggestedFocus(notes) ?? undefined : undefined,
         xpEarned: result.xp_earned,
         goldEarned: result.gold_earned,
         minutesSpent: result.minutes ?? Math.floor(result.duration_seconds / 60),
@@ -234,7 +240,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       failedAction.current = "complete";
       setActionError("Couldn’t save your completed session. Retry to confirm your rewards.");
     }
-  }, [reloadProfile, clearOngoingNotification]);
+  }, [reloadProfile, clearOngoingNotification, notes, linkedTaskId]);
 
   // A pause/end request can overlap the final tick. Finish once it settles.
   useEffect(() => {
@@ -401,7 +407,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         setTargetAttributeId(session.subject_id);
         setLinkedTaskId(session.task_id);
         setNotes(session.notes ?? "");
-        activeQuestTitleRef.current = session.task_id === null ? "Free session" : undefined;
+        activeQuestTitleRef.current = readSuggestedFocus(session.notes)?.title ?? (session.task_id === null ? "Free session" : undefined);
         if (remainingSeconds <= 0) {
           await clearOngoingNotification();
           if (cancelled) return;
@@ -455,13 +461,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setTimeLeft(totalSec);
   };
 
-  const performStart = async (totalSeconds: number, questTitle?: string, freeArea?: { subjectId: number | null }): Promise<boolean> => {
+  const performStart = async (totalSeconds: number, questTitle?: string, freeArea?: { subjectId: number | null; suggestion?: SuggestedFocus }): Promise<boolean> => {
     if (actionLock.current || hasOpenSession || isRestoring || restoreError || (isCompleted && !sessionSummary)) return false;
     if (!validSessionSeconds(totalSeconds)) return false;
     // Quick Start owns a complete free-session draft; never read an older
     // quest/area from React state that has not committed yet.
     if (timerSessionIdRef.current && !sessionSummary) return false;
-    const draft = freeArea ? { activityType: "other", taskId: null, subjectId: freeArea.subjectId, notes: "" }
+    const draft = freeArea ? { activityType: "other", taskId: null, subjectId: freeArea.subjectId, notes: freeArea.suggestion ? encodeSuggestedFocus(freeArea.suggestion) : "" }
       : { activityType, taskId: linkedTaskId, subjectId: targetAttributeId, notes };
     if (freeArea) {
       timerSessionIdRef.current = null;
@@ -469,7 +475,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       setLinkedTaskId(null);
       setTargetAttributeId(freeArea.subjectId);
       setActivityType("other");
-      setNotes("");
+      setNotes(draft.notes);
       setSessionSummary(null);
       setCompletedLevelUp(null);
       setRewardsVisible(false);
@@ -505,8 +511,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       return false;
     } finally { actionLock.current = false; setActionBusy(false); }
   };
-  const startTimer = async (totalSeconds: number, questTitle?: string) => { await performStart(totalSeconds, questTitle); };
+  const startTimer = async (totalSeconds: number, questTitle?: string) => { await performStart(totalSeconds, questTitle ?? readSuggestedFocus(notes)?.title); };
   const startFreeTimer = (totalSeconds: number, subjectId: number | null) => performStart(totalSeconds, undefined, { subjectId });
+  const startSuggestedTimer = (focus: SuggestedFocus, subjectId: number | null) => {
+    const validated = suggestedFocus(focus.templateId, focus.smaller);
+    if (!validated) return Promise.resolve(false);
+    return performStart(validated.seconds, validated.title, { subjectId, suggestion: validated });
+  };
   const pauseTimer = async () => {
     const id = timerSessionIdRef.current;
     if (!id || !isRunning || actionLock.current || completionHandledRef.current) return;
@@ -580,7 +591,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       setLinkedTaskId: value => { if (!setupLocked()) setLinkedTaskId(value); },
       setNotes: value => { if (!setupLocked()) setNotes(value); },
       setDurationInMinutes, setDurationInSeconds,
-      startTimer, startFreeTimer, pauseTimer, resumeTimer, resetTimer,
+      startTimer, startFreeTimer, startSuggestedTimer, pauseTimer, resumeTimer, resetTimer,
       sessionSummary, summaryViewed: !!sessionSummary && viewedSummary === sessionSummary, acknowledgeSummary,
       completedLevelUp, clearCompletionModal: () => setRewardsVisible(false),
     }}>

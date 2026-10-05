@@ -20,8 +20,8 @@ export const INTRO_PAGES: {
 }[] = [
   {
     icon: "timer-outline",
-    title: "Make time for what matters",
-    body: "Start a free session or choose a quest. Pause when you need to, or minimise the timer while your session continues.",
+    title: "A manageable next step",
+    body: "Enable study suggestions to get a concrete task with its time already chosen. Make it smaller or choose another. Start directly, without creating a quest. Free focus is always available.",
   },
   {
     icon: "person-outline",
@@ -36,7 +36,7 @@ export const INTRO_PAGES: {
   {
     icon: "checkmark-circle-outline",
     title: "Give your day a direction",
-    body: "Quests add optional structure. Your daily goal is a separate commitment, recognised when you reach it. View your daily focus goal in Settings. If goal editing is available, changes start on the next local day in your progress time zone; today and earned achievements stay unchanged.",
+    body: "Save a useful suggestion as a quest for later, or create your own with a duration, Life area and optional schedule. Change or turn off suggestions in Settings anytime. Quests add optional structure. Your daily goal is a separate commitment, recognised when you reach it. View your daily focus goal in Settings. If goal editing is available, changes start on the next local day in your progress time zone; today and earned achievements stay unchanged.",
   },
   {
     icon: "ribbon-outline",

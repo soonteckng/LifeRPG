@@ -1,3 +1,4 @@
+import { readSuggestedFocus } from "../../constants/guidedQuests";
 import SlidingSelection from "../../components/SlidingSelection";
 import Pressable from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
@@ -120,7 +121,7 @@ function SessionRow({
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(session.completed_at!));
-  const title = sessionCategory(session, areas);
+  const title = readSuggestedFocus(session.notes)?.title ?? sessionCategory(session, areas);
   return (
     <Button
       onPress={onPress}
@@ -134,7 +135,7 @@ function SessionRow({
       <View style={s.flex}>
         <Text style={s.rowTitle}>{title}</Text>
         <Text style={s.caption}>
-          {calendarLabel(key)} · {time}
+          {readSuggestedFocus(session.notes) ? `${sessionCategory(session, areas)} · ` : ""}{calendarLabel(key)} · {time}
         </Text>
       </View>
       <Text style={s.rowValue}>{durationLabel(session.duration_seconds)}</Text>
@@ -705,7 +706,7 @@ export default function ProgressScreen() {
                 <Text style={s.summaryValue}>
                   {durationLabel(selectedSession.duration_seconds)}
                 </Text>
-                <Text style={s.rowTitle}>Time well spent</Text>
+                <Text style={s.rowTitle}>{readSuggestedFocus(selectedSession.notes)?.title ?? "Time well spent"}</Text>
                 <Text style={s.emptyBody}>
                   {sessionCategory(selectedSession, data?.areas ?? [])}
                 </Text>
