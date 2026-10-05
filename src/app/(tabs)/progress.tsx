@@ -309,8 +309,9 @@ export default function ProgressScreen() {
       >
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
-          <View pointerEvents="none" style={s.segmentTrack} />
-          <View pointerEvents="none" testID="period-selection" style={[s.segmentSelected, { left: mode === "week" ? "0%" : "50%" }]} />
+          <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
+            <View testID="period-selection" style={[s.segmentSelected, { left: mode === "week" ? "0%" : "50%" }]} />
+          </View>
           {(["week", "month"] as const).map((value) => (
             <Pressable
               key={value}
@@ -887,6 +888,8 @@ const s = StyleSheet.create({
     letterSpacing: -1,
   },
   segment: {
+    position: "relative",
+    minHeight: 44,
     flexDirection: "row",
     padding: 0,
     alignItems: "stretch",
@@ -902,8 +905,8 @@ const s = StyleSheet.create({
     borderRadius: 18,
     position: "relative",
   },
-  segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, bottom: 4, borderRadius: 12, backgroundColor: colors.surface },
-  segmentSelected: { position: "absolute", width: "50%", top: 7, bottom: 7, borderRadius: 9, backgroundColor: "#29334E", borderWidth: 3, borderColor: colors.surface },
+  segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, height: 36, borderRadius: 12, overflow: "hidden", backgroundColor: colors.surface },
+  segmentSelected: { position: "absolute", width: "50%", top: 0, bottom: 0, borderRadius: 9, backgroundColor: "#29334E", borderWidth: 3, borderColor: colors.surface },
   segmentText: { width: "100%", textAlign: "center", margin: 0, padding: 0, includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
   segmentActive: { color: "#B8C8FF" },
   periodNav: {

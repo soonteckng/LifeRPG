@@ -159,3 +159,8 @@ TypeScript, full lint and 187/187 tests passed after these changes. Android Java
 - No dependency, SQL, account, reward calculation or session persistence changes were made.
 
 TypeScript/full lint and all 190 tests pass. Android and iOS JavaScript exports passed with --no-bytecode. Regression tests cover identical period-button geometry, selection switching, timer-node continuity with running/paused layout, foreground versus minimised completion presentation, retained rewards and level-up information. Native layout and animation need the owner's next Android/iOS phone observation; JavaScript bundle checks do not verify pixels or gesture frame rate.
+
+
+### Screenshot correction: selected period pill bounds
+
+The supplied Android screenshot shows the selected blue pill extending beneath the outer period track. Earlier label-only/independent-decoration adjustments did not address this geometry. The selection is now a child of a single clipped 36-point track, with top/bottom both zero and an inset drawn by its border. The enclosing touch row explicitly has a relative position and minimum height 44. This prevents two independently sized absolute surfaces from using different vertical bounds; label and touch behaviour are unchanged. The regression test now checks track containment and shared vertical bounds, rather than checking only identical text styles. Actual device rendering needs another observation.

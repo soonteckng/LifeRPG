@@ -627,7 +627,12 @@ test('Week and Month use identical label/button geometry and one separate select
     assert.equal(buttons()[1].findAllByType('View').length,0);
     const labels=buttons().map(node=>node.findByType('Text'));
     assert.deepEqual(labels[0].props.style[1][0],labels[1].props.style[1][0]);
-    assert.equal(ui.renderer.root.findByProps({testID:'period-selection'}).props.style[1].left,'0%');
+    const track=ui.renderer.root.findByProps({testID:'period-track'});
+    assert.equal(track.props.style.height,36);
+    assert.equal(track.props.style.overflow,'hidden');
+    assert.equal(track.findByProps({testID:'period-selection'}).props.style[0].top,0);
+    assert.equal(track.findByProps({testID:'period-selection'}).props.style[0].bottom,0);
+    assert.equal(track.findByProps({testID:'period-selection'}).props.style[1].left,'0%');
     await act(async()=>buttons()[1].props.onPress());
     assert.equal(ui.renderer.root.findByProps({testID:'period-selection'}).props.style[1].left,'50%');
     assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
