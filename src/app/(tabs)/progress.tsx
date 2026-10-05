@@ -310,6 +310,7 @@ export default function ProgressScreen() {
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" style={s.segmentTrack} />
+          <View pointerEvents="none" testID="period-selection" style={[s.segmentSelected, { left: mode === "week" ? "0%" : "50%" }]} />
           {(["week", "month"] as const).map((value) => (
             <Pressable
               key={value}
@@ -322,7 +323,6 @@ export default function ProgressScreen() {
               accessibilityLabel={value === "week" ? "Week view" : "Month view"}
               style={s.segmentButton}
             >
-              {mode === value && <View pointerEvents="none" style={s.segmentSelected} />}
               <Text style={[s.segmentText, mode === value && s.segmentActive]}>
                 {value === "week" ? "Week" : "Month"}
               </Text>
@@ -873,7 +873,7 @@ export default function ProgressScreen() {
 
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  periodToolbar: { flexDirection: "column", alignItems: "stretch", flexWrap: "wrap" },
+  periodToolbar: { flexDirection: "column", alignItems: "stretch" },
   areaSummary: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 0 },
   areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
   historyEntrance: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
@@ -889,6 +889,7 @@ const s = StyleSheet.create({
   segment: {
     flexDirection: "row",
     padding: 0,
+    alignItems: "stretch",
     marginBottom: 8,
     alignSelf: "stretch",
     minWidth: 126,
@@ -902,8 +903,8 @@ const s = StyleSheet.create({
     position: "relative",
   },
   segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, bottom: 4, borderRadius: 12, backgroundColor: colors.surface },
-  segmentSelected: { position: "absolute", left: 3, right: 3, top: 7, bottom: 7, borderRadius: 9, backgroundColor: "#29334E" },
-  segmentText: { includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
+  segmentSelected: { position: "absolute", width: "50%", top: 7, bottom: 7, borderRadius: 9, backgroundColor: "#29334E", borderWidth: 3, borderColor: colors.surface },
+  segmentText: { width: "100%", textAlign: "center", margin: 0, padding: 0, includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
   segmentActive: { color: "#B8C8FF" },
   periodNav: {
     flexDirection: "row",

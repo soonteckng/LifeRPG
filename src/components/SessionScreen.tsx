@@ -225,7 +225,7 @@ export default function SessionScreen() {
       <Stack.Screen options={{ gestureEnabled: false }} />
       <AppHeader title={phase === "setup" ? "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} />
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, { minHeight: timerStageHeight }]}>
+        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, phase !== "setup" && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
           <View style={[styles.timerStage, {height:timerStageHeight}]}>
           <View pointerEvents="none" style={[styles.ringLayer, { top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
             {phase !== "setup" && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
@@ -242,7 +242,7 @@ export default function SessionScreen() {
               onEdit={() => { if (!wheelBusyRef.current) setPicker("duration"); }} />
           </View>
           {phase === "completed" && sessionSummary && <View style={styles.completedHero}>
-            <CompletionHero seconds={sessionSummary.durationSeconds} title={title} />
+            <CompletionHero seconds={sessionSummary.durationSeconds} title={title} levelUp={!!timer.completedLevelUp?.leveledUp} />
           </View>}
           <Text style={[styles.status, (phase === "running" || phase === "paused" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
@@ -288,7 +288,9 @@ export default function SessionScreen() {
               {isQuest && <><Text style={styles.secondary}>{area?.title ?? "General"} · {durationLabel(timer.duration)}</Text><Action disabled={locked} label="Switch to free session" onPress={switchToFree} /></>}
             </View>}
 
-            {timer.isCompleted && timer.sessionSummary && <CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />}
+            {timer.isCompleted && timer.sessionSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
+              {timer.completedLevelUp?.leveledUp && <Text style={styles.levelUp} accessibilityLiveRegion="polite">Level up · Level {timer.completedLevelUp.newLevel}</Text>}
+            </>}
           </Animated.View>
         </ScrollView>
         <View style={styles.actions}>
@@ -347,6 +349,7 @@ const styles = StyleSheet.create({
   completedHero: { position: "absolute", top: 24, left: 0, right: 0 },
   timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },
   completedTime: { position: "absolute", top: 196, left: 0, right: 0, alignItems: "center", gap: 6 },
+  levelUp: { color: colors.accent, fontSize: 17, lineHeight: 24, textAlign: "center", paddingVertical: 12 },
   activeTitle: { color: colors.secondary, fontSize: 16, fontWeight: "500", textAlign: "center", marginTop: 6 },
   areaSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
   areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -359,6 +362,7 @@ const styles = StyleSheet.create({
   activePrimary: { backgroundColor: colors.surface },
   endControl: { width: 54, minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.surface },
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
+  activeTimerAnchor: { flex: 1 },
   timerAnchor: { paddingHorizontal: 20, paddingBottom: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   compactAnchor: { paddingTop: 0, paddingBottom: 4 },
   timerControl: { width: 286, maxWidth: "100%", paddingTop: 8 },

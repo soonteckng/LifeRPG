@@ -616,3 +616,20 @@ test("local Monday week rollover excludes Sunday while month retains both dates"
   assert.equal(week.seconds, 60);
   assert.equal(month.seconds, 120);
 });
+
+test('Week and Month use identical label/button geometry and one separate selection surface',async()=>{
+  const ui=await screenHarness();
+  try {
+    const buttons=()=>ui.renderer.root.findAllByType('Button').filter(node=>['Week view','Month view'].includes(node.props.accessibilityLabel));
+    assert.equal(buttons().length,2);
+    assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
+    assert.equal(buttons()[0].findAllByType('View').length,0);
+    assert.equal(buttons()[1].findAllByType('View').length,0);
+    const labels=buttons().map(node=>node.findByType('Text'));
+    assert.deepEqual(labels[0].props.style[1][0],labels[1].props.style[1][0]);
+    assert.equal(ui.renderer.root.findByProps({testID:'period-selection'}).props.style[1].left,'0%');
+    await act(async()=>buttons()[1].props.onPress());
+    assert.equal(ui.renderer.root.findByProps({testID:'period-selection'}).props.style[1].left,'50%');
+    assert.deepEqual(buttons()[0].props.style,buttons()[1].props.style);
+  } finally {await ui.cleanup();}
+});

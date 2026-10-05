@@ -150,3 +150,12 @@ After Expo Go testing, the owner requested these corrections on `visual-polish`:
 - Badge rework remains future work as requested.
 
 TypeScript, full lint and 187/187 tests passed after these changes. Android JavaScript export with --no-bytecode also passed. Tests cover date filtering in both list scopes, native clean-editor dismissal versus dirty guarding, guarded drag/scroll priority, dock padding, and existing session/quest behaviour. Actual label alignment, timer density and drag smoothness require another phone observation; no physical device was available in this workspace. The earlier scope table describes the original pass; this explicitly requested follow-up also corrects the client-side task completion-date derivation and sheet gesture handling.
+
+## Second device-feedback follow-up: period labels and completion flow
+
+- Period selection uses one decorative highlight behind two structurally identical buttons. The selected button no longer gains an extra sibling View. Both labels keep the same width, line height, font weight, alignment and padding when switching Week/Month; only their colour and accessibility selection state change.
+- Running, paused and completed Session use a flexible timer region to fill available vertical space, centring the mounted timer stage and anchoring actions at the bottom. Setup retains its compact region so Life area choices remain reachable. This supersedes the earlier identical outer-position constraint; timer/wheel nodes and their internal geometry remain mounted, and running/paused share the same layout.
+- `GlobalRewardListener` is now a separate, testable component. It suppresses the reward popup on `/session` (and the legacy `/timer`) and clears only popup visibility after a saved result exists. The open Session goes straight to its retained completion summary, including level-up information. Completion outside Session retains the popup. Closing/viewing UI does not award, reset or delete completion data.
+- No dependency, SQL, account, reward calculation or session persistence changes were made.
+
+TypeScript/full lint and all 190 tests pass. Android and iOS JavaScript exports passed with --no-bytecode. Regression tests cover identical period-button geometry, selection switching, timer-node continuity with running/paused layout, foreground versus minimised completion presentation, retained rewards and level-up information. Native layout and animation need the owner's next Android/iOS phone observation; JavaScript bundle checks do not verify pixels or gesture frame rate.

@@ -411,7 +411,7 @@ test("root gate renders recovery before mounting account or onboarding providers
       "../components/AuthScreen": host("Login"),
       "../components/RecoveryScreen": host("Recovery"),
       "../components/LaunchIntro": props => props.children,
-      "../components/LevelUpModal": host("Reward"),
+      "../components/GlobalRewardListener": host("Reward"),
       "../context/AuthContext": {
         AuthProvider: props => props.children,
         useAuth: () => ({ user: recovery === "none" ? null : session.user, loading: false, recovery }),

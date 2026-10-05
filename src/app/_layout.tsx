@@ -9,12 +9,11 @@ import { PersonalButton, p } from "../components/PersonalUI";
 import AuthScreen from "../components/AuthScreen";
 import RecoveryScreen from "../components/RecoveryScreen";
 import LaunchIntro from "../components/LaunchIntro";
-import LevelUpModal from "../components/LevelUpModal";
+import GlobalRewardListener from "../components/GlobalRewardListener";
 import { AuthProvider, useAuth } from "../context/AuthContext";
-import { TimerProvider, useTimer } from "../context/TimerContext";
+import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
-import { lifeAreaColor } from "../utils/lifeAreaColor";
-import { QuestProvider, useQuests } from "../context/QuestContext";
+import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { secondaryNativeOptions, sessionNativeOptions, traceSession } from "../utils/sessionTransition";
 
@@ -76,53 +75,6 @@ function GlobalBackHandler() {
   return null;
 }
 
-function GlobalRewardListener() {
-  const {
-    sessionSummary,
-    completedLevelUp,
-    clearCompletionModal,
-    rewardsVisible,
-    linkedTaskId,
-    targetAttributeId,
-  } = useTimer();
-  const { profile, reloadProfile } = useUser();
-  const {tasks, subjects} = useQuests();
-  const quest = tasks.find(task => task.id === linkedTaskId);
-  const area = subjects.find(subject => subject.id === targetAttributeId);
-
-  useEffect(() => {
-    if (sessionSummary || completedLevelUp) {
-      reloadProfile();
-    }
-  }, [sessionSummary, completedLevelUp, reloadProfile]);
-
-  const currentXP = profile?.current_xp || 0;
-  const currentLevel = profile?.level || 1;
-  const requiredXP = Math.floor(100 * Math.pow(currentLevel, 1.5));
-
-  return (
-    <LevelUpModal
-      visible={rewardsVisible}
-      xpEarned={sessionSummary?.xpEarned || 0}
-      goldEarned={sessionSummary?.goldEarned || 0}
-      creditVersion={sessionSummary?.creditVersion}
-      areaXpEarned={sessionSummary?.areaXpEarned}
-      characterRemainderSeconds={sessionSummary?.characterRemainderSeconds}
-      areaRemainderSeconds={sessionSummary?.areaRemainderSeconds}
-      goalReachedNow={sessionSummary?.goalReachedNow}
-      minutesSpent={sessionSummary?.minutesSpent || 0}
-      durationSeconds={sessionSummary?.durationSeconds}
-      questTitle={linkedTaskId != null ? quest?.title || (sessionSummary?.questTitle !== "Quest session" ? sessionSummary?.questTitle : "Quest") : "Free session"}
-      areaTitle={area?.title}
-      areaColor={lifeAreaColor(targetAttributeId,area?.color_code)}
-      isLevelUp={!!completedLevelUp?.leveledUp}
-      newLevel={completedLevelUp?.newLevel || currentLevel}
-      currentXP={currentXP}
-      requiredXP={requiredXP}
-      onClose={clearCompletionModal}
-    />
-  );
-}
 
 function AppContent() {
   const reducedMotion = useReducedMotion();

@@ -273,17 +273,18 @@ test("downward session swipe uses the existing animated close and inner sheets t
   await ui.cleanup();
 });
 
-test("timer anchor and countdown stay mounted with identical layout across setup, running and paused",async()=>{
+test("timer nodes stay mounted; running and paused share a flexible centred layout",async()=>{
   const ui=await screenSetup();
   const anchor=ui.root().findAllByType("View").find((n)=>n.props.testID==="session-timer-anchor");
   const countdown=ui.root().findAllByType("View").find((n)=>n.props.testID==="session-countdown");
   const layout=JSON.stringify(anchor.props.style);
   await ui.update({hasOpenSession:true,isRunning:true,timeLeft:1800});
   assert.equal(ui.root().findAllByType("View").find((n)=>n.props.testID==="session-timer-anchor"),anchor);
-  assert.equal(JSON.stringify(anchor.props.style),layout);
+  assert.notEqual(JSON.stringify(anchor.props.style),layout);
+  const activeLayout=JSON.stringify(anchor.props.style);
   assert.equal(ui.root().findAllByType("View").find((n)=>n.props.testID==="session-countdown"),countdown);
   await ui.update({isRunning:false,timeLeft:1795});
-  assert.equal(JSON.stringify(anchor.props.style),layout);
+  assert.equal(JSON.stringify(anchor.props.style),activeLayout);
   assert.ok(ui.button("Resume"));
   assert.equal(ui.button("Choose activity"),undefined);
   await ui.cleanup();
@@ -1095,4 +1096,40 @@ test("floating dock reserves the safe area and only visible banners",()=>{
   assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),142);
   assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),142);
   assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),86);
+});
+
+test('open Session consumes popup visibility without clearing completion; outside Session keeps the popup',async()=>{
+  for(const pathname of ['/session','/timer','/progress','/']) {
+    const saved={id:'saved',durationSeconds:90,minutesSpent:1,xpEarned:1,goldEarned:0};
+    let timer={sessionSummary:saved,rewardsVisible:true,linkedTaskId:null,targetAttributeId:1,completedLevelUp:{leveledUp:true,newLevel:2}};
+    let clearCalls=0,reloads=0;
+    const clear=()=>{clearCalls++;timer={...timer,rewardsVisible:false};};
+    const Listener=load('src/components/GlobalRewardListener.tsx',{
+      'expo-router':{usePathname:()=>pathname},
+      './LevelUpModal':host('Rewards'),
+      '../context/TimerContext':{useTimer:()=>({...timer,clearCompletionModal:clear})},
+      '../context/UserContext':{useUser:()=>({profile:{level:2,current_xp:1},reloadProfile:()=>{reloads++;}})},
+      '../context/QuestContext':{useQuests:()=>({tasks:[],subjects:[{id:1,title:'Knowledge',color_code:null}]})},
+    }).default;
+    let tree;await act(async()=>{tree=create(React.createElement(Listener));});
+    const inside=pathname==='/session'||pathname==='/timer';
+    assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
+    assert.equal(clearCalls,inside?1:0);
+    assert.equal(timer.sessionSummary,saved);
+    assert.equal(reloads,1);
+    await act(async()=>tree.update(React.createElement(Listener)));
+    assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
+    assert.equal(clearCalls,inside?1:0);
+    assert.equal(tree.root.findByType('Rewards').props.xpEarned,1);
+    assert.equal(tree.root.findByType('Rewards').props.isLevelUp,true);
+    await act(async()=>tree.unmount());
+  }
+});
+
+test('Session completion keeps level-up information in its single retained result',async()=>{
+  const ui=await screenSetup({isCompleted:true,sessionSummary:{durationSeconds:90,minutesSpent:1,xpEarned:1,goldEarned:0},completedLevelUp:{leveledUp:true,newLevel:3}});
+  assert.match(ui.output(),/Level up · Level 3/);
+  assert.ok(ui.button('Done'));
+  assert.ok(ui.button('New session'));
+  await ui.cleanup();
 });
