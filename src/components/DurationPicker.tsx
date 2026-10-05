@@ -75,7 +75,7 @@ function DurationDisplay({ seconds, interactive, onCommit, onBusy, onValidity, o
     {compact && !interactive && caption && <Text style={{ position: "absolute", top: labelHeight + rowHeight * 2 + 8, width: "100%", textAlign: "center", color: colors.secondary, fontSize: 15 }}>{caption}</Text>}
     <View style={styles.editSlot}>
       {interactive && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Edit duration" onPress={onEdit} style={styles.edit}>
-        <Text style={[styles.wheelHint, !valid && styles.error]}>{valid ? compact ? "Scroll to set duration · Tap to type" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
+        <Text style={[styles.wheelHint, !valid && styles.error]}>{valid ? compact ? "Scroll or tap here to set duration" : "Edit duration" : shown === 0 ? "Choose at least 00:01" : "Maximum is 480:00"}</Text>
       </TouchableOpacity>}
     </View>
   </View>;
