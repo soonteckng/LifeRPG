@@ -92,3 +92,30 @@ test('glass is dense on Android, uses available native iOS glass and honours red
   await act(async()=>tree.unmount());
  }
 });
+
+test('Tab crossfade respects reduced motion without changing route identities or history policy',async()=>{
+  let reduced=false;
+  const Tabs=Object.assign(host('Tabs'),{Screen:host('TabScreen')});
+  const Layout=load('src/app/(tabs)/_layout.tsx',{
+    'react-native':{Platform:{OS:'android'},StyleSheet:{create:s=>s,hairlineWidth:0.5}},
+    'expo-router':{Tabs},
+    '../../hooks/useReducedMotion':{useReducedMotion:()=>reduced},
+    '../../context/FloatingDockContext':{FloatingDockProvider:host('DockProvider')},
+    '../../components/GlassSurface':host('Glass'),
+    '../../components/SessionTabBar':host('Dock'),
+    '../../components/TabIcon':host('Icon'),
+  }).default;
+  let tree;await act(async()=>{tree=create(React.createElement(Layout));});
+  try {
+    const routes=tree.root.findAllByType('TabScreen');
+    const tabs=()=>tree.root.findByType('Tabs').props;
+    assert.equal(tabs().screenOptions.animation,'fade');
+    assert.equal(tabs().screenOptions.transitionSpec.config.duration,180);
+    assert.equal(tabs().backBehavior,'initialRoute');
+    assert.deepEqual(routes.map(node=>node.props.name),['index','progress','profile','tasks','timer']);
+    reduced=true;await act(async()=>tree.update(React.createElement(Layout)));
+    assert.equal(tabs().screenOptions.animation,'none');
+    assert.equal(tabs().screenOptions.transitionSpec.config.duration,0);
+    assert.equal(tree.root.findAllByType('TabScreen')[0],routes[0]);
+  }finally{await act(async()=>tree.unmount());}
+});

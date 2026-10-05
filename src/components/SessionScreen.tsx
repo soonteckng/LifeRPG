@@ -7,8 +7,9 @@ import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
+import LevelUpModal from "./LevelUpModal";
 import ProgressRing from "./ProgressRing";
 import { CompletionHero, CompletionRows } from "./CompletionDetails";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
@@ -23,10 +24,18 @@ import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
 
 type Picker = "duration" | "quest" | "area" | null;
-const PRESETS = [15, 25, 45, 60];
+const PRESETS = [15, 30, 45, 60];
 
 export default function SessionScreen() {
-  const timer = useTimer();
+  const liveTimer = useTimer();
+  const [endRequested, setEndRequested] = useState(false);
+  const [endedClosing, setEndedClosing] = useState(false);
+  const [endSnapshot, setEndSnapshot] = useState<Pick<typeof liveTimer, "duration" | "timeLeft" | "isRunning" | "linkedTaskId" | "targetAttributeId" | "activityType"> | null>(null);
+  const cancellationSaved = endRequested && !liveTimer.actionBusy && !liveTimer.hasOpenSession && !liveTimer.actionError && !liveTimer.isCompleted;
+  // Backend cancellation is final, but keep the outgoing active layout behind
+  // its notice until both the popup and this screen have finished leaving.
+  const timer = useMemo(() => cancellationSaved && endSnapshot ? { ...liveTimer, ...endSnapshot, hasOpenSession: true } : liveTimer, [cancellationSaved, endSnapshot, liveTimer]);
+  const insets = useSafeAreaInsets();
   const { sessionSummary, rewardsVisible, acknowledgeSummary } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const navigation = useNavigation();
@@ -36,6 +45,10 @@ export default function SessionScreen() {
   const ringSize = Math.min(height < 700 ? 252 : 300, width - 48);
   const timerStageHeight = Math.max(300, ringSize + 24, labelHeight + rowHeight * 3 + 44);
   const ringTop = 12 + labelHeight + rowHeight * 1.5 - ringSize / 2;
+  const completionDismissRequested = useRef(false);
+  const endedDismissRequested = useRef(false);
+  const [completionClosing, setCompletionClosing] = useState(false);
+  const hideCompletedSummary = !!sessionSummary && (rewardsVisible || completionClosing);
   const [picker, setPicker] = useState<Picker>(null);
   const [durationRevision, setDurationRevision] = useState(0);
   const durationEpoch = useRef(0);
@@ -43,6 +56,7 @@ export default function SessionScreen() {
   const durationValidRef = useRef(true);
   const [wheelBusy, setWheelBusy] = useState(false);
   const [durationValid, setDurationValid] = useState(true);
+  const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const wheelBounds = useRef({ top: 0, bottom: 0 });
@@ -98,6 +112,7 @@ export default function SessionScreen() {
   const phase = timer.isCompleted ? "completed" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
 
   useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
     if (task && timer.hasOpenSession) timer.resolveQuestTitle(task.id, task.title);
@@ -120,13 +135,14 @@ export default function SessionScreen() {
   }, [phase, reducedMotion, opacity]);
 
   const dismissLayer = useCallback(() => {
+    if (completionClosing || endedClosing) return false;
     if (Keyboard.isVisible() || keyboardVisible) { Keyboard.dismiss(); return true; }
     if (picker) { setPicker(null); return true; }
     if (confirmEnd) { setConfirmEnd(false); return true; }
     return false;
-  }, [keyboardVisible, picker, confirmEnd]);
+  }, [keyboardVisible, picker, confirmEnd, completionClosing, endedClosing]);
   const minimise = useCallback((source = "header") => {
-    const layerDismissed = dismissLayer();
+    const layerDismissed = source === "completion" || source === "session-ended" ? false : dismissLayer();
     const state = navigation.getState();
     traceSession("close request", { source, layerDismissed, alreadyClosing: closing.current, navigator: state?.key, activeRoute: state?.routes[state.index]?.key, reducedMotion });
     if (layerDismissed) {
@@ -194,7 +210,7 @@ export default function SessionScreen() {
     }) as never);
     return () => { start(); end(); };
   }, [navigation]);
-  usePreventRemove(!!picker || keyboardVisible || confirmEnd || !exitReady, () => {
+  usePreventRemove((!completionClosing && !endedClosing && (!!picker || keyboardVisible || confirmEnd)) || !exitReady, () => {
     traceSession("removal deferred", { picker, keyboardVisible, confirmEnd, exitReady });
     minimise("navigation-back");
   });
@@ -244,7 +260,7 @@ export default function SessionScreen() {
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
-  const disabled = timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
+  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
   const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
@@ -259,11 +275,11 @@ export default function SessionScreen() {
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
-            {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary) && <ProgressRing size={ringSize}
+            {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary && !hideCompletedSummary) && <ProgressRing size={ringSize}
               progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : "#25C9B8"} />}
           </Animated.View>
-          <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary ? "no-hide-descendants" : "auto"}>
+          <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && !hideCompletedSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary && !hideCompletedSummary ? "no-hide-descendants" : "auto"}>
             <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
               compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`}
               revision={durationRevision}
@@ -272,7 +288,7 @@ export default function SessionScreen() {
               onValidity={(valid) => { if (durationEpoch.current === durationRevision) { durationValidRef.current = valid; setDurationValid(valid); } }}
               onEdit={() => { if (!wheelBusyRef.current) setPicker("duration"); }} />
           </View>
-          {phase === "completed" && sessionSummary && <View style={styles.completedHero}>
+          {phase === "completed" && sessionSummary && !hideCompletedSummary && <View style={styles.completedHero}>
             <CompletionHero seconds={sessionSummary.durationSeconds} title={title} levelUp={!!timer.completedLevelUp?.leveledUp} />
           </View>}
           <Text style={[styles.status, (phase === "running" || phase === "paused" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
@@ -291,10 +307,10 @@ export default function SessionScreen() {
               </View>}
               {!isQuest && <>
                 <View style={styles.presets}>{PRESETS.map((value) => <TouchableOpacity key={value} disabled={locked}
-                  style={styles.preset} onPress={() => selectMinutes(value)}
+                  style={[styles.preset, fontScale > 1.3 && styles.presetLarge]} onPress={() => selectMinutes(value)}
                   accessibilityRole="button" accessibilityLabel={`${value} minutes`} accessibilityState={{ selected: minutes === value }}>
-                  <View pointerEvents="none" style={[styles.presetSurface, minutes === value && styles.selected]} />
-                  <Text style={[styles.link, minutes === value && { color: colors.accent }]}>{value}</Text>
+                  <View pointerEvents="none" style={[styles.presetSurface, minutes === value && styles.presetSelected]} />
+                  <Text style={[styles.presetText, minutes === value && styles.presetTextSelected]}>{value}</Text>
                 </TouchableOpacity>)}</View>
                 <View style={styles.areaSection}>
                   <Text style={styles.secondary}>Life area</Text>
@@ -331,7 +347,7 @@ export default function SessionScreen() {
               </TouchableOpacity>}
             </View>}
 
-            {timer.isCompleted && timer.sessionSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
+            {timer.isCompleted && timer.sessionSummary && !hideCompletedSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
               {timer.completedLevelUp?.leveledUp && <Text style={styles.levelUp} accessibilityLiveRegion="polite">Level up · Level {timer.completedLevelUp.newLevel}</Text>}
             </>}
           </Animated.View>
@@ -341,7 +357,7 @@ export default function SessionScreen() {
             <Text style={styles.error} accessibilityRole="alert">{timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one."}</Text>
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
-          {timer.isCompleted ? <>
+          {timer.isCompleted ? !hideCompletedSummary && <>
             <TouchableOpacity style={[styles.primary, { backgroundColor: "#E5E4FF" }]} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
             {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
           </> : <>
@@ -357,22 +373,60 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={picker === "quest" || picker === "area"} onRequestClose={() => setPicker(null)} label="session choices"
+      <AppSheet visible={!sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
         header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Life area"}</Text>}>
-        <BottomSheetScrollView contentContainerStyle={styles.pickerBody}>
+        <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <SheetChoice label="General" onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
           {picker === "area" && subjects.filter((item) => item.title !== "General").map((item) => <SheetChoice key={item.id} label={item.title} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
-          {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => <SheetChoice key={item.id} label={item.title} detail={`${item.target_minutes || 30} min · ${subjects.find((subject) => subject.id === item.subject_id)?.title ?? "General"}`} onPress={() => {
-            timer.setLinkedTaskId(item.id); timer.setTargetAttributeId(item.subject_id ?? general?.id ?? null);
-            timer.setDurationInMinutes(item.target_minutes || 30); setPicker(null);
-          }} />)}
-          {picker === "quest" && !tasks.some((item) => item.is_due_today && !item.is_completed_today) && <Text style={styles.secondary}>{loading ? "Loading quests…" : "No unfinished quests available today."}</Text>}
+          {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => {
+            const questArea = subjects.find(subject => subject.id === item.subject_id);
+            const tint = lifeAreaColor(item.subject_id, questArea?.color_code);
+            const selected = timer.linkedTaskId === item.id;
+            return <SheetButton key={item.id} style={[styles.questPickerCard, selected && styles.questPickerSelected]}
+              accessibilityRole="button" accessibilityLabel={`Choose ${item.title}`} accessibilityState={{selected}}
+              onPress={() => {
+                timer.setLinkedTaskId(item.id); timer.setTargetAttributeId(item.subject_id ?? general?.id ?? null);
+                timer.setDurationInMinutes(item.target_minutes || 30); setPicker(null);
+              }}>
+              <View style={[styles.questPickerIcon, {backgroundColor: `${tint}18`}]}><Ionicons name="flag-outline" size={21} color={tint} /></View>
+              <View style={styles.selectedQuestContent}>
+                <Text style={styles.questPickerTitle}>{item.title}</Text>
+                <Text style={styles.questPickerMeta}>{item.target_minutes || 30} min · {questArea?.title ?? "General"}</Text>
+              </View>
+              <Ionicons name={selected ? "checkmark-circle" : "chevron-forward"} size={20} color={selected ? colors.accent : colors.secondary} />
+            </SheetButton>;
+          })}
+          {picker === "quest" && !tasks.some((item) => item.is_due_today && !item.is_completed_today) && <View style={styles.questPickerEmpty}>
+            <Ionicons name="flag-outline" size={28} color={colors.accent} />
+            <Text style={styles.questPickerTitle}>{loading ? "Loading quests…" : "No quests for today"}</Text>
+            {!loading && <Text style={styles.secondary}>You can still start a free session.</Text>}
+          </View>}
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
-      <DurationEditor visible={picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
-      {confirmEnd && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
-        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); void timer.resetTimer(); }} />}
+      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.6}
+        header={<Text style={styles.endedTitle}>Session ended</Text>}
+        onRequestClose={() => { endedDismissRequested.current = true; setEndedClosing(true); }}
+        onDismiss={() => { if (endedDismissRequested.current) minimise("session-ended"); }}>
+        <BottomSheetScrollView showsVerticalScrollIndicator={false}
+          contentContainerStyle={[styles.endedBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]}>
+          <View style={styles.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
+          <Text style={styles.secondary}>This session was cancelled. No focus time or XP were recorded.</Text>
+          <SheetButton style={styles.primary} accessibilityRole="button" accessibilityLabel="Done ending session"
+            onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); }}><Text style={styles.primaryText}>Done</Text></SheetButton>
+        </BottomSheetScrollView>
+      </AppSheet>
+      <LevelUpModal visible={!!sessionSummary && rewardsVisible}
+        durationSeconds={sessionSummary?.durationSeconds} xpEarned={sessionSummary?.xpEarned}
+        goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}
+        areaXpEarned={sessionSummary?.areaXpEarned} goalReachedNow={sessionSummary?.goalReachedNow}
+        questTitle={title} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId, area?.color_code)}
+        isLevelUp={!!timer.completedLevelUp?.leveledUp} newLevel={timer.completedLevelUp?.newLevel}
+        onClose={() => { completionDismissRequested.current = true; setCompletionClosing(true); timer.clearCompletionModal(); acknowledgeSummary(); }}
+        onDismiss={() => { if (completionDismissRequested.current) minimise("completion"); }} />
+      <DurationEditor visible={!sessionSummary && picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
+      {confirmEnd && !sessionSummary && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
+        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndSnapshot({duration:timer.duration, timeLeft:timer.timeLeft, isRunning:timer.isRunning, linkedTaskId:timer.linkedTaskId, targetAttributeId:timer.targetAttributeId, activityType:timer.activityType}); setEndRequested(true); void liveTimer.resetTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
   );
@@ -398,7 +452,7 @@ const styles = StyleSheet.create({
   areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   areaChip: { minHeight: 44, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", borderRadius: 20 },
   chipSurface: { position: "absolute", left: 0, right: 0, top: 4, bottom: 4, borderRadius: 20, backgroundColor: colors.surface },
-  presetSurface: { position: "absolute", width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface },
+  presetSurface: { position: "absolute", left: 0, right: 0, top: 2, bottom: 2, borderRadius: 14, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   areaDot: { width: 8, height: 8, borderRadius: 4 },
   summaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   actionRow: { flexDirection: "row", gap: 10 },
@@ -420,8 +474,18 @@ const styles = StyleSheet.create({
   helper: { color: colors.muted, fontSize: 12, lineHeight: 18 },
   choiceValue: { color: colors.secondary, flex: 1, textAlign: "right", fontSize: 16 },
   presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
-  preset: { minWidth: 44, minHeight: 44, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 22 },
-  selected: { backgroundColor: colors.accentSoft },
+  preset: { flex: 1, maxWidth: 76, minWidth: 52, minHeight: 48, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 14 },
+  presetLarge: { minWidth: 80, maxWidth: 110, minHeight: 58 },
+  presetSelected: { backgroundColor: "#D9DEFF", borderColor: "#E5E8FF", borderWidth: 1 },
+  presetText: { color: colors.neutral, fontSize: 17, lineHeight: 23, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  presetTextSelected: { color: "#171827", fontWeight: "600" },
+  questPickerBody: { gap: 10 },
+  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 14, borderRadius: 18, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  questPickerSelected: { borderColor: colors.accent, backgroundColor: "#20283D" },
+  questPickerIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
+  questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  questPickerEmpty: { alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 28 },
   selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
   selectedQuestIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },
@@ -434,6 +498,9 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },
+  endedTitle: {color:colors.text, fontSize:24, lineHeight:30, fontWeight:"500", paddingHorizontal:20, paddingBottom:12},
+  endedBody: {paddingHorizontal:20, gap:16},
+  endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center"},
   pickerTitle: { color: colors.text, fontSize: 21, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 16 },
   pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },

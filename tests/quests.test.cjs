@@ -427,7 +427,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
   assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17", "home-quest-18"]);
-  const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.style[1].marginBottom;
+  const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.contentContainerStyle[1].paddingBottom;
   const initialMargin = viewportMargin();
   openSession = true;
   await act(async () => renderer.update(React.createElement(Home)));
@@ -731,4 +731,90 @@ test("Today and All occupy equal native containers with identical full-width tou
   await ui.press("Today");
   assert.equal(ui.button("Edit Upcoming"), undefined);
   await ui.cleanup();
+});
+
+async function quickHomeSetup(history = null, start = async () => true) {
+  const calls=[];
+  let owner="owner-a", timerFlags={}, historyValue=history;
+  const setters = {
+    setLinkedTaskId:v=>calls.push(["task",v]), setTargetAttributeId:v=>calls.push(["area",v]),
+    setDurationInMinutes:v=>calls.push(["minutes",v]), setDurationInSeconds:v=>calls.push(["seconds",v]),
+    setActivityType:v=>calls.push(["activity",v]), setNotes:v=>calls.push(["notes",v]),
+  };
+  const Home=load("src/app/(tabs)/index.tsx", {
+    "react-native":{...native, ScrollView:host("ScrollView"), useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
+    "@expo/vector-icons":{Ionicons:host("Icon")}, "expo-haptics":{},
+    "expo-router":{useRouter:()=>({navigate:route=>calls.push(["navigate",route])})},
+    "react-native-safe-area-context":{SafeAreaView:host("View"),useSafeAreaInsets:()=>({top:24,bottom:24})},
+    "../../components/GoalRing":host("GoalRing"), "../../components/CharacterMark":host("CharacterMark"),
+    "../../components/ContentReveal":({children})=>children, "../../components/QuestSheet":host("QuestSheet"),
+    "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})},
+    "../../context/UserContext":{useUser:()=>({profile:{id:owner,username:"Soon",daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
+    "../../context/TimerContext":{useTimer:()=>({...setters,...timerFlags,startFreeTimer:async(seconds,area)=>{calls.push(["start",seconds,area]);return start();}})},
+    "../../services/progressService":{getFocusStreak:async()=>0,getLastFreeSession:async id=>{calls.push(["history",id]);return historyValue;}},
+    "../../services/dailyProgressService":{getTodayProgress:async()=>null},
+    "../../hooks/useHomeLifecycle":{useHomeLifecycle:()=>12},
+  }).default;
+  let renderer; await act(async()=>{renderer=create(React.createElement(Home));});
+  return {calls,renderer,button:id=>renderer.root.findAllByType("Pressable").find(node=>node.props.testID===id),
+    update:async(flags={},newOwner=owner,nextHistory=historyValue)=>{timerFlags=flags;owner=newOwner;historyValue=nextHistory;await act(async()=>renderer.update(React.createElement(Home)));},
+    output:()=>JSON.stringify(renderer.toJSON()),cleanup:async()=>{await act(async()=>renderer.unmount());}};
+}
+test("Home Quick Start shows exact remembered choice, ignores rapid taps and navigates only after success", async()=>{
+  let resolve; const pending=new Promise(r=>resolve=r);
+  const ui=await quickHomeSetup({task_id:null,subject_id:2,duration_seconds:1859},()=>pending);
+  try {
+    assert.match(ui.output(),/30 min 59 sec/); assert.match(ui.output(),/Learning/);
+    let first;
+    await act(async()=>{first=ui.button("home-start-focus").props.onPress();ui.button("home-start-focus").props.onPress();});
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1859,2]]);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.equal(ui.button("home-start-focus").props.disabled,true);
+    await act(async()=>{resolve(true);await first;});
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
+  }finally{await ui.cleanup();}
+});
+test("Home failure stays actionable and Change configures exact seconds instead of starting", async()=>{
+  let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
+  try {
+    assert.match(ui.output(),/30 min/);
+    await act(async()=>ui.button("home-start-focus").props.onPress());
+    assert.match(ui.output(),/Retry start/);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    succeeded=true;
+    await act(async()=>ui.button("home-start-focus").props.onPress());
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);
+    ui.calls.length=0;
+    await act(async()=>ui.button("home-change-focus").props.onPress());
+    assert.deepEqual(ui.calls,[["task",null],["area",1],["activity","other"],["notes",""],["seconds",1800],["navigate","/session"]]);
+  }finally{await ui.cleanup();}
+});
+test("Home continues active or paused sessions and protects restoration/completion before starting",async()=>{
+  const ui=await quickHomeSetup();
+  try {
+    for(const isRunning of [true,false]) {
+      await ui.update({hasOpenSession:true,isRunning,timeLeft:125,targetAttributeId:2});
+      assert.match(ui.output(),/2 min 5 sec/);
+      await act(async()=>ui.button("home-start-focus").props.onPress());
+      assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
+      assert.equal(ui.button("home-change-focus"),undefined);
+    }
+    for(const flag of [{isRestoring:true},{restoreError:true},{actionBusy:true},{isCompleted:true}]) {
+      await ui.update(flag);assert.equal(ui.button("home-start-focus").props.disabled,true);
+      await act(async()=>ui.button("home-start-focus").props.onPress());
+    }
+    assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
+  }finally{await ui.cleanup();}
+});
+test("Home history does not leak across accounts; missing areas fall back to General and tiny/quest rows are ignored",async()=>{
+  const ui=await quickHomeSetup({task_id:null,subject_id:99,duration_seconds:1859});
+  try {
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min 59 sec, General");
+    await ui.update({},"owner-b",null);
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
+    await ui.update({},"owner-c",{task_id:2,subject_id:2,duration_seconds:900});
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
+    await ui.update({},"owner-d",{task_id:null,subject_id:2,duration_seconds:30});
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
+  }finally{await ui.cleanup();}
 });

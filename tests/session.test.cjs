@@ -226,8 +226,9 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),TouchableOpacity:host("Button")},
-    "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
     "./AppHeader":p=>React.createElement("Button",{onPress:p.onBack,accessibilityLabel:p.backLabel},p.title),
+    "./LevelUpModal":host("CompletionPopup"),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
     "./DurationPicker":{__esModule:true,default:p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"}),p.interactive&&React.createElement("Button",{onPress:p.onEdit,accessibilityLabel:"Edit duration"},"Edit duration")),DurationEditor:p=>p.visible?React.createElement("DurationSheet",p):null},
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
@@ -661,8 +662,8 @@ test("typed input and presets share applied seconds while linked quests stay rea
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(6000));
   await ui.update({duration:6000,timeLeft:6000});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,6000);
-  await ui.press("25 minutes");await ui.update({duration:1500,timeLeft:1500});
-  assert.equal(ui.root().findByType("DurationControl").props.seconds,1500);
+  await ui.press("30 minutes");await ui.update({duration:1800,timeLeft:1800});
+  assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
   await ui.update({linkedTaskId:7,duration:930});
   assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
   assert.equal(ui.button("Edit duration"),undefined);
@@ -981,11 +982,11 @@ test("compact Session chips select the saved Life area without touching quest or
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
   assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
-  await ui.press("25 minutes");
-  assert.deepEqual(ui.calls.at(-1),["seconds",1500]);
-  await ui.update({duration:1500,timeLeft:1500});
+  await ui.press("45 minutes");
+  assert.deepEqual(ui.calls.at(-1),["seconds",2700]);
+  await ui.update({duration:2700,timeLeft:2700});
   await ui.press("Start");
-  assert.deepEqual(ui.calls.at(-1),["start",1500,undefined]);
+  assert.deepEqual(ui.calls.at(-1),["start",2700,undefined]);
   await ui.cleanup();
 });
 
@@ -1055,7 +1056,9 @@ test("completion message shows saved exact duration and awards; Done only closes
   const calls=[];
   const Modal=load("src/components/LevelUpModal.tsx",{
     "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
-    "react-native-safe-area-context":{SafeAreaView:host("SafeArea")},
+    "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
+    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
+    "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./ProgressRing":host("Ring"),
     "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
@@ -1066,6 +1069,10 @@ test("completion message shows saved exact duration and awards; Done only closes
   await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
   const text=node=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   try {
+    const sheet=renderer.root.findByType("PopupSheet");
+    assert.equal(sheet.props.label,"session completion");
+    assert.equal(sheet.props.compact,true);
+    assert.equal(sheet.props.maxHeightRatio,0.85);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
@@ -1106,7 +1113,7 @@ test("floating dock reserves the safe area and only visible banners",()=>{
   assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),86);
 });
 
-test('open Session consumes popup visibility without clearing completion; outside Session keeps the popup',async()=>{
+test('Session owns its animated completion popup; the global listener keeps completion available without consuming it',async()=>{
   for(const pathname of ['/session','/timer','/progress','/']) {
     const saved={id:'saved',durationSeconds:90,minutesSpent:1,xpEarned:1,goldEarned:0};
     let timer={sessionSummary:saved,rewardsVisible:true,linkedTaskId:null,targetAttributeId:1,completedLevelUp:{leveledUp:true,newLevel:2}};
@@ -1122,12 +1129,12 @@ test('open Session consumes popup visibility without clearing completion; outsid
     let tree;await act(async()=>{tree=create(React.createElement(Listener));});
     const inside=pathname==='/session'||pathname==='/timer';
     assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
-    assert.equal(clearCalls,inside?1:0);
+    assert.equal(clearCalls,0);
     assert.equal(timer.sessionSummary,saved);
     assert.equal(reloads,1);
     await act(async()=>tree.update(React.createElement(Listener)));
     assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
-    assert.equal(clearCalls,inside?1:0);
+    assert.equal(clearCalls,0);
     assert.equal(tree.root.findByType('Rewards').props.xpEarned,1);
     assert.equal(tree.root.findByType('Rewards').props.isLevelUp,true);
     await act(async()=>tree.unmount());
@@ -1186,4 +1193,151 @@ test("reduced motion keeps phase controls readable and skips timer relocation an
   assert.equal(ui.root().findByProps({testID:"session-actions-motion"}).props.style[1].opacity.value, 1);
   assert.ok(ui.button("Pause"));
   await ui.cleanup();
+});
+
+test("Quick Start atomically replaces stale quest draft, blocks rapid starts, and preserves exact settings on retry", async () => {
+  const pending=deferred(); let count=0; const drafts=[];
+  const ui=await providerSetup({startActivitySession: params => { drafts.push(params); return ++count === 1 ? pending.promise : Promise.resolve("quick-session"); }});
+  try {
+    await ui.run(s => {s.setLinkedTaskId(99);s.setTargetAttributeId(9);s.setActivityType("read");s.setNotes("quest notes");});
+    let start;
+    await ui.run(s => {start=s.startFreeTimer(1859,3);void s.startFreeTimer(900,4);});
+    assert.equal(count,1);
+    assert.deepEqual(drafts[0], {targetDurationSeconds:1859,activityType:"other",taskId:null,subjectId:3,notes:""});
+    await ui.run(async () => {pending.reject(Error("Offline")); assert.equal(await start,false);});
+    assert.equal(ui.state().duration,1859);
+    assert.equal(ui.state().targetAttributeId,3);
+    assert.equal(ui.state().linkedTaskId,null);
+    await ui.run(s => s.retryAction());
+    assert.deepEqual(drafts[1],drafts[0]);
+    assert.equal(ui.state().hasOpenSession,true);
+    await ui.run(s => s.pauseTimer());
+    await ui.run(async s => assert.equal(await s.startFreeTimer(900,null),false));
+    assert.equal(count,2);
+    assert.equal(ui.state().duration,1859);
+  } finally {await ui.cleanup();}
+});
+test("Quick Start can begin after saved completion without cancelling or awarding again", async () => {
+  let count=0; const ui=await providerSetup({startActivitySession:async()=>`id-${++count}`});
+  try {
+    await ui.run(s=>s.startTimer(1)); await ui.advance(1);
+    assert.ok(ui.state().sessionSummary);
+    await ui.run(async s=>assert.equal(await s.startFreeTimer(1800,null),true));
+    assert.equal(count,2);
+    assert.equal(ui.state().sessionSummary,null);
+    assert.equal(ui.state().rewardsVisible,false);
+    assert.equal(ui.calls.filter(c=>c[0]==="cancel").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="complete").length,1);
+  } finally {await ui.cleanup();}
+});
+test("Quick Start cannot discard failed completion or restoration and rejects invalid duration", async () => {
+  const ui=await providerSetup({completeActivitySession:async()=>{throw Error("Offline");}});
+  try {
+    await ui.run(async s=>assert.equal(await s.startFreeTimer(0,null),false));
+    await ui.run(s=>s.startTimer(1)); await ui.advance(1);
+    assert.equal(ui.state().sessionSummary,null);
+    await ui.run(async s=>assert.equal(await s.startFreeTimer(1800,null),false));
+    assert.equal(ui.state().isCompleted,true);
+    assert.equal(ui.calls.filter(c=>c[0]==="start").length,1);
+  } finally {await ui.cleanup();}
+});
+
+test("Session presets include the 30-minute default and match typed duration", async()=>{
+  const ui=await screenSetup();
+  try {
+    assert.equal(ui.button("30 minutes").props.accessibilityState.selected,true);
+    assert.equal(ui.button("25 minutes"),undefined);
+    for(const minutes of [15,30,45,60]) assert.ok(ui.button(`${minutes} minutes`));
+    await ui.press("15 minutes");
+    assert.deepEqual(ui.calls.at(-1),["seconds",900]);
+    await ui.update({duration:900,timeLeft:900});
+    await ui.press("30 minutes");
+    assert.deepEqual(ui.calls.at(-1),["seconds",1800]);
+  } finally {await ui.cleanup();}
+});
+test("Completion appears once in an animated sheet and exits Session only after popup dismissal",async()=>{
+  let cleared=0;
+  const summary={durationSeconds:90,xpEarned:1,goldEarned:0,minutesSpent:1};
+  const ui=await screenSetup({isCompleted:true,sessionSummary:summary,rewardsVisible:true,clearCompletionModal:()=>cleared++});
+  try {
+    const popup=ui.root().findByType("CompletionPopup");
+    assert.equal(popup.props.visible,true);
+    assert.equal(popup.props.durationSeconds,90);
+    assert.doesNotMatch(ui.output(),/Character XP/);
+    assert.equal(ui.button("New session"),undefined);
+    await act(async()=>popup.props.onClose());
+    assert.equal(cleared,1);
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
+    await ui.update({rewardsVisible:false});
+    await act(async()=>ui.root().findByType("CompletionPopup").props.onDismiss());
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+    assert.equal(ui.calls.filter(c=>c[0]==="reset"||c[0]==="complete").length,0);
+  }finally{await ui.cleanup();}
+});
+test("Successful early End shows a cancellation popup; failed End keeps the active session without a success notice",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true});
+  try {
+    await ui.press("End session");
+    await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+    await ui.update({actionBusy:false,actionError:"Offline"});
+    assert.equal(ui.root().findAllByType("Sheet").filter(s=>s.props.label==="session ended").length,0);
+    await ui.update({hasOpenSession:false,isRunning:false,actionBusy:false,actionError:null});
+    const popup=ui.root().findAllByType("Sheet").find(s=>s.props.label==="session ended");
+    assert.ok(popup);
+    assert.match(ui.output(),/No focus time or XP were recorded/);
+    await act(async()=>popup.props.onRequestClose());
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
+    const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];
+    await act(async()=>closingSheet.props.onDismiss());
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+  }finally{await ui.cleanup();}
+});
+
+test("Swipe completion dismissal also exits once when close and native dismissal happen in the same callback",async()=>{
+  const ui=await screenSetup({isCompleted:true,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0},rewardsVisible:true,clearCompletionModal:()=>{}});
+  try {
+    const popup=ui.root().findByType("CompletionPopup");
+    await act(async()=>{popup.props.onClose();popup.props.onDismiss();popup.props.onDismiss();});
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+  }finally{await ui.cleanup();}
+});
+
+test("Ended notice retains the running/paused screen and exact countdown through popup and screen dismissal",async()=>{
+  for(const isRunning of [true,false]) {
+    const ui=await screenSetup({hasOpenSession:true,isRunning,duration:1800,timeLeft:827}, {}, true);
+    try {
+      const stage=ui.root().findByProps({testID:"session-timer-anchor"}).props.style;
+      await ui.press("End session");
+      await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+      await ui.update({hasOpenSession:false,isRunning:false,timeLeft:1800,actionBusy:false,actionError:null});
+      assert.deepEqual(ui.root().findByProps({testID:"session-timer-anchor"}).props.style,stage);
+      assert.equal(ui.root().findByType("DurationControl").props.seconds,827);
+      assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+      assert.doesNotMatch(ui.output(),/New session|Ready when you are|Change duration|15 minutes/);
+      const sheet=ui.root().findAllByType("Sheet").find(node=>node.props.label==="session ended");
+      assert.equal(sheet.props.footer,undefined, "short notice's button stays in measured content rather than an overlapping footer");
+      assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
+      await ui.press("Done ending session");
+      assert.equal(ui.root().findByType("DurationControl").props.seconds,827);
+      const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];
+      await act(async()=>closingSheet.props.onDismiss());
+      assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0, "retain Session until its downward exit finishes");
+      await ui.finishExit();
+      assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
+      assert.equal(ui.calls.filter(c=>c[0]==="reset").length,1);
+    }finally{await ui.cleanup();}
+  }
+});
+
+test("Themed quest picker selects the existing quest settings, closes, and never starts automatically",async()=>{
+  const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
+  try {
+    await ui.press("Choose a quest");
+    assert.match(ui.output(),/45 min · Knowledge/);
+    assert.equal(ui.button("Choose Tomorrow"),undefined);
+    await ui.press("Choose Read and reflect");
+    assert.deepEqual(ui.calls,[["task",9],["area",2],["duration",45]]);
+    assert.equal(ui.root().findAllByType("Sheet").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
+  }finally{await ui.cleanup();}
 });

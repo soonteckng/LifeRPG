@@ -91,6 +91,7 @@ interface TimerContextType {
   setLinkedTaskId: (id: number | null) => void;
 
   startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
+  startFreeTimer: (totalSeconds: number, subjectId: number | null) => Promise<boolean>;
   pauseTimer: () => Promise<void>;
   resumeTimer: () => Promise<void>;
   resetTimer: () => Promise<void>;
@@ -454,9 +455,26 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setTimeLeft(totalSec);
   };
 
-  const startTimer = async (totalSeconds: number, questTitle?: string) => {
-    if (actionLock.current || timerSessionIdRef.current || isRestoring || restoreError) return;
-    if (!validSessionSeconds(totalSeconds)) return;
+  const performStart = async (totalSeconds: number, questTitle?: string, freeArea?: { subjectId: number | null }): Promise<boolean> => {
+    if (actionLock.current || hasOpenSession || isRestoring || restoreError || (isCompleted && !sessionSummary)) return false;
+    if (!validSessionSeconds(totalSeconds)) return false;
+    // Quick Start owns a complete free-session draft; never read an older
+    // quest/area from React state that has not committed yet.
+    if (timerSessionIdRef.current && !sessionSummary) return false;
+    const draft = freeArea ? { activityType: "other", taskId: null, subjectId: freeArea.subjectId, notes: "" }
+      : { activityType, taskId: linkedTaskId, subjectId: targetAttributeId, notes };
+    if (freeArea) {
+      timerSessionIdRef.current = null;
+      completionHandledRef.current = false;
+      setLinkedTaskId(null);
+      setTargetAttributeId(freeArea.subjectId);
+      setActivityType("other");
+      setNotes("");
+      setSessionSummary(null);
+      setCompletedLevelUp(null);
+      setRewardsVisible(false);
+      setIsCompleted(false);
+    }
     actionLock.current = true;
     setActionBusy(true);
     setActionError(null);
@@ -466,8 +484,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     activeQuestTitleRef.current = questTitle;
     try {
       const sessionId = await startActivitySession({
-        targetDurationSeconds: totalSeconds, activityType, taskId: linkedTaskId,
-        subjectId: targetAttributeId, notes,
+        targetDurationSeconds: totalSeconds, ...draft,
       });
       timerSessionIdRef.current = sessionId;
       completionHandledRef.current = false;
@@ -482,10 +499,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       endTimeRef.current = Date.now() + totalSeconds * 1000;
       setIsRunning(true);
       await scheduleNotificationLifecycle(totalSeconds, questTitle);
+      return true;
     } catch {
       setActionError("Couldn’t start your session. Check your connection and try again.");
+      return false;
     } finally { actionLock.current = false; setActionBusy(false); }
   };
+  const startTimer = async (totalSeconds: number, questTitle?: string) => { await performStart(totalSeconds, questTitle); };
+  const startFreeTimer = (totalSeconds: number, subjectId: number | null) => performStart(totalSeconds, undefined, { subjectId });
   const pauseTimer = async () => {
     const id = timerSessionIdRef.current;
     if (!id || !isRunning || actionLock.current || completionHandledRef.current) return;
@@ -559,7 +580,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       setLinkedTaskId: value => { if (!setupLocked()) setLinkedTaskId(value); },
       setNotes: value => { if (!setupLocked()) setNotes(value); },
       setDurationInMinutes, setDurationInSeconds,
-      startTimer, pauseTimer, resumeTimer, resetTimer,
+      startTimer, startFreeTimer, pauseTimer, resumeTimer, resetTimer,
       sessionSummary, summaryViewed: !!sessionSummary && viewedSummary === sessionSummary, acknowledgeSummary,
       completedLevelUp, clearCompletionModal: () => setRewardsVisible(false),
     }}>
