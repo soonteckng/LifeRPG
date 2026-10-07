@@ -6,39 +6,38 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { overlayRect, spotlightRect, type TourRect } from "../utils/tourGeometry";
+import { overlayRect, spotlightRect, tourTipPosition, tourScrollDelta, type TourRect } from "../utils/tourGeometry";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import { colors } from "../constants/theme";
 
 export const TOUR_STEPS = [
-  { id: "home-identity", route: "/", title: "Welcome to LifeRPG.", body: "This is Home. Your streak tracks consecutive Focus days; your level grows with completed focus." },
-  { id: "home-focus", route: "/", title: "A little space for focus.", body: "Start your focus block here. Change its time or Life area before starting, or continue an active session." },
+  { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress." },
+  { id: "home-focus", route: "/", title: "Make space for focus.", body: "Choose your time and Life area here, then start focusing." },
   { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Choose suggestions here, or return to free focus. You can change direction anytime; your quests stay yours." },
   { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
-  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Explore your focus time, history and consistency. Switch between Week and Month to see how it adds up." },
-  { id: "profile-areas", route: "/profile", title: "Your effort takes shape.", body: "Completed focus grows your Life areas. Your level reflects recorded effort. Personalise your character above." },
+  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Life areas and session history. Explore Week or Month, and your current and longest streaks." },
+  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Profile holds your character, Life areas and milestones. They reflect effort you’ve recorded. Make your character yours here." },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
-export async function prepareFeatureTour(owner: string) { if (owner) await AsyncStorage.setItem(receiptKey(owner), "pending"); }
+const pendingOwners = new Set<string>();
+export async function prepareFeatureTour(owner: string) { if (owner) { pendingOwners.add(owner); await AsyncStorage.setItem(receiptKey(owner), "pending"); } }
 type Bounds = { top: number; bottom: number; panelHeight: number };
 type Target = { measure: (done: (rect: TourRect) => void) => void; reveal: (rect: TourRect, bounds: Bounds) => boolean };
-const TourContext = createContext<{ register: (id: string, target: Target) => () => void; start: () => void; reserve: number } | null>(null);
-const ScrollContext = createContext<{ scroll: React.RefObject<ScrollView | null>; offset: React.RefObject<number> } | null>(null);
-export const TourScrollView = forwardRef<ScrollView, ScrollViewProps>(function TourScrollView({ children, onScroll, contentContainerStyle, ...props }, forwarded) {
+const TourContext = createContext<{ register: (id: string, target: Target) => () => void; start: () => void; active: boolean; reportDock: (height: number) => void } | null>(null);
+const ScrollContext = createContext<{ scroll: React.RefObject<ScrollView | null>; offset: React.RefObject<number>; bottomInset: number } | null>(null);
+export const TourScrollView = forwardRef<ScrollView, ScrollViewProps & { tourBottomInset?: number }>(function TourScrollView({ children, onScroll, contentContainerStyle, tourBottomInset = 0, ...props }, forwarded) {
   const scroll = useRef<ScrollView>(null), offset = useRef(0), tour = useContext(TourContext);
   const reserved = useRef(false), beforeTour = useRef(0);
   useImperativeHandle(forwarded, () => scroll.current!);
   useLayoutEffect(() => {
-    const active = !!tour?.reserve;
+    const active = !!tour?.active;
     if (active && !reserved.current) beforeTour.current = offset.current;
     else if (!active && reserved.current) scroll.current?.scrollTo({ y: beforeTour.current, animated: false });
     reserved.current = active;
-  }, [tour?.reserve]);
-  const value = useMemo(() => ({ scroll, offset }), []);
-  const flat = StyleSheet.flatten?.(contentContainerStyle);
-  const padding = typeof flat?.paddingBottom === "number" ? flat.paddingBottom : typeof flat?.padding === "number" ? flat.padding : 0;
-  return <ScrollView {...props} contentContainerStyle={[contentContainerStyle, !!tour?.reserve && { paddingBottom: padding + tour.reserve }]} ref={scroll} scrollEventThrottle={16} onScroll={event => { offset.current = Math.max(0, event.nativeEvent.contentOffset.y); onScroll?.(event); }}><ScrollContext.Provider value={value}>{children}</ScrollContext.Provider></ScrollView>;
+  }, [tour?.active]);
+  const value = useMemo(() => ({ scroll, offset, bottomInset: tourBottomInset }), [tourBottomInset]);
+  return <ScrollView {...props} contentContainerStyle={contentContainerStyle} ref={scroll} scrollEventThrottle={16} onScroll={event => { offset.current = Math.max(0, event.nativeEvent.contentOffset.y); onScroll?.(event); }}><ScrollContext.Provider value={value}>{children}</ScrollContext.Provider></ScrollView>;
 });
 export function TourAnchor({ id, children }: { id: string; children: ReactNode }) {
   const tour = useContext(TourContext), scroll = useContext(ScrollContext), view = useRef<View>(null);
@@ -46,8 +45,11 @@ export function TourAnchor({ id, children }: { id: string; children: ReactNode }
   useEffect(() => register?.(id, {
     measure: done => view.current?.measureInWindow((x, y, width, height) => done({ x, y, width, height })),
     reveal: (rect, bounds) => {
-      if (!scroll || (rect.y >= bounds.top && rect.y + rect.height <= bounds.bottom)) return false;
-      scroll.scroll.current?.scrollTo({ y: Math.max(0, scroll.offset.current + rect.y - bounds.top - 8), animated: false });
+      if (!scroll) return false;
+      const delta = tourScrollDelta(rect, bounds.panelHeight, bounds.top, bounds.bottom - scroll.bottomInset, scroll.offset.current);
+      const next = Math.max(0, scroll.offset.current + delta);
+      if (Math.abs(next - scroll.offset.current) < 1) return false;
+      scroll.scroll.current?.scrollTo({ y: next, animated: false });
       return true;
     },
   }), [id, register, scroll]);
@@ -58,20 +60,29 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const { profile } = useUser(), timer = useTimer(), router = useRouter(), pathname = usePathname();
   const owner = profile.id ?? "", eligible = profile.onboarding_completed && !timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !timer.rewardsVisible && !(timer.isCompleted && !timer.sessionSummary);
   const [step, setStep] = useState<number | null>(null), [rect, setRect] = useState<TourRect | null>(null), [retry, setRetry] = useState(0), [waitingExpired, setWaitingExpired] = useState(false);
+  const [armed, setArmed] = useState(false), [returning, setReturning] = useState(false);
   const [scope, setScope] = useState(() => ({ owner, eligible }));
-  if (scope.owner !== owner || scope.eligible !== eligible) { setScope({ owner, eligible }); setStep(null); setRect(null); setWaitingExpired(false); }
+  if (scope.owner !== owner || scope.eligible !== eligible) { setScope({ owner, eligible }); setStep(null); setRect(null); setWaitingExpired(false); setArmed(false); setReturning(false); }
   const targets = useRef(new Map<string, Target>()), advancing = useRef(false), leaving = useRef(false), announced = useRef(""), alive = useRef(true), root = useRef<View>(null), epoch = useRef(0);
   const [frame, setFrame] = useState<TourRect | null>(null), [panelHeight, setPanelHeight] = useState(260);
   const [bodySize, setBodySize] = useState({ id: "", height: 96 }), [titleHeight, setTitleHeight] = useState(28);
-  const [opacity] = useState(() => new Animated.Value(1)), [highlightOpacity] = useState(() => new Animated.Value(0));
+  const [opacity] = useState(() => new Animated.Value(1)), [highlightOpacity] = useState(() => new Animated.Value(0)), [sceneOpacity] = useState(() => new Animated.Value(0));
+  const incomingDeadline = useRef<ReturnType<typeof setTimeout> | null>(null), incomingAnimation = useRef<Animated.CompositeAnimation | null>(null);
   const screen = useWindowDimensions(), insets = useSafeAreaInsets(), reduced = useReducedMotion();
+  const [dockHeight, setDockHeight] = useState(90 + insets.bottom);
+  const reportDock = useCallback((height: number) => { if (Number.isFinite(height) && height > 0) setDockHeight(height); }, []);
   const invalidate = useCallback(() => { epoch.current++; }, []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; invalidate(); }; }, [invalidate]);
   useLayoutEffect(() => { epoch.current++; }, [owner, eligible]);
-  const start = useCallback(() => { if (owner && eligible) { epoch.current++; advancing.current = false; leaving.current = false; announced.current = ""; opacity.setValue(1); highlightOpacity.setValue(0); setWaitingExpired(false); setRect(null); setStep(0); router.navigate("/"); } }, [owner, eligible, router, opacity, highlightOpacity]);
+  const start = useCallback(() => { if (owner && eligible) { epoch.current++; advancing.current = false; leaving.current = false; announced.current = ""; opacity.setValue(0); sceneOpacity.setValue(0); highlightOpacity.setValue(0); setWaitingExpired(false); setRect(null); setReturning(false); setArmed(true); router.navigate("/"); } }, [owner, eligible, router, opacity, highlightOpacity, sceneOpacity]);
   const register = useCallback((id: string, target: Target) => { targets.current.set(id, target); return () => { if (targets.current.get(id) === target) targets.current.delete(id); }; }, []);
-  const reserve = step === null ? 0 : panelHeight + insets.bottom + 24;
-  const value = useMemo(() => ({ register, start, reserve }), [register, start, reserve]);
+  const active = step !== null;
+  const value = useMemo(() => ({ register, start, active, reportDock }), [register, start, active, reportDock]);
+  useEffect(() => {
+    if (!armed || pathname !== "/") return;
+    const timeout = setTimeout(() => { setArmed(false); setStep(0); }, 750);
+    return () => clearTimeout(timeout);
+  }, [armed, pathname]);
   const measureRoot = useCallback(() => {
     root.current?.measureInWindow((x, y, width, height) => {
       if (!alive.current || ![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return;
@@ -80,20 +91,29 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   }, []);
   useEffect(() => {
     let live = true; const request = epoch.current;
-    if (owner && eligible) void AsyncStorage.getItem(receiptKey(owner)).then(receipt => { if (live && request === epoch.current && receipt === "pending") start(); }).catch(() => {});
+    if (owner && eligible) {
+      void Promise.resolve(pendingOwners.has(owner) ? "pending" : AsyncStorage.getItem(receiptKey(owner))).then(receipt => { if (live && request === epoch.current && receipt === "pending") start(); }).catch(() => {});
+    }
     return () => { live = false; };
   }, [owner, eligible, start]);
   const current = step === null ? null : TOUR_STEPS[step];
+  const overviewReady = !!current && current.route !== "/" && pathname === current.route;
+  useEffect(() => { if (overviewReady && current) AccessibilityInfo.announceForAccessibility(`${current.title} ${current.body}`); }, [overviewReady, current]);
   // This deadline is independent of frame/route/measurement callbacks. Controls
   // stay visible even if native never delivers any measurement at all.
   useEffect(() => {
     if (!current) return;
-    const timeout = setTimeout(() => { if (alive.current) setWaitingExpired(true); }, 1400);
+    const timeout = setTimeout(() => { if (alive.current) setWaitingExpired(true); }, 500);
     return () => clearTimeout(timeout);
   }, [current, retry]);
   useLayoutEffect(() => {
-    if (!current || !frame) return;
+    if (!current || !frame || returning) return;
     if (pathname !== current.route) { router.navigate(current.route); return; }
+    // Progress and Profile are page overviews, not tiny toolbar/heading targets.
+    // Keep the visible page bright and leave a compact message below it.
+    if (current.route !== "/") {
+      return;
+    }
     let live = true, attempts = 0, revealed = false, last: TourRect | null = null, request = 0;
     let timeout: ReturnType<typeof setTimeout>, callbackDeadline: ReturnType<typeof setTimeout>;
     const again = () => { if (++attempts < 20) timeout = setTimeout(measure, 60); };
@@ -110,7 +130,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           if (![next.x, next.y, next.width, next.height].every(Number.isFinite) || next.width <= 0 || next.height <= 0) { again(); return; }
           if (!revealed) {
             revealed = true;
-            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - Math.max(insets.bottom, 12) - panelHeight - 16, panelHeight })) { again(); return; }
+            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - 12, panelHeight })) { again(); return; }
           }
           if (!last || Math.abs(last.y - next.y) > 1 || Math.abs(last.height - next.height) > 1 || Math.abs(last.width - next.width) > 1) { last = next; again(); return; }
           const local = overlayRect(next, frame);
@@ -123,64 +143,94 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
         });
       } catch { clearTimeout(callbackDeadline); again(); }
     };
-    timeout = setTimeout(measure, current.id === "home-identity" ? 300 : pathname === "/" ? 80 : 220);
+    timeout = setTimeout(measure, pathname === "/" ? 60 : 180);
     return () => { live = false; request++; clearTimeout(timeout); clearTimeout(callbackDeadline); };
-  }, [current, pathname, router, frame, insets.top, insets.bottom, retry, panelHeight, owner]);
+  }, [current, pathname, router, frame, insets.top, insets.bottom, retry, panelHeight, owner, returning]);
+  useLayoutEffect(() => { advancing.current = false; leaving.current = false; }, [current]);
   useLayoutEffect(() => {
-    if (!current) return;
-    advancing.current = false; leaving.current = false;
-    opacity.setValue(reduced ? 1 : 0);
+    if (!current || returning || leaving.current) return;
+    if (!rect && !overviewReady && !waitingExpired) { opacity.setValue(0); return; }
     const animation = Animated.timing(opacity, { toValue: 1, duration: reduced ? 0 : 180, useNativeDriver: true, isInteraction: false }); animation.start();
+    incomingAnimation.current = animation;
+    Animated.timing(sceneOpacity, { toValue: 0, duration: reduced ? 0 : 240, useNativeDriver: true, isInteraction: false }).start();
     const deadline = setTimeout(() => opacity.setValue(1), 240);
+    incomingDeadline.current = deadline;
     return () => { clearTimeout(deadline); animation.stop(); };
-  }, [current, reduced, opacity]);
+  }, [current, reduced, opacity, rect, waitingExpired, returning, sceneOpacity, overviewReady]);
   useEffect(() => {
     if (!rect) { highlightOpacity.setValue(0); return; }
     const animation = Animated.timing(highlightOpacity, { toValue: 1, duration: reduced ? 0 : 180, useNativeDriver: true, isInteraction: false }); animation.start(); return () => animation.stop();
   }, [rect, reduced, highlightOpacity]);
-  const close = useCallback((completed = false) => {
+  const close = useCallback(() => {
     epoch.current++; leaving.current = false; advancing.current = false; opacity.setValue(1); setStep(null); setRect(null);
-    void AsyncStorage.setItem(receiptKey(owner), completed ? "done" : "dismissed").catch(() => {});
-    if (completed) router.navigate("/");
-  }, [owner, router, opacity]);
-  const next = () => {
-    if (advancing.current) return;
+    setReturning(false);
+    pendingOwners.delete(owner);
+    void AsyncStorage.setItem(receiptKey(owner), "done").catch(() => {});
+  }, [owner, opacity]);
+  useEffect(() => {
+    if (!returning) return;
+    if (pathname !== "/") {
+      router.navigate("/");
+      const deadline = setTimeout(() => { advancing.current = false; leaving.current = false; sceneOpacity.setValue(0); opacity.setValue(1); setWaitingExpired(true); setReturning(false); }, 1200);
+      return () => clearTimeout(deadline);
+    }
+    let live = true, done = false;
+    const finish = () => { if (live && !done) { done = true; close(); } };
+    const deadline = setTimeout(finish, reduced ? 0 : 650);
+    const animation = Animated.timing(sceneOpacity, { toValue: 0, duration: reduced ? 0 : 350, useNativeDriver: true, isInteraction: false });
+    const settle = setTimeout(() => animation.start(({ finished }) => { if (finished) finish(); }), reduced ? 0 : 120);
+    return () => { live = false; clearTimeout(deadline); clearTimeout(settle); animation.stop(); };
+  }, [returning, pathname, router, reduced, sceneOpacity, opacity, close]);
+  const move = (direction: -1 | 1) => {
+    if (advancing.current || step === null || (direction === -1 && step === 0)) return;
+    if (incomingDeadline.current) clearTimeout(incomingDeadline.current);
+    incomingAnimation.current?.stop();
     advancing.current = true; leaving.current = true; const generation = epoch.current; let finished = false;
+    const destination = step + direction;
+    const changesPage = destination === TOUR_STEPS.length || TOUR_STEPS[destination].route !== current?.route;
     const advance = () => {
       if (finished || !alive.current || generation !== epoch.current) return;
       finished = true; clearTimeout(deadline);
-      if (step === TOUR_STEPS.length - 1) close(true);
-      else { setRect(null); setWaitingExpired(false); setStep(index => index === null ? null : index + 1); }
+      if (changesPage) sceneOpacity.setValue(1);
+      if (destination === TOUR_STEPS.length) { setRect(null); setReturning(true); }
+      else { setRect(null); setWaitingExpired(false); setStep(destination); }
     };
-    const deadline = setTimeout(advance, reduced ? 0 : 180);
+    const deadline = setTimeout(advance, reduced ? 0 : 240);
     if (reduced) advance();
-    else Animated.timing(opacity, { toValue: 0, duration: 120, useNativeDriver: true, isInteraction: false }).start(() => advance());
+    else {
+      if (changesPage) Animated.timing(sceneOpacity, { toValue: 1, duration: 160, useNativeDriver: true, isInteraction: false }).start();
+      Animated.timing(opacity, { toValue: 0, duration: changesPage ? 180 : 140, useNativeDriver: true, isInteraction: false }).start(() => advance());
+    }
   };
-  useEffect(() => { if (step === null) return; const back = BackHandler.addEventListener("hardwareBackPress", () => { close(); return true; }); return () => back.remove(); }, [step, close]);
+  useEffect(() => { if (step === null) return; const back = BackHandler.addEventListener("hardwareBackPress", () => { if (!returning) move(-1); return true; }); return () => back.remove(); });
   const viewport = { width: frame?.width ?? screen.width, height: frame?.height ?? screen.height };
   const panelWidth = Math.min(480, viewport.width - 40), bodyHeight = bodySize.id === current?.id ? bodySize.height : 96;
-  const bodyCap = Math.max(48, Math.min(viewport.height * 0.3, viewport.height - insets.top - insets.bottom - 24 - 36 - 44 - titleHeight - 48 - 30 - (waitingExpired && !rect ? 58 : 0)));
+  const bodyCap = Math.max(48, Math.min(viewport.height * 0.3, viewport.height - insets.top - dockHeight - 24 - 28 - 18 - titleHeight - 44 - 24 - (waitingExpired && !rect && !overviewReady ? 58 : 0)));
+  const overview = current?.route !== "/";
+  const tipTop = tourTipPosition(overview ? null : rect, panelHeight, insets.top + 12, viewport.height - dockHeight - 12);
   return <TourContext.Provider value={value}><View ref={root} testID="tour-root" collapsable={false} onLayout={measureRoot} style={s.root}>
     <View style={s.root} accessibilityElementsHidden={step !== null} importantForAccessibility={step !== null ? "no-hide-descendants" : "auto"}>{children}</View>
     {current && <View testID="tour-overlay" style={s.overlay} accessibilityViewIsModal>
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        {rect ? <><View style={[s.dim, { top: 0, left: 0, right: 0, height: rect.y }]} /><View style={[s.dim, { top: rect.y, left: 0, width: rect.x, height: rect.height }]} /><View style={[s.dim, { top: rect.y, left: rect.x + rect.width, right: 0, height: rect.height }]} /><View style={[s.dim, { top: rect.y + rect.height, bottom: 0, left: 0, right: 0 }]} /><Animated.View style={[s.dim, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: reduced ? 0 : highlightOpacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} /><Animated.View testID="tour-outline" style={[s.outline, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: highlightOpacity }]} /></> : <View style={[StyleSheet.absoluteFill, s.dim]} />}
+        {overview ? <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(3,6,12,0.12)" }]} /> : rect ? <><View style={[s.dim, { top: 0, left: 0, right: 0, height: rect.y }]} /><View style={[s.dim, { top: rect.y, left: 0, width: rect.x, height: rect.height }]} /><View style={[s.dim, { top: rect.y, left: rect.x + rect.width, right: 0, height: rect.height }]} /><View style={[s.dim, { top: rect.y + rect.height, bottom: 0, left: 0, right: 0 }]} /><Animated.View style={[s.dim, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: reduced ? 0 : highlightOpacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} /><Animated.View testID="tour-outline" style={[s.outline, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: highlightOpacity }]} /></> : <View style={[StyleSheet.absoluteFill, s.dim]} />}
+        <Animated.View testID="tour-scene-fade" style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: sceneOpacity }]} />
       </View>
-      <View testID="tour-tip" onLayout={event => setPanelHeight(event.nativeEvent.layout.height)} style={[s.tip, { width: panelWidth, left: (viewport.width - panelWidth) / 2, bottom: Math.max(insets.bottom, 12) }]}>
-        <View style={s.tipHeader}><Text style={s.counter}>{(step ?? 0) + 1} of {TOUR_STEPS.length} · Quick tour</Text><Pressable accessibilityRole="button" accessibilityLabel="Close tour" onPress={() => close()} style={s.close}><Text style={s.closeText}>Close</Text></Pressable></View>
-        <Animated.View style={{ opacity, gap: 10 }}><Text style={s.title} accessibilityRole="header" onLayout={event => setTitleHeight(event.nativeEvent.layout.height)}>{current.title}</Text>
+      {!returning && <Animated.View testID="tour-tip" onLayout={event => setPanelHeight(event.nativeEvent.layout.height)} style={[s.tip, { width: panelWidth, left: (viewport.width - panelWidth) / 2, top: tipTop, opacity, transform: [{ scale: reduced ? 1 : opacity.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }]}>
+        <Text style={s.counter}>{(step ?? 0) + 1} of {TOUR_STEPS.length} · A quick look around</Text>
+        <View style={{ gap: 10 }}><Text style={s.title} accessibilityRole="header" onLayout={event => setTitleHeight(event.nativeEvent.layout.height)}>{current.title}</Text>
           <ScrollView style={{ height: Math.min(bodyHeight, bodyCap), flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap}>
-            <Text style={s.body} onTextLayout={event => { const height = Math.ceil(event.nativeEvent.lines.reduce((sum, line) => sum + line.height, 0)); if (height > 0) setBodySize(previous => previous.id === current.id && previous.height === height ? previous : { id: current.id, height }); }}>{current.body}</Text>
+            <Text style={s.body} onLayout={event => { const height = Math.ceil(event.nativeEvent.layout.height); if (height > 0) setBodySize(previous => previous.id === current.id && previous.height === height ? previous : { id: current.id, height }); }}>{current.body}</Text>
           </ScrollView>
-        </Animated.View>
-        {waitingExpired && !rect && <Pressable onPress={() => { setWaitingExpired(false); setRetry(value => value + 1); measureRoot(); }} accessibilityRole="button" style={s.action}><Text style={s.actionText}>Retry highlight</Text></Pressable>}
-        <Pressable onPress={next} accessibilityRole="button" accessibilityLabel={step === TOUR_STEPS.length - 1 ? "Explore LifeRPG" : "Next tour tip"} style={s.action}><Text style={s.actionText}>{step === TOUR_STEPS.length - 1 ? "Explore LifeRPG" : "Next"}</Text></Pressable>
-      </View>
+        </View>
+        {waitingExpired && !rect && !overviewReady && <Pressable onPress={() => { setWaitingExpired(false); setRetry(value => value + 1); measureRoot(); }} accessibilityRole="button" style={s.action}><Text style={s.actionText}>Retry highlight</Text></Pressable>}
+        <View style={s.navigation}><Pressable onPress={() => move(-1)} disabled={step === 0} accessibilityRole="button" accessibilityLabel="Previous tour tip" accessibilityState={{ disabled: step === 0 }} style={[s.previous, step === 0 && { opacity: 0.4 }]}><Text style={s.actionText}>Back</Text></Pressable><Pressable onPress={() => move(1)} accessibilityRole="button" accessibilityLabel={step === TOUR_STEPS.length - 1 ? "Explore LifeRPG" : "Next tour tip"} style={[s.action, s.next]}><Text style={s.actionText}>{step === TOUR_STEPS.length - 1 ? "Explore LifeRPG" : "Next"}</Text></Pressable></View>
+      </Animated.View>}
     </View>}
   </View></TourContext.Provider>;
 }
 const s = StyleSheet.create({
+  navigation: { flexDirection: "row", gap: 12 }, previous: { minHeight: 44, minWidth: 72, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: colors.line }, next: { flex: 1 },
   root: { flex: 1 }, overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 }, anchor: { width: "100%", alignSelf: "stretch" }, dim: { position: "absolute", backgroundColor: "rgba(3,6,12,0.72)" }, outline: { position: "absolute", borderWidth: 1.5, borderColor: colors.accent, borderRadius: 18 },
-  tip: { position: "absolute", padding: 18, borderRadius: 22, backgroundColor: "#20283D", borderWidth: 1, borderColor: colors.line, gap: 10 }, tipHeader: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 }, close: { minHeight: 44, minWidth: 48, alignItems: "center", justifyContent: "center" }, closeText: { color: colors.accent, fontSize: 14, lineHeight: 20 }, counter: { color: colors.secondary, fontSize: 13, lineHeight: 18, flexShrink: 1 },
-  title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500" }, body: { color: colors.neutral, fontSize: 16, lineHeight: 23 }, action: { minHeight: 48, borderRadius: 14, backgroundColor: colors.accentSoft, padding: 12, alignItems: "center", justifyContent: "center" }, actionText: { color: colors.accent, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  tip: { position: "absolute", padding: 14, borderRadius: 22, backgroundColor: "#20283D", borderWidth: 1, borderColor: colors.line, gap: 8 }, counter: { color: colors.secondary, fontSize: 13, lineHeight: 18, flexShrink: 1 },
+  title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500" }, body: { color: colors.neutral, fontSize: 16, lineHeight: 23 }, action: { minHeight: 44, borderRadius: 14, backgroundColor: colors.accentSoft, padding: 10, alignItems: "center", justifyContent: "center" }, actionText: { color: colors.accent, fontSize: 16, lineHeight: 22, fontWeight: "500" },
 });

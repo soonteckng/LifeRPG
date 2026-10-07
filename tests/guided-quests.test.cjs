@@ -17,6 +17,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
     if(name.endsWith("/OnboardingFrame"))return require("./onboarding-mocks.cjs").frame(React);
     if(name.endsWith("/OnboardingFinish"))return require("./onboarding-mocks.cjs").finish(React);
+      if (name.endsWith("/OnboardingWelcome")) return require("./onboarding-mocks.cjs").finish(React);
     if(name.endsWith('/MotionPressable'))return host('Button');
     if(!name.startsWith('.'))return require(name);
     const target=path.resolve(path.dirname(filename),name);

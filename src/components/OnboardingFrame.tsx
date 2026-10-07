@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "./AppText";
@@ -67,7 +67,10 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
         </View>
         <ScrollView ref={scroll} style={s.scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
           <Animated.View style={{ opacity, gap: 24 }} pointerEvents={busy || transitioning ? "none" : "auto"}>
-            <View style={s.heading}><Text style={s.title} accessibilityRole="header">{title}</Text><Text style={s.subtitle}>{subtitle}</Text></View>{children}
+            <View key={step} style={{ gap: 24 }}>
+              <View style={s.heading}><OnboardingSection delay={0}><Text style={s.title} accessibilityRole="header">{title}</Text></OnboardingSection><OnboardingSection delay={70}><Text style={s.subtitle}>{subtitle}</Text></OnboardingSection></View>
+              {Children.toArray(children).flatMap(child => isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment ? Children.toArray(child.props.children) : [child]).map((child, index) => <OnboardingSection key={index} delay={140 + index * 70}>{child}</OnboardingSection>)}
+            </View>
           </Animated.View>
         </ScrollView>
         <View style={s.footer} testID="onboarding-footer">
@@ -81,6 +84,16 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
       </View>
     </KeyboardAvoidingView>
   </SafeAreaView>;
+}
+function OnboardingSection({ children, delay }: { children: ReactNode; delay: number }) {
+  const reduced = useReducedMotion(), [progress] = useState(() => new Animated.Value(reduced ? 1 : 0));
+  useLayoutEffect(() => {
+    if (reduced) { progress.setValue(1); return; }
+    const animation = Animated.timing(progress, { toValue: 1, duration: 320, delay, useNativeDriver: true, isInteraction: false, easing: Easing?.out?.(Easing.cubic) });
+    animation.start();
+    return () => animation.stop();
+  }, [delay, progress, reduced]);
+  return <Animated.View style={{ opacity: progress, transform: [{ translateY: reduced ? 0 : progress.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }}>{children}</Animated.View>;
 }
 export function OnboardingChoice({ title, hint, selected, onPress }: { title: string; hint: string; selected: boolean; onPress: () => void }) {
   return <Pressable accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: selected }} onPress={onPress} style={[s.choice, selected && s.choiceSelected]}>

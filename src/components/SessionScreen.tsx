@@ -161,8 +161,8 @@ export default function SessionScreen() {
     traceSession("native stack close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
     if (navigation.canGoBack()) {
       traceSession("controlled exit start", { reducedMotion });
-      Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0.82, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
-      Animated.timing(screenMotion, { toValue: 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
+      Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
+      Animated.timing(screenMotion, { toValue: -0.12, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
         traceSession("controlled exit end", { finished });
         if (finished) setExitReady(true);
         else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); }
@@ -270,7 +270,7 @@ export default function SessionScreen() {
 
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
-      transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) : 0 }] }}>
+      transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />

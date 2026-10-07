@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text, TextInput } from "./AppText";
 import OnboardingFrame, { OnboardingChoice, useOnboardingTransition } from "./OnboardingFrame";
+import OnboardingWelcome from "./OnboardingWelcome";
 import OnboardingFinish from "./OnboardingFinish";
 import { prepareFeatureTour } from "./FeatureTour";
 import Pressable from "./MotionPressable";
@@ -21,6 +22,8 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const { profile, reloadProfile } = useUser();
   const guided = useGuidedPreference(profile.id ?? "");
   const transition = useOnboardingTransition();
+  const [welcoming, setWelcoming] = useState(initialStep === 0);
+  const welcomeDone = useCallback(() => setWelcoming(false), []);
   const [step, setStep] = useState(initialStep);
   const [direction, setDirection] = useState({ ...guided.value, invited: true });
   const [preferenceReady, setPreferenceReady] = useState(guided.ready);
@@ -74,6 +77,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
       if (alive.current) { setError("Couldn’t save your setup. Your choices are still here—please try again."); setBusy(false); lock.current = false; }
     }
   };
+  if (welcoming) return <OnboardingWelcome owner={profile.id ?? ""} onDone={welcomeDone} />;
   if (celebrating) return <OnboardingFinish onDone={complete} />;
   const intro = step >= 4 ? INTRO_PAGES[step - 4] : null;
   const subtitles = [
@@ -85,19 +89,20 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   return <OnboardingFrame step={step + 1} total={7} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
     busy={busy || (step === 6 && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === 6 ? "Start my journey" : "Continue"} onNext={() => void next()}
     onBack={step > 0 && !confirmed ? () => changeStep(step - 1) : undefined}
-    error={error || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
+    error={(step === 2 ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <View style={s.choices}>
       <OnboardingChoice title="Study and assignments" hint="A thoughtful suggestion to help you begin." selected={direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: true }); }} />
       <OnboardingChoice title="Just let me focus" hint="Your time, your focus, your own quests." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
     </View>}
     {step === 1 && (direction.enabled ? <View style={s.choices}>{STUDY_NEEDS.map(need => <OnboardingChoice key={need.id} title={need.title} hint={need.hint} selected={direction.need === need.id} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, need: need.id, templateId: defaultFocusId(need.id), smaller: false }); }} />)}</View> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home will offer free focus. Find your next step is there whenever you’d like a suggestion.</Text></View>)}
-    {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={s.input} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} /><Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
-    {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>A quiet day never takes earned growth away.</Text></View>}
+    {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
+    {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can adjust your daily goal later, once every seven days. A quiet day never takes earned growth away.</Text></View>}
     {intro && <><View style={s.illustration}><View style={s.symbol}><Ionicons name={intro.icon} size={44} color={colors.accent} /></View></View><View style={s.note}><Text style={s.noteBody}>{intro.detail}</Text></View></>}
   </OnboardingFrame>;
 }
 const s = StyleSheet.create({
   choices: { gap: 12 }, note: { padding: 22, borderRadius: 22, backgroundColor: colors.surface, gap: 12 }, noteTitle: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: "500" }, noteBody: { color: colors.secondary, fontSize: 17, lineHeight: 25 },
+  inputError: { color: colors.danger, fontSize: 16, lineHeight: 23, fontWeight: "500" },
   input: { minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 16, color: colors.text, fontSize: 20 }, hint: { color: colors.secondary, fontSize: 15, lineHeight: 22 }, goals: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   goal: { flexGrow: 1, flexBasis: "45%", borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 18, gap: 6 }, selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, goalNumber: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500" },
   illustration: { alignItems: "center", paddingVertical: 4 }, symbol: { width: 112, height: 112, borderRadius: 56, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },

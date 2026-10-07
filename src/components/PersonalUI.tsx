@@ -23,6 +23,7 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { TourScrollView } from "./FeatureTour";
 import { navigationTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
+import { readSettingsOrigin, settingsTransform } from "../utils/settingsOrigin";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
   title,
@@ -34,6 +35,7 @@ export function PersonalPage({
   compact = false,
   floatingAction = false,
   bottomContentInset = 0,
+  expandFromIcon = false,
 }: {
   title: string;
   subtitle: string;
@@ -44,14 +46,19 @@ export function PersonalPage({
   compact?: boolean;
   floatingAction?: boolean;
   bottomContentInset?: number;
+  expandFromIcon?: boolean;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const navigation = useNavigation();
-  const { width } = useWindowDimensions();
-  const controlled = back && animateTransition && Platform.OS === "android";
-  const [position] = useState(() => new Animated.Value(controlled ? width : 0));
+  const { width, height } = useWindowDimensions();
+  const controlled = back && animateTransition && (Platform.OS === "android" || expandFromIcon);
+  const [source] = useState(readSettingsOrigin);
+  const surface = useRef<View>(null);
+  const [frame, setFrame] = useState({ x: 0, y: 0, width, height });
+  const [position] = useState(() => new Animated.Value(controlled ? expandFromIcon ? 1 : width : 0));
+  const origin = settingsTransform(source, frame);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
   const pendingAction = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
@@ -77,7 +84,7 @@ export function PersonalPage({
     }
     closing.current = true;
     Animated.timing(position, {
-      toValue: width,
+      toValue: expandFromIcon ? 1 : width,
       ...navigationTiming(reduced ? 0 : 230),
     }).start(({ finished }) => {
       if (finished) setExitReady(true);
@@ -86,19 +93,27 @@ export function PersonalPage({
         position.setValue(0);
       }
     });
-  }, [controlled, navigation, router, position, width, reduced]);
+  }, [controlled, navigation, router, position, width, reduced, expandFromIcon]);
   usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
     if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }
   }, [exitReady, navigation]);
   return (
-    <Animated.View
+    <View
+      ref={surface}
+      collapsable={false}
+      onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); }); }}
+      style={{ flex: 1 }}
+    ><Animated.View
       renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
         flex: 1,
         backgroundColor: colors.background,
-        transform: [{ translateX: position }],
+        opacity: expandFromIcon ? position.interpolate({ inputRange: [0, 0.85, 1], outputRange: [1, 0.25, 0] }) : 1,
+        borderRadius: expandFromIcon ? 24 : 0,
+        overflow: "hidden",
+        transform: expandFromIcon ? [{ translateX: position.interpolate({ inputRange: [0, 1], outputRange: [0, origin.x] }) }, { translateY: position.interpolate({ inputRange: [0, 1], outputRange: [0, origin.y] }) }, { scale: position.interpolate({ inputRange: [0, 1], outputRange: [1, origin.scale] }) }] : [{ translateX: position }],
       }}
     >
       <SafeAreaView edges={["top", "left", "right"]} style={p.page}>
@@ -113,6 +128,7 @@ export function PersonalPage({
         {floatingAction && <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection:"row", justifyContent:"flex-end", alignItems:"center" }}>{action}</View>}
         {!back && !floatingAction && <AppHeader title={title} action={action} />}
         <TourScrollView
+          tourBottomInset={bottomContentInset}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
@@ -130,7 +146,7 @@ export function PersonalPage({
           </View>
         </TourScrollView>
       </SafeAreaView>
-    </Animated.View>
+    </Animated.View></View>
   );
 }
 export function PersonalRow({

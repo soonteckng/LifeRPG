@@ -26,6 +26,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
       if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
+      if (name.endsWith("/OnboardingWelcome")) return require("./onboarding-mocks.cjs").finish(React);
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
       if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
@@ -172,7 +173,7 @@ test("Settings starts with identity, separates logout and contains no inert Moti
     assert.doesNotMatch(ui.text(), /Edit profile/);
     assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction/);
     assert.doesNotMatch(ui.text(), /Motion|EAS|Expo Go|native build|widgets/);
-    await ui.press("How LifeRPG worksFocus, growth, goals and a quick tour");
+    await ui.press("How LifeRPG worksFocus, growth, goals and consistency");
     assert.deepEqual(ui.calls().navigate, ["./guide"]);
   } finally { await ui.cleanup(); }
 });
@@ -270,6 +271,7 @@ test("Expo Go notifications offer phone settings without a misleading enable act
   const ui = await settings({ permission: () => ({ label: "Notifications unavailable here", action: null, supported: false }) });
   try {
     await ui.press("NotificationsNotifications unavailable here");
+    assert.equal(ui.renderer.root.findByType("Sheet").props.compact, true, "notification content has one fitted snap point");
     assert.doesNotMatch(ui.text(), /Enable notifications/);
     assert.match(ui.text(), /Notification settings/);
     await ui.press("Notification settings");

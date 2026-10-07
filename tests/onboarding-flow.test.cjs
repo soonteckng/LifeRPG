@@ -5,15 +5,15 @@ const React = require('react'), { act, create } = require('react-test-renderer')
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const host = name => props => React.createElement(name, props, props.children);
 function environment(reduced = false) {
-  const pending = [], stopped = [], announced = []; let back, keyboard = false, dismissals = 0;
-  const animation = config => ({ config, start: callback => pending.push(callback), stop: () => stopped.push(config) });
+  const pending = [], stopped = [], announced = [], configs = []; let back, keyboard = false, dismissals = 0;
+  const animation = config => { configs.push(config); return { config, start: callback => pending.push(callback), stop: () => stopped.push(config) }; };
   const Scroll = React.forwardRef((props, ref) => { React.useImperativeHandle(ref, () => ({ scrollTo() {} })); return React.createElement('Scroll', props, props.children); });
   const Native = {
     View: host('View'), ScrollView: Scroll, KeyboardAvoidingView: host('Keyboard'), Platform: { OS: 'android' }, StyleSheet: { create: value => value, hairlineWidth: 1 },
     Keyboard: { dismiss: () => { dismissals++; keyboard = false; }, isVisible: () => keyboard },
     AccessibilityInfo: { announceForAccessibility: title => announced.push(title) },
     BackHandler: { addEventListener: (_, callback) => { back = callback; return { remove() {} }; } },
-    Animated: { View: host('Animated'), Value: class { constructor(value) { this.value = value; } setValue(value) { this.value = value; } }, timing: (_, config) => animation(config), parallel: items => animation(items), sequence: items => animation(items), delay: duration => ({ duration }) },
+    Animated: { View: host('Animated'), Value: class { constructor(value) { this.value = value; } setValue(value) { this.value = value; } interpolate(config) { return {source:this,config}; } }, timing: (_, config) => animation(config), parallel: items => animation(items), sequence: items => animation(items), delay: duration => ({ duration }) },
   };
   const base = { 'react-native': Native, 'react-native-safe-area-context': { SafeAreaView: host('Safe') }, '@expo/vector-icons': { Ionicons: host('Icon') } };
   function load(file, extra = {}, cache = new Map()) {
@@ -23,6 +23,7 @@ function environment(reduced = false) {
     const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
     new Function('require', 'module', 'exports', code)(name => {
       if (Object.hasOwn(extra, name)) return extra[name];
+      if (name.endsWith('/OnboardingWelcome') && file !== 'src/components/OnboardingWelcome.tsx') return require('./onboarding-mocks.cjs').finish(React);
       if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
       if (Object.hasOwn(base, name)) return base[name];
       if (name.endsWith('/AppText')) return { Text: host('Text'), TextInput: host('Input') };
@@ -35,7 +36,7 @@ function environment(reduced = false) {
     }, module, module.exports);
     return module.exports;
   }
-  return { load, pending, stopped, announced, back: () => back(), setKeyboard: () => { keyboard = true; }, dismissals: () => dismissals };
+  return { load, pending, stopped, configs, announced, back: () => back(), setKeyboard: () => { keyboard = true; }, dismissals: () => dismissals };
 }
 test('the real onboarding frame pins actions outside scroll and keeps progress/back/keyboard behavior consistent', async () => {
   const env = environment(), Frame = env.load('src/components/OnboardingFrame.tsx').default; let backs = 0, next = 0, tree;
@@ -88,6 +89,7 @@ test('all seven pages share Back navigation, retain choices and save only at the
   try {
     await press('Continue'); await press('Continue');
     const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 24);
+    await press('Continue');assert.equal(tree.root.findByType('Frame').props.step,3);assert.ok(tree.root.findByProps({testID:'onboarding-name-error'}));assert.equal(tree.root.findByType('Frame').props.error,'');
     await act(async () => input().props.onChangeText('A'.repeat(25))); await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, 3);
     await act(async () => input().props.onChangeText('Soon')); await press('Continue'); await press('90 min'); await press('Continue');
     assert.equal(tree.root.findByType('Frame').props.step, 5); assert.equal(profiles.length, 0);
@@ -132,4 +134,28 @@ test('dismounting completion stops its animation and ignores a late success call
   const callback = env.pending.shift();
   await act(async () => tree.unmount());
   callback({ finished: true }); assert.equal(done, 0); assert.equal(env.stopped.length, 1);
+});
+
+test('the welcome sequence finishes once per account, respects stored receipts and cancels late animation callbacks',async()=>{
+ const env=environment(), receipts=new Map();let done=0,tree;
+ const storage={getItem:async key=>receipts.get(key),setItem:async(key,value)=>receipts.set(key,value)};
+ const Welcome=env.load('src/components/OnboardingWelcome.tsx',{'@react-native-async-storage/async-storage':storage}).default;
+ const props={owner:'alice',onDone:()=>done++};
+ await act(async()=>{tree=create(React.createElement(Welcome,props));});
+ assert.equal(done,0);assert.equal(env.back(),true);
+ const finish=env.pending.shift();await act(async()=>{finish({finished:true});finish({finished:true});});
+ assert.equal(done,1);assert.equal(receipts.get('liferpg:welcome:v1:alice'),'seen');
+ await act(async()=>tree.unmount());await act(async()=>{tree=create(React.createElement(Welcome,props));});
+ assert.equal(done,2);assert.equal(env.pending.length,0,'do not replay welcome for a returning draft');
+ await act(async()=>tree.unmount());await act(async()=>{tree=create(React.createElement(Welcome,{...props,owner:'bob'}));});
+ const stale=env.pending.shift();await act(async()=>tree.unmount());stale({finished:true});assert.equal(done,2);assert.equal(receipts.has('liferpg:welcome:v1:bob'),false);
+});
+
+test('setup sections fade upwards in order without animating layout or the pinned footer',async()=>{
+ const env=environment(),Frame=env.load('src/components/OnboardingFrame.tsx').default;let tree;
+ await act(async()=>{tree=create(React.createElement(Frame,{step:1,total:7,title:'Your rhythm',subtitle:'Choose a direction',opacity:1,onNext(){}},React.createElement('Choices')));});
+ try{
+  const reveals=env.configs.filter(c=>c.duration===320);assert.deepEqual(reveals.map(c=>c.delay),[0,70,140]);assert.ok(reveals.every(c=>c.useNativeDriver&&c.isInteraction===false));
+  assert.equal(tree.root.findByProps({testID:'onboarding-footer'}).findAllByType('Animated').length,0);
+ }finally{await act(async()=>tree.unmount());}
 });

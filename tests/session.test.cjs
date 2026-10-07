@@ -224,7 +224,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){animations.push({...config,from:value.value});if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
+      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){animations.push({...config,from:value.value});if(deferExit && config.toValue===-0.12) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
@@ -684,6 +684,8 @@ test("Session drag follows the finger, cancels back in place and retains timer s
   const surface=()=>ui.root().findAllByType("AnimatedView").find(n=>n.props.testID==="session-surface");
   const safe=()=>ui.root().findByType("SafeArea");
   const motion=surface().props.style.transform[0].translateY.source;
+  const transform=surface().props.style.transform[0].translateY.config;
+  assert.deepEqual(transform.inputRange,[-.12,0,1]);assert.equal(transform.outputRange[1],640);assert.ok(transform.outputRange[0]>640,'exit travels beyond the screen while normal drag uses its original height');
   const originalTimer=ui.root().findByType("DurationControl");
   await act(async()=>{
     safe().props.onPanResponderGrant();

@@ -16,10 +16,13 @@ export default function OnboardingFinish({ onDone }: { onDone: () => void }) {
     const animation = Animated.sequence([
       Animated.parallel([Animated.timing(opacity, { toValue: 1, duration: 400, useNativeDriver: true }), Animated.timing(scale, { toValue: 1, duration: 500, useNativeDriver: true })]),
       Animated.delay(650),
+      Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true, isInteraction: false }),
     ]);
-    let alive = true;
-    animation.start(({ finished }) => { if (finished && alive) onDone(); });
-    return () => { alive = false; animation.stop(); };
+    let alive = true, done = false;
+    const finish = () => { if (alive && !done) { done = true; onDone(); } };
+    const deadline = setTimeout(finish, 1900);
+    animation.start(({ finished }) => { if (finished) finish(); });
+    return () => { alive = false; clearTimeout(deadline); animation.stop(); };
   }, [onDone, opacity, scale, reduced]);
   return <SafeAreaView style={s.page}><Animated.View testID="onboarding-finish" style={[s.content, { opacity, transform: [{ scale }] }]} accessibilityLiveRegion="polite">
     <View style={s.halo}><Ionicons name="checkmark" size={44} color={colors.accent} /></View>

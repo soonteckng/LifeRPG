@@ -1,6 +1,6 @@
 # Calm onboarding and introduction
 
-The signed-in setup uses one seven-page journey: focus direction, its default block (or a free-focus explanation), name, daily goal, and three brief introduction pages. Back works across every page boundary and retains choices. All seven pages are required for new users. Returning users open How LifeRPG works rather than replaying setup; its quick-tour entry is available later.
+The signed-in setup uses one seven-page journey: focus direction, its default block (or a free-focus explanation), name, daily goal, and three brief introduction pages. Back works across every page boundary and retains choices. All seven pages are required for new users. Returning users open How LifeRPG works rather than replaying setup; its static instructions stay available later.
 
 One shared frame keeps progress and the Back/Continue row outside the scroll area. Back is disabled on the first page and after successful final confirmation. Ordinary content is kept short; scroll remains available for small displays, landscape, the keyboard, and larger accessibility text. Choice selection does not expand more options into the current page. Keyboard dismissal takes precedence over Android Back, then previous-step navigation; busy work prevents leaving the flow through these controls. Setup names are limited to 24 characters, and Home truncates the display of existing longer names.
 

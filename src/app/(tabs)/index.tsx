@@ -39,7 +39,7 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { width, height, fontScale } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -91,9 +91,6 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  // Short content shares remaining space between sections. Subtract the exact
-  // scroll padding once so fitting two quests does not create a tiny overflow.
-  const contentMinHeight = Math.max(0, (viewportHeight || height - insets.top) - dockHeight - 24);
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -180,14 +177,14 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <TourScrollView testID="home-viewport" style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
+      <TourScrollView testID="home-viewport" tourBottomInset={dockHeight} style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
         contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 12 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, { minHeight: contentMinHeight }]}>
-          <TourAnchor id="home-identity"><View style={styles.headerBlock}>
+        <View testID="home-layout" style={styles.layout}>
+          <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
                 <Text style={styles.greeting}>{greeting}</Text>
@@ -200,12 +197,12 @@ export default function HomeScreen() {
               <View style={styles.metaDivider} />
               <Text style={styles.metaText}>Level {level}</Text>
             </View>
-          </View></TourAnchor>
+          </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
             <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
           </TouchableOpacity>}
-          <View style={[styles.goalSection, styles.guidedGoalSection]}>
+          <View style={styles.guidedGoal}>
             <View testID="home-compact-goal" style={styles.guidedGoal}>
               <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.guidedGoalHeading} accessibilityRole="button" accessibilityLabel={`Daily focus goal. ${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes. Change your goal`}>
                 <Text style={[styles.focusHeading, styles.goalLabel]}>Today’s focus</Text><View style={styles.goalValue}><Text style={styles.goalValueText}>{`${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min`}</Text><Ionicons name="options-outline" size={18} color={colors.accent} /></View>
@@ -213,7 +210,8 @@ export default function HomeScreen() {
               <View style={styles.guidedTrack} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
               {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
             </View>
-          <View style={styles.focusContainer}>{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
+          </View></View></TourAnchor>
+          <TourAnchor id="home-focus"><View style={styles.focusContainer}>{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
             <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
@@ -235,16 +233,15 @@ export default function HomeScreen() {
               </TouchableOpacity>}
             </View>
             {!hasOpenSession && <Text style={styles.freeInstruction}>One block. One thing at a time.</Text>}
-            <TourAnchor id="home-focus"><TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
+            <TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
               testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
               accessibilityRole="button" accessibilityState={{ disabled: quickStarting || (!hasOpenSession && (blocked || !!areasLoading)), busy: quickStarting }}
               accessibilityLabel={hasOpenSession ? "Continue session" : `Start ${sessionDurationLabel(quickSeconds)}, ${quickTitle}`}>
               <Ionicons name="play-outline" size={22} color="#171827" />
               <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
-            </TouchableOpacity></TourAnchor>
+            </TouchableOpacity>
             {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
-          </View>}</View>
-          </View>
+          </View>}</View></TourAnchor>
           <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">
             <View style={styles.invitationMain}>
               <Text style={styles.link}>Find your next step</Text><Text style={styles.questMeta}>{guided.value.enabled ? "Change your focus suggestions" : "Choose a focus direction"}</Text>
@@ -308,7 +305,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  layout: { justifyContent: "space-between", gap: 12 },
+  layout: { gap: 12 },
   focusContainer: { width: "100%", alignSelf: "stretch" },
   freeInstruction: { color: colors.secondary, fontSize: 15, lineHeight: 22 },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },

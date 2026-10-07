@@ -1,4 +1,4 @@
-import { TourAnchor } from "../../components/FeatureTour";
+import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import Pressable from "../../components/MotionPressable";
 import { useTimer } from "../../context/TimerContext";
 import { floatingTabInset } from "../../utils/floatingTabInset";
@@ -34,6 +34,13 @@ import { durationLabel } from "../../utils/progressAnalytics";
 import { CHARACTER_BADGES } from "../../constants/characterBadges";
 export default function ProfileScreen() {
   const router = useRouter();
+  const settingsIcon = useRef<View>(null);
+  const openSettings = () => {
+    let opened = false;
+    const open = () => { if (!opened) { opened = true; router.navigate("/settings"); } };
+    const fallback = setTimeout(open, 100);
+    settingsIcon.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
+  };
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -105,14 +112,14 @@ export default function ProfileScreen() {
       action={
         <View style={p.inline}>
         <Pressable accessibilityRole="button" accessibilityLabel="Personalise profile" onPress={open} style={p.back}><Ionicons name="create-outline" size={22} color={colors.accent} /></Pressable>
-        <Pressable
+        <View ref={settingsIcon} collapsable={false}><Pressable
           accessibilityRole="button"
           accessibilityLabel="Open Settings"
-          onPress={() => router.navigate("/settings")}
+          onPress={openSettings}
           style={p.back}
         >
           <Ionicons name="settings-outline" size={23} color={colors.accent} />
-        </Pressable>
+        </Pressable></View>
         </View>
       }
     >
@@ -155,7 +162,7 @@ export default function ProfileScreen() {
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
       <View style={{ gap: 12 }}>
-        <TourAnchor id="profile-areas"><Text style={p.sectionLabel}>Your Life areas</Text></TourAnchor>
+        <Text style={p.sectionLabel}>Your Life areas</Text>
 
         {areas.map((area) => (
           <View key={area.id} accessible accessibilityLabel={`${area.title}, level ${area.level}, ${area.current} of ${area.required} XP to the next level`} style={{ gap: 6, minHeight:52, paddingVertical: 8 }}>

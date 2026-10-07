@@ -1,4 +1,4 @@
-import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
+import { TourScrollView } from "../../components/FeatureTour";
 import { readSuggestedFocus } from "../../constants/guidedQuests";
 import SlidingSelection from "../../components/SlidingSelection";
 import Pressable from "../../components/MotionPressable";
@@ -311,7 +311,7 @@ export default function ProgressScreen() {
           />
         }
       >
-        <TourAnchor id="progress-overview"><View style={s.periodToolbar}>
+        <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
             <SlidingSelection testID="period-selection" index={mode === "week" ? 0 : 1} style={s.segmentSelected} />
@@ -378,7 +378,7 @@ export default function ProgressScreen() {
             />
           </Pressable>
         </View>
-        </View></TourAnchor>
+        </View>
         {error && (
           <View style={s.error}>
             <Ionicons

@@ -21,7 +21,7 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
-      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>React.createElement("TourAnchor",props,props.children), TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
     if (name.endsWith("/useGuidedPreference")) return {useGuidedPreference:()=>({ready:true,value:{enabled:false,invited:true},save:async()=>true})};
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
@@ -475,8 +475,13 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.deepEqual(sessionCalls, [["navigate","/session"]]);
   sessionCalls.length = 0;
 
-  const bodyMin = renderer.root.findByProps({testID: "home-layout"}).props.style[1].minHeight;
-  assert.equal(bodyMin + 12 + viewportMargin(), 640 - 24);
+  const layout = renderer.root.findByProps({testID: "home-layout"}).props.style;
+  assert.equal(layout.minHeight, undefined); assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 12);
+  const anchors = renderer.root.findAllByType("TourAnchor");
+  const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
+  assert.ok(identity.findByProps({testID:"home-compact-goal"}));
+  assert.ok(focus.findByProps({testID:"home-quick-start"}));assert.ok(focus.findByProps({testID:"home-start-focus"}));
+  assert.equal(identity.findAllByProps({testID:"home-quick-start"}).length,0);
   const viewport = () => renderer.root.findByProps({testID: "home-viewport"});
   await act(async () => { viewport().props.onLayout({nativeEvent:{layout:{height:600}}}); viewport().props.onContentSizeChange(320,600); });
   assert.equal(viewport().props.scrollEnabled,false);

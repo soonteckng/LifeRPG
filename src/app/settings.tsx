@@ -126,7 +126,7 @@ export default function SettingsScreen() {
     ? `Today: ${goalData.today_goal_minutes} min${goalData.pending ? ` · ${goalData.next_goal_minutes} min from ${goalData.next_effective_date}` : ""}`
     : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
   return (
-    <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition>
+    <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition expandFromIcon>
       <GuidedPreferenceSheet owner={profile.id ?? ""} visible={guidedOpen} onClose={() => setGuidedOpen(false)} />
       <View style={sectionStyle}>
         <Text style={p.label}>Account</Text>
@@ -149,7 +149,7 @@ export default function SettingsScreen() {
         <Text style={p.label}>Help & notifications</Text>
         <PersonalRow icon="notifications-outline" title="Notifications" subtitle={permission?.label ?? "Checking permission..."} onPress={() => open("notifications")} />
         <View style={p.divider} />
-        <PersonalRow icon="information-circle-outline" title="How LifeRPG works" subtitle="Focus, growth, goals and a quick tour" onPress={() => router.navigate("./guide")} />
+        <PersonalRow icon="information-circle-outline" title="How LifeRPG works" subtitle="Focus, growth, goals and consistency" onPress={() => router.navigate("./guide")} />
       </View>
 
       <View style={sectionStyle}>
@@ -159,7 +159,7 @@ export default function SettingsScreen() {
       </View>
       <Text style={p.caption}>LifeRPG · Your effort, reflected. Character attributes describe recorded practice and consistency.</Text>
       <AppSheet label={sheet === "signout" ? "Sign out" : sheet === "goal" ? "Daily focus goal" : "Notifications"}
-        motionMode="timed"
+        motionMode="timed" compact
         visible={sheet !== null} guardDismiss={busy} onRequestClose={() => { if (!busy) setSheet(null); }}
         header={<View style={p.sheetHeader}><Text style={p.title}>{sheet === "signout" ? "Sign out of LifeRPG?" : sheet === "goal" ? "Daily focus goal" : "Session notifications"}</Text></View>}>
         <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={p.sheetBody}>
@@ -184,9 +184,9 @@ export default function SettingsScreen() {
           </> : <>
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
             {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
-              <Text style={p.body}>For precise timer alerts while the app is in the background, allow Notifications and turn on Alarms & reminders in your phone’s special app access. These are separate permissions. Battery restrictions can also delay alerts.</Text>
+              <Text style={p.body}>For background timer alerts, allow Notifications and Alarms & reminders in your phone’s special app access. These are separate permissions. Battery restrictions can delay alerts.</Text>
               <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
-              <Text style={p.caption}>Check that the switch is on for LifeRPG. In Expo Go, phone settings belong to Expo Go instead. This preview cannot verify the alarm switch; use an installed build to test background delivery.</Text>
+              <Text style={p.body}>{permission?.supported ? "Turn the Alarms & reminders switch on for LifeRPG. Then return here to check notification access." : "Check both switches for Expo Go in this preview. Test background alerts with an installed LifeRPG build; this preview cannot verify the alarm switch."}</Text>
             </>}
             {permission?.supported && <Text style={p.body}>Phone permissions control whether session alerts can appear. Permission being allowed does not guarantee delivery; phone settings and battery restrictions can affect alerts.</Text>}
             {permission?.action && <PersonalButton title={busy ? "Please wait..." : permission.action === "enable" ? "Enable notifications" : permission.action === "settings" ? "Open phone settings" : "Retry permission check"}

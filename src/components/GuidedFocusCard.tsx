@@ -9,7 +9,6 @@ import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
 import ContentReveal from "./ContentReveal";
 import SlidingSelection from "./SlidingSelection";
-import { TourAnchor } from "./FeatureTour";
 import { colors } from "../constants/theme";
 import { STARTER_QUESTS, suggestedFocus, readSuggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
@@ -72,7 +71,7 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
         </Pressable>)}
       </View>
     </View>}
-    <TourAnchor id="home-focus"><Pressable testID="guided-start" disabled={locked} onPress={() => void start()} accessibilityRole="button" accessibilityState={{ busy, disabled: locked }} style={[s.primary, locked && s.disabled]}><Ionicons name="play-outline" size={20} color="#171827" /><Text style={s.primaryText}>{busy ? "Starting…" : active ? "Continue session" : failed ? "Retry start" : "Start focusing"}</Text></Pressable></TourAnchor>
+    <Pressable testID="guided-start" disabled={locked} onPress={() => void start()} accessibilityRole="button" accessibilityState={{ busy, disabled: locked }} style={[s.primary, locked && s.disabled]}><Ionicons name="play-outline" size={20} color="#171827" /><Text style={s.primaryText}>{busy ? "Starting…" : active ? "Continue session" : failed ? "Retry start" : "Start focusing"}</Text></Pressable>
     {!active && <View style={s.actions}>
       <Pressable disabled={locked} onPress={() => setPicker(true)} accessibilityRole="button" accessibilityLabel="Choose another" accessibilityState={{ disabled: locked }} style={[s.action, locked && s.disabled]}>
         <Ionicons name="shuffle-outline" size={18} color={colors.accent} /><Text style={s.actionText}>Choose another</Text>
