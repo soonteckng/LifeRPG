@@ -1,3 +1,4 @@
+import { PROFILE_NAME_LIMIT, profileNameError } from "../../constants/profile";
 import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import Pressable from "../../components/MotionPressable";
 import { useTimer } from "../../context/TimerContext";
@@ -9,6 +10,7 @@ import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
+  type BottomSheetScrollViewMethods,
   BottomSheetTextInput,
   TouchableOpacity as SheetButton,
 } from "@gorhom/bottom-sheet";
@@ -46,6 +48,7 @@ export default function ProfileScreen() {
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { profile, updateProfile, reloadProfile } = useUser();
   const { data, loading, error, refresh } = useCharacterData();
+  const nameScroll = useRef<BottomSheetScrollViewMethods>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState("");
@@ -82,8 +85,9 @@ export default function ProfileScreen() {
   };
   const save = async () => {
     if (lock.current) return;
-    if (!name.trim() || name.trim().length > 40) {
-      setSaveError("Enter a name between 1 and 40 characters.");
+    const nameError = profileNameError(name);
+    if (nameError) {
+      setSaveError(nameError);
       return;
     }
     lock.current = true;
@@ -208,6 +212,7 @@ export default function ProfileScreen() {
         }}
         guardDismiss={dirty || saving || discard}
         compact
+        keyboardBehavior="fillParent"
         label="Personalise profile"
         header={
           <View style={p.sheetHeader}>
@@ -250,6 +255,7 @@ export default function ProfileScreen() {
         }
       >
         <BottomSheetScrollView
+          ref={nameScroll}
           keyboardShouldPersistTaps="handled"
           enableFooterMarginAdjustment
           contentContainerStyle={[p.sheetBody, { paddingBottom: 12 }]}
@@ -259,10 +265,14 @@ export default function ProfileScreen() {
             accessibilityLabel="Profile name"
             editable={!saving}
             style={p.input}
-            maxLength={40}
+            maxLength={PROFILE_NAME_LIMIT}
+            autoCapitalize="words" autoComplete="name" returnKeyType="done"
+            onFocus={() => nameScroll.current?.scrollTo({ y: 0, animated: true })}
             value={name}
-            onChangeText={setName}
+            onChangeText={value => { setName(value); setSaveError(""); }}
           />
+          <Text style={p.caption}>Up to {PROFILE_NAME_LIMIT} characters, including spaces.</Text>
+          {!!saveError && <Text style={p.error} accessibilityRole="alert">{saveError}</Text>}
           <Text style={p.rowTitle}>Character badge</Text>
           <View style={[p.inline, { flexWrap: "wrap" }]}>
             {CHARACTER_BADGES.map((item) => (
@@ -287,11 +297,7 @@ export default function ProfileScreen() {
               </SheetButton>
             ))}
           </View>
-          {!!saveError && (
-            <Text style={p.error} accessibilityRole="alert">
-              {saveError}
-            </Text>
-          )}
+
         </BottomSheetScrollView>
       </AppSheet>
     </PersonalPage>

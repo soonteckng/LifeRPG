@@ -30,6 +30,9 @@ function load(relativePath, mocks, cache = new Map()) {
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
       if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
+    if (name === "@gorhom/bottom-sheet") return {BottomSheetScrollView:host("ScrollView"),BottomSheetTextInput:Input,TouchableOpacity:mocks["react-native"]?.Pressable || host("Pressable")};
+    if (name.endsWith("/ContentReveal")) return props=>props.children;
+    if (name.endsWith("/AppSheet")) return props=>props.visible?React.createElement("Sheet",props,props.header,props.children,props.footer):null;
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const extension = ["", ".ts", ".tsx"].find((ext) => fs.existsSync(target + ext));
@@ -366,6 +369,8 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.snapPoints, undefined);
     assert.equal(sheetProps.enableDynamicSizing, true);
     assert.equal(sheetProps.keyboardBehavior, "interactive");
+    await act(async()=>renderer.update(React.createElement(AppSheet,{...props,compact:true,keyboardBehavior:"fillParent"})));
+    assert.equal(sheetProps.keyboardBehavior,"fillParent");
     assert.equal(sheetProps.handleComponent, originalHandle);
     // The footer must not shift above its measured scroll reservation.
     await act(async () => renderer.update(React.createElement(AppSheet, { ...props, compact: true, footer: React.createElement("View", {style:{paddingBottom:34}}, "Save") })));
@@ -499,7 +504,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     const fitted=renderer.root.findByProps({testID:"home-layout"}).props.style;
     assert.equal(fitted.gap,12);assert.equal(fitted.minHeight,undefined);
     assert.deepEqual(renderer.root.findByProps({testID:"home-quick-start"}).props.style,stableFocusStyle,'adding quests must not stretch or resize the focus card');
-    assert.ok(renderer.root.findByProps({testID:"free-focus-details"}));
+    assert.ok(renderer.root.findByProps({testID:"focus-card-duration"}));
     assert.equal(viewportMargin(),initialMargin);
     assert.equal(previewRows().length,count);
   }
@@ -813,7 +818,7 @@ async function quickHomeSetup(history = null, start = async () => true) {
     "../../components/GoalRing":host("GoalRing"), "../../components/CharacterMark":host("CharacterMark"),
     "../../components/ContentReveal":({children})=>children, "../../components/QuestSheet":host("QuestSheet"),
     "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})},
-    "../../context/UserContext":{useUser:()=>({profile:{id:owner,username:"Soon",daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
+    "../../context/UserContext":{useUser:()=>({profile:{id:owner,username:"Soon Teck",daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
     "../../context/TimerContext":{useTimer:()=>({...setters,...timerFlags,startFreeTimer:async(seconds,area)=>{calls.push(["start",seconds,area]);return start();}})},
     "../../services/progressService":{getFocusStreak:async()=>0,getLastFreeSession:async id=>{calls.push(["history",id]);return historyValue;}},
     "../../services/dailyProgressService":{getTodayProgress:async()=>null},
@@ -841,7 +846,7 @@ test("Home Quick Start shows exact remembered choice, ignores rapid taps and nav
 test("Home failure stays actionable and Change configures exact seconds instead of starting", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
   try {
-    assert.match(ui.output(),/30 min/);
+    assert.match(ui.output(),/Soon Teck/);assert.match(ui.output(),/30 min/);
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.match(ui.output(),/Retry start/);
     assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
@@ -881,4 +886,20 @@ test("Home history does not leak across accounts; missing areas fall back to Gen
     await ui.update({},"owner-d",{task_id:null,subject_id:2,duration_seconds:30});
     assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
   }finally{await ui.cleanup();}
+});
+
+test("free focus presets and custom seconds start the selected time and cannot leak across accounts",async()=>{
+ const ui=await quickHomeSetup();
+ try{
+  const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
+  await act(async()=>control('Use 10 minutes').props.onPress());
+  await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start'),[['start',600,1]]);
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  const inputs=()=>ui.renderer.root.findAllByType('Input');
+  await act(async()=>{inputs().find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');inputs().find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
+  await act(async()=>control('Use this duration').props.onPress());
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, General');
+  await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start').at(-1),['start',2717,1]);
+  await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, General');
+ }finally{await ui.cleanup();}
 });

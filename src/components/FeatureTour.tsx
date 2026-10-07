@@ -13,8 +13,8 @@ import { colors } from "../constants/theme";
 
 export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress." },
-  { id: "home-focus", route: "/", title: "Make space for focus.", body: "Choose your time and Life area here, then start focusing." },
-  { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Choose suggestions here, or return to free focus. You can change direction anytime; your quests stay yours." },
+  { id: "home-focus", route: "/", title: "Make space for focus.", body: "The same controls work for free focus and suggestions. Choose a preset or custom time, adjust your Life area if needed, then start focusing." },
+  { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Switch between suggestions and free focus here, or choose another suggestion. Your quests and progress stay yours." },
   { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Life areas and session history. Explore Week or Month, and your current and longest streaks." },
   { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Profile holds your character, Life areas and milestones. They reflect effort you’ve recorded. Make your character yours here." },

@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { PersonalPage, p } from "../components/PersonalUI";
 import { Text } from "../components/AppText";
 const RULES = [
-  ["Focus, one block at a time", "Start free focus or follow a suggestion. Finish a session to save focus time. Ending early cancels the session and gives no credit."],
+  ["Focus, one block at a time", "Free focus and suggestions share one card. Choose 10 or 30 minutes, or set a custom timer. Find your next step changes your focus direction. Finish a session to save focus time. Ending early cancels the session and gives no credit."],
   ["Your effort becomes growth", "Completed seconds count toward your daily goal. Every 60 seconds earns 1 character XP and XP for the chosen Life area; leftover seconds carry forward. Levels reflect logged effort, not ability."],
   ["Quests stay yours", "Create a personal quest, choose a duration and Life area, and optionally repeat it. Your quests stay alongside suggestions. Saving a suggested block never awards XP again."],
   ["Consistency, without pressure", "Any completed session with focused time makes a Focus day. Consecutive days build your Focus streak. Progress also shows your longest streak. A quiet day never removes earned growth or milestones."],

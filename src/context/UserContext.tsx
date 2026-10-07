@@ -1,3 +1,4 @@
+import { profileNameError } from "../constants/profile";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
   createContext,
@@ -185,8 +186,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   ) => {
     if (!user) throw new Error("User is not authenticated.");
     const clean = username.trim();
-    if (!clean || clean.length > 40)
-      throw new Error("Enter a name between 1 and 40 characters.");
+    const nameError = profileNameError(clean);
+    if (nameError) throw new Error(nameError);
     const { data, error } = await supabase
       .from("profiles")
       .update({ username: clean, avatar, class_title: classTitle })

@@ -457,6 +457,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setSessionSummary(null);
     setCompletedLevelUp(null);
     setIsCompleted(false);
+    const suggestion = readSuggestedFocus(notes);
+    if (suggestion) setNotes(encodeSuggestedFocus({ ...suggestion, seconds: totalSec }));
     setDuration(totalSec);
     setTimeLeft(totalSec);
   };
@@ -514,9 +516,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const startTimer = async (totalSeconds: number, questTitle?: string) => { await performStart(totalSeconds, questTitle ?? readSuggestedFocus(notes)?.title); };
   const startFreeTimer = (totalSeconds: number, subjectId: number | null) => performStart(totalSeconds, undefined, { subjectId });
   const startSuggestedTimer = (focus: SuggestedFocus, subjectId: number | null) => {
-    const validated = suggestedFocus(focus.templateId, focus.smaller);
-    if (!validated) return Promise.resolve(false);
-    return performStart(validated.seconds, validated.title, { subjectId, suggestion: validated });
+    const validated = suggestedFocus(focus.templateId, focus.seconds === 600);
+    if (!validated || !validSessionSeconds(focus.seconds)) return Promise.resolve(false);
+    const selected = { ...validated, seconds: focus.seconds };
+    return performStart(selected.seconds, selected.title, { subjectId, suggestion: selected });
   };
   const pauseTimer = async () => {
     const id = timerSessionIdRef.current;

@@ -1399,3 +1399,26 @@ test("guided failure keeps the draft for exact retry and cannot replace a paused
   assert.equal(attempts,2);
   await ui.cleanup();
 });
+
+test("custom suggested durations own exact metadata through start, retry, restoration and completion",async()=>{
+ const api=load('src/constants/guidedQuests.ts',{}),focus={...api.suggestedFocus('review-topic'),seconds:2717};let attempts=0;
+ const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw Error('Offline');return 'custom-guided';}});
+ try{
+  for(const seconds of [0,28801,1.5])await ui.run(async s=>assert.equal(await s.startSuggestedTimer({...focus,seconds},2),false));assert.equal(attempts,0);
+  await ui.run(async s=>assert.equal(await s.startSuggestedTimer({...focus,title:'Uncurated title'},2),false));
+  assert.equal(ui.state().duration,2717);assert.equal(api.readSuggestedFocus(ui.state().notes).title,focus.title);
+  await ui.run(s=>s.retryAction());assert.equal(ui.state().duration,2717);assert.equal(api.readSuggestedFocus(ui.state().notes).seconds,2717);
+  await ui.advance(2718);assert.equal(ui.state().sessionSummary.suggestion.seconds,2717);
+ }finally{await ui.cleanup();}
+ const restored=await providerSetup({getOpenActivitySession:async()=>({id:'custom-restored',status:'paused',task_id:null,subject_id:2,activity_type:'other',notes:api.encodeSuggestedFocus(focus),target_duration_seconds:2717,duration_seconds:2717,remaining_seconds:1900})});
+ try{assert.equal(api.readSuggestedFocus(restored.state().notes).seconds,2717);assert.equal(restored.state().duration,2717);}finally{await restored.cleanup();}
+});
+
+test("editing a suggested setup timer keeps its saved instruction and updates exact seconds",async()=>{
+ const ui=await providerSetup(),api=load('src/constants/guidedQuests.ts',{}),focus=api.suggestedFocus('review-topic');
+ try{
+  await ui.run(s=>s.setNotes(api.encodeSuggestedFocus(focus)));await ui.run(s=>s.setDurationInSeconds(2717));
+  const draft=api.readSuggestedFocus(ui.state().notes);assert.equal(draft.seconds,2717);assert.equal(draft.instruction,focus.instruction);
+  await ui.run(s=>s.startTimer(2717));const query=ui.calls.find(c=>c[0]==='start')[1];assert.equal(query.targetDurationSeconds,2717);assert.equal(api.readSuggestedFocus(query.notes).seconds,2717);
+ }finally{await ui.cleanup();}
+});

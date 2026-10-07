@@ -88,7 +88,7 @@ test('all seven pages share Back navigation, retain choices and save only at the
   const press = async label => act(async () => button(label).props.onPress());
   try {
     await press('Continue'); await press('Continue');
-    const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 24);
+    const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 15);
     await press('Continue');assert.equal(tree.root.findByType('Frame').props.step,3);assert.ok(tree.root.findByProps({testID:'onboarding-name-error'}));assert.equal(tree.root.findByType('Frame').props.error,'');
     await act(async () => input().props.onChangeText('A'.repeat(25))); await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, 3);
     await act(async () => input().props.onChangeText('Soon')); await press('Continue'); await press('90 min'); await press('Continue');

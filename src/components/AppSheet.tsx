@@ -47,6 +47,7 @@ interface Props {
   // Content-sized editors must not gain an extra tall snap point.
   compact?: boolean;
   maxHeightRatio?: number;
+  keyboardBehavior?: "interactive" | "extend" | "fillParent";
   motionMode?: "spring" | "timed";
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
@@ -137,6 +138,7 @@ export default function AppSheet({
   expanded = false,
   compact = false,
   maxHeightRatio = 0.82,
+  keyboardBehavior,
   motionMode = "spring",
   overlay,
   footer,
@@ -277,9 +279,9 @@ export default function AppSheet({
               enableOverDrag={guardDismiss}
               gestureEventsHandlersHook={useDismissGestures}
               keyboardBehavior={
-                !compact && (expanded || guardDismiss)
+                keyboardBehavior ?? (!compact && (expanded || guardDismiss)
                   ? "fillParent"
-                  : "interactive"
+                  : "interactive")
               }
               keyboardBlurBehavior="restore"
               enableBlurKeyboardOnGesture

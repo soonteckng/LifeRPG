@@ -1,4 +1,5 @@
-export const ONBOARDING_NAME_LIMIT = 24;
+import { PROFILE_NAME_LIMIT } from "./profile";
+export const ONBOARDING_NAME_LIMIT = PROFILE_NAME_LIMIT;
 export const INTRO_PAGES = [
   { icon: "timer-outline", title: "Start with one small block.", body: "Follow a suggestion or focus your own way. Your personal quests stay alongside both.", detail: "Choose a duration, settle into your work, and let the timer take care of the time." },
   { icon: "person-outline", title: "Your effort takes shape.", body: "Completed focus grows your character and the Life area you choose. Levels reflect effort you’ve logged.", detail: "Every completed second counts toward your daily goal. Each 60 seconds earns 1 XP; leftover seconds carry forward." },

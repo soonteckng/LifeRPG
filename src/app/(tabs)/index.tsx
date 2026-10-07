@@ -11,7 +11,7 @@ import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
-import { validSessionSeconds, durationLabel as sessionDurationLabel } from "../../utils/sessionSetup";
+import { validSessionSeconds } from "../../utils/sessionSetup";
 import CharacterMark from "../../components/CharacterMark";
 import ContentReveal from "../../components/ContentReveal";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
@@ -54,6 +54,7 @@ export default function HomeScreen() {
 
   const [lastFree, setLastFree] = useState<{ owner: string; session: QuickStartSession | null } | null>(null);
   const [quickStarting, setQuickStarting] = useState(false);
+  const [durationChoice, setDurationChoice] = useState<{ owner: string; seconds: number } | null>(null);
   const [attempt, setAttempt] = useState<{ owner: string; seconds: number; areaId: number | null; title: string } | null>(null);
   const [quickError, setQuickError] = useState(false);
   const quickLock = useRef(false);
@@ -75,7 +76,7 @@ export default function HomeScreen() {
   const general = subjects.find(area => area.title.trim().toLowerCase() === "general");
   const quickArea = subjects.find(area => area.id === previous?.subject_id) ?? general;
   const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
-  const quickSeconds = retainedAttempt?.seconds ?? rememberedSeconds;
+  const quickSeconds = retainedAttempt?.seconds ?? (durationChoice?.owner === owner ? durationChoice.seconds : rememberedSeconds);
   const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
   const quickTitle = retainedAttempt?.title ?? quickArea?.title ?? "General";
   const activeSubject = subjects.find(area => area.id === timer.targetAttributeId);
@@ -124,8 +125,8 @@ export default function HomeScreen() {
     [tasks],
   );
 
-  const firstName = profile?.username?.trim().split(/\s+/)[0] || "Hero";
-  const greeting = homeWelcome(hour < 5 ? 18 : hour, firstName).split(",")[0];
+  const displayName = profile?.username?.trim() || "Hero";
+  const greeting = homeWelcome(hour < 5 ? 18 : hour, displayName).split(",")[0];
   const isGoalComplete = goalCompleted || remainingSeconds === 0;
   const streakDays = Math.max(0, focusStreak ?? 0);
 
@@ -189,7 +190,7 @@ export default function HomeScreen() {
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
                 <Text style={styles.greeting}>{greeting}</Text>
-                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{firstName}</Text>
+                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
               </View>
               <View style={styles.avatarFrame}><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></View>
             </View>
@@ -217,13 +218,15 @@ export default function HomeScreen() {
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
           </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
-            onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <FreeFocusCard
-            duration={hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}
+            onStarted={openSession} selectedSeconds={durationChoice?.owner === owner ? durationChoice.seconds : undefined}
+            onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }} /> : <FreeFocusCard key={owner}
+            seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
             area={hasOpenSession ? activeArea : quickTitle}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
-            active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting} blocked={blocked}
+            active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting}
             disabled={blocked || !!areasLoading} changeDisabled={quickStarting || !!timer.actionBusy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} onChange={changeSession} onStart={() => void startFreeSession()}
+            onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
           />}</View></TourAnchor>
           <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">
             <View style={styles.invitationMain}>
