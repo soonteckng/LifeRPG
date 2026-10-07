@@ -49,6 +49,10 @@ test('the real onboarding frame pins actions outside scroll and keeps progress/b
     await act(async () => env.back()); assert.equal(backs, 1);
     await act(async () => tree.update(React.createElement(Frame, { ...props, busy: true })));
     await act(async () => env.back()); assert.equal(backs, 1); assert.equal(next, 0);
+    await act(async () => tree.update(React.createElement(Frame, { ...props, transitioning: true })));
+    const action=tree.root.findAllByType('Button').find(node=>node.props.accessibilityLabel==='Continue');
+    assert.equal(action.props.disabled,true);assert.equal(action.props.style.some(style=>style?.opacity===0.6),false);
+    await act(async () => env.back());assert.equal(backs,1);
   } finally { await act(async () => tree.unmount()); }
 });
 test('step transitions retain outgoing content until faded and synchronously reject repeated taps', async () => {

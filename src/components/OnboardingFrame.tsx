@@ -41,9 +41,9 @@ export function useOnboardingTransition() {
   return { opacity, moving, change };
 }
 
-export default function OnboardingFrame({ step, total, title, subtitle, children, opacity, busy = false, primary = "Continue", onNext, onBack, secondary, onSecondary, error, retry }: {
+export default function OnboardingFrame({ step, total, title, subtitle, children, opacity, busy = false, transitioning = false, primary = "Continue", onNext, onBack, secondary, onSecondary, error, retry }: {
   step: number; total: number; title: string; subtitle: string; children: ReactNode;
-  opacity: Animated.Value; busy?: boolean; primary?: string; onNext: () => void;
+  opacity: Animated.Value; busy?: boolean; transitioning?: boolean; primary?: string; onNext: () => void;
   onBack?: () => void; secondary?: string; onSecondary?: () => void; error?: string; retry?: () => void;
 }) {
   const scroll = useRef<ScrollView>(null);
@@ -52,11 +52,11 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       if (Keyboard.isVisible()) Keyboard.dismiss();
-      else if (!busy) onBack?.();
+      else if (!busy && !transitioning) onBack?.();
       return true;
     });
     return () => subscription.remove();
-  }, [busy, onBack]);
+  }, [busy, transitioning, onBack]);
   return <SafeAreaView style={s.page}>
     <KeyboardAvoidingView style={s.page} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={s.container}>
@@ -66,15 +66,15 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
           </View>
         </View>
         <ScrollView ref={scroll} style={s.scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
-          <Animated.View style={{ opacity, gap: 24 }} pointerEvents={busy ? "none" : "auto"}>
+          <Animated.View style={{ opacity, gap: 24 }} pointerEvents={busy || transitioning ? "none" : "auto"}>
             <View style={s.heading}><Text style={s.title} accessibilityRole="header">{title}</Text><Text style={s.subtitle}>{subtitle}</Text></View>{children}
           </Animated.View>
         </ScrollView>
         <View style={s.footer} testID="onboarding-footer">
           <View style={s.feedback} accessibilityLiveRegion="polite">{!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}{retry && <Pressable onPress={retry} accessibilityRole="button" style={s.quiet}><Text style={s.link}>Retry loading preferences</Text></Pressable>}</View>
           <View style={s.footerActions}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Previous step" accessibilityState={{ disabled: busy || !onBack }} disabled={busy || !onBack} onPress={onBack} style={[s.back, (busy || !onBack) && s.disabled]}><Text style={s.link}>Back</Text></Pressable>
-            <Pressable accessibilityRole="button" accessibilityLabel={primary} accessibilityState={{ disabled: busy, busy }} disabled={busy} onPress={onNext} style={[s.primary, busy && s.disabled]}><Text style={s.primaryText}>{primary}</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="Previous step" accessibilityState={{ disabled: busy || transitioning || !onBack }} disabled={busy || transitioning || !onBack} onPress={onBack} style={[s.back, (busy || !onBack) && s.disabled]}><Text style={s.link}>Back</Text></Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel={primary} accessibilityState={{ disabled: busy || transitioning, busy }} disabled={busy || transitioning} onPress={onNext} style={[s.primary, busy && s.disabled]}><Text style={s.primaryText}>{primary}</Text></Pressable>
           </View>
           {onSecondary && <Pressable accessibilityRole="button" accessibilityLabel={secondary} disabled={busy} onPress={onSecondary} style={s.quiet}><Text style={s.link}>{secondary}</Text></Pressable>}
         </View>

@@ -185,13 +185,13 @@ export default function SettingsScreen() {
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
             {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
               <Text style={p.body}>For precise timer alerts while the app is in the background, allow Notifications and turn on Alarms & reminders in your phone’s special app access. These are separate permissions. Battery restrictions can also delay alerts.</Text>
-              <PersonalButton title="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
+              <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
               <Text style={p.caption}>Check that the switch is on for LifeRPG. In Expo Go, phone settings belong to Expo Go instead. This preview cannot verify the alarm switch; use an installed build to test background delivery.</Text>
             </>}
             {permission?.supported && <Text style={p.body}>Phone permissions control whether session alerts can appear. Permission being allowed does not guarantee delivery; phone settings and battery restrictions can affect alerts.</Text>}
             {permission?.action && <PersonalButton title={busy ? "Please wait..." : permission.action === "enable" ? "Enable notifications" : permission.action === "settings" ? "Open phone settings" : "Retry permission check"}
               disabled={busy} onPress={() => void notificationAction()} />}
-            {!permission?.supported && <PersonalButton title="Open phone notification settings" onPress={() => { void Linking.openSettings().catch(() => setError("Couldn’t open phone settings.")); }} />}
+            {!permission?.supported && <PersonalButton title="Notification settings" accessibilityLabel="Open phone notification settings" onPress={() => { void Linking.openSettings().catch(() => setError("Couldn’t open phone settings.")); }} />}
           </>}
           {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
         </BottomSheetScrollView>

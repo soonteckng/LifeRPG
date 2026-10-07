@@ -83,7 +83,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     "Choose a starting daily goal. Short sessions count too—there’s no need to do it all at once.",
   ];
   return <OnboardingFrame step={step + 1} total={7} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
-    busy={busy || transition.moving || (step === 6 && !guided.ready)} primary={busy ? "Finishing setup…" : step === 6 ? "Start my journey" : "Continue"} onNext={() => void next()}
+    busy={busy || (step === 6 && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === 6 ? "Start my journey" : "Continue"} onNext={() => void next()}
     onBack={step > 0 && !confirmed ? () => changeStep(step - 1) : undefined}
     error={error || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <View style={s.choices}>

@@ -202,15 +202,18 @@ export function PersonalButton({
   onPress,
   disabled = false,
   secondary = false,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -220,7 +223,7 @@ export function PersonalButton({
         disabled && { opacity: 0.45 },
       ]}
     >
-      <Text style={[p.buttonText, secondary && { color: colors.accent }]}>
+      <Text adjustsFontSizeToFit={false} style={[p.buttonText, secondary && { color: colors.accent }]}>
         {title}
       </Text>
     </Pressable>
@@ -305,7 +308,7 @@ export const p = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 16, fontWeight: "500", color: colors.background },
+  buttonText: { fontSize: 16, lineHeight: 24, fontWeight: "500", color: colors.background, textAlign: "center" },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,

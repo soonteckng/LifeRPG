@@ -271,8 +271,8 @@ test("Expo Go notifications offer phone settings without a misleading enable act
   try {
     await ui.press("NotificationsNotifications unavailable here");
     assert.doesNotMatch(ui.text(), /Enable notifications/);
-    assert.match(ui.text(), /Open phone notification settings/);
-    await ui.press("Open phone notification settings");
+    assert.match(ui.text(), /Notification settings/);
+    await ui.press("Notification settings");
     assert.equal(ui.calls().phoneCalls, 1);
     assert.equal(ui.calls().enableCalls, 0);
   } finally { await ui.cleanup(); }
