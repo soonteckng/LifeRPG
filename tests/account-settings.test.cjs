@@ -22,6 +22,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
       if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
@@ -168,10 +170,10 @@ test("Settings starts with identity, separates logout and contains no inert Moti
     assert.match(ui.text(), /test@example.com/);
     assert.match(ui.text(), /Session access/);
     assert.doesNotMatch(ui.text(), /Edit profile/);
-    assert.match(ui.text(), /midnight in this time zone/);
+    assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction/);
     assert.doesNotMatch(ui.text(), /Motion|EAS|Expo Go|native build|widgets/);
-    await ui.press("Replay the introductionSessions, growth, goals and rewards");
-    assert.deepEqual(ui.calls().navigate, ["/tutorial"]);
+    await ui.press("How LifeRPG worksFocus, growth, goals and a quick tour");
+    assert.deepEqual(ui.calls().navigate, ["./guide"]);
   } finally { await ui.cleanup(); }
 });
 test("goal editor validates, submits once and explains next-local-day without changing today's target", async () => {
@@ -264,11 +266,14 @@ test("notifications enable explicitly and refresh real status on return from pho
     assert.ok(ui.calls().reads >= 3);
   } finally { await ui.cleanup(); }
 });
-test("unsupported notifications present no misleading enable or phone-settings action", async () => {
+test("Expo Go notifications offer phone settings without a misleading enable action", async () => {
   const ui = await settings({ permission: () => ({ label: "Notifications unavailable here", action: null, supported: false }) });
   try {
     await ui.press("NotificationsNotifications unavailable here");
-    assert.doesNotMatch(ui.text(), /Enable notifications|Open phone settings/);
+    assert.doesNotMatch(ui.text(), /Enable notifications/);
+    assert.match(ui.text(), /Open phone notification settings/);
+    await ui.press("Open phone notification settings");
+    assert.equal(ui.calls().phoneCalls, 1);
     assert.equal(ui.calls().enableCalls, 0);
   } finally { await ui.cleanup(); }
 });

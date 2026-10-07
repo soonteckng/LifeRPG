@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
+import { afterTransition } from "../utils/afterTransition";
 import {
   getCompletedSessions,
   getProgressSubjects,
@@ -44,8 +45,9 @@ export function useCharacterData() {
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
-      void refresh();
+      const cancelEntranceWork = afterTransition(() => { void refresh(); });
       return () => {
+        cancelEntranceWork();
         focused.current = false;
         generation.current++;
       };

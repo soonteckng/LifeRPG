@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 import {
   getCompletedSessions,
   getFocusStreak,
+  getLongestFocusStreak,
   getProgressGoals,
   getProgressSubjects,
   type ProgressGoal,
@@ -11,6 +12,7 @@ import {
 } from "../services/progressService";
 import type { Subject } from "../services/taskService";
 import { queryBounds, type ProgressPeriod } from "../utils/progressAnalytics";
+import { afterTransition } from "../utils/afterTransition";
 
 export interface ProgressData {
   key: string;
@@ -18,6 +20,7 @@ export interface ProgressData {
   goals: ProgressGoal[];
   areas: Subject[];
   streak: number;
+  longestStreak: number;
 }
 export function useProgressData(
   period: ProgressPeriod,
@@ -38,14 +41,15 @@ export function useProgressData(
     const request = ++generation.current;
     if (!quiet) setLoading(true);
     try {
-      const [sessions, goals, areas, streak] = await Promise.all([
+      const [sessions, goals, areas, streak, longestStreak] = await Promise.all([
         getCompletedSessions(bounds.since, bounds.until),
         getProgressGoals(period.start, period.end),
         getProgressSubjects(),
         getFocusStreak(timeZone),
+        getLongestFocusStreak(timeZone),
       ]);
       if (generation.current === request) {
-        setData({ key, sessions, goals, areas, streak });
+        setData({ key, sessions, goals, areas, streak, longestStreak });
         lastLoaded.current = { key, at: Date.now() };
         setErrorKey(null);
       }
@@ -59,9 +63,11 @@ export function useProgressData(
     useCallback(() => {
       focused.current = true;
       const cached = lastLoaded.current;
-      if (!cached || cached.key !== key || Date.now() - cached.at > 60_000)
-        void refresh(cached?.key === key);
+      const cancelEntranceWork = afterTransition(() => {
+        if (!cached || cached.key !== key || Date.now() - cached.at > 60_000) void refresh(cached?.key === key);
+      });
       return () => {
+        cancelEntranceWork();
         focused.current = false;
         generation.current++;
       };

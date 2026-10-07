@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -259,6 +261,13 @@ test("query failures are actionable and never silently produce empty history", a
     /Offline/,
   );
 });
+
+test("longest Focus streak spans the full history rather than only the current week", async () => {
+  const {service,calls}=serviceHarness(query=>({data:query.range[0]===0?Array.from({length:500},(_,i)=>session('same-day-'+i,1,'2026-10-03T08:00:00Z')):[
+    ...Array.from({length:6},(_,i)=>session('older-'+i,1,`2026-09-${String(10+i).padStart(2,'0')}T08:00:00Z`)),
+    session('zero',0,'2026-09-16T08:00:00Z'),session('future',60,'2027-01-01T08:00:00Z')],error:null}));
+  assert.equal(await service.getLongestFocusStreak(TZ,now),6);assert.equal(calls.length,2);
+});
 test("history pagination uses a stable completion snapshot", async () => {
   const { service, calls } = serviceHarness(() => ({
     data: Array.from({ length: 50 }, (_, i) => session(String(i), 30)),
@@ -294,7 +303,7 @@ test("Progress rejects stale requests, preserves same-period data on failure and
           : new Promise((resolve) => requests.push(resolve)),
       getProgressGoals: async () => [],
       getProgressSubjects: async () => areas,
-      getFocusStreak: async () => 2,
+      getFocusStreak: async () => 2, getLongestFocusStreak: async () => 5,
     },
   });
   function Capture({ anchor, completion }) {
@@ -335,7 +344,7 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
     "react-native": { AppState: { addEventListener: () => ({ remove() {} }) } },
     "../services/progressService": {
       getCompletedSessions: async () => { calls++; return [session("saved", 60)]; },
-      getProgressGoals: async () => [], getProgressSubjects: async () => areas, getFocusStreak: async () => 2,
+      getProgressGoals: async () => [], getProgressSubjects: async () => areas, getFocusStreak: async () => 2, getLongestFocusStreak: async () => 5,
     },
   });
   function Capture({ completion }) {

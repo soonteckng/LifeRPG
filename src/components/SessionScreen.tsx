@@ -24,6 +24,8 @@ import { useTimer } from "../context/TimerContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
+import { afterTransition } from "../utils/afterTransition";
+import { navigationTiming } from "../utils/navigationMotion";
 
 type Picker = "duration" | "quest" | "area" | null;
 const PRESETS = [15, 30, 45, 60];
@@ -68,9 +70,9 @@ export default function SessionScreen() {
   const [exitReady, setExitReady] = useState(false);
   const [screenMotion] = useState(() => new Animated.Value(0));
   const [surfaceOpacity] = useState(() => new Animated.Value(1));
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (closing.current) return;
-    const animation = Animated.timing(screenMotion, { toValue: 1, duration: reducedMotion ? 0 : 280, useNativeDriver: true });
+    const animation = Animated.timing(screenMotion, { toValue: 1, ...navigationTiming(reducedMotion ? 0 : 240) });
     animation.start();
     return () => animation.stop();
   }, [screenMotion, reducedMotion]);
@@ -114,7 +116,7 @@ export default function SessionScreen() {
   const minutes = timer.duration / 60;
   const phase = timer.isCompleted ? "completed" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => afterTransition(() => { void refresh(); }), [refresh]);
   useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
@@ -511,4 +513,3 @@ const styles = StyleSheet.create({
   pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },
 });
-

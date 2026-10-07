@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { Text } from "../components/AppText";
 import OnboardingFrame, { useOnboardingTransition } from "../components/OnboardingFrame";
+import { prepareFeatureTour } from "../components/FeatureTour";
 import OnboardingFinish from "../components/OnboardingFinish";
 import { useUser } from "../context/UserContext";
 import { finishOnboarding } from "../services/onboardingService";
@@ -18,6 +19,7 @@ export default function TutorialScreen() {
   const router = useRouter();
   const { profile, reloadProfile } = useUser();
   const [replay] = useState(() => !!profile.onboarding_completed);
+  useEffect(() => { if (replay) router.replace("./guide"); }, [replay, router]);
   const transition = useOnboardingTransition();
   const [page, setPage] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [celebrating, setCelebrating] = useState(false);
@@ -40,11 +42,12 @@ export default function TutorialScreen() {
     if (replay) { if (router.canGoBack()) router.back(); else router.replace("/"); return; }
     lock.current = true; setBusy(true); setError("");
     try {
-      if (!saved.current) { await finishOnboarding(); saved.current = true; }
+      if (!saved.current) { await finishOnboarding(); saved.current = true; await prepareFeatureTour(profile.id ?? "").catch(() => {}); }
       if (alive.current) setCelebrating(true);
     } catch { if (alive.current) { setError("Couldn’t finish setup. Please check your connection and try again."); setBusy(false); lock.current = false; } }
   };
   if (celebrating) return <OnboardingFinish onDone={complete} />;
+  if (replay) return null;
   const item = INTRO_PAGES[page], last = page === INTRO_PAGES.length - 1;
   return <OnboardingFrame step={replay ? page + 1 : page + 5} total={replay ? 3 : 7} title={item.title} subtitle={item.body} opacity={transition.opacity}
     busy={busy || transition.moving} primary={busy ? "Finishing setup…" : last ? replay ? "Done" : "Start my journey" : "Continue"}

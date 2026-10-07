@@ -13,7 +13,7 @@ export default function MotionPressable({ style, disabled, onPressIn, onPressOut
   const settle = (value: number) => {
     scale.stopAnimation();
     if (reduced || disabled) { scale.setValue(1); return; }
-    Animated.spring(scale, { ...motion.press, toValue: value, useNativeDriver: true }).start();
+    Animated.spring(scale, { ...motion.press, toValue: value, useNativeDriver: true, isInteraction: false }).start();
   };
   return <AnimatedPressable {...props} disabled={disabled} style={[style, { transform: [{scale}] }]}
     onPressIn={event => { settle(0.975); onPressIn?.(event); }}

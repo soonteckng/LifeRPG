@@ -16,6 +16,7 @@ export default function TabsLayout() {
       backBehavior="initialRoute"
       screenOptions={{
         headerShown: false,
+        freezeOnBlur: true,
         animation: reducedMotion ? "none" : "fade",
         transitionSpec: { animation: "timing", config: { duration: reducedMotion ? 0 : 180 } },
         sceneStyle: { backgroundColor: colors.background },
@@ -106,4 +107,3 @@ const styles = StyleSheet.create({
   },
 
 });
-

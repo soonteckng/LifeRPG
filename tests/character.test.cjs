@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
       if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
@@ -333,26 +335,9 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     await ui.cleanup();
   }
 });
-test("replaying tutorial returns without writing onboarding again", async () => {
-  let calls = 0,
-    back = 0;
-  const ui = await screen("src/app/tutorial.tsx", {
-    "expo-router": {
-      useRouter: () => ({ canGoBack: () => true, back: () => back++ }),
-    },
-    "../context/UserContext": {
-      useUser: () => ({ profile: { onboarding_completed: true } }),
-    },
-    "../services/onboardingService": { finishOnboarding: async () => calls++ },
-  });
-  try {
-    for (let i = 0; i < 2; i++) await ui.press("Continue");
-    await ui.press("Done");
-    assert.equal(calls, 0);
-    assert.equal(back, 1);
-  } finally {
-    await ui.cleanup();
-  }
+test("existing introduction links open the static guide without changing onboarding", async () => {
+ let writes=0;const routes=[];const ui=await screen("src/app/tutorial.tsx",{"expo-router":{useRouter:()=>({replace:route=>routes.push(route)})},"../context/UserContext":{useUser:()=>({profile:{onboarding_completed:true}})},"../services/onboardingService":{finishOnboarding:async()=>writes++}});
+ assert.deepEqual(routes,["./guide"]);assert.equal(writes,0);await ui.cleanup();
 });
 async function userProviderHarness({ updateError = null, stored = null } = {}) {
   let value;

@@ -1,119 +1,3 @@
--- OBSOLETE: do not apply. Use daily-goal-exact-credit.sql after separate approval.
--- REVIEWED LOCAL PROPOSAL ONLY. Not applied to any database.
--- Apply to a disposable local database first, after docs/session-seconds.sql.
-begin;
-create table public.daily_goal_changes (
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  effective_date date not null,
-  goal_minutes integer not null check (goal_minutes between 15 and 480),
-  updated_at timestamptz not null default statement_timestamp(),
-  primary key (user_id, effective_date)
-);
-alter table public.daily_goal_changes enable row level security;
-revoke all on public.daily_goal_changes from public, anon, authenticated;
-grant select, insert, update on public.daily_goal_changes to authenticated;
-create policy own_goal_read on public.daily_goal_changes for select to authenticated
-  using (user_id = (select auth.uid()));
-create policy own_next_day_goal_insert on public.daily_goal_changes for insert to authenticated
-  with check (user_id = (select auth.uid()) and effective_date =
-    (select (statement_timestamp() at time zone p.timezone)::date + 1
-      from public.profiles p where p.id = (select auth.uid()) and p.onboarding_completed));
-create policy own_next_day_goal_update on public.daily_goal_changes for update to authenticated
-  using (user_id = (select auth.uid()) and effective_date =
-    (select (statement_timestamp() at time zone p.timezone)::date + 1
-      from public.profiles p where p.id = (select auth.uid()) and p.onboarding_completed))
-  with check (user_id = (select auth.uid()) and effective_date =
-    (select (statement_timestamp() at time zone p.timezone)::date + 1
-      from public.profiles p where p.id = (select auth.uid()) and p.onboarding_completed));
-
--- Prevent older clients from bypassing next-day scheduling by editing the baseline.
-create function public.guard_onboarded_daily_goal()
-returns trigger language plpgsql security invoker set search_path = ''
-as $fn$
-begin
-  if old.onboarding_completed and new.daily_goal_minutes is distinct from old.daily_goal_minutes then
-    raise exception 'Use schedule_daily_goal after onboarding';
-  end if;
-  if new.daily_goal_minutes is null or new.daily_goal_minutes < 15 or new.daily_goal_minutes > 480 then
-    raise exception 'Daily goal must be between 15 and 480 whole minutes';
-  end if;
-  return new;
-end;
-$fn$;
-revoke all on function public.guard_onboarded_daily_goal() from public, anon, authenticated;
-create trigger guard_onboarded_daily_goal before update of daily_goal_minutes on public.profiles
-  for each row execute function public.guard_onboarded_daily_goal();
-
-create function public.daily_goal_for_date(p_day date)
-returns integer language plpgsql stable security invoker set search_path = ''
-as $fn$
-declare v_user uuid := auth.uid(); v_goal integer;
-begin
-  if v_user is null then raise exception 'Not authenticated'; end if;
-  -- A stored daily target always wins, including historical days.
-  select d.goal_minutes into v_goal from public.daily_progress d
-    where d.user_id = v_user and d.progress_date = p_day;
-  if found then return v_goal; end if;
-  select g.goal_minutes into v_goal from public.daily_goal_changes g
-    where g.user_id = v_user and g.effective_date <= p_day
-    order by g.effective_date desc limit 1;
-  if found then return v_goal; end if;
-  select p.daily_goal_minutes into v_goal from public.profiles p where p.id = v_user;
-  if not found then raise exception 'Profile not found'; end if;
-  return v_goal;
-end;
-$fn$;
-
-create function public.get_daily_goal_settings()
-returns jsonb language plpgsql security invoker set search_path = ''
-as $fn$
-declare v_user uuid := auth.uid(); v_profile public.profiles%rowtype; v_today date;
-begin
-  if v_user is null then raise exception 'Not authenticated'; end if;
-  select * into v_profile from public.profiles where id = v_user;
-  if not found then raise exception 'Profile not found'; end if;
-  v_today := (statement_timestamp() at time zone v_profile.timezone)::date;
-  return jsonb_build_object(
-    'user_id', v_user, 'local_date', v_today, 'timezone', v_profile.timezone,
-    'today_goal_minutes', public.daily_goal_for_date(v_today),
-    'next_goal_minutes', public.daily_goal_for_date(v_today + 1),
-    'next_effective_date', v_today + 1,
-    'scheduling_available', v_profile.onboarding_completed,
-    'pending', exists(select 1 from public.daily_goal_changes
-      where user_id = v_user and effective_date = v_today + 1)
-  );
-end;
-$fn$;
-
-create function public.schedule_daily_goal(p_goal_minutes integer)
-returns jsonb language plpgsql security invoker set search_path = ''
-as $fn$
-declare v_user uuid := auth.uid(); v_profile public.profiles%rowtype; v_effective date;
-begin
-  if v_user is null then raise exception 'Not authenticated'; end if;
-  if p_goal_minutes is null or p_goal_minutes < 15 or p_goal_minutes > 480 then
-    raise exception 'Daily goal must be between 15 and 480 whole minutes';
-  end if;
-  -- Serialise with session completion, which also locks this profile.
-  select * into v_profile from public.profiles where id = v_user for update;
-  if not found then raise exception 'Profile not found'; end if;
-  if v_profile.onboarding_completed is not true then raise exception 'Finish onboarding first'; end if;
-  v_effective := (statement_timestamp() at time zone v_profile.timezone)::date + 1;
-  insert into public.daily_goal_changes(user_id, effective_date, goal_minutes)
-    values (v_user, v_effective, p_goal_minutes)
-    on conflict (user_id, effective_date) do update
-      set goal_minutes = excluded.goal_minutes, updated_at = statement_timestamp();
-  -- No writes to profiles, daily_progress, activity_sessions, XP, gold or streaks.
-  return public.get_daily_goal_settings();
-end;
-$fn$;
-revoke all on function public.daily_goal_for_date(date) from public, anon;
-revoke all on function public.get_daily_goal_settings() from public, anon;
-revoke all on function public.schedule_daily_goal(integer) from public, anon;
-grant execute on function public.daily_goal_for_date(date) to authenticated;
-grant execute on function public.get_daily_goal_settings() to authenticated;
-grant execute on function public.schedule_daily_goal(integer) to authenticated;
-
 CREATE OR REPLACE FUNCTION public.complete_activity_session(p_session_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -155,6 +39,12 @@ declare
   v_subject_required integer;
 
   v_task_exists boolean;
+  v_before_seconds bigint;
+  v_after_seconds bigint;
+  v_area_award integer := null;
+  v_area_bank integer := null;
+  v_character_bank integer;
+  v_result jsonb;
 begin
   if v_user_id is null then
     raise exception 'Not authenticated';
@@ -173,6 +63,9 @@ begin
 
   -- Idempotent retry protection
   if v_session.status = 'completed' then
+    if v_session.credit_result is not null then
+      return v_session.credit_result || jsonb_build_object('already_completed', true, 'goal_reached_now', false);
+    end if;
     select *
     into v_profile
     from public.profiles
@@ -235,14 +128,14 @@ begin
     v_session.target_duration_seconds
   );
 
-  -- Whole completed minutes only; sub-minute sessions retain seconds but earn no rewards.
+  -- Compatibility minutes field; exact seconds are credited below.
   v_minutes := floor(v_awarded_seconds / 60.0)::integer;
 
-  -- Current LifeRPG economy:
-  -- 1 minute = 1 XP
-  -- 1 minute = 5 Gold
-  v_xp := v_minutes;
-  v_gold := v_minutes * 5;
+  -- Bank exact seconds at 60 seconds per character XP.
+  -- Gold history is preserved; new completions award no Gold.
+  v_xp := (v_profile.xp_bank_seconds + v_awarded_seconds) / 60;
+  v_character_bank := (v_profile.xp_bank_seconds + v_awarded_seconds) % 60;
+  v_gold := 0;
 
 
   -- ==========================================================
@@ -271,20 +164,26 @@ begin
   -- DAILY GOAL
   -- ==========================================================
 
-  v_goal_minutes := public.daily_goal_for_date(v_local_date);
+  v_goal_minutes := v_profile.daily_goal_minutes;
 
   select
     completed_minutes,
-    goal_completed
+    goal_completed,
+    goal_minutes,
+    coalesce(completed_seconds, completed_minutes::bigint * 60)
   into
     v_before_daily_minutes,
-    v_goal_was_completed
+    v_goal_was_completed,
+    v_goal_minutes,
+    v_before_seconds
   from public.daily_progress
   where user_id = v_user_id
     and progress_date = v_local_date
   for update;
 
   if not found then
+    v_goal_minutes := v_profile.daily_goal_minutes;
+    v_before_seconds := 0;
     v_before_daily_minutes := 0;
     v_goal_was_completed := false;
 
@@ -304,11 +203,13 @@ begin
     );
   end if;
 
-  v_after_daily_minutes :=
-    v_before_daily_minutes + v_minutes;
+  v_after_seconds := v_before_seconds + v_awarded_seconds;
+  v_after_daily_minutes := (v_after_seconds / 60)::integer;
+  update public.daily_progress set completed_seconds = v_after_seconds, credit_version = 1
+  where user_id = v_user_id and progress_date = v_local_date;
 
   v_goal_now_completed :=
-    v_after_daily_minutes >= v_goal_minutes;
+    v_goal_was_completed or v_after_seconds >= v_goal_minutes::bigint * 60;
 
   if v_goal_now_completed and not v_goal_was_completed then
     update public.daily_progress
@@ -351,7 +252,9 @@ begin
     for update;
 
     if found then
-      v_subject_xp := v_subject.current_xp + v_xp;
+      v_area_award := (v_subject.xp_bank_seconds + v_awarded_seconds) / 60;
+      v_area_bank := (v_subject.xp_bank_seconds + v_awarded_seconds) % 60;
+      v_subject_xp := v_subject.current_xp + v_area_award;
       v_subject_level := v_subject.level;
       v_subject_required := v_subject_level * 50;
 
@@ -363,6 +266,7 @@ begin
 
       update public.subjects
       set
+        xp_bank_seconds = v_area_bank,
         current_xp = v_subject_xp,
         level = v_subject_level
       where id = v_subject.id
@@ -423,13 +327,14 @@ begin
 
   update public.profiles
   set
+    xp_bank_seconds = v_character_bank,
     level = v_new_level,
     current_xp = v_new_xp,
     gold = v_profile.gold + v_gold,
     streak_count = v_new_streak,
     last_goal_completed_date =
       case
-        when v_goal_now_completed
+        when v_goal_now_completed and not v_goal_was_completed
           then v_local_date
         else last_goal_completed_date
       end,
@@ -437,7 +342,7 @@ begin
   where id = v_user_id;
 
 
-  return jsonb_build_object(
+  v_result := jsonb_build_object(
     'already_completed', false,
     'session_id', v_session.id,
     'duration_seconds', v_awarded_seconds,
@@ -451,13 +356,18 @@ begin
     'daily_goal_minutes', v_goal_minutes,
     'daily_completed_minutes', v_after_daily_minutes,
     'daily_goal_completed', v_goal_now_completed,
-    'streak_count', v_new_streak
+    'streak_count', v_new_streak,
+    'credit_version', 1,
+    'character_xp_earned', v_xp,
+    'area_xp_earned', v_area_award,
+    'character_remainder_seconds', v_character_bank,
+    'area_remainder_seconds', v_area_bank,
+    'daily_completed_seconds', v_after_seconds,
+    'credited_date', v_local_date,
+    'goal_reached_now', v_goal_now_completed and not v_goal_was_completed
   );
+  update public.activity_sessions set credit_version = 1, credit_result = v_result
+  where id = v_session.id and user_id = v_user_id;
+  return v_result;
 end;
 $function$
-;
-
-
-revoke all on function public.complete_activity_session(uuid) from public, anon;
-grant execute on function public.complete_activity_session(uuid) to authenticated;
-commit;

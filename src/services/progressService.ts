@@ -1,7 +1,7 @@
 import { supabase } from "../../lib/supabase";
 import { dateKey, shiftDay } from "../utils/progressAnalytics";
 import type { Subject } from "./taskService";
-import { focusDay } from "../utils/focusDays";
+import { focusDay, bestFocusStreak } from "../utils/focusDays";
 
 export interface ProgressSession {
   id: string;
@@ -121,6 +121,19 @@ export async function getFocusStreak(
       } else if (key < expected) return streak;
     }
     if (!data || data.length < PAGE_SIZE) return streak;
+  }
+}
+
+// A bounded, owner-filtered lookup, separate from Progress's paginated history.
+export async function getLongestFocusStreak(timeZone: string, now = new Date()): Promise<number> {
+  const days = new Set<string>();
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabase.from("activity_sessions").select("id, completed_at, duration_seconds")
+      .eq("status", "completed").gt("duration_seconds", 0).lte("completed_at", now.toISOString())
+      .order("completed_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) { const day = focusDay(row, timeZone, now); if (day) days.add(day); }
+    if (!data || data.length < PAGE_SIZE) return bestFocusStreak(days);
   }
 }
 

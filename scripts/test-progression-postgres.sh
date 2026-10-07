@@ -6,6 +6,6 @@ if [[ "${LIFERPG_DISPOSABLE_SQL:-}" != "YES" || -z "${LIFERPG_TEST_DATABASE_URL:
   exit 1
 fi
 task_root="$(cd "$(dirname "$0")/.." && pwd)"
-for task_file in tests/sql/progression-bootstrap.sql docs/progression-live-contract.sql tests/sql/progression-fixtures.sql docs/exact-seconds-credit.sql tests/exact-seconds-credit.sql; do
+for task_file in tests/sql/progression-bootstrap.sql docs/progression-live-contract.sql tests/sql/progression-fixtures.sql docs/exact-seconds-credit.sql tests/exact-seconds-credit.sql docs/goal-completion-base.sql docs/daily-goal-exact-credit.sql tests/daily-goal-exact-credit.sql tests/exact-seconds-credit.sql; do
   psql "$LIFERPG_TEST_DATABASE_URL" -X -v ON_ERROR_STOP=1 -f "$task_root/$task_file"
 done

@@ -1,3 +1,4 @@
+import { TourAnchor } from "../../components/FeatureTour";
 import Pressable from "../../components/MotionPressable";
 import { useTimer } from "../../context/TimerContext";
 import { floatingTabInset } from "../../utils/floatingTabInset";
@@ -153,7 +154,7 @@ export default function ProfileScreen() {
         </View>
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-      <View style={{ gap: 12 }}>
+      <TourAnchor id="profile-areas"><View style={{ gap: 12 }}>
         <Text style={p.sectionLabel}>Your Life areas</Text>
 
         {areas.map((area) => (
@@ -174,7 +175,7 @@ export default function ProfileScreen() {
           </Text>
         )}
 
-      </View>
+      </View></TourAnchor>
       <View style={{ gap: 12 }}>
         <View style={p.inline}><Text style={[p.sectionLabel, p.flex]}>Milestones</Text>
           <Pressable onPress={() => router.navigate("/rewards")} accessibilityRole="button" accessibilityLabel="View milestones" style={{ minHeight: 44, justifyContent: "center" }}>
@@ -289,4 +290,3 @@ export default function ProfileScreen() {
     </PersonalPage>
   );
 }
-

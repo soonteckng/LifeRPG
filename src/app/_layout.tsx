@@ -13,6 +13,7 @@ import GlobalRewardListener from "../components/GlobalRewardListener";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+import { FeatureTourProvider } from "../components/FeatureTour";
 import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { secondaryNativeOptions, sessionNativeOptions, traceSession } from "../utils/sessionTransition";
@@ -107,6 +108,7 @@ function AppContent() {
   return (
     <TimerProvider>
       <QuestProvider>
+        <FeatureTourProvider>
         <GlobalBackHandler />
 
         <Stack
@@ -178,6 +180,7 @@ function AppContent() {
               name="settings"
               options={secondaryNativeOptions(reducedMotion)}
             />
+            <Stack.Screen name="guide" options={secondaryNativeOptions(reducedMotion)} />
           </Stack.Protected>
           <Stack.Protected guard={!profile.onboarding_completed}>
           <Stack.Screen
@@ -202,6 +205,7 @@ function AppContent() {
         </Stack>
 
         <GlobalRewardListener />
+        </FeatureTourProvider>
       </QuestProvider>
     </TimerProvider>
   );

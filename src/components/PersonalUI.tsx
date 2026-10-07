@@ -5,12 +5,13 @@ import { useNavigation, useRouter } from "expo-router";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { Animated, Platform, useWindowDimensions, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Platform, useWindowDimensions, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -19,6 +20,8 @@ import { type } from "../constants/typography";
 import { colors } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { usePreventRemove } from "expo-router/react-navigation";
+import { TourScrollView } from "./FeatureTour";
+import { navigationTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
@@ -51,12 +54,12 @@ export function PersonalPage({
   const [position] = useState(() => new Animated.Value(controlled ? width : 0));
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
-  useEffect(() => {
+  const pendingAction = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
+  useLayoutEffect(() => {
     if (!controlled || closing.current) return;
     const animation = Animated.timing(position, {
       toValue: 0,
-      duration: reduced ? 0 : 280,
-      useNativeDriver: true,
+      ...navigationTiming(reduced ? 0 : 240),
     });
     animation.start();
     return () => animation.stop();
@@ -75,8 +78,7 @@ export function PersonalPage({
     closing.current = true;
     Animated.timing(position, {
       toValue: width,
-      duration: reduced ? 0 : 260,
-      useNativeDriver: true,
+      ...navigationTiming(reduced ? 0 : 230),
     }).start(({ finished }) => {
       if (finished) setExitReady(true);
       else {
@@ -85,12 +87,13 @@ export function PersonalPage({
       }
     });
   }, [controlled, navigation, router, position, width, reduced]);
-  usePreventRemove(controlled && !exitReady, close);
+  usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
-    if (exitReady) navigation.goBack();
+    if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }
   }, [exitReady, navigation]);
   return (
     <Animated.View
+      renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
         flex: 1,
@@ -109,7 +112,7 @@ export function PersonalPage({
         )}
         {floatingAction && <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection:"row", justifyContent:"flex-end", alignItems:"center" }}>{action}</View>}
         {!back && !floatingAction && <AppHeader title={title} action={action} />}
-        <ScrollView
+        <TourScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
@@ -125,7 +128,7 @@ export function PersonalPage({
             )}
             {children}
           </View>
-        </ScrollView>
+        </TourScrollView>
       </SafeAreaView>
     </Animated.View>
   );

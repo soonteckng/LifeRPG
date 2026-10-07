@@ -1,3 +1,4 @@
+import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
 import { readSuggestedFocus } from "../../constants/guidedQuests";
 import SlidingSelection from "../../components/SlidingSelection";
 import Pressable from "../../components/MotionPressable";
@@ -300,7 +301,7 @@ export default function ProgressScreen() {
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
       <AppHeader title="Progress" />
-      <ScrollView
+      <TourScrollView
         contentContainerStyle={[s.page, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={
           <RefreshControl
@@ -310,7 +311,7 @@ export default function ProgressScreen() {
           />
         }
       >
-        <View style={s.periodToolbar}>
+        <TourAnchor id="progress-overview"><View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
             <SlidingSelection testID="period-selection" index={mode === "week" ? 0 : 1} style={s.segmentSelected} />
@@ -377,7 +378,7 @@ export default function ProgressScreen() {
             />
           </Pressable>
         </View>
-        </View>
+        </View></TourAnchor>
         {error && (
           <View style={s.error}>
             <Ionicons
@@ -617,6 +618,7 @@ export default function ProgressScreen() {
                       ? "A little time, day after day."
                       : "Complete any session to begin."}
                   </Text>
+                  <Text style={s.caption}>Longest focus streak: {data.longestStreak ?? 0} days</Text>
                 </View>
                 <Ionicons
                   name="chevron-forward"
@@ -656,7 +658,7 @@ export default function ProgressScreen() {
             </ContentReveal>
           )
         )}
-      </ScrollView>
+      </TourScrollView>
       <AppSheet
         visible={sheetVisible}
         onRequestClose={() => setSheetVisible(false)}
@@ -746,6 +748,7 @@ export default function ProgressScreen() {
                 <Text style={s.summaryValue}>{data?.streak ?? 0} days</Text>
                 <Text style={s.rowTitle}>Current focus streak</Text>
               </View>
+              <View style={s.detailRow}><Text style={s.caption}>Longest focus streak</Text><Text style={s.rowTitle}>{data?.longestStreak ?? 0} days</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Sessions</Text><Text style={s.rowTitle}>{analytics?.sessions.length ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Focus days this {mode}</Text><Text style={s.rowTitle}>{analytics?.activeDays ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Goal days this {mode}</Text><Text style={s.rowTitle}>{analytics?.goalDays ?? 0}</Text></View>

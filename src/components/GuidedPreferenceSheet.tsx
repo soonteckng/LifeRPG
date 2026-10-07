@@ -16,7 +16,7 @@ export default function GuidedPreferenceSheet({ owner, visible, onClose }: { own
   if (visible !== wasVisible) { setWasVisible(visible); if (visible) setDraft(null); }
   const choice = draft ?? preference.value;
   const insets = useSafeAreaInsets();
-  return <AppSheet visible={visible} onRequestClose={() => { if (!preference.busy) onClose(); }} guardDismiss={preference.busy} label="focus suggestions" compact maxHeightRatio={0.85}
+  return <AppSheet visible={visible} onRequestClose={() => { if (!preference.busy) onClose(); }} guardDismiss={preference.busy} label="focus suggestions" compact maxHeightRatio={0.85} motionMode="timed"
     header={<Text style={[p.title, { paddingHorizontal: 20, paddingBottom: 12 }]}>Find your next step</Text>}
     footer={<View testID="guided-preference-footer" style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surface }}>
       <SheetButton testID="save-guided-preferences" accessibilityRole="button" disabled={preference.busy || !preference.ready} onPress={() => { void preference.save({ ...choice, invited: true }).then(saved => { if (saved) onClose(); }); }} style={p.button}><Text style={p.buttonText}>{preference.busy ? "Saving…" : "Save preferences"}</Text></SheetButton>

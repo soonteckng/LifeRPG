@@ -23,6 +23,7 @@ function environment(reduced = false) {
     const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
     new Function('require', 'module', 'exports', code)(name => {
       if (Object.hasOwn(extra, name)) return extra[name];
+      if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
       if (Object.hasOwn(base, name)) return base[name];
       if (name.endsWith('/AppText')) return { Text: host('Text') };
       if (name.endsWith('/MotionPressable')) return host('Button');
