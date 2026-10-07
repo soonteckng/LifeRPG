@@ -178,7 +178,7 @@ function AppContent() {
             />
             <Stack.Screen
               name="settings"
-              options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false }}
+              options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}
             />
             <Stack.Screen name="guide" options={secondaryNativeOptions(reducedMotion)} />
           </Stack.Protected>

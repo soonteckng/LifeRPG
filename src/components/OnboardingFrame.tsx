@@ -20,7 +20,7 @@ export function useOnboardingTransition() {
   // previous page on Android when the React commit takes another frame.
   useLayoutEffect(() => {
     if (!reveal) return;
-    const incoming = Animated.timing(opacity, { toValue: 1, duration: 260, easing: Easing?.out?.(Easing.cubic), useNativeDriver: true, isInteraction: false });
+    const incoming = Animated.timing(opacity, { toValue: 1, duration: 380, easing: Easing?.out?.(Easing.cubic), useNativeDriver: true, isInteraction: false });
     animation.current = incoming;
     incoming.start(() => { if (alive.current) { opacity.setValue(1); lock.current = false; setMoving(false); } });
     return () => incoming.stop();
@@ -30,7 +30,7 @@ export function useOnboardingTransition() {
     Keyboard.dismiss();
     if (reduced) { action(); return; }
     lock.current = true; setMoving(true);
-    animation.current = Animated.timing(opacity, { toValue: 0, duration: 140, useNativeDriver: true, isInteraction: false });
+    animation.current = Animated.timing(opacity, { toValue: 0, duration: 200, useNativeDriver: true, isInteraction: false });
     animation.current.start(({ finished }) => {
       if (!alive.current) return;
       if (!finished) { opacity.setValue(1); lock.current = false; setMoving(false); return; }
@@ -68,8 +68,8 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
         <ScrollView ref={scroll} style={s.scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
           <Animated.View style={{ opacity, gap: 24 }} pointerEvents={busy || transitioning ? "none" : "auto"}>
             <View key={step} style={{ gap: 24 }}>
-              <View style={s.heading}><OnboardingSection delay={0}><Text style={s.title} accessibilityRole="header">{title}</Text></OnboardingSection><OnboardingSection delay={70}><Text style={s.subtitle}>{subtitle}</Text></OnboardingSection></View>
-              {Children.toArray(children).flatMap(child => isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment ? Children.toArray(child.props.children) : [child]).map((child, index) => <OnboardingSection key={index} delay={140 + index * 70}>{child}</OnboardingSection>)}
+              <View style={s.heading}><OnboardingSection delay={0}><Text style={s.title} accessibilityRole="header">{title}</Text></OnboardingSection><OnboardingSection delay={160}><Text style={s.subtitle}>{subtitle}</Text></OnboardingSection></View>
+              {Children.toArray(children).flatMap(child => isValidElement<{ children?: ReactNode }>(child) && child.type === Fragment ? Children.toArray(child.props.children) : [child]).map((child, index) => <OnboardingSection key={index} delay={320 + index * 160}>{child}</OnboardingSection>)}
             </View>
           </Animated.View>
         </ScrollView>
@@ -89,7 +89,7 @@ function OnboardingSection({ children, delay }: { children: ReactNode; delay: nu
   const reduced = useReducedMotion(), [progress] = useState(() => new Animated.Value(reduced ? 1 : 0));
   useLayoutEffect(() => {
     if (reduced) { progress.setValue(1); return; }
-    const animation = Animated.timing(progress, { toValue: 1, duration: 320, delay, useNativeDriver: true, isInteraction: false, easing: Easing?.out?.(Easing.cubic) });
+    const animation = Animated.timing(progress, { toValue: 1, duration: 620, delay, useNativeDriver: true, isInteraction: false, easing: Easing?.out?.(Easing.cubic) });
     animation.start();
     return () => animation.stop();
   }, [delay, progress, reduced]);

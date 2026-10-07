@@ -39,7 +39,7 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { width, fontScale } = useWindowDimensions();
+  const { width, height, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -91,6 +91,8 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
+  // Only the focus surface grows. Inter-card gaps and dock clearance stay fixed.
+  const contentMinHeight = Math.max(0, (viewportHeight || height - insets.top) - dockHeight - 24);
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -177,13 +179,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <TourScrollView testID="home-viewport" tourBottomInset={dockHeight} style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
+      <TourScrollView testID="home-viewport" tourRoute="/" tourBottomInset={dockHeight} style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
         contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 12 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={styles.layout}>
+        <View testID="home-layout" style={[styles.layout, !useGuidance && { minHeight: contentMinHeight }]}>
           <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
@@ -211,12 +213,12 @@ export default function HomeScreen() {
               {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
             </View>
           </View></View></TourAnchor>
-          <TourAnchor id="home-focus"><View style={styles.focusContainer}>{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
+          <TourAnchor id="home-focus" style={!useGuidance && styles.growFocus}><View style={[styles.focusContainer, !useGuidance && styles.growFocus]}>{!guided.ready ? <View style={[styles.focusCard, styles.growFocus]} testID="home-preference-loading">
             <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
           </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
-            onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={styles.focusCard} testID="home-quick-start">
+            onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={[styles.focusCard, styles.growFocus]} testID="home-quick-start">
             <View style={styles.focusTopRow}>
               <View style={styles.focusInfo}>
                 <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
@@ -232,8 +234,8 @@ export default function HomeScreen() {
                 <Text style={styles.link}>{blocked ? "Check" : "Change"}</Text>
               </TouchableOpacity>}
             </View>
-            {!hasOpenSession && <Text style={styles.freeInstruction}>One block. One thing at a time.</Text>}
-            <TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
+            {!hasOpenSession && <View style={styles.freeContext}><Text style={styles.freeInstruction}>One block. One thing at a time.</Text></View>}
+            <TouchableOpacity style={[styles.primaryButton, styles.freePrimary]} onPress={() => void startFreeSession()}
               testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
               accessibilityRole="button" accessibilityState={{ disabled: quickStarting || (!hasOpenSession && (blocked || !!areasLoading)), busy: quickStarting }}
               accessibilityLabel={hasOpenSession ? "Continue session" : `Start ${sessionDurationLabel(quickSeconds)}, ${quickTitle}`}>
@@ -306,6 +308,7 @@ const styles = StyleSheet.create({
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
   layout: { gap: 12 },
+  growFocus: { flexGrow: 1 }, freeContext: { flexGrow: 1, justifyContent: "center", minHeight: 22 }, freePrimary: { marginTop: "auto" },
   focusContainer: { width: "100%", alignSelf: "stretch" },
   freeInstruction: { color: colors.secondary, fontSize: 15, lineHeight: 22 },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },

@@ -63,23 +63,23 @@ test('daily goal sheet validates the minimum and prevents duplicate schedule wri
 async function tourHarness({ failure, reduced = false, receipt = 'pending', actualScroll = false } = {}) {
  const saved={setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
  let now=0,serial=0,tree,tour,back,changeRoute,pathname='/',owner='alice',attempts=0,targetY=700;
- const timers=new Map(),animations=[],routes=[],scrolls=[],receipts=new Map(receipt?[['liferpg:tour:v1:alice',receipt]]:[]);
+ const timers=new Map(),animations=[],routes=[],scrolls=[],events=[],geometry=new Map(),receipts=new Map(receipt?[['liferpg:tour:v1:alice',receipt]]:[]);
  global.setTimeout=(callback,delay=0)=>{const id=++serial;timers.set(id,{callback,at:now+delay});return id;};global.clearTimeout=id=>timers.delete(id);
  const advance=async ms=>{const end=now+ms;let turns=0;while(true){const next=[...timers].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;if(++turns>200)throw Error('Timer loop');now=next[1].at;timers.delete(next[0]);await act(async()=>next[1].callback());}now=end;};
  class Value { constructor(value){this.value=value;}setValue(value){this.value=value;}interpolate(config){return {source:this,config};} }
- const router={navigate(route){routes.push(route);if(failure==='route'||failure==='return'&&route==='/'&&pathname==='/profile')return;pathname=route;changeRoute?.(route);}};
- const Scroll=React.forwardRef((props,ref)=>{React.useImperativeHandle(ref,()=>({scrollTo:position=>{scrolls.push(position);targetY-=position.y;}}));return React.createElement('Scroll',props,props.children);});
- const Native={View:host('View'),ScrollView:Scroll,StyleSheet:{create:s=>s,absoluteFill:{}},useWindowDimensions:()=>({width:390,height:800}),AccessibilityInfo:{announceForAccessibility(){}},BackHandler:{addEventListener:(_,cb)=>{back=cb;return{remove(){}};}},Animated:{View:host('Animated'),Value,timing:(value,config)=>{let item;return{start:callback=>{item={value,config,callback};animations.push(item);},stop:()=>{if(item)item.stopped=true;}};}}};
+ const router={navigate(route){routes.push(route);events.push({kind:'navigate',route});if(failure==='route'||failure==='return'&&route==='/'&&pathname==='/profile')return;pathname=route;changeRoute?.(route);}};
+ const Scroll=React.forwardRef((props,ref)=>{React.useImperativeHandle(ref,()=>({scrollTo:position=>{scrolls.push(position);events.push({kind:'scroll',...position});targetY-=position.y;}}));return React.createElement('Scroll',props,props.children);});
+ const Native={View:host('View'),ScrollView:Scroll,StyleSheet:{create:s=>s,absoluteFill:{}},useWindowDimensions:()=>({width:390,height:800}),AccessibilityInfo:{announceForAccessibility(){}},BackHandler:{addEventListener:(_,cb)=>{back=cb;return{remove(){}};}},Animated:{View:host('Animated'),Value,timing:(value,config)=>{let item;return{start:callback=>{item={value,config,callback};animations.push(item);events.push({kind:'animate',...config});},stop:()=>{if(item)item.stopped=true;}};}}};
  const api=load('src/components/FeatureTour.tsx',{'react-native':Native,'@react-native-async-storage/async-storage':{getItem:async key=>receipts.get(key)||null,setItem:async(key,value)=>receipts.set(key,value)},'expo-router':{useRouter:()=>router,usePathname:()=>{const [route,setRoute]=React.useState(pathname);changeRoute=setRoute;return route;}},'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:24})},'../context/UserContext':{useUser:()=>({profile:{id:owner,onboarding_completed:true}})},'../context/TimerContext':{useTimer:()=>({})},'../hooks/useReducedMotion':{useReducedMotion:()=>reduced}});
  const late=[];
  function Capture(){tour=api.useFeatureTour();React.useEffect(()=>{
   if(actualScroll)return;
-  const cleanup=api.TOUR_STEPS.map((step,i)=>tour.register(step.id,{measure:done=>{attempts++;late.push(done);if(failure==='target')return;if(failure==='throw')throw Error('Native unavailable');done({x:20,y:100+i*80,width:350,height:100});},reveal:()=>false}));return()=>cleanup.forEach(fn=>fn());
- },[]);return actualScroll?React.createElement(api.TourScrollView,{tourBottomInset:90,contentContainerStyle:{paddingBottom:90}},React.createElement(api.TourAnchor,{id:'home-identity'},'Target')):null;}
+  const cleanup=api.TOUR_STEPS.map((step,i)=>tour.register(step.id,{measure:done=>{attempts++;late.push(done);if(failure==='target')return;if(failure==='throw')throw Error('Native unavailable');done(geometry.get(step.id)||{x:20,y:100+i*80,width:350,height:100});},reveal:()=>false}));return()=>cleanup.forEach(fn=>fn());
+ },[]);return actualScroll?React.createElement(api.TourScrollView,{tourRoute:'/',tourBottomInset:90,contentContainerStyle:{paddingBottom:90}},React.createElement(api.TourAnchor,{id:'home-identity'},'Target')):null;}
  await act(async()=>{tree=create(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture)),{createNodeMock:element=>({measureInWindow:done=>{if(failure==='root')return;element.props.testID==='tour-root'?done(0,-24,390,824):done(20,targetY,350,100);}})});});
  await act(async()=>tree.root.findByProps({testID:'tour-root'}).props.onLayout());
  const button=label=>tree.root.findAllByType('Button').find(node=>node.props.accessibilityLabel===label);
- return {api,tree,animations,routes,scrolls,receipts,late,advance,button,text:()=>tree.root.findAllByType('Text').map(n=>n.children.join('')).join(' '),attempts:()=>attempts,press:async label=>act(async()=>button(label).props.onPress()),back:async()=>act(async()=>back()),owner:async value=>{owner=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
+ return {api,tree,animations,routes,scrolls,events,receipts,late,advance,button,layout:async(id,rect)=>act(async()=>{geometry.set(id,rect);tour.layoutChanged(id);}),reportDock:async height=>act(async()=>tour.reportDock(height)),text:()=>tree.root.findAllByType('Text').map(n=>n.children.join('')).join(' '),attempts:()=>attempts,press:async label=>act(async()=>button(label).props.onPress()),back:async()=>act(async()=>back()),owner:async value=>{owner=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
   finish:async item=>act(async()=>{item.value.setValue(item.config.toValue);item.callback?.({finished:true});}),
   cleanup:async()=>{await act(async()=>tree.unmount());Object.assign(global,saved);},
  };
@@ -170,7 +170,7 @@ test('Settings origin geometry maps a full page back to its actual icon and expi
  const api=load('src/utils/settingsOrigin.ts');
  const icon={x:326,y:32,width:44,height:44},frame={x:0,y:24,width:390,height:800};
  api.rememberSettingsOrigin(icon);assert.deepEqual(api.readSettingsOrigin(),icon);
- const mapped=api.settingsTransform(icon,frame);assert.equal(frame.x+frame.width/2+mapped.x,348);assert.equal(frame.y+frame.height/2+mapped.y,54);
+ const mapped=api.settingsTransform(icon,frame);assert.equal(frame.x+mapped.x,348);assert.equal(frame.y+mapped.y,54);assert.equal(mapped.scale,.001);
  const date=Date.now;try{Date.now=()=>date()+10_001;assert.equal(api.readSettingsOrigin(),null);}finally{Date.now=date;}
 });
 
@@ -198,17 +198,61 @@ test('failed page navigation and return-to-Home keep visible mandatory controls 
  }
 });
 
-test('Settings expands and retracts from a measured icon on both platforms before removing its route',async()=>{
+test('Settings waits for its frame, springs around the fixed icon pivot and bounces back before route removal',async()=>{
  for(const OS of ['ios','android']){
   const animations=[],dispatch=[];let tree;
   const navigation={canGoBack:()=>true,goBack:()=>dispatch.push('back'),dispatch:a=>dispatch.push(a)};
-  const api=load('src/components/PersonalUI.tsx',{'react-native':{View:host('View'),Platform:{OS},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:390,height:800}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(config){return config;}},timing:(value,config)=>({start:callback=>animations.push({config,callback}),stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove(){}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:24})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/settingsOrigin':{readSettingsOrigin:()=>({x:326,y:32,width:44,height:44}),settingsTransform:()=>({x:153,y:-346,scale:.11})}});
-  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Settings',subtitle:'',back:true,animateTransition:true,expandFromIcon:true}));});
+  const source=load('src/utils/settingsOrigin.ts');source.rememberSettingsOrigin({x:120,y:180,width:44,height:44});
+  const motion=(value,config)=>({start:callback=>animations.push({config,callback}),stop(){}});
+  const api=load('src/components/PersonalUI.tsx',{'react-native':{View:host('View'),Platform:{OS},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:390,height:800}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(config){return config;}},timing:motion,spring:(value,config)=>motion(value,{...config,spring:true})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove(){}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:24})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/settingsOrigin':source});
+  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Settings',subtitle:'',back:true,animateTransition:true,expandFromIcon:true}),{createNodeMock:()=>({measureInWindow:done=>done(0,24,390,800)})});});
   try{
    const style=tree.root.findByProps({testID:'personal-page-surface'}).props.style;
-   assert.deepEqual(style.transform.map(t=>Object.keys(t)[0]),['translateX','translateY','scale']);assert.equal(style.transform[0].translateX.outputRange[1],153);assert.equal(style.opacity.outputRange[2],0);
+   assert.deepEqual(style.transform.map(t=>Object.keys(t)[0]),['scale']);assert.equal(style.opacity.outputRange[2],0);
+   assert.equal(animations.length,0,'no motion until window origin has been measured');
+   await act(async()=>tree.root.findByProps({testID:'settings-frame'}).props.onLayout());
+   assert.deepEqual(tree.root.findByProps({testID:'personal-page-surface'}).props.style.transformOrigin,[142,178,0]);
+   const enter=animations.find(a=>a.config.toValue===0);assert.ok(enter.config.spring&&enter.config.useNativeDriver);assert.equal(enter.config.overshootClamping,undefined);
    await act(async()=>tree.root.findByType('Header').props.onBack());assert.equal(dispatch.length,0);
-   const exit=animations.find(a=>a.config.toValue===1);assert.ok(exit.config.useNativeDriver);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
+   const exit=animations.find(a=>a.config.toValue===1);assert.ok(exit.config.spring&&exit.config.useNativeDriver);assert.ok(exit.config.velocity<0);assert.equal(exit.config.overshootClamping,true);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
   }finally{await act(async()=>tree.unmount());}
  }
+});
+
+test('guide transition masks stop above the measured nav bar throughout route and return fades',async()=>{
+ const ui=await tourHarness();
+ try{
+  await ui.advance(900);await ui.reportDock(126);
+  const mask=()=>ui.tree.root.findByProps({testID:'tour-content-mask'}).props.style[1];assert.equal(mask().bottom,126);assert.equal(mask().overflow,'hidden');
+  for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(400);assert.equal(mask().bottom,126);}
+  await ui.press('Explore LifeRPG');await ui.advance(360);assert.equal(mask().bottom,126);
+ }finally{await ui.cleanup();}
+});
+
+test('Home resets while covered before navigation and again on attachment, with no scroll jump after fade completion',async()=>{
+ const ui=await tourHarness({actualScroll:true});
+ try{
+  await ui.advance(1000);assert.ok(ui.scrolls[0].y>0);
+  for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(650);}
+  await ui.press('Explore LifeRPG');await ui.advance(360);
+  const navigate=ui.events.findLastIndex(e=>e.kind==='navigate'&&e.route==='/'),fadeIndex=ui.events.findIndex(e=>e.kind==='animate'&&e.duration===350);
+  assert.ok(ui.events.slice(0,navigate).some(e=>e.kind==='scroll'&&e.y===0));
+  assert.ok(ui.events.slice(navigate,fadeIndex).some(e=>e.kind==='scroll'&&e.y===0),'attached Home is already at top when it becomes visible');
+  const before=ui.scrolls.length;await ui.finish(ui.animations.find(a=>a.config.duration===350));assert.equal(ui.scrolls.length,before,'no delayed restore after the cover disappears');
+ }finally{await ui.cleanup();}
+});
+
+test('Home tour steps two through four remeasure full targets when suggestion height and sibling positions change',async()=>{
+ const ui=await tourHarness({reduced:true});
+ try{
+  await ui.advance(900);
+  const cases=[['home-focus',{x:20,y:170,width:350,height:310},{x:30,y:120,width:330,height:360}],['home-next-step',{x:20,y:500,width:350,height:70},{x:20,y:540,width:350,height:85}],['home-quests',{x:20,y:600,width:350,height:140},{x:20,y:500,width:350,height:210}]];
+  for(const [id,initial,changed] of cases){
+   await ui.press('Next tour tip');await ui.layout(id,initial);await ui.advance(120);
+   const old=ui.late.at(-1);await ui.layout(id,changed);await act(async()=>old(initial));
+   assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0,'stale rectangles are hidden during remeasurement');
+   await ui.advance(120);const rect=ui.tree.root.findByProps({testID:'tour-outline'}).props.style[1];
+   assert.equal(rect.top,changed.y+20);assert.equal(rect.height,changed.height+8);assert.equal(rect.width,changed.width+8);
+  }
+ }finally{await ui.cleanup();}
 });

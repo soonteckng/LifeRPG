@@ -26,13 +26,13 @@ export default function OnboardingWelcome({ owner, onDone }: { owner: string; on
       onDone();
     };
     const animation = Animated.sequence([
-      ...words.map(value => Animated.timing(value, { toValue: 1, duration: 260, useNativeDriver: true, isInteraction: false })),
-      Animated.timing(detail, { toValue: 1, duration: 420, useNativeDriver: true, isInteraction: false }),
-      Animated.delay(800),
-      Animated.timing(curtain, { toValue: 0, duration: 320, useNativeDriver: true, isInteraction: false }),
+      ...words.map(value => Animated.timing(value, { toValue: 1, duration: 480, useNativeDriver: true, isInteraction: false })),
+      Animated.timing(detail, { toValue: 1, duration: 650, useNativeDriver: true, isInteraction: false }),
+      Animated.delay(2200),
+      Animated.timing(curtain, { toValue: 0, duration: 500, useNativeDriver: true, isInteraction: false }),
     ]);
     // A missing storage/animation callback must not block the first-run journey.
-    const deadline = setTimeout(finish, reduced ? 1000 : 3600);
+    const deadline = setTimeout(finish, reduced ? 2800 : 5800);
     void AsyncStorage.getItem(key).then(receipt => {
       if (!live || done) return;
       if (receipt === "seen") { finish(); return; }

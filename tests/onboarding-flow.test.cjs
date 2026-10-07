@@ -143,6 +143,7 @@ test('the welcome sequence finishes once per account, respects stored receipts a
  const props={owner:'alice',onDone:()=>done++};
  await act(async()=>{tree=create(React.createElement(Welcome,props));});
  assert.equal(done,0);assert.equal(env.back(),true);
+ const sequence=env.configs.find(Array.isArray);assert.deepEqual(sequence.slice(0,3).map(item=>item.config.duration),[480,480,480]);assert.equal(sequence[4].duration,2200);
  const finish=env.pending.shift();await act(async()=>{finish({finished:true});finish({finished:true});});
  assert.equal(done,1);assert.equal(receipts.get('liferpg:welcome:v1:alice'),'seen');
  await act(async()=>tree.unmount());await act(async()=>{tree=create(React.createElement(Welcome,props));});
@@ -155,7 +156,7 @@ test('setup sections fade upwards in order without animating layout or the pinne
  const env=environment(),Frame=env.load('src/components/OnboardingFrame.tsx').default;let tree;
  await act(async()=>{tree=create(React.createElement(Frame,{step:1,total:7,title:'Your rhythm',subtitle:'Choose a direction',opacity:1,onNext(){}},React.createElement('Choices')));});
  try{
-  const reveals=env.configs.filter(c=>c.duration===320);assert.deepEqual(reveals.map(c=>c.delay),[0,70,140]);assert.ok(reveals.every(c=>c.useNativeDriver&&c.isInteraction===false));
+  const reveals=env.configs.filter(c=>c.duration===620);assert.deepEqual(reveals.map(c=>c.delay),[0,160,320]);assert.ok(reveals.every(c=>c.useNativeDriver&&c.isInteraction===false));
   assert.equal(tree.root.findByProps({testID:'onboarding-footer'}).findAllByType('Animated').length,0);
  }finally{await act(async()=>tree.unmount());}
 });

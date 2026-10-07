@@ -57,20 +57,25 @@ export function PersonalPage({
   const [source] = useState(readSettingsOrigin);
   const surface = useRef<View>(null);
   const [frame, setFrame] = useState({ x: 0, y: 0, width, height });
+  const [frameReady, setFrameReady] = useState(!expandFromIcon);
   const [position] = useState(() => new Animated.Value(controlled ? expandFromIcon ? 1 : width : 0));
   const origin = settingsTransform(source, frame);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
   const pendingAction = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
+  useEffect(() => {
+    if (frameReady) return;
+    const deadline = setTimeout(() => setFrameReady(true), 150);
+    return () => clearTimeout(deadline);
+  }, [frameReady]);
   useLayoutEffect(() => {
-    if (!controlled || closing.current) return;
-    const animation = Animated.timing(position, {
-      toValue: 0,
-      ...navigationTiming(reduced ? 0 : 240),
-    });
+    if (!controlled || !frameReady || closing.current) return;
+    const animation = expandFromIcon && !reduced
+      ? Animated.spring(position, { toValue: 0, damping: 16, stiffness: 210, mass: 0.8, restDisplacementThreshold: 0.001, restSpeedThreshold: 0.001, useNativeDriver: true, isInteraction: false })
+      : Animated.timing(position, { toValue: 0, ...navigationTiming(reduced ? 0 : 240) });
     animation.start();
     return () => animation.stop();
-  }, [controlled, position, reduced]);
+  }, [controlled, position, reduced, expandFromIcon, frameReady]);
   const close = useCallback(() => {
     if (closing.current) return;
     if (!controlled) {
@@ -83,10 +88,10 @@ export function PersonalPage({
       return;
     }
     closing.current = true;
-    Animated.timing(position, {
-      toValue: expandFromIcon ? 1 : width,
-      ...navigationTiming(reduced ? 0 : 230),
-    }).start(({ finished }) => {
+    const animation = expandFromIcon && !reduced
+      ? Animated.spring(position, { toValue: 1, velocity: -3, damping: 19, stiffness: 220, mass: 0.8, overshootClamping: true, restDisplacementThreshold: 0.001, restSpeedThreshold: 0.001, useNativeDriver: true, isInteraction: false })
+      : Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : 230) });
+    animation.start(({ finished }) => {
       if (finished) setExitReady(true);
       else {
         closing.current = false;
@@ -101,8 +106,9 @@ export function PersonalPage({
   return (
     <View
       ref={surface}
+      testID={expandFromIcon ? "settings-frame" : undefined}
       collapsable={false}
-      onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); }); }}
+      onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
       style={{ flex: 1 }}
     ><Animated.View
       renderToHardwareTextureAndroid={controlled}
@@ -110,10 +116,11 @@ export function PersonalPage({
       style={{
         flex: 1,
         backgroundColor: colors.background,
-        opacity: expandFromIcon ? position.interpolate({ inputRange: [0, 0.85, 1], outputRange: [1, 0.25, 0] }) : 1,
+        opacity: expandFromIcon ? position.interpolate({ inputRange: [0, 0.85, 1], outputRange: [1, 0.25, 0], extrapolate: "clamp" }) : 1,
         borderRadius: expandFromIcon ? 24 : 0,
         overflow: "hidden",
-        transform: expandFromIcon ? [{ translateX: position.interpolate({ inputRange: [0, 1], outputRange: [0, origin.x] }) }, { translateY: position.interpolate({ inputRange: [0, 1], outputRange: [0, origin.y] }) }, { scale: position.interpolate({ inputRange: [0, 1], outputRange: [1, origin.scale] }) }] : [{ translateX: position }],
+        transformOrigin: expandFromIcon ? [origin.x, origin.y, 0] : undefined,
+        transform: expandFromIcon ? [{ scale: position.interpolate({ inputRange: [0, 1], outputRange: [1, origin.scale], extrapolateRight: "clamp" }) }] : [{ translateX: position }],
       }}
     >
       <SafeAreaView edges={["top", "left", "right"]} style={p.page}>
