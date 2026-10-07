@@ -1,165 +1,58 @@
-import { Text } from "../components/AppText";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
-import { Animated, View } from "react-native";
+import { Text } from "../components/AppText";
+import OnboardingFrame, { useOnboardingTransition } from "../components/OnboardingFrame";
+import OnboardingFinish from "../components/OnboardingFinish";
 import { useUser } from "../context/UserContext";
 import { finishOnboarding } from "../services/onboardingService";
-import {
-  PersonalButton,
-  PersonalPage,
-  p,
-  type PersonalIcon,
-} from "../components/PersonalUI";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 import { colors } from "../constants/theme";
-export const INTRO_PAGES: {
-  icon: PersonalIcon;
-  title: string;
-  body: string;
-}[] = [
-  {
-    icon: "timer-outline",
-    title: "A manageable next step",
-    body: "Choose a default study mode for suggested focus blocks. Start once and stay with your work; there is no need to log each question. Choose another overrides the mode for that session. Shorter blocks and free focus remain available.",
-  },
-  {
-    icon: "person-outline",
-    title: "Your effort becomes your character",
-    body: "Every completed second counts toward your daily goal. Character and Life areas each carry leftover seconds forward: 60 seconds earns 1 XP. Life areas collect their own XP from completed sessions. Your Life areas are your character’s stats: view their saved levels and growth in Profile. Levels reflect focused effort you’ve logged.",
-  },
-  {
-    icon: "flame-outline",
-    title: "Showing up counts",
-    body: "Any completed session with focused time makes an active day. Consecutive active days build consistency—even when you don’t reach your daily goal.",
-  },
-  {
-    icon: "checkmark-circle-outline",
-    title: "Give your day a direction",
-    body: "Save a useful suggestion as a quest for later, or create your own with a duration, Life area and optional schedule. Change or turn off suggestions in Settings anytime. Quests add optional structure. Your daily goal is a separate commitment, recognised when you reach it. View your daily focus goal in Settings. If goal editing is available, changes start on the next local day in your progress time zone; today and earned achievements stay unchanged.",
-  },
-  {
-    icon: "ribbon-outline",
-    title: "Keep the progress you earn",
-    body: "Milestones unlock automatically through completed sessions, focused time and consistency. Reaching your daily goal is recognised separately. A missed day doesn’t erase earned milestones or your character’s growth.",
-  },
+import type { PersonalIcon } from "../components/PersonalUI";
+export const INTRO_PAGES: { icon: PersonalIcon; title: string; body: string; detail: string }[] = [
+  { icon: "timer-outline", title: "Start with one small block.", body: "Follow your suggested focus, choose another, or focus your own way. Start once, then stay with your work.", detail: "Personal quests sit alongside suggestions. Save a useful block for later, or create your own." },
+  { icon: "person-outline", title: "Your effort takes shape.", body: "Completed focus time grows your character and the Life area you choose. Levels reflect the effort you’ve logged.", detail: "Every completed second counts toward your daily goal. Each 60 seconds earns 1 XP; leftover seconds carry forward." },
+  { icon: "leaf-outline", title: "A rhythm, at your pace.", body: "Any completed session makes a Focus day. Consecutive Focus days build your Focus streak. Your daily goal is a separate milestone.", detail: "Earned growth and achievements stay with you. Replay this introduction, or change suggestions, anytime in Settings." },
 ];
 export default function TutorialScreen() {
   const router = useRouter();
   const { profile, reloadProfile } = useUser();
-  const [page, setPage] = useState(0),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const lock = useRef(false);
-  const reduced = useReducedMotion();
-  const [opacity] = useState(() => new Animated.Value(1));
-  useEffect(() => {
-    if (reduced) {
-      opacity.setValue(1);
-      return;
-    }
-    opacity.setValue(0.6);
-    const animation = Animated.timing(opacity, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [page, opacity, reduced]);
-  const item = INTRO_PAGES[page];
-  const last = page === INTRO_PAGES.length - 1;
+  const [replay] = useState(() => !!profile.onboarding_completed);
+  const transition = useOnboardingTransition();
+  const [page, setPage] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [celebrating, setCelebrating] = useState(false);
+  const lock = useRef(false), saved = useRef(false), alive = useRef(true), completing = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const complete = useCallback(() => {
+    if (!alive.current || completing.current) return;
+    completing.current = true;
+    void (async () => {
+      try {
+        if (!(await reloadProfile())) throw new Error("Profile refresh failed");
+        if (alive.current) router.replace("/");
+      } catch {
+        if (alive.current) { setCelebrating(false); setError("Couldn’t finish setup. Your choices are saved—please try again."); setBusy(false); lock.current = false; }
+      } finally { completing.current = false; }
+    })();
+  }, [reloadProfile, router]);
   const finish = async () => {
-    if (lock.current) return;
-    if (profile.onboarding_completed) {
-      if (router.canGoBack()) router.back();
-      else router.replace("/");
-      return;
-    }
-    lock.current = true;
-    setBusy(true);
-    setError("");
+    if (lock.current || transition.moving) return;
+    if (replay) { if (router.canGoBack()) router.back(); else router.replace("/"); return; }
+    lock.current = true; setBusy(true); setError("");
     try {
-      await finishOnboarding();
-      if (!(await reloadProfile())) throw new Error("Profile refresh failed");
-      router.replace("/");
-    } catch {
-      setError(
-        "Couldn’t finish setup. Please check your connection and try again.",
-      );
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+      if (!saved.current) { await finishOnboarding(); saved.current = true; }
+      if (alive.current) setCelebrating(true);
+    } catch { if (alive.current) { setError("Couldn’t finish setup. Please check your connection and try again."); setBusy(false); lock.current = false; } }
   };
-  return (
-    <PersonalPage
-      title="A little introduction"
-      subtitle={
-        profile.onboarding_completed
-          ? "A reminder of how LifeRPG works."
-          : "Your first steps, at your pace."
-      }
-      back={profile.onboarding_completed}
-    >
-      <Text style={p.label}>
-        STEP {page + 1} OF {INTRO_PAGES.length}
-      </Text>
-      <Animated.View
-        style={[p.card, { paddingVertical: 36, gap: 24, opacity }]}
-      >
-        <View style={[p.icon, { width: 72, height: 72, borderRadius: 24 }]}>
-          <Ionicons name={item.icon} size={34} color={colors.accent} />
-        </View>
-        <Text style={[p.title, { fontSize: 27 }]} accessibilityRole="header">
-          {item.title}
-        </Text>
-        <Text style={[p.body, { fontSize: 17, lineHeight: 27 }]}>
-          {item.body}
-        </Text>
-      </Animated.View>
-      <View style={p.inline}>
-        {INTRO_PAGES.map((_, i) => (
-          <View
-            key={i}
-            style={{
-              height: 4,
-              flex: 1,
-              borderRadius: 2,
-              backgroundColor: i <= page ? colors.accent : colors.line,
-            }}
-          />
-        ))}
-      </View>
-      {!!error && (
-        <Text style={p.error} accessibilityRole="alert">
-          {error}
-        </Text>
-      )}
-      <PersonalButton
-        title={
-          busy
-            ? "Finishing setup…"
-            : last
-              ? profile.onboarding_completed
-                ? "Done"
-                : "Start my journey"
-              : "Continue"
-        }
-        disabled={busy}
-        onPress={() => {
-          if (last) void finish();
-          else setPage((current) => current + 1);
-        }}
-      />
-      {page > 0 && (
-        <PersonalButton
-          secondary
-          title="Previous step"
-          disabled={busy}
-          onPress={() => setPage((current) => current - 1)}
-        />
-      )}
-    </PersonalPage>
-  );
+  if (celebrating) return <OnboardingFinish onDone={complete} />;
+  const item = INTRO_PAGES[page], last = page === INTRO_PAGES.length - 1;
+  return <OnboardingFrame step={replay ? page + 1 : page + 5} total={replay ? 3 : 7} title={item.title} subtitle={item.body} opacity={transition.opacity}
+    busy={busy || transition.moving} primary={busy ? "Finishing setup…" : last ? replay ? "Done" : "Start my journey" : "Continue"}
+    onNext={() => { if (last) void finish(); else transition.change(() => setPage(page + 1)); }}
+    onBack={page > 0 ? () => transition.change(() => setPage(page - 1)) : replay ? () => { if (router.canGoBack()) router.back(); else router.replace("/"); } : undefined}
+    secondary={!last ? "Skip introduction" : undefined} onSecondary={!last ? () => void finish() : undefined} error={error}>
+    <View style={s.illustration}><View style={s.orbit}><View style={s.symbol}><Ionicons name={item.icon} size={48} color={colors.accent} /></View></View></View>
+    <View style={s.note}><Text style={s.detail}>{item.detail}</Text></View>
+  </OnboardingFrame>;
 }
+const s = StyleSheet.create({ illustration: { alignItems: "center", paddingVertical: 12 }, orbit: { width: 152, height: 152, borderRadius: 76, borderWidth: 1, borderColor: colors.line, justifyContent: "center", alignItems: "center" }, symbol: { width: 112, height: 112, borderRadius: 56, backgroundColor: colors.accentSoft, justifyContent: "center", alignItems: "center" }, note: { backgroundColor: colors.surface, padding: 20, borderRadius: 20 }, detail: { fontSize: 16, lineHeight: 24, color: colors.secondary } });

@@ -22,6 +22,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
+      if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
       if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
@@ -310,7 +312,9 @@ test("optional onboarding preserves a saved character badge and keeps the ten-ba
   });
   try {
     await ui.press("Skip suggestions");
-    await ui.press("Continue to the introduction");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
     assert.equal(saved[1],badges[9]);
     assert.match(ui.text(), /Couldn’t save/);
   } finally { await ui.cleanup(); }

@@ -13,6 +13,8 @@ function load(file, mocks = {}, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true} }).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name.endsWith("/OnboardingFrame"))return require("./onboarding-mocks.cjs").frame(React);
+    if(name.endsWith("/OnboardingFinish"))return require("./onboarding-mocks.cjs").finish(React);
     if(name.endsWith('/MotionPressable'))return host('Button');
     if(!name.startsWith('.'))return require(name);
     const target=path.resolve(path.dirname(filename),name);
@@ -21,7 +23,7 @@ function load(file, mocks = {}, cache = new Map()) {
   },module,module.exports);
   return module.exports;
 }
-const Native = { View:host('View'), ScrollView:host('Scroll'), KeyboardAvoidingView:host('KeyboardArea'), StyleSheet:{create:s=>s,hairlineWidth:0.5}, Platform:{OS:'android'} };
+const Native = { View:host('View'), ScrollView:host('Scroll'), KeyboardAvoidingView:host('KeyboardArea'), Keyboard:{dismiss(){}}, StyleSheet:{create:s=>s,hairlineWidth:0.5}, Platform:{OS:'android'} };
 function storage() { const values=new Map(); return {values,api:{getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}}}; }
 function mocks(extra={}) {return {
   'react-native':Native,
@@ -126,7 +128,7 @@ test('new users can skip suggestions, retain their badge and reach the existing 
   '../context/UserContext':{useUser:()=>({profile:{id:'new-user',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async(...args)=>calls.push(args)},
  })).default;
- const ui=await render(Screen);await ui.press('Skip suggestions');await ui.press('Continue to the introduction');
+ const ui=await render(Screen);await ui.press('Skip suggestions');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.deepEqual(routes,['/tutorial']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
 });
 test('new users can select an assignment direction before the introduction',async()=>{
@@ -135,7 +137,7 @@ test('new users can select an assignment direction before the introduction',asyn
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async()=>{}},
  })).default;
- const ui=await render(Screen);await ui.press('Study and assignments');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue to the introduction');
+ const ui=await render(Screen);await ui.press('Study and assignments');await ui.press('Continue');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'assignments');await ui.cleanup();
 });
 test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{

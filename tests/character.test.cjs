@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
+      if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
       if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
@@ -288,11 +290,13 @@ test("onboarding failure keeps choices and retries before entering tutorial", as
   });
   try {
     await ui.press("Continue");
+    await ui.press("Continue");
     await ui.input("Your name", "Soon Teck");
-    await ui.press("Continue to the introduction");
+    await ui.press("Continue");
+    await ui.press("Continue");
     assert.match(ui.text(), /Couldn’t save/);
     assert.deepEqual(routes, []);
-    await ui.press("Continue to the introduction");
+    await ui.press("Continue");
     assert.deepEqual(routes, ["/tutorial"]);
   } finally {
     await ui.cleanup();
@@ -318,7 +322,7 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     },
   });
   try {
-    for (let i = 0; i < 4; i++) await ui.press("Continue");
+    for (let i = 0; i < 2; i++) await ui.press("Continue");
     assert.deepEqual(routes, []);
     await ui.press("Start my journey");
     assert.match(ui.text(), /Couldn’t finish setup/);
@@ -342,7 +346,7 @@ test("replaying tutorial returns without writing onboarding again", async () => 
     "../services/onboardingService": { finishOnboarding: async () => calls++ },
   });
   try {
-    for (let i = 0; i < 4; i++) await ui.press("Continue");
+    for (let i = 0; i < 2; i++) await ui.press("Continue");
     await ui.press("Done");
     assert.equal(calls, 0);
     assert.equal(back, 1);

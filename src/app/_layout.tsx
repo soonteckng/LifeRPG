@@ -153,6 +153,8 @@ function AppContent() {
               name="(tabs)"
               options={{
                 headerShown: false,
+                animation: reducedMotion ? "none" : "fade",
+                animationDuration: reducedMotion ? 0 : 220,
               }}
             />
             <Stack.Screen
@@ -182,6 +184,8 @@ function AppContent() {
             name="onboarding"
             options={{
               headerShown: false,
+              animation: reducedMotion ? "none" : "fade",
+              animationDuration: reducedMotion ? 0 : 220,
               gestureEnabled: false,
             }}
           />
@@ -190,6 +194,9 @@ function AppContent() {
             name="tutorial"
             options={{
               headerShown: false,
+              animation: reducedMotion ? "none" : "fade",
+              animationDuration: reducedMotion ? 0 : 220,
+              gestureEnabled: false,
             }}
           />
         </Stack>
