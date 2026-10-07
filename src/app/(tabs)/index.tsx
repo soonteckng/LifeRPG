@@ -1,3 +1,4 @@
+import FreeFocusCard from "../../components/FreeFocusCard";
 import GuidedFocusCard from "../../components/GuidedFocusCard";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
 import DailyGoalSheet from "../../components/DailyGoalSheet";
@@ -39,7 +40,7 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { width, height, fontScale } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -91,8 +92,6 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  // Only the focus surface grows. Inter-card gaps and dock clearance stay fixed.
-  const contentMinHeight = Math.max(0, (viewportHeight || height - insets.top) - dockHeight - 24);
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -185,7 +184,7 @@ export default function HomeScreen() {
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
         contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 12 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, !useGuidance && { minHeight: contentMinHeight }]}>
+        <View testID="home-layout" style={styles.layout}>
           <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
@@ -213,37 +212,19 @@ export default function HomeScreen() {
               {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
             </View>
           </View></View></TourAnchor>
-          <TourAnchor id="home-focus" style={!useGuidance && styles.growFocus}><View style={[styles.focusContainer, !useGuidance && styles.growFocus]}>{!guided.ready ? <View style={[styles.focusCard, styles.growFocus]} testID="home-preference-loading">
+          <TourAnchor id="home-focus"><View style={styles.focusContainer}>{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
             <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
           </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
-            onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={[styles.focusCard, styles.growFocus]} testID="home-quick-start">
-            <View style={styles.focusTopRow}>
-              <View style={styles.focusInfo}>
-                <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
-                <View style={styles.focusChoice}>
-                  <View style={[styles.focusDot, { backgroundColor: lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code) }]} />
-                  <Text style={styles.focusValue}>{hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}</Text>
-                  <Text style={styles.focusArea} numberOfLines={1}>· {hasOpenSession ? activeArea : quickTitle}</Text>
-                </View>
-              </View>
-              {!hasOpenSession && <TouchableOpacity testID="home-change-focus" style={styles.changeButton} onPress={changeSession}
-                disabled={quickStarting || !!timer.actionBusy} accessibilityRole="button" accessibilityLabel={blocked ? "Check session status" : "Change duration or area"}>
-                <Ionicons name={blocked ? "alert-circle-outline" : "options-outline"} size={17} color={colors.accent} />
-                <Text style={styles.link}>{blocked ? "Check" : "Change"}</Text>
-              </TouchableOpacity>}
-            </View>
-            {!hasOpenSession && <View style={styles.freeContext}><Text style={styles.freeInstruction}>One block. One thing at a time.</Text></View>}
-            <TouchableOpacity style={[styles.primaryButton, styles.freePrimary]} onPress={() => void startFreeSession()}
-              testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
-              accessibilityRole="button" accessibilityState={{ disabled: quickStarting || (!hasOpenSession && (blocked || !!areasLoading)), busy: quickStarting }}
-              accessibilityLabel={hasOpenSession ? "Continue session" : `Start ${sessionDurationLabel(quickSeconds)}, ${quickTitle}`}>
-              <Ionicons name="play-outline" size={22} color="#171827" />
-              <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
-            </TouchableOpacity>
-            {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
-          </View>}</View></TourAnchor>
+            onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <FreeFocusCard
+            duration={hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}
+            area={hasOpenSession ? activeArea : quickTitle}
+            tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
+            active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting} blocked={blocked}
+            disabled={blocked || !!areasLoading} changeDisabled={quickStarting || !!timer.actionBusy} restoring={!!timer.isRestoring}
+            failed={quickError} error={timer.actionError ?? undefined} onChange={changeSession} onStart={() => void startFreeSession()}
+          />}</View></TourAnchor>
           <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">
             <View style={styles.invitationMain}>
               <Text style={styles.link}>Find your next step</Text><Text style={styles.questMeta}>{guided.value.enabled ? "Change your focus suggestions" : "Choose a focus direction"}</Text>
@@ -308,9 +289,7 @@ const styles = StyleSheet.create({
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
   layout: { gap: 12 },
-  growFocus: { flexGrow: 1 }, freeContext: { flexGrow: 1, justifyContent: "center", minHeight: 22 }, freePrimary: { marginTop: "auto" },
   focusContainer: { width: "100%", alignSelf: "stretch" },
-  freeInstruction: { color: colors.secondary, fontSize: 15, lineHeight: 22 },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
   headerBlock: { gap: 8, paddingTop: 4 },
@@ -324,15 +303,8 @@ const styles = StyleSheet.create({
   goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
   focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
-  focusTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  focusInfo: { flex: 1, minWidth: 0, gap: 4 },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  focusChoice: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
-  focusDot: { width: 7, height: 7, borderRadius: 4 },
-  focusValue: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  focusArea: { color: colors.secondary, fontSize: 16, lineHeight: 22, flexShrink: 1 },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  quickError: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: "#171827", fontSize: 16, lineHeight: 22, fontWeight: "500", flexShrink: 1, textAlign: "center" },
   questCard: { borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },

@@ -476,27 +476,31 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   sessionCalls.length = 0;
 
   const layout = renderer.root.findByProps({testID: "home-layout"}).props.style;
-  assert.equal(layout[0].justifyContent, undefined); assert.equal(layout[0].gap, 12);assert.equal(layout[1].minHeight + viewportMargin() + 12,640-24);
+  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 12);assert.equal(layout.minHeight,undefined);
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
   assert.ok(identity.findByProps({testID:"home-compact-goal"}));
   assert.ok(focus.findByProps({testID:"home-quick-start"}));assert.ok(focus.findByProps({testID:"home-start-focus"}));
-  assert.equal(focus.props.style.flexGrow,1);assert.equal(focus.findByProps({testID:"home-quick-start"}).props.style[1].flexGrow,1);
+  assert.equal(focus.props.style?.flexGrow,undefined);assert.equal(focus.findByProps({testID:"home-quick-start"}).props.style.flexGrow,undefined);
   assert.equal(identity.findAllByProps({testID:"home-quick-start"}).length,0);
   const viewport = () => renderer.root.findByProps({testID: "home-viewport"});
   await act(async () => { viewport().props.onLayout({nativeEvent:{layout:{height:600}}}); viewport().props.onContentSizeChange(320,600); });
-  assert.equal(renderer.root.findByProps({testID:"home-layout"}).props.style[1].minHeight + viewportMargin() + 12,600,'fill available space without reserving the dock twice or creating overflow');
+  assert.equal(viewportMargin(),initialMargin+56,'reserve only the measured dock plus the session banner');
   assert.equal(viewport().props.scrollEnabled,false);
   await act(async () => viewport().props.onContentSizeChange(320,680)); assert.equal(viewport().props.scrollEnabled,true);
   openSession = false;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin);
   const previousTasks=homeTasks;
+  const stableFocusStyle=renderer.root.findByProps({testID:"home-quick-start"}).props.style;
   for(const count of [0,1,2]){
     homeTasks=Array.from({length:count},(_,i)=>task({id:200+i,title:`Focus ${i}`}));
     await act(async()=>renderer.update(React.createElement(Home)));
     const fitted=renderer.root.findByProps({testID:"home-layout"}).props.style;
-    assert.equal(fitted[0].gap,12);assert.equal(fitted[1].minHeight+viewportMargin()+12,600);
+    assert.equal(fitted.gap,12);assert.equal(fitted.minHeight,undefined);
+    assert.deepEqual(renderer.root.findByProps({testID:"home-quick-start"}).props.style,stableFocusStyle,'adding quests must not stretch or resize the focus card');
+    assert.ok(renderer.root.findByProps({testID:"free-focus-details"}));
+    assert.equal(viewportMargin(),initialMargin);
     assert.equal(previewRows().length,count);
   }
   homeTasks=previousTasks;await act(async()=>renderer.update(React.createElement(Home)));

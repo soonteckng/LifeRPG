@@ -70,9 +70,7 @@ export function PersonalPage({
   }, [frameReady]);
   useLayoutEffect(() => {
     if (!controlled || !frameReady || closing.current) return;
-    const animation = expandFromIcon && !reduced
-      ? Animated.spring(position, { toValue: 0, damping: 16, stiffness: 210, mass: 0.8, restDisplacementThreshold: 0.001, restSpeedThreshold: 0.001, useNativeDriver: true, isInteraction: false })
-      : Animated.timing(position, { toValue: 0, ...navigationTiming(reduced ? 0 : 240) });
+    const animation = Animated.timing(position, { toValue: 0, ...navigationTiming(reduced ? 0 : expandFromIcon ? 280 : 240) });
     animation.start();
     return () => animation.stop();
   }, [controlled, position, reduced, expandFromIcon, frameReady]);
@@ -88,9 +86,7 @@ export function PersonalPage({
       return;
     }
     closing.current = true;
-    const animation = expandFromIcon && !reduced
-      ? Animated.spring(position, { toValue: 1, velocity: -3, damping: 19, stiffness: 220, mass: 0.8, overshootClamping: true, restDisplacementThreshold: 0.001, restSpeedThreshold: 0.001, useNativeDriver: true, isInteraction: false })
-      : Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : 230) });
+    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : expandFromIcon ? 220 : 230) });
     animation.start(({ finished }) => {
       if (finished) setExitReady(true);
       else {

@@ -198,7 +198,7 @@ test('failed page navigation and return-to-Home keep visible mandatory controls 
  }
 });
 
-test('Settings waits for its frame, springs around the fixed icon pivot and bounces back before route removal',async()=>{
+test('Settings waits for its frame and smoothly expands and retracts at the measured icon without rebound',async()=>{
  for(const OS of ['ios','android']){
   const animations=[],dispatch=[];let tree;
   const navigation={canGoBack:()=>true,goBack:()=>dispatch.push('back'),dispatch:a=>dispatch.push(a)};
@@ -212,9 +212,9 @@ test('Settings waits for its frame, springs around the fixed icon pivot and boun
    assert.equal(animations.length,0,'no motion until window origin has been measured');
    await act(async()=>tree.root.findByProps({testID:'settings-frame'}).props.onLayout());
    assert.deepEqual(tree.root.findByProps({testID:'personal-page-surface'}).props.style.transformOrigin,[142,178,0]);
-   const enter=animations.find(a=>a.config.toValue===0);assert.ok(enter.config.spring&&enter.config.useNativeDriver);assert.equal(enter.config.overshootClamping,undefined);
+   const enter=animations.find(a=>a.config.toValue===0);assert.equal(enter.config.duration,280);assert.equal(enter.config.useNativeDriver,true);assert.equal(enter.config.spring,undefined);
    await act(async()=>tree.root.findByType('Header').props.onBack());assert.equal(dispatch.length,0);
-   const exit=animations.find(a=>a.config.toValue===1);assert.ok(exit.config.spring&&exit.config.useNativeDriver);assert.ok(exit.config.velocity<0);assert.equal(exit.config.overshootClamping,true);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
+   const exit=animations.find(a=>a.config.toValue===1);assert.equal(exit.config.duration,220);assert.equal(exit.config.useNativeDriver,true);assert.equal(exit.config.spring,undefined);assert.equal(exit.config.velocity,undefined);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
   }finally{await act(async()=>tree.unmount());}
  }
 });
