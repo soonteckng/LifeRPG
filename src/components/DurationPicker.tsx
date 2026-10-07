@@ -128,8 +128,9 @@ function Wheel({ label, value, maximum, rowHeight, fontSize, onBegin, onChange }
     select(indexAt(event.nativeEvent.contentOffset.y) % count);
   };
   // Animated.event registers this listener; it never invokes it during render.
-  // eslint-disable-next-line react-hooks/refs
+  /* eslint-disable react-hooks/refs -- Animated.event registers the listener without calling it. */
   const onScroll = Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true, listener: scrollListener });
+  /* eslint-enable react-hooks/refs */
   return <View style={styles.wheel} accessible accessibilityRole="adjustable" accessibilityLabel={label}
     accessibilityValue={{ min: 0, max: maximum, now: visible }}
     accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
