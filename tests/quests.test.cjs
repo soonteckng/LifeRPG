@@ -452,7 +452,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   homeTasks = [task({id: 12, title: "Completed earlier", is_completed: true}), task({id: 13, title: "Tomorrow", is_due_today: false}), task({id: 14, title: "Finished today", is_completed_today: true}), task({id: 15, title: "Read now"}), task({id: 16, title: "Repeat today", is_recurring: true, is_completed: true}), task({id: 17, title: "Third quest"}), task({id: 18, title: "Fourth quest"})];
   await act(async () => renderer.update(React.createElement(Home)));
   const previewRows = () => renderer.root.findAllByType("Pressable").filter(node => node.props.testID?.startsWith("home-quest-"));
-  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15"]);
+  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15", "home-quest-16"]);
   assert.equal(renderer.root.findByProps({testID: "home-quest-card"}).props.style.marginBottom,undefined);
   const openQuests = renderer.root.findAllByType("Pressable").find(node => node.props.accessibilityLabel === "Today's quests, 4 pending");
   assert.ok(openQuests);
@@ -465,7 +465,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
 
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16"]);
+  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17"]);
   const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.contentContainerStyle[1].paddingBottom;
   const initialMargin = viewportMargin();
   openSession = true;
@@ -475,7 +475,12 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.deepEqual(sessionCalls, [["navigate","/session"]]);
   sessionCalls.length = 0;
 
-  assert.equal(renderer.root.findByProps({testID: "home-layout"}).props.style.minHeight, undefined);
+  const bodyMin = renderer.root.findByProps({testID: "home-layout"}).props.style[1].minHeight;
+  assert.equal(bodyMin + 12 + viewportMargin(), 640 - 24);
+  const viewport = () => renderer.root.findByProps({testID: "home-viewport"});
+  await act(async () => { viewport().props.onLayout({nativeEvent:{layout:{height:600}}}); viewport().props.onContentSizeChange(320,600); });
+  assert.equal(viewport().props.scrollEnabled,false);
+  await act(async () => viewport().props.onContentSizeChange(320,680)); assert.equal(viewport().props.scrollEnabled,true);
   openSession = false;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin);

@@ -32,7 +32,7 @@ function mocks(extra={}) {return {
   '@expo/vector-icons':{Ionicons:host('Icon')},
   '@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),TouchableOpacity:host('Button')},
   'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({bottom:24,top:24})},
-  './AppText':{Text:host('Text')},'../components/AppText':{Text:host('Text'),TextInput:host('Input')},
+  './AppText':{Text:host('Text'),TextInput:host('Input')},'../components/AppText':{Text:host('Text'),TextInput:host('Input')},
   './ContentReveal':props=>props.children,
   './SlidingSelection':host('Selection'),
   './AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children):null,
@@ -122,25 +122,25 @@ test('failed guided start retains the exact choice for Retry and never navigates
  await ui.update({...props,subjects:[{id:2,title:'Knowledge'}]});
  await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,1);await ui.cleanup();
 });
-test('new users can choose free focus, retain their badge and reach the existing tutorial through the profile RPC',async()=>{
+test('new users can choose free focus and retain their badge through the seven-page journey',async()=>{
  const db=storage(),routes=[],calls=[];
  const Screen=load('src/app/onboarding.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,
   'expo-router':{useRouter:()=>({replace:route=>routes.push(route)})},
   '../context/UserContext':{useUser:()=>({profile:{id:'new-user',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
-  '../services/onboardingService':{saveOnboardingProfile:async(...args)=>calls.push(args)},
+  '../services/onboardingService':{saveOnboardingProfile:async(...args)=>calls.push(args),finishOnboarding:async()=>{}},
  })).default;
  const ui=await render(Screen);assert.doesNotMatch(text(ui.tree.root),/Skip suggestions/);await ui.press('Just let me focus');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
- assert.deepEqual(routes,['/tutorial']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
+ assert.deepEqual(routes,[]);await ui.press('Previous step');assert.equal(ui.tree.root.findByType('Frame').props.step,4);await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');assert.deepEqual(routes,['/']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
 });
 test('new users can select an assignment direction before the introduction',async()=>{
  const db=storage();const Screen=load('src/app/onboarding.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,'expo-router':{useRouter:()=>({replace(){}})},
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
-  '../services/onboardingService':{saveOnboardingProfile:async()=>{}},
+  '../services/onboardingService':{saveOnboardingProfile:async()=>{},finishOnboarding:async()=>{}},
  })).default;
  const ui=await render(Screen);await ui.press('Study and assignments');await ui.press('Continue');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
- const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'assignments');await ui.cleanup();
+ assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'assignments');await ui.cleanup();
 });
 test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
  const db=storage(),pending=deferred(),calls=[];let upserts=0;

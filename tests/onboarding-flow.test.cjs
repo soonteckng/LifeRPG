@@ -25,7 +25,7 @@ function environment(reduced = false) {
       if (Object.hasOwn(extra, name)) return extra[name];
       if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
       if (Object.hasOwn(base, name)) return base[name];
-      if (name.endsWith('/AppText')) return { Text: host('Text') };
+      if (name.endsWith('/AppText')) return { Text: host('Text'), TextInput: host('Input') };
       if (name.endsWith('/MotionPressable')) return host('Button');
       if (name.endsWith('/useReducedMotion')) return { useReducedMotion: () => reduced };
       if (!name.startsWith('.')) return require(name);
@@ -68,13 +68,45 @@ test('reduced motion changes steps without delayed animations', async () => {
   await act(async () => transition.change(() => swaps++)); assert.equal(swaps, 1); assert.equal(env.pending.length, 0);
   await act(async () => tree.unmount());
 });
+
+test('all seven pages share Back navigation, retain choices and save only at the final step', async () => {
+  const env = environment(); let tree, finishes = 0; const routes = [], profiles = [], preferences = [];
+  const Screen = env.load('src/components/OnboardingJourney.tsx', {
+    './OnboardingFrame': require('./onboarding-mocks.cjs').frame(React),
+    'expo-router': { useRouter: () => ({ replace: route => routes.push(route) }) },
+    '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Hero', daily_goal_minutes: 60, avatar: '🌱' }, reloadProfile: async () => true }) },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: { enabled: false, need: 'revision', templateId: 'review-topic', smaller: false }, save: async value => { preferences.push(value); return true; } }) },
+    '../services/onboardingService': { saveOnboardingProfile: async (...args) => profiles.push(args), finishOnboarding: async () => finishes++ },
+  }).default;
+  await act(async () => { tree = create(React.createElement(Screen)); });
+  const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
+  const press = async label => act(async () => button(label).props.onPress());
+  try {
+    await press('Continue'); await press('Continue');
+    const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 24);
+    await act(async () => input().props.onChangeText('A'.repeat(25))); await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, 3);
+    await act(async () => input().props.onChangeText('Soon')); await press('Continue'); await press('90 min'); await press('Continue');
+    assert.equal(tree.root.findByType('Frame').props.step, 5); assert.equal(profiles.length, 0);
+    for (let expected = 4; expected >= 1; expected--) {
+      await press('Previous step'); assert.equal(tree.root.findByType('Frame').props.step, expected);
+      if (expected === 4) assert.equal(button('90 min').props.accessibilityState.checked, true);
+      if (expected === 3) assert.equal(input().props.value, 'Soon');
+    }
+    for (let expected = 2; expected <= 7; expected++) { await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, expected); }
+    assert.equal(profiles.length, 0); assert.equal(finishes, 0);
+    await act(async () => { button('Start my journey').props.onPress(); button('Start my journey').props.onPress(); });
+    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].enabled, false); assert.equal(finishes, 1); assert.deepEqual(routes, []);
+    await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
+  } finally { await act(async () => tree.unmount()); }
+});
 test('completion waits for its animation before Home, and retries a failed refresh without repeating the saved RPC', async () => {
   const env = environment(); let writes = 0, refreshes = 0, tree; const routes = [], router = { replace: route => routes.push(route) };
   const Screen = env.load('src/app/tutorial.tsx', {
-    '../components/OnboardingFrame': require('./onboarding-mocks.cjs').frame(React),
+    './OnboardingFrame': require('./onboarding-mocks.cjs').frame(React),
     'expo-router': { useRouter: () => router },
-    '../context/UserContext': { useUser: () => ({ profile: { onboarding_completed: false }, reloadProfile: async () => ++refreshes > 1 }) },
-    '../services/onboardingService': { finishOnboarding: async () => writes++ },
+    '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Soon', onboarding_completed: false }, reloadProfile: async () => ++refreshes > 1 }) },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: {}, save: async () => true }) },
+    '../services/onboardingService': { saveOnboardingProfile: async () => {}, finishOnboarding: async () => writes++ },
   }).default;
   await act(async () => { tree = create(React.createElement(Screen)); });
   const press = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress();

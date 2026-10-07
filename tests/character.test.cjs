@@ -271,7 +271,7 @@ test("rapid sign-in taps submit once", async () => {
     await ui.cleanup();
   }
 });
-test("onboarding failure keeps choices and retries before entering tutorial", async () => {
+test("onboarding failure keeps choices and retries before entering Home", async () => {
   let attempts = 0;
   const routes = [];
   const ui = await screen("src/app/onboarding.tsx", {
@@ -288,6 +288,7 @@ test("onboarding failure keeps choices and retries before entering tutorial", as
       saveOnboardingProfile: async () => {
         if (++attempts === 1) throw Error("Offline");
       },
+      finishOnboarding: async () => {},
     },
   });
   try {
@@ -296,10 +297,13 @@ test("onboarding failure keeps choices and retries before entering tutorial", as
     await ui.input("Your name", "Soon Teck");
     await ui.press("Continue");
     await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Start my journey");
     assert.match(ui.text(), /Couldn’t save/);
     assert.deepEqual(routes, []);
-    await ui.press("Continue");
-    assert.deepEqual(routes, ["/tutorial"]);
+    await ui.press("Start my journey");
+    assert.deepEqual(routes, ["/"]);
   } finally {
     await ui.cleanup();
   }
@@ -313,11 +317,12 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     },
     "../context/UserContext": {
       useUser: () => ({
-        profile: { onboarding_completed: false },
+        profile: { id: "new-user", username: "Soon", daily_goal_minutes: 60, onboarding_completed: false },
         reloadProfile: async () => true,
       }),
     },
     "../services/onboardingService": {
+      saveOnboardingProfile: async () => {},
       finishOnboarding: async () => {
         if (++calls === 1) throw Error("Offline");
       },
@@ -327,7 +332,7 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     for (let i = 0; i < 2; i++) await ui.press("Continue");
     assert.deepEqual(routes, []);
     await ui.press("Start my journey");
-    assert.match(ui.text(), /Couldn’t finish setup/);
+    assert.match(ui.text(), /Couldn’t save your setup/);
     await ui.press("Start my journey");
     assert.deepEqual(routes, ["/"]);
     assert.equal(calls, 2);

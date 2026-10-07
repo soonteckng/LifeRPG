@@ -13,7 +13,7 @@
 9. Notifications offers permission enable/app settings, plus Android 12+ Alarms & reminders special access with an app-settings fallback. No unverified alarm switch is labelled enabled. Expo Go permissions belong to Expo Go; installed builds need their own permission/device checks. Expo's native scheduling delegate falls back to an inexact alarm when exact-alarm permission is missing, so precise completion timing is the reason to enable that switch. The ongoing banner is a separate immediate notification.
 10. Settings links to How LifeRPG works, a plain guide with a quick-tour entry. Existing introduction URLs redirect there for returning users; new-user introduction remains a seven-page journey.
 11. The completion sequence finishes before Home's fade and the first welcome tip. Failed confirmation remains retryable and cannot repeat a successful finish write.
-12. A five-tip contextual tour highlights the actual measured component and dims the rest: Home identity, focus, quests, Progress and Profile. It navigates tabs, reveals off-screen targets, waits for the correct destination before measurement, and records completion per account/install. It does not start sessions or create quests. Active/restoring sessions and reward popups postpone automatic tours.
+12. A six-tip contextual tour highlights the actual measured component and dims the rest: Home identity, focus, Find your next step, quests, Progress and Profile. It navigates tabs, reveals off-screen targets, waits for the correct destination before measurement, and records completion per account/install. It does not start sessions or create quests. Active/restoring sessions and reward popups postpone automatic tours.
 
 ## Daily-goal database activation
 
@@ -27,8 +27,10 @@ Apply under an agreed write pause with the proposal's 5-second lock/60-second st
 
 - Settings/session entrances, tab changes and all suggestion-sheet exits on a physical high-refresh-rate phone, in a release/development build as well as Expo Go.
 - Home free/study modes, zero/one/two quests, large text, three-button navigation and an open session dock.
-- All five tour highlights, target scrolling, voice-over announcements, reduced motion, interrupted navigation and account switching.
+- All six tour highlights, target scrolling, voice-over announcements, reduced motion, interrupted navigation and account switching.
 - Installed Android notification permission and Alarms & reminders switches, app minimisation/force stop, timer completion and system battery restrictions. Permission links do not guarantee delivery or change switches automatically.
 - Goal edits after approved activation: minimum/maximum, tomorrow's target, weekly lock, historical targets and once-only completion accounting.
 
 References: Apple onboarding https://developer.apple.com/design/human-interface-guidelines/onboarding ; Expo SDK 57 notifications https://docs.expo.dev/versions/v57.0.0/sdk/notifications/ ; Android alarms https://developer.android.com/develop/background-work/services/alarms .
+
+Follow-up screenshot corrections: see [onboarding-layout-refinement.md](onboarding-layout-refinement.md) for the unified seven-page state, footer, Home fit, overlay coordinates and tour fade fixes.

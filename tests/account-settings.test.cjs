@@ -321,6 +321,9 @@ test("optional onboarding preserves a saved character badge and keeps the ten-ba
     await ui.press("Continue");
     await ui.press("Continue");
     await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Start my journey");
     assert.equal(saved[1],badges[9]);
     assert.match(ui.text(), /Couldn’t save/);
   } finally { await ui.cleanup(); }

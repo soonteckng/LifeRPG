@@ -154,8 +154,8 @@ export default function ProfileScreen() {
         </View>
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-      <TourAnchor id="profile-areas"><View style={{ gap: 12 }}>
-        <Text style={p.sectionLabel}>Your Life areas</Text>
+      <View style={{ gap: 12 }}>
+        <TourAnchor id="profile-areas"><Text style={p.sectionLabel}>Your Life areas</Text></TourAnchor>
 
         {areas.map((area) => (
           <View key={area.id} accessible accessibilityLabel={`${area.title}, level ${area.level}, ${area.current} of ${area.required} XP to the next level`} style={{ gap: 6, minHeight:52, paddingVertical: 8 }}>
@@ -175,7 +175,7 @@ export default function ProfileScreen() {
           </Text>
         )}
 
-      </View></TourAnchor>
+      </View>
       <View style={{ gap: 12 }}>
         <View style={p.inline}><Text style={[p.sectionLabel, p.flex]}>Milestones</Text>
           <Pressable onPress={() => router.navigate("/rewards")} accessibilityRole="button" accessibilityLabel="View milestones" style={{ minHeight: 44, justifyContent: "center" }}>

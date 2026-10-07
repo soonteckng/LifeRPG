@@ -91,9 +91,9 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  // Content paints behind the floating dock; only scroll padding reserves
-  // clearance for the final row. Size the hero against the unobstructed space.
-  const availableHeight = Math.max(280, (viewportHeight || height - insets.top) - dockHeight - 8);
+  // Short content shares remaining space between sections. Subtract the exact
+  // scroll padding once so fitting two quests does not create a tiny overflow.
+  const contentMinHeight = Math.max(0, (viewportHeight || height - insets.top) - dockHeight - 24);
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -184,14 +184,14 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
-        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
+        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 12 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={styles.layout}>
+        <View testID="home-layout" style={[styles.layout, { minHeight: contentMinHeight }]}>
           <TourAnchor id="home-identity"><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
                 <Text style={styles.greeting}>{greeting}</Text>
-                <Text style={styles.name} numberOfLines={1}>{firstName}</Text>
+                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{firstName}</Text>
               </View>
               <View style={styles.avatarFrame}><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></View>
             </View>
@@ -208,12 +208,12 @@ export default function HomeScreen() {
           <View style={[styles.goalSection, styles.guidedGoalSection]}>
             <View testID="home-compact-goal" style={styles.guidedGoal}>
               <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.guidedGoalHeading} accessibilityRole="button" accessibilityLabel={`Daily focus goal. ${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes. Change your goal`}>
-                <Text style={styles.focusHeading}>Today’s focus</Text><Text style={styles.questMeta}>{`${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min`}</Text><Ionicons name="options-outline" size={18} color={colors.accent} />
+                <Text style={[styles.focusHeading, styles.goalLabel]}>Today’s focus</Text><View style={styles.goalValue}><Text style={styles.goalValueText}>{`${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min`}</Text><Ionicons name="options-outline" size={18} color={colors.accent} /></View>
               </TouchableOpacity>
               <View style={styles.guidedTrack} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
               {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
             </View>
-          <TourAnchor id="home-focus">{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
+          <View style={styles.focusContainer}>{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
             <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
@@ -225,7 +225,7 @@ export default function HomeScreen() {
                 <View style={styles.focusChoice}>
                   <View style={[styles.focusDot, { backgroundColor: lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code) }]} />
                   <Text style={styles.focusValue}>{hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}</Text>
-                  <Text style={styles.focusArea}>· {hasOpenSession ? activeArea : quickTitle}</Text>
+                  <Text style={styles.focusArea} numberOfLines={1}>· {hasOpenSession ? activeArea : quickTitle}</Text>
                 </View>
               </View>
               {!hasOpenSession && <TouchableOpacity testID="home-change-focus" style={styles.changeButton} onPress={changeSession}
@@ -234,23 +234,23 @@ export default function HomeScreen() {
                 <Text style={styles.link}>{blocked ? "Check" : "Change"}</Text>
               </TouchableOpacity>}
             </View>
-            {!hasOpenSession && <Text style={styles.freeInstruction}>One uninterrupted block, at your pace. Choose a duration and Life area, then settle into your focus.</Text>}
-            <TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
+            {!hasOpenSession && <Text style={styles.freeInstruction}>One block. One thing at a time.</Text>}
+            <TourAnchor id="home-focus"><TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
               testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
               accessibilityRole="button" accessibilityState={{ disabled: quickStarting || (!hasOpenSession && (blocked || !!areasLoading)), busy: quickStarting }}
               accessibilityLabel={hasOpenSession ? "Continue session" : `Start ${sessionDurationLabel(quickSeconds)}, ${quickTitle}`}>
               <Ionicons name="play-outline" size={22} color="#171827" />
               <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
-            </TouchableOpacity>
+            </TouchableOpacity></TourAnchor>
             {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
-          </View>}</TourAnchor>
+          </View>}</View>
           </View>
-          <View style={styles.invitation}>
-            <TouchableOpacity onPress={() => setGuidedSettings(true)} accessibilityRole="button" style={styles.invitationMain}>
+          <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">
+            <View style={styles.invitationMain}>
               <Text style={styles.link}>Find your next step</Text><Text style={styles.questMeta}>{guided.value.enabled ? "Change your focus suggestions" : "Choose a focus direction"}</Text>
-            </TouchableOpacity>
+            </View>
             <Ionicons name="chevron-forward" size={18} color={colors.accent} />
-          </View>
+          </TouchableOpacity></TourAnchor>
           <TourAnchor id="home-quests"><View style={styles.questCard} testID="home-quest-card">
             <View style={styles.questHeading}>
               <View style={styles.questHeadingText}>
@@ -263,7 +263,7 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={15} color={colors.accent} />
               </TouchableOpacity>
             </View>
-            {activeTasks.slice(0, availableHeight < 600 || fontScale > 1.3 ? 1 : 2).map((task, index) => {
+            {activeTasks.slice(0, 2).map((task, index) => {
               const area = subjects.find(subject => subject.id === task.subject_id);
               const tint = lifeAreaColor(task.subject_id, area?.color_code);
               return <TouchableOpacity key={task.id} style={[styles.questRow, index > 0 && styles.questDivider]}
@@ -297,29 +297,31 @@ Your quests will appear here.</Text>
   );
 }
 const styles = StyleSheet.create({
-  guidedGoalSection: { flexGrow: 0, paddingTop: 20, gap: 16 },
+  guidedGoalSection: { flexGrow: 0, paddingTop: 0, gap: 12 },
   guidedGoal: { width: "100%", gap: 8 },
-  guidedGoalHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" },
-  guidedTrack: { height: 6, borderRadius: 3, backgroundColor: colors.line, overflow: "hidden" },
-  guidedFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
-  invitation: { marginTop: 12, padding: 12, borderRadius: 16, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 8 },
-  invitationMain: { flex: 1, gap: 4, minHeight: 44, justifyContent: "center" },
+  guidedGoalHeading: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12 },
+  goalLabel: { flex: 1 }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 }, goalValueText: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  guidedTrack: { height: 4, borderRadius: 3, backgroundColor: colors.line, overflow: "hidden" },
+  guidedFill: { height: 4, borderRadius: 3, backgroundColor: colors.accent },
+  invitation: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 8 },
+  invitationMain: { flex: 1, gap: 3, minHeight: 40, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  layout: {},
-  freeInstruction: { color: colors.secondary, fontSize: 16, lineHeight: 23 },
+  layout: { justifyContent: "space-between", gap: 12 },
+  focusContainer: { width: "100%", alignSelf: "stretch" },
+  freeInstruction: { color: colors.secondary, fontSize: 15, lineHeight: 22 },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
-  headerBlock: { gap: 12, paddingTop: 4 },
+  headerBlock: { gap: 8, paddingTop: 4 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "400" },
   name: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 },
-  avatarFrame: { width: 60, height: 60, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  avatarFrame: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 },
   identityStat: { flexDirection: "row", alignItems: "center", gap: 5 },
   metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
-  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 24, paddingBottom: 8, gap: 12 },
+  goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
   focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
   focusTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
@@ -331,22 +333,22 @@ const styles = StyleSheet.create({
   focusArea: { color: colors.secondary, fontSize: 16, lineHeight: 22, flexShrink: 1 },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   quickError: { color: colors.danger, fontSize: 14, lineHeight: 20 },
-  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
-  primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
-  questCard: { marginTop: 12, borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
-  questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
-  questHeadingText: { flex: 1, minWidth: 0, gap: 4 },
-  sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", letterSpacing: -0.3 },
+  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButtonText: { color: "#171827", fontSize: 16, lineHeight: 22, fontWeight: "500", flexShrink: 1, textAlign: "center" },
+  questCard: { borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 4 },
+  questHeadingText: { flex: 1, minWidth: 0, gap: 2 },
+  sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500", letterSpacing: -0.3 },
   questCount: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44, paddingLeft: 4 },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
-  questRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
+  questRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
   questDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(225,235,255,0.08)" },
   questIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(175,169,236,0.10)", alignItems: "center", justifyContent: "center" },
   questDetail: { flex: 1, minWidth: 0, gap: 3 },
   questTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
   questMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 12 },
+  emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 8 },
   emptyText: { flex: 1, color: colors.secondary, fontSize: 14, lineHeight: 21 },
   retry: { marginTop: 12, paddingVertical: 10 },
   retryText: { color: colors.danger, fontSize: 13 },
