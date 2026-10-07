@@ -13,7 +13,7 @@ import type { PersonalIcon } from "../components/PersonalUI";
 export const INTRO_PAGES: { icon: PersonalIcon; title: string; body: string; detail: string }[] = [
   { icon: "timer-outline", title: "Start with one small block.", body: "Follow your suggested focus, choose another, or focus your own way. Start once, then stay with your work.", detail: "Personal quests sit alongside suggestions. Save a useful block for later, or create your own." },
   { icon: "person-outline", title: "Your effort takes shape.", body: "Completed focus time grows your character and the Life area you choose. Levels reflect the effort you’ve logged.", detail: "Every completed second counts toward your daily goal. Each 60 seconds earns 1 XP; leftover seconds carry forward." },
-  { icon: "leaf-outline", title: "A rhythm, at your pace.", body: "Any completed session makes a Focus day. Consecutive Focus days build your Focus streak. Your daily goal is a separate milestone.", detail: "Earned growth and achievements stay with you. Replay this introduction, or change suggestions, anytime in Settings." },
+  { icon: "leaf-outline", title: "A rhythm, at your pace.", body: "Any completed session makes a Focus day. Consecutive Focus days build your Focus streak. Your daily goal is a separate milestone.", detail: "Earned growth and achievements stay with you. Find your next step on Home lets you change suggestions. Settings has a short guide and a quick tour." },
 ];
 export default function TutorialScreen() {
   const router = useRouter();
