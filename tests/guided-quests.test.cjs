@@ -120,7 +120,7 @@ test('failed guided start retains the exact choice for Retry and never navigates
  await ui.update({...props,subjects:[{id:2,title:'Knowledge'}]});
  await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,1);await ui.cleanup();
 });
-test('new users can skip suggestions, retain their badge and reach the existing tutorial through the profile RPC',async()=>{
+test('new users can choose free focus, retain their badge and reach the existing tutorial through the profile RPC',async()=>{
  const db=storage(),routes=[],calls=[];
  const Screen=load('src/app/onboarding.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,
@@ -128,7 +128,7 @@ test('new users can skip suggestions, retain their badge and reach the existing 
   '../context/UserContext':{useUser:()=>({profile:{id:'new-user',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async(...args)=>calls.push(args)},
  })).default;
- const ui=await render(Screen);await ui.press('Skip suggestions');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
+ const ui=await render(Screen);assert.doesNotMatch(text(ui.tree.root),/Skip suggestions/);await ui.press('Just let me focus');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.deepEqual(routes,['/tutorial']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
 });
 test('new users can select an assignment direction before the introduction',async()=>{
@@ -242,4 +242,31 @@ test('choosing another block or shortening it never rewrites the saved default',
  let ui=await render(Card,props);await ui.press('Choose another');await ui.press('Practise questions30 minutes · One uninterrupted block');await ui.press('Try 10 minutes');
  assert.match(text(ui.tree.root),/A short practice session/);assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
  await ui.cleanup();ui=await render(Card,props);assert.match(text(ui.tree.root),/Review your notes/);await ui.cleanup();
+});
+
+test('Home keeps the compact layout across accounts, free/study choices, and preference loading failures',async()=>{
+ let state={ready:false,error:false,value:{enabled:false,invited:true}},owner='loading';
+ const Home=load('src/app/(tabs)/index.tsx',mocks({
+  'react-native':{...Native,useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
+  '../../components/AppText':{Text:host('Text')},'expo-haptics':{},'expo-router':{useRouter:()=>({navigate(){}})},
+  'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
+  '../../components/GoalRing':host('OldRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
+  '../../components/GuidedFocusCard':host('GuidedCard'),'../../components/GuidedPreferenceSheet':()=>null,
+  '../../hooks/useGuidedPreference':{useGuidedPreference:()=>({...state,retry(){},save:async()=>true})},
+  '../../context/UserContext':{useUser:()=>({profile:{id:owner,username:'Soon',daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
+  '../../context/TimerContext':{useTimer:()=>({duration:1800,timeLeft:1800,hasOpenSession:false})},
+  '../../context/QuestContext':{useQuests:()=>({tasks:[],subjects:[],loading:false,refresh:async()=>{}})},
+  '../../services/progressService':{getLastFreeSession:async()=>null,getFocusStreak:async()=>0},'../../services/dailyProgressService':{getTodayProgress:async()=>null},'../../hooks/useHomeLifecycle':{useHomeLifecycle:()=>12},
+ })).default;
+ const ui=await render(Home);
+ try {
+  for(const[account,ready,enabled,error]of[['loading',false,false,false],['free-account',true,false,false],['study-account',true,true,false],['failed-read',false,false,true]]){
+   owner=account;state={ready,error,value:{enabled,invited:true}};await ui.update({});
+   assert.equal(ui.tree.root.findAllByType('OldRing').length,0);
+   assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='home-compact-goal').length,1);
+   assert.equal(ui.tree.root.findAllByType('GuidedCard').length,ready&&enabled?1:0);
+   assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='home-preference-loading').length,ready?0:1);
+  }
+  assert.match(text(ui.tree.root),/Retry loading preferences/);
+ }finally{await ui.cleanup();}
 });

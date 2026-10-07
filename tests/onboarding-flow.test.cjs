@@ -77,10 +77,13 @@ test('completion waits for its animation before Home, and retries a failed refre
   }).default;
   await act(async () => { tree = create(React.createElement(Screen)); });
   const press = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress();
-  await act(async () => { press('Skip introduction'); press('Skip introduction'); });
+  assert.equal(tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Skip introduction'),false);
+  await act(async () => press('Continue'));
+  await act(async () => press('Continue'));
+  await act(async () => { press('Start my journey'); press('Start my journey'); });
   assert.equal(writes, 1); assert.equal(refreshes, 0); assert.deepEqual(routes, []);
   await act(async () => env.pending.shift()({ finished: true })); assert.equal(refreshes, 1); assert.deepEqual(routes, []);
-  await act(async () => press('Skip introduction')); assert.equal(writes, 1);
+  await act(async () => press('Start my journey')); assert.equal(writes, 1);
   await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   await act(async () => tree.unmount());
 });

@@ -4,7 +4,7 @@ Branch: `feature/guided-quests`, based on main `f31fc27a8a49b185ecd1606a012d2572
 
 ## Product decisions
 
-LifeRPG offers a manageable next action to people who do not want to organise a quest before beginning. This version develops one direction, **Study and assignments**. Other directions are intentionally absent until useful content exists. Choosing **Just let me focus**, or skipping suggestions, retains the existing Quick Start experience.
+LifeRPG offers a manageable next action to people who do not want to organise a quest before beginning. This version develops one direction, **Study and assignments**. Other directions are intentionally absent until useful content exists. Choosing **Just let me focus** retains the existing Quick Start experience.
 
 The three studying needs are revision, assignments and practice. Three curated work blocks provide a useful starting instruction: Review your notes, Work on an assignment, and Practise questions. Each defaults to 30 minutes, with an optional 10-minute version. Users start once and keep working; individual questions do not need separate app interactions. Preferences save the default study mode. Choose another and the 30 min / 10 min duration selector change the current Home suggestion without saving a new default. Personal quests remain independent choices below the suggestion. Suggestions remain user-controlled and do not claim to know a deadline, subject, mastery level or learning outcome.
 
@@ -44,7 +44,7 @@ Early End still cancels and earns no credit. Crediting actual time for an explic
 
 ## Verification and phone acceptance
 
-Automated tests cover catalogue/metadata validation, account isolation, storage failure and retry, duplicate writes, guided Start draft ownership and failure, restoration and completion identity, shorter blocks, suggestions coexisting with independently selectable personal quests, skip/selected onboarding and saving once. Existing regression tests remain required.
+Automated tests cover catalogue/metadata validation, account isolation, storage failure and retry, duplicate writes, guided Start draft ownership and failure, restoration and completion identity, shorter blocks, suggestions coexisting with independently selectable personal quests, free-focus/study onboarding and saving once. Existing regression tests remain required.
 
 Phone observation is still required; mocked native tests cannot prove visual quality or gestures:
 
@@ -70,3 +70,5 @@ Validated locally: **230/230 tests**, TypeScript, full lint and Android/iOS Herm
 - Home shows one preview quest on compact screens/large text and up to two otherwise. View all exposes the full list. The extra Home margin was removed after clarification that the crowded final row was in the Today / All quests popup. That popup now has 12px of additional clearance in its list and Done today footer, retaining safe-area and measured-footer reservations.
 
 Verification: **234/234 tests**, TypeScript, full lint and Android/iOS Hermes exports passed locally. Compatibility, non-persisting temporary selection, full-block start/restoration, and compact Home preview clearance have regression coverage. Phone checks remain necessary for animation settling, quest clearance with three-button navigation, and large-font layouts. No new dependencies or backend/reward changes.
+
+Home uses the compact daily-goal bar for every account. Preferences control study suggestions versus free focus, never the goal layout. Loading or failed preference reads show an explicit loading/retry card and do not flash the old ring or overwrite a saved choice. Existing sessions can still be continued.

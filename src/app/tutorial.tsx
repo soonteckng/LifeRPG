@@ -50,7 +50,7 @@ export default function TutorialScreen() {
     busy={busy || transition.moving} primary={busy ? "Finishing setup…" : last ? replay ? "Done" : "Start my journey" : "Continue"}
     onNext={() => { if (last) void finish(); else transition.change(() => setPage(page + 1)); }}
     onBack={page > 0 ? () => transition.change(() => setPage(page - 1)) : replay ? () => { if (router.canGoBack()) router.back(); else router.replace("/"); } : undefined}
-    secondary={!last ? "Skip introduction" : undefined} onSecondary={!last ? () => void finish() : undefined} error={error}>
+    error={error}>
     <View style={s.illustration}><View style={s.orbit}><View style={s.symbol}><Ionicons name={item.icon} size={48} color={colors.accent} /></View></View></View>
     <View style={s.note}><Text style={s.detail}>{item.detail}</Text></View>
   </OnboardingFrame>;

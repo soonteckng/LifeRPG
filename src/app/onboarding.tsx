@@ -45,7 +45,6 @@ export default function OnboardingScreen() {
   return <OnboardingFrame step={step + 1} total={7} title={TITLES[step]} subtitle={subtitles[step]} opacity={transition.opacity}
     busy={busy || transition.moving || (step === 3 && !guided.ready)} primary={busy ? "Saving…" : "Continue"} onNext={() => void next()}
     onBack={step > 0 ? () => changeStep(step - 1) : undefined}
-    secondary={step === 0 ? "Skip suggestions" : undefined} onSecondary={step === 0 ? () => { setDirection({ ...DEFAULT_GUIDED_PREFERENCE, invited: true }); changeStep(1); } : undefined}
     error={error || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <View style={s.choices}>
       <OnboardingChoice title="Study and assignments" hint="A thoughtful suggestion to help you begin." selected={direction.enabled} onPress={() => setDirection({ ...direction, enabled: true })} />

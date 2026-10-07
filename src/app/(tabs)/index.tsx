@@ -9,10 +9,9 @@ import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { validSessionSeconds, durationLabel as sessionDurationLabel } from "../../utils/sessionSetup";
-import GoalRing from "../../components/GoalRing";
 import CharacterMark from "../../components/CharacterMark";
 import ContentReveal from "../../components/ContentReveal";
-import { creditedDailySeconds, hasExactDailyCredit } from "../../utils/progressionAccounting";
+import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -80,7 +79,6 @@ export default function HomeScreen() {
   const blocked = !!(timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !sessionSummary));
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
-  const [exactCredit, setExactCredit] = useState(false);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [goalCompleted, setGoalCompleted] = useState(false);
@@ -93,9 +91,6 @@ export default function HomeScreen() {
   // Content paints behind the floating dock; only scroll padding reserves
   // clearance for the final row. Size the hero against the unobstructed space.
   const availableHeight = Math.max(280, (viewportHeight || height - insets.top) - dockHeight - 8);
-  const goalSize = Math.round(Math.max(144, Math.min(
-    (width - 40) * 0.60, availableHeight * 0.29, useGuidance ? 144 : fontScale > 1.5 ? 160 : 232,
-  )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -103,7 +98,6 @@ export default function HomeScreen() {
       if (streak !== undefined) setFocusStreak(streak);
       setTodayGoal(progress?.goal_minutes ?? null);
       setCompletedSeconds(progress ? creditedDailySeconds(progress) : 0);
-      setExactCredit(progress ? hasExactDailyCredit(progress) : false);
       setGoalCompleted(progress?.goal_completed ?? false);
       setLoadError(profileOK === false || streak === undefined);
     } catch {
@@ -208,16 +202,17 @@ export default function HomeScreen() {
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
             <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
           </TouchableOpacity>}
-          <View style={[styles.goalSection, useGuidance && styles.guidedGoalSection]}>
-            {useGuidance ? <View style={styles.guidedGoal} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}>
-              <View style={styles.guidedGoalHeading}><Text style={styles.focusHeading}>Today’s focus</Text><Text style={styles.questMeta}>{durationLabel(safeCompletedSeconds)} / {dailyGoalMinutes} min</Text></View>
+          <View style={[styles.goalSection, styles.guidedGoalSection]}>
+            <View testID="home-compact-goal" style={styles.guidedGoal} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}>
+              <View style={styles.guidedGoalHeading}><Text style={styles.focusHeading}>Today’s focus</Text><Text style={styles.questMeta}>{`${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min`}</Text></View>
               <View style={styles.guidedTrack}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
               {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
-            </View> : <><GoalRing seconds={safeCompletedSeconds} targetMinutes={dailyGoalMinutes} size={goalSize}
-              label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
-            <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
-              ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text></>}
-          {useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
+            </View>
+          {!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
+            <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
+            {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
+            {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
+          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
             onStarted={openSession} onFree={changeSession} onPreferences={() => setGuidedSettings(true)} /> : <View style={styles.focusCard} testID="home-quick-start">
             <View style={styles.focusTopRow}>
               <View style={styles.focusInfo}>

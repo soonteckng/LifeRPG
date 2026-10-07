@@ -311,7 +311,8 @@ test("optional onboarding preserves a saved character badge and keeps the ten-ba
     "../services/onboardingService": { saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
   });
   try {
-    await ui.press("Skip suggestions");
+    await ui.press("Just let me focus");
+    await ui.press("Continue");
     await ui.press("Continue");
     await ui.press("Continue");
     await ui.press("Continue");

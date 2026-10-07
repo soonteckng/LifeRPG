@@ -21,6 +21,7 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name.endsWith("/useGuidedPreference")) return {useGuidedPreference:()=>({ready:true,value:{enabled:false,invited:true},save:async()=>true})};
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
       if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
@@ -488,14 +489,14 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
   await act(async () => refresh());
-  assert.match(output(), /25 \/ 60 min/);
+  assert.match(output(), /25m \/ 60 min/);
   progressMinutes = 26;
   summary = { id: "saved-session" };
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.match(output(), /26 \/ 60 min/);
+  assert.match(output(), /26m \/ 60 min/);
   failed = true;
   await act(async () => refresh());
-  assert.match(output(), /26 \/ 60 min/);
+  assert.match(output(), /26m \/ 60 min/);
   assert.ok(retry());
   failed = false;
   await act(async () => retry().props.onPress());
