@@ -1,4 +1,4 @@
-import { Platform } from "react-native";
+import { Linking, Platform } from "react-native";
 import { getSessionNotifications } from "../utils/sessionNotifications";
 import { ONGOING_CHANNEL_ID } from "./sessionNotificationService";
 export interface NotificationPermission {
@@ -29,4 +29,10 @@ export async function enableNotifications() {
   return notificationPermission(await api.requestPermissionsAsync({
     ios: { allowAlert: true, allowBadge: false, allowSound: true },
   }));
+}
+
+export async function openAlarmSettings() {
+  if (Platform.OS !== "android" || Number(Platform.Version) < 31) return Linking.openSettings();
+  try { await Linking.sendIntent("android.settings.REQUEST_SCHEDULE_EXACT_ALARM"); }
+  catch { await Linking.openSettings(); }
 }

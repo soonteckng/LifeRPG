@@ -1,3 +1,4 @@
+import { focusAreaTitle, focusAreaKind, focusAreaChoices } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
@@ -45,7 +46,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const focusedField = useRef<"title" | "duration" | null>(null);
   const revealFocusedField = useCallback(() => {
     if (!focusedField.current) return;
-    scrollRef.current?.scrollTo({ y: focusedField.current === "duration" ? durationY.current : 0, animated: true });
+    scrollRef.current?.scrollTo({ y: focusedField.current === "duration" ? Math.max(0, durationY.current - 12) : 0, animated: false });
   }, []);
 
   useEffect(() => {
@@ -176,7 +177,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} settling={scope === "all" ? "quick" : "standard"} style={styles.scopeSelection} /></View>
           {(["today", "all"] as const).map(value => <View key={value} style={styles.scopeSlot}>
             <Pressable style={styles.scopeButton}
-              onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
+              onPress={() => { if (scope !== value && hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
               <Text style={[styles.scopeLabel, scope === value && styles.scopeLabelSelected]}>{value === "today" ? "Today" : "All"}</Text>
             </Pressable>
           </View>)}
@@ -197,9 +198,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     <AppSheet visible={visible} onRequestClose={requestClose} onDismiss={() => {
       setEditor(null); setEditorVisible(false); setFormError(null); setScope(initialScope); setShowDone(false); setMessage(null);
       const next = afterDismiss.current; afterDismiss.current = null; onDismiss?.(!!next); next?.();
-    }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader} compact motionMode="timed"
+    }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader} expanded heightRatio={0.66} motionMode="timed"
       footer={done.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={showDone ? "Show unfinished quests" : "View completed quests"}
-        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) }]}>
+        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
         <Text style={styles.link}>{showDone ? "Back to quests" : `Done today (${done.length})`}</Text><Ionicons name="chevron-forward" size={20} color={colors.accent} />
       </Pressable> : undefined}
       overlay={<>
@@ -207,8 +208,8 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         {editor && <AppSheet visible={editorVisible} onRequestClose={requestClose}
           onDismiss={() => { setEditor(null); setFormError(null); focusedField.current = null;
             if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
-          guardDismiss={dirty || busy || !!confirmation} compact maxHeightRatio={0.94} label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
-          <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField}
+          guardDismiss={dirty || busy || !!confirmation} expanded motionMode="timed" keyboardBehavior="fillParent" label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
+          <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField} onContentSizeChange={revealFocusedField}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
             contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
           <View pointerEvents={busy ? "none" : "auto"} style={styles.form}>
@@ -219,7 +220,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
                 onFocus={() => { focusedField.current = "title"; revealFocusedField(); }} onBlur={() => { focusedField.current = null; }}
                 maxLength={120} multiline accessibilityLabel="Quest name" editable={!busy} />
             </View>
-            <View style={styles.field} onLayout={(event) => { durationY.current = event.nativeEvent.layout.y; }}>
+            <View style={styles.field} onLayout={(event) => { durationY.current = event.nativeEvent.layout.y; revealFocusedField(); }}>
               <Text style={styles.label}>Duration <Text style={styles.subtitle}>· minutes</Text></Text>
               <View style={styles.options}>
                 {DURATIONS.map((minutes) => <Choice key={minutes} label={String(minutes)} accessibilityLabel={`${minutes} minutes`}
@@ -253,12 +254,12 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
               </View> : <Text style={styles.helper}>{editor.draft.repeat === "once" ? "Available today and stays available until completed." : "A fresh start, every day."}</Text>}
             </View>
             <View style={styles.field}>
-              <Text style={styles.label}>Life area</Text>
+              <Text style={styles.label}>Focus area</Text>
 
               <View style={styles.options}>
-                <Choice label="General" selected={editor.draft.subjectId === null || subjects.find((subject) => subject.id === editor.draft.subjectId)?.title === "General"}
+                <Choice label={focusAreaTitle()} selected={editor.draft.subjectId === null || focusAreaKind(subjects.find((subject) => subject.id === editor.draft.subjectId)?.title) === "general"}
                   onPress={() => updateDraft({ subjectId: null })} />
-                {subjects.filter((subject) => subject.title !== "General").map((subject) => <Choice key={subject.id} label={subject.title}
+                {focusAreaChoices(subjects, editor.draft.subjectId).filter((subject) => focusAreaKind(subject.title) !== "general").map((subject) => <Choice key={subject.id} label={focusAreaTitle(subject.title)}
                   selected={editor.draft.subjectId === subject.id} onPress={() => updateDraft({ subjectId: subject.id })} />)}
               </View>
             </View>
@@ -268,7 +269,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           </BottomSheetScrollView>
         </AppSheet>}
       </>}>
-      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+      {/* Footer adjustment in bottom-sheet 5.2 expects an object; an array loses
+          its numeric paddingBottom when the library reserves footer space. */}
+      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ ...styles.body, paddingBottom: Math.max(insets.bottom, 16) + 24 }}>
 
           <>
             {!editor && formError && <Text style={styles.headerError} accessibilityRole="alert">{formError}</Text>}
@@ -295,7 +298,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
                       <Text style={[styles.questTitle, task.is_completed_today && styles.completed]}>{task.title}</Text>
                       <Ionicons name="create-outline" size={16} color={colors.muted} />
                     </View>
-                    <Text style={styles.meta}>{task.target_minutes || 30} min · {subject?.title ?? "General"}{task.repeat_rule === "daily" ? " · Repeats daily" : task.repeat_rule !== "once" ? ` · ${task.repeat_rule.split(",").join(", ")}` : ""}{!task.is_due_today && !task.is_completed_today ? " · Upcoming" : ""}</Text>
+                    <Text style={styles.meta}>{task.target_minutes || 30} min · {focusAreaTitle(subject?.title)}{task.repeat_rule === "daily" ? " · Repeats daily" : task.repeat_rule !== "once" ? ` · ${task.repeat_rule.split(",").join(", ")}` : ""}{!task.is_due_today && !task.is_completed_today ? " · Upcoming" : ""}</Text>
                   </Pressable></View>
                   {!task.is_completed_today && task.is_due_today && !timer.hasOpenSession && <View style={styles.startContainer}><Pressable style={styles.start} onPress={() => start(task)} accessibilityRole="button" accessibilityLabel={`Start ${task.title}`}>
                     <Ionicons name="play-outline" size={23} color={colors.accent} />
@@ -332,8 +335,8 @@ const styles = StyleSheet.create({
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
   scopeGroup: { position:"relative", width:176, maxWidth:"100%", minHeight:44, flexDirection:"row", alignItems:"stretch" },
-  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:"#1D2638", overflow:"hidden" },
-  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:"#354467", borderRadius:11, borderWidth:3, borderColor:"#1D2638" },
+  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:colors.surface, overflow:"hidden" },
+  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:colors.selection, borderRadius:11, borderWidth:3, borderColor:colors.surface },
   scopeSlot: { flex:1, minWidth:0 },
   scopeButton: { width:"100%", minHeight:44, paddingHorizontal:8, paddingVertical:8, alignItems:"center", justifyContent:"center" },
   scopeLabel: { color:colors.neutral, fontSize:15, lineHeight:20, fontWeight:"500", includeFontPadding:false, textAlign:"center", textAlignVertical:"center" },

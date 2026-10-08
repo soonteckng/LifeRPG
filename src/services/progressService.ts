@@ -1,13 +1,15 @@
 import { supabase } from "../../lib/supabase";
+import { orderFocusAreas } from "../utils/focusAreas";
 import { dateKey, shiftDay } from "../utils/progressAnalytics";
 import type { Subject } from "./taskService";
-import { focusDay } from "../utils/focusDays";
+import { focusDay, bestFocusStreak } from "../utils/focusDays";
 
 export interface ProgressSession {
   id: string;
   subject_id: number | null;
   task_id?: number | null;
   activity_type: string;
+  notes?: string | null;
   duration_seconds: number;
   xp_earned: number;
   gold_earned: number;
@@ -72,7 +74,7 @@ export async function getProgressSubjects(): Promise<Subject[]> {
     .select("id, title, level, current_xp, color_code")
     .order("id", { ascending: true });
   if (error) throw error;
-  return data ?? [];
+  return orderFocusAreas(data ?? []);
 }
 export async function getSessionHistory(
   offset: number,
@@ -120,6 +122,19 @@ export async function getFocusStreak(
       } else if (key < expected) return streak;
     }
     if (!data || data.length < PAGE_SIZE) return streak;
+  }
+}
+
+// A bounded, owner-filtered lookup, separate from Progress's paginated history.
+export async function getLongestFocusStreak(timeZone: string, now = new Date()): Promise<number> {
+  const days = new Set<string>();
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabase.from("activity_sessions").select("id, completed_at, duration_seconds")
+      .eq("status", "completed").gt("duration_seconds", 0).lte("completed_at", now.toISOString())
+      .order("completed_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + PAGE_SIZE - 1);
+    if (error) throw error;
+    for (const row of data ?? []) { const day = focusDay(row, timeZone, now); if (day) days.add(day); }
+    if (!data || data.length < PAGE_SIZE) return bestFocusStreak(days);
   }
 }
 

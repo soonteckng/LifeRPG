@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import { Text } from "../components/AppText";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -13,6 +14,7 @@ import GlobalRewardListener from "../components/GlobalRewardListener";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
+import { FeatureTourProvider } from "../components/FeatureTour";
 import { QuestProvider } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { secondaryNativeOptions, sessionNativeOptions, traceSession } from "../utils/sessionTransition";
@@ -107,6 +109,7 @@ function AppContent() {
   return (
     <TimerProvider>
       <QuestProvider>
+        <FeatureTourProvider>
         <GlobalBackHandler />
 
         <Stack
@@ -144,7 +147,7 @@ function AppContent() {
             headerShown: false,
             animation: reducedMotion ? "none" : "slide_from_right",
             contentStyle: {
-              backgroundColor: "#090D16",
+              backgroundColor: colors.background,
             },
           }}
         >
@@ -153,6 +156,8 @@ function AppContent() {
               name="(tabs)"
               options={{
                 headerShown: false,
+                animation: reducedMotion ? "none" : "fade",
+                animationDuration: reducedMotion ? 0 : 220,
               }}
             />
             <Stack.Screen
@@ -174,14 +179,17 @@ function AppContent() {
             />
             <Stack.Screen
               name="settings"
-              options={secondaryNativeOptions(reducedMotion)}
+              options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}
             />
+            <Stack.Screen name="guide" options={secondaryNativeOptions(reducedMotion)} />
           </Stack.Protected>
           <Stack.Protected guard={!profile.onboarding_completed}>
           <Stack.Screen
             name="onboarding"
             options={{
               headerShown: false,
+              animation: reducedMotion ? "none" : "fade",
+              animationDuration: reducedMotion ? 0 : 220,
               gestureEnabled: false,
             }}
           />
@@ -190,11 +198,15 @@ function AppContent() {
             name="tutorial"
             options={{
               headerShown: false,
+              animation: reducedMotion ? "none" : "fade",
+              animationDuration: reducedMotion ? 0 : 220,
+              gestureEnabled: false,
             }}
           />
         </Stack>
 
         <GlobalRewardListener />
+        </FeatureTourProvider>
       </QuestProvider>
     </TimerProvider>
   );

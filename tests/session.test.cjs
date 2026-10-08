@@ -22,6 +22,13 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === "expo-haptics") return {selectionAsync:async()=>{}};
+    if (name.endsWith("/UserContext")) return mocks["../../context/UserContext"] ?? {useUser:()=>({hapticsEnabled:false})};
+    if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -220,7 +227,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       StyleSheet:{create:(s)=>s,hairlineWidth:1,absoluteFill:{}},
       Keyboard:{isVisible:()=>keyboard,dismiss:()=>{keyboard=false;keyboardListeners.keyboardDidHide?.();calls.push(["keyboard"]);},addListener:(event,fn)=>{keyboardListeners[event]=fn;return{remove(){}};}},
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
-      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){animations.push({...config,from:value.value});if(deferExit && config.toValue===0) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
+      Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){animations.push({...config,from:value.value});if(deferExit && config.toValue===-0.12) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
     "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
@@ -231,6 +238,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "./LevelUpModal":host("CompletionPopup"),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
     "./DurationPicker":{__esModule:true,default:p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"}),p.interactive&&React.createElement("Button",{onPress:p.onEdit,accessibilityLabel:"Edit duration"},"Edit duration")),DurationEditor:p=>p.visible?React.createElement("DurationSheet",p):null},
+    "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
     "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
     "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
@@ -250,10 +258,10 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   };
 }
 
-test("opening the typed duration editor does not remount or alter the timer wheels",async()=>{
+test("opening Custom keeps the timer display and applied duration stable",async()=>{
   const ui=await screenSetup();
   const before=ui.root().findByType("DurationControl").props;
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   const after=ui.root().findByType("DurationControl").props;
   assert.equal(after.revision,before.revision);
   assert.equal(after.seconds,before.seconds);
@@ -271,7 +279,7 @@ test("downward session swipe uses the existing animated close and inner sheets t
     await ui.cleanup();
   }
   const ui=await screenSetup();
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   const safe=ui.root().findByType("SafeArea");
   assert.equal(safe.props.onMoveShouldSetPanResponderCapture({}, {y0:400,dy:40,dx:0}),false);
   await ui.cleanup();
@@ -313,7 +321,7 @@ test("saved completion displays focused duration while unsaved completion stays 
 test("quest setup is compact, keeps its association during loading, and never starts automatically",async()=>{
   const ui=await screenSetup({linkedTaskId:7,duration:2700,timeLeft:2700});
   assert.match(ui.output(),/A long quest title/);
-  assert.equal(ui.button("Choose life area"),undefined);
+  assert.equal(ui.button("Choose focus area"),undefined);
   assert.equal(ui.button("15 minutes"),undefined);
   assert.ok(ui.button("Change quest"));
   assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
@@ -332,17 +340,17 @@ test("quest setup is compact, keeps its association during loading, and never st
 
 test("custom picker changes setup only on confirm; Retry uses exact seconds",async()=>{
   const ui=await screenSetup();
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
   await ui.back();
   assert.equal(ui.calls.some(([action])=>action==="seconds"),false);
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(930));
   assert.deepEqual(ui.calls.at(-1),["seconds",930]);
   await ui.update({duration:930,timeLeft:930,actionError:"Couldn’t start your session."});
   await ui.press("Retry");
   assert.deepEqual(ui.calls.at(-1),["start",930,undefined]);
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,930);
   await ui.back();
   await ui.update({actionBusy:true});
@@ -421,10 +429,10 @@ test("bounds and exact duration labels reject zero and 480:59",()=>{
 test("Life area wins over neutral or historical activity; legacy missing-area labels remain readable",()=>{
   const {sessionCategory}=load("src/utils/sessionReporting.ts",{});
   const areas=[{id:2,title:"Knowledge"}];
-  assert.equal(sessionCategory({subject_id:2,activity_type:"other"},areas),"Knowledge");
-  assert.equal(sessionCategory({subject_id:2,activity_type:"code"},areas),"Knowledge");
+  assert.equal(sessionCategory({subject_id:2,activity_type:"other"},areas),"Learning");
+  assert.equal(sessionCategory({subject_id:2,activity_type:"code"},areas),"Learning");
   assert.equal(sessionCategory({subject_id:null,activity_type:"code"},areas),"Code");
-  assert.equal(sessionCategory({subject_id:null,activity_type:"other"},areas),"General");
+  assert.equal(sessionCategory({subject_id:null,activity_type:"other"},areas),"Everyday focus");
 });
 
 test("dock distinguishes running, paused, saving, failed and completed without completed countdown",()=>{
@@ -442,12 +450,12 @@ test("dock distinguishes running, paused, saving, failed and completed without c
 test("free setup has one Life area category and a discoverable optional quest row",async()=>{
   const ui=await screenSetup();
   assert.ok(ui.button("Choose a quest"));
-  assert.ok(ui.button("Select General"));
-  assert.equal(ui.button("Choose life area"),undefined);
+  assert.ok(ui.button("Select Everyday focus"));
+  assert.equal(ui.button("Choose focus area"),undefined);
   assert.equal(ui.button("Choose activity"),undefined);
   assert.match(ui.output(),/Optional/);
   await ui.press("Choose a quest");
-  assert.match(ui.output(),/30 min · General/);
+  assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
 });
 
@@ -539,21 +547,17 @@ test("integrated wheels ignore programmatic scrolls, commit on settling, and kee
   await act(async()=>renderer.unmount());
 });
 
-test("Start is blocked during momentum; preset changes reject stale wheel events",async()=>{
+test("Session timer is display-only and setup has one shared duration control",async()=>{
   const ui=await screenSetup();
-  const oldWheel=ui.root().findByType("DurationControl").props;
-  await act(async()=>oldWheel.onBusy(true));
-  assert.equal(ui.button("Start").props.disabled,true);
-  await ui.press("Start");
-  assert.equal(ui.calls.some(c=>c[0]==="start"),false);
-  await ui.press("15 minutes");
-  await ui.update({duration:900,timeLeft:900});
-  await act(async()=>{oldWheel.onCommit(6030);oldWheel.onBusy(true);oldWheel.onValidity(false);});
-  assert.deepEqual(ui.calls.at(-1),["seconds",900]);
-  assert.equal(ui.button("Start").props.disabled,false);
-  await ui.press("Start");
-  assert.deepEqual(ui.calls.at(-1),["start",900,undefined]);
-  await ui.cleanup();
+  try {
+    const display=ui.root().findByType("DurationControl").props;
+    assert.equal(display.interactive,false);
+    await act(async()=>{display.onCommit(2479);display.onBusy(true);display.onValidity(false);display.onEdit();});
+    assert.equal(ui.calls.length,0);assert.equal(ui.root().findAllByType("DurationSheet").length,0);
+    assert.equal(ui.root().findAllByType("View").filter(n=>n.props.testID==="focus-length-control").length,1);
+    await ui.press("Use 60 minutes");await ui.update({duration:3600,timeLeft:3600});
+    assert.deepEqual(ui.calls.at(-1),["seconds",3600]);await ui.press("Start");assert.deepEqual(ui.calls.at(-1),["start",3600,undefined]);
+  }finally{await ui.cleanup();}
 });
 
 test("typed editor validates both fields without truncation; Cancel retains the applied value",async()=>{
@@ -647,7 +651,7 @@ test("viewed completion hides its dock without hiding a running session",async()
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);
-  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#20283D");
+  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#1E1E21");
   assert.equal(renderer.root.findByType("Button").props.activeOpacity,1);
   timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
   assert.equal(renderer.root.findAllByType("Button").length,0);
@@ -658,11 +662,11 @@ test("viewed completion hides its dock without hiding a running session",async()
 
 test("typed input and presets share applied seconds while linked quests stay read-only",async()=>{
   const ui=await screenSetup();
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(6000));
   await ui.update({duration:6000,timeLeft:6000});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,6000);
-  await ui.press("30 minutes");await ui.update({duration:1800,timeLeft:1800});
+  await ui.press("Use 30 minutes");await ui.update({duration:1800,timeLeft:1800});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
   await ui.update({linkedTaskId:7,duration:930});
   assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
@@ -680,6 +684,8 @@ test("Session drag follows the finger, cancels back in place and retains timer s
   const surface=()=>ui.root().findAllByType("AnimatedView").find(n=>n.props.testID==="session-surface");
   const safe=()=>ui.root().findByType("SafeArea");
   const motion=surface().props.style.transform[0].translateY.source;
+  const transform=surface().props.style.transform[0].translateY.config;
+  assert.deepEqual(transform.inputRange,[-.12,0,1]);assert.equal(transform.outputRange[1],640);assert.ok(transform.outputRange[0]>640,'exit travels beyond the screen while normal drag uses its original height');
   const originalTimer=ui.root().findByType("DurationControl");
   await act(async()=>{
     safe().props.onPanResponderGrant();
@@ -982,18 +988,18 @@ test("compact Session chips select the saved Life area without touching quest or
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
   assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
-  await ui.press("45 minutes");
-  assert.deepEqual(ui.calls.at(-1),["seconds",2700]);
-  await ui.update({duration:2700,timeLeft:2700});
+  await ui.press("Use 60 minutes");
+  assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
+  await ui.update({duration:3600,timeLeft:3600});
   await ui.press("Start");
-  assert.deepEqual(ui.calls.at(-1),["start",2700,undefined]);
+  assert.deepEqual(ui.calls.at(-1),["start",3600,undefined]);
   await ui.cleanup();
 });
 
 test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0,creditVersion:1,areaXpEarned:null}});
   assert.match(ui.output(),/Character XP\+1/);
-  assert.doesNotMatch(ui.output(),/Life area XP|General\+1 XP/);
+  assert.doesNotMatch(ui.output(),/Focus area XP|Everyday focus\+1 XP/);
   assert.ok(ui.button("Done"));
   assert.ok(ui.button("New session"));
   await ui.cleanup();
@@ -1002,13 +1008,13 @@ test("completed Session never labels unassigned character XP as a Life-area awar
 test("five visible Life areas need no More sheet; additional areas remain selectable",async()=>{
   const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
   const ui=await screenSetup({}, {subjects});
-  for(const area of subjects) assert.ok(ui.button(`Select ${area.title}`));
-  assert.equal(ui.button("Choose life area"),undefined);
+  for(const area of subjects) assert.ok(ui.button(`Select ${area.title === "General" ? "Everyday focus" : area.title}`));
+  assert.equal(ui.button("Choose focus area"),undefined);
   await ui.press("Select Area 5");
   assert.deepEqual(ui.calls.at(-1),["area",5]);
   await ui.cleanup();
   const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
-  await extra.press("Choose life area");
+  await extra.press("Choose focus area");
   await extra.press("Seven");
   assert.deepEqual(extra.calls.at(-1),["area",7]);
   await extra.cleanup();
@@ -1245,13 +1251,14 @@ test("Quick Start cannot discard failed completion or restoration and rejects in
 test("Session presets include the 30-minute default and match typed duration", async()=>{
   const ui=await screenSetup();
   try {
-    assert.equal(ui.button("30 minutes").props.accessibilityState.selected,true);
+    assert.equal(ui.button("Use 30 minutes").props.accessibilityState.selected,true);
     assert.equal(ui.button("25 minutes"),undefined);
-    for(const minutes of [15,30,45,60]) assert.ok(ui.button(`${minutes} minutes`));
-    await ui.press("15 minutes");
-    assert.deepEqual(ui.calls.at(-1),["seconds",900]);
-    await ui.update({duration:900,timeLeft:900});
-    await ui.press("30 minutes");
+    for(const minutes of [30,60]) assert.ok(ui.button(`Use ${minutes} minutes`));
+    assert.ok(ui.button("Set a custom focus duration"));
+    await ui.press("Use 60 minutes");
+    assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
+    await ui.update({duration:3600,timeLeft:3600});
+    await ui.press("Use 30 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",1800]);
   } finally {await ui.cleanup();}
 });
@@ -1333,11 +1340,86 @@ test("Themed quest picker selects the existing quest settings, closes, and never
   const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
   try {
     await ui.press("Choose a quest");
-    assert.match(ui.output(),/45 min · Knowledge/);
+    assert.match(ui.output(),/45 min · Learning/);
     assert.equal(ui.button("Choose Tomorrow"),undefined);
     await ui.press("Choose Read and reflect");
     assert.deepEqual(ui.calls,[["task",9],["area",2],["duration",45]]);
     assert.equal(ui.root().findAllByType("Sheet").length,0);
     assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
   }finally{await ui.cleanup();}
+});
+
+test("guided Start owns its exact free draft, blocks duplicates and retains metadata through completion", async () => {
+  const ui = await providerSetup();
+  const { suggestedFocus, readSuggestedFocus } = load("src/constants/guidedQuests.ts", {});
+  const focus = suggestedFocus("assignment-outline", true);
+  await ui.run(s => { s.setLinkedTaskId(88); s.setTargetAttributeId(44); s.setNotes("old quest draft"); });
+  await ui.run(async s => { assert.equal(await s.startSuggestedTimer(focus, 2), true); assert.equal(await s.startSuggestedTimer(focus, 2), false); });
+  const starts = ui.calls.filter(([name]) => name === "start");
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0][1].targetDurationSeconds, 600);
+  assert.equal(starts[0][1].taskId, null);
+  assert.equal(starts[0][1].subjectId, 2);
+  assert.equal(readSuggestedFocus(starts[0][1].notes).title, focus.title);
+  await ui.advance(601);
+  assert.equal(ui.state().sessionSummary.suggestion.title, focus.title);
+  assert.equal(ui.state().sessionSummary.sessionId, "session-1");
+  assert.equal(ui.state().sessionSummary.questTitle, focus.title);
+  await ui.run(s => { s.clearCompletionModal(); s.acknowledgeSummary(); });
+  assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
+  await ui.cleanup();
+});
+
+test("restored guided sessions retain their instruction and completion title", async () => {
+  const { suggestedFocus, encodeSuggestedFocus } = load("src/constants/guidedQuests.ts", {});
+  const focus = suggestedFocus("practice-question");
+  const ui = await providerSetup({ getOpenActivitySession: async () => ({ id:"restored-guided", status:"paused", task_id:null, subject_id:2, activity_type:"other", target_duration_seconds:1800, elapsed_seconds:1790, notes:encodeSuggestedFocus(focus) }) });
+  assert.equal(ui.state().timeLeft,10);
+  assert.equal(ui.state().notes,encodeSuggestedFocus(focus));
+  await ui.run(s => s.resumeTimer());
+  await ui.advance(11);
+  assert.equal(ui.state().sessionSummary.questTitle,focus.title);
+  assert.equal(ui.state().sessionSummary.suggestion.instruction,focus.instruction);
+  assert.equal(ui.state().sessionSummary.sessionId,"restored-guided");
+  await ui.cleanup();
+});
+
+test("guided failure keeps the draft for exact retry and cannot replace a paused session", async () => {
+  let attempts=0;
+  const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw Error("Offline");return "guided-retry";}});
+  const {suggestedFocus,readSuggestedFocus}=load("src/constants/guidedQuests.ts",{});
+  const focus=suggestedFocus("review-topic",true);
+  await ui.run(async s=>assert.equal(await s.startSuggestedTimer(focus,null),false));
+  assert.equal(readSuggestedFocus(ui.state().notes).templateId,focus.templateId);
+  await ui.run(s=>s.retryAction());
+  assert.equal(ui.state().duration,600);
+  await ui.run(s=>s.pauseTimer());
+  await ui.run(async s=>assert.equal(await s.startSuggestedTimer(suggestedFocus("continue-assignment"),2),false));
+  assert.equal(ui.state().duration,600);
+  assert.equal(ui.state().isRunning,false);
+  assert.equal(attempts,2);
+  await ui.cleanup();
+});
+
+test("custom suggested durations own exact metadata through start, retry, restoration and completion",async()=>{
+ const api=load('src/constants/guidedQuests.ts',{}),focus={...api.suggestedFocus('review-topic'),seconds:2717};let attempts=0;
+ const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw Error('Offline');return 'custom-guided';}});
+ try{
+  for(const seconds of [0,28801,1.5])await ui.run(async s=>assert.equal(await s.startSuggestedTimer({...focus,seconds},2),false));assert.equal(attempts,0);
+  await ui.run(async s=>assert.equal(await s.startSuggestedTimer({...focus,title:'Uncurated title'},2),false));
+  assert.equal(ui.state().duration,2717);assert.equal(api.readSuggestedFocus(ui.state().notes).title,focus.title);
+  await ui.run(s=>s.retryAction());assert.equal(ui.state().duration,2717);assert.equal(api.readSuggestedFocus(ui.state().notes).seconds,2717);
+  await ui.advance(2718);assert.equal(ui.state().sessionSummary.suggestion.seconds,2717);
+ }finally{await ui.cleanup();}
+ const restored=await providerSetup({getOpenActivitySession:async()=>({id:'custom-restored',status:'paused',task_id:null,subject_id:2,activity_type:'other',notes:api.encodeSuggestedFocus(focus),target_duration_seconds:2717,duration_seconds:2717,remaining_seconds:1900})});
+ try{assert.equal(api.readSuggestedFocus(restored.state().notes).seconds,2717);assert.equal(restored.state().duration,2717);}finally{await restored.cleanup();}
+});
+
+test("editing a suggested setup timer keeps its saved instruction and updates exact seconds",async()=>{
+ const ui=await providerSetup(),api=load('src/constants/guidedQuests.ts',{}),focus=api.suggestedFocus('review-topic');
+ try{
+  await ui.run(s=>s.setNotes(api.encodeSuggestedFocus(focus)));await ui.run(s=>s.setDurationInSeconds(2717));
+  const draft=api.readSuggestedFocus(ui.state().notes);assert.equal(draft.seconds,2717);assert.equal(draft.instruction,focus.instruction);
+  await ui.run(s=>s.startTimer(2717));const query=ui.calls.find(c=>c[0]==='start')[1];assert.equal(query.targetDurationSeconds,2717);assert.equal(api.readSuggestedFocus(query.notes).seconds,2717);
+ }finally{await ui.cleanup();}
 });

@@ -1,3 +1,12 @@
+import { focusAreaTitle, generalArea } from "../../utils/focusAreas";
+import FreeFocusCard from "../../components/FreeFocusCard";
+import GuidedFocusCard from "../../components/GuidedFocusCard";
+import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
+import LevelTierSheet from "../../components/LevelTierSheet";
+import DailyGoalSheet from "../../components/DailyGoalSheet";
+import GuidedPreferenceSheet from "../../components/GuidedPreferenceSheet";
+import { useGuidedPreference } from "../../hooks/useGuidedPreference";
+import { preferenceForFocusArea } from "../../utils/focusPreference";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
 import { questLists } from "../../utils/questLists";
@@ -5,11 +14,10 @@ import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
-import { validSessionSeconds, durationLabel as sessionDurationLabel } from "../../utils/sessionSetup";
-import GoalRing from "../../components/GoalRing";
+import { validSessionSeconds } from "../../utils/sessionSetup";
 import CharacterMark from "../../components/CharacterMark";
 import ContentReveal from "../../components/ContentReveal";
-import { creditedDailySeconds, hasExactDailyCredit } from "../../utils/progressionAccounting";
+import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -21,7 +29,7 @@ import QuestSheet from "../../components/QuestSheet";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { ScrollView, useWindowDimensions, StyleSheet, View } from "react-native";
+import { useWindowDimensions, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -35,7 +43,7 @@ import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { width, height, fontScale } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -49,10 +57,17 @@ export default function HomeScreen() {
 
   const [lastFree, setLastFree] = useState<{ owner: string; session: QuickStartSession | null } | null>(null);
   const [quickStarting, setQuickStarting] = useState(false);
+  const [areaChoice, setAreaChoice] = useState<{ owner: string; id: number | null } | null>(null);
+  const [durationChoice, setDurationChoice] = useState<{ owner: string; seconds: number } | null>(null);
   const [attempt, setAttempt] = useState<{ owner: string; seconds: number; areaId: number | null; title: string } | null>(null);
   const [quickError, setQuickError] = useState(false);
   const quickLock = useRef(false);
   const owner = profile?.id ?? "";
+  const guided = useGuidedPreference(owner);
+  const [guidedSettings, setGuidedSettings] = useState(false);
+  const [goalSettings, setGoalSettings] = useState(false);
+  const [tiersOpen, setTiersOpen] = useState(false);
+  const useGuidance = guided.ready && guided.value.enabled;
   useEffect(() => {
     let cancelled = false;
     if (owner) void getLastFreeSession(owner).then(session => {
@@ -63,10 +78,10 @@ export default function HomeScreen() {
   const candidate = lastFree?.owner === owner ? lastFree.session : null;
   const previous = candidate && candidate.task_id == null && candidate.duration_seconds >= 300 && validSessionSeconds(candidate.duration_seconds) ? candidate : null;
   const rememberedSeconds = previous?.duration_seconds ?? 1800;
-  const general = subjects.find(area => area.title.trim().toLowerCase() === "general");
-  const quickArea = subjects.find(area => area.id === previous?.subject_id) ?? general;
+  const general = generalArea(subjects);
+  const quickArea = guided.value.areaId !== undefined ? subjects.find(area => area.id === guided.value.areaId) ?? general : areaChoice?.owner === owner ? subjects.find(area => area.id === areaChoice.id) ?? general : subjects.find(area => area.id === previous?.subject_id) ?? general;
   const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
-  const quickSeconds = retainedAttempt?.seconds ?? rememberedSeconds;
+  const quickSeconds = retainedAttempt?.seconds ?? (durationChoice?.owner === owner ? durationChoice.seconds : rememberedSeconds);
   const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
   const quickTitle = retainedAttempt?.title ?? quickArea?.title ?? "General";
   const activeSubject = subjects.find(area => area.id === timer.targetAttributeId);
@@ -74,7 +89,6 @@ export default function HomeScreen() {
   const blocked = !!(timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !sessionSummary));
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
-  const [exactCredit, setExactCredit] = useState(false);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [goalCompleted, setGoalCompleted] = useState(false);
@@ -84,12 +98,6 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
-  // Content paints behind the floating dock; only scroll padding reserves
-  // clearance for the final row. Size the hero against the unobstructed space.
-  const availableHeight = Math.max(280, (viewportHeight || height - insets.top) - dockHeight - 8);
-  const goalSize = Math.round(Math.max(144, Math.min(
-    (width - 40) * 0.60, availableHeight * 0.29, fontScale > 1.5 ? 160 : 232,
-  )));
   const loadData = useMemo(() => singleFlight(async () => {
     setRefreshing(true);
     try {
@@ -97,7 +105,6 @@ export default function HomeScreen() {
       if (streak !== undefined) setFocusStreak(streak);
       setTodayGoal(progress?.goal_minutes ?? null);
       setCompletedSeconds(progress ? creditedDailySeconds(progress) : 0);
-      setExactCredit(progress ? hasExactDailyCredit(progress) : false);
       setGoalCompleted(progress?.goal_completed ?? false);
       setLoadError(profileOK === false || streak === undefined);
     } catch {
@@ -123,8 +130,8 @@ export default function HomeScreen() {
     [tasks],
   );
 
-  const firstName = profile?.username?.trim().split(/\s+/)[0] || "Hero";
-  const greeting = homeWelcome(hour < 5 ? 18 : hour, firstName).split(",")[0];
+  const displayName = profile?.username?.trim() || "Hero";
+  const greeting = homeWelcome(hour < 5 ? 18 : hour, displayName).split(",")[0];
   const isGoalComplete = goalCompleted || remainingSeconds === 0;
   const streakDays = Math.max(0, focusStreak ?? 0);
 
@@ -140,6 +147,7 @@ export default function HomeScreen() {
   const openQuestSession = (task: Task) => {
     // Existing sessions and unresolved completion/restoration always win.
     if (!hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !sessionSummary)) {
+      timer.setNotes("");
       setLinkedTaskId(task.id);
       setDurationInMinutes(task.target_minutes || 30);
       setTargetAttributeId(task.subject_id ?? null);
@@ -147,21 +155,17 @@ export default function HomeScreen() {
     openSession();
   };
 
-  const changeSession = () => {
-    setQuickError(false);
-    setAttempt(null);
-    if (!hasOpenSession && !blocked && !quickLock.current) {
-      setLinkedTaskId(null);
-      setTargetAttributeId(quickAreaId);
-      timer.setActivityType("other");
-      timer.setNotes("");
-      timer.setDurationInSeconds(quickSeconds);
-    }
-    openSession();
+  const changeArea = async (id: number | null) => {
+    if (hasOpenSession || blocked || quickLock.current || areasLoading || guided.busy) return;
+    if (id !== null && !subjects.some(area => area.id === id)) return;
+    quickLock.current = true;
+    try {
+      if (await guided.save(preferenceForFocusArea(guided.value, id, subjects.find(area => area.id === id)?.title ?? "Everyday focus"))) { setAreaChoice({ owner, id }); setQuickError(false); setAttempt(null); }
+    } finally { quickLock.current = false; }
   };
   const startFreeSession = async () => {
     if (hasOpenSession) { openSession(); return; }
-    if (quickLock.current || blocked || areasLoading) return;
+    if (quickLock.current || blocked || areasLoading || guided.busy) return;
     quickLock.current = true;
     setAttempt({ owner, seconds: quickSeconds, areaId: quickAreaId, title: quickTitle });
     setQuickStarting(true);
@@ -176,63 +180,62 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
-      <ScrollView testID="home-viewport" style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
+      <TourScrollView testID="home-viewport" tourRoute="/" tourBottomInset={dockHeight} style={styles.viewport} scrollEnabled={contentHeight > viewportHeight + 1}
         showsVerticalScrollIndicator={false}
         onLayout={(event) => setViewportHeight(event.nativeEvent.layout.height)}
         onContentSizeChange={(_, nextHeight) => setContentHeight(nextHeight)}
-        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
+        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 12 }]}>
         <ContentReveal>
-        <View testID="home-layout" style={[styles.layout, { minHeight: Math.max(0, viewportHeight - dockHeight - 28) }]}>
-          <View style={styles.headerBlock}>
+        <View testID="home-layout" style={styles.layout}>
+          <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
                 <Text style={styles.greeting}>{greeting}</Text>
-                <Text style={styles.name} numberOfLines={1}>{firstName}</Text>
+                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
               </View>
-              <View style={styles.avatarFrame}><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></View>
+              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
             </View>
             <View style={styles.identityMeta}>
               <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
               <View style={styles.metaDivider} />
-              <Text style={styles.metaText}>Level {level}</Text>
+              <TouchableOpacity style={styles.levelButton} hitSlop={10} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Text style={[styles.metaText, { color: colors.accent }]}>Level {level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></TouchableOpacity>
             </View>
           </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
             <Text style={styles.retryText}>{refreshing ? "Refreshing…" : "Couldn't refresh Home. Tap to retry."}</Text>
           </TouchableOpacity>}
-          <View style={styles.goalSection}>
-            <GoalRing seconds={safeCompletedSeconds} targetMinutes={dailyGoalMinutes} size={goalSize}
-              label={exactCredit ? `${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min` : `${safeCompletedSeconds / 60} / ${dailyGoalMinutes} min`} />
-            <Text style={styles.goalHint}>{isGoalComplete ? "Goal reached. You made time for what matters." : safeCompletedSeconds > 0
-              ? `You showed up. ${durationLabel(remainingSeconds)} to today's goal.` : "One small session is a good place to start."}</Text>
-          <View style={styles.focusCard} testID="home-quick-start">
-            <View style={styles.focusTopRow}>
-              <View style={styles.focusInfo}>
-                <Text style={styles.focusHeading}>{hasOpenSession ? (timer.isRunning ? "In focus" : "Paused") : "Ready to focus"}</Text>
-                <View style={styles.focusChoice}>
-                  <View style={[styles.focusDot, { backgroundColor: lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code) }]} />
-                  <Text style={styles.focusValue}>{hasOpenSession ? sessionDurationLabel(timer.timeLeft) : sessionDurationLabel(quickSeconds)}</Text>
-                  <Text style={styles.focusArea}>· {hasOpenSession ? activeArea : quickTitle}</Text>
-                </View>
-              </View>
-              {!hasOpenSession && <TouchableOpacity testID="home-change-focus" style={styles.changeButton} onPress={changeSession}
-                disabled={quickStarting || !!timer.actionBusy} accessibilityRole="button" accessibilityLabel={blocked ? "Check session status" : "Change duration or area"}>
-                <Ionicons name={blocked ? "alert-circle-outline" : "options-outline"} size={17} color={colors.accent} />
-                <Text style={styles.link}>{blocked ? "Check" : "Change"}</Text>
-              </TouchableOpacity>}
+          <View style={styles.guidedGoal}>
+            <View testID="home-compact-goal" style={styles.guidedGoal}>
+              <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.guidedGoalHeading} accessibilityRole="button" accessibilityLabel={`Daily focus goal. ${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes. Change your goal`}>
+                <Text style={[styles.focusHeading, styles.goalLabel]}>Today’s focus</Text><View style={styles.goalValue}><Text style={styles.goalValueText}>{`${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min`}</Text><Ionicons name="options-outline" size={18} color={colors.accent} /></View>
+              </TouchableOpacity>
+              <View style={styles.guidedTrack} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
+              {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
             </View>
-            <TouchableOpacity style={styles.primaryButton} onPress={() => void startFreeSession()}
-              testID="home-start-focus" disabled={quickStarting || (!hasOpenSession && (blocked || !!areasLoading))}
-              accessibilityRole="button" accessibilityState={{ disabled: quickStarting || (!hasOpenSession && (blocked || !!areasLoading)), busy: quickStarting }}
-              accessibilityLabel={hasOpenSession ? "Continue session" : `Start ${sessionDurationLabel(quickSeconds)}, ${quickTitle}`}>
-              <Ionicons name="play-outline" size={22} color="#171827" />
-              <Text style={styles.primaryButtonText}>{hasOpenSession ? "Continue session" : quickStarting ? "Starting…" : quickError ? "Retry start" : timer.isRestoring ? "Restoring session…" : "Start focus"}</Text>
-            </TouchableOpacity>
-            {quickError && <Text accessibilityRole="alert" style={styles.quickError}>{timer.actionError ?? "Couldn't start. Please try again."}</Text>}
-          </View>
-          </View>
-          <View style={styles.questCard} testID="home-quest-card">
+          </View></View></TourAnchor>
+          <TourAnchor id="home-focus"><View style={styles.focusContainer}>{!guided.ready ? <View style={styles.focusCard} testID="home-preference-loading">
+            <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
+            {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
+            {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
+          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
+            onStarted={openSession} selectedSeconds={quickSeconds}
+            onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }} /> : <FreeFocusCard key={owner}
+            seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
+            area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
+            tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
+            active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting}
+            disabled={blocked || !!areasLoading || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || guided.busy} restoring={!!timer.isRestoring}
+            failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
+            onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
+          />}</View></TourAnchor>
+          <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">
+            <View style={styles.invitationMain}>
+              <Text style={styles.link}>Find your next step</Text><Text style={styles.questMeta}>{guided.value.enabled ? "Change your focus suggestions" : "Choose a focus direction"}</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.accent} />
+          </TouchableOpacity></TourAnchor>
+          <TourAnchor id="home-quests"><View style={styles.questCard} testID="home-quest-card">
             <View style={styles.questHeading}>
               <View style={styles.questHeadingText}>
                 <Text style={styles.sectionTitle} accessibilityRole="header">{"Today's quests"}</Text>
@@ -244,19 +247,19 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={15} color={colors.accent} />
               </TouchableOpacity>
             </View>
-            {activeTasks.slice(0, 3).map((task, index) => {
+            {activeTasks.slice(0, 2).map((task, index) => {
               const area = subjects.find(subject => subject.id === task.subject_id);
               const tint = lifeAreaColor(task.subject_id, area?.color_code);
               return <TouchableOpacity key={task.id} style={[styles.questRow, index > 0 && styles.questDivider]}
                 testID={`home-quest-${task.id}`} accessibilityRole="button"
-                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${area?.title ?? "General"}. ${hasOpenSession ? "Continue current session" : "Open session setup"}`}
+                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${focusAreaTitle(area?.title)}. ${hasOpenSession ? "Continue current session" : "Open session setup"}`}
                 onPress={() => openQuestSession(task)}>
                 <View style={[styles.questIcon, { backgroundColor: `${tint}18` }]}>
                   <Ionicons name="flag-outline" size={20} color={tint} />
                 </View>
                 <View style={styles.questDetail}>
                   <Text style={styles.questTitle} numberOfLines={2}>{task.title}</Text>
-                  <Text style={styles.questMeta} numberOfLines={1}>{task.target_minutes || 30} min · {area?.title ?? "General"}</Text>
+                  <Text style={styles.questMeta} numberOfLines={1}>{task.target_minutes || 30} min · {focusAreaTitle(area?.title)}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={17} color={colors.secondary} />
               </TouchableOpacity>;
@@ -267,57 +270,63 @@ export default function HomeScreen() {
 Your quests will appear here.</Text>
               <Ionicons name="chevron-forward" size={17} color={colors.secondary} />
             </TouchableOpacity>}
-          </View>
+          </View></TourAnchor>
         </View>
         </ContentReveal>
-      </ScrollView>
+      </TourScrollView>
+      <GuidedPreferenceSheet owner={owner} visible={guidedSettings} onClose={() => setGuidedSettings(false)} />
+      <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
+      <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
       <QuestSheet visible={questsVisible} onClose={() => setQuestsVisible(false)} />
     </SafeAreaView>
   );
 }
 const styles = StyleSheet.create({
+  guidedGoalSection: { flexGrow: 0, paddingTop: 0, gap: 12 },
+  guidedGoal: { width: "100%", gap: 8 },
+  guidedGoalHeading: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12 },
+  goalLabel: { flex: 1 }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 }, goalValueText: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  guidedTrack: { height: 4, borderRadius: 3, backgroundColor: colors.line, overflow: "hidden" },
+  guidedFill: { height: 4, borderRadius: 3, backgroundColor: colors.accent },
+  invitation: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 8 },
+  invitationMain: { flex: 1, gap: 3, minHeight: 40, justifyContent: "center" },
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16 },
-  layout: { flexGrow: 1 },
+  layout: { gap: 12 },
+  focusContainer: { width: "100%", alignSelf: "stretch" },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
-  headerBlock: { gap: 12, paddingTop: 4 },
+  headerBlock: { gap: 8, paddingTop: 4 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "400" },
   name: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 },
-  avatarFrame: { width: 60, height: 60, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  avatarFrame: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  levelButton: { minHeight: 24, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },
   identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 },
   identityStat: { flexDirection: "row", alignItems: "center", gap: 5 },
   metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
-  goalSection: { flexGrow: 1, flexShrink: 0, justifyContent: "center", alignItems: "center", paddingTop: 24, paddingBottom: 8, gap: 12 },
+  goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
-  focusTopRow: { flexDirection: "row", alignItems: "center", gap: 12 },
-  focusInfo: { flex: 1, minWidth: 0, gap: 4 },
+  focusCard: { width: "100%", borderRadius: 22, backgroundColor: colors.surfaceRaised, padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  focusChoice: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 6 },
-  focusDot: { width: 7, height: 7, borderRadius: 4 },
-  focusValue: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  focusArea: { color: colors.secondary, fontSize: 16, lineHeight: 22, flexShrink: 1 },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  quickError: { color: colors.danger, fontSize: 14, lineHeight: 20 },
-  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
-  primaryButtonText: { color: "#171827", fontSize: 16, fontWeight: "500" },
-  questCard: { marginTop: 12, borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 4, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
-  questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 8 },
-  questHeadingText: { flex: 1, minWidth: 0, gap: 4 },
-  sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", letterSpacing: -0.3 },
+  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: colors.primary, width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "500", flexShrink: 1, textAlign: "center" },
+  questCard: { borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 4 },
+  questHeadingText: { flex: 1, minWidth: 0, gap: 2 },
+  sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500", letterSpacing: -0.3 },
   questCount: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44, paddingLeft: 4 },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
-  questRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12 },
-  questDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(225,235,255,0.08)" },
-  questIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(175,169,236,0.10)", alignItems: "center", justifyContent: "center" },
+  questRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
+  questDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  questIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   questDetail: { flex: 1, minWidth: 0, gap: 3 },
   questTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
   questMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 12 },
+  emptyQuest: { flexDirection: "row", gap: 12, alignItems: "center", paddingVertical: 8 },
   emptyText: { flex: 1, color: colors.secondary, fontSize: 14, lineHeight: 21 },
   retry: { marginTop: 12, paddingVertical: 10 },
   retryText: { color: colors.danger, fontSize: 13 },

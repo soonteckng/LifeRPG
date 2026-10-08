@@ -1,3 +1,5 @@
+import { requiredCharacterXP } from "../utils/levelTiers";
+import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
 import { Text } from "./AppText";
 import { useUser } from "../context/UserContext";
@@ -39,7 +41,7 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   const { hapticsEnabled, profile } = useUser();
   const level = newLevel ?? profile?.level;
   const xp = currentXP ?? profile?.current_xp;
-  const threshold = requiredXP ?? (level != null ? Math.floor(100 * Math.pow(level, 1.5)) : undefined);
+  const threshold = requiredXP ?? (level != null ? requiredCharacterXP(level) : undefined);
   useEffect(() => {
     if (visible && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, hapticsEnabled]);
@@ -50,12 +52,13 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
     <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} />
       <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, goldEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} />
+      <SaveSuggestedQuest inSheet />
     </BottomSheetScrollView>
   </AppSheet>;
 }
 const s = StyleSheet.create({
   title: { color: colors.text, fontSize: 24, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 16 },
   body: { paddingHorizontal: 20, paddingBottom: 16, gap: 20 },
-  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#E5E4FF", marginTop: 8, marginHorizontal: 20, marginBottom: 12 },
+  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.primary, marginTop: 8, marginHorizontal: 20, marginBottom: 12 },
   doneText: { color: colors.background, fontSize: 18, fontWeight: "500" },
 });

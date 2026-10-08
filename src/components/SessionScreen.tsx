@@ -1,3 +1,6 @@
+import { focusAreaTitle, generalArea } from "../utils/focusAreas";
+import { readSuggestedFocus } from "../constants/guidedQuests";
+import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
@@ -16,15 +19,19 @@ import { lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
 import { colors } from "../constants/theme";
-import DurationPicker, { DurationEditor } from "./DurationPicker";
+import DurationPicker from "./DurationPicker";
+import FocusLengthControl from "./FocusLengthControl";
+import FocusDurationSheet from "./FocusDurationSheet";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
+import { afterTransition } from "../utils/afterTransition";
+import { navigationTiming } from "../utils/navigationMotion";
 
 type Picker = "duration" | "quest" | "area" | null;
-const PRESETS = [15, 30, 45, 60];
+const ignoreTimerEdit = () => {};
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
@@ -52,10 +59,6 @@ export default function SessionScreen() {
   const [picker, setPicker] = useState<Picker>(null);
   const [durationRevision, setDurationRevision] = useState(0);
   const durationEpoch = useRef(0);
-  const wheelBusyRef = useRef(false);
-  const durationValidRef = useRef(true);
-  const [wheelBusy, setWheelBusy] = useState(false);
-  const [durationValid, setDurationValid] = useState(true);
   const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -66,9 +69,9 @@ export default function SessionScreen() {
   const [exitReady, setExitReady] = useState(false);
   const [screenMotion] = useState(() => new Animated.Value(0));
   const [surfaceOpacity] = useState(() => new Animated.Value(1));
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (closing.current) return;
-    const animation = Animated.timing(screenMotion, { toValue: 1, duration: reducedMotion ? 0 : 280, useNativeDriver: true });
+    const animation = Animated.timing(screenMotion, { toValue: 1, ...navigationTiming(reducedMotion ? 0 : 240) });
     animation.start();
     return () => animation.stop();
   }, [screenMotion, reducedMotion]);
@@ -103,15 +106,15 @@ export default function SessionScreen() {
   };
 
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
-  const general = subjects.find((item) => item.title === "General");
+  const general = generalArea(subjects);
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
   const locked = timer.hasOpenSession || timer.isCompleted || timer.actionBusy || timer.isRestoring;
   const isQuest = timer.linkedTaskId !== null;
+  const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && !task;
-  const minutes = timer.duration / 60;
   const phase = timer.isCompleted ? "completed" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => afterTransition(() => { void refresh(); }), [refresh]);
   useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
@@ -156,8 +159,8 @@ export default function SessionScreen() {
     traceSession("native stack close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
     if (navigation.canGoBack()) {
       traceSession("controlled exit start", { reducedMotion });
-      Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0.82, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
-      Animated.timing(screenMotion, { toValue: 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
+      Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
+      Animated.timing(screenMotion, { toValue: -0.12, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
         traceSession("controlled exit end", { finished });
         if (finished) setExitReady(true);
         else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); }
@@ -169,9 +172,8 @@ export default function SessionScreen() {
   // eslint-disable-next-line react-hooks/refs
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_event, gesture) => {
-      const inWheel = phase === "setup" && !isQuest && gesture.y0 >= wheelBounds.current.top && gesture.y0 <= wheelBounds.current.bottom;
       return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
-        && !wheelBusyRef.current && (gesture.y0 < wheelBounds.current.top || detailsOffset.current <= 0) && !inWheel
+ && (gesture.y0 < wheelBounds.current.top || detailsOffset.current <= 0)
         && gesture.dy > 12 && gesture.dy > Math.abs(gesture.dx) * 1.5;
     },
     onPanResponderGrant: () => { screenMotion.stopAnimation(); surfaceOpacity.stopAnimation(); },
@@ -195,7 +197,7 @@ export default function SessionScreen() {
         Animated.timing(screenMotion, { toValue: 1, duration: reducedMotion ? 0 : 180, useNativeDriver: true }).start();
       }
     },
-  }), [phase, isQuest, picker, confirmEnd, keyboardVisible, rewardsVisible, reducedMotion, height, screenMotion, surfaceOpacity, minimise]);
+  }), [picker, confirmEnd, keyboardVisible, rewardsVisible, reducedMotion, height, screenMotion, surfaceOpacity, minimise]);
 
   useEffect(() => {
     traceSession("Session React mount");
@@ -226,8 +228,6 @@ export default function SessionScreen() {
     if (!validSessionSeconds(seconds)) return;
     durationEpoch.current += 1;
     setDurationRevision(durationEpoch.current);
-    wheelBusyRef.current = false; durationValidRef.current = true;
-    setWheelBusy(false); setDurationValid(true);
     if (seconds !== timer.duration) timer.setDurationInSeconds(seconds);
   };
   const selectMinutes = (value: number) => {
@@ -235,7 +235,7 @@ export default function SessionScreen() {
     applyDuration(value * 60);
   };
   const start = () => {
-    if (locked || missingQuest || timer.restoreError || picker || wheelBusyRef.current || !durationValidRef.current) return;
+    if (locked || missingQuest || timer.restoreError || picker || !validSessionSeconds(timer.duration)) return;
     Keyboard.dismiss();
     void timer.startTimer(timer.duration, task?.title);
   };
@@ -255,21 +255,21 @@ export default function SessionScreen() {
     else if (timer.hasOpenSession) void timer.retryAction();
     else start();
   };
-  const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : "Free session");
+  const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : suggestion?.title ?? "Free session");
   const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
-  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || wheelBusy || !durationValid || !!picker));
+  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
   const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
-      transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [0, 1], outputRange: [height, 0] }) : 0 }] }}>
+      transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "setup" ? isQuest ? "Quest session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ?? "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "setup" ? isQuest ? "Quest session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
@@ -277,16 +277,14 @@ export default function SessionScreen() {
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
             {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary && !hideCompletedSummary) && <ProgressRing size={ringSize}
               progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : "#25C9B8"} />}
+              color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && !hideCompletedSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary && !hideCompletedSummary ? "no-hide-descendants" : "auto"}>
-            <DurationPicker seconds={displayedSeconds} interactive={phase === "setup" && !isQuest && !locked}
+            <DurationPicker seconds={displayedSeconds} interactive={false}
               compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`}
               revision={durationRevision}
-              onCommit={(seconds) => { if (durationEpoch.current === durationRevision && !locked) timer.setDurationInSeconds(seconds); }}
-              onBusy={(busy) => { if (durationEpoch.current === durationRevision) { wheelBusyRef.current = busy; setWheelBusy(busy); } }}
-              onValidity={(valid) => { if (durationEpoch.current === durationRevision) { durationValidRef.current = valid; setDurationValid(valid); } }}
-              onEdit={() => { if (!wheelBusyRef.current) setPicker("duration"); }} />
+              onCommit={ignoreTimerEdit} onBusy={ignoreTimerEdit} onValidity={ignoreTimerEdit} onEdit={ignoreTimerEdit}
+              />
           </View>
           {phase === "completed" && sessionSummary && !hideCompletedSummary && <View style={styles.completedHero}>
             <CompletionHero seconds={sessionSummary.durationSeconds} title={title} levelUp={!!timer.completedLevelUp?.leveledUp} />
@@ -298,31 +296,27 @@ export default function SessionScreen() {
         </View>
         <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
-          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{timer.isRunning ? isQuest ? title : `${area?.title ?? "General"} · Free session` : `${title} · Paused`}</Text>}
+          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{timer.isRunning ? isQuest || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
+            {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={styles.secondary}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setup}>
               {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
                 <Text style={styles.secondary}>{missingQuest ? "Your quest is still linked. Reload its details before starting, or switch to a free session." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
               </View>}
+              {!isQuest && <FocusLengthControl seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
               {!isQuest && <>
-                <View style={styles.presets}>{PRESETS.map((value) => <TouchableOpacity key={value} disabled={locked}
-                  style={[styles.preset, fontScale > 1.3 && styles.presetLarge]} onPress={() => selectMinutes(value)}
-                  accessibilityRole="button" accessibilityLabel={`${value} minutes`} accessibilityState={{ selected: minutes === value }}>
-                  <View pointerEvents="none" style={[styles.presetSurface, minutes === value && styles.presetSelected]} />
-                  <Text style={[styles.presetText, minutes === value && styles.presetTextSelected]}>{value}</Text>
-                </TouchableOpacity>)}</View>
                 <View style={styles.areaSection}>
-                  <Text style={styles.secondary}>Life area</Text>
+                  <Text style={styles.secondary}>Focus area</Text>
                   <View style={styles.areaChips}>
                     {subjects.slice(0, 6).map(item => <TouchableOpacity key={item.id} disabled={locked}
                       onPress={() => timer.setTargetAttributeId(item.id)} accessibilityRole="button"
-                      accessibilityLabel={`Select ${item.title}`} accessibilityState={{ selected: item.id === timer.targetAttributeId }}
+                      accessibilityLabel={`Select ${focusAreaTitle(item.title)}`} accessibilityState={{ selected: item.id === timer.targetAttributeId }}
                       style={styles.areaChip}>
                       <View pointerEvents="none" style={[styles.chipSurface, item.id === timer.targetAttributeId && { backgroundColor: lifeAreaColor(item.id, item.color_code) + "1A" }]} />
-                      <Text style={[styles.chipText, item.id === timer.targetAttributeId && { color: lifeAreaColor(item.id, item.color_code) }]}>{item.title}</Text>
+                      <Text style={[styles.chipText, item.id === timer.targetAttributeId && { color: lifeAreaColor(item.id, item.color_code) }]}>{focusAreaTitle(item.title)}</Text>
                     </TouchableOpacity>)}
-                    {subjects.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose life area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><View pointerEvents="none" style={styles.chipSurface} /><Text style={styles.chipText}>See all areas</Text></TouchableOpacity>}
+                    {subjects.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose focus area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><View pointerEvents="none" style={styles.chipSurface} /><Text style={styles.chipText}>See all areas</Text></TouchableOpacity>}
                   </View>
                 </View>
               </>}
@@ -334,7 +328,7 @@ export default function SessionScreen() {
                   </View>
                   <View style={styles.selectedQuestContent}>
                     <Text style={styles.selectedQuestTitle}>{title}</Text>
-                    <Text style={[styles.selectedQuestArea, {color: lifeAreaColor(timer.targetAttributeId, area?.color_code)}]}>{area?.title ?? "General"}</Text>
+                    <Text style={[styles.selectedQuestArea, {color: lifeAreaColor(timer.targetAttributeId, area?.color_code)}]}>{focusAreaTitle(area?.title)}</Text>
                   </View>
                   <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
                 </TouchableOpacity>
@@ -348,6 +342,7 @@ export default function SessionScreen() {
             </View>}
 
             {timer.isCompleted && timer.sessionSummary && !hideCompletedSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
+              <SaveSuggestedQuest />
               {timer.completedLevelUp?.leveledUp && <Text style={styles.levelUp} accessibilityLiveRegion="polite">Level up · Level {timer.completedLevelUp.newLevel}</Text>}
             </>}
           </Animated.View>
@@ -358,7 +353,7 @@ export default function SessionScreen() {
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
           {timer.isCompleted ? !hideCompletedSummary && <>
-            <TouchableOpacity style={[styles.primary, { backgroundColor: "#E5E4FF" }]} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.primary, { backgroundColor: colors.primary }]} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
             {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
           </> : <>
             <View style={styles.actionRow}>
@@ -374,10 +369,10 @@ export default function SessionScreen() {
         </Animated.View>
       </KeyboardAvoidingView>
       <AppSheet visible={!sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
-        header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Life area"}</Text>}>
+        header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Focus area"}</Text>}>
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
-          {picker === "area" && <SheetChoice label="General" onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
-          {picker === "area" && subjects.filter((item) => item.title !== "General").map((item) => <SheetChoice key={item.id} label={item.title} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
+          {picker === "area" && <SheetChoice label={focusAreaTitle()} onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
+          {picker === "area" && subjects.filter((item) => item.id !== general?.id).map((item) => <SheetChoice key={item.id} label={focusAreaTitle(item.title)} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
           {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => {
             const questArea = subjects.find(subject => subject.id === item.subject_id);
             const tint = lifeAreaColor(item.subject_id, questArea?.color_code);
@@ -391,7 +386,7 @@ export default function SessionScreen() {
               <View style={[styles.questPickerIcon, {backgroundColor: `${tint}18`}]}><Ionicons name="flag-outline" size={21} color={tint} /></View>
               <View style={styles.selectedQuestContent}>
                 <Text style={styles.questPickerTitle}>{item.title}</Text>
-                <Text style={styles.questPickerMeta}>{item.target_minutes || 30} min · {questArea?.title ?? "General"}</Text>
+                <Text style={styles.questPickerMeta}>{item.target_minutes || 30} min · {focusAreaTitle(questArea?.title)}</Text>
               </View>
               <Ionicons name={selected ? "checkmark-circle" : "chevron-forward"} size={20} color={selected ? colors.accent : colors.secondary} />
             </SheetButton>;
@@ -424,7 +419,7 @@ export default function SessionScreen() {
         isLevelUp={!!timer.completedLevelUp?.leveledUp} newLevel={timer.completedLevelUp?.newLevel}
         onClose={() => { completionDismissRequested.current = true; setCompletionClosing(true); timer.clearCompletionModal(); acknowledgeSummary(); }}
         onDismiss={() => { if (completionDismissRequested.current) minimise("completion"); }} />
-      <DurationEditor visible={!sessionSummary && picker === "duration"} seconds={timer.duration} onCancel={() => setPicker(null)} onConfirm={(seconds) => { applyDuration(seconds); setPicker(null); }} />
+      <FocusDurationSheet visible={!sessionSummary && picker === "duration"} seconds={timer.duration} disabled={locked} onClose={() => setPicker(null)} onSave={applyDuration} />
       {confirmEnd && !sessionSummary && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
         onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndSnapshot({duration:timer.duration, timeLeft:timer.timeLeft, isRunning:timer.isRunning, linkedTaskId:timer.linkedTaskId, targetAttributeId:timer.targetAttributeId, activityType:timer.activityType}); setEndRequested(true); void liveTimer.resetTimer(); }} />}
     </SafeAreaView>
@@ -440,6 +435,7 @@ function SheetChoice({ label, detail, onPress }: { label: string; detail?: strin
 }
 
 const styles = StyleSheet.create({
+  suggestionInstruction: { padding: 14, borderRadius: 16, backgroundColor: colors.surface, marginTop: 8, marginBottom: 12 },
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },
@@ -476,17 +472,17 @@ const styles = StyleSheet.create({
   presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
   preset: { flex: 1, maxWidth: 76, minWidth: 52, minHeight: 48, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 14 },
   presetLarge: { minWidth: 80, maxWidth: 110, minHeight: 58 },
-  presetSelected: { backgroundColor: "#D9DEFF", borderColor: "#E5E8FF", borderWidth: 1 },
+  presetSelected: { backgroundColor: colors.primary, borderColor: colors.border, borderWidth: 1 },
   presetText: { color: colors.neutral, fontSize: 17, lineHeight: 23, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  presetTextSelected: { color: "#171827", fontWeight: "600" },
+  presetTextSelected: { color: colors.primaryText, fontWeight: "600" },
   questPickerBody: { gap: 10 },
-  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 14, borderRadius: 18, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  questPickerSelected: { borderColor: colors.accent, backgroundColor: "#20283D" },
+  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 14, borderRadius: 18, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  questPickerSelected: { borderColor: colors.accent, backgroundColor: colors.surfaceRaised },
   questPickerIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
   questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
   questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   questPickerEmpty: { alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 28 },
-  selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   selectedQuestIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },
   selectedQuestTitle: { color: colors.text, fontSize: 19, lineHeight: 25, fontWeight: "500", letterSpacing: -0.3 },
@@ -494,7 +490,7 @@ const styles = StyleSheet.create({
   questRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, minHeight: 48, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   actions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 4 },
-  primary: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.18)", minHeight: 54, padding: 14, borderRadius: 16, backgroundColor: "#E5E4FF", flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
+  primary: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.18)", minHeight: 54, padding: 14, borderRadius: 16, backgroundColor: colors.primary, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },
@@ -505,4 +501,3 @@ const styles = StyleSheet.create({
   pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },
 });
-

@@ -59,3 +59,4 @@ do $$ begin
 end $$;
 SQL
 echo 'Concurrent completion/retry checks passed.'
+bash "$(dirname "$0")/test-goal-concurrency.sh"

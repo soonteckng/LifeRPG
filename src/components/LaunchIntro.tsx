@@ -49,7 +49,7 @@ export default function LaunchIntro({ children }: { children: ReactNode }) {
 }
 const s = StyleSheet.create({
   screen: { ...StyleSheet.absoluteFill, zIndex: 100, backgroundColor: colors.background, alignItems: "center", justifyContent: "center", padding: 24 },
-  orbit: { width: 132, height: 132, borderRadius: 66, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(165,180,252,0.3)", alignItems: "center", justifyContent: "center" },
+  orbit: { width: 132, height: 132, borderRadius: 66, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   emblem: { width: 96, height: 96, borderRadius: 32, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center", transform: [{ rotate: "-8deg" }] },
   star: { color: colors.accent, fontSize: 58 },
   name: { color: colors.text, fontSize: 38, fontWeight: "500", letterSpacing: -1 },

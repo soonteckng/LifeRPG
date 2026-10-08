@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
+import { afterTransition } from "../utils/afterTransition";
 import {
   getCompletedSessions,
   getProgressSubjects,
@@ -10,15 +11,15 @@ import {
 } from "../services/progressService";
 import type { Subject } from "../services/taskService";
 
+type CharacterData = { userId: string; areas: Subject[]; sessions: ProgressSession[] };
+// Profile and its milestone collection share one account-scoped snapshot. Keep
+// only the last account, and refresh quietly after each route's entrance.
+let lastSnapshot: CharacterData | null = null;
 export function useCharacterData() {
   const { profile } = useUser();
   const { sessionSummary } = useTimer();
-  const [data, setData] = useState<{
-    userId: string;
-    areas: Subject[];
-    sessions: ProgressSession[];
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<CharacterData | null>(() => lastSnapshot?.userId === profile.id ? lastSnapshot : null);
+  const [loading, setLoading] = useState(() => lastSnapshot?.userId !== profile.id);
   const [error, setError] = useState(false);
   const generation = useRef(0);
   const focused = useRef(false);
@@ -32,7 +33,9 @@ export function useCharacterData() {
         getCompletedSessions("1970-01-01T00:00:00Z", new Date().toISOString()),
       ]);
       if (request === generation.current) {
-        setData({ userId: profile.id, areas, sessions });
+        const snapshot = { userId: profile.id, areas, sessions };
+        lastSnapshot = snapshot;
+        setData(snapshot);
         setError(false);
       }
     } catch {
@@ -44,8 +47,9 @@ export function useCharacterData() {
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
-      void refresh();
+      const cancelEntranceWork = afterTransition(() => { void refresh(); });
       return () => {
+        cancelEntranceWork();
         focused.current = false;
         generation.current++;
       };

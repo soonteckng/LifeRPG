@@ -1,6 +1,6 @@
 import { Text } from "../components/AppText";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Switch, View } from "react-native";
+import { AppState, Linking, Platform, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
 import AppSheet from "../components/AppSheet";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
@@ -14,10 +14,12 @@ import { enableNotifications, readNotificationPermission, type NotificationPermi
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { dateKey } from "../utils/progressAnalytics";
 import { getTodayProgress } from "../services/dailyProgressService";
+import { openAlarmSettings } from "../services/notificationPermissionService";
+import { afterTransition } from "../utils/afterTransition";
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { profile, soundEnabled, setSoundEnabled, hapticsEnabled, setHapticsEnabled, preferenceError } = useUser();
+  const { profile, hapticsEnabled, setHapticsEnabled, preferenceError } = useUser();
   const { user, signOut } = useAuth();
   const { hasOpenSession, isRestoring, restoreError, actionBusy } = useTimer();
   const [sheet, setSheet] = useState<"signout" | "notifications" | "goal" | null>(null);
@@ -54,7 +56,7 @@ export default function SettingsScreen() {
   }, []);
   useEffect(() => {
     let mounted = true;
-    void Promise.resolve().then(() => { if (mounted) { void loadGoal(); void refreshPermission(); } });
+    const cancelEntranceWork = afterTransition(() => { if (mounted) { void loadGoal(); void refreshPermission(); } });
     let localDay = dateKey(new Date(), profile.timezone);
     const tick = setInterval(() => {
       const next = dateKey(new Date(), profile.timezone);
@@ -64,7 +66,7 @@ export default function SettingsScreen() {
       if (state === "active") { void loadGoal(); void refreshPermission(); }
     });
     const cancelReads = () => { goalGeneration.current++; permissionGeneration.current++; };
-    return () => { mounted = false; clearInterval(tick); listener.remove(); cancelReads(); };
+    return () => { mounted = false; cancelEntranceWork(); clearInterval(tick); listener.remove(); cancelReads(); };
   }, [loadGoal, refreshPermission, profile.timezone]);
   const sessionBlocksLogout = hasOpenSession || isRestoring || restoreError || actionBusy;
   const logout = async () => {
@@ -120,32 +122,27 @@ export default function SettingsScreen() {
     ? `Today: ${goalData.today_goal_minutes} min${goalData.pending ? ` · ${goalData.next_goal_minutes} min from ${goalData.next_effective_date}` : ""}`
     : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
   return (
-    <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition>
+    <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition expandFromIcon>
       <View style={sectionStyle}>
         <Text style={p.label}>Account</Text>
-        <PersonalRow icon="person-circle-outline" title={profile.username} subtitle={user?.email ?? "Signed in"} />
+      <PersonalRow icon="person-circle-outline" title={profile.username} subtitle={user?.email ?? "Signed in"} />
         <View style={p.divider} />
-        <PersonalRow icon="globe-outline" title="Progress time zone" subtitle={profile.timezone} />
-        <Text style={p.caption}>Your day resets at midnight in this time zone. It keeps daily goals, streaks and session history on the same clock.</Text>
       </View>
       <View style={sectionStyle}>
         <Text style={p.label}>Focus & feedback</Text>
         <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
         {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
-        <PersonalRow icon="volume-medium-outline" title="Completion sound" subtitle="Sound for the session notification"
-          trailing={<Switch accessibilityLabel="Completion sound" value={soundEnabled} onValueChange={setSoundEnabled} trackColor={{ false: "#343B4E", true: colors.accentFill }} />} />
-        <View style={p.divider} />
         <PersonalRow icon="phone-portrait-outline" title="Haptic feedback" subtitle="Gentle feedback when you interact"
-          trailing={<Switch accessibilityLabel="Haptic feedback" value={hapticsEnabled} onValueChange={setHapticsEnabled} trackColor={{ false: "#343B4E", true: colors.accentFill }} />} />
+          trailing={<Switch accessibilityLabel="Haptic feedback" value={hapticsEnabled} onValueChange={setHapticsEnabled} trackColor={{ false: colors.selection, true: colors.accentFill }} />} />
         {preferenceError && <Text style={p.error}>{preferenceError}</Text>}
-        <Text style={p.caption}>These preferences are saved for your account on this device. Sound changes apply when the next session alert is scheduled. Phone notification settings can override sound.</Text>
+        <Text style={p.caption}>Haptic preferences are saved for your account on this device. Phone notification settings control alert sounds.</Text>
       </View>
       <View style={sectionStyle}>
         <Text style={p.label}>Help & notifications</Text>
         <PersonalRow icon="notifications-outline" title="Notifications" subtitle={permission?.label ?? "Checking permission..."} onPress={() => open("notifications")} />
         <View style={p.divider} />
-        <PersonalRow icon="compass-outline" title="Replay the introduction" subtitle="Sessions, growth, goals and rewards" onPress={() => router.navigate("/tutorial")} />
+        <PersonalRow icon="information-circle-outline" title="How LifeRPG works" subtitle="Focus, growth, goals and consistency" onPress={() => router.navigate("./guide")} />
       </View>
 
       <View style={sectionStyle}>
@@ -155,6 +152,7 @@ export default function SettingsScreen() {
       </View>
       <Text style={p.caption}>LifeRPG · Your effort, reflected. Character attributes describe recorded practice and consistency.</Text>
       <AppSheet label={sheet === "signout" ? "Sign out" : sheet === "goal" ? "Daily focus goal" : "Notifications"}
+        motionMode="timed" compact
         visible={sheet !== null} guardDismiss={busy} onRequestClose={() => { if (!busy) setSheet(null); }}
         header={<View style={p.sheetHeader}><Text style={p.title}>{sheet === "signout" ? "Sign out of LifeRPG?" : sheet === "goal" ? "Daily focus goal" : "Session notifications"}</Text></View>}>
         <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={p.sheetBody}>
@@ -178,9 +176,15 @@ export default function SettingsScreen() {
               </>}
           </> : <>
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
+            {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
+              <Text style={p.body}>For background timer alerts, allow Notifications and Alarms & reminders in your phone’s special app access. These are separate permissions. Battery restrictions can delay alerts.</Text>
+              <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
+              <Text style={p.body}>{permission?.supported ? "Turn the Alarms & reminders switch on for LifeRPG. Then return here to check notification access." : "Check both switches for Expo Go in this preview. Test background alerts with an installed LifeRPG build; this preview cannot verify the alarm switch."}</Text>
+            </>}
             {permission?.supported && <Text style={p.body}>Phone permissions control whether session alerts can appear. Permission being allowed does not guarantee delivery; phone settings and battery restrictions can affect alerts.</Text>}
             {permission?.action && <PersonalButton title={busy ? "Please wait..." : permission.action === "enable" ? "Enable notifications" : permission.action === "settings" ? "Open phone settings" : "Retry permission check"}
               disabled={busy} onPress={() => void notificationAction()} />}
+            {!permission?.supported && <PersonalButton title="Notification settings" accessibilityLabel="Open phone notification settings" onPress={() => { void Linking.openSettings().catch(() => setError("Couldn’t open phone settings.")); }} />}
           </>}
           {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
         </BottomSheetScrollView>

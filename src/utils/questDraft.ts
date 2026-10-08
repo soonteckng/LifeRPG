@@ -1,3 +1,4 @@
+import { generalArea } from "./focusAreas";
 import type { CreateTaskParams, Subject, Task } from "../services/taskService";
 
 export const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -31,7 +32,7 @@ export function validateQuestDraft(draft: QuestDraft): string | null {
 export function questParams(draft: QuestDraft, subjects: Subject[], task: Task | null): CreateTaskParams {
   return {
     title: draft.title.trim(), targetMinutes: Number(draft.minutes),
-    subjectId: draft.subjectId ?? subjects.find((subject) => subject.title === "General")?.id ?? null,
+    subjectId: draft.subjectId ?? generalArea(subjects)?.id ?? null,
     repeatRule: draft.repeat === "custom" ? DAYS.filter((day) => draft.days.includes(day)).join(",") : draft.repeat,
     difficulty: task?.difficulty ?? "medium",
   };

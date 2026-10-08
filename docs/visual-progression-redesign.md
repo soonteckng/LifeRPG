@@ -355,3 +355,17 @@ reduced-motion tab options while retaining route identities, alongside existing
 Home, timer, completion/cancellation, account and progression tests. Native
 visual polish, first-screen quest visibility and rapid tab transitions still
 need Android/iOS phone observation; no device appearance is claimed here.
+
+## Guided next steps — October 6, 2026
+
+`feature/guided-quests` adds optional study suggestions without replacing custom quests or free focus. In guided mode Home uses a compact goal indicator and a concrete action card; free-focus mode retains the tested ring/Quick Start hierarchy. New and existing users can select revision, assignments or practice, make a task smaller, choose another or disable suggestions in Settings. New controls reuse MotionPressable, ContentReveal and AppSheet's existing motion/reduced-motion rules; the timer wheel and root navigation are unchanged.
+
+Session instructions, saved titles in Progress, and an optional Save for later completion action complete the flow. The existing shared completion popup remains the sole immediate completion presentation. Character, rewards and early cancellation semantics remain unchanged. See `docs/guided-quests.md` for persistence details, limitations and the full phone checklist. No native appearance, small-phone fit or gesture smoothness is claimed without observation.
+
+### Guided choices and dock clearance follow-up
+
+The latest revision replaces question-sized tasks with three uninterrupted 30-minute focus blocks and optional 10-minute versions. Preferences are saved defaults; Choose another is a temporary override. The tutorial explains starting once and staying with the work. Existing historical suggestion snapshots are preserved.
+
+Choose another uses the existing 220ms timed sheet transition to avoid the spring's long settling tail. Home caps previews at one row on compact screens/large text and two otherwise, with 24px beneath the quest card itself plus existing measured dock/safe-area clearance. The preference sheet retains compact radio choices and a pinned Save footer. No new dependencies, timer-wheel changes, navigation changes or backend mutations.
+
+Verification: 234 tests, typecheck, full lint and Android/iOS Hermes exports passed. Native timing, three-button navigation clearance and large-font appearance still require phone observation.

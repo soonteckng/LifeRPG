@@ -22,6 +22,13 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
+      if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
+      if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
+      if (name.endsWith("/OnboardingWelcome")) return require("./onboarding-mocks.cjs").finish(React);
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -41,6 +48,7 @@ function load(file, mocks = {}, cache = new Map()) {
 }
 const host = name => function Host({ children, ...props }) { return React.createElement(name, props, children); };
 const Native = {
+  StyleSheet: { create: x => x, hairlineWidth: 0.5 },
   Animated: {
     Value: class {
       setValue() {}
@@ -163,10 +171,10 @@ test("Settings starts with identity, separates logout and contains no inert Moti
     assert.match(ui.text(), /test@example.com/);
     assert.match(ui.text(), /Session access/);
     assert.doesNotMatch(ui.text(), /Edit profile/);
-    assert.match(ui.text(), /midnight in this time zone/);
+    assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction/);
     assert.doesNotMatch(ui.text(), /Motion|EAS|Expo Go|native build|widgets/);
-    await ui.press("Replay the introductionSessions, growth, goals and rewards");
-    assert.deepEqual(ui.calls().navigate, ["/tutorial"]);
+    await ui.press("How LifeRPG worksFocus, growth, goals and consistency");
+    assert.deepEqual(ui.calls().navigate, ["./guide"]);
   } finally { await ui.cleanup(); }
 });
 test("goal editor validates, submits once and explains next-local-day without changing today's target", async () => {
@@ -259,11 +267,15 @@ test("notifications enable explicitly and refresh real status on return from pho
     assert.ok(ui.calls().reads >= 3);
   } finally { await ui.cleanup(); }
 });
-test("unsupported notifications present no misleading enable or phone-settings action", async () => {
+test("Expo Go notifications offer phone settings without a misleading enable action", async () => {
   const ui = await settings({ permission: () => ({ label: "Notifications unavailable here", action: null, supported: false }) });
   try {
     await ui.press("NotificationsNotifications unavailable here");
-    assert.doesNotMatch(ui.text(), /Enable notifications|Open phone settings/);
+    assert.equal(ui.renderer.root.findByType("Sheet").props.compact, true, "notification content has one fitted snap point");
+    assert.doesNotMatch(ui.text(), /Enable notifications/);
+    assert.match(ui.text(), /Notification settings/);
+    await ui.press("Notification settings");
+    assert.equal(ui.calls().phoneCalls, 1);
     assert.equal(ui.calls().enableCalls, 0);
   } finally { await ui.cleanup(); }
 });
@@ -296,18 +308,26 @@ test("goal service validates before requesting a server-computed effective date"
   assert.equal(result.next_effective_date, "2026-10-04");
   assert.deepEqual(calls, [["schedule_daily_goal", { p_goal_minutes: 90 }]]);
 });
-test("onboarding shares all ten badge values and preserves a saved choice on retry", async () => {
-  assert.equal(badges.length, 10);
-  assert.equal(new Set(badges).size, 10);
+test("optional onboarding preserves a saved character badge and keeps the twelve-look catalogue", async () => {
+  assert.equal(badges.length, 12);
+  assert.equal(new Set(badges).size, 12);
+  let saved;
   const ui = await screen("src/app/onboarding.tsx", {
     "expo-router": { useRouter: () => ({ replace() {} }) },
-    "../context/UserContext": { useUser: () => ({ profile: { username: "Hero", avatar: badges[9], daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
-    "../services/onboardingService": { saveOnboardingProfile: async () => { throw Error("Offline"); } },
+    "../context/UserContext": { useUser: () => ({ profile: { id: "onboarding-badge", username: "Soon", avatar: badges[9], daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
+    "../services/onboardingService": { saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
   });
   try {
-    const choices = ui.renderer.root.findAllByType("Button").filter(n => n.props.accessibilityLabel?.startsWith("Choose "));
-    assert.equal(choices.length, 10);
-    assert.equal(choices.find(n => n.props.accessibilityState.selected).props.accessibilityLabel, "Choose " + badges[9]);
+    await ui.press("Just let me focus");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Start my journey");
+    assert.equal(saved[1],badges[9]);
+    assert.match(ui.text(), /Couldn’t save/);
   } finally { await ui.cleanup(); }
 });
 test("permission interpretation distinguishes quiet, temporary, granted and denied states", () => {

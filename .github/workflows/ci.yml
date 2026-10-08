@@ -72,3 +72,5 @@ jobs:
         run: bash scripts/test-progression-postgres.sh
       - name: Validate simultaneous completion and retry
         run: bash scripts/test-progression-concurrency.sh
+      - name: Validate focus catalogue replacement and account defaults
+        run: bash scripts/test-focus-catalog-postgres.sh

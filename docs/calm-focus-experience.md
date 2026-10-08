@@ -1,0 +1,15 @@
+# Focus experience
+
+LifeRPG supports learning, work, creative practice, everyday tasks and quiet time. The chooser explains all five directions with concrete examples. Quiet time means reading for pleasure, journaling or a gentle walk while keeping distracting apps closed. Ten curated prompts coexist with free focus and personal quests; existing saved suggestions keep their original session wording.
+
+The synced catalogue contains Everyday focus, Learning, Work & projects, Creativity, Everyday life and Wellbeing. The versioned category migration replaces General, Knowledge and Life Admin with their new names, merges Fitness & Health and Grooming & Vitality into Wellbeing, and creates missing work and creativity areas. Custom areas remain. Account creation seeds the same six defaults. Area XP is reconstructed from cumulative levels, current XP and exact-second banks before merging. Character balances, session receipts, goals and quest details are fingerprinted and must remain unchanged, apart from intentional subject-reference remapping. Migration stops when any session is open or a cross-account reference is detected. A recovery snapshot is retained locally during application and is not committed.
+
+Focus area is a category-only sheet: it neither opens Session nor edits time. Focus length owns 10-minute, 30-minute and Custom controls, shared by Home and independent session setup. Custom uses the same exact minutes/seconds editor. The large Session countdown is display-only, with no second wheel or tap-to-edit surface. Linked quests retain their planned-duration behavior. Active sessions remain immutable.
+
+Milestones has one Profile entry. Today's goal is always first, followed by nearby progress, earned milestones and the next item in each track. The eighteen milestones remain automatically earned from completed sessions. Profile history is reused immediately on collection entrance and refreshed quietly; another account cannot reuse it. Loading placeholders stay below the goal, and calculations are memoized. No XP, Gold or claims are added.
+
+The background remains black with neutral charcoal cards. Cool periwinkle actions and brighter sky, mint, pink, lavender and coral area cues replace the warm stone palette. Text uses cool white and neutral grey. Contrast, native glass fallbacks and reduced motion remain checked. Native splash updates need an installed rebuild.
+
+The seven-page setup and six-message tour retain their timing, Back/Next, dynamic full-card measurement and covered return to Home. Guide copy distinguishes category attribution from timer setup. Home keeps fixed section gaps and measured dock clearance.
+
+Validation includes TypeScript, lint, application regression tests and isolated PostgreSQL catalogue checks: legacy levels/remainders, reference remapping, custom categories, account defaults, ownership, idempotency and the open-session guard. Browser previews check actual components at narrow and normal phone widths. Native frame pacing and keyboard behavior still need phone acceptance.

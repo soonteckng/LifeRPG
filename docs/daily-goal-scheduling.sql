@@ -1,3 +1,4 @@
+-- OBSOLETE: do not apply. Use daily-goal-exact-credit.sql after separate approval.
 -- REVIEWED LOCAL PROPOSAL ONLY. Not applied to any database.
 -- Apply to a disposable local database first, after docs/session-seconds.sql.
 begin;

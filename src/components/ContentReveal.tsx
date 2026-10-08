@@ -9,7 +9,7 @@ export default function ContentReveal({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (reduced) { opacity.setValue(1); return; }
     opacity.setValue(0.94);
-    const animation = Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true });
+    const animation = Animated.timing(opacity, { toValue: 1, duration: 220, useNativeDriver: true, isInteraction: false });
     animation.start();
     return () => animation.stop();
   }, [opacity, reduced]);

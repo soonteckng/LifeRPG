@@ -24,13 +24,15 @@ export interface ProgressDay {
 }
 const DAY = 86400000;
 export const DEFAULT_TIMEZONE = "Asia/Kuala_Lumpur";
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 export function dateKey(date: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
+  let formatter = dayFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
+    if (dayFormatters.size >= 16) dayFormatters.delete(dayFormatters.keys().next().value!);
+    dayFormatters.set(timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(date);
   const part = (type: string) => parts.find((p) => p.type === type)?.value;
   return `${part("year")}-${part("month")}-${part("day")}`;
 }

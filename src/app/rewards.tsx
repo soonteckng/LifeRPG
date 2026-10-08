@@ -4,8 +4,8 @@ import { creditedDailySeconds } from "../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, StyleSheet, View } from "react-native";
 import AppSheet from "../components/AppSheet";
 import {
   Meter,
@@ -18,7 +18,7 @@ import { colors } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
 import { useCharacterData } from "../hooks/useCharacterData";
-import { earnedMilestones } from "../utils/characterGrowth";
+import { earnedMilestones, MILESTONE_TRACKS, nextMilestone } from "../utils/characterGrowth";
 import { durationLabel } from "../utils/progressAnalytics";
 import {
   getTodayProgress,
@@ -36,20 +36,30 @@ function progressLabel(milestone: Milestone) {
 // asking the user to invent a reward and price their own behaviour in Gold.
 export default function RewardsScreen() {
   const { profile } = useUser();
+  return <MilestoneCollection key={`${profile.id}:${profile.timezone}`} />;
+}
+
+// Account and reporting-zone changes start a fresh collection view. Keying the
+// view also prevents old async requests and sheet selections leaking across it.
+function MilestoneCollection() {
+  const { profile } = useUser();
   const { sessionSummary } = useTimer();
   const growth = useCharacterData();
-  const totals = earnedMilestones(
-    growth.data?.sessions ?? [],
-    profile.timezone,
-  );
+  const totals = useMemo(() => earnedMilestones(growth.data?.sessions ?? [], profile.timezone), [growth.data, profile.timezone]);
   const earned = totals.milestones.filter((m) => m.unlocked);
   const upcoming = totals.milestones.filter((m) => !m.unlocked);
+  const nearest = nextMilestone(totals.milestones);
+  const [showAll, setShowAll] = useState(false);
   const [selected, setSelected] = useState<Milestone | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const sheetLifecycle = useRef(false);
   const [goal, setGoal] = useState<DailyProgress | null>(null);
+  const goalIdentity = `${profile.id}:${profile.timezone}`;
+  const [goalOwner, setGoalOwner] = useState(goalIdentity);
   const [goalLoaded, setGoalLoaded] = useState(false);
   const [goalError, setGoalError] = useState(false);
+  const visibleGoalLoaded = goalLoaded && goalOwner === goalIdentity;
+  const visibleGoalError = goalError && goalOwner === goalIdentity;
   const generation = useRef(0);
   const focused = useRef(false);
   const refreshGoal = useCallback(async () => {
@@ -57,13 +67,17 @@ export default function RewardsScreen() {
     try {
       const next = await getTodayProgress(profile.timezone);
       if (request !== generation.current) return;
+      setGoalOwner(`${profile.id}:${profile.timezone}`);
       setGoal(next);
       setGoalLoaded(true);
       setGoalError(false);
     } catch {
-      if (request === generation.current) setGoalError(true);
+      if (request === generation.current) {
+        setGoalOwner(`${profile.id}:${profile.timezone}`);
+        setGoalError(true);
+      }
     }
-  }, [profile.timezone]);
+  }, [profile.id, profile.timezone]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
@@ -102,19 +116,19 @@ export default function RewardsScreen() {
       accessibilityRole="button"
       accessibilityLabel={`${milestone.title}, ${milestone.unlocked ? "earned" : "in progress"}. View milestone`}
       onPress={() => open(milestone)}
-      style={{ paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.line, gap: 6 }}
+      style={styles.milestoneRow}
     >
       <View style={p.inline}>
         <View
           style={[
             p.icon,
-            milestone.unlocked && { backgroundColor: "rgba(156,220,193,0.12)" },
+            milestone.unlocked && { backgroundColor: "rgba(112,216,174,0.10)" },
           ]}
         >
           <Ionicons
             name={milestone.icon as PersonalIcon}
             size={23}
-            color={milestone.unlocked ? "#9CDCC1" : colors.accent}
+            color={milestone.unlocked ? colors.success : colors.accent}
           />
         </View>
         <View style={p.flex}>
@@ -124,7 +138,7 @@ export default function RewardsScreen() {
         <Ionicons
           name={milestone.unlocked ? "checkmark-circle" : "chevron-forward"}
           size={21}
-          color={milestone.unlocked ? "#9CDCC1" : colors.muted}
+          color={milestone.unlocked ? colors.success : colors.muted}
         />
       </View>
       {!milestone.unlocked && (
@@ -134,7 +148,7 @@ export default function RewardsScreen() {
         </>
       )}
       {milestone.unlocked && (
-        <Text style={[p.caption, { color: "#9CDCC1" }]}>
+        <Text style={[p.caption, { color: colors.success }]}>
           Earned · Yours to keep
         </Text>
       )}
@@ -149,7 +163,54 @@ export default function RewardsScreen() {
       back
       animateTransition
     >
+      <View style={[p.card, styles.dailyCard]} testID="milestones-daily-goal">
+        <Text style={p.label}>TODAY’S GOAL</Text>
+        <Text style={p.title}>
+          {visibleGoalLoaded && goal?.goal_completed
+            ? "You followed through today."
+            : "A little time, every day."}
+        </Text>
+        <Text style={p.body}>
+          Each completed block adds to today’s goal and your milestone progress.
+        </Text>
+        {visibleGoalLoaded && (
+          <>
+            <Meter
+              value={
+                (goal ? creditedDailySeconds(goal) : 0) /
+                Math.max(1, (goal?.goal_minutes ?? profile.daily_goal_minutes) * 60)
+              }
+            />
+            <Text style={p.caption}>
+              {durationLabel(goal ? creditedDailySeconds(goal) : 0)} /{" "}
+              {goal?.goal_minutes ?? profile.daily_goal_minutes} min
+            </Text>
+            {!!goal?.goal_completed && (
+              <View style={p.inline}>
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                <Text style={[p.rowTitle, { color: colors.success }]}>
+                  Daily goal achieved
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+        {!visibleGoalLoaded && !visibleGoalError && (
+          <View style={styles.goalPlaceholder}><Text style={p.caption}>Loading today’s goal…</Text></View>
+        )}
+        {visibleGoalError && (
+          <>
+            <Text style={p.error}>Couldn’t refresh today’s goal.</Text>
+            <PersonalButton
+              title="Retry today’s goal"
+              secondary
+              onPress={() => void refreshGoal()}
+            />
+          </>
+        )}
+      </View>
       <Text style={p.caption}>Your collection · {earned.length} of {totals.milestones.length} earned</Text>
+      <Text style={p.body}>A quiet record of the time you’ve made for yourself. Earned automatically, at your own pace.</Text>
       {growth.error && (
         <View style={p.card}>
           <Text style={p.error}>
@@ -166,79 +227,68 @@ export default function RewardsScreen() {
         </View>
       )}
       {!growth.data ? (
-        <Text style={p.body}>
-          {growth.loading
-            ? "Loading your milestones…"
-            : "Your collection will appear after loading your saved sessions."}
-        </Text>
+        <View style={styles.loadingCollection} testID="milestones-loading"><Text style={p.rowTitle}>Getting your collection ready…</Text><Text style={p.caption}>Your saved achievements will appear here.</Text></View>
       ) : (
         <>
-          {[
-            { title: "Starting", ids: ["first", "ten"] },
-            { title: "Consistency", ids: ["return", "week"] },
-            { title: "Time invested", ids: ["hour", "tenhours"] },
-          ].map(group => <View key={group.title} style={{ gap: 4, paddingTop: 4 }}>
-            <Text style={p.body}>{group.title}</Text>
-            {totals.milestones.filter(m => group.ids.includes(m.id)).map(row)}
-          </View>)}
+          {nearest && <View style={[p.card, styles.nextCard]} testID="milestone-next">
+            <Text style={p.label}>WITHIN REACH</Text>
+            <View style={p.inline}>
+              <Ionicons name={nearest.icon as PersonalIcon} size={28} color={colors.accent} />
+              <Text style={[p.title, p.flex]}>{nearest.title}</Text>
+            </View>
+            <Text style={p.body}>{nearest.description}</Text>
+            <Meter value={nearest.progress} />
+            <Text style={p.caption}>{progressLabel(nearest)}</Text>
+          </View>}
+          <View style={styles.section}>
+            <Text style={p.sectionLabel}>Earned</Text>
+            {earned.length ? <View style={styles.collection}>
+              {earned.map(milestone => <Pressable
+                key={milestone.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${milestone.title}, earned. View milestone`}
+                onPress={() => open(milestone)}
+                style={styles.earnedTile}
+              >
+                <Ionicons name={milestone.icon as PersonalIcon} size={26} color={colors.success} />
+                <Text style={p.rowTitle}>{milestone.title}</Text>
+                <Text style={[p.caption, styles.earnedCaption]}>Earned · Yours to keep</Text>
+              </Pressable>)}
+            </View> : <Text style={p.body}>Your first completed session starts the collection. There’s no rush.</Text>}
+          </View>
+          {!!upcoming.length && <View style={styles.section}>
+            <View style={p.inline}>
+              <Text style={[p.sectionLabel, p.flex]}>Your path</Text>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={showAll ? "Show next milestones" : "Show all milestones"}
+                accessibilityState={{ expanded: showAll }}
+                onPress={() => setShowAll(value => !value)}
+                style={styles.collectionToggle}
+              ><Text style={styles.toggleText}>{showAll ? "Show next" : "Show all"}</Text></Pressable>
+            </View>
+            <Text style={p.caption}>{showAll ? "The full collection, one track at a time." : "One next step in each track. No deadline."}</Text>
+            {MILESTONE_TRACKS.map(track => {
+              const remaining = upcoming.filter(milestone => milestone.track === track.id);
+              if (!remaining.length) return null;
+              return <View key={track.id} style={styles.track}>
+                <Text style={p.rowTitle}>{track.title}</Text>
+                <Text style={p.caption}>{track.description}</Text>
+                {(showAll ? remaining : remaining.slice(0, 1)).map(row)}
+              </View>;
+            })}
+          </View>}
           {!upcoming.length && (
             <View style={p.card}>
               <Text style={p.title}>A collection worth being proud of.</Text>
               <Text style={p.body}>
                 You’ve earned every milestone in this collection. Each new
-                session still develops your Life areas and character.
+                session still records time for your focus areas and character.
               </Text>
             </View>
           )}
         </>
       )}
-      <View style={p.card}>
-        <Text style={p.label}>TODAY’S GOAL</Text>
-        <Text style={p.title}>
-          {goalLoaded && goal?.goal_completed
-            ? "You followed through today."
-            : "A separate step for your day."}
-        </Text>
-        <Text style={p.body}>
-          Any completed session counts as showing up. Reaching your daily goal
-          recognises a further commitment.
-        </Text>
-        {goalLoaded && (
-          <>
-            <Meter
-              value={
-                (goal ? creditedDailySeconds(goal) : 0) /
-                Math.max(1, (goal?.goal_minutes ?? profile.daily_goal_minutes) * 60)
-              }
-            />
-            <Text style={p.caption}>
-              {durationLabel(goal ? creditedDailySeconds(goal) : 0)} /{" "}
-              {goal?.goal_minutes ?? profile.daily_goal_minutes} min
-            </Text>
-            {!!goal?.goal_completed && (
-              <View style={p.inline}>
-                <Ionicons name="checkmark-circle" size={20} color="#9CDCC1" />
-                <Text style={[p.rowTitle, { color: "#9CDCC1" }]}>
-                  Daily goal achieved
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-        {!goalLoaded && !goalError && (
-          <Text style={p.caption}>Loading today’s goal…</Text>
-        )}
-        {goalError && (
-          <>
-            <Text style={p.error}>Couldn’t refresh today’s goal.</Text>
-            <PersonalButton
-              title="Retry today’s goal"
-              secondary
-              onPress={() => void refreshGoal()}
-            />
-          </>
-        )}
-      </View>
       <AppSheet
         visible={sheetOpen}
         compact
@@ -260,7 +310,7 @@ export default function RewardsScreen() {
               <Ionicons
                 name={detail.icon as PersonalIcon}
                 size={44}
-                color={detail.unlocked ? "#9CDCC1" : colors.accent}
+                color={detail.unlocked ? colors.success : colors.accent}
               />
               <Text style={p.body}>{detail.description}</Text>
               <Text style={p.title}>
@@ -282,3 +332,18 @@ export default function RewardsScreen() {
     </PersonalPage>
   );
 }
+
+const styles = StyleSheet.create({
+  nextCard: { marginTop: 8, backgroundColor: colors.surfaceRaised },
+  section: { gap: 12, marginTop: 20 },
+  collection: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  earnedTile: { flexBasis: 140, flexGrow: 1, minWidth: 0, padding: 16, gap: 10, backgroundColor: colors.surface, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  earnedCaption: { color: colors.secondary },
+  collectionToggle: { minHeight: 44, minWidth: 64, paddingHorizontal: 10, justifyContent: "center", alignItems: "center" },
+  toggleText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
+  track: { gap: 4, padding: 16, backgroundColor: colors.surface, borderRadius: 20 },
+  milestoneRow: { paddingVertical: 10, gap: 8, minHeight: 56 },
+  dailyCard: { marginBottom: 8 },
+  goalPlaceholder: { minHeight: 44, justifyContent: "center" },
+  loadingCollection: { minHeight: 360, padding: 18, gap: 12, backgroundColor: colors.surface, borderRadius: 20 },
+});

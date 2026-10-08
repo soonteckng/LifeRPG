@@ -1,3 +1,4 @@
+import { focusAreaTitle } from "./focusAreas";
 import { formatSessionActivity } from "../constants/sessionActivities";
 import { sessionTime } from "./sessionSetup";
 
@@ -5,8 +6,8 @@ import { sessionTime } from "./sessionSetup";
 // when no surviving Life area is available; no historical values are rewritten.
 export function sessionCategory(session: { subject_id: number | null; activity_type: string }, areas: { id: number; title: string }[]): string {
   const area = areas.find((item) => item.id === session.subject_id);
-  if (area) return area.title;
-  return !session.activity_type || ["other", "general"].includes(session.activity_type) ? "General" : formatSessionActivity(session.activity_type);
+  if (area) return focusAreaTitle(area.title);
+  return !session.activity_type || ["other", "general"].includes(session.activity_type) ? focusAreaTitle() : formatSessionActivity(session.activity_type);
 }
 
 export function sessionDockState(state: { isCompleted: boolean; isRunning: boolean; actionError: string | null; sessionSummary: unknown; timeLeft: number }) {

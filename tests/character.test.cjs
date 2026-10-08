@@ -21,6 +21,16 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
+      if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
+      if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
+      if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
+      if (name.endsWith("/OnboardingFinish")) return require("./onboarding-mocks.cjs").finish(React);
+      if (name.endsWith("/OnboardingWelcome")) return require("./onboarding-mocks.cjs").finish(React);
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -265,7 +275,7 @@ test("rapid sign-in taps submit once", async () => {
     await ui.cleanup();
   }
 });
-test("onboarding failure keeps choices and retries before entering tutorial", async () => {
+test("onboarding failure keeps choices and retries before entering Home", async () => {
   let attempts = 0;
   const routes = [];
   const ui = await screen("src/app/onboarding.tsx", {
@@ -274,7 +284,7 @@ test("onboarding failure keeps choices and retries before entering tutorial", as
     },
     "../context/UserContext": {
       useUser: () => ({
-        profile: { username: "Hero", avatar: "🌱", daily_goal_minutes: 60 },
+        profile: { id: "onboarding-account", username: "Hero", avatar: "🌱", daily_goal_minutes: 60 },
         reloadProfile: async () => true,
       }),
     },
@@ -282,15 +292,22 @@ test("onboarding failure keeps choices and retries before entering tutorial", as
       saveOnboardingProfile: async () => {
         if (++attempts === 1) throw Error("Offline");
       },
+      finishOnboarding: async () => {},
     },
   });
   try {
+    await ui.press("Continue");
+    await ui.press("Continue");
     await ui.input("Your name", "Soon Teck");
-    await ui.press("Continue to the introduction");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Continue");
+    await ui.press("Start my journey");
     assert.match(ui.text(), /Couldn’t save/);
     assert.deepEqual(routes, []);
-    await ui.press("Continue to the introduction");
-    assert.deepEqual(routes, ["/tutorial"]);
+    await ui.press("Start my journey");
+    assert.deepEqual(routes, ["/"]);
   } finally {
     await ui.cleanup();
   }
@@ -304,21 +321,22 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     },
     "../context/UserContext": {
       useUser: () => ({
-        profile: { onboarding_completed: false },
+        profile: { id: "new-user", username: "Soon", daily_goal_minutes: 60, onboarding_completed: false },
         reloadProfile: async () => true,
       }),
     },
     "../services/onboardingService": {
+      saveOnboardingProfile: async () => {},
       finishOnboarding: async () => {
         if (++calls === 1) throw Error("Offline");
       },
     },
   });
   try {
-    for (let i = 0; i < 4; i++) await ui.press("Continue");
+    for (let i = 0; i < 2; i++) await ui.press("Continue");
     assert.deepEqual(routes, []);
     await ui.press("Start my journey");
-    assert.match(ui.text(), /Couldn’t finish setup/);
+    assert.match(ui.text(), /Couldn’t save your setup/);
     await ui.press("Start my journey");
     assert.deepEqual(routes, ["/"]);
     assert.equal(calls, 2);
@@ -326,26 +344,9 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     await ui.cleanup();
   }
 });
-test("replaying tutorial returns without writing onboarding again", async () => {
-  let calls = 0,
-    back = 0;
-  const ui = await screen("src/app/tutorial.tsx", {
-    "expo-router": {
-      useRouter: () => ({ canGoBack: () => true, back: () => back++ }),
-    },
-    "../context/UserContext": {
-      useUser: () => ({ profile: { onboarding_completed: true } }),
-    },
-    "../services/onboardingService": { finishOnboarding: async () => calls++ },
-  });
-  try {
-    for (let i = 0; i < 4; i++) await ui.press("Continue");
-    await ui.press("Done");
-    assert.equal(calls, 0);
-    assert.equal(back, 1);
-  } finally {
-    await ui.cleanup();
-  }
+test("existing introduction links open the static guide without changing onboarding", async () => {
+ let writes=0;const routes=[];const ui=await screen("src/app/tutorial.tsx",{"expo-router":{useRouter:()=>({replace:route=>routes.push(route)})},"../context/UserContext":{useUser:()=>({profile:{onboarding_completed:true}})},"../services/onboardingService":{finishOnboarding:async()=>writes++}});
+ assert.deepEqual(routes,["./guide"]);assert.equal(writes,0);await ui.cleanup();
 });
 async function userProviderHarness({ updateError = null, stored = null } = {}) {
   let value;
@@ -836,15 +837,17 @@ async function profileScreen(overrides = {}) {
 test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
   const ui = await profileScreen();
   try {
-    assert.match(ui.text(), /Your Life areas/);
-    assert.match(ui.text(), /KnowledgeLv 2/);
+    assert.match(ui.text(), /Your focus areas/);
+    assert.match(ui.text(), /LearningLv 2/);
     assert.doesNotMatch(
       ui.text(),
       /Connect areas|No Life areas connected|Explore your progress/,
     );
     await ui.press("Personalise profile");
     const sheet = ui.renderer.root.findByType("Sheet");
-    assert.equal(sheet.props.compact, true);
+    assert.notEqual(sheet.props.compact, true);
+    assert.equal(sheet.props.expanded, true);
+    assert.equal(sheet.props.motionMode, "timed");
     assert.equal(sheet.props.guardDismiss, false);
     const scroll = ui.renderer.root.findByType("SheetScroll");
     assert.equal(
@@ -863,6 +866,16 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   } finally {
     await ui.cleanup();
   }
+});
+
+test('Profile level opens the shared tier path with the saved XP balance',async()=>{
+ const ui=await profileScreen();
+ try{
+  const button=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel?.includes('View level tiers'));
+  assert.ok(button);await act(async()=>button.props.onPress());
+  const popup=ui.renderer.root.findByType('TierSheet');assert.equal(popup.props.visible,true);assert.equal(popup.props.level,3);assert.equal(popup.props.currentXP,20);
+  await act(async()=>popup.props.onClose());assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,false);
+ }finally{await ui.cleanup();}
 });
 test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
   const ui = await profileScreen();
@@ -966,74 +979,65 @@ test("Android secondary page retains its contents until animated back finishes a
   }
 });
 
-test("character wave is cosmetic and respects reduced motion", async () => {
-  for (const reduced of [false, true]) {
-    const animations = [];
-    const Portrait = load("src/components/CharacterPortrait.tsx", {
-      "react-native": {
-        ...Native,
-        StyleSheet: { create: (s) => s },
-        Animated: {
-          Value: class {
-            setValue() {}
-            stopAnimation() {}
-            interpolate() {
-              return 0;
-            }
-          },
-          View: host("Animated"),
-          timing: (_, config) => ({
-            start() {
-              animations.push(config);
-            },
-          }),
-        },
-      },
-      "../hooks/useReducedMotion": { useReducedMotion: () => reduced },
-    }).default;
-    let renderer;
-    await act(async () => {
-      renderer = create(
-        React.createElement(Portrait, { avatar: "⭐", level: 3, developed: 2 }),
-      );
-    });
-    try {
-      await act(async () => renderer.root.findByType("Button").props.onPress());
-      assert.equal(animations.length, reduced ? 0 : 1);
-      assert.match(
-        renderer.root.findByType("Button").props.accessibilityLabel,
-        /Level 3/,
-      );
-    } finally {
-      await act(async () => renderer.unmount());
-    }
-  }
+test("character greeting is cosmetic while automatic motion needs no tap",async()=>{
+ let greetings=0;
+ const Portrait=load("src/components/CharacterPortrait.tsx",{
+  "react-native":Native,
+  "../hooks/useCharacterMotion":{useCharacterMotion:()=>({bodyStyle:{transform:[{translateY:-2}]},eyeStyle:{transform:[{scaleY:1}]},armStyle:{},greet:()=>greetings++})},
+ }).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",level:3,developed:2}));});
+ try{
+  assert.equal(greetings,0);assert.match(renderer.root.findByType("Button").props.accessibilityHint,/breathes and blinks/);
+  await act(async()=>renderer.root.findByType("Button").props.onPress());assert.equal(greetings,1);
+  assert.match(renderer.root.findByType("Button").props.accessibilityLabel,/Level 3/);
+ }finally{await act(async()=>renderer.unmount());}
 });
 
-test("portrait centres its head and a changed badge updates the Home identity", async () => {
-  const styles = [];
-  const mocks = {"react-native": {...Native, StyleSheet:{ create: value => { styles.push(value); return value; } }, Animated:{...Native.Animated, Value:class {setValue(){} stopAnimation(){} interpolate(){return 0;}}}}, "../hooks/useReducedMotion":{useReducedMotion:()=>true}};
-  const Portrait = load("src/components/CharacterPortrait.tsx", mocks).default;
-  let renderer;
-  await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",size:176}));});
-  try {
-    const portraitStyles = styles.find(style=>style.head?.width===80);
-    assert.equal(portraitStyles.head.left + portraitStyles.head.width / 2, 110);
-    const canvas=renderer.root.findAllByType("View").find(node=>node.props.testID==="character-canvas");
-    assert.equal(canvas.props.style.left + canvas.props.style.width / 2, 88);
-  } finally {await act(async()=>renderer.unmount());}
-  const Mark=load("src/components/CharacterMark.tsx",mocks).default;
-  await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
-  try {
-    assert.doesNotMatch(text(renderer.root),/⭐/);
-    const firstColour=renderer.root.findAllByType("View").find(node=>Array.isArray(node.props.style)&&node.props.style[1]?.backgroundColor).props.style[1].backgroundColor;
-    await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🧑‍💻",size:58})));
-    assert.doesNotMatch(text(renderer.root),/🧑‍💻/);
-    const nextColour=renderer.root.findAllByType("View").find(node=>Array.isArray(node.props.style)&&node.props.style[1]?.backgroundColor).props.style[1].backgroundColor;
-    assert.notEqual(firstColour,nextColour,"saved badges still personalise the scarf");
-    assert.doesNotMatch(text(renderer.root),/⭐/);
-  } finally {await act(async()=>renderer.unmount());}
+test("every saved badge selects a full look and Home shares the same drawing",async()=>{
+ const catalogue=load("src/constants/characterLooks.ts"),appearance=load("src/utils/characterAppearance.ts");
+ assert.deepEqual(catalogue.CHARACTER_LOOKS.map(look=>look.id),load("src/constants/characterBadges.ts").CHARACTER_BADGES);
+ assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.body)).size,12);
+ assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.accessory)).size,12);
+ assert.equal(appearance.characterLook("🧙").id,"🧙‍♂️");assert.ok(appearance.characterLook("legacy badge"));
+ const Mark=load("src/components/CharacterMark.tsx",{"react-native":Native}).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
+ const part=id=>renderer.root.findAllByType("View").find(node=>node.props.testID===id);
+ try{
+  const canvas=part("character-canvas");assert.equal(canvas.props.style.left+canvas.props.style.width/2,29);
+  const body=part("character-body").props.style[1].backgroundColor,head=part("character-head").props.style[1].backgroundColor;
+  await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🧑‍💻",size:58})));
+  assert.notEqual(part("character-body").props.style[1].backgroundColor,body);assert.notEqual(part("character-head").props.style[1].backgroundColor,head);
+  assert.doesNotMatch(text(renderer.root),/⭐|🧑‍💻/);
+ }finally{await act(async()=>renderer.unmount());}
+ const Picker=load("src/components/CharacterLookPicker.tsx",{"react-native":Native,"@gorhom/bottom-sheet":{TouchableOpacity:host("Button")},"@expo/vector-icons":{Ionicons:host("Icon")}}).default;
+ await act(async()=>{renderer=create(React.createElement(Picker,{value:"🦊",disabled:false,onChange(){}}));});
+ try{assert.equal(renderer.root.findAllByType("Button").filter(node=>node.props.accessibilityState.checked).length,1);assert.equal(renderer.root.findAllByType("Button").find(node=>node.props.accessibilityState.checked).props.accessibilityLabel,"Choose Ember");}
+ finally{await act(async()=>renderer.unmount());}
 });
+
+test("idle motion cancels directly on frozen-tab blur, background and Reduce Motion",async()=>{
+ let appState,reduced=false,focused=true,enabled=true,motion;const listeners={};
+ const native={AppState:{currentState:'active',addEventListener:(_event,listener)=>{appState=state=>{native.AppState.currentState=state;listener(state);};return{remove(){}};}}};
+ const navigation={isFocused:()=>focused,addListener:(event,listener)=>{listeners[event]=listener;return()=>{delete listeners[event];};}};
+ const context=React.createContext(undefined),fake=require('./character-motion-mocks.cjs').motionApi(React,host);
+ const hook=load('src/hooks/useCharacterMotion.ts',{'react-native':native,'expo-router/react-navigation':{NavigationContext:context},'react-native-reanimated':fake.api,'./useReducedMotion':{useReducedMotion:()=>reduced}}).useCharacterMotion;
+ function Consumer(){motion=hook(enabled);return null;}
+ const element=()=>React.createElement(context.Provider,{value:navigation},React.createElement(Consumer));
+ let renderer;await act(async()=>{renderer=create(element());});
+ try{
+  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,2);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
+  focused=false;listeners.blur();assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
+  let count=repeats().length;appState('background');appState('active');assert.equal(repeats().length,count,'backgrounded or unfocused screens cannot restart motion');
+  focused=true;listeners.focus();assert.equal(repeats().length,count+2);
+  reduced=true;count=repeats().length;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
+  reduced=false;enabled=false;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);
+ }finally{await act(async()=>renderer.unmount());}
+ // Auth renders before the app navigator: no navigation context is required.
+ const before=fake.events.filter(event=>event.kind==='repeat').length;
+ enabled=true;await act(async()=>{renderer=create(React.createElement(Consumer));});
+ assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+2);await act(async()=>renderer.unmount());
+});
+
 test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {
   const AppText=load("src/components/AppText.tsx",{"react-native":{...Native,Platform:{OS:"ios"}}}).Text;
   let renderer;
@@ -1045,4 +1049,59 @@ test("shared typography uses iOS System, keeps text readable and preserves exact
     style=Object.assign({},...renderer.root.findByType("Text").props.style.filter(Boolean));
     assert.equal(style.lineHeight,75); assert.equal(style.height,75);
   } finally {await act(async()=>renderer.unmount());}
+});
+
+test("profile editing preserves spaces and uses the same 15-character boundary as onboarding",async()=>{
+ const ui=await userProviderHarness();
+ try {
+  await ui.run(v=>v.updateProfile('  Soon Teck  ','⭐','Scholar'));assert.equal(ui.value().profile.username,'Soon Teck');
+  await ui.run(v=>v.updateProfile('A'.repeat(15),'⭐','Scholar'));assert.equal(ui.value().profile.username.length,15);
+  for(const invalid of [' ','A'.repeat(16)])await assert.rejects(ui.value().updateProfile(invalid,'⭐','Scholar'),/1 and 15/);
+  assert.equal(ui.value().profile.username.length,15);
+ }finally{await ui.cleanup();}
+ const names=load('src/constants/profile.ts');assert.equal(load('src/constants/onboarding.ts').ONBOARDING_NAME_LIMIT,names.PROFILE_NAME_LIMIT);
+});
+
+test("profile name input fills the keyboard-safe parent and rejects over-limit pasted drafts beside the field",async()=>{
+ const saves=[];const ui=await profileScreen({'../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:1,current_xp:0,timezone:'Asia/Kuala_Lumpur'},updateProfile:async(...args)=>saves.push(args),reloadProfile:async()=>{}})}});
+ try{
+  await ui.press('Personalise profile');assert.equal(ui.renderer.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
+  assert.equal(ui.renderer.root.findByType('Input').props.maxLength,15);assert.ok(ui.renderer.root.findByType('Input').props.onFocus);
+  await ui.input('Profile name','A'.repeat(16));await ui.press('Save changes');assert.equal(saves.length,0);assert.match(ui.text(),/1 and 15/);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);
+  await ui.input('Profile name','Soon Teck');await ui.press('Save changes');assert.equal(saves[0][0],'Soon Teck');
+ }finally{await ui.cleanup();}
+});
+
+test("onboarding profile validation rejects too-long names before the RPC and preserves internal spaces",async()=>{
+ const queries=[];const api=load('src/services/onboardingService.ts',{'../../lib/supabase':{supabase:{rpc:async(name,args)=>{queries.push([name,args]);return {data:true,error:null};}}}});
+ await assert.rejects(api.saveOnboardingProfile('A'.repeat(16),'⭐','Scholar',60),/1 and 15/);assert.equal(queries.length,0);
+ await api.saveOnboardingProfile('  Soon Teck  ','⭐','Scholar',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_username,'Soon Teck');
+});
+
+test("Profile has one milestone collection entry instead of a badge shortcut grid",async()=>{
+ const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
+ try{
+  const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,1);
+  await act(async()=>entries[0].props.onPress());assert.deepEqual(routes,['/rewards']);assert.match(ui.text(),/Your focus areas/);
+ }finally{await ui.cleanup();}
+});
+
+test("look changes preview locally and save only after confirmation; failed saves retain the chosen look",async()=>{
+ let fail=true;const saves=[];
+ const ui=await profileScreen({'../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:3,current_xp:20,timezone:'UTC'},reloadProfile:async()=>{},updateProfile:async(...args)=>{saves.push(args);if(fail)throw Error('Offline');}})}});
+ try{
+  await ui.press('Personalise profile');await ui.press('Choose Fern');assert.equal(saves.length,0);
+  const portraits=ui.renderer.root.findAllByType('Portrait');assert.equal(portraits.find(node=>node.props.level===3).props.avatar,'⭐');assert.equal(portraits.find(node=>node.props.interactive===false).props.avatar,'🧝‍♂️');
+  await ui.press('Save changes');assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);assert.match(ui.text(),/Couldn’t save/);
+  const selected=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel==='Choose Fern');assert.equal(selected.props.accessibilityState.checked,true);
+  fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon Teck','🧝‍♂️','Scholar']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
+ }finally{await ui.cleanup();}
+});
+
+test("two new looks fill four complete rows and have distinct drawn accessories",async()=>{
+ const catalogue=load("src/constants/characterLooks.ts").CHARACTER_LOOKS;
+ assert.equal(catalogue.length%3,0);assert.equal(new Set(catalogue.map(look=>look.id)).size,12);
+ const Art=load("src/components/CharacterArt.tsx",{"react-native":Native}).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Art,{avatar:"📖",size:176}));});
+ try{assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-glasses").length,1);await act(async()=>renderer.update(React.createElement(Art,{avatar:"☁️",size:176})));assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-beanie").length,1);assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-glasses").length,0);}finally{await act(async()=>renderer.unmount());}
 });

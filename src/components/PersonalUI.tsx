@@ -5,12 +5,13 @@ import { useNavigation, useRouter } from "expo-router";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { Animated, Platform, useWindowDimensions, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, Platform, useWindowDimensions, StyleSheet, View } from "react-native";
 import {
   SafeAreaView,
   useSafeAreaInsets,
@@ -19,7 +20,10 @@ import { type } from "../constants/typography";
 import { colors } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { usePreventRemove } from "expo-router/react-navigation";
+import { TourScrollView } from "./FeatureTour";
+import { navigationTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
+import { readSettingsOrigin, settingsTransform } from "../utils/settingsOrigin";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
   title,
@@ -31,6 +35,7 @@ export function PersonalPage({
   compact = false,
   floatingAction = false,
   bottomContentInset = 0,
+  expandFromIcon = false,
 }: {
   title: string;
   subtitle: string;
@@ -41,26 +46,34 @@ export function PersonalPage({
   compact?: boolean;
   floatingAction?: boolean;
   bottomContentInset?: number;
+  expandFromIcon?: boolean;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const navigation = useNavigation();
-  const { width } = useWindowDimensions();
-  const controlled = back && animateTransition && Platform.OS === "android";
-  const [position] = useState(() => new Animated.Value(controlled ? width : 0));
+  const { width, height } = useWindowDimensions();
+  const controlled = back && animateTransition && (Platform.OS === "android" || expandFromIcon);
+  const [source] = useState(readSettingsOrigin);
+  const surface = useRef<View>(null);
+  const [frame, setFrame] = useState({ x: 0, y: 0, width, height });
+  const [frameReady, setFrameReady] = useState(!expandFromIcon);
+  const [position] = useState(() => new Animated.Value(controlled ? expandFromIcon ? 1 : width : 0));
+  const origin = settingsTransform(source, frame);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
+  const pendingAction = useRef<Parameters<typeof navigation.dispatch>[0] | null>(null);
   useEffect(() => {
-    if (!controlled || closing.current) return;
-    const animation = Animated.timing(position, {
-      toValue: 0,
-      duration: reduced ? 0 : 280,
-      useNativeDriver: true,
-    });
+    if (frameReady) return;
+    const deadline = setTimeout(() => setFrameReady(true), 150);
+    return () => clearTimeout(deadline);
+  }, [frameReady]);
+  useLayoutEffect(() => {
+    if (!controlled || !frameReady || closing.current) return;
+    const animation = Animated.timing(position, { toValue: 0, ...navigationTiming(reduced ? 0 : expandFromIcon ? 280 : 240) });
     animation.start();
     return () => animation.stop();
-  }, [controlled, position, reduced]);
+  }, [controlled, position, reduced, expandFromIcon, frameReady]);
   const close = useCallback(() => {
     if (closing.current) return;
     if (!controlled) {
@@ -73,29 +86,37 @@ export function PersonalPage({
       return;
     }
     closing.current = true;
-    Animated.timing(position, {
-      toValue: width,
-      duration: reduced ? 0 : 260,
-      useNativeDriver: true,
-    }).start(({ finished }) => {
+    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : expandFromIcon ? 220 : 230) });
+    animation.start(({ finished }) => {
       if (finished) setExitReady(true);
       else {
         closing.current = false;
         position.setValue(0);
       }
     });
-  }, [controlled, navigation, router, position, width, reduced]);
-  usePreventRemove(controlled && !exitReady, close);
+  }, [controlled, navigation, router, position, width, reduced, expandFromIcon]);
+  usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
-    if (exitReady) navigation.goBack();
+    if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }
   }, [exitReady, navigation]);
   return (
-    <Animated.View
+    <View
+      ref={surface}
+      testID={expandFromIcon ? "settings-frame" : undefined}
+      collapsable={false}
+      onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
+      style={{ flex: 1 }}
+    ><Animated.View
+      renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
         flex: 1,
         backgroundColor: colors.background,
-        transform: [{ translateX: position }],
+        opacity: expandFromIcon ? position.interpolate({ inputRange: [0, 0.85, 1], outputRange: [1, 0.25, 0], extrapolate: "clamp" }) : 1,
+        borderRadius: expandFromIcon ? 24 : 0,
+        overflow: "hidden",
+        transformOrigin: expandFromIcon ? [origin.x, origin.y, 0] : undefined,
+        transform: expandFromIcon ? [{ scale: position.interpolate({ inputRange: [0, 1], outputRange: [1, origin.scale], extrapolateRight: "clamp" }) }] : [{ translateX: position }],
       }}
     >
       <SafeAreaView edges={["top", "left", "right"]} style={p.page}>
@@ -109,7 +130,8 @@ export function PersonalPage({
         )}
         {floatingAction && <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection:"row", justifyContent:"flex-end", alignItems:"center" }}>{action}</View>}
         {!back && !floatingAction && <AppHeader title={title} action={action} />}
-        <ScrollView
+        <TourScrollView
+          tourBottomInset={bottomContentInset}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
@@ -125,9 +147,9 @@ export function PersonalPage({
             )}
             {children}
           </View>
-        </ScrollView>
+        </TourScrollView>
       </SafeAreaView>
-    </Animated.View>
+    </Animated.View></View>
   );
 }
 export function PersonalRow({
@@ -199,15 +221,18 @@ export function PersonalButton({
   onPress,
   disabled = false,
   secondary = false,
+  accessibilityLabel,
 }: {
   title: string;
   onPress: () => void;
   disabled?: boolean;
   secondary?: boolean;
+  accessibilityLabel?: string;
 }) {
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? title}
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
@@ -217,7 +242,7 @@ export function PersonalButton({
         disabled && { opacity: 0.45 },
       ]}
     >
-      <Text style={[p.buttonText, secondary && { color: colors.accent }]}>
+      <Text adjustsFontSizeToFit={false} style={[p.buttonText, secondary && { color: colors.accent }]}>
         {title}
       </Text>
     </Pressable>
@@ -296,13 +321,13 @@ export const p = StyleSheet.create({
     minHeight: 50,
     padding: 14,
     borderRadius: 16,
-    backgroundColor: "#E5E4FF",
+    backgroundColor: colors.primary,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 16, fontWeight: "500", color: colors.background },
+  buttonText: { fontSize: 16, lineHeight: 24, fontWeight: "500", color: colors.primaryText, textAlign: "center" },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,

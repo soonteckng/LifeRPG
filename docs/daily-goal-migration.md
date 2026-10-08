@@ -1,3 +1,7 @@
+# Superseded proposal
+
+The 2026-10-07 mobile polish pass replaces this older proposal with [daily-goal-exact-credit.sql](daily-goal-exact-credit.sql). Do not apply daily-goal-scheduling.sql: its completion replacement predates the active exact-credit contract. Current rules, tests and activation approval are documented in [mobile-polish.md](mobile-polish.md). The notes below describe the earlier unactivated design.
+
 # Daily focus goal migration proposal (unapplied)
 
 ## Status

@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import { Platform } from "react-native";
 
 export function sessionNativeOptions() {
@@ -42,7 +43,7 @@ export function secondaryNativeOptions(reducedMotion: boolean) {
         : ("slide_from_right" as const),
     freezeOnBlur: false,
     contentStyle: {
-      backgroundColor: Platform.OS === "android" ? "transparent" : "#0B0D13",
+      backgroundColor: Platform.OS === "android" ? "transparent" : colors.background,
     },
   };
 }

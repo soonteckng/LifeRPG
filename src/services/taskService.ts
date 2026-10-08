@@ -1,3 +1,4 @@
+import { orderFocusAreas } from "../utils/focusAreas";
 import { supabase } from "../../lib/supabase";
 
 export interface Subject {
@@ -153,14 +154,7 @@ export async function getSubjects(): Promise<Subject[]> {
     color_code: row.color_code ?? null,
   }));
 
-  // Keep General first because it is the lowest-friction default.
-  subjects.sort((a, b) => {
-    if (a.title === "General") return -1;
-    if (b.title === "General") return 1;
-    return a.title.localeCompare(b.title);
-  });
-
-  return subjects;
+  return orderFocusAreas(subjects);
 }
 
 export async function getTasks(): Promise<Task[]> {

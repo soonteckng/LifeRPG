@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
+      if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
@@ -158,7 +160,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#F0997B",
+    "#F4AA88",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -259,6 +261,13 @@ test("query failures are actionable and never silently produce empty history", a
     /Offline/,
   );
 });
+
+test("longest Focus streak spans the full history rather than only the current week", async () => {
+  const {service,calls}=serviceHarness(query=>({data:query.range[0]===0?Array.from({length:500},(_,i)=>session('same-day-'+i,1,'2026-10-03T08:00:00Z')):[
+    ...Array.from({length:6},(_,i)=>session('older-'+i,1,`2026-09-${String(10+i).padStart(2,'0')}T08:00:00Z`)),
+    session('zero',0,'2026-09-16T08:00:00Z'),session('future',60,'2027-01-01T08:00:00Z')],error:null}));
+  assert.equal(await service.getLongestFocusStreak(TZ,now),6);assert.equal(calls.length,2);
+});
 test("history pagination uses a stable completion snapshot", async () => {
   const { service, calls } = serviceHarness(() => ({
     data: Array.from({ length: 50 }, (_, i) => session(String(i), 30)),
@@ -294,7 +303,7 @@ test("Progress rejects stale requests, preserves same-period data on failure and
           : new Promise((resolve) => requests.push(resolve)),
       getProgressGoals: async () => [],
       getProgressSubjects: async () => areas,
-      getFocusStreak: async () => 2,
+      getFocusStreak: async () => 2, getLongestFocusStreak: async () => 5,
     },
   });
   function Capture({ anchor, completion }) {
@@ -335,7 +344,7 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
     "react-native": { AppState: { addEventListener: () => ({ remove() {} }) } },
     "../services/progressService": {
       getCompletedSessions: async () => { calls++; return [session("saved", 60)]; },
-      getProgressGoals: async () => [], getProgressSubjects: async () => areas, getFocusStreak: async () => 2,
+      getProgressGoals: async () => [], getProgressSubjects: async () => areas, getFocusStreak: async () => 2, getLongestFocusStreak: async () => 5,
     },
   });
   function Capture({ completion }) {
@@ -491,47 +500,45 @@ test("Progress uses one selected period and shared animated sheet for drilldowns
     await ui.cleanup();
   }
 });
-test("full history loads on demand and saved session details do not mutate rewards", async () => {
+test("selected-period session details retain the period and do not mutate rewards", async () => {
   const ui = await screenHarness();
   try {
     assert.equal(ui.historyCalls(), 0);
     await ui.press("View sessions in selected period");
-    await ui.press("View all session history");
-    assert.equal(ui.historyCalls(), 1);
+    assert.equal(ui.historyCalls(), 0);
     const row = ui.renderer.root
       .findAllByType("Button")
       .find(
         (b) =>
-          b.props.accessibilityLabel?.includes("1m,") &&
+          b.props.accessibilityLabel?.includes("30s,") &&
           b.props.accessibilityLabel?.endsWith("View session"),
       );
     await act(async () => row.props.onPress());
     assert.match(ui.text(), /already saved/);
     await ui.press("Back to sessions");
-    assert.match(ui.text(), /All session history/);
+    assert.match(ui.text(), /Sessions · Week/);
+    assert.equal(ui.renderer.root.findAllByType("Button").some(b=>b.props.accessibilityLabel==="View all session history"),false);
   } finally {
     await ui.cleanup();
   }
 });
-test("empty Progress explains how to begin and still makes full history accessible", async () => {
+test("empty Progress explains how to begin and keeps its selected-period list empty", async () => {
   const ui = await screenHarness({ empty: true });
   try {
     assert.match(ui.text(), /Every completed session counts/);
     assert.match(ui.text(), /Room to grow/);
     await ui.press("View sessions in selected period");
-    await ui.press("View all session history");
-    assert.equal(ui.historyCalls(), 1);
+    assert.equal(ui.historyCalls(), 0);
   } finally {
     await ui.cleanup();
   }
 });
 
-test("a history failure does not suppress another day’s empty-state details", async () => {
+test("an empty period and an empty day have independent drilldowns", async () => {
   const ui = await screenHarness({ empty: true, historyFailure: true });
   try {
     await ui.press("View sessions in selected period");
-    await ui.press("View all session history");
-    assert.match(ui.text(), /Couldn’t load sessions/);
+    assert.match(ui.text(), /No completed sessions/);
     await act(async () => {
       ui.renderer.root.findByType("Sheet").props.onRequestClose();
     });
@@ -594,23 +601,37 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
   try {
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
-    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BCE8", 60], ["#F0997B", 60]]);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BFF2", 60], ["#F4AA88", 60]]);
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
     const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
     assert.equal(rows.length, 2);
   } finally { await ui.cleanup(); }
 });
-test("empty selected period stays empty until all-history is explicitly requested", async () => {
+test("empty selected period has no all-history escape or unbounded query", async () => {
   const ui = await screenHarness({ empty: true });
   try {
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0);
     assert.equal(ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session")).length, 0);
-    await ui.press("View all session history");
-    assert.equal(ui.historyCalls(), 1);
-    assert.match(ui.text(), /All session history/);
+    assert.equal(ui.historyCalls(), 0);
+    assert.match(ui.text(), /Sessions · Week/);
+    assert.equal(ui.renderer.root.findAllByType("Button").some(b=>b.props.accessibilityLabel==="View all session history"),false);
   } finally { await ui.cleanup(); }
+});
+
+test("week and month session lists exclude comparison dates and unrelated historical months",async()=>{
+ const today=dateKey(new Date(),TZ),week=periodFor('week',today,TZ),month=periodFor('month',today,TZ);
+ const previousWeek=shiftDay(week.start,-1),previousMonth=shiftDay(month.start,-1);
+ const rows=[session('current',60,new Date(Date.now()-1000).toISOString()),session('comparison',120,previousWeek+'T04:00:00Z'),session('old-month',180,previousMonth+'T04:00:00Z')];
+ const ui=await screenHarness({sessionRows:rows});
+ const labels=()=>ui.renderer.root.findByType('Sheet').findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session')).map(b=>b.props.accessibilityLabel);
+ try{
+  await ui.press('View sessions in selected period');assert.equal(labels().length,1);assert.match(labels()[0],/1m,/);assert.doesNotMatch(ui.text(),/View all history/);
+  await act(async()=>ui.renderer.root.findByType('Sheet').props.onRequestClose());await act(async()=>ui.renderer.root.findByType('Sheet').props.onDismiss());
+  await ui.press('Month view');await ui.press('View sessions in selected period');
+  assert.equal(labels().length,previousWeek>=month.start?2:1);assert.ok(labels().every(label=>!label.includes('3m,')));assert.equal(ui.historyCalls(),0);
+ }finally{await ui.cleanup();}
 });
 test("local Monday week rollover excludes Sunday while month retains both dates", () => {
   const clock = new Date("2026-10-04T16:31:00Z");
@@ -654,4 +675,8 @@ test("Quick Start history is bounded, owner filtered and excludes quests, tiny s
   }
   assert.equal(await serviceHarness(() => ({data:[],error:null})).service.getLastFreeSession("owner-b",now), null);
   await assert.rejects(serviceHarness(() => ({error:Error("Offline")})).service.getLastFreeSession("owner-a",now), /Offline/);
+});
+
+test("Progress stays focused on analytics and does not duplicate Profile's milestone collection entry",async()=>{
+ const ui=await screenHarness();try{assert.equal(ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??'')).length,0);assert.doesNotMatch(ui.text(),/Keep growing at your pace/);}finally{await ui.cleanup();}
 });

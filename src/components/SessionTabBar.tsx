@@ -1,4 +1,5 @@
 import { floatingDockKey, useMeasureFloatingDock } from "../context/FloatingDockContext";
+import { useFeatureTour } from "./FeatureTour";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -18,10 +19,11 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const { hasOpenSession, isRunning, isCompleted, sessionSummary } = timer;
   const dock = sessionDockState(timer);
   const measure = useMeasureFloatingDock();
+  const tour = useFeatureTour();
   const { width, fontScale } = useWindowDimensions();
   const bannerVisible = !!(hasOpenSession || (sessionSummary && !timer.summaryViewed));
   const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale);
-  return <View pointerEvents="box-none" onLayout={event => measure?.(layoutKey, event.nativeEvent.layout.height)} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+  return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
     {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
       <Ionicons name={dock.icon} size={20} color={colors.accent} />
@@ -34,8 +36,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
 }
 const styles = StyleSheet.create({
   dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 18, paddingTop: 8, gap: 8 },
-  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: "#20283D", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(165,180,252,0.28)" },
+  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   title: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "500" },
   time: { color: colors.accent, fontSize: 16, fontWeight: "500", flexShrink: 1, fontVariant: ["tabular-nums"] },
 });
-

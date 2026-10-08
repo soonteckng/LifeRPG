@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFooter,
@@ -47,6 +48,9 @@ interface Props {
   // Content-sized editors must not gain an extra tall snap point.
   compact?: boolean;
   maxHeightRatio?: number;
+  // Fixed editors keep their snap point steady while content or keyboard changes.
+  heightRatio?: number;
+  keyboardBehavior?: "interactive" | "extend" | "fillParent";
   motionMode?: "spring" | "timed";
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
@@ -137,6 +141,8 @@ export default function AppSheet({
   expanded = false,
   compact = false,
   maxHeightRatio = 0.82,
+  heightRatio = 0.88,
+  keyboardBehavior,
   motionMode = "spring",
   overlay,
   footer,
@@ -156,8 +162,8 @@ export default function AppSheet({
     () =>
       compact
         ? undefined
-        : [expanded ? Math.min(height * 0.88, maxHeight) : maxHeight],
-    [compact, expanded, height, maxHeight],
+        : [expanded ? Math.min(height * heightRatio, maxHeight) : maxHeight],
+    [compact, expanded, height, heightRatio, maxHeight],
   );
   if (previousVisible !== visible) {
     setPreviousVisible(visible);
@@ -277,9 +283,9 @@ export default function AppSheet({
               enableOverDrag={guardDismiss}
               gestureEventsHandlersHook={useDismissGestures}
               keyboardBehavior={
-                !compact && (expanded || guardDismiss)
+                keyboardBehavior ?? (!compact && (expanded || guardDismiss)
                   ? "fillParent"
-                  : "interactive"
+                  : "interactive")
               }
               keyboardBlurBehavior="restore"
               enableBlurKeyboardOnGesture
@@ -304,9 +310,9 @@ export default function AppSheet({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   surface: {
-    backgroundColor: "#171E2B",
+    backgroundColor: colors.surfaceRaised,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(225,235,255,0.16)",
+    borderColor: colors.border,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
   },
