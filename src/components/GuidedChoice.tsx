@@ -9,9 +9,9 @@ import type { GuidedPreference } from "../services/guidedPreferenceService";
 
 interface ChoiceProps { value: GuidedPreference; onChange: (value: GuidedPreference) => void; disabled?: boolean }
 const directionVisuals = {
-  learning: { title: "Learning", icon: "book-outline" }, work: { title: "Work", icon: "briefcase-outline" },
-  creative: { title: "Creative", icon: "color-palette-outline" }, "life-admin": { title: "Everyday", icon: "checkbox-outline" },
-  restore: { title: "Quiet time", icon: "leaf-outline" },
+  learning: { title: "Learning", icon: "book-outline" }, work: { title: "Work & projects", icon: "briefcase-outline" },
+  creative: { title: "Creativity", icon: "color-palette-outline" }, "life-admin": { title: "Everyday life", icon: "checkbox-outline" },
+  restore: { title: "Wellbeing", icon: "leaf-outline" },
 } as const;
 
 export function FocusDirectionPicker({ value, onChange, disabled = false, compact = false }: ChoiceProps & { compact?: boolean }) {

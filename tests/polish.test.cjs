@@ -52,6 +52,7 @@ test('daily goal sheet validates the minimum and prevents duplicate schedule wri
  const api=load('src/components/DailyGoalSheet.tsx',{'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':host('Sheet'),'./PersonalUI':{p:{}},'../context/UserContext':{useUser:()=>({profile:{daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},'../services/dailyGoalService':{getDailyGoalSettings:async()=>settings,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{saves++;return new Promise(resolve=>{resolveSave=resolve;});}}});
  await act(async()=>{tree=create(React.createElement(api.default,{visible:true,onClose(){},onSaved(){refreshed++;}}));});
  try{
+  assert.equal(tree.root.findByType('Sheet').props.expanded,true);assert.equal(tree.root.findByType('Sheet').props.heightRatio,.62);assert.equal(tree.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
   await act(async()=>tree.root.findByType('Input').props.onChangeText('29'));
   await act(async()=>tree.root.findByType('Sheet').props.footer.props.children.props.onPress());assert.equal(saves,0);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('90'));

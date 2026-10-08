@@ -15,11 +15,11 @@ export interface FocusDirection {
   defaultNeed: FocusNeed;
 }
 export const FOCUS_DIRECTIONS: FocusDirection[] = [
-  { id: "learning", title: "Learn and study", hint: "Study notes, read to learn, or practise questions.", needs: ["revision", "assignments", "practice"], defaultNeed: "revision" },
-  { id: "work", title: "Work and projects", hint: "Move a work task or personal project forward.", needs: ["work"], defaultNeed: "work" },
-  { id: "creative", title: "Create and practise", hint: "Write, draw, make music, or practise a creative skill.", needs: ["creative"], defaultNeed: "creative" },
+  { id: "learning", title: "Learning", hint: "Study notes, read to learn, or practise questions.", needs: ["revision", "assignments", "practice"], defaultNeed: "revision" },
+  { id: "work", title: "Work & projects", hint: "Move a work task or personal project forward.", needs: ["work"], defaultNeed: "work" },
+  { id: "creative", title: "Creativity", hint: "Write, draw, make music, or practise a creative skill.", needs: ["creative"], defaultNeed: "creative" },
   { id: "life-admin", title: "Everyday life", hint: "Plan your day, organise a space, or clear life admin.", needs: ["life-admin"], defaultNeed: "life-admin" },
-  { id: "restore", title: "Quiet time", hint: "Read for pleasure, journal, or take a gentle walk without scrolling.", needs: ["restore"], defaultNeed: "restore" },
+  { id: "restore", title: "Wellbeing", hint: "Read for pleasure, journal, or take a gentle walk without scrolling.", needs: ["restore"], defaultNeed: "restore" },
 ];
 export function focusDirection(need: FocusNeed): FocusDirection {
   return FOCUS_DIRECTIONS.find(direction => direction.needs.includes(need)) ?? FOCUS_DIRECTIONS[0];

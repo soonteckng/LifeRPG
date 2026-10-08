@@ -1,3 +1,4 @@
+import { requiredCharacterXP } from "../utils/levelTiers";
 import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
 import { Text } from "./AppText";
@@ -40,7 +41,7 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   const { hapticsEnabled, profile } = useUser();
   const level = newLevel ?? profile?.level;
   const xp = currentXP ?? profile?.current_xp;
-  const threshold = requiredXP ?? (level != null ? Math.floor(100 * Math.pow(level, 1.5)) : undefined);
+  const threshold = requiredXP ?? (level != null ? requiredCharacterXP(level) : undefined);
   useEffect(() => {
     if (visible && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, hapticsEnabled]);

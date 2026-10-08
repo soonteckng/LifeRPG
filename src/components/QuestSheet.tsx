@@ -1,4 +1,4 @@
-import { focusAreaTitle } from "../utils/focusAreas";
+import { focusAreaTitle, focusAreaKind, focusAreaChoices } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
@@ -46,7 +46,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const focusedField = useRef<"title" | "duration" | null>(null);
   const revealFocusedField = useCallback(() => {
     if (!focusedField.current) return;
-    scrollRef.current?.scrollTo({ y: focusedField.current === "duration" ? durationY.current : 0, animated: true });
+    scrollRef.current?.scrollTo({ y: focusedField.current === "duration" ? Math.max(0, durationY.current - 12) : 0, animated: false });
   }, []);
 
   useEffect(() => {
@@ -177,7 +177,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} settling={scope === "all" ? "quick" : "standard"} style={styles.scopeSelection} /></View>
           {(["today", "all"] as const).map(value => <View key={value} style={styles.scopeSlot}>
             <Pressable style={styles.scopeButton}
-              onPress={() => { setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
+              onPress={() => { if (scope !== value && hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
               <Text style={[styles.scopeLabel, scope === value && styles.scopeLabelSelected]}>{value === "today" ? "Today" : "All"}</Text>
             </Pressable>
           </View>)}
@@ -208,8 +208,8 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
         {editor && <AppSheet visible={editorVisible} onRequestClose={requestClose}
           onDismiss={() => { setEditor(null); setFormError(null); focusedField.current = null;
             if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
-          guardDismiss={dirty || busy || !!confirmation} compact maxHeightRatio={0.94} label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
-          <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField}
+          guardDismiss={dirty || busy || !!confirmation} expanded motionMode="timed" keyboardBehavior="fillParent" label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
+          <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField} onContentSizeChange={revealFocusedField}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
             contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
           <View pointerEvents={busy ? "none" : "auto"} style={styles.form}>
@@ -220,7 +220,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
                 onFocus={() => { focusedField.current = "title"; revealFocusedField(); }} onBlur={() => { focusedField.current = null; }}
                 maxLength={120} multiline accessibilityLabel="Quest name" editable={!busy} />
             </View>
-            <View style={styles.field} onLayout={(event) => { durationY.current = event.nativeEvent.layout.y; }}>
+            <View style={styles.field} onLayout={(event) => { durationY.current = event.nativeEvent.layout.y; revealFocusedField(); }}>
               <Text style={styles.label}>Duration <Text style={styles.subtitle}>· minutes</Text></Text>
               <View style={styles.options}>
                 {DURATIONS.map((minutes) => <Choice key={minutes} label={String(minutes)} accessibilityLabel={`${minutes} minutes`}
@@ -257,9 +257,9 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
               <Text style={styles.label}>Focus area</Text>
 
               <View style={styles.options}>
-                <Choice label={focusAreaTitle()} selected={editor.draft.subjectId === null || subjects.find((subject) => subject.id === editor.draft.subjectId)?.title === "General"}
+                <Choice label={focusAreaTitle()} selected={editor.draft.subjectId === null || focusAreaKind(subjects.find((subject) => subject.id === editor.draft.subjectId)?.title) === "general"}
                   onPress={() => updateDraft({ subjectId: null })} />
-                {subjects.filter((subject) => subject.title !== "General").map((subject) => <Choice key={subject.id} label={focusAreaTitle(subject.title)}
+                {focusAreaChoices(subjects, editor.draft.subjectId).filter((subject) => focusAreaKind(subject.title) !== "general").map((subject) => <Choice key={subject.id} label={focusAreaTitle(subject.title)}
                   selected={editor.draft.subjectId === subject.id} onPress={() => updateDraft({ subjectId: subject.id })} />)}
               </View>
             </View>
@@ -271,7 +271,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       </>}>
       {/* Footer adjustment in bottom-sheet 5.2 expects an object; an array loses
           its numeric paddingBottom when the library reserves footer space. */}
-      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ ...styles.body, paddingBottom: Math.max(insets.bottom, 16) + 24 }}>
+      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ ...styles.body, paddingBottom: Math.max(insets.bottom, 16) + 48 }}>
 
           <>
             {!editor && formError && <Text style={styles.headerError} accessibilityRole="alert">{formError}</Text>}

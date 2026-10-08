@@ -33,6 +33,17 @@ export function orderFocusAreas<T extends { title: string }>(areas: T[]): T[] {
   };
   return [...areas].sort((a, b) => rank(a.title) - rank(b.title) || a.title.localeCompare(b.title));
 }
+// Cached legacy rows can share a label until the synced catalogue is migrated.
+// Keep the selected real ID, so an open or remembered session keeps its area.
+export function focusAreaChoices<T extends { id: number; title: string }>(areas: T[], selectedId?: number | null): T[] {
+  const choices = new Map<string, T>();
+  for (const area of orderFocusAreas(areas)) {
+    const key = focusAreaKind(area.title) ?? `custom:${area.id}`;
+    const previous = choices.get(key);
+    if (!previous || area.id === selectedId || (previous.id !== selectedId && area.title === focusAreaTitle(area.title))) choices.set(key, area);
+  }
+  return [...choices.values()];
+}
 export function generalArea(subjects: Subject[]) {
   return subjects.find(area => aliases.general.includes(area.title.trim().toLowerCase()));
 }

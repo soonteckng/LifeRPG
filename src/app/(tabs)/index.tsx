@@ -2,6 +2,7 @@ import { focusAreaTitle, generalArea } from "../../utils/focusAreas";
 import FreeFocusCard from "../../components/FreeFocusCard";
 import GuidedFocusCard from "../../components/GuidedFocusCard";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
+import LevelTierSheet from "../../components/LevelTierSheet";
 import DailyGoalSheet from "../../components/DailyGoalSheet";
 import GuidedPreferenceSheet from "../../components/GuidedPreferenceSheet";
 import { useGuidedPreference } from "../../hooks/useGuidedPreference";
@@ -65,6 +66,7 @@ export default function HomeScreen() {
   const guided = useGuidedPreference(owner);
   const [guidedSettings, setGuidedSettings] = useState(false);
   const [goalSettings, setGoalSettings] = useState(false);
+  const [tiersOpen, setTiersOpen] = useState(false);
   const useGuidance = guided.ready && guided.value.enabled;
   useEffect(() => {
     let cancelled = false;
@@ -196,7 +198,7 @@ export default function HomeScreen() {
             <View style={styles.identityMeta}>
               <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
               <View style={styles.metaDivider} />
-              <Text style={styles.metaText}>Level {level}</Text>
+              <TouchableOpacity style={styles.levelButton} hitSlop={10} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Text style={[styles.metaText, { color: colors.accent }]}>Level {level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></TouchableOpacity>
             </View>
           </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -273,6 +275,7 @@ Your quests will appear here.</Text>
         </ContentReveal>
       </TourScrollView>
       <GuidedPreferenceSheet owner={owner} visible={guidedSettings} onClose={() => setGuidedSettings(false)} />
+      <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
       <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
       <QuestSheet visible={questsVisible} onClose={() => setQuestsVisible(false)} />
     </SafeAreaView>
@@ -298,6 +301,7 @@ const styles = StyleSheet.create({
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "400" },
   name: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 },
   avatarFrame: { width: 52, height: 52, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  levelButton: { minHeight: 24, flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 4 },
   identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10 },
   identityStat: { flexDirection: "row", alignItems: "center", gap: 5 },
   metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },

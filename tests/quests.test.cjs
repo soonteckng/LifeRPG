@@ -21,6 +21,9 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === "expo-haptics") return {selectionAsync:async()=>{}};
+    if (name.endsWith("/UserContext")) return mocks["../../context/UserContext"] ?? {useUser:()=>({hapticsEnabled:false})};
+    if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
     if (name.endsWith("/CharacterMark")) return props => React.createElement("CharacterMark", props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>React.createElement("TourAnchor",props,props.children), TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
@@ -292,14 +295,14 @@ test("quest list keeps its bottom gap through the installed library's footer adj
   let renderer;
   try {
     await act(async () => { renderer = create(React.createElement(Adjusted, { style: listStyle() })); });
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 40);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 64);
     await ui.press("All quests");
     footerHeight = 72;
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 136);
     await ui.press("View completed quests");
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 136);
   } finally {
     if (renderer) await act(async () => renderer.unmount());
     await ui.cleanup();
@@ -356,6 +359,13 @@ for (const platform of ["ios", "android"]) {
     await act(async () => renderer.update(React.createElement(AppSheet, {...props, motionMode:"timed"})));
     assert.equal(sheetProps.animationConfigs.duration, 220);
     assert.equal(sheetProps.overrideReduceMotion, "system");
+
+    // Async daily-goal content must not add or move a native snap point.
+    await act(async()=>renderer.update(React.createElement(AppSheet,{...props,expanded:true,heightRatio:.62,motionMode:"timed",header:React.createElement("Text",null,"Loading goal")})));
+    assert.equal(sheetProps.enableDynamicSizing,false);assert.deepEqual(sheetProps.snapPoints,[496]);
+    await act(async()=>renderer.update(React.createElement(AppSheet,{...props,expanded:true,heightRatio:.62,motionMode:"timed",header:React.createElement("Text",null,"Your loaded daily goal")})));
+    assert.equal(sheetProps.enableDynamicSizing,false);assert.deepEqual(sheetProps.snapPoints,[496]);
+    assert.equal(sheetProps.keyboardBehavior,"fillParent");
 
     assert.equal(sheetProps.android_keyboardInputMode, "adjustResize");
     // Native back and backdrop use the same guarded request, before any unmount.
@@ -672,7 +682,7 @@ test("clean quest editors use native drag dismissal, dirty drafts retain the dis
   await ui.press('Add quest');
   const editor=()=>ui.renderer.root.findAllByType('Sheet').find(node=>node.props.label==='quest editor');
   assert.equal(editor().props.guardDismiss,false);
-  assert.equal(editor().props.compact,true);
+  assert.equal(editor().props.expanded,true);
   await ui.type('Quest name','Unsaved quest');
   assert.equal(editor().props.guardDismiss,true);
   await act(async()=>editor().props.onRequestClose());
@@ -895,8 +905,8 @@ test("free focus presets and custom seconds start the selected time and cannot l
  const ui=await quickHomeSetup();
  try{
   const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
-  await act(async()=>control('Use 10 minutes').props.onPress());
-  await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start'),[['start',600,1]]);
+  await act(async()=>control('Use 60 minutes').props.onPress());
+  await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start'),[['start',3600,1]]);
   await act(async()=>control('Set a custom focus duration').props.onPress());
   const inputs=()=>ui.renderer.root.findAllByType('Input');
   await act(async()=>{inputs().find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');inputs().find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
@@ -904,5 +914,16 @@ test("free focus presets and custom seconds start the selected time and cannot l
   assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, Everyday focus');
   await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start').at(-1),['start',2717,1]);
   await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+ }finally{await ui.cleanup();}
+});
+
+test('Home level button opens and dismisses the tier path without changing its timer',async()=>{
+ const ui=await quickHomeSetup();
+ try{
+  const level=ui.renderer.root.findAllByType('Pressable').find(node=>node.props.accessibilityLabel?.includes('View level tiers'));
+  assert.ok(level);await act(async()=>level.props.onPress());
+  const popup=()=>ui.renderer.root.findByType('TierSheet');assert.equal(popup().props.visible,true);
+  await act(async()=>popup().props.onClose());assert.equal(popup().props.visible,false);
+  assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
  }finally{await ui.cleanup();}
 });

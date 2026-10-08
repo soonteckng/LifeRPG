@@ -91,7 +91,7 @@ test('the chooser shows only the current direction prompts and retains the chose
   try {
     assert.match(text(ui.tree.root), /Review and remember/);
     assert.doesNotMatch(text(ui.tree.root), /Make a first draft/);
-    await ui.press('Work and projects');
+    await ui.press('Work & projects');
     assert.equal(current.templateId, 'project-next-step');
     assert.doesNotMatch(text(ui.tree.root), /Review and remember|Practise what you’re learning/);
     await ui.press('Make room for a priority');
@@ -102,7 +102,7 @@ test('the chooser shows only the current direction prompts and retains the chose
     assert.doesNotMatch(text(ui.tree.root), /Your starting point/);
     await ui.press('Help me choose a focus');
     assert.equal(current.templateId, 'work-priority');
-    await ui.press('Create and practise');
+    await ui.press('Creativity');
     await ui.press('Spend time with your craft');
     assert.equal(current.need, 'creative');
     assert.equal(current.templateId, 'creative-practice');
@@ -120,12 +120,12 @@ test('compact onboarding directions keep an existing learning prompt until a dif
   const ui = await render(Harness);
   try {
     assert.equal(ui.tree.root.findAllByType('Button').length, 5);
-    await ui.press('Learn and study');
+    await ui.press('Learning');
     assert.equal(current.templateId, 'next-deadline');
     assert.equal(current.need, 'assignments');
     await ui.press('Everyday life');
     assert.equal(current.templateId, 'life-small-task');
-    await ui.press('Quiet time');
+    await ui.press('Wellbeing');
     assert.equal(current.templateId, 'quiet-screen-free');
     assert.equal(current.need, 'restore');
   } finally { await ui.cleanup(); }

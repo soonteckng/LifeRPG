@@ -22,6 +22,9 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === "expo-haptics") return {selectionAsync:async()=>{}};
+    if (name.endsWith("/UserContext")) return mocks["../../context/UserContext"] ?? {useUser:()=>({hapticsEnabled:false})};
+    if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
@@ -552,8 +555,8 @@ test("Session timer is display-only and setup has one shared duration control",a
     await act(async()=>{display.onCommit(2479);display.onBusy(true);display.onValidity(false);display.onEdit();});
     assert.equal(ui.calls.length,0);assert.equal(ui.root().findAllByType("DurationSheet").length,0);
     assert.equal(ui.root().findAllByType("View").filter(n=>n.props.testID==="focus-length-control").length,1);
-    await ui.press("Use 10 minutes");await ui.update({duration:600,timeLeft:600});
-    assert.deepEqual(ui.calls.at(-1),["seconds",600]);await ui.press("Start");assert.deepEqual(ui.calls.at(-1),["start",600,undefined]);
+    await ui.press("Use 60 minutes");await ui.update({duration:3600,timeLeft:3600});
+    assert.deepEqual(ui.calls.at(-1),["seconds",3600]);await ui.press("Start");assert.deepEqual(ui.calls.at(-1),["start",3600,undefined]);
   }finally{await ui.cleanup();}
 });
 
@@ -985,11 +988,11 @@ test("compact Session chips select the saved Life area without touching quest or
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
   assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
-  await ui.press("Use 10 minutes");
-  assert.deepEqual(ui.calls.at(-1),["seconds",600]);
-  await ui.update({duration:600,timeLeft:600});
+  await ui.press("Use 60 minutes");
+  assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
+  await ui.update({duration:3600,timeLeft:3600});
   await ui.press("Start");
-  assert.deepEqual(ui.calls.at(-1),["start",600,undefined]);
+  assert.deepEqual(ui.calls.at(-1),["start",3600,undefined]);
   await ui.cleanup();
 });
 
@@ -1250,11 +1253,11 @@ test("Session presets include the 30-minute default and match typed duration", a
   try {
     assert.equal(ui.button("Use 30 minutes").props.accessibilityState.selected,true);
     assert.equal(ui.button("25 minutes"),undefined);
-    for(const minutes of [10,30]) assert.ok(ui.button(`Use ${minutes} minutes`));
+    for(const minutes of [30,60]) assert.ok(ui.button(`Use ${minutes} minutes`));
     assert.ok(ui.button("Set a custom focus duration"));
-    await ui.press("Use 10 minutes");
-    assert.deepEqual(ui.calls.at(-1),["seconds",600]);
-    await ui.update({duration:600,timeLeft:600});
+    await ui.press("Use 60 minutes");
+    assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
+    await ui.update({duration:3600,timeLeft:3600});
     await ui.press("Use 30 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",1800]);
   } finally {await ui.cleanup();}

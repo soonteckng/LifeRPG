@@ -21,6 +21,7 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
@@ -865,6 +866,16 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   } finally {
     await ui.cleanup();
   }
+});
+
+test('Profile level opens the shared tier path with the saved XP balance',async()=>{
+ const ui=await profileScreen();
+ try{
+  const button=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel?.includes('View level tiers'));
+  assert.ok(button);await act(async()=>button.props.onPress());
+  const popup=ui.renderer.root.findByType('TierSheet');assert.equal(popup.props.visible,true);assert.equal(popup.props.level,3);assert.equal(popup.props.currentXP,20);
+  await act(async()=>popup.props.onClose());assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,false);
+ }finally{await ui.cleanup();}
 });
 test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
   const ui = await profileScreen();

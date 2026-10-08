@@ -18,6 +18,8 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { requiredCharacterXP } from "../../utils/levelTiers";
+import LevelTierSheet from "../../components/LevelTierSheet";
 import AppSheet from "../../components/AppSheet";
 import SheetConfirmation from "../../components/SheetConfirmation";
 import CharacterPortrait from "../../components/CharacterPortrait";
@@ -58,6 +60,7 @@ export default function ProfileScreen() {
   const sheetClosing = useRef(false);
   const [saveError, setSaveError] = useState("");
   const [discard, setDiscard] = useState(false);
+  const [tiersOpen, setTiersOpen] = useState(false);
   useFocusEffect(
     useCallback(() => {
       void reloadProfile();
@@ -65,7 +68,7 @@ export default function ProfileScreen() {
   );
   const areas = (data?.areas ?? []).map(lifeAreaGrowth);
   const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
-  const required = Math.floor(100 * Math.pow(Math.max(1, profile.level), 1.5));
+  const required = requiredCharacterXP(profile.level);
   const open = () => {
     if (sheetClosing.current) return;
     setName(profile.username);
@@ -117,7 +120,7 @@ export default function ProfileScreen() {
         <View style={s.hero} testID="profile-companion-card">
           <CharacterPortrait avatar={profile.avatar} size={170} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen} />
           <View style={s.identity}><Text style={s.username} numberOfLines={2}>{profile.username}</Text><Text style={p.caption}>{savedLook.title} · Your companion</Text></View>
-          <View style={s.levelBlock}><View style={s.levelRow}><View style={s.levelPill}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={s.levelText}>Level {profile.level}</Text></View><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} /><Text style={s.growthHint}>Your next level grows with completed focus.</Text></View>
+          <View style={s.levelBlock}><View style={s.levelRow}><Pressable style={s.levelPill} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={s.levelText}>Level {profile.level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></Pressable><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} /><Text style={s.growthHint}>Your next level grows with completed focus.</Text></View>
           <PersonalButton title="Personalise" accessibilityLabel="Personalise profile" secondary onPress={open} />
         </View>
         {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
@@ -136,6 +139,7 @@ export default function ProfileScreen() {
           <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
       </View></ContentReveal>
+      <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         expanded motionMode="timed" keyboardBehavior="fillParent" label="Personalise profile"
         header={<View style={p.sheetHeader}><Text style={p.title}>Make it yours</Text><Text style={p.body}>Your name and your companion’s look.</Text></View>}
@@ -159,7 +163,7 @@ export default function ProfileScreen() {
 const s = StyleSheet.create({
   stack: { gap: 18 }, hero: { padding: 18, gap: 14, borderRadius: 26, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   identity: { alignItems: "center", gap: 5 }, username: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "500", letterSpacing: -0.4, textAlign: "center" },
-  levelBlock: { gap: 8 }, levelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, levelPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 10, backgroundColor: colors.accentSoft }, levelText: { color: colors.accent, fontSize: 13, lineHeight: 18, fontWeight: "500" }, growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 19 },
+  levelBlock: { gap: 8 }, levelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, levelPill: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 10, backgroundColor: colors.accentSoft }, levelText: { color: colors.accent, fontSize: 13, lineHeight: 18, fontWeight: "500" }, growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 19 },
   milestones: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 22, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 19 },
   areasCard: { padding: 18, gap: 12, backgroundColor: colors.surface, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, areaHeading: { gap: 5, paddingBottom: 4 }, sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" }, areaRow: { minHeight: 50, paddingVertical: 5, gap: 7 }, areaLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   preview: { flexDirection: "row", alignItems: "center", minHeight: 132, gap: 14, paddingVertical: 4 },

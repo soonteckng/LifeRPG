@@ -1,3 +1,4 @@
+import { requiredCharacterXP } from "../utils/levelTiers";
 import { useEffect } from "react";
 import { usePathname } from "expo-router";
 import LevelUpModal from "./LevelUpModal";
@@ -32,7 +33,7 @@ export default function GlobalRewardListener() {
 
   const currentXP = profile?.current_xp || 0;
   const currentLevel = profile?.level || 1;
-  const requiredXP = Math.floor(100 * Math.pow(currentLevel, 1.5));
+  const requiredXP = requiredCharacterXP(currentLevel);
 
   return (
     <LevelUpModal

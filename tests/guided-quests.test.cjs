@@ -13,6 +13,7 @@ function load(file, mocks = {}, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true} }).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name.endsWith("/LevelTierSheet"))return props=>React.createElement("TierSheet",props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
     if(name.endsWith("/OnboardingFrame"))return require("./onboarding-mocks.cjs").frame(React);
@@ -30,6 +31,8 @@ const Native = { View:host('View'), ScrollView:host('Scroll'), KeyboardAvoidingV
 function storage() { const values=new Map(); return {values,api:{getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}}}; }
 function mocks(extra={}) {return {
   'react-native':Native,
+  'expo-haptics':{selectionAsync:async()=>{}},
+  '../context/UserContext':{useUser:()=>({hapticsEnabled:false})},
   '@expo/vector-icons':{Ionicons:host('Icon')},
   '@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
   'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({bottom:24,top:24})},
@@ -84,6 +87,11 @@ test('storage read failure is retryable and cannot silently overwrite unknown pr
  assert.equal(await api.guidedPreferenceStore.save('owner',saved),false);
  await api.guidedPreferenceStore.load('owner');assert.deepEqual(api.guidedPreferenceStore.snapshot('owner').value,saved);
 });
+async function setTenMinuteCustom(ui) {
+ await ui.press('Set a custom focus duration');
+ await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('10');ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('0');});
+ await ui.press('Use this duration');
+}
 function preferenceMock(overrides={}) { const initial={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false,...overrides};return()=>{const[value,setValue]=React.useState(initial);return{ready:true,error:false,busy:false,value,save:async next=>{setValue(next);return true;}}}; }
 
 test('Home starter makes the task smaller and starts once with its title, instruction and area',async()=>{
@@ -92,9 +100,9 @@ test('Home starter makes the task smaller and starts once with its title, instru
   '../context/TimerContext':{useTimer:()=>({startSuggestedTimer:(focus,area)=>{calls.push({focus,area});return pending.promise;}})},
  })).default;
  let opened=0;const props={owner:'owner',subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],disabled:false,onStarted:()=>opened++,onFree(){},onQuest(){},onPreferences(){}};
- const ui=await render(Card,props);await ui.press('Use 10 minutes');assert.match(text(ui.tree.root),/A short review/);
+ const ui=await render(Card,props);await setTenMinuteCustom(ui);assert.match(text(ui.tree.root),/A short review/);
  await ui.press('Use 30 minutes');assert.match(text(ui.tree.root),/Review your notes/);assert.doesNotMatch(text(ui.tree.root),/A short review/);
- await ui.press('Use 10 minutes');assert.match(text(ui.tree.root),/A short review/);
+ await setTenMinuteCustom(ui);assert.match(text(ui.tree.root),/A short review/);
  await act(async()=>{const button=ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start');void button.props.onPress();void button.props.onPress();});
  assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,0);
  await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
@@ -146,7 +154,7 @@ test('new users can select a work direction before the introduction',async()=>{
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async()=>{},finishOnboarding:async()=>{}},
  })).default;
- const ui=await render(Screen);await ui.press('Help me choose a focus');await ui.press('Continue');await ui.press('Work and projects');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
+ const ui=await render(Screen);await ui.press('Help me choose a focus');await ui.press('Continue');await ui.press('Work & projects');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'work');assert.equal(pref.templateId,'project-next-step');await ui.cleanup();
 });
 test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
@@ -248,7 +256,7 @@ test('choosing a preset or custom duration never rewrites the saved suggestion d
   '../context/TimerContext':{useTimer:()=>({})},
  })).default;
  const props={owner:'owner',subjects:[],disabled:false,onStarted(){},onFree(){},onQuest(){},onPreferences(){}};
- let ui=await render(Card,props);await ui.press('Use 10 minutes');
+ let ui=await render(Card,props);await setTenMinuteCustom(ui);
  assert.match(text(ui.tree.root),/A short review/);
  await ui.press('Set a custom focus duration');
  await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('42');});
@@ -328,8 +336,8 @@ test('switching focus modes changes the prompt while retaining the chosen timer 
  })).default;
  const ui=await render(Home);const preset=label=>ui.tree.root.findAllByType('Button').find(b=>b.props.accessibilityLabel===label);
  try{
-  assert.match(text(ui.tree.root),/Soon Teck/);await ui.press('Use 10 minutes');
-  preference={...preference,enabled:true};await ui.update({});assert.match(text(ui.tree.root),/A short review/);assert.equal(preset('Use 10 minutes').props.accessibilityState.selected,true);
+  assert.match(text(ui.tree.root),/Soon Teck/);await setTenMinuteCustom(ui);
+  preference={...preference,enabled:true};await ui.update({});assert.match(text(ui.tree.root),/A short review/);assert.equal(preset('Set a custom focus duration').props.accessibilityState.selected,true);
   await ui.press('Use 30 minutes');preference={...preference,templateId:'practice-question',need:'practice'};await ui.update({});assert.equal(preset('Use 30 minutes').props.accessibilityState.selected,true);
   preference={...preference,enabled:false};await ui.update({});assert.match(text(ui.tree.root),/One thing at a time/);await ui.press('Start focusing');assert.deepEqual(startCalls,[1800]);
  }finally{await ui.cleanup();}
@@ -376,12 +384,12 @@ test('both Home choosers share the saved area and direction, including free focu
  const ui=await render(Home);
  try{
   assert.match(text(ui.tree.root),/30 min 59 sec/);await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');assert.match(text(ui.tree.root),/30 min 59 sec/);
-  await ui.press('Use 10 minutes');await ui.press('Choose focus area');await ui.press('Choose Work & projects');
+  await setTenMinuteCustom(ui);await ui.press('Choose focus area');await ui.press('Choose Work & projects');
   assert.match(text(ui.tree.root),/A small project step/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,3);
   await ui.press('Find your next step');
   const radio=label=>ui.tree.root.findAllByType('Button').find(b=>b.props.accessibilityLabel===label);
-  assert.equal(radio('Work and projects').props.accessibilityState.checked,true);
-  await ui.press('Create and practise');await ui.press('Save preferences');
+  assert.equal(radio('Work & projects').props.accessibilityState.checked,true);
+  await ui.press('Creativity');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/A little room to create/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,undefined);
   await ui.press('Choose focus area');await ui.press('Choose Everyday focus');
   assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);

@@ -34,7 +34,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
     catch { if (current === generation.current) { setError("Couldn’t save your goal. Your current goal is unchanged. Please retry."); void load(); } }
     finally { lock.current = false; setBusy(false); }
   };
-  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} compact motionMode="timed" label="daily focus goal"
+  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} expanded heightRatio={0.62} keyboardBehavior="fillParent" motionMode="timed" label="daily focus goal"
     header={<Text style={[p.title, { paddingHorizontal: 20, paddingBottom: 12 }]}>Your daily focus goal</Text>}
     footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surface }}><TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: busy || !canSave, busy }} disabled={busy || !canSave} onPress={() => void save()} style={[p.button, (busy || !canSave) && { opacity: 0.45 }]}><Text style={p.buttonText}>{busy ? "Saving…" : saved ? "Goal saved" : "Save daily goal"}</Text></TouchableOpacity></View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20, gap: 16 }} keyboardShouldPersistTaps="handled">

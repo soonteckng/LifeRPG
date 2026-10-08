@@ -4,14 +4,14 @@ import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
-import { focusAreaDescription, focusAreaIcon, focusAreaTitle } from "../utils/focusAreas";
+import { focusAreaDescription, focusAreaIcon, focusAreaTitle, focusAreaChoices } from "../utils/focusAreas";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import type { Subject } from "../services/taskService";
 
 export default function FocusAreaSheet({ visible, subjects, selectedId, disabled, onClose, onSelect }: {
   visible: boolean; subjects: Subject[]; selectedId: number | null; disabled: boolean; onClose: () => void; onSelect: (id: number | null) => void;
 }) {
-  const choices = subjects.length ? subjects : [{ id: null, title: "Everyday focus", color_code: null }];
+  const choices = subjects.length ? focusAreaChoices(subjects, selectedId) : [{ id: null, title: "Everyday focus", color_code: null }];
   return <AppSheet visible={visible} onRequestClose={onClose} compact motionMode="timed" label="focus area"
     header={<View style={s.header}><Text style={s.title}>Choose a focus area</Text><Text style={s.body}>Where would you like this block to count?</Text></View>}>
     <BottomSheetScrollView contentContainerStyle={s.bodyContainer} showsVerticalScrollIndicator={false}>

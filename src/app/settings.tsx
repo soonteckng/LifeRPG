@@ -1,5 +1,3 @@
-import GuidedPreferenceSheet from "../components/GuidedPreferenceSheet";
-import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { Text } from "../components/AppText";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, Linking, Platform, Switch, View } from "react-native";
@@ -23,8 +21,6 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { profile, hapticsEnabled, setHapticsEnabled, preferenceError } = useUser();
   const { user, signOut } = useAuth();
-  const guided = useGuidedPreference(profile.id ?? "");
-  const [guidedOpen, setGuidedOpen] = useState(false);
   const { hasOpenSession, isRestoring, restoreError, actionBusy } = useTimer();
   const [sheet, setSheet] = useState<"signout" | "notifications" | "goal" | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
@@ -127,7 +123,6 @@ export default function SettingsScreen() {
     : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
   return (
     <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition expandFromIcon>
-      <GuidedPreferenceSheet owner={profile.id ?? ""} visible={guidedOpen} onClose={() => setGuidedOpen(false)} />
       <View style={sectionStyle}>
         <Text style={p.label}>Account</Text>
       <PersonalRow icon="person-circle-outline" title={profile.username} subtitle={user?.email ?? "Signed in"} />
@@ -135,8 +130,6 @@ export default function SettingsScreen() {
       </View>
       <View style={sectionStyle}>
         <Text style={p.label}>Focus & feedback</Text>
-        <PersonalRow icon="compass-outline" title="Focus suggestions" subtitle={guided.value.enabled ? "Suggestions for learning, work and everyday life" : "Optional help choosing your next step"} onPress={() => setGuidedOpen(true)} />
-        <View style={p.divider} />
         <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
         {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
