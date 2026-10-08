@@ -19,7 +19,7 @@ import { lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
 import { colors } from "../constants/theme";
-import DurationPicker from "./DurationPicker";
+import SessionCountdown from "./SessionCountdown";
 import FocusLengthControl from "./FocusLengthControl";
 import FocusDurationSheet from "./FocusDurationSheet";
 import { useQuests } from "../context/QuestContext";
@@ -31,7 +31,6 @@ import { afterTransition } from "../utils/afterTransition";
 import { navigationTiming } from "../utils/navigationMotion";
 
 type Picker = "duration" | "quest" | "area" | null;
-const ignoreTimerEdit = () => {};
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
@@ -57,13 +56,11 @@ export default function SessionScreen() {
   const [completionClosing, setCompletionClosing] = useState(false);
   const hideCompletedSummary = !!sessionSummary && (rewardsVisible || completionClosing);
   const [picker, setPicker] = useState<Picker>(null);
-  const [durationRevision, setDurationRevision] = useState(0);
-  const durationEpoch = useRef(0);
   const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const wheelBounds = useRef({ top: 0, bottom: 0 });
-  const wheelView = useRef<View>(null);
+  const timerBounds = useRef({ top: 0, bottom: 0 });
+  const timerView = useRef<View>(null);
   const detailsOffset = useRef(0);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
@@ -99,7 +96,7 @@ export default function SessionScreen() {
       return;
     }
     // Offset the newly laid-out stage to its old location, then settle to zero.
-    // The duration control stays mounted; this never animates wheel geometry.
+    // The duration control stays mounted; the countdown geometry stays fixed.
     timerTranslate.setValue(previousY - nextY);
     stageAnimation.current = Animated.timing(timerTranslate, { toValue: 0, duration: 300, useNativeDriver: true });
     stageAnimation.current.start();
@@ -173,7 +170,7 @@ export default function SessionScreen() {
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_event, gesture) => {
       return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
- && (gesture.y0 < wheelBounds.current.top || detailsOffset.current <= 0)
+ && (gesture.y0 < timerBounds.current.top || detailsOffset.current <= 0)
         && gesture.dy > 12 && gesture.dy > Math.abs(gesture.dx) * 1.5;
     },
     onPanResponderGrant: () => { screenMotion.stopAnimation(); surfaceOpacity.stopAnimation(); },
@@ -226,8 +223,6 @@ export default function SessionScreen() {
 
   const applyDuration = (seconds: number) => {
     if (!validSessionSeconds(seconds)) return;
-    durationEpoch.current += 1;
-    setDurationRevision(durationEpoch.current);
     if (seconds !== timer.duration) timer.setDurationInSeconds(seconds);
   };
   const selectMinutes = (value: number) => {
@@ -267,11 +262,11 @@ export default function SessionScreen() {
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
-      onTouchStart={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })}>
+      onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "setup" ? isQuest ? "Quest session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={wheelView} onLayout={() => wheelView.current?.measureInWindow((_x, y, _width, height) => { wheelBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
+        <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
@@ -280,11 +275,8 @@ export default function SessionScreen() {
               color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && !hideCompletedSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary && !hideCompletedSummary ? "no-hide-descendants" : "auto"}>
-            <DurationPicker seconds={displayedSeconds} interactive={false}
-              compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`}
-              revision={durationRevision}
-              onCommit={ignoreTimerEdit} onBusy={ignoreTimerEdit} onValidity={ignoreTimerEdit} onEdit={ignoreTimerEdit}
-              />
+            <SessionCountdown seconds={displayedSeconds}
+              compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`} />
           </View>
           {phase === "completed" && sessionSummary && !hideCompletedSummary && <View style={styles.completedHero}>
             <CompletionHero seconds={sessionSummary.durationSeconds} title={title} levelUp={!!timer.completedLevelUp?.leveledUp} />

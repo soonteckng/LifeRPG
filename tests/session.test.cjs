@@ -237,7 +237,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "./AppHeader":p=>React.createElement("Button",{onPress:p.onBack,accessibilityLabel:p.backLabel},p.title),
     "./LevelUpModal":host("CompletionPopup"),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
-    "./DurationPicker":{__esModule:true,default:p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"}),p.interactive&&React.createElement("Button",{onPress:p.onEdit,accessibilityLabel:"Edit duration"},"Edit duration")),DurationEditor:p=>p.visible?React.createElement("DurationSheet",p):null},
+    "./SessionCountdown":p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"})),
     "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
     "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
@@ -260,10 +260,10 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
 
 test("opening Custom keeps the timer display and applied duration stable",async()=>{
   const ui=await screenSetup();
-  const before=ui.root().findByType("DurationControl").props;
+  const control=ui.root().findByType("DurationControl"),before=control.props;
   await ui.press("Set a custom focus duration");
   const after=ui.root().findByType("DurationControl").props;
-  assert.equal(after.revision,before.revision);
+  assert.equal(ui.root().findByType("DurationControl"),control);
   assert.equal(after.seconds,before.seconds);
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
   await ui.cleanup();
@@ -311,7 +311,7 @@ test("saved completion displays focused duration while unsaved completion stays 
   assert.match(ui.output(),/Completion needs attention/);
   await ui.update({actionError:null,sessionSummary:{durationSeconds:1859,minutesSpent:30,xpEarned:30,goldEarned:5,questTitle:"Read"}});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,1859);
-  assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+  assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
   assert.match(ui.output(),/Time focused/);
   await ui.update({isCompleted:false,hasOpenSession:true,isRunning:false,sessionSummary:null,timeLeft:900});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,900);
@@ -325,7 +325,7 @@ test("quest setup is compact, keeps its association during loading, and never st
   assert.equal(ui.button("15 minutes"),undefined);
   assert.ok(ui.button("Change quest"));
   assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
-  assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+  assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
   assert.equal(ui.root().findByProps({testID:"session-timer-anchor"}).props.style[1].flex,1);
   assert.equal(ui.calls.length,0);
   await ui.press("Start");
@@ -488,71 +488,15 @@ test("foreground recovery and notifications retain exact remaining seconds",asyn
   assert.equal(scheduled.filter(n=>n.trigger?.seconds).at(-1).trigger.seconds,899);
   await ui.cleanup();
 });
-function durationModule(calls = [], hapticsEnabled = false, scrolls = []) {
-  const Wheel = React.forwardRef((props, ref) => {
-    React.useImperativeHandle(ref, () => ({scrollToOffset:request=>scrolls.push(request)}));
-    return React.createElement("Wheel", props);
-  });
-  return load("src/components/DurationPicker.tsx",{
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll"),BottomSheetTextInput:host("Input")},
-    "./AppSheet":function Sheet(props) {
-      // Model completed dismissal so closing unmounts the abandoned draft.
-      // Native animation/gesture behavior belongs to phone verification.
-      React.useEffect(()=>{if(!props.visible) props.onDismiss?.();},[props.visible]);
-      return props.visible ? React.createElement("Sheet",props,props.header,props.children) : null;
-    },
-    "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),TextInput:host("Input"),Modal:host("Modal"),ScrollView:host("Scroll"),KeyboardAvoidingView:host("KeyboardView"),
-      Animated:{Value:class {constructor(value){this.value=value;} interpolate(config){return config;}},Text:host("AnimatedText"),FlatList:Wheel,event:(_,config)=>Object.assign(event=>config.listener?.(event),{nativeDriver:config.useNativeDriver})},
-      PixelRatio:{get:()=>2.625,roundToNearestPixel:value=>Math.round(value*2.625)/2.625},FlatList:host("Wheel"),Keyboard:{isVisible:()=>false,dismiss:()=>calls.push("keyboard")},Platform:{OS:"android"},StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})},
-    "react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:24}),SafeAreaView:host("SafeArea")},
-    "expo-haptics":{selectionAsync:async()=>calls.push("haptic")},
-    "../context/UserContext":{useUser:()=>({hapticsEnabled})},
-    "../hooks/useReducedMotion":{useReducedMotion:()=>true},
-  });
-}
 
-test("integrated wheels ignore programmatic scrolls, commit on settling, and keep digits fixed",async()=>{
-  const calls=[],{default:Picker}=durationModule(calls);
-  let props={seconds:930,interactive:true,revision:0,onCommit:s=>calls.push(["commit",s]),onBusy:b=>calls.push(["busy",b]),onValidity:v=>calls.push(["valid",v]),onEdit:()=>{}};
-  let renderer;
-  await act(async()=>{renderer=create(React.createElement(Picker,props));});
-  const wheels=()=>renderer.root.findAllByType("Wheel");
-  const event=(index,value,velocity=0)=>({nativeEvent:{contentOffset:{y:value*wheels()[index].props.snapToInterval},velocity:{y:velocity}}});
-  await act(async()=>wheels()[0].props.onScroll(event(0,0)));
-  assert.deepEqual(calls,[]);
-  await act(async()=>wheels()[0].props.onScrollBeginDrag());
-  const scrollingProps=wheels()[0].props;
-  assert.equal(scrollingProps.onScroll.nativeDriver,true);
-  await act(async()=>wheels()[0].props.onScroll(event(0,100)));
-  assert.equal(wheels()[0].props,scrollingProps,"scrolling digits must not depend on React rerenders");
-  await act(async()=>wheels()[0].props.onScrollEndDrag(event(0,100,2)));
-  assert.equal(calls.some(c=>c[0]==="commit"),false);
-  await act(async()=>wheels()[0].props.onMomentumScrollEnd(event(0,100)));
-  assert.ok(calls.some(c=>c[0]==="commit"&&c[1]===6030));
-  assert.deepEqual(calls.at(-1),["busy",false]);
-  assert.equal(calls.includes("haptic"),false);
-  const digits=renderer.root.findAllByType("View").find(n=>n.props.testID==="session-countdown");
-  const layout=JSON.stringify(digits.props.style);
-  props={...props,seconds:6030,interactive:false};
-  await act(async()=>renderer.update(React.createElement(Picker,props)));
-  assert.equal(renderer.root.findAllByType("View").find(n=>n.props.testID==="session-countdown"),digits);
-  assert.equal(JSON.stringify(digits.props.style),layout);
-  assert.equal(wheels().length,0);
-  for(const seconds of [1,30,930,6000,28800]){
-    props={...props,seconds,interactive:true,revision:props.revision+1};
-    await act(async()=>renderer.update(React.createElement(Picker,props)));
-    assert.equal((wheels()[0].props.initialScrollIndex + 1) % 481,Math.floor(seconds/60));
-    assert.equal((wheels()[1].props.initialScrollIndex + 1) % 60,seconds%60);
-  }
-  await act(async()=>renderer.unmount());
-});
+
+
 
 test("Session timer is display-only and setup has one shared duration control",async()=>{
   const ui=await screenSetup();
   try {
     const display=ui.root().findByType("DurationControl").props;
-    assert.equal(display.interactive,false);
-    await act(async()=>{display.onCommit(2479);display.onBusy(true);display.onValidity(false);display.onEdit();});
+    for(const action of ["onCommit","onBusy","onValidity","onEdit"])assert.equal(display[action],undefined);
     assert.equal(ui.calls.length,0);assert.equal(ui.root().findAllByType("DurationSheet").length,0);
     assert.equal(ui.root().findAllByType("View").filter(n=>n.props.testID==="focus-length-control").length,1);
     await ui.press("Use 60 minutes");await ui.update({duration:3600,timeLeft:3600});
@@ -560,59 +504,9 @@ test("Session timer is display-only and setup has one shared duration control",a
   }finally{await ui.cleanup();}
 });
 
-test("typed editor validates both fields without truncation; Cancel retains the applied value",async()=>{
-  const calls=[],{DurationEditor:Editor}=durationModule(calls);
-  let props={visible:true,seconds:930,onCancel:()=>calls.push("cancel"),onConfirm:s=>calls.push(["confirm",s])};
-  let renderer;await act(async()=>{renderer=create(React.createElement(Editor,props));});
-  const input=label=>renderer.root.findAllByType("Input").find(n=>n.props.accessibilityLabel===label);
-  const text=n=>typeof n==="string"?n:(n.children??[]).map(text).join("");
-  const button=label=>renderer.root.findAllByType("Button").find(n=>text(n)===label);
-  const type=async(m,s)=>{await act(async()=>{input("Duration minutes").props.onChangeText(m);input("Duration seconds").props.onChangeText(s);});};
-  assert.equal(input("Duration minutes").props.value,"15");
-  assert.equal(input("Duration seconds").props.value,"30");
-  assert.equal(input("Duration minutes").props.maxLength,undefined);
-  for(const [m,s] of [["","30"],["0","0"],["480","59"],["481","00"],["15","60"],["1.5","00"],["1000","00"]]){
-    await type(m,s);assert.equal(button("Set duration").props.disabled,true);
-  }
-  for(const [m,s,total] of [["0","1",1],["0","30",30],["15","30",930],["100","00",6000],["480","00",28800]]){
-    await type(m,s);assert.equal(button("Set duration").props.disabled,false);
-    await act(async()=>button("Set duration").props.onPress());
-    assert.deepEqual(calls.at(-1),["confirm",total]);
-  }
-  await type("20","12");
-  await act(async()=>button("Cancel").props.onPress());
-  assert.equal(calls.at(-1),"cancel");
-  props={...props,visible:false};
-  await act(async()=>renderer.update(React.createElement(Editor,props)));
-  props={...props,visible:true};
-  await act(async()=>renderer.update(React.createElement(Editor,props)));
-  assert.equal(input("Duration minutes").props.value,"15");
-  assert.equal(input("Duration seconds").props.value,"30");
-  await act(async()=>renderer.unmount());
-});
 
-test("looping wheels cross 59/00 both ways and tick only for changed user selections",async()=>{
-  const calls=[],{default:Picker}=durationModule(calls,true);
-  let renderer;await act(async()=>{renderer=create(React.createElement(Picker,{seconds:119,interactive:true,revision:0,onCommit:s=>calls.push(["commit",s]),onBusy:()=>{},onValidity:()=>{},onEdit:()=>{}}));});
-  const wheel=()=>renderer.root.findAllByType("Wheel")[1];
-  const event=i=>({nativeEvent:{contentOffset:{y:i*wheel().props.snapToInterval},velocity:{y:1}}});
-  await act(async()=>wheel().props.onScrollBeginDrag());
-  await act(async()=>wheel().props.onScroll(event(300)));
-  await act(async()=>wheel().props.onScroll(event(300)));
-  assert.equal(calls.filter(c=>c==="haptic").length,1);
-  await act(async()=>wheel().props.onScrollEndDrag(event(300)));
-  await act(async()=>wheel().props.onMomentumScrollEnd(event(300)));
-  assert.deepEqual(calls.at(-1),["commit",60]);
-  await act(async()=>wheel().props.onScroll(event(240)));
-  assert.equal(calls.filter(c=>c==="haptic").length,1);
-  await act(async()=>wheel().props.onScrollBeginDrag());
-  await act(async()=>wheel().props.onScroll(event(239)));
-  await act(async()=>wheel().props.onScrollEndDrag(event(239)));
-  await act(async()=>wheel().props.onMomentumScrollEnd(event(239)));
-  assert.deepEqual(calls.at(-1),["commit",119]);
-  assert.equal(calls.filter(c=>c==="haptic").length,2);
-  await act(async()=>renderer.unmount());
-});
+
+
 
 test("Session surface stays opaque while the reduced-motion preference resolves",async()=>{
   const preference={value:true};
@@ -669,7 +563,7 @@ test("typed input and presets share applied seconds while linked quests stay rea
   await ui.press("Use 30 minutes");await ui.update({duration:1800,timeLeft:1800});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
   await ui.update({linkedTaskId:7,duration:930});
-  assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+  assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
   assert.equal(ui.button("Edit duration"),undefined);
   await ui.cleanup();
 });
@@ -756,35 +650,7 @@ function notificationMock() {
     scheduleNotificationAsync: async request => { requests.push(request); return request.identifier; },
   } };
 }
-test("duration draft remains mounted until dismissal, then reopens from the applied value", async () => {
-  const { DurationEditor } = load("src/components/DurationPicker.tsx", {
-    "expo-haptics": {}, "react-native": { ...{ View: host("View"), Text: host("Text"), TouchableOpacity: host("Button") }, StyleSheet: { create: s => s } },
-    "@gorhom/bottom-sheet": { BottomSheetScrollView: host("Scroll"), BottomSheetTextInput: host("Input") },
-    "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 24 }) },
-    "../context/UserContext": {}, "../hooks/useReducedMotion": {},
-    "./AppSheet": props => React.createElement("Sheet", props, props.children),
-  });
-  let renderer, props = { visible: false, seconds: 930, onCancel() {}, onConfirm() {} };
-  await act(async () => { renderer = create(React.createElement(DurationEditor, props)); });
-  try {
-    assert.equal(renderer.toJSON(), null);
-    props = { ...props, visible: true }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
-    await act(async () => renderer.root.findAllByType("Input")[0].props.onChangeText("20"));
-    props = { ...props, visible: false }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
-    assert.equal(renderer.root.findAllByType("Input")[0].props.value, "20");
-    await act(async () => renderer.root.findByType("Sheet").props.onDismiss());
-    assert.equal(renderer.toJSON(), null);
-    props = { ...props, visible: true }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
-    assert.equal(renderer.root.findAllByType("Input")[0].props.value, "15");
-    await act(async () => renderer.root.findByType("Sheet").props.onDismiss());
-    assert.equal(renderer.root.findAllByType("Input").length, 2);
-    props = { ...props, visible: false }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
-    const staleDismiss = renderer.root.findByType("Sheet").props.onDismiss;
-    props = { ...props, visible: true }; await act(async () => renderer.update(React.createElement(DurationEditor, props)));
-    await act(async () => staleDismiss());
-    assert.equal(renderer.root.findAllByType("Input").length, 2);
-  } finally { await act(async () => renderer.unmount()); }
-});
+
 test("Android actual scheduling payloads route ongoing and timed alerts through preference channels", async () => {
   const api = load("src/services/sessionNotificationService.ts", {});
   for (const sound of [false, true]) for (const haptics of [false, true]) {
@@ -945,7 +811,7 @@ test("duration changes cannot abandon an in-flight or failed completion", async 
   } finally { await ui.cleanup(); }
 });
 
-test("completed setup keeps presets and wheel commits editable before the next Start", async () => {
+test("completed setup keeps presets and custom durations editable before the next Start", async () => {
   const ui = await providerSetup({ completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0 }) });
   try {
     await ui.run(s => s.startTimer(1));
@@ -1020,43 +886,10 @@ test("five visible Life areas need no More sheet; additional areas remain select
   await extra.cleanup();
 });
 
-test("wheel digit boxes share the snap row height and disable automatic content insets",async()=>{
-  const {default:Picker}=durationModule();
-  let renderer;
-  await act(async()=>{renderer=create(React.createElement(Picker,{seconds:28800,interactive:true,compact:true,revision:0,onCommit:()=>{},onBusy:()=>{},onValidity:()=>{},onEdit:()=>{}}));});
-  for(const wheel of renderer.root.findAllByType("Wheel")) {
-    assert.equal(wheel.props.automaticallyAdjustContentInsets,false);
-    assert.equal(wheel.props.contentInsetAdjustmentBehavior,"never");
-    const row=wheel.props.renderItem({item:wheel.props.initialScrollIndex});
-    const textStyle=Object.assign({},...row.props.children.props.style);
-    assert.equal(textStyle.height,wheel.props.snapToInterval);
-    assert.equal(textStyle.lineHeight,wheel.props.snapToInterval);
-    assert.equal(textStyle.includeFontPadding,false);
-    assert.equal(textStyle.textAlignVertical,"center");
-  }
-  await act(async()=>renderer.unmount());
-});
 
 
-test("virtualized wheel frames include the real header and centre the initial selected row", async () => {
-  const { default: Picker } = durationModule([]);
-  let renderer;
-  await act(async () => { renderer = create(React.createElement(Picker, {seconds:930, interactive:true, compact:true, revision:0, onCommit(){}, onBusy(){}, onValidity(){}, onEdit(){}})); });
-  try {
-    for (const wheel of renderer.root.findAllByType("Wheel")) {
-      const { snapToInterval: height, initialScrollIndex: index, getItemLayout } = wheel.props;
-      const initialOffset = getItemLayout(null, index).offset;
-      assert.equal(getItemLayout(null, 0).offset, height, "header is part of every item frame");
-      assert.ok(Math.abs(getItemLayout(null, index + 1).offset - initialOffset - height) < 1e-8, "selected item occupies the centre row");
-      assert.ok(Math.abs(height * 2.625 - Math.round(height * 2.625)) < 1e-8, "fractional-density phones use whole physical pixel rows");
-      assert.equal(wheel.props.ListHeaderComponent.props.style.height, height);
-      assert.equal(wheel.props.snapToAlignment, "start");
-      const digit = wheel.props.renderItem({item:index + 1}).props.children;
-      assert.equal(digit.props.style[1].transform.find(value => "rotateX" in value).rotateX, "0deg", "reduced motion keeps digit baselines flat");
-      assert.notEqual(wheel.props.disableIntervalMomentum, true, "normal flings should retain native momentum");
-    }
-  } finally { await act(async () => renderer.unmount()); }
-});
+
+
 
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
@@ -1088,27 +921,7 @@ test("completion message shows saved exact duration and awards; Done only closes
 });
 
 
-test("wheel settlement corrects a residual native offset without scrolling aligned flings", async () => {
-  const scrolls=[];
-  const {default:Picker}=durationModule([],false,scrolls);
-  let renderer;
-  await act(async()=>{renderer=create(React.createElement(Picker,{seconds:930,interactive:true,revision:0,onCommit(){},onBusy(){},onValidity(){},onEdit(){}}));});
-  try {
-    const wheel=()=>renderer.root.findAllByType("Wheel")[0];
-    const height=wheel().props.snapToInterval;
-    const index=wheel().props.initialScrollIndex+2;
-    const finish=async(offset)=>{
-      await act(async()=>wheel().props.onScrollBeginDrag());
-      await act(async()=>wheel().props.onScrollEndDrag({nativeEvent:{contentOffset:{y:offset},velocity:{y:1}}}));
-      await act(async()=>wheel().props.onMomentumScrollEnd({nativeEvent:{contentOffset:{y:offset}}}));
-    };
-    await finish((index+0.2)*height);
-    assert.deepEqual(scrolls,[{offset:index*height,animated:false}]);
-    scrolls.length=0;
-    await finish(index*height);
-    assert.deepEqual(scrolls,[]);
-  } finally {await act(async()=>renderer.unmount());}
-});
+
 
 
 test("floating dock reserves the safe area and only visible banners",()=>{
@@ -1319,7 +1132,7 @@ test("Ended notice retains the running/paused screen and exact countdown through
       await ui.update({hasOpenSession:false,isRunning:false,timeLeft:1800,actionBusy:false,actionError:null});
       assert.deepEqual(ui.root().findByProps({testID:"session-timer-anchor"}).props.style,stage);
       assert.equal(ui.root().findByType("DurationControl").props.seconds,827);
-      assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
+      assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
       assert.doesNotMatch(ui.output(),/New session|Ready when you are|Change duration|15 minutes/);
       const sheet=ui.root().findAllByType("Sheet").find(node=>node.props.label==="session ended");
       assert.equal(sheet.props.footer,undefined, "short notice's button stays in measured content rather than an overlapping footer");
@@ -1422,4 +1235,19 @@ test("editing a suggested setup timer keeps its saved instruction and updates ex
   const draft=api.readSuggestedFocus(ui.state().notes);assert.equal(draft.seconds,2717);assert.equal(draft.instruction,focus.instruction);
   await ui.run(s=>s.startTimer(2717));const query=ui.calls.find(c=>c[0]==='start')[1];assert.equal(query.targetDurationSeconds,2717);assert.equal(api.readSuggestedFocus(query.notes).seconds,2717);
  }finally{await ui.cleanup();}
+});
+
+test("display-only countdown keeps its node and exact digits across minute boundaries",async()=>{
+ const Countdown=load("src/components/SessionCountdown.tsx",{
+  "react-native":{View:host("View"),Text:host("Text"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:320,height:640,fontScale:2})}
+ }).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Countdown,{seconds:61,caption:"of 30:00"}));});
+ const display=()=>renderer.root.findAllByType("View").find(node=>node.props.testID==="session-countdown");
+ try{const mounted=display(),layout=JSON.stringify(mounted.props.style);
+  for(const [seconds,label]of [[61,"01:01"],[60,"01:00"],[59,"00:59"],[0,"00:00"],[28800,"480:00"]]){
+   await act(async()=>renderer.update(React.createElement(Countdown,{seconds,caption:"of 30:00"})));
+   assert.equal(display(),mounted);assert.equal(display().props.accessibilityLabel,label);assert.equal(JSON.stringify(display().props.style),layout);assert.match(JSON.stringify(renderer.toJSON()),new RegExp(label));
+  }
+  assert.equal(renderer.root.findAllByType("Button").length,0);assert.equal(renderer.root.findAllByType("Input").length,0);
+ }finally{await act(async()=>renderer.unmount());}
 });
