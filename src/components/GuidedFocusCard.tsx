@@ -1,6 +1,7 @@
+import { suggestedArea } from "../utils/focusAreas";
 import { useEffect, useRef, useState } from "react";
 import FocusCard from "./FocusCard";
-import { encodeSuggestedFocus, suggestedFocus, readSuggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
+import { encodeSuggestedFocus, suggestedFocus, suggestedFocusAreaKey, readSuggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { validSessionSeconds } from "../utils/sessionSetup";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
@@ -12,14 +13,15 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
   const preference = useGuidedPreference(owner), timer = useTimer();
   const [selection, setSelection] = useState<{ defaults: typeof preference.value; seconds: number } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<{ focus: SuggestedFocus; areaId: number | null; areaTitle: string } | null>(null);
+  const [failed, setFailed] = useState<{ defaults: typeof preference.value; focus: SuggestedFocus; areaId: number | null; areaTitle: string } | null>(null);
   const lock = useRef(false), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const local = selection?.defaults === preference.value ? selection : null;
   const seconds = selectedSeconds ?? local?.seconds ?? suggestedFocus(preference.value.templateId, preference.value.smaller)?.seconds ?? 1800;
-  const focus = failed?.focus ?? { ...suggestedFocus(preference.value.templateId, seconds === 600)!, seconds };
-  const area = subjects.find(item => item.title.trim().toLowerCase() === "knowledge") ?? subjects.find(item => item.title.trim().toLowerCase() === "general");
-  const areaId = failed ? failed.areaId : area?.id ?? null, areaTitle = failed?.areaTitle ?? area?.title ?? "General";
+  const keptFailure = failed?.defaults === preference.value ? failed : null;
+  const focus = keptFailure?.focus ?? { ...suggestedFocus(preference.value.templateId, seconds === 600)!, seconds };
+  const area = suggestedArea(subjects, suggestedFocusAreaKey(focus.templateId));
+  const areaId = keptFailure ? keptFailure.areaId : area?.id ?? null, areaTitle = keptFailure?.areaTitle ?? area?.title ?? "General";
   const locked = disabled || busy || preference.busy;
   const active = !!timer.hasOpenSession, activeSuggestion = active ? readSuggestedFocus(timer.notes) : null;
   const activeArea = subjects.find(item => item.id === timer.targetAttributeId);
@@ -34,8 +36,8 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     lock.current = true; setBusy(true);
     try {
       const started = await timer.startSuggestedTimer(focus, areaId);
-      if (alive.current) { if (started) { setFailed(null); onStarted(); } else setFailed({ focus, areaId, areaTitle }); }
-    } catch { if (alive.current) setFailed({ focus, areaId, areaTitle }); }
+      if (alive.current) { if (started) { setFailed(null); onStarted(); } else setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
+    } catch { if (alive.current) setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   };
   const setup = () => {
@@ -53,6 +55,6 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     seconds={active ? timer.timeLeft : focus.seconds} area={active ? activeArea?.title ?? "General" : areaTitle}
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
     active={active} running={!!timer.isRunning} busy={busy} disabled={locked} editDisabled={locked}
-    setupDisabled={busy || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!!failed} error={failed ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : preference.error ? "Couldn’t load your preferences. Try Find your next step again." : undefined}
+    setupDisabled={busy || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : preference.error ? "Couldn’t load your preferences. Try Find your next step again." : undefined}
     onDuration={chooseDuration} onSetup={setup} onStart={() => void start()} />;
 }

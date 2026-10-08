@@ -834,8 +834,8 @@ async function profileScreen(overrides = {}) {
 test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
   const ui = await profileScreen();
   try {
-    assert.match(ui.text(), /Your Life areas/);
-    assert.match(ui.text(), /KnowledgeLv 2/);
+    assert.match(ui.text(), /Your focus areas/);
+    assert.match(ui.text(), /LearningLv 2/);
     assert.doesNotMatch(
       ui.text(),
       /Connect areas|No Life areas connected|Explore your progress/,
@@ -1070,4 +1070,12 @@ test("onboarding profile validation rejects too-long names before the RPC and pr
  const queries=[];const api=load('src/services/onboardingService.ts',{'../../lib/supabase':{supabase:{rpc:async(name,args)=>{queries.push([name,args]);return {data:true,error:null};}}}});
  await assert.rejects(api.saveOnboardingProfile('A'.repeat(16),'⭐','Scholar',60),/1 and 15/);assert.equal(queries.length,0);
  await api.saveOnboardingProfile('  Soon Teck  ','⭐','Scholar',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_username,'Soon Teck');
+});
+
+test("Profile has one milestone collection entry instead of a badge shortcut grid",async()=>{
+ const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
+ try{
+  const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,1);
+  await act(async()=>entries[0].props.onPress());assert.deepEqual(routes,['/rewards']);assert.match(ui.text(),/Your focus areas/);
+ }finally{await ui.cleanup();}
 });

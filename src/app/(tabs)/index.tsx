@@ -1,3 +1,4 @@
+import { focusAreaTitle } from "../../utils/focusAreas";
 import FreeFocusCard from "../../components/FreeFocusCard";
 import GuidedFocusCard from "../../components/GuidedFocusCard";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
@@ -251,14 +252,14 @@ export default function HomeScreen() {
               const tint = lifeAreaColor(task.subject_id, area?.color_code);
               return <TouchableOpacity key={task.id} style={[styles.questRow, index > 0 && styles.questDivider]}
                 testID={`home-quest-${task.id}`} accessibilityRole="button"
-                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${area?.title ?? "General"}. ${hasOpenSession ? "Continue current session" : "Open session setup"}`}
+                accessibilityLabel={`${task.title}. ${task.target_minutes || 30} minutes, ${focusAreaTitle(area?.title)}. ${hasOpenSession ? "Continue current session" : "Open session setup"}`}
                 onPress={() => openQuestSession(task)}>
                 <View style={[styles.questIcon, { backgroundColor: `${tint}18` }]}>
                   <Ionicons name="flag-outline" size={20} color={tint} />
                 </View>
                 <View style={styles.questDetail}>
                   <Text style={styles.questTitle} numberOfLines={2}>{task.title}</Text>
-                  <Text style={styles.questMeta} numberOfLines={1}>{task.target_minutes || 30} min · {area?.title ?? "General"}</Text>
+                  <Text style={styles.questMeta} numberOfLines={1}>{task.target_minutes || 30} min · {focusAreaTitle(area?.title)}</Text>
                 </View>
                 <Ionicons name="chevron-forward" size={17} color={colors.secondary} />
               </TouchableOpacity>;
@@ -305,12 +306,12 @@ const styles = StyleSheet.create({
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
   goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  focusCard: { width: "100%", borderRadius: 22, backgroundColor: "#171E2B", padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  focusCard: { width: "100%", borderRadius: 22, backgroundColor: colors.surfaceRaised, padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: "#E5E4FF", width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
-  primaryButtonText: { color: "#171827", fontSize: 16, lineHeight: 22, fontWeight: "500", flexShrink: 1, textAlign: "center" },
-  questCard: { borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.12)" },
+  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: colors.primary, width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "500", flexShrink: 1, textAlign: "center" },
+  questCard: { borderRadius: 22, paddingHorizontal: 16, paddingTop: 8, paddingBottom: 6, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   questHeading: { flexDirection: "row", gap: 8, justifyContent: "space-between", alignItems: "center", paddingVertical: 4 },
   questHeadingText: { flex: 1, minWidth: 0, gap: 2 },
   sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500", letterSpacing: -0.3 },
@@ -318,8 +319,8 @@ const styles = StyleSheet.create({
   allButton: { flexDirection: "row", gap: 3, alignItems: "center", minHeight: 44, paddingLeft: 4 },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   questRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 8 },
-  questDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(225,235,255,0.08)" },
-  questIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: "rgba(175,169,236,0.10)", alignItems: "center", justifyContent: "center" },
+  questDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  questIcon: { width: 38, height: 38, borderRadius: 12, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   questDetail: { flex: 1, minWidth: 0, gap: 3 },
   questTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
   questMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },

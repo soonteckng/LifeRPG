@@ -160,7 +160,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#F0997B",
+    "#D6A18A",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -603,7 +603,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
   try {
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
-    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BCE8", 60], ["#F0997B", 60]]);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#9CAFC2", 60], ["#D6A18A", 60]]);
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
     const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
@@ -663,4 +663,8 @@ test("Quick Start history is bounded, owner filtered and excludes quests, tiny s
   }
   assert.equal(await serviceHarness(() => ({data:[],error:null})).service.getLastFreeSession("owner-b",now), null);
   await assert.rejects(serviceHarness(() => ({error:Error("Offline")})).service.getLastFreeSession("owner-a",now), /Offline/);
+});
+
+test("Progress stays focused on analytics and does not duplicate Profile's milestone collection entry",async()=>{
+ const ui=await screenHarness();try{assert.equal(ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??'')).length,0);assert.doesNotMatch(ui.text(),/Keep growing at your pace/);}finally{await ui.cleanup();}
 });

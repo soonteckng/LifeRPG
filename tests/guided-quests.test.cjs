@@ -46,9 +46,9 @@ async function render(Component,props={}) {let tree;await act(async()=>{tree=cre
  tree,press:async label=>act(async()=>{const button=tree.root.findAllByType('Button').find(node=>text(node)===label||node.props.accessibilityLabel===label);assert.ok(button,`Missing ${label}`);assert.notEqual(button.props.disabled,true,`${label} disabled`);await button.props.onPress();}),
  update:async props=>act(async()=>tree.update(React.createElement(Component,props))),cleanup:async()=>act(async()=>tree.unmount())};}
 
-test('three work blocks support uninterrupted focus and a shorter option',()=>{
+test('curated focus blocks support uninterrupted focus and a shorter option',()=>{
  const api=load('src/constants/guidedQuests.ts');
- assert.equal(api.STARTER_QUESTS.length,3);assert.equal(new Set(api.STARTER_QUESTS.map(task=>task.id)).size,3);
+ assert.equal(new Set(api.STARTER_QUESTS.map(task=>task.id)).size,api.STARTER_QUESTS.length);
  for(const task of api.STARTER_QUESTS){const full=api.suggestedFocus(task.id),small=api.suggestedFocus(task.id,true);assert.equal(full.seconds,1800);assert.equal(small.seconds,600);assert.notEqual(small.instruction,full.instruction);assert.notEqual(small.title,full.title);assert.equal(api.readSuggestedFocus(api.encodeSuggestedFocus(small)).title,small.title);}
 });
 test('metadata preserves wording, rejects corrupt or unknown payloads and never interprets ordinary notes',()=>{
@@ -140,14 +140,14 @@ test('new users can choose free focus and retain their badge through the seven-p
  const ui=await render(Screen);assert.doesNotMatch(text(ui.tree.root),/Skip suggestions/);await ui.press('Just let me focus');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.deepEqual(routes,[]);await ui.press('Previous step');assert.equal(ui.tree.root.findByType('Frame').props.step,4);await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');assert.deepEqual(routes,['/']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
 });
-test('new users can select an assignment direction before the introduction',async()=>{
+test('new users can select a work direction before the introduction',async()=>{
  const db=storage();const Screen=load('src/app/onboarding.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,'expo-router':{useRouter:()=>({replace(){}})},
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async()=>{},finishOnboarding:async()=>{}},
  })).default;
- const ui=await render(Screen);await ui.press('Study and assignments');await ui.press('Continue');await ui.press('Move an assignment forward');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
- assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'assignments');await ui.cleanup();
+ const ui=await render(Screen);await ui.press('Help me choose a focus');await ui.press('Continue');await ui.press('Work and projects');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
+ assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'work');assert.equal(pref.templateId,'project-next-step');await ui.cleanup();
 });
 test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
  const db=storage(),pending=deferred(),calls=[];let upserts=0;
@@ -333,4 +333,11 @@ test('switching focus modes changes the prompt while retaining the chosen timer 
   await ui.press('Use 30 minutes');preference={...preference,templateId:'practice-question',need:'practice'};await ui.update({});assert.equal(preset('Use 30 minutes').props.accessibilityState.selected,true);
   preference={...preference,enabled:false};await ui.update({});assert.match(text(ui.tree.root),/One thing at a time/);await ui.press('Start focusing');assert.deepEqual(startCalls,[1800]);
  }finally{await ui.cleanup();}
+});
+
+test('an explicit new direction replaces a failed suggestion while ordinary retries keep their exact draft',async()=>{
+ const catalog=load('src/constants/guidedQuests.ts');let preference={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
+ const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({value:preference,ready:true,busy:false,error:false})},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async()=>false})}})).default;
+ const ui=await render(Card,{owner:'owner',subjects:[],disabled:false,onStarted(){}});
+ try{await ui.press('Start focusing');assert.match(text(ui.tree.root),/Retry start/);preference={...preference,need:'work',templateId:catalog.defaultFocusId('work')};await ui.update({owner:'owner',subjects:[],disabled:false,onStarted(){}});assert.match(text(ui.tree.root),new RegExp(catalog.suggestedFocus(preference.templateId).title));assert.doesNotMatch(text(ui.tree.root),/Retry start/);}finally{await ui.cleanup();}
 });

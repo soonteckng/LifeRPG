@@ -83,7 +83,7 @@ test('glass is dense on Android, uses available native iOS glass and honours red
   if(platform==='android')assert.equal(imports,0);
   const root=tree.root.findByProps({testID:'glass-surface'});
   assert.equal(root.props.pointerEvents,'none');
-  assert.equal(root.props.style[1].backgroundColor,platform==='ios'&&reduced?'#1B2230':platform==='ios'&&available?'transparent':'rgba(24,30,44,0.94)');
+  assert.equal(root.props.style[1].backgroundColor,platform==='ios'&&reduced?'#1E1E21':platform==='ios'&&available?'transparent':'rgba(30,30,33,0.95)');
   if(platform==='ios'){
     await act(async()=>listener(true));
     assert.equal(tree.root.findAllByType('NativeGlass').length,0);

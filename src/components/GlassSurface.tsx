@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import { useEffect, useMemo, useState } from "react";
 import { AccessibilityInfo, Platform, StyleSheet, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
@@ -25,10 +26,10 @@ export default function GlassSurface({radius = 24}: {radius?: number}) {
     } catch { return null; }
   }, [opaque]);
   return <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants"
-    testID="glass-surface" style={[StyleSheet.absoluteFill, {borderRadius:radius, overflow:"hidden", backgroundColor:opaque ? "#1B2230" : NativeGlass ? "transparent" : "rgba(24,30,44,0.94)", borderWidth:StyleSheet.hairlineWidth, borderColor:"rgba(225,235,255,0.20)"}]}>
-    {NativeGlass && <NativeGlass style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor="rgba(24,30,44,0.75)" colorScheme="dark" />}
+    testID="glass-surface" style={[StyleSheet.absoluteFill, {borderRadius:radius, overflow:"hidden", backgroundColor:opaque ? colors.surfaceRaised : NativeGlass ? "transparent" : colors.glass, borderWidth:StyleSheet.hairlineWidth, borderColor:colors.border}]}>
+    {NativeGlass && <NativeGlass style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={colors.glassTint} colorScheme="dark" />}
     {!opaque && <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-      <Defs><LinearGradient id="surfaceSheen" x1="0" y1="0" x2="0.7" y2="1"><Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.10} /><Stop offset="0.45" stopColor="#C9D5FF" stopOpacity={0.025} /><Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} /></LinearGradient></Defs>
+      <Defs><LinearGradient id="surfaceSheen" x1="0" y1="0" x2="0.7" y2="1"><Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.10} /><Stop offset="0.45" stopColor={colors.primary} stopOpacity={0.025} /><Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} /></LinearGradient></Defs>
       <Rect width="100" height="100" fill="url(#surfaceSheen)" />
     </Svg>}
   </View>;

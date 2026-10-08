@@ -108,7 +108,7 @@ const s = StyleSheet.create({
   scroll: { flex: 1 }, body: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24, flexGrow: 1 }, heading: { gap: 12 },
   title: { fontSize: 30, lineHeight: 37, letterSpacing: -0.7, fontWeight: "500", color: colors.text }, subtitle: { fontSize: 17, lineHeight: 25, color: colors.secondary },
   footer: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 8, backgroundColor: colors.background }, feedback: { minHeight: 24, paddingBottom: 8 },
-  primary: { flex: 1, minHeight: 54, borderRadius: 16, backgroundColor: "#E5E4FF", alignItems: "center", justifyContent: "center", padding: 14 }, primaryText: { color: "#171827", fontSize: 17, lineHeight: 24, fontWeight: "500", textAlign: "center" },
+  primary: { flex: 1, minHeight: 54, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", padding: 14 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 24, fontWeight: "500", textAlign: "center" },
   footerActions: { flexDirection: "row", gap: 12, alignItems: "stretch" }, back: { minWidth: 80, minHeight: 54, paddingHorizontal: 14, borderWidth: 1, borderColor: colors.line, borderRadius: 16, alignItems: "center", justifyContent: "center" }, quiet: { minHeight: 48, justifyContent: "center", paddingVertical: 10 }, link: { color: colors.accent, fontSize: 15, lineHeight: 22 },
   disabled: { opacity: 0.6 }, error: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   choice: { padding: 16, minHeight: 78, borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 16 },

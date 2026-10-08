@@ -878,13 +878,13 @@ test("Home continues active or paused sessions and protects restoration/completi
 test("Home history does not leak across accounts; missing areas fall back to General and tiny/quest rows are ignored",async()=>{
   const ui=await quickHomeSetup({task_id:null,subject_id:99,duration_seconds:1859});
   try {
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min 59 sec, General");
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min 59 sec, Everyday focus");
     await ui.update({},"owner-b",null);
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
     await ui.update({},"owner-c",{task_id:2,subject_id:2,duration_seconds:900});
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
     await ui.update({},"owner-d",{task_id:null,subject_id:2,duration_seconds:30});
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, General");
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
   }finally{await ui.cleanup();}
 });
 
@@ -898,8 +898,8 @@ test("free focus presets and custom seconds start the selected time and cannot l
   const inputs=()=>ui.renderer.root.findAllByType('Input');
   await act(async()=>{inputs().find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');inputs().find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
   await act(async()=>control('Use this duration').props.onPress());
-  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, General');
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, Everyday focus');
   await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start').at(-1),['start',2717,1]);
-  await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, General');
+  await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
  }finally{await ui.cleanup();}
 });

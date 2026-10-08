@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import { Text } from "./AppText";
 import { StyleSheet, View, TouchableOpacity } from "react-native";
 import { Href, useRouter } from 'expo-router';
@@ -21,7 +22,7 @@ export default function Header({
   backTitle = 'Home',
   fallbackRoute = '/profile',
   backRoute,
-  backgroundColor = '#090D16',
+  backgroundColor = colors.background,
 }: HeaderProps) {
   const router = useRouter();
   const { hapticsEnabled } = useUser();

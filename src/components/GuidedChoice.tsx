@@ -3,26 +3,66 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import { colors } from "../constants/theme";
-import { STUDY_NEEDS, STARTER_QUESTS } from "../constants/guidedQuests";
+import { FOCUS_DIRECTIONS, STUDY_NEEDS, defaultFocusId, focusDirection, focusOptions } from "../constants/guidedQuests";
 import type { GuidedPreference } from "../services/guidedPreferenceService";
-export default function GuidedChoice({ value, onChange, disabled = false }: { value: GuidedPreference; onChange: (value: GuidedPreference) => void; disabled?: boolean }) {
-  const Button = Pressable;
-  const direction = (enabled: boolean, title: string, hint: string) => <Button accessibilityRole="button" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ selected: value.enabled === enabled }} disabled={disabled}
-    onPress={() => onChange({ ...value, enabled, invited: true })} style={[s.row, value.enabled === enabled && s.selected]}>
-    <Ionicons name={value.enabled === enabled ? "radio-button-on" : "radio-button-off"} size={22} color={value.enabled === enabled ? colors.accent : colors.secondary} />
-    <View style={s.detail}><Text style={s.title}>{title}</Text><Text style={s.body}>{hint}</Text></View>
-  </Button>;
+
+interface ChoiceProps { value: GuidedPreference; onChange: (value: GuidedPreference) => void; disabled?: boolean }
+const directionVisuals = {
+  learning: { title: "Learning", icon: "book-outline" }, work: { title: "Work", icon: "briefcase-outline" },
+  creative: { title: "Creative", icon: "color-palette-outline" }, "life-admin": { title: "Everyday", icon: "checkbox-outline" },
+  restore: { title: "Quiet time", icon: "leaf-outline" },
+} as const;
+
+export function FocusDirectionPicker({ value, onChange, disabled = false, compact = false }: ChoiceProps & { compact?: boolean }) {
+  const current = focusDirection(value.need);
+  const choose = (direction: (typeof FOCUS_DIRECTIONS)[number]) => onChange(current.id === direction.id ? value : { ...value, need: direction.defaultNeed, templateId: defaultFocusId(direction.defaultNeed), smaller: false });
+  if (!compact) return <View style={s.directions}>
+    <View style={s.directionGrid}>{FOCUS_DIRECTIONS.map(direction => {
+      const selected = current.id === direction.id, visual = directionVisuals[direction.id];
+      return <Pressable key={direction.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={direction.title} accessibilityHint={direction.hint} accessibilityState={{ checked: selected }}
+        onPress={() => choose(direction)} style={[s.directionTile, selected && s.selected]}>
+        <Ionicons name={visual.icon} size={20} color={selected ? colors.accent : colors.secondary} />
+        <Text style={[s.tileTitle, selected && s.selectedTitle]}>{visual.title}</Text>
+      </Pressable>;
+    })}</View>
+    <Text style={s.directionHint}>{current.hint}</Text>
+  </View>;
+  return <View style={s.directions}>{FOCUS_DIRECTIONS.map(direction => <Pressable key={direction.id} disabled={disabled}
+    accessibilityRole="radio" accessibilityLabel={direction.title} accessibilityHint={direction.hint} accessibilityState={{ checked: current.id === direction.id }}
+    onPress={() => choose(direction)}
+    style={[s.row, s.compactRow, current.id === direction.id && s.selected]}>
+    <Ionicons name={current.id === direction.id ? "radio-button-on" : "radio-button-off"} size={22} color={current.id === direction.id ? colors.accent : colors.secondary} />
+    <View style={s.detail}><Text style={s.title}>{direction.title}</Text><Text style={s.body}>{direction.hint}</Text></View>
+  </Pressable>)}</View>;
+}
+
+export default function GuidedChoice({ value, onChange, disabled = false }: ChoiceProps) {
+  const direction = (enabled: boolean, title: string, hint: string, label: string) => <Pressable accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: value.enabled === enabled }} disabled={disabled}
+    onPress={() => onChange({ ...value, enabled, invited: true })} style={[s.modeButton, value.enabled === enabled && s.selected]}>
+    <Text style={[s.modeTitle, value.enabled === enabled && s.selectedTitle]}>{label}</Text>
+  </Pressable>;
   return <View style={s.group}>
-    <Text style={s.heading}>What would you like help with?</Text>
-    {direction(true, "Study and assignments", "A suggested focus block to help you begin.")}
-    {direction(false, "Just let me focus", "Keep free focus and your own quests.")}
-    {value.enabled && <><View style={s.divider} /><Text style={s.heading}>Your default focus</Text>{STUDY_NEEDS.map(need => <Button key={need.id} disabled={disabled}
-      accessibilityRole="button" accessibilityLabel={need.title} accessibilityHint={need.hint} accessibilityState={{ selected: value.need === need.id }}
-      onPress={() => onChange({ ...value, need: need.id, templateId: STARTER_QUESTS.find(task => task.need === need.id)!.id, smaller: false })}
-      style={[s.row, s.needRow, value.need === need.id && s.selected]}>
-      <Ionicons name={value.need === need.id ? "radio-button-on" : "radio-button-off"} size={22} color={value.need === need.id ? colors.accent : colors.secondary} />
-      <Text style={[s.title, s.detail]}>{need.title}</Text>
-    </Button>)}</>}
+    <View style={s.modeRow}>
+      {direction(true, "Help me choose a focus", "A small starting point for work, learning or everyday life.", "Suggestions")}
+      {direction(false, "Just let me focus", "Your own focus, with the same timer and controls.", "Free focus")}
+    </View>
+    {value.enabled && <><View style={s.section}><Text style={s.heading}>Choose a direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} /></View>
+      <View style={s.section}><Text style={s.heading}>Your starting point</Text>{focusOptions(value.need).map(task => {
+        const title = STUDY_NEEDS.find(need => need.id === task.need)?.title ?? task.title;
+        const selected = value.templateId === task.id;
+        return <Pressable key={task.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityState={{ checked: selected }}
+          onPress={() => onChange({ ...value, need: task.need, templateId: task.id, smaller: false })} style={[s.row, s.promptRow, selected && s.selected]}>
+          <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={22} color={selected ? colors.accent : colors.secondary} />
+          <Text style={[s.title, s.detail]}>{title}</Text>
+        </Pressable>;
+      })}</View></>}
   </View>;
 }
-const s = StyleSheet.create({ group: { gap: 6 }, heading: { color: colors.secondary, fontSize: 15, lineHeight: 21, marginTop: 8, marginBottom: 4 }, row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 12, gap: 12, flexDirection: "row", alignItems: "center" }, needRow: { minHeight: 52, paddingVertical: 10 }, selected: { backgroundColor: colors.accentSoft }, detail: { flex: 1, minWidth: 0, gap: 3 }, divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginVertical: 4 }, title: { fontSize: 17, lineHeight: 23, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 } });
+const s = StyleSheet.create({
+  group: { gap: 12 }, directions: { gap: 6 }, section: { gap: 6 }, heading: { color: colors.secondary, fontSize: 15, lineHeight: 21 },
+  modeRow: { flexDirection: "row", gap: 4, padding: 4, backgroundColor: colors.surfaceRaised, borderRadius: 16 }, modeButton: { flex: 1, minWidth: 0, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 10 }, modeTitle: { color: colors.secondary, fontSize: 16, lineHeight: 22, fontWeight: "500", textAlign: "center" },
+  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: colors.surfaceRaised, flexDirection: "row", alignItems: "center", gap: 8 }, tileTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" }, selectedTitle: { color: colors.accent }, directionHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
+  row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 }, promptRow: { minHeight: 52, paddingVertical: 10 },
+  selected: { backgroundColor: colors.accentSoft }, detail: { flex: 1, minWidth: 0, gap: 3 },
+  title: { fontSize: 17, lineHeight: 23, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+});

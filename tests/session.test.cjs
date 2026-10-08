@@ -317,7 +317,7 @@ test("saved completion displays focused duration while unsaved completion stays 
 test("quest setup is compact, keeps its association during loading, and never starts automatically",async()=>{
   const ui=await screenSetup({linkedTaskId:7,duration:2700,timeLeft:2700});
   assert.match(ui.output(),/A long quest title/);
-  assert.equal(ui.button("Choose life area"),undefined);
+  assert.equal(ui.button("Choose focus area"),undefined);
   assert.equal(ui.button("15 minutes"),undefined);
   assert.ok(ui.button("Change quest"));
   assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
@@ -425,10 +425,10 @@ test("bounds and exact duration labels reject zero and 480:59",()=>{
 test("Life area wins over neutral or historical activity; legacy missing-area labels remain readable",()=>{
   const {sessionCategory}=load("src/utils/sessionReporting.ts",{});
   const areas=[{id:2,title:"Knowledge"}];
-  assert.equal(sessionCategory({subject_id:2,activity_type:"other"},areas),"Knowledge");
-  assert.equal(sessionCategory({subject_id:2,activity_type:"code"},areas),"Knowledge");
+  assert.equal(sessionCategory({subject_id:2,activity_type:"other"},areas),"Learning");
+  assert.equal(sessionCategory({subject_id:2,activity_type:"code"},areas),"Learning");
   assert.equal(sessionCategory({subject_id:null,activity_type:"code"},areas),"Code");
-  assert.equal(sessionCategory({subject_id:null,activity_type:"other"},areas),"General");
+  assert.equal(sessionCategory({subject_id:null,activity_type:"other"},areas),"Everyday focus");
 });
 
 test("dock distinguishes running, paused, saving, failed and completed without completed countdown",()=>{
@@ -446,12 +446,12 @@ test("dock distinguishes running, paused, saving, failed and completed without c
 test("free setup has one Life area category and a discoverable optional quest row",async()=>{
   const ui=await screenSetup();
   assert.ok(ui.button("Choose a quest"));
-  assert.ok(ui.button("Select General"));
-  assert.equal(ui.button("Choose life area"),undefined);
+  assert.ok(ui.button("Select Everyday focus"));
+  assert.equal(ui.button("Choose focus area"),undefined);
   assert.equal(ui.button("Choose activity"),undefined);
   assert.match(ui.output(),/Optional/);
   await ui.press("Choose a quest");
-  assert.match(ui.output(),/30 min · General/);
+  assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
 });
 
@@ -651,7 +651,7 @@ test("viewed completion hides its dock without hiding a running session",async()
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);
-  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#20283D");
+  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#1E1E21");
   assert.equal(renderer.root.findByType("Button").props.activeOpacity,1);
   timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
   assert.equal(renderer.root.findAllByType("Button").length,0);
@@ -999,7 +999,7 @@ test("compact Session chips select the saved Life area without touching quest or
 test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0,creditVersion:1,areaXpEarned:null}});
   assert.match(ui.output(),/Character XP\+1/);
-  assert.doesNotMatch(ui.output(),/Life area XP|General\+1 XP/);
+  assert.doesNotMatch(ui.output(),/Focus area XP|Everyday focus\+1 XP/);
   assert.ok(ui.button("Done"));
   assert.ok(ui.button("New session"));
   await ui.cleanup();
@@ -1008,13 +1008,13 @@ test("completed Session never labels unassigned character XP as a Life-area awar
 test("five visible Life areas need no More sheet; additional areas remain selectable",async()=>{
   const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
   const ui=await screenSetup({}, {subjects});
-  for(const area of subjects) assert.ok(ui.button(`Select ${area.title}`));
-  assert.equal(ui.button("Choose life area"),undefined);
+  for(const area of subjects) assert.ok(ui.button(`Select ${area.title === "General" ? "Everyday focus" : area.title}`));
+  assert.equal(ui.button("Choose focus area"),undefined);
   await ui.press("Select Area 5");
   assert.deepEqual(ui.calls.at(-1),["area",5]);
   await ui.cleanup();
   const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
-  await extra.press("Choose life area");
+  await extra.press("Choose focus area");
   await extra.press("Seven");
   assert.deepEqual(extra.calls.at(-1),["area",7]);
   await extra.cleanup();
@@ -1339,7 +1339,7 @@ test("Themed quest picker selects the existing quest settings, closes, and never
   const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
   try {
     await ui.press("Choose a quest");
-    assert.match(ui.output(),/45 min · Knowledge/);
+    assert.match(ui.output(),/45 min · Learning/);
     assert.equal(ui.button("Choose Tomorrow"),undefined);
     await ui.press("Choose Read and reflect");
     assert.deepEqual(ui.calls,[["task",9],["area",2],["duration",45]]);

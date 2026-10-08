@@ -1,6 +1,6 @@
 // Display-only palette. Stored subject colours and category identity are unchanged.
-// Blue replaces indigo/lavender so no area borrows the app's lavender accent.
-const palette = ["#2DD4BF", "#F0997B", "#79BCE8", "#E8C26A", "#E58BB1"];
+// Muted category hues complement neutral charcoal without becoming UI accents.
+const palette = ["#98B5A3", "#D6A18A", "#9CAFC2", "#C7B68F", "#BCA1B0"];
 export function lifeAreaColor(id: number | null | undefined, saved?: string | null): string {
   if (saved && /^#[0-9a-f]{6}$/i.test(saved)) {
     const rgb = [1, 3, 5].map(offset => parseInt(saved.slice(offset, offset + 2), 16) / 255);

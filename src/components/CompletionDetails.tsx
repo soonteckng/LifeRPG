@@ -1,3 +1,4 @@
+import { focusAreaTitle } from "../utils/focusAreas";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { colors } from "../constants/theme";
@@ -35,7 +36,7 @@ export function CompletionRows({ summary, areaTitle, areaColor, level, xpRemaini
   return <View style={s.rows}>
     <View style={s.row}><Text style={s.caption}>Character XP</Text><Text style={s.value}>+{summary.xpEarned}</Text></View>
     {areaXP != null && <View style={s.row}>
-      <Text style={[s.caption, areaColor && {color:areaColor}]}>{areaTitle || "Life area XP"}</Text>
+      <Text style={[s.caption, areaColor && {color:areaColor}]}>{areaTitle ? focusAreaTitle(areaTitle) : "Focus area XP"}</Text>
       <Text style={[s.value, areaColor && {color:areaColor}]}>+{areaXP}{areaTitle ? " XP" : ""}</Text>
     </View>}
     {summary.creditVersion !== 1 && summary.goldEarned > 0 && <View style={s.row}><Text style={s.caption}>Historical gold</Text><Text style={s.value}>+{summary.goldEarned}</Text></View>}
@@ -52,5 +53,5 @@ const s = StyleSheet.create({
   rows: {borderTopWidth:StyleSheet.hairlineWidth, borderTopColor:colors.line, paddingTop:12, gap:0},
   row: {minHeight:52, paddingVertical:8, flexDirection:"row", alignItems:"center", justifyContent:"space-between", gap:12},
   value: {...type.body, fontWeight:"500"},
-  success: {...type.secondary, color:"#2DD4BF", fontWeight:"500"},
+  success: {...type.secondary, color:colors.success, fontWeight:"500"},
 });

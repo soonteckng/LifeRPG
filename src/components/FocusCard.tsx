@@ -1,3 +1,4 @@
+import { focusAreaTitle } from "../utils/focusAreas";
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -17,6 +18,7 @@ export interface FocusCardProps {
   onSetup: () => void; onStart: () => void;
 }
 export default function FocusCard(props: FocusCardProps) {
+  const areaLabel = focusAreaTitle(props.area);
   const [custom, setCustom] = useState(false);
   const locked = props.busy || (!props.active && props.disabled);
   const editLocked = props.active || props.busy || props.editDisabled;
@@ -27,9 +29,9 @@ export default function FocusCard(props: FocusCardProps) {
       <Text style={s.title} accessibilityRole="header">{props.title}</Text>
       <Text style={s.instruction}>{props.instruction}</Text>
     </ContentReveal></View>
-    {props.active ? <View style={s.areaRow}><Text style={s.meta}>Life area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area}>{props.area}</Text></View></View>
+    {props.active ? <View style={s.areaRow}><Text style={s.meta}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area}>{areaLabel}</Text></View></View>
       : <Pressable testID={props.areaActionID} onPress={props.onSetup} disabled={props.setupDisabled ?? editLocked} style={s.areaRow} accessibilityRole="button" accessibilityLabel="Change duration or area" accessibilityState={{ disabled: props.setupDisabled ?? editLocked }}>
-        <Text style={s.meta}>Life area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area} numberOfLines={2}>{props.area}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} /></View>
+        <Text style={s.meta}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area} numberOfLines={2}>{areaLabel}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} /></View>
       </Pressable>}
     <View style={s.duration} testID="focus-card-duration">
       <Text style={s.meta}>{props.active ? "Time remaining" : "Focus length"}</Text>
@@ -44,15 +46,15 @@ export default function FocusCard(props: FocusCardProps) {
       </View>}
     </View>
     <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.primary, locked && s.disabled]}
-      accessibilityRole="button" accessibilityLabel={props.active ? "Continue session" : `Start ${durationLabel(props.seconds)}, ${props.area}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
-      <Ionicons name="play-outline" size={22} color="#171827" /><Text style={s.primaryText}>{props.busy ? "Starting…" : props.active ? "Continue session" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start focusing"}</Text>
+      accessibilityRole="button" accessibilityLabel={props.active ? "Continue session" : `Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
+      <Ionicons name="play-outline" size={22} color={colors.primaryText} /><Text style={s.primaryText}>{props.busy ? "Starting…" : props.active ? "Continue session" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start focusing"}</Text>
     </Pressable>
     {!!props.error && <Text style={s.error} accessibilityRole="alert">{props.error}</Text>}
     <FocusDurationSheet seconds={props.seconds} visible={custom && !props.active} disabled={editLocked} onClose={() => setCustom(false)} onSave={props.onDuration} />
   </View>;
 }
 const s = StyleSheet.create({
-  card: { width: "100%", padding: 18, borderRadius: 24, gap: 16, backgroundColor: "#171E2B", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(225,235,255,0.16)" },
+  card: { width: "100%", padding: 18, borderRadius: 24, gap: 16, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   label: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   prompt: { minHeight: 118 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.5 },
   instruction: { color: colors.secondary, fontSize: 16, lineHeight: 23, marginTop: 8 },
@@ -61,8 +63,8 @@ const s = StyleSheet.create({
   meta: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, duration: { gap: 8 },
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
-  selected: { backgroundColor: "#354467" }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
+  selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
   remaining: { minHeight: 50, color: colors.text, fontSize: 24, lineHeight: 32, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  primary: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: "#E5E4FF", flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: "#171827", fontSize: 17, lineHeight: 23, fontWeight: "500", flexShrink: 1, textAlign: "center" },
+  primary: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "500", flexShrink: 1, textAlign: "center" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
 });

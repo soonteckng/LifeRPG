@@ -1,3 +1,4 @@
+import { focusAreaTitle, focusAreaIcon } from "../../utils/focusAreas";
 import { PROFILE_NAME_LIMIT, profileNameError } from "../../constants/profile";
 import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import Pressable from "../../components/MotionPressable";
@@ -140,7 +141,7 @@ export default function ProfileScreen() {
 
         <View style={{ alignItems: "center", gap: 6 }}>
           <Text style={[p.title, { fontSize: 28, lineHeight:34 }]}>{profile.username}</Text>
-          {!!profile.class_title && <Text style={p.caption}>{profile.class_title}</Text>}
+          <Text style={p.caption}>Your focus journey</Text>
           <Text style={p.body}>Level {profile.level}</Text>
         </View>
 
@@ -166,13 +167,14 @@ export default function ProfileScreen() {
       )}
       {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
       <View style={{ gap: 12 }}>
-        <Text style={p.sectionLabel}>Your Life areas</Text>
+        <Text style={p.sectionLabel}>Your focus areas</Text>
+        <Text style={p.caption}>Where you make time: learning, wellbeing, personal care and everyday life. Levels record effort, not ability.</Text>
 
         {areas.map((area) => (
-          <View key={area.id} accessible accessibilityLabel={`${area.title}, level ${area.level}, ${area.current} of ${area.required} XP to the next level`} style={{ gap: 6, minHeight:52, paddingVertical: 8 }}>
+          <View key={area.id} accessible accessibilityLabel={`${focusAreaTitle(area.title)}, level ${area.level}, ${area.current} of ${area.required} XP to the next level`} style={{ gap: 6, minHeight:52, paddingVertical: 8 }}>
             <View style={p.inline}>
-              <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: lifeAreaColor(area.id, area.color_code) }} />
-              <Text style={[p.rowTitle, p.flex]}>{area.title}</Text>
+              <Ionicons name={focusAreaIcon(area.title)} size={18} color={lifeAreaColor(area.id, area.color_code)} />
+              <Text style={[p.rowTitle, p.flex]}>{focusAreaTitle(area.title)}</Text>
               <Text style={p.rowTitle}>Lv {area.level}</Text>
             </View>
             <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} />
@@ -181,27 +183,21 @@ export default function ProfileScreen() {
         ))}
         {data && areas.length === 0 && (
           <Text style={p.body}>
-            Your overall level still grows. Life areas will appear here when
+            Your overall level still grows. Focus areas will appear here when
             available.
           </Text>
         )}
 
       </View>
       <View style={{ gap: 12 }}>
-        <View style={p.inline}><Text style={[p.sectionLabel, p.flex]}>Milestones</Text>
-          <Pressable onPress={() => router.navigate("/rewards")} accessibilityRole="button" accessibilityLabel="View milestones" style={{ minHeight: 44, justifyContent: "center" }}>
-            <Text style={{ color: colors.accent, fontSize: 13 }}>View all →</Text>
-          </Pressable>
-        </View>
-
-        <View style={[p.inline, { flexWrap: "wrap", gap: 10 }]}>
-          {totals.milestones.map(m => <Pressable key={m.id} onPress={() => router.navigate("/rewards")}
-            accessibilityRole="button" accessibilityLabel={`${m.title}, ${m.unlocked ? "earned" : "in progress"}. View milestones`}
-            style={{ width: 40, height: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: m.unlocked ? "rgba(56,201,179,0.3)" : colors.line, backgroundColor: m.unlocked ? "rgba(56,201,179,0.1)" : colors.surface, justifyContent: "center", alignItems: "center" }}>
-            <Ionicons name={m.unlocked ? m.icon as import("../../components/PersonalUI").PersonalIcon : "lock-closed-outline"} size={22} color={m.unlocked ? "#38C9B3" : colors.muted} />
-          </Pressable>)}
-        </View>
-        {data && <Text style={[p.caption, { paddingTop: 12 }]}>{durationLabel(totals.seconds)} across {totals.sessions} sessions · {totals.days} focus days</Text>}
+        <Pressable testID="profile-milestones-entry" onPress={() => router.navigate("/rewards")}
+          accessibilityRole="button" accessibilityLabel="View your milestone collection" style={[p.card, { flexDirection: "row", alignItems: "center", gap: 14 }]}>
+          <View style={p.icon}><Ionicons name="ribbon-outline" size={23} color={colors.accent} /></View>
+          <View style={{ flex: 1, gap: 5 }}><Text style={p.title}>Your milestones</Text>
+            <Text style={p.caption}>{data ? `${totals.milestones.filter(m => m.unlocked).length} of ${totals.milestones.length} earned · A record of showing up` : loading ? "Loading your collection…" : "Explore the effort you’ve recorded"}</Text></View>
+          <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+        </Pressable>
+        {data && <Text style={p.caption}>{durationLabel(totals.seconds)} across {totals.sessions} sessions · {totals.days} focus days</Text>}
       </View>
       </View></ContentReveal>
       <AppSheet

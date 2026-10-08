@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFooter,
@@ -306,9 +307,9 @@ export default function AppSheet({
 const styles = StyleSheet.create({
   root: { flex: 1 },
   surface: {
-    backgroundColor: "#171E2B",
+    backgroundColor: colors.surfaceRaised,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(225,235,255,0.16)",
+    borderColor: colors.border,
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
   },

@@ -1,3 +1,4 @@
+import { colors } from "../constants/theme";
 import { Text } from "../components/AppText";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
@@ -146,7 +147,7 @@ function AppContent() {
             headerShown: false,
             animation: reducedMotion ? "none" : "slide_from_right",
             contentStyle: {
-              backgroundColor: "#090D16",
+              backgroundColor: colors.background,
             },
           }}
         >

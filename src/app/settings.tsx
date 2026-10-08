@@ -135,13 +135,13 @@ export default function SettingsScreen() {
       </View>
       <View style={sectionStyle}>
         <Text style={p.label}>Focus & feedback</Text>
-        <PersonalRow icon="compass-outline" title="Focus suggestions" subtitle={guided.value.enabled ? "Study and assignments · Change your direction" : "Optional help choosing your next step"} onPress={() => setGuidedOpen(true)} />
+        <PersonalRow icon="compass-outline" title="Focus suggestions" subtitle={guided.value.enabled ? "Suggestions for learning, work and everyday life" : "Optional help choosing your next step"} onPress={() => setGuidedOpen(true)} />
         <View style={p.divider} />
         <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
         {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
         <PersonalRow icon="phone-portrait-outline" title="Haptic feedback" subtitle="Gentle feedback when you interact"
-          trailing={<Switch accessibilityLabel="Haptic feedback" value={hapticsEnabled} onValueChange={setHapticsEnabled} trackColor={{ false: "#343B4E", true: colors.accentFill }} />} />
+          trailing={<Switch accessibilityLabel="Haptic feedback" value={hapticsEnabled} onValueChange={setHapticsEnabled} trackColor={{ false: colors.selection, true: colors.accentFill }} />} />
         {preferenceError && <Text style={p.error}>{preferenceError}</Text>}
         <Text style={p.caption}>Haptic preferences are saved for your account on this device. Phone notification settings control alert sounds.</Text>
       </View>

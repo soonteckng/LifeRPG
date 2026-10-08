@@ -1,3 +1,4 @@
+import { focusAreaTitle } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
@@ -253,12 +254,12 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
               </View> : <Text style={styles.helper}>{editor.draft.repeat === "once" ? "Available today and stays available until completed." : "A fresh start, every day."}</Text>}
             </View>
             <View style={styles.field}>
-              <Text style={styles.label}>Life area</Text>
+              <Text style={styles.label}>Focus area</Text>
 
               <View style={styles.options}>
-                <Choice label="General" selected={editor.draft.subjectId === null || subjects.find((subject) => subject.id === editor.draft.subjectId)?.title === "General"}
+                <Choice label={focusAreaTitle()} selected={editor.draft.subjectId === null || subjects.find((subject) => subject.id === editor.draft.subjectId)?.title === "General"}
                   onPress={() => updateDraft({ subjectId: null })} />
-                {subjects.filter((subject) => subject.title !== "General").map((subject) => <Choice key={subject.id} label={subject.title}
+                {subjects.filter((subject) => subject.title !== "General").map((subject) => <Choice key={subject.id} label={focusAreaTitle(subject.title)}
                   selected={editor.draft.subjectId === subject.id} onPress={() => updateDraft({ subjectId: subject.id })} />)}
               </View>
             </View>
@@ -297,7 +298,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
                       <Text style={[styles.questTitle, task.is_completed_today && styles.completed]}>{task.title}</Text>
                       <Ionicons name="create-outline" size={16} color={colors.muted} />
                     </View>
-                    <Text style={styles.meta}>{task.target_minutes || 30} min · {subject?.title ?? "General"}{task.repeat_rule === "daily" ? " · Repeats daily" : task.repeat_rule !== "once" ? ` · ${task.repeat_rule.split(",").join(", ")}` : ""}{!task.is_due_today && !task.is_completed_today ? " · Upcoming" : ""}</Text>
+                    <Text style={styles.meta}>{task.target_minutes || 30} min · {focusAreaTitle(subject?.title)}{task.repeat_rule === "daily" ? " · Repeats daily" : task.repeat_rule !== "once" ? ` · ${task.repeat_rule.split(",").join(", ")}` : ""}{!task.is_due_today && !task.is_completed_today ? " · Upcoming" : ""}</Text>
                   </Pressable></View>
                   {!task.is_completed_today && task.is_due_today && !timer.hasOpenSession && <View style={styles.startContainer}><Pressable style={styles.start} onPress={() => start(task)} accessibilityRole="button" accessibilityLabel={`Start ${task.title}`}>
                     <Ionicons name="play-outline" size={23} color={colors.accent} />
@@ -334,8 +335,8 @@ const styles = StyleSheet.create({
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
   scopeGroup: { position:"relative", width:176, maxWidth:"100%", minHeight:44, flexDirection:"row", alignItems:"stretch" },
-  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:"#1D2638", overflow:"hidden" },
-  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:"#354467", borderRadius:11, borderWidth:3, borderColor:"#1D2638" },
+  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:colors.surface, overflow:"hidden" },
+  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:colors.selection, borderRadius:11, borderWidth:3, borderColor:colors.surface },
   scopeSlot: { flex:1, minWidth:0 },
   scopeButton: { width:"100%", minHeight:44, paddingHorizontal:8, paddingVertical:8, alignItems:"center", justifyContent:"center" },
   scopeLabel: { color:colors.neutral, fontSize:15, lineHeight:20, fontWeight:"500", includeFontPadding:false, textAlign:"center", textAlignVertical:"center" },

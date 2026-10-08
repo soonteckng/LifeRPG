@@ -13,11 +13,11 @@ import { colors } from "../constants/theme";
 
 export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress." },
-  { id: "home-focus", route: "/", title: "Make space for focus.", body: "The same controls work for free focus and suggestions. Choose a preset or custom time, adjust your Life area if needed, then start focusing." },
+  { id: "home-focus", route: "/", title: "Make space for focus.", body: "The same controls work for free focus and suggestions. Choose a preset or custom time, adjust your Focus area if needed, then start focusing." },
   { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Switch between suggestions and free focus here, or choose another suggestion. Your quests and progress stay yours." },
   { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
-  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Life areas and session history. Explore Week or Month, and your current and longest streaks." },
-  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Profile holds your character, Life areas and milestones. They reflect effort you’ve recorded. Make your character yours here." },
+  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Focus areas and session history. Explore Week or Month, and your current and longest streaks." },
+  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Profile holds your character and Focus areas. Open Your milestones here to explore your collection. Everything reflects effort you’ve recorded." },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
 const pendingOwners = new Set<string>();
@@ -244,7 +244,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
 const s = StyleSheet.create({
   tipHeading: { flexDirection: "row", alignItems: "center", gap: 12 }, headingTitle: { flex: 1 },
   navigation: { flexDirection: "row", gap: 12 }, previous: { minHeight: 44, minWidth: 72, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: colors.line }, next: { flex: 1 },
-  root: { flex: 1 }, overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 }, anchor: { width: "100%", alignSelf: "stretch" }, dim: { position: "absolute", backgroundColor: "rgba(3,6,12,0.72)" }, outline: { position: "absolute", borderWidth: 1.5, borderColor: colors.accent, borderRadius: 18 },
-  tip: { position: "absolute", padding: 14, borderRadius: 22, backgroundColor: "#20283D", borderWidth: 1, borderColor: colors.line, gap: 8 }, counter: { color: colors.secondary, fontSize: 13, lineHeight: 18, flexShrink: 1 },
+  root: { flex: 1 }, overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 }, anchor: { width: "100%", alignSelf: "stretch" }, dim: { position: "absolute", backgroundColor: "rgba(0,0,0,0.72)" }, outline: { position: "absolute", borderWidth: 1.5, borderColor: colors.accent, borderRadius: 18 },
+  tip: { position: "absolute", padding: 14, borderRadius: 22, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line, gap: 8 }, counter: { color: colors.secondary, fontSize: 13, lineHeight: 18, flexShrink: 1 },
   title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500" }, body: { color: colors.neutral, fontSize: 16, lineHeight: 23 }, action: { minHeight: 44, borderRadius: 14, backgroundColor: colors.accentSoft, padding: 10, alignItems: "center", justifyContent: "center" }, actionText: { color: colors.accent, fontSize: 16, lineHeight: 22, fontWeight: "500" },
 });

@@ -24,7 +24,7 @@ export default function TabsLayout() {
         tabBarBackground: () => <GlassSurface radius={24} />,
         tabBarItemStyle: styles.tabItem,
         tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: "#8B93A7",
+        tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: styles.tabLabel,
         tabBarHideOnKeyboard: true,
       }}

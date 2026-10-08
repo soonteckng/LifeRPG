@@ -58,6 +58,6 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
 const s = StyleSheet.create({
   title: { color: colors.text, fontSize: 24, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 16 },
   body: { paddingHorizontal: 20, paddingBottom: 16, gap: 20 },
-  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "#E5E4FF", marginTop: 8, marginHorizontal: 20, marginBottom: 12 },
+  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.primary, marginTop: 8, marginHorizontal: 20, marginBottom: 12 },
   doneText: { color: colors.background, fontSize: 18, fontWeight: "500" },
 });

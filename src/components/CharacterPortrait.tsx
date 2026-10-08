@@ -40,7 +40,7 @@ export default function CharacterPortrait({
       style={({ pressed }) => [s.stage, { width: size, height: size }, pressed && { opacity: 0.85 }]}
       accessibilityRole="button"
       onPress={greet}
-      accessibilityLabel={`Your character. Level ${level}. ${developed} Life areas developed.`}
+      accessibilityLabel={`Your character. Level ${level}. ${developed} Focus areas developed.`}
       accessibilityHint="Tap to greet your character and change its expression."
     >
       <View testID="character-canvas" style={{ width: 220, height: 220, alignItems: "center", position: "absolute", top: (size - 220) / 2, left: (size - 220) / 2, transform: [{ scale: size / 220 }] }}>

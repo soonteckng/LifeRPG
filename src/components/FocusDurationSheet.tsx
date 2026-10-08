@@ -35,7 +35,7 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><BottomSheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><BottomSheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
       </View>
-      <Text style={p.caption}>Up to 8 hours. Your suggestion and Life area stay the same.</Text>
+      <Text style={p.caption}>Up to 8 hours. Your suggestion and Focus area stay the same.</Text>
       {!!error && <Text accessibilityRole="alert" style={p.error}>{error}</Text>}
     </BottomSheetScrollView>
   </AppSheet>;
@@ -46,6 +46,6 @@ const p = StyleSheet.create({
  body: { color: colors.secondary, fontSize: 16, lineHeight: 23 }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
  sheetBody: { paddingHorizontal: 20, gap: 12 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22 },
  input: { minHeight: 52, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.line, color: colors.text, fontSize: 20 },
- button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: "#E5E4FF", alignItems: "center", justifyContent: "center" },
- buttonText: { color: "#171827", fontSize: 17, lineHeight: 23, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
+ button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+ buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
 });

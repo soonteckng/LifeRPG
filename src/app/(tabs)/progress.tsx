@@ -1,3 +1,4 @@
+import { focusAreaTitle } from "../../utils/focusAreas";
 import { TourScrollView } from "../../components/FeatureTour";
 import { readSuggestedFocus } from "../../constants/guidedQuests";
 import SlidingSelection from "../../components/SlidingSelection";
@@ -8,7 +9,6 @@ import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
 import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
-import { useRouter } from "expo-router";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -147,7 +147,6 @@ function SessionRow({
 
 export default function ProgressScreen() {
   const timer = useTimer();
-  const router = useRouter();
   const { profile, hapticsEnabled } = useUser();
   const { sessionSummary } = timer;
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
@@ -373,7 +372,7 @@ export default function ProgressScreen() {
           >
             <Ionicons
               name="chevron-forward"
-              color={currentPeriod ? "#404656" : colors.text}
+              color={currentPeriod ? colors.muted : colors.text}
               size={20}
             />
           </Pressable>
@@ -462,7 +461,7 @@ export default function ProgressScreen() {
                       <View style={[s.barTrack, {height: chartHeight + 4}]}>
                         <View testID={`focus-bar-${day.key}`} style={[s.bar, {
                           height: day.seconds ? Math.max(5, (day.seconds / peak) * chartHeight) : 3,
-                          backgroundColor: day.future ? "#282E3B" : "#3A4152",
+                          backgroundColor: day.future ? colors.surfaceRaised : colors.selection,
                         }]}>
                           {sessionAreaSegments(day.sessions, data.areas).map(segment => (
                             <View key={segment.key} testID={`focus-segment-${day.key}-${segment.key}`}
@@ -571,7 +570,7 @@ export default function ProgressScreen() {
                   <View style={s.areaSummary}>
                     {analytics.areas.map((area) => <Pressable key={area.key}
                       onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
-                      accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}. View sessions`} style={s.areaSummaryItem}>
+                      accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.areaSummaryItem}>
                       <View style={[s.areaDot, { backgroundColor: area.color }]} />
                       <Text style={s.caption}>{area.title} {durationLabel(area.seconds)}</Text>
                     </Pressable>)}
@@ -619,34 +618,6 @@ export default function ProgressScreen() {
                       : "Complete any session to begin."}
                   </Text>
                   <Text style={s.caption}>Longest focus streak: {data.longestStreak ?? 0} days</Text>
-                </View>
-                <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={colors.muted}
-                />
-              </Pressable>
-              <Section
-                title="Milestones"
-                action="Explore"
-                onPress={() => router.navigate("/rewards")}
-              />
-              <Pressable
-                onPress={() => router.navigate("/rewards")}
-                accessibilityRole="button"
-                accessibilityLabel="Explore your level and consistency milestones"
-                style={[s.card, s.milestonePreview]}
-              >
-                <Ionicons
-                  name="sparkles-outline"
-                  size={23}
-                  color={colors.accent}
-                />
-                <View style={s.flex}>
-                  <Text style={s.rowTitle}>Keep growing at your pace</Text>
-                  <Text style={s.caption}>
-                    Level {profile?.level ?? 1} · Earned through focused effort
-                  </Text>
                 </View>
                 <Ionicons
                   name="chevron-forward"
@@ -728,7 +699,7 @@ export default function ProgressScreen() {
                 <Text style={s.rowTitle}>
                   +{selectedSession.xp_earned ?? 0} character XP
                   {selectedSession.credit_version === 1
-                    ? selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Life area XP` : ""
+                    ? selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Focus area XP` : ""
                     : ` · +${selectedSession.gold_earned ?? 0} gold`}
                 </Text>
               </View>
@@ -912,9 +883,9 @@ const s = StyleSheet.create({
     position: "relative",
   },
   segmentTrack: { position: "absolute", left: 0, right: 0, top: 4, height: 36, borderRadius: 12, overflow: "hidden", backgroundColor: colors.surface },
-  segmentSelected: { position: "absolute", width: "50%", top: 0, bottom: 0, borderRadius: 9, backgroundColor: "#354467", borderWidth: 3, borderColor: colors.surface },
+  segmentSelected: { position: "absolute", width: "50%", top: 0, bottom: 0, borderRadius: 9, backgroundColor: colors.selection, borderWidth: 3, borderColor: colors.surface },
   segmentText: { width: "100%", textAlign: "center", margin: 0, padding: 0, includeFontPadding: false, textAlignVertical: "center", lineHeight: 20, color: colors.secondary, fontSize: 14, fontWeight: "500" },
-  segmentActive: { color: "#B8C8FF" },
+  segmentActive: { color: colors.accent },
   periodNav: {
     flexDirection: "row",
     alignItems: "center",
@@ -1005,7 +976,7 @@ const s = StyleSheet.create({
   todayLabel: { color: colors.accent, fontWeight: "500" },
   goalDot: { width: 7, height: 7, borderRadius: 4 },
   dayStatus: { height: 24, justifyContent: "center", alignItems: "center", marginTop: 4 },
-  goalCheck: { width: 18, height: 18, borderRadius: 9, justifyContent: "center", alignItems: "center", backgroundColor: "#7BDCC4" },
+  goalCheck: { width: 18, height: 18, borderRadius: 9, justifyContent: "center", alignItems: "center", backgroundColor: colors.success },
   legend: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1049,7 +1020,7 @@ const s = StyleSheet.create({
     marginHorizontal: "0.64%",
     height: 40,
     borderRadius: 10,
-    backgroundColor: "#1C2230",
+    backgroundColor: colors.surfaceRaised,
     alignItems: "center",
     justifyContent: "center",
     borderWidth: StyleSheet.hairlineWidth,
@@ -1063,7 +1034,7 @@ const s = StyleSheet.create({
     color: colors.muted,
   },
   calendarBlank: { backgroundColor: "transparent" },
-  calendarActive: { backgroundColor: "#303953" },
+  calendarActive: { backgroundColor: colors.selection },
   calendarFuture: { backgroundColor: "transparent", borderColor: colors.line },
   calendarToday: { borderColor: colors.accent },
   calendarNumber: {

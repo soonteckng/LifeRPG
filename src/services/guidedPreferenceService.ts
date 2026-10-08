@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { STARTER_QUESTS, LEGACY_STARTER_NEEDS, type StudyNeed } from "../constants/guidedQuests";
-export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: StudyNeed; templateId: string; smaller: boolean }
+import { STARTER_QUESTS, LEGACY_STARTER_NEEDS, type FocusNeed } from "../constants/guidedQuests";
+export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: FocusNeed; templateId: string; smaller: boolean }
 export const DEFAULT_GUIDED_PREFERENCE: GuidedPreference = { version: 1, enabled: false, invited: false, need: "revision", templateId: "review-topic", smaller: false };
 export function parseGuidedPreference(raw: string | null): GuidedPreference {
   try {
