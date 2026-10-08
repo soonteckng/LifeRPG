@@ -341,3 +341,19 @@ test('an explicit new direction replaces a failed suggestion while ordinary retr
  const ui=await render(Card,{owner:'owner',subjects:[],disabled:false,onStarted(){}});
  try{await ui.press('Start focusing');assert.match(text(ui.tree.root),/Retry start/);preference={...preference,need:'work',templateId:catalog.defaultFocusId('work')};await ui.update({owner:'owner',subjects:[],disabled:false,onStarted(){}});assert.match(text(ui.tree.root),new RegExp(catalog.suggestedFocus(preference.templateId).title));assert.doesNotMatch(text(ui.tree.root),/Retry start/);}finally{await ui.cleanup();}
 });
+
+test('choosing a focus area changes only attribution and keeps the exact timer until Start',async()=>{
+ const calls=[];let entered=0;
+ const Card=load('src/components/GuidedFocusCard.tsx',mocks({
+  '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
+  '../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus,id]);return true;}})}
+ })).default;
+ const ui=await render(Card,{owner:'owner',subjects:[{id:1,title:'Everyday focus'},{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:1859,disabled:false,onStarted(){entered++;}});
+ try{
+  await ui.press('Choose focus area');assert.equal(entered,0);assert.equal(calls.length,0);
+  assert.doesNotMatch(text(ui.tree.root.findByType('Sheet')),/Minutes|Seconds|Focus length/);
+  await ui.press('Choose Work & projects');assert.equal(entered,0);assert.equal(calls.length,0);
+  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/30 min 59 sec/);
+  await ui.press('Start focusing');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],3);assert.equal(entered,1);
+ }finally{await ui.cleanup();}
+});

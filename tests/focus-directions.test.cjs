@@ -125,7 +125,7 @@ test('compact onboarding directions keep an existing learning prompt until a dif
     assert.equal(current.need, 'assignments');
     await ui.press('Everyday life');
     assert.equal(current.templateId, 'life-small-task');
-    await ui.press('Take a quiet break');
+    await ui.press('Quiet time');
     assert.equal(current.templateId, 'quiet-screen-free');
     assert.equal(current.need, 'restore');
   } finally { await ui.cleanup(); }

@@ -83,7 +83,7 @@ async function collection() {
     "../services/dailyProgressService": { getTodayProgress: async () => null },
   }).default;
   let renderer; await act(async () => { renderer = create(React.createElement(Screen)); });
-  return { renderer, text: () => text(renderer.root), update: async update => act(async () => { if (update.profile) profile = update.profile; if (update.data) data = update.data; if ("error" in update) error = update.error; renderer.update(React.createElement(Screen)); }), cleanup: async () => act(async () => renderer.unmount()) };
+  return { renderer, text: () => text(renderer.root), update: async update => act(async () => { if (update.profile) profile = update.profile; if ("data" in update) data = update.data; if ("error" in update) error = update.error; renderer.update(React.createElement(Screen)); }), cleanup: async () => act(async () => renderer.unmount()) };
 }
 
 test("collection starts with one next milestone per track and expands intentionally without duplicating earned badges", async () => {
@@ -120,4 +120,45 @@ test("changing accounts clears collection expansion and prior account milestone 
     await ui.update({ profile: { id: "other", timezone: "UTC", daily_goal_minutes: 30 } });
     assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false); assert.doesNotMatch(ui.text(), /First step|Earned automatically\. Yours to keep/);
   } finally { await ui.cleanup(); }
+});
+
+test("today's goal remains the first card before and after milestone history arrives",async()=>{
+ const ui=await collection();
+ try{
+  await ui.update({data:null});
+  const page=ui.renderer.root.findByType('Page');
+  const first=page.findAllByType('View').find(node=>node.props.testID==='milestones-daily-goal');
+  assert.ok(first);assert.ok(ui.text().indexOf('TODAY’S GOAL')<ui.text().indexOf('Getting your collection ready'));
+  await ui.update({data:{userId:'owner',areas:[],sessions:[session('hour','2026-09-01T04:00:00Z',3600)]}});
+  assert.equal(page.findAllByType('View').find(node=>node.props.testID==='milestones-daily-goal'),first);
+  assert.ok(ui.text().indexOf('TODAY’S GOAL')<ui.text().indexOf('WITHIN REACH'));
+ }finally{await ui.cleanup();}
+});
+
+test('Profile history is immediately reused by Milestones while refresh stays account-scoped',async()=>{
+ let owner='first',snapshot,pending=false,resolveAreas,resolveSessions;
+ const hook=load('src/hooks/useCharacterData.ts',{
+  'expo-router':{useFocusEffect:callback=>React.useEffect(callback,[callback])},
+  'react-native':{AppState:{addEventListener:()=>({remove(){}})}},
+  '../context/UserContext':{useUser:()=>({profile:{id:owner}})},
+  '../context/TimerContext':{useTimer:()=>({sessionSummary:null})},
+  '../utils/afterTransition':{afterTransition:callback=>{callback();return()=>{};}},
+  '../services/progressService':{
+   getProgressSubjects:()=>pending?new Promise(resolve=>{resolveAreas=resolve;}):Promise.resolve([{id:1,title:'Learning'}]),
+   getCompletedSessions:()=>pending?new Promise(resolve=>{resolveSessions=resolve;}):Promise.resolve([session('first','2026-09-01T04:00:00Z')]),
+  },
+ }).useCharacterData;
+ function Consumer(){snapshot=hook();return null;}
+ let renderer;
+ await act(async()=>{renderer=create(React.createElement(Consumer));});
+ const saved=snapshot.data;assert.equal(saved.userId,'first');
+ await act(async()=>renderer.unmount());pending=true;
+ await act(async()=>{renderer=create(React.createElement(Consumer));});
+ assert.equal(snapshot.data,saved);assert.equal(snapshot.loading,true);
+ await act(async()=>renderer.unmount());owner='second';
+ await act(async()=>{renderer=create(React.createElement(Consumer));});
+ assert.equal(snapshot.data,null);
+ await act(async()=>{resolveAreas([]);resolveSessions([]);});
+ assert.equal(snapshot.data.userId,'second');
+ await act(async()=>renderer.unmount());
 });

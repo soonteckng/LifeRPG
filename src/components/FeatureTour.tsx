@@ -13,7 +13,7 @@ import { colors } from "../constants/theme";
 
 export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress." },
-  { id: "home-focus", route: "/", title: "Make space for focus.", body: "The same controls work for free focus and suggestions. Choose a preset or custom time, adjust your Focus area if needed, then start focusing." },
+  { id: "home-focus", route: "/", title: "Make space for focus.", body: "The same controls work for free focus and suggestions. Focus length sets your preset or custom time. Focus area only chooses where this block counts. Then start focusing." },
   { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Switch between suggestions and free focus here, or choose another suggestion. Your quests and progress stay yours." },
   { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Focus areas and session history. Explore Week or Month, and your current and longest streaks." },

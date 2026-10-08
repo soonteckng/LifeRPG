@@ -16,7 +16,7 @@ import {
   TouchableOpacity as SheetButton,
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
@@ -64,7 +64,7 @@ export default function ProfileScreen() {
     }, [reloadProfile]),
   );
   const areas = (data?.areas ?? []).map(lifeAreaGrowth);
-  const totals = earnedMilestones(data?.sessions ?? [], profile.timezone);
+  const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
   const required = Math.floor(100 * Math.pow(Math.max(1, profile.level), 1.5));
   const open = () => {
     if (sheetClosing.current) return;

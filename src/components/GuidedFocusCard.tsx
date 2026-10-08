@@ -1,7 +1,7 @@
 import { suggestedArea } from "../utils/focusAreas";
 import { useEffect, useRef, useState } from "react";
 import FocusCard from "./FocusCard";
-import { encodeSuggestedFocus, suggestedFocus, suggestedFocusAreaKey, readSuggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
+import { suggestedFocus, suggestedFocusAreaKey, readSuggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { validSessionSeconds } from "../utils/sessionSetup";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
@@ -13,6 +13,7 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
   const preference = useGuidedPreference(owner), timer = useTimer();
   const [selection, setSelection] = useState<{ defaults: typeof preference.value; seconds: number } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [areaChoice, setAreaChoice] = useState<{ defaults: typeof preference.value; id: number | null } | null>(null);
   const [failed, setFailed] = useState<{ defaults: typeof preference.value; focus: SuggestedFocus; areaId: number | null; areaTitle: string } | null>(null);
   const lock = useRef(false), alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -20,7 +21,7 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
   const seconds = selectedSeconds ?? local?.seconds ?? suggestedFocus(preference.value.templateId, preference.value.smaller)?.seconds ?? 1800;
   const keptFailure = failed?.defaults === preference.value ? failed : null;
   const focus = keptFailure?.focus ?? { ...suggestedFocus(preference.value.templateId, seconds === 600)!, seconds };
-  const area = suggestedArea(subjects, suggestedFocusAreaKey(focus.templateId));
+  const area = areaChoice?.defaults === preference.value ? subjects.find(item => item.id === areaChoice.id) : suggestedArea(subjects, suggestedFocusAreaKey(focus.templateId));
   const areaId = keptFailure ? keptFailure.areaId : area?.id ?? null, areaTitle = keptFailure?.areaTitle ?? area?.title ?? "General";
   const locked = disabled || busy || preference.busy;
   const active = !!timer.hasOpenSession, activeSuggestion = active ? readSuggestedFocus(timer.notes) : null;
@@ -40,13 +41,9 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     } catch { if (alive.current) setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   };
-  const setup = () => {
-    if (lock.current || busy || active || timer.actionBusy) return;
-    if (!disabled) {
-      timer.setLinkedTaskId(null); timer.setTargetAttributeId(areaId); timer.setActivityType("other");
-      timer.setDurationInSeconds(focus.seconds); timer.setNotes(encodeSuggestedFocus(focus));
-    }
-    onStarted();
+  const chooseArea = (id: number | null) => {
+    if (lock.current || locked || active) return;
+    setAreaChoice({ defaults: preference.value, id }); setFailed(null);
   };
   return <FocusCard cardID="guided-focus-card" startID="guided-start" areaActionID="guided-session-options"
     label="Suggested focus" title={active ? activeSuggestion?.title ?? activeTitle ?? "One thing at a time." : focus.title}
@@ -56,5 +53,5 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
     active={active} running={!!timer.isRunning} busy={busy} disabled={locked} editDisabled={locked}
     setupDisabled={busy || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : preference.error ? "Couldn’t load your preferences. Try Find your next step again." : undefined}
-    onDuration={chooseDuration} onSetup={setup} onStart={() => void start()} />;
+    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} onArea={chooseArea} onStart={() => void start()} />;
 }

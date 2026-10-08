@@ -1,8 +1,8 @@
-// Display-only palette. Stored subject colours and category identity are unchanged.
-// Muted category hues complement neutral charcoal without becoming UI accents.
-const palette = ["#98B5A3", "#D6A18A", "#9CAFC2", "#C7B68F", "#BCA1B0"];
+// Bright category cues sit on neutral black surfaces.
+const palette = ["#6DD4B5", "#F4AA88", "#79BFF2", "#AAB3FF", "#E98ABC", "#C1A8FA"];
 export function lifeAreaColor(id: number | null | undefined, saved?: string | null): string {
   if (saved && /^#[0-9a-f]{6}$/i.test(saved)) {
+    if (palette.includes(saved.toUpperCase())) return saved.toUpperCase();
     const rgb = [1, 3, 5].map(offset => parseInt(saved.slice(offset, offset + 2), 16) / 255);
     const [red, green, blue] = rgb;
     const max = Math.max(...rgb), min = Math.min(...rgb), delta = max - min;

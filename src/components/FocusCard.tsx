@@ -5,7 +5,9 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import ContentReveal from "./ContentReveal";
-import FocusDurationSheet from "./FocusDurationSheet";
+import FocusLengthControl from "./FocusLengthControl";
+import FocusAreaSheet from "./FocusAreaSheet";
+import type { Subject } from "../services/taskService";
 import { colors } from "../constants/theme";
 import { durationLabel } from "../utils/sessionSetup";
 
@@ -15,14 +17,13 @@ export interface FocusCardProps {
   seconds: number; area: string; tint: string; active: boolean; running: boolean;
   busy: boolean; disabled: boolean; editDisabled: boolean; restoring?: boolean;
   failed?: boolean; error?: string; setupDisabled?: boolean; onDuration: (seconds: number) => void;
-  onSetup: () => void; onStart: () => void;
+  subjects?: Subject[]; areaId?: number | null; onArea?: (id: number | null) => void; onStart: () => void;
 }
 export default function FocusCard(props: FocusCardProps) {
   const areaLabel = focusAreaTitle(props.area);
-  const [custom, setCustom] = useState(false);
+  const [areaOpen, setAreaOpen] = useState(false);
   const locked = props.busy || (!props.active && props.disabled);
   const editLocked = props.active || props.busy || props.editDisabled;
-  const customSelected = props.seconds !== 600 && props.seconds !== 1800;
   return <View style={s.card} testID={props.cardID}>
     <Text style={s.label}>{props.active ? props.running ? "In focus" : "Paused" : props.label}</Text>
     <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
@@ -30,27 +31,19 @@ export default function FocusCard(props: FocusCardProps) {
       <Text style={s.instruction}>{props.instruction}</Text>
     </ContentReveal></View>
     {props.active ? <View style={s.areaRow}><Text style={s.meta}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area}>{areaLabel}</Text></View></View>
-      : <Pressable testID={props.areaActionID} onPress={props.onSetup} disabled={props.setupDisabled ?? editLocked} style={s.areaRow} accessibilityRole="button" accessibilityLabel="Change duration or area" accessibilityState={{ disabled: props.setupDisabled ?? editLocked }}>
+      : <Pressable testID={props.areaActionID} onPress={() => setAreaOpen(true)} disabled={props.setupDisabled ?? editLocked} style={s.areaRow} accessibilityRole="button" accessibilityLabel="Choose focus area" accessibilityState={{ disabled: props.setupDisabled ?? editLocked }}>
         <Text style={s.meta}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area} numberOfLines={2}>{areaLabel}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} /></View>
       </Pressable>}
     <View style={s.duration} testID="focus-card-duration">
-      <Text style={s.meta}>{props.active ? "Time remaining" : "Focus length"}</Text>
-      {props.active ? <Text style={s.remaining}>{durationLabel(props.seconds)}</Text> : <View style={s.presets}>
-        {[600, 1800].map(seconds => <Pressable key={seconds} onPress={() => props.onDuration(seconds)} disabled={editLocked}
-          accessibilityRole="button" accessibilityLabel={`Use ${seconds / 60} minutes`} accessibilityState={{ selected: props.seconds === seconds, disabled: editLocked }}
-          style={[s.option, props.seconds === seconds && s.selected]}><Text style={[s.optionText, props.seconds === seconds && s.selectedText]}>{seconds / 60} min</Text></Pressable>)}
-        <Pressable onPress={() => setCustom(true)} disabled={editLocked} accessibilityRole="button" accessibilityLabel="Set a custom focus duration"
-          accessibilityState={{ selected: customSelected, disabled: editLocked }} style={[s.option, customSelected && s.selected]}>
-          <Text style={[s.optionText, customSelected && s.selectedText]}>{customSelected ? durationLabel(props.seconds) : "Custom"}</Text>
-        </Pressable>
-      </View>}
+      {props.active ? <><Text style={s.meta}>Time remaining</Text><Text style={s.remaining}>{durationLabel(props.seconds)}</Text></>
+        : <FocusLengthControl seconds={props.seconds} disabled={editLocked} onChange={props.onDuration} />}
     </View>
     <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.primary, locked && s.disabled]}
       accessibilityRole="button" accessibilityLabel={props.active ? "Continue session" : `Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
       <Ionicons name="play-outline" size={22} color={colors.primaryText} /><Text style={s.primaryText}>{props.busy ? "Starting…" : props.active ? "Continue session" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start focusing"}</Text>
     </Pressable>
     {!!props.error && <Text style={s.error} accessibilityRole="alert">{props.error}</Text>}
-    <FocusDurationSheet seconds={props.seconds} visible={custom && !props.active} disabled={editLocked} onClose={() => setCustom(false)} onSave={props.onDuration} />
+    <FocusAreaSheet visible={areaOpen && !props.active} subjects={props.subjects ?? []} selectedId={props.areaId ?? null} disabled={editLocked} onClose={() => setAreaOpen(false)} onSelect={id => props.onArea?.(id)} />
   </View>;
 }
 const s = StyleSheet.create({

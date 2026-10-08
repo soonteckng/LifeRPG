@@ -843,7 +843,7 @@ test("Home Quick Start shows exact remembered choice, ignores rapid taps and nav
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
   }finally{await ui.cleanup();}
 });
-test("Home failure stays actionable and Change configures exact seconds instead of starting", async()=>{
+test("Home failure stays actionable and the area sheet cannot navigate or change duration", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
   try {
     assert.match(ui.output(),/Soon Teck/);assert.match(ui.output(),/30 min/);
@@ -855,7 +855,9 @@ test("Home failure stays actionable and Change configures exact seconds instead 
     assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);
     ui.calls.length=0;
     await act(async()=>ui.button("home-change-focus").props.onPress());
-    assert.deepEqual(ui.calls,[["task",null],["area",1],["activity","other"],["notes",""],["seconds",1800],["navigate","/session"]]);
+    assert.deepEqual(ui.calls,[]);
+    const areaSheet=ui.renderer.root.findAllByType("Sheet").find(node=>node.props.label==="focus area");
+    assert.equal(areaSheet.props.visible,true);
   }finally{await ui.cleanup();}
 });
 test("Home continues active or paused sessions and protects restoration/completion before starting",async()=>{

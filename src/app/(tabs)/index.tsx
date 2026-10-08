@@ -1,4 +1,4 @@
-import { focusAreaTitle } from "../../utils/focusAreas";
+import { focusAreaTitle, generalArea } from "../../utils/focusAreas";
 import FreeFocusCard from "../../components/FreeFocusCard";
 import GuidedFocusCard from "../../components/GuidedFocusCard";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
@@ -55,6 +55,7 @@ export default function HomeScreen() {
 
   const [lastFree, setLastFree] = useState<{ owner: string; session: QuickStartSession | null } | null>(null);
   const [quickStarting, setQuickStarting] = useState(false);
+  const [areaChoice, setAreaChoice] = useState<{ owner: string; id: number | null } | null>(null);
   const [durationChoice, setDurationChoice] = useState<{ owner: string; seconds: number } | null>(null);
   const [attempt, setAttempt] = useState<{ owner: string; seconds: number; areaId: number | null; title: string } | null>(null);
   const [quickError, setQuickError] = useState(false);
@@ -74,8 +75,8 @@ export default function HomeScreen() {
   const candidate = lastFree?.owner === owner ? lastFree.session : null;
   const previous = candidate && candidate.task_id == null && candidate.duration_seconds >= 300 && validSessionSeconds(candidate.duration_seconds) ? candidate : null;
   const rememberedSeconds = previous?.duration_seconds ?? 1800;
-  const general = subjects.find(area => area.title.trim().toLowerCase() === "general");
-  const quickArea = subjects.find(area => area.id === previous?.subject_id) ?? general;
+  const general = generalArea(subjects);
+  const quickArea = areaChoice?.owner === owner ? subjects.find(area => area.id === areaChoice.id) : subjects.find(area => area.id === previous?.subject_id) ?? general;
   const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
   const quickSeconds = retainedAttempt?.seconds ?? (durationChoice?.owner === owner ? durationChoice.seconds : rememberedSeconds);
   const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
@@ -151,17 +152,9 @@ export default function HomeScreen() {
     openSession();
   };
 
-  const changeSession = () => {
-    setQuickError(false);
-    setAttempt(null);
-    if (!hasOpenSession && !blocked && !quickLock.current) {
-      setLinkedTaskId(null);
-      setTargetAttributeId(quickAreaId);
-      timer.setActivityType("other");
-      timer.setNotes("");
-      timer.setDurationInSeconds(quickSeconds);
-    }
-    openSession();
+  const changeArea = (id: number | null) => {
+    if (hasOpenSession || blocked || quickLock.current || areasLoading) return;
+    setAreaChoice({ owner, id }); setQuickError(false); setAttempt(null);
   };
   const startFreeSession = async () => {
     if (hasOpenSession) { openSession(); return; }
@@ -222,11 +215,11 @@ export default function HomeScreen() {
             onStarted={openSession} selectedSeconds={durationChoice?.owner === owner ? durationChoice.seconds : undefined}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }} /> : <FreeFocusCard key={owner}
             seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
-            area={hasOpenSession ? activeArea : quickTitle}
+            area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
             active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting}
             disabled={blocked || !!areasLoading} changeDisabled={quickStarting || !!timer.actionBusy} restoring={!!timer.isRestoring}
-            failed={quickError} error={timer.actionError ?? undefined} onChange={changeSession} onStart={() => void startFreeSession()}
+            failed={quickError} error={timer.actionError ?? undefined} onChange={changeArea} onStart={() => void startFreeSession()}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
           />}</View></TourAnchor>
           <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">

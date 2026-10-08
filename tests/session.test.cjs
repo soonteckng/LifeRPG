@@ -235,6 +235,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "./LevelUpModal":host("CompletionPopup"),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
     "./DurationPicker":{__esModule:true,default:p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"}),p.interactive&&React.createElement("Button",{onPress:p.onEdit,accessibilityLabel:"Edit duration"},"Edit duration")),DurationEditor:p=>p.visible?React.createElement("DurationSheet",p):null},
+    "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
     "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
     "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
@@ -254,10 +255,10 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   };
 }
 
-test("opening the typed duration editor does not remount or alter the timer wheels",async()=>{
+test("opening Custom keeps the timer display and applied duration stable",async()=>{
   const ui=await screenSetup();
   const before=ui.root().findByType("DurationControl").props;
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   const after=ui.root().findByType("DurationControl").props;
   assert.equal(after.revision,before.revision);
   assert.equal(after.seconds,before.seconds);
@@ -275,7 +276,7 @@ test("downward session swipe uses the existing animated close and inner sheets t
     await ui.cleanup();
   }
   const ui=await screenSetup();
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   const safe=ui.root().findByType("SafeArea");
   assert.equal(safe.props.onMoveShouldSetPanResponderCapture({}, {y0:400,dy:40,dx:0}),false);
   await ui.cleanup();
@@ -336,17 +337,17 @@ test("quest setup is compact, keeps its association during loading, and never st
 
 test("custom picker changes setup only on confirm; Retry uses exact seconds",async()=>{
   const ui=await screenSetup();
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
   await ui.back();
   assert.equal(ui.calls.some(([action])=>action==="seconds"),false);
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(930));
   assert.deepEqual(ui.calls.at(-1),["seconds",930]);
   await ui.update({duration:930,timeLeft:930,actionError:"Couldn’t start your session."});
   await ui.press("Retry");
   assert.deepEqual(ui.calls.at(-1),["start",930,undefined]);
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,930);
   await ui.back();
   await ui.update({actionBusy:true});
@@ -543,21 +544,17 @@ test("integrated wheels ignore programmatic scrolls, commit on settling, and kee
   await act(async()=>renderer.unmount());
 });
 
-test("Start is blocked during momentum; preset changes reject stale wheel events",async()=>{
+test("Session timer is display-only and setup has one shared duration control",async()=>{
   const ui=await screenSetup();
-  const oldWheel=ui.root().findByType("DurationControl").props;
-  await act(async()=>oldWheel.onBusy(true));
-  assert.equal(ui.button("Start").props.disabled,true);
-  await ui.press("Start");
-  assert.equal(ui.calls.some(c=>c[0]==="start"),false);
-  await ui.press("15 minutes");
-  await ui.update({duration:900,timeLeft:900});
-  await act(async()=>{oldWheel.onCommit(6030);oldWheel.onBusy(true);oldWheel.onValidity(false);});
-  assert.deepEqual(ui.calls.at(-1),["seconds",900]);
-  assert.equal(ui.button("Start").props.disabled,false);
-  await ui.press("Start");
-  assert.deepEqual(ui.calls.at(-1),["start",900,undefined]);
-  await ui.cleanup();
+  try {
+    const display=ui.root().findByType("DurationControl").props;
+    assert.equal(display.interactive,false);
+    await act(async()=>{display.onCommit(2479);display.onBusy(true);display.onValidity(false);display.onEdit();});
+    assert.equal(ui.calls.length,0);assert.equal(ui.root().findAllByType("DurationSheet").length,0);
+    assert.equal(ui.root().findAllByType("View").filter(n=>n.props.testID==="focus-length-control").length,1);
+    await ui.press("Use 10 minutes");await ui.update({duration:600,timeLeft:600});
+    assert.deepEqual(ui.calls.at(-1),["seconds",600]);await ui.press("Start");assert.deepEqual(ui.calls.at(-1),["start",600,undefined]);
+  }finally{await ui.cleanup();}
 });
 
 test("typed editor validates both fields without truncation; Cancel retains the applied value",async()=>{
@@ -662,11 +659,11 @@ test("viewed completion hides its dock without hiding a running session",async()
 
 test("typed input and presets share applied seconds while linked quests stay read-only",async()=>{
   const ui=await screenSetup();
-  await ui.press("Edit duration");
+  await ui.press("Set a custom focus duration");
   await act(async()=>ui.root().findByType("DurationSheet").props.onConfirm(6000));
   await ui.update({duration:6000,timeLeft:6000});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,6000);
-  await ui.press("30 minutes");await ui.update({duration:1800,timeLeft:1800});
+  await ui.press("Use 30 minutes");await ui.update({duration:1800,timeLeft:1800});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,1800);
   await ui.update({linkedTaskId:7,duration:930});
   assert.equal(ui.root().findByType("DurationControl").props.interactive,false);
@@ -988,11 +985,11 @@ test("compact Session chips select the saved Life area without touching quest or
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
   assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
-  await ui.press("45 minutes");
-  assert.deepEqual(ui.calls.at(-1),["seconds",2700]);
-  await ui.update({duration:2700,timeLeft:2700});
+  await ui.press("Use 10 minutes");
+  assert.deepEqual(ui.calls.at(-1),["seconds",600]);
+  await ui.update({duration:600,timeLeft:600});
   await ui.press("Start");
-  assert.deepEqual(ui.calls.at(-1),["start",2700,undefined]);
+  assert.deepEqual(ui.calls.at(-1),["start",600,undefined]);
   await ui.cleanup();
 });
 
@@ -1251,13 +1248,14 @@ test("Quick Start cannot discard failed completion or restoration and rejects in
 test("Session presets include the 30-minute default and match typed duration", async()=>{
   const ui=await screenSetup();
   try {
-    assert.equal(ui.button("30 minutes").props.accessibilityState.selected,true);
+    assert.equal(ui.button("Use 30 minutes").props.accessibilityState.selected,true);
     assert.equal(ui.button("25 minutes"),undefined);
-    for(const minutes of [15,30,45,60]) assert.ok(ui.button(`${minutes} minutes`));
-    await ui.press("15 minutes");
-    assert.deepEqual(ui.calls.at(-1),["seconds",900]);
-    await ui.update({duration:900,timeLeft:900});
-    await ui.press("30 minutes");
+    for(const minutes of [10,30]) assert.ok(ui.button(`Use ${minutes} minutes`));
+    assert.ok(ui.button("Set a custom focus duration"));
+    await ui.press("Use 10 minutes");
+    assert.deepEqual(ui.calls.at(-1),["seconds",600]);
+    await ui.update({duration:600,timeLeft:600});
+    await ui.press("Use 30 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",1800]);
   } finally {await ui.cleanup();}
 });

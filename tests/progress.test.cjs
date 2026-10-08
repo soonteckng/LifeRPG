@@ -160,7 +160,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#D6A18A",
+    "#F4AA88",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -603,7 +603,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
   try {
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
-    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#9CAFC2", 60], ["#D6A18A", 60]]);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BFF2", 60], ["#F4AA88", 60]]);
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
     const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));

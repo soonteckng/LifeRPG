@@ -2,6 +2,7 @@ import { View, StyleSheet } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
+import { FOCUS_AREAS } from "../utils/focusAreas";
 import { colors } from "../constants/theme";
 import { FOCUS_DIRECTIONS, STUDY_NEEDS, defaultFocusId, focusDirection, focusOptions } from "../constants/guidedQuests";
 import type { GuidedPreference } from "../services/guidedPreferenceService";
@@ -19,13 +20,13 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
   if (!compact) return <View style={s.directions}>
     <View style={s.directionGrid}>{FOCUS_DIRECTIONS.map(direction => {
       const selected = current.id === direction.id, visual = directionVisuals[direction.id];
+      const tint = FOCUS_AREAS[FOCUS_DIRECTIONS.indexOf(direction) + 1].color;
       return <Pressable key={direction.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={direction.title} accessibilityHint={direction.hint} accessibilityState={{ checked: selected }}
         onPress={() => choose(direction)} style={[s.directionTile, selected && s.selected]}>
-        <Ionicons name={visual.icon} size={20} color={selected ? colors.accent : colors.secondary} />
-        <Text style={[s.tileTitle, selected && s.selectedTitle]}>{visual.title}</Text>
+        <Ionicons name={visual.icon} size={20} color={tint} />
+        <View style={s.tileCopy}><Text style={[s.tileTitle, selected && s.selectedTitle]}>{visual.title}</Text><Text style={s.tileHint}>{direction.hint}</Text></View>
       </Pressable>;
     })}</View>
-    <Text style={s.directionHint}>{current.hint}</Text>
   </View>;
   return <View style={s.directions}>{FOCUS_DIRECTIONS.map(direction => <Pressable key={direction.id} disabled={disabled}
     accessibilityRole="radio" accessibilityLabel={direction.title} accessibilityHint={direction.hint} accessibilityState={{ checked: current.id === direction.id }}
@@ -61,7 +62,7 @@ export default function GuidedChoice({ value, onChange, disabled = false }: Choi
 const s = StyleSheet.create({
   group: { gap: 12 }, directions: { gap: 6 }, section: { gap: 6 }, heading: { color: colors.secondary, fontSize: 15, lineHeight: 21 },
   modeRow: { flexDirection: "row", gap: 4, padding: 4, backgroundColor: colors.surfaceRaised, borderRadius: 16 }, modeButton: { flex: 1, minWidth: 0, minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, paddingHorizontal: 10, paddingVertical: 10 }, modeTitle: { color: colors.secondary, fontSize: 16, lineHeight: 22, fontWeight: "500", textAlign: "center" },
-  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 48, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: colors.surfaceRaised, flexDirection: "row", alignItems: "center", gap: 8 }, tileTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" }, selectedTitle: { color: colors.accent }, directionHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
+  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 98, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: colors.surfaceRaised, flexDirection: "row", alignItems: "center", gap: 8 }, tileCopy: { flex: 1, minWidth: 0, gap: 4 }, tileHint: { color: colors.secondary, fontSize: 12, lineHeight: 17 }, tileTitle: { minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" }, selectedTitle: { color: colors.accent }, directionHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
   row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 }, promptRow: { minHeight: 52, paddingVertical: 10 },
   selected: { backgroundColor: colors.accentSoft }, detail: { flex: 1, minWidth: 0, gap: 3 },
   title: { fontSize: 17, lineHeight: 23, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },

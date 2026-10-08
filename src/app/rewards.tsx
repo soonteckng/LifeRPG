@@ -4,7 +4,7 @@ import { creditedDailySeconds } from "../utils/progressionAccounting";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppState, StyleSheet, View } from "react-native";
 import AppSheet from "../components/AppSheet";
 import {
@@ -45,10 +45,7 @@ function MilestoneCollection() {
   const { profile } = useUser();
   const { sessionSummary } = useTimer();
   const growth = useCharacterData();
-  const totals = earnedMilestones(
-    growth.data?.sessions ?? [],
-    profile.timezone,
-  );
+  const totals = useMemo(() => earnedMilestones(growth.data?.sessions ?? [], profile.timezone), [growth.data, profile.timezone]);
   const earned = totals.milestones.filter((m) => m.unlocked);
   const upcoming = totals.milestones.filter((m) => !m.unlocked);
   const nearest = nextMilestone(totals.milestones);
@@ -125,7 +122,7 @@ function MilestoneCollection() {
         <View
           style={[
             p.icon,
-            milestone.unlocked && { backgroundColor: "rgba(159,194,174,0.10)" },
+            milestone.unlocked && { backgroundColor: "rgba(112,216,174,0.10)" },
           ]}
         >
           <Ionicons
@@ -166,6 +163,52 @@ function MilestoneCollection() {
       back
       animateTransition
     >
+      <View style={[p.card, styles.dailyCard]} testID="milestones-daily-goal">
+        <Text style={p.label}>TODAY’S GOAL</Text>
+        <Text style={p.title}>
+          {visibleGoalLoaded && goal?.goal_completed
+            ? "You followed through today."
+            : "A little time, every day."}
+        </Text>
+        <Text style={p.body}>
+          Each completed block adds to today’s goal and your milestone progress.
+        </Text>
+        {visibleGoalLoaded && (
+          <>
+            <Meter
+              value={
+                (goal ? creditedDailySeconds(goal) : 0) /
+                Math.max(1, (goal?.goal_minutes ?? profile.daily_goal_minutes) * 60)
+              }
+            />
+            <Text style={p.caption}>
+              {durationLabel(goal ? creditedDailySeconds(goal) : 0)} /{" "}
+              {goal?.goal_minutes ?? profile.daily_goal_minutes} min
+            </Text>
+            {!!goal?.goal_completed && (
+              <View style={p.inline}>
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                <Text style={[p.rowTitle, { color: colors.success }]}>
+                  Daily goal achieved
+                </Text>
+              </View>
+            )}
+          </>
+        )}
+        {!visibleGoalLoaded && !visibleGoalError && (
+          <View style={styles.goalPlaceholder}><Text style={p.caption}>Loading today’s goal…</Text></View>
+        )}
+        {visibleGoalError && (
+          <>
+            <Text style={p.error}>Couldn’t refresh today’s goal.</Text>
+            <PersonalButton
+              title="Retry today’s goal"
+              secondary
+              onPress={() => void refreshGoal()}
+            />
+          </>
+        )}
+      </View>
       <Text style={p.caption}>Your collection · {earned.length} of {totals.milestones.length} earned</Text>
       <Text style={p.body}>A quiet record of the time you’ve made for yourself. Earned automatically, at your own pace.</Text>
       {growth.error && (
@@ -184,11 +227,7 @@ function MilestoneCollection() {
         </View>
       )}
       {!growth.data ? (
-        <Text style={p.body}>
-          {growth.loading
-            ? "Loading your milestones…"
-            : "Your collection will appear after loading your saved sessions."}
-        </Text>
+        <View style={styles.loadingCollection} testID="milestones-loading"><Text style={p.rowTitle}>Getting your collection ready…</Text><Text style={p.caption}>Your saved achievements will appear here.</Text></View>
       ) : (
         <>
           {nearest && <View style={[p.card, styles.nextCard]} testID="milestone-next">
@@ -250,53 +289,6 @@ function MilestoneCollection() {
           )}
         </>
       )}
-      <View style={[p.card, styles.dailyCard]}>
-        <Text style={p.label}>TODAY’S GOAL</Text>
-        <Text style={p.title}>
-          {visibleGoalLoaded && goal?.goal_completed
-            ? "You followed through today."
-            : "A separate step for your day."}
-        </Text>
-        <Text style={p.body}>
-          Your daily goal is a separate commitment. Even a short completed block
-          counts toward your milestones.
-        </Text>
-        {visibleGoalLoaded && (
-          <>
-            <Meter
-              value={
-                (goal ? creditedDailySeconds(goal) : 0) /
-                Math.max(1, (goal?.goal_minutes ?? profile.daily_goal_minutes) * 60)
-              }
-            />
-            <Text style={p.caption}>
-              {durationLabel(goal ? creditedDailySeconds(goal) : 0)} /{" "}
-              {goal?.goal_minutes ?? profile.daily_goal_minutes} min
-            </Text>
-            {!!goal?.goal_completed && (
-              <View style={p.inline}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                <Text style={[p.rowTitle, { color: colors.success }]}>
-                  Daily goal achieved
-                </Text>
-              </View>
-            )}
-          </>
-        )}
-        {!visibleGoalLoaded && !visibleGoalError && (
-          <Text style={p.caption}>Loading today’s goal…</Text>
-        )}
-        {visibleGoalError && (
-          <>
-            <Text style={p.error}>Couldn’t refresh today’s goal.</Text>
-            <PersonalButton
-              title="Retry today’s goal"
-              secondary
-              onPress={() => void refreshGoal()}
-            />
-          </>
-        )}
-      </View>
       <AppSheet
         visible={sheetOpen}
         compact
@@ -351,5 +343,7 @@ const styles = StyleSheet.create({
   toggleText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   track: { gap: 4, padding: 16, backgroundColor: colors.surface, borderRadius: 20 },
   milestoneRow: { paddingVertical: 10, gap: 8, minHeight: 56 },
-  dailyCard: { marginTop: 20 },
+  dailyCard: { marginBottom: 8 },
+  goalPlaceholder: { minHeight: 44, justifyContent: "center" },
+  loadingCollection: { minHeight: 360, padding: 18, gap: 12, backgroundColor: colors.surface, borderRadius: 20 },
 });

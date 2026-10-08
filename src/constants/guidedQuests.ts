@@ -15,11 +15,11 @@ export interface FocusDirection {
   defaultNeed: FocusNeed;
 }
 export const FOCUS_DIRECTIONS: FocusDirection[] = [
-  { id: "learning", title: "Learn and study", hint: "Notes, books and practice.", needs: ["revision", "assignments", "practice"], defaultNeed: "revision" },
-  { id: "work", title: "Work and projects", hint: "Move something meaningful forward.", needs: ["work"], defaultNeed: "work" },
-  { id: "creative", title: "Create and practise", hint: "Make space for your craft.", needs: ["creative"], defaultNeed: "creative" },
-  { id: "life-admin", title: "Everyday life", hint: "Plans, admin and small tasks.", needs: ["life-admin"], defaultNeed: "life-admin" },
-  { id: "restore", title: "Take a quiet break", hint: "A little time away from screens.", needs: ["restore"], defaultNeed: "restore" },
+  { id: "learning", title: "Learn and study", hint: "Study notes, read to learn, or practise questions.", needs: ["revision", "assignments", "practice"], defaultNeed: "revision" },
+  { id: "work", title: "Work and projects", hint: "Move a work task or personal project forward.", needs: ["work"], defaultNeed: "work" },
+  { id: "creative", title: "Create and practise", hint: "Write, draw, make music, or practise a creative skill.", needs: ["creative"], defaultNeed: "creative" },
+  { id: "life-admin", title: "Everyday life", hint: "Plan your day, organise a space, or clear life admin.", needs: ["life-admin"], defaultNeed: "life-admin" },
+  { id: "restore", title: "Quiet time", hint: "Read for pleasure, journal, or take a gentle walk without scrolling.", needs: ["restore"], defaultNeed: "restore" },
 ];
 export function focusDirection(need: FocusNeed): FocusDirection {
   return FOCUS_DIRECTIONS.find(direction => direction.needs.includes(need)) ?? FOCUS_DIRECTIONS[0];
@@ -50,7 +50,7 @@ export const STARTER_QUESTS: Starter[] = [
   { id: "creative-practice", need: "creative", areaKey: "creative", title: "Spend time with your craft", instruction: "Choose a skill you enjoy practising. Gather what you need and work at your own pace, without checking back between each attempt.", seconds: 1800, smallTitle: "A short creative practice", smallInstruction: "Give your craft ten minutes of attention. Try something familiar or explore a small idea." },
   { id: "life-small-task", need: "life-admin", areaKey: "personal", title: "Clear a small life task", instruction: "Choose one everyday task you have been putting off: a form, a plan or a message to reply to. Work through it calmly, then use any remaining time for the next small task.", seconds: 1800, smallTitle: "One small task", smallInstruction: "Give an everyday task ten minutes. Open what you need and take the next manageable step." },
   { id: "life-reset-space", need: "life-admin", areaKey: "personal", title: "Reset a little space", instruction: "Choose a small part of your room, desk or digital space. Put things back in order at your own pace, one area at a time.", seconds: 1800, smallTitle: "A ten-minute reset", smallInstruction: "Choose one small space and spend ten minutes putting it in order. Stop when your block ends." },
-  { id: "quiet-screen-free", need: "restore", areaKey: "wellbeing", title: "Take a screen-free pause", instruction: "Choose a quiet activity away from screens, such as reading for pleasure or spending time outside. Settle into something comfortable and return when the timer ends.", seconds: 1800, smallTitle: "A little quiet time", smallInstruction: "Put the screen aside for ten minutes. Choose a quiet activity you enjoy and let this be a little time for you." },
+  { id: "quiet-screen-free", need: "restore", areaKey: "wellbeing", title: "Make time to recharge", instruction: "Choose something restful: read a book for pleasure, write in a journal, or take a gentle walk. Put distracting apps aside and give yourself this uninterrupted time.", seconds: 1800, smallTitle: "A little quiet time", smallInstruction: "Spend ten minutes reading for pleasure, journaling, or taking a gentle walk. Keep distracting apps closed and return when your timer ends." },
 ];
 export const LEGACY_STARTER_NEEDS: Record<string, FocusNeed> = { "recall-three": "revision", "confusing-point": "revision", "revision-questions": "revision", "assignment-outline": "assignments", "improve-paragraph": "assignments", "continue-assignment": "assignments", "work-problem": "practice", "retry-mistake": "practice", "explain-example": "practice" };
 export function defaultFocusId(need: FocusNeed) { return STARTER_QUESTS.find(item => item.need === need)!.id; }
