@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
+      if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
@@ -842,7 +844,9 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
     );
     await ui.press("Personalise profile");
     const sheet = ui.renderer.root.findByType("Sheet");
-    assert.equal(sheet.props.compact, true);
+    assert.notEqual(sheet.props.compact, true);
+    assert.equal(sheet.props.expanded, true);
+    assert.equal(sheet.props.motionMode, "timed");
     assert.equal(sheet.props.guardDismiss, false);
     const scroll = ui.renderer.root.findByType("SheetScroll");
     assert.equal(
@@ -964,74 +968,65 @@ test("Android secondary page retains its contents until animated back finishes a
   }
 });
 
-test("character wave is cosmetic and respects reduced motion", async () => {
-  for (const reduced of [false, true]) {
-    const animations = [];
-    const Portrait = load("src/components/CharacterPortrait.tsx", {
-      "react-native": {
-        ...Native,
-        StyleSheet: { create: (s) => s },
-        Animated: {
-          Value: class {
-            setValue() {}
-            stopAnimation() {}
-            interpolate() {
-              return 0;
-            }
-          },
-          View: host("Animated"),
-          timing: (_, config) => ({
-            start() {
-              animations.push(config);
-            },
-          }),
-        },
-      },
-      "../hooks/useReducedMotion": { useReducedMotion: () => reduced },
-    }).default;
-    let renderer;
-    await act(async () => {
-      renderer = create(
-        React.createElement(Portrait, { avatar: "⭐", level: 3, developed: 2 }),
-      );
-    });
-    try {
-      await act(async () => renderer.root.findByType("Button").props.onPress());
-      assert.equal(animations.length, reduced ? 0 : 1);
-      assert.match(
-        renderer.root.findByType("Button").props.accessibilityLabel,
-        /Level 3/,
-      );
-    } finally {
-      await act(async () => renderer.unmount());
-    }
-  }
+test("character greeting is cosmetic while automatic motion needs no tap",async()=>{
+ let greetings=0;
+ const Portrait=load("src/components/CharacterPortrait.tsx",{
+  "react-native":Native,
+  "../hooks/useCharacterMotion":{useCharacterMotion:()=>({bodyStyle:{transform:[{translateY:-2}]},eyeStyle:{transform:[{scaleY:1}]},armStyle:{},greet:()=>greetings++})},
+ }).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",level:3,developed:2}));});
+ try{
+  assert.equal(greetings,0);assert.match(renderer.root.findByType("Button").props.accessibilityHint,/breathes and blinks/);
+  await act(async()=>renderer.root.findByType("Button").props.onPress());assert.equal(greetings,1);
+  assert.match(renderer.root.findByType("Button").props.accessibilityLabel,/Level 3/);
+ }finally{await act(async()=>renderer.unmount());}
 });
 
-test("portrait centres its head and a changed badge updates the Home identity", async () => {
-  const styles = [];
-  const mocks = {"react-native": {...Native, StyleSheet:{ create: value => { styles.push(value); return value; } }, Animated:{...Native.Animated, Value:class {setValue(){} stopAnimation(){} interpolate(){return 0;}}}}, "../hooks/useReducedMotion":{useReducedMotion:()=>true}};
-  const Portrait = load("src/components/CharacterPortrait.tsx", mocks).default;
-  let renderer;
-  await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",size:176}));});
-  try {
-    const portraitStyles = styles.find(style=>style.head?.width===80);
-    assert.equal(portraitStyles.head.left + portraitStyles.head.width / 2, 110);
-    const canvas=renderer.root.findAllByType("View").find(node=>node.props.testID==="character-canvas");
-    assert.equal(canvas.props.style.left + canvas.props.style.width / 2, 88);
-  } finally {await act(async()=>renderer.unmount());}
-  const Mark=load("src/components/CharacterMark.tsx",mocks).default;
-  await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
-  try {
-    assert.doesNotMatch(text(renderer.root),/⭐/);
-    const firstColour=renderer.root.findAllByType("View").find(node=>Array.isArray(node.props.style)&&node.props.style[1]?.backgroundColor).props.style[1].backgroundColor;
-    await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🧑‍💻",size:58})));
-    assert.doesNotMatch(text(renderer.root),/🧑‍💻/);
-    const nextColour=renderer.root.findAllByType("View").find(node=>Array.isArray(node.props.style)&&node.props.style[1]?.backgroundColor).props.style[1].backgroundColor;
-    assert.notEqual(firstColour,nextColour,"saved badges still personalise the scarf");
-    assert.doesNotMatch(text(renderer.root),/⭐/);
-  } finally {await act(async()=>renderer.unmount());}
+test("every saved badge selects a full look and Home shares the same drawing",async()=>{
+ const catalogue=load("src/constants/characterLooks.ts"),appearance=load("src/utils/characterAppearance.ts");
+ assert.deepEqual(catalogue.CHARACTER_LOOKS.map(look=>look.id),load("src/constants/characterBadges.ts").CHARACTER_BADGES);
+ assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.body)).size,10);
+ assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.accessory)).size,10);
+ assert.equal(appearance.characterLook("🧙").id,"🧙‍♂️");assert.ok(appearance.characterLook("legacy badge"));
+ const Mark=load("src/components/CharacterMark.tsx",{"react-native":Native}).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
+ const part=id=>renderer.root.findAllByType("View").find(node=>node.props.testID===id);
+ try{
+  const canvas=part("character-canvas");assert.equal(canvas.props.style.left+canvas.props.style.width/2,29);
+  const body=part("character-body").props.style[1].backgroundColor,head=part("character-head").props.style[1].backgroundColor;
+  await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🧑‍💻",size:58})));
+  assert.notEqual(part("character-body").props.style[1].backgroundColor,body);assert.notEqual(part("character-head").props.style[1].backgroundColor,head);
+  assert.doesNotMatch(text(renderer.root),/⭐|🧑‍💻/);
+ }finally{await act(async()=>renderer.unmount());}
+ const Picker=load("src/components/CharacterLookPicker.tsx",{"react-native":Native,"@gorhom/bottom-sheet":{TouchableOpacity:host("Button")},"@expo/vector-icons":{Ionicons:host("Icon")}}).default;
+ await act(async()=>{renderer=create(React.createElement(Picker,{value:"🦊",disabled:false,onChange(){}}));});
+ try{assert.equal(renderer.root.findAllByType("Button").filter(node=>node.props.accessibilityState.checked).length,1);assert.equal(renderer.root.findAllByType("Button").find(node=>node.props.accessibilityState.checked).props.accessibilityLabel,"Choose Ember");}
+ finally{await act(async()=>renderer.unmount());}
 });
+
+test("idle motion cancels directly on frozen-tab blur, background and Reduce Motion",async()=>{
+ let appState,reduced=false,focused=true,enabled=true,motion;const listeners={};
+ const native={AppState:{currentState:'active',addEventListener:(_event,listener)=>{appState=state=>{native.AppState.currentState=state;listener(state);};return{remove(){}};}}};
+ const navigation={isFocused:()=>focused,addListener:(event,listener)=>{listeners[event]=listener;return()=>{delete listeners[event];};}};
+ const context=React.createContext(undefined),fake=require('./character-motion-mocks.cjs').motionApi(React,host);
+ const hook=load('src/hooks/useCharacterMotion.ts',{'react-native':native,'expo-router/react-navigation':{NavigationContext:context},'react-native-reanimated':fake.api,'./useReducedMotion':{useReducedMotion:()=>reduced}}).useCharacterMotion;
+ function Consumer(){motion=hook(enabled);return null;}
+ const element=()=>React.createElement(context.Provider,{value:navigation},React.createElement(Consumer));
+ let renderer;await act(async()=>{renderer=create(element());});
+ try{
+  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,2);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
+  focused=false;listeners.blur();assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
+  let count=repeats().length;appState('background');appState('active');assert.equal(repeats().length,count,'backgrounded or unfocused screens cannot restart motion');
+  focused=true;listeners.focus();assert.equal(repeats().length,count+2);
+  reduced=true;count=repeats().length;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
+  reduced=false;enabled=false;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);
+ }finally{await act(async()=>renderer.unmount());}
+ // Auth renders before the app navigator: no navigation context is required.
+ const before=fake.events.filter(event=>event.kind==='repeat').length;
+ enabled=true;await act(async()=>{renderer=create(React.createElement(Consumer));});
+ assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+2);await act(async()=>renderer.unmount());
+});
+
 test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {
   const AppText=load("src/components/AppText.tsx",{"react-native":{...Native,Platform:{OS:"ios"}}}).Text;
   let renderer;
@@ -1077,5 +1072,17 @@ test("Profile has one milestone collection entry instead of a badge shortcut gri
  try{
   const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,1);
   await act(async()=>entries[0].props.onPress());assert.deepEqual(routes,['/rewards']);assert.match(ui.text(),/Your focus areas/);
+ }finally{await ui.cleanup();}
+});
+
+test("look changes preview locally and save only after confirmation; failed saves retain the chosen look",async()=>{
+ let fail=true;const saves=[];
+ const ui=await profileScreen({'../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:3,current_xp:20,timezone:'UTC'},reloadProfile:async()=>{},updateProfile:async(...args)=>{saves.push(args);if(fail)throw Error('Offline');}})}});
+ try{
+  await ui.press('Personalise profile');await ui.press('Choose Fern');assert.equal(saves.length,0);
+  const portraits=ui.renderer.root.findAllByType('Portrait');assert.equal(portraits.find(node=>node.props.level===3).props.avatar,'⭐');assert.equal(portraits.find(node=>node.props.interactive===false).props.avatar,'🧝‍♂️');
+  await ui.press('Save changes');assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);assert.match(ui.text(),/Couldn’t save/);
+  const selected=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel==='Choose Fern');assert.equal(selected.props.accessibilityState.checked,true);
+  fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon Teck','🧝‍♂️','Scholar']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
 });

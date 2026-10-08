@@ -17,7 +17,7 @@ export const TOUR_STEPS = [
   { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Switch between suggestions and free focus here, or choose another suggestion. Your quests and progress stay yours." },
   { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Focus areas and session history. Explore Week or Month, and your current and longest streaks." },
-  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Profile holds your character and Focus areas. Open Your milestones here to explore your collection. Everything reflects effort you’ve recorded." },
+  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Personalise your companion here. This page also holds your focus areas and milestone collection. Growth reflects the effort you’ve recorded." },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
 const pendingOwners = new Set<string>();
