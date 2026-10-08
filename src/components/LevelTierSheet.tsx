@@ -5,32 +5,30 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
-import { LEVEL_TIERS, levelTierProgress, requiredCharacterXP } from "../utils/levelTiers";
+import { LEVEL_TIERS, levelTierProgress } from "../utils/levelTiers";
 
 interface ProgressProps { level: number; currentXP: number }
-const formatXP = (xp: number) => Math.round(xp).toLocaleString();
 export function LevelTierPath({ level, currentXP }: ProgressProps) {
-  const progress = levelTierProgress(level, currentXP), required = requiredCharacterXP(level);
+  const progress = levelTierProgress(level, currentXP);
   return <View style={s.stack}>
     <View style={s.summary}>
       <Text style={s.eyebrow}>YOUR CURRENT TIER</Text>
       <View style={s.summaryTitle}><Ionicons name={progress.current.icon} size={24} color={progress.current.color} /><Text style={s.currentTitle}>{progress.current.title}</Text><Text style={s.level}>Level {Math.max(1, level)}</Text></View>
-      <Text style={s.body}>{formatXP(currentXP)} / {formatXP(required)} XP to level {Math.max(1, level) + 1}.</Text>
-      {progress.next ? <><View style={s.track} accessible accessibilityRole="progressbar" accessibilityLabel={`Progress towards ${progress.next.title}`} accessibilityValue={{ min: 0, max: 100, now: Math.round(progress.fraction * 100) }}><View style={[s.fill, { width: `${progress.fraction * 100}%`, backgroundColor: progress.current.color }]} /></View><Text style={s.hint}>{formatXP(progress.remainingXP)} more XP to {progress.next.title} at level {progress.next.level}.</Text></> : <Text style={s.hint}>You’ve reached the final tier. Your level keeps growing.</Text>}
+      {progress.next ? <><View style={s.track} accessible accessibilityRole="progressbar" accessibilityLabel={`Progress towards ${progress.next.title}`} accessibilityValue={{ min: 0, max: 100, now: Math.round(progress.fraction * 100) }}><View style={[s.fill, { width: `${progress.fraction * 100}%`, backgroundColor: progress.current.color }]} /></View><Text style={s.hint}>Next tier: {progress.next.title} at level {progress.next.level}.</Text></> : <Text style={s.hint}>You’ve reached the final tier. Your level keeps growing.</Text>}
     </View>
-    <Text style={s.body}>Every completed minute earns 1 XP. Each new level takes a little more time. Tiers mark recorded practice, and earned growth stays with you.</Text>
+    <Text style={s.body}>Each new level takes more focus time. The gaps between tiers grow as you progress, with milestones stretching to level 100 and beyond.</Text>
     <Text style={s.sectionTitle}>Your tier path</Text>
     {LEVEL_TIERS.map((tier, index) => {
       const current = tier.level === progress.current.level, unlocked = level >= tier.level;
       const rangeEnd = LEVEL_TIERS[index + 1]?.level;
       const levelRange = rangeEnd === tier.level + 1 ? `Level ${tier.level}` : rangeEnd ? `Levels ${tier.level}–${rangeEnd - 1}` : `Level ${tier.level}+`;
-      return <View key={tier.level} style={[s.tier, current && s.currentTier]} accessible accessibilityLabel={`${tier.title}, ${levelRange}, ${current ? "current tier" : unlocked ? "reached" : "locked"}, ${formatXP(tier.totalXP)} total XP`}>
+      return <View key={tier.level} style={[s.tier, current && s.currentTier]} accessible accessibilityLabel={`${tier.title}, ${levelRange}, ${current ? "current tier" : unlocked ? "reached" : "locked"}`}>
         <View style={[s.emblem, { backgroundColor: `${tier.color}18` }]}><Ionicons name={tier.icon} size={23} color={tier.color} /></View>
-        <View style={s.detail}><View style={s.nameRow}><Text style={s.tierTitle}>{tier.title}</Text>{current && <Text style={s.currentLabel}>Current</Text>}</View><Text style={s.hint}>{levelRange} · {formatXP(tier.totalXP)} total XP</Text><Text style={s.hint}>{tier.detail}</Text></View>
+        <View style={s.detail}><View style={s.nameRow}><Text style={s.tierTitle}>{tier.title}</Text>{current && <Text style={s.currentLabel}>Current</Text>}</View><Text style={s.hint}>{levelRange}</Text><Text style={s.hint}>{tier.detail}</Text></View>
         <Ionicons name={unlocked ? "checkmark-circle-outline" : "lock-closed-outline"} size={18} color={unlocked ? tier.color : colors.muted} />
       </View>;
     })}
-    <Text style={s.hint}>At level 1, 100 XP takes you to level 2. Your next target always appears on Profile. Total XP includes the XP spent reaching earlier levels.</Text>
+    <Text style={s.hint}>There is no final level. Your progress keeps growing beyond the last tier.</Text>
   </View>;
 }
 export default function LevelTierSheet({ visible, onClose, ...progress }: ProgressProps & { visible: boolean; onClose: () => void }) {

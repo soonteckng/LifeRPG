@@ -22,17 +22,19 @@ const native={View:host('View'),StyleSheet:{create:value=>value,hairlineWidth:0.
 const sheet=props=>props.visible?React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay):null;
 
 test('character tiers use the saved XP curve, have exact boundaries and keep growing beyond the last tier',()=>{
- const api=load('src/utils/levelTiers.ts');assert.equal(api.LEVEL_TIERS.length,8);
+ const api=load('src/utils/levelTiers.ts');assert.equal(api.LEVEL_TIERS.length,12);
  assert.equal(api.requiredCharacterXP(1),100);assert.equal(api.requiredCharacterXP(2),282);assert.equal(api.requiredCharacterXP(3),519);
  for(const tier of api.LEVEL_TIERS){let expected=0;for(let level=1;level<tier.level;level++)expected+=api.requiredCharacterXP(level);assert.equal(tier.totalXP,expected);assert.equal(api.levelTierProgress(tier.level,0).current.title,tier.title);if(tier.level>1){const prior=api.levelTierProgress(tier.level-1,api.requiredCharacterXP(tier.level-1)-1);assert.equal(prior.remainingXP,1);assert.ok(prior.fraction<1);}}
- assert.equal(api.levelTierProgress(1,40).remainingXP,60);assert.equal(api.levelTierProgress(1,40).fraction,.4);
+ assert.equal(api.levelTierProgress(1,40).remainingXP,342);assert.equal(api.levelTierProgress(1,40).fraction,40/382);
+ const gaps=api.LEVEL_TIERS.slice(1).map((tier,i)=>tier.level-api.LEVEL_TIERS[i].level);assert.ok(gaps.every((gap,i)=>i===0||gap>gaps[i-1]));assert.equal(api.LEVEL_TIERS.at(-1).level,100);
+ for(let level=2;level<=100;level++)assert.ok(api.requiredCharacterXP(level)>api.requiredCharacterXP(level-1));
  assert.equal(api.levelTierProgress(1000000,700).next,null);assert.equal(api.levelTierProgress(NaN,-1).current.level,1);
 });
 
 test('tier path renders all stages with one current tier and a clear next target',async()=>{
  const api=load('src/components/LevelTierSheet.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:16})},'./AppSheet':sheet});
  let tree;await act(async()=>{tree=create(React.createElement(api.default,{visible:true,onClose(){},level:3,currentXP:100}));});
- try{assert.match(content(tree.root),/Momentum/);assert.match(content(tree.root),/1,219 more XP to Rhythm at level 5/);const stages=tree.root.findAllByType('View').filter(node=>node.props.accessibilityLabel?.includes('total XP'));assert.equal(stages.length,8);assert.equal(stages.filter(node=>node.props.accessibilityLabel.includes('current tier')).length,1);assert.equal(tree.root.findByType('Sheet').props.expanded,true);}finally{await act(async()=>tree.unmount());}
+ try{assert.match(content(tree.root),/Spark/);assert.match(content(tree.root),/Next tier: Momentum at level 6/);assert.doesNotMatch(content(tree.root),/total XP|more XP|XP to level/);const stages=tree.root.findAllByType('View').filter(node=>node.props.accessibilityLabel?.includes(', Level'));assert.equal(stages.length,12);assert.equal(stages.filter(node=>node.props.accessibilityLabel.includes('current tier')).length,1);assert.equal(tree.root.findByType('Sheet').props.expanded,true);}finally{await act(async()=>tree.unmount());}
 });
 
 test('30/60 presets and Custom respect disabled state and the haptic preference while retaining short custom timers',async()=>{
@@ -70,6 +72,18 @@ test('quest scope switches give haptics and custom minutes are revealed after ke
   const duration=tree.root.findAllByType('View').find(node=>node.props.onLayout);await act(async()=>duration.props.onLayout({nativeEvent:{layout:{y:172}}}));
   const input=tree.root.findAllByType('Input').find(node=>node.props.accessibilityLabel==='Custom duration in minutes');await act(async()=>input.props.onFocus());await act(async()=>events.get('keyboardDidShow')());
   const scroll=tree.root.findAllByType('Scroll').find(node=>node.props.onContentSizeChange);await act(async()=>scroll.props.onContentSizeChange(300,800));assert.deepEqual(scrolls.at(-1),{y:160,animated:false});
-  assert.equal(tree.root.findAllByType('Scroll')[0].props.contentContainerStyle.paddingBottom,72);
+  const list=tree.root.findAllByType('Sheet').find(node=>node.props.label==='quests');assert.equal(list.props.expanded,true);assert.equal(list.props.heightRatio,.66);assert.equal(list.props.compact,undefined);
+  assert.equal(tree.root.findAllByType('Scroll')[0].props.contentContainerStyle.paddingBottom,48);
+ }finally{await act(async()=>tree.unmount());}
+});
+
+test('focus-card preview keeps the same layout from tour step one through four',async()=>{
+ let previewFocus=true,targetId='home-identity';
+ const Card=load('src/components/FocusCard.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'./ContentReveal':host('Reveal'),'./FocusLengthControl':()=>null,'./FocusAreaSheet':()=>null,'./FeatureTour':{useFeatureTour:()=>({previewFocus,targetId,previewLines:2})}}).default;
+ const props={cardID:'card',title:'A suggestion',instruction:'A longer suggestion description',label:'Suggested focus',contentKey:'same',area:'Learning',seconds:1800};
+ let tree;await act(async()=>{tree=create(React.createElement(Card,props));});
+ try{const layout=()=>tree.root.findByProps({testID:'card'}).props.style;const first=layout();
+  for(const id of ['home-focus','home-next-step','home-quests']){targetId=id;await act(async()=>tree.update(React.createElement(Card,props)));assert.deepEqual(layout(),first);const instruction=tree.root.findAllByType('Text').find(node=>content(node)===props.instruction);assert.equal(instruction.props.numberOfLines,2);}
+  previewFocus=false;await act(async()=>tree.update(React.createElement(Card,props)));assert.equal(layout()[1],false,'normal full card returns underneath the return cover');
  }finally{await act(async()=>tree.unmount());}
 });

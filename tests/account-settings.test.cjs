@@ -308,9 +308,9 @@ test("goal service validates before requesting a server-computed effective date"
   assert.equal(result.next_effective_date, "2026-10-04");
   assert.deepEqual(calls, [["schedule_daily_goal", { p_goal_minutes: 90 }]]);
 });
-test("optional onboarding preserves a saved character badge and keeps the ten-badge catalogue", async () => {
-  assert.equal(badges.length, 10);
-  assert.equal(new Set(badges).size, 10);
+test("optional onboarding preserves a saved character badge and keeps the twelve-look catalogue", async () => {
+  assert.equal(badges.length, 12);
+  assert.equal(new Set(badges).size, 12);
   let saved;
   const ui = await screen("src/app/onboarding.tsx", {
     "expo-router": { useRouter: () => ({ replace() {} }) },

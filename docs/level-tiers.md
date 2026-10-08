@@ -1,26 +1,32 @@
 # Character growth and tiers
 
-Completed focus awards one character XP per full minute. Exact leftover seconds carry forward. The saved level and within-level XP balance stay authoritative.
+Completed focus awards one character XP per full minute. Exact leftover seconds carry forward. Saved level and within-level XP stay authoritative. The session-credit curve remains `floor(100 × L^1.5)` XP from level L to the next; each level costs more than the previous one. Existing earned levels and balances are preserved.
 
-The existing session-credit curve is unchanged: level `L` needs `floor(100 × L^1.5)` XP to reach the next level. The client uses `requiredCharacterXP()` in Profile, the completion message and the tier overview. Level 1 needs 100 XP; level 2 needs another 282 XP. Tiers describe cumulative practice and never award extra XP.
+The tier path now stretches to level 100+ with strictly increasing gaps. Tiers describe progress; they neither cap levels nor award bonus XP. The popup shows level ranges and the next tier's level instead of cumulative XP totals. Profile keeps its existing within-level XP indicator.
 
-| Tier | Character levels | Total XP at entry |
-| --- | --- | ---: |
-| First steps | 1 | 0 |
-| Spark | 2 | 100 |
-| Momentum | 3–4 | 382 |
-| Rhythm | 5–6 | 1,701 |
-| Flow | 7–9 | 4,288 |
-| Dedication | 10–14 | 11,102 |
-| Resolve | 15–19 | 31,993 |
-| Radiance | 20+ | 67,128 |
+| Tier | Character levels |
+| --- | --- |
+| First steps | 1–2 |
+| Spark | 3–5 |
+| Momentum | 6–9 |
+| Rhythm | 10–14 |
+| Flow | 15–20 |
+| Dedication | 21–27 |
+| Resolve | 28–35 |
+| Radiance | 36–44 |
+| Harmony | 45–54 |
+| Insight | 55–69 |
+| Mastery | 70–99 |
+| Legacy | 100+ |
 
-Tap the character level on Home or Profile to open the same tier path. It shows the current tier, the next level's XP requirement, remaining XP to the next tier and every reached or locked tier. The level continues beyond the final named tier. This overview uses loaded Profile data and has no additional network request during its opening animation.
+Tap Level on Home or Profile for the current tier and every reached/locked stage. This uses loaded Profile data, with no extra fetch during opening. Level 20 is an intermediate step, not the last named tier. Higher tiers represent sustained practice over the long term, with no final level.
 
-The six focus areas are Everyday focus, Learning, Work & projects, Creativity, Everyday life and Wellbeing. The suggestion chooser uses those same names. The prepared focus-area migration relinks legacy quests and session references, preserves accumulated area XP and removes the duplicated legacy Wellbeing rows. Until that migration runs, pickers reconcile cached duplicate labels while keeping a selected real area ID. Custom area IDs remain separate.
+The six focus areas are Everyday focus, Learning, Work & projects, Creativity, Everyday life and Wellbeing. The prepared category migration remains pending live because the Supabase write connection failed. Until it runs, pickers reconcile cached duplicate labels while retaining real IDs. Custom areas remain separate. Focus length offers 30/60/Custom, with preference-aware haptics.
 
-Focus length has 30-minute and 60-minute presets plus Custom. Previously saved shorter durations remain exact custom values. Selection haptics follow the account's haptic preference.
+The quest list opens at a fixed 66% screen height, so its initial position does not depend on how many quests are loaded. Content scrolls inside this panel. The editor still uses its keyboard-safe fixed height. Daily-goal opening retains its steady fixed snap point and timed motion.
 
-DailyGoalSheet and the quest editor use fixed snap points and timed native sheet motion. This prevents async goal content from changing the opening snap point. The quest editor fills the keyboard-safe parent and reveals the focused custom-minute field after keyboard or content layout changes. The compact quest list reserves an additional 24 points of bottom clearance.
+Tour previews use one compact focus-card layout throughout the tour and restore the full prompt under the opaque Home return cover. Reveals use native animated scrolling, deduplicate repeated scroll requests and wait for stable measurements before showing the outline and next dialog. Reduce Motion uses immediate scrolling. Highlight boxes still come from actual card bounds; the dock remains visible.
 
-Native smoothness and keyboard positioning still need an Expo Go/device check; component tests and browser layout previews cannot measure native frame timing or an actual phone keyboard.
+Pebble (glasses) and Cloud (beanie) complete the 12-look companion catalogue, four rows of three. Existing saved look identifiers remain valid.
+
+Native frame timing and keyboard clearance still require a device check. Component tests and browser previews cannot measure an actual phone keyboard or display-frame performance.

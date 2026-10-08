@@ -24,17 +24,17 @@ const pendingOwners = new Set<string>();
 export async function prepareFeatureTour(owner: string) { if (owner) { pendingOwners.add(owner); await AsyncStorage.setItem(receiptKey(owner), "pending"); } }
 type Bounds = { top: number; bottom: number; panelHeight: number };
 type Target = { measure: (done: (rect: TourRect) => void) => void; reveal: (rect: TourRect, bounds: Bounds) => boolean };
-const TourContext = createContext<{ register: (id: string, target: Target) => () => void; registerScroll: (route: string, reset: () => void) => () => void; layoutChanged: (id: string) => void; start: () => void; active: boolean; targetId: string | null; previewLines: number; reportDock: (height: number) => void } | null>(null);
-const ScrollContext = createContext<{ scroll: React.RefObject<ScrollView | null>; offset: React.RefObject<number>; bottomInset: number } | null>(null);
+const TourContext = createContext<{ register: (id: string, target: Target) => () => void; registerScroll: (route: string, reset: () => void) => () => void; layoutChanged: (id: string) => void; start: () => void; active: boolean; targetId: string | null; previewFocus: boolean; previewLines: number; reportDock: (height: number) => void } | null>(null);
+const ScrollContext = createContext<{ scroll: React.RefObject<ScrollView | null>; offset: React.RefObject<number>; bottomInset: number; requestedOffset: React.RefObject<number | null> } | null>(null);
 export const TourScrollView = forwardRef<ScrollView, ScrollViewProps & { tourBottomInset?: number; tourRoute?: string }>(function TourScrollView({ children, onScroll, contentContainerStyle, tourBottomInset = 0, tourRoute, ...props }, forwarded) {
   const scroll = useRef<ScrollView>(null), offset = useRef(0), tour = useContext(TourContext);
-  const reserved = useRef(false), beforeTour = useRef(0);
+  const reserved = useRef(false), beforeTour = useRef(0), requestedOffset = useRef<number | null>(null);
   const restoredEarly = useRef(false);
   useImperativeHandle(forwarded, () => scroll.current!);
   const registerScroll = tour?.registerScroll;
   useEffect(() => {
     if (!tourRoute || !registerScroll) return;
-    return registerScroll(tourRoute, () => { beforeTour.current = 0; offset.current = 0; restoredEarly.current = true; scroll.current?.scrollTo({ y: 0, animated: false }); });
+    return registerScroll(tourRoute, () => { beforeTour.current = 0; offset.current = 0; requestedOffset.current = null; restoredEarly.current = true; scroll.current?.scrollTo({ y: 0, animated: false }); });
   }, [tourRoute, registerScroll]);
   useLayoutEffect(() => {
     const active = !!tour?.active;
@@ -42,12 +42,13 @@ export const TourScrollView = forwardRef<ScrollView, ScrollViewProps & { tourBot
     else if (!active && reserved.current && !restoredEarly.current) scroll.current?.scrollTo({ y: beforeTour.current, animated: false });
     reserved.current = active;
   }, [tour?.active]);
-  const value = useMemo(() => ({ scroll, offset, bottomInset: tourBottomInset }), [tourBottomInset]);
-  return <ScrollView {...props} contentContainerStyle={contentContainerStyle} ref={scroll} scrollEventThrottle={16} onScroll={event => { offset.current = Math.max(0, event.nativeEvent.contentOffset.y); onScroll?.(event); }}><ScrollContext.Provider value={value}>{children}</ScrollContext.Provider></ScrollView>;
+  const value = useMemo(() => ({ scroll, offset, requestedOffset, bottomInset: tourBottomInset }), [tourBottomInset]);
+  return <ScrollView {...props} contentContainerStyle={contentContainerStyle} ref={scroll} scrollEventThrottle={16} onScroll={event => { offset.current = Math.max(0, event.nativeEvent.contentOffset.y); if (requestedOffset.current !== null && Math.abs(offset.current - requestedOffset.current) < 1) requestedOffset.current = null; onScroll?.(event); }}><ScrollContext.Provider value={value}>{children}</ScrollContext.Provider></ScrollView>;
 });
 export function TourAnchor({ id, children, style }: { id: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const tour = useContext(TourContext), scroll = useContext(ScrollContext), view = useRef<View>(null);
   const register = tour?.register;
+  const reduced = useReducedMotion();
   useEffect(() => register?.(id, {
     measure: done => view.current?.measureInWindow((x, y, width, height) => done({ x, y, width, height })),
     reveal: (rect, bounds) => {
@@ -55,10 +56,14 @@ export function TourAnchor({ id, children, style }: { id: string; children: Reac
       const delta = tourScrollDelta(rect, bounds.panelHeight, bounds.top, bounds.bottom - scroll.bottomInset, scroll.offset.current);
       const next = Math.max(0, scroll.offset.current + delta);
       if (Math.abs(next - scroll.offset.current) < 1) return false;
-      scroll.scroll.current?.scrollTo({ y: next, animated: false });
+      // A native animated scroll owns every frame. Repeated layout callbacks
+      // must not restart a command already travelling to this same position.
+      if (scroll.requestedOffset.current !== null && Math.abs(next - scroll.requestedOffset.current) < 1) return true;
+      scroll.requestedOffset.current = reduced ? null : next;
+      scroll.scroll.current?.scrollTo({ y: next, animated: !reduced });
       return true;
     },
-  }), [id, register, scroll]);
+  }), [id, register, scroll, reduced]);
   return <View ref={view} collapsable={false} style={[s.anchor, style]} onLayout={() => tour?.layoutChanged(id)}>{children}</View>;
 }
 export function useFeatureTour() { return useContext(TourContext); }
@@ -88,8 +93,11 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const layoutChanged = useCallback((id: string) => { if (step !== null && TOUR_STEPS[step].id === id && !leaving.current && !returning) { setRect(null); setGeometryRevision(value => value + 1); } }, [step, returning]);
   const active = step !== null;
   const targetId = step === null ? null : TOUR_STEPS[step].id;
+  // Keep one focus-card layout for the whole tour. Restore the full prompt
+  // under the opaque return cover before Home becomes visible again.
+  const previewFocus = (armed || active) && !returning;
   const previewLines = screen.fontScale > 1.2 || screen.height < 700 ? 1 : 2;
-  const value = useMemo(() => ({ register, registerScroll, layoutChanged, start, active, targetId, previewLines, reportDock }), [register, registerScroll, layoutChanged, start, active, targetId, previewLines, reportDock]);
+  const value = useMemo(() => ({ register, registerScroll, layoutChanged, start, active, targetId, previewFocus, previewLines, reportDock }), [register, registerScroll, layoutChanged, start, active, targetId, previewFocus, previewLines, reportDock]);
   useEffect(() => {
     if (!armed || pathname !== "/") return;
     const timeout = setTimeout(() => { setArmed(false); setStep(0); }, 750);
@@ -115,9 +123,9 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   // stay visible even if native never delivers any measurement at all.
   useEffect(() => {
     if (!current) return;
-    const timeout = setTimeout(() => { if (alive.current) setWaitingExpired(true); }, 500);
+    const timeout = setTimeout(() => { if (alive.current) setWaitingExpired(true); }, reduced ? 500 : 900);
     return () => clearTimeout(timeout);
-  }, [current, retry, geometryRevision]);
+  }, [current, retry, geometryRevision, reduced]);
   useLayoutEffect(() => {
     if (!current || !frame || returning) return;
     if (pathname !== current.route) { router.navigate(current.route); return; }
@@ -126,7 +134,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     if (current.route !== "/") {
       return;
     }
-    let live = true, attempts = 0, revealed = false, last: TourRect | null = null, request = 0;
+    let live = true, attempts = 0, revealed = false, moving = false, settlingSamples = 0, stableSamples = 0, last: TourRect | null = null, request = 0;
     let timeout: ReturnType<typeof setTimeout>, callbackDeadline: ReturnType<typeof setTimeout>;
     const again = () => { if (++attempts < 20) timeout = setTimeout(measure, 60); };
     const measure = () => {
@@ -142,9 +150,12 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           if (![next.x, next.y, next.width, next.height].every(Number.isFinite) || next.width <= 0 || next.height <= 0) { again(); return; }
           if (!revealed) {
             revealed = true;
-            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - 12, panelHeight: panelHeight + 8 })) { again(); return; }
+            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - 12, panelHeight: panelHeight + 8 })) { moving = !reduced; again(); return; }
           }
-          if (!last || Math.abs(last.x - next.x) > 1 || Math.abs(last.y - next.y) > 1 || Math.abs(last.height - next.height) > 1 || Math.abs(last.width - next.width) > 1) { last = next; again(); return; }
+          if (moving) settlingSamples++;
+          if (!last || Math.abs(last.x - next.x) > 1 || Math.abs(last.y - next.y) > 1 || Math.abs(last.height - next.height) > 1 || Math.abs(last.width - next.width) > 1) { last = next; stableSamples = 0; again(); return; }
+          // Do not attach the outline/dialog to an intermediate scroll frame.
+          if (moving && (settlingSamples < 6 || ++stableSamples < 2)) { again(); return; }
           const local = overlayRect(next, frame);
           if (local.y + local.height <= 0 || local.y >= frame.height) { again(); return; }
           const highlight = spotlightRect(local, frame.width, frame.height);
@@ -157,7 +168,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     };
     timeout = setTimeout(measure, pathname === "/" ? 60 : 180);
     return () => { live = false; request++; clearTimeout(timeout); clearTimeout(callbackDeadline); };
-  }, [current, pathname, router, frame, insets.top, insets.bottom, retry, panelHeight, owner, returning, geometryRevision]);
+  }, [current, pathname, router, frame, insets.top, insets.bottom, retry, panelHeight, owner, returning, geometryRevision, reduced]);
   useLayoutEffect(() => { advancing.current = false; leaving.current = false; }, [current]);
   useLayoutEffect(() => {
     if (!current || returning || leaving.current) return;

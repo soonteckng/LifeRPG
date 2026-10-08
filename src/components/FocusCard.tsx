@@ -22,7 +22,7 @@ export interface FocusCardProps {
 }
 export default function FocusCard(props: FocusCardProps) {
   const areaLabel = focusAreaTitle(props.area);
-  const tour = useFeatureTour(), touring = tour?.targetId === "home-focus";
+  const tour = useFeatureTour(), touring = !!tour?.previewFocus;
   const [areaOpen, setAreaOpen] = useState(false);
   const locked = props.busy || (!props.active && props.disabled);
   const editLocked = props.active || props.busy || props.editDisabled;

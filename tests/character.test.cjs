@@ -996,8 +996,8 @@ test("character greeting is cosmetic while automatic motion needs no tap",async(
 test("every saved badge selects a full look and Home shares the same drawing",async()=>{
  const catalogue=load("src/constants/characterLooks.ts"),appearance=load("src/utils/characterAppearance.ts");
  assert.deepEqual(catalogue.CHARACTER_LOOKS.map(look=>look.id),load("src/constants/characterBadges.ts").CHARACTER_BADGES);
- assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.body)).size,10);
- assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.accessory)).size,10);
+ assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.body)).size,12);
+ assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.accessory)).size,12);
  assert.equal(appearance.characterLook("🧙").id,"🧙‍♂️");assert.ok(appearance.characterLook("legacy badge"));
  const Mark=load("src/components/CharacterMark.tsx",{"react-native":Native}).default;
  let renderer;await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
@@ -1096,4 +1096,12 @@ test("look changes preview locally and save only after confirmation; failed save
   const selected=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel==='Choose Fern');assert.equal(selected.props.accessibilityState.checked,true);
   fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon Teck','🧝‍♂️','Scholar']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
+});
+
+test("two new looks fill four complete rows and have distinct drawn accessories",async()=>{
+ const catalogue=load("src/constants/characterLooks.ts").CHARACTER_LOOKS;
+ assert.equal(catalogue.length%3,0);assert.equal(new Set(catalogue.map(look=>look.id)).size,12);
+ const Art=load("src/components/CharacterArt.tsx",{"react-native":Native}).default;
+ let renderer;await act(async()=>{renderer=create(React.createElement(Art,{avatar:"📖",size:176}));});
+ try{assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-glasses").length,1);await act(async()=>renderer.update(React.createElement(Art,{avatar:"☁️",size:176})));assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-beanie").length,1);assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-glasses").length,0);}finally{await act(async()=>renderer.unmount());}
 });

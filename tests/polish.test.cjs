@@ -257,3 +257,11 @@ test('Home tour steps two through four remeasure full targets when suggestion he
   }
  }finally{await ui.cleanup();}
 });
+
+test('tour reveal uses one native animated scroll and waits before attaching its outline',async()=>{
+ const ui=await tourHarness({actualScroll:true});
+ try{
+  await ui.advance(880);assert.equal(ui.scrolls.length,1);assert.equal(ui.scrolls[0].animated,true);assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0,'no outline on an intermediate scrolling frame');
+  await ui.advance(400);assert.equal(ui.scrolls.length,1,'do not restart the native scroll');assert.equal(ui.tree.root.findAllByType('Animated').filter(node=>node.props.testID==='tour-outline').length,1);
+ }finally{await ui.cleanup();}
+});

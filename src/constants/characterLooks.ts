@@ -1,4 +1,4 @@
-export type CharacterAccessory = "cap" | "leaves" | "band" | "headphones" | "beret" | "hood" | "antenna" | "sprout" | "star" | "ears";
+export type CharacterAccessory = "cap" | "leaves" | "band" | "headphones" | "beret" | "hood" | "antenna" | "sprout" | "star" | "ears" | "glasses" | "beanie";
 export interface CharacterLook {
   id: string; title: string; detail: string; head: string; body: string;
   shade: string; accent: string; ink: string; accessory: CharacterAccessory;
@@ -15,4 +15,6 @@ export const CHARACTER_LOOKS: readonly CharacterLook[] = [
   { id: "🌱", title: "Sprout", detail: "One day at a time", head: "#D9EEE8", body: "#88C2AF", shade: "#63A28D", accent: "#86E0BA", ink: "#33594A", accessory: "sprout" },
   { id: "⭐", title: "Nova", detail: "A bright beginning", head: "#E1E0FF", body: "#9E9ADB", shade: "#7773AF", accent: "#BAB4FF", ink: "#444064", accessory: "star" },
   { id: "🐱", title: "Luna", detail: "A curious companion", head: "#EDDFEF", body: "#B699BF", shade: "#8D7498", accent: "#D8BCE4", ink: "#514056", accessory: "ears" },
+  { id: "📖", title: "Pebble", detail: "A thoughtful little friend", head: "#E8E6DF", body: "#A8AAAB", shade: "#777F86", accent: "#D0D5E2", ink: "#414956", accessory: "glasses" },
+  { id: "☁️", title: "Cloud", detail: "Take it at your own pace", head: "#E0F0FB", body: "#A2C5E4", shade: "#7B9DBF", accent: "#C4E3F5", ink: "#3C5F7B", accessory: "beanie" },
 ];

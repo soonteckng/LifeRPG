@@ -295,14 +295,14 @@ test("quest list keeps its bottom gap through the installed library's footer adj
   let renderer;
   try {
     await act(async () => { renderer = create(React.createElement(Adjusted, { style: listStyle() })); });
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 64);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 40);
     await ui.press("All quests");
     footerHeight = 72;
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 136);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
     await ui.press("View completed quests");
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 136);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
   } finally {
     if (renderer) await act(async () => renderer.unmount());
     await ui.cleanup();
