@@ -1,13 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { STARTER_QUESTS, LEGACY_STARTER_NEEDS, type FocusNeed } from "../constants/guidedQuests";
-export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: FocusNeed; templateId: string; smaller: boolean }
+export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: FocusNeed; templateId: string; smaller: boolean; areaId?: number | null }
 export const DEFAULT_GUIDED_PREFERENCE: GuidedPreference = { version: 1, enabled: false, invited: false, need: "revision", templateId: "review-topic", smaller: false };
 export function parseGuidedPreference(raw: string | null): GuidedPreference {
   try {
     const value = JSON.parse(raw ?? "null");
     const template = STARTER_QUESTS.find(task => (task.id === value?.templateId || task.need === LEGACY_STARTER_NEEDS[value?.templateId]) && task.need === value?.need);
     if (value?.version !== 1 || !template || typeof value.enabled !== "boolean" || typeof value.invited !== "boolean" || typeof value.smaller !== "boolean") return { ...DEFAULT_GUIDED_PREFERENCE };
-    return { version: 1, enabled: value.enabled, invited: value.invited, need: template.need, templateId: template.id, smaller: false };
+    const area = value.areaId === null || (Number.isSafeInteger(value.areaId) && value.areaId > 0) ? { areaId: value.areaId as number | null } : {};
+    return { version: 1, enabled: value.enabled, invited: value.invited, need: template.need, templateId: template.id, smaller: false, ...area };
   } catch { return { ...DEFAULT_GUIDED_PREFERENCE }; }
 }
 interface State { value: GuidedPreference; ready: boolean; error: boolean; busy: boolean }

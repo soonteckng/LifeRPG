@@ -342,7 +342,7 @@ test('an explicit new direction replaces a failed suggestion while ordinary retr
  try{await ui.press('Start focusing');assert.match(text(ui.tree.root),/Retry start/);preference={...preference,need:'work',templateId:catalog.defaultFocusId('work')};await ui.update({owner:'owner',subjects:[],disabled:false,onStarted(){}});assert.match(text(ui.tree.root),new RegExp(catalog.suggestedFocus(preference.templateId).title));assert.doesNotMatch(text(ui.tree.root),/Retry start/);}finally{await ui.cleanup();}
 });
 
-test('choosing a focus area changes only attribution and keeps the exact timer until Start',async()=>{
+test('choosing a focus area updates its direction, prompt and saved category while retaining the exact timer',async()=>{
  const calls=[];let entered=0;
  const Card=load('src/components/GuidedFocusCard.tsx',mocks({
   '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
@@ -353,7 +353,51 @@ test('choosing a focus area changes only attribution and keeps the exact timer u
   await ui.press('Choose focus area');assert.equal(entered,0);assert.equal(calls.length,0);
   assert.doesNotMatch(text(ui.tree.root.findByType('Sheet')),/Minutes|Seconds|Focus length/);
   await ui.press('Choose Work & projects');assert.equal(entered,0);assert.equal(calls.length,0);
-  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/30 min 59 sec/);
+  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/Move a project forward/);assert.doesNotMatch(text(ui.tree.root),/Review your notes/);assert.match(text(ui.tree.root),/30 min 59 sec/);
   await ui.press('Start focusing');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],3);assert.equal(entered,1);
+ }finally{await ui.cleanup();}
+});
+
+test('both Home choosers share the saved area and direction, including free focus and the Profile shortcut',async()=>{
+ const db=storage(),api=load('src/services/guidedPreferenceService.ts',{'@react-native-async-storage/async-storage':db.api});
+ await api.guidedPreferenceStore.load('owner');
+ const usePreference=load('src/hooks/useGuidedPreference.ts',{'../services/guidedPreferenceService':api}).useGuidedPreference;
+ const routes=[],starts=[],subjects=[{id:1,title:'Everyday focus'},{id:2,title:'Learning'},{id:3,title:'Work & projects'},{id:4,title:'Creativity'}];
+ const timer={hasOpenSession:false,startFreeTimer:async(seconds,id)=>{starts.push([seconds,id]);return true;}};
+ const Home=load('src/app/(tabs)/index.tsx',mocks({
+  'react-native':{...Native,useWindowDimensions:()=>({height:844,width:390,fontScale:1})},'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)})},'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
+  '../../components/AppText':{Text:host('Text')},'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':p=>p.children,'../../components/QuestSheet':()=>null,
+  '../../hooks/useGuidedPreference':{useGuidedPreference:usePreference},'../hooks/useGuidedPreference':{useGuidedPreference:usePreference},
+  '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon Teck',daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
+  '../../context/TimerContext':{useTimer:()=>timer},'../context/TimerContext':{useTimer:()=>timer},
+  '../../context/QuestContext':{useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})},
+  '../../services/progressService':{getLastFreeSession:async()=>({duration_seconds:1859,subject_id:2,task_id:null}),getFocusStreak:async()=>0},'../../services/dailyProgressService':{getTodayProgress:async()=>null},'../../hooks/useHomeLifecycle':{useHomeLifecycle:()=>12}
+ })).default;
+ const ui=await render(Home);
+ try{
+  assert.match(text(ui.tree.root),/30 min 59 sec/);await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');assert.match(text(ui.tree.root),/30 min 59 sec/);
+  await ui.press('Use 10 minutes');await ui.press('Choose focus area');await ui.press('Choose Work & projects');
+  assert.match(text(ui.tree.root),/A small project step/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,3);
+  await ui.press('Find your next step');
+  const radio=label=>ui.tree.root.findAllByType('Button').find(b=>b.props.accessibilityLabel===label);
+  assert.equal(radio('Work and projects').props.accessibilityState.checked,true);
+  await ui.press('Create and practise');await ui.press('Save preferences');
+  assert.match(text(ui.tree.root),/A little room to create/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,undefined);
+  await ui.press('Choose focus area');await ui.press('Choose Everyday focus');
+  assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
+  db.api.setItem=async()=>{throw Error('Offline');};await ui.press('Choose focus area');await ui.press('Choose Work & projects');assert.match(text(ui.tree.root),/Couldn’t save your focus area/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,1);assert.equal(ui.tree.root.findAllByType('Button').some(b=>text(b)==='Retry start'),false);
+  await ui.press('Open Profile');assert.equal(routes.at(-1),'/profile');
+  await ui.press('Start focusing');assert.deepEqual(starts,[[600,1]]);
+  const stored=api.parseGuidedPreference(db.values.get('liferpg:guided:v1:owner'));assert.equal(stored.areaId,1);assert.equal(stored.enabled,false);
+ }finally{await ui.cleanup();}
+});
+
+test('failed area persistence leaves the prior suggestion and attribution intact',async()=>{
+ const calls=[],preference={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
+ const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,value:preference,busy:false,error:false,save:async()=>false})},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus.templateId,id,focus.seconds]);return true;}})}})).default;
+ const ui=await render(Card,{owner:'owner',subjects:[{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:2717,disabled:false,onStarted(){}});
+ try{
+  await ui.press('Choose focus area');await ui.press('Choose Work & projects');assert.match(text(ui.tree.root),/Couldn’t change your focus area/);assert.match(text(ui.tree.root),/Review your notes/);
+  await ui.press('Start focusing');assert.deepEqual(calls,[['review-topic',2,2717]]);
  }finally{await ui.cleanup();}
 });

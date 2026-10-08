@@ -7,6 +7,7 @@ import Pressable from "./MotionPressable";
 import ContentReveal from "./ContentReveal";
 import FocusLengthControl from "./FocusLengthControl";
 import FocusAreaSheet from "./FocusAreaSheet";
+import { useFeatureTour } from "./FeatureTour";
 import type { Subject } from "../services/taskService";
 import { colors } from "../constants/theme";
 import { durationLabel } from "../utils/sessionSetup";
@@ -21,14 +22,15 @@ export interface FocusCardProps {
 }
 export default function FocusCard(props: FocusCardProps) {
   const areaLabel = focusAreaTitle(props.area);
+  const tour = useFeatureTour(), touring = tour?.targetId === "home-focus";
   const [areaOpen, setAreaOpen] = useState(false);
   const locked = props.busy || (!props.active && props.disabled);
   const editLocked = props.active || props.busy || props.editDisabled;
-  return <View style={s.card} testID={props.cardID}>
+  return <View style={[s.card, touring && s.tourCard]} testID={props.cardID}>
     <Text style={s.label}>{props.active ? props.running ? "In focus" : "Paused" : props.label}</Text>
-    <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
-      <Text style={s.title} accessibilityRole="header">{props.title}</Text>
-      <Text style={s.instruction}>{props.instruction}</Text>
+    <View style={[s.prompt, touring && s.tourPrompt]} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
+      <Text style={s.title} numberOfLines={touring ? 2 : undefined} accessibilityRole="header">{props.title}</Text>
+      <Text style={s.instruction} numberOfLines={touring ? tour?.previewLines ?? 2 : undefined}>{props.instruction}</Text>
     </ContentReveal></View>
     {props.active ? <View style={s.areaRow}><Text style={s.meta}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area}>{areaLabel}</Text></View></View>
       : <Pressable testID={props.areaActionID} onPress={() => setAreaOpen(true)} disabled={props.setupDisabled ?? editLocked} style={s.areaRow} accessibilityRole="button" accessibilityLabel="Choose focus area" accessibilityState={{ disabled: props.setupDisabled ?? editLocked }}>
@@ -48,6 +50,7 @@ export default function FocusCard(props: FocusCardProps) {
 }
 const s = StyleSheet.create({
   card: { width: "100%", padding: 18, borderRadius: 24, gap: 16, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  tourCard: { gap: 12 }, tourPrompt: { minHeight: 0 },
   label: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   prompt: { minHeight: 118 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.5 },
   instruction: { color: colors.secondary, fontSize: 16, lineHeight: 23, marginTop: 8 },

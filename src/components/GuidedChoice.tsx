@@ -16,7 +16,7 @@ const directionVisuals = {
 
 export function FocusDirectionPicker({ value, onChange, disabled = false, compact = false }: ChoiceProps & { compact?: boolean }) {
   const current = focusDirection(value.need);
-  const choose = (direction: (typeof FOCUS_DIRECTIONS)[number]) => onChange(current.id === direction.id ? value : { ...value, need: direction.defaultNeed, templateId: defaultFocusId(direction.defaultNeed), smaller: false });
+  const choose = (direction: (typeof FOCUS_DIRECTIONS)[number]) => onChange(current.id === direction.id ? value : { ...value, areaId: undefined, need: direction.defaultNeed, templateId: defaultFocusId(direction.defaultNeed), smaller: false });
   if (!compact) return <View style={s.directions}>
     <View style={s.directionGrid}>{FOCUS_DIRECTIONS.map(direction => {
       const selected = current.id === direction.id, visual = directionVisuals[direction.id];
@@ -39,7 +39,7 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
 
 export default function GuidedChoice({ value, onChange, disabled = false }: ChoiceProps) {
   const direction = (enabled: boolean, title: string, hint: string, label: string) => <Pressable accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: value.enabled === enabled }} disabled={disabled}
-    onPress={() => onChange({ ...value, enabled, invited: true })} style={[s.modeButton, value.enabled === enabled && s.selected]}>
+    onPress={() => onChange({ ...value, enabled, invited: true, ...(enabled && !value.enabled ? { areaId: undefined } : {}) })} style={[s.modeButton, value.enabled === enabled && s.selected]}>
     <Text style={[s.modeTitle, value.enabled === enabled && s.selectedTitle]}>{label}</Text>
   </Pressable>;
   return <View style={s.group}>
@@ -52,7 +52,7 @@ export default function GuidedChoice({ value, onChange, disabled = false }: Choi
         const title = STUDY_NEEDS.find(need => need.id === task.need)?.title ?? task.title;
         const selected = value.templateId === task.id;
         return <Pressable key={task.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityState={{ checked: selected }}
-          onPress={() => onChange({ ...value, need: task.need, templateId: task.id, smaller: false })} style={[s.row, s.promptRow, selected && s.selected]}>
+          onPress={() => onChange({ ...value, areaId: undefined, need: task.need, templateId: task.id, smaller: false })} style={[s.row, s.promptRow, selected && s.selected]}>
           <Ionicons name={selected ? "radio-button-on" : "radio-button-off"} size={22} color={selected ? colors.accent : colors.secondary} />
           <Text style={[s.title, s.detail]}>{title}</Text>
         </Pressable>;

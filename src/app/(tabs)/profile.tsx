@@ -101,7 +101,7 @@ export default function ProfileScreen() {
       setSheetOpen(false);
     } catch {
       setSaveError(
-        "Couldn’t save your changes. Your draft is here—please try again.",
+        "Couldn’t save your changes. Your draft is here. Please try again.",
       );
     } finally {
       lock.current = false;

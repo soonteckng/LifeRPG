@@ -36,6 +36,10 @@ export function orderFocusAreas<T extends { title: string }>(areas: T[]): T[] {
 export function generalArea(subjects: Subject[]) {
   return subjects.find(area => aliases.general.includes(area.title.trim().toLowerCase()));
 }
+export function focusAreaKind(title?: string | null): FocusAreaKind | null {
+  const clean = title?.trim().toLowerCase();
+  return (Object.keys(aliases) as FocusAreaKind[]).find(kind => aliases[kind].includes(clean ?? "")) ?? null;
+}
 export function suggestedArea(subjects: Subject[], kind: FocusAreaKind): Subject | undefined {
   return subjects.find(area => aliases[kind].includes(area.title.trim().toLowerCase()))
     ?? generalArea(subjects);

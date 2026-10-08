@@ -45,7 +45,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
       if (!ok) throw new Error("Profile refresh failed");
       if (alive.current) router.replace("/");
     }).catch(() => {
-      if (alive.current) { setCelebrating(false); setError("Your setup is saved. Couldn’t open Home yet—please try again."); setBusy(false); lock.current = false; }
+      if (alive.current) { setCelebrating(false); setError("Your setup is saved. Couldn’t open Home yet. Please try again."); setBusy(false); lock.current = false; }
     }).finally(() => { completing.current = false; });
   }, [reloadProfile, router]);
   const changeStep = (next: number) => { setError(""); transition.change(() => setStep(next)); };
@@ -74,7 +74,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
       }
       if (alive.current) setCelebrating(true);
     } catch {
-      if (alive.current) { setError("Couldn’t save your setup. Your choices are still here—please try again."); setBusy(false); lock.current = false; }
+      if (alive.current) { setError("Couldn’t save your setup. Your choices are still here. Please try again."); setBusy(false); lock.current = false; }
     }
   };
   if (welcoming) return <OnboardingWelcome owner={profile.id ?? ""} onDone={welcomeDone} />;
@@ -84,7 +84,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     "A gentle starting point, or space to focus your own way. You can change this anytime.",
     direction.enabled ? "Choose where you’d like to begin. You can change your suggestion on Home anytime." : "Choose your own duration and Focus area. Add personal quests whenever you want a little structure.",
     "A name for your journey. You can personalise your character in Profile later.",
-    "Choose a starting daily goal. Short sessions count too—there’s no need to do it all at once.",
+    "Choose a starting daily goal. Short sessions count too. There’s no need to do it all at once.",
   ];
   return <OnboardingFrame step={step + 1} total={7} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
     busy={busy || (step === 6 && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === 6 ? "Start my journey" : "Continue"} onNext={() => void next()}

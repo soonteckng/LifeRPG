@@ -5,6 +5,7 @@ import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
 import DailyGoalSheet from "../../components/DailyGoalSheet";
 import GuidedPreferenceSheet from "../../components/GuidedPreferenceSheet";
 import { useGuidedPreference } from "../../hooks/useGuidedPreference";
+import { preferenceForFocusArea } from "../../utils/focusPreference";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
 import { questLists } from "../../utils/questLists";
@@ -76,7 +77,7 @@ export default function HomeScreen() {
   const previous = candidate && candidate.task_id == null && candidate.duration_seconds >= 300 && validSessionSeconds(candidate.duration_seconds) ? candidate : null;
   const rememberedSeconds = previous?.duration_seconds ?? 1800;
   const general = generalArea(subjects);
-  const quickArea = areaChoice?.owner === owner ? subjects.find(area => area.id === areaChoice.id) : subjects.find(area => area.id === previous?.subject_id) ?? general;
+  const quickArea = guided.value.areaId !== undefined ? subjects.find(area => area.id === guided.value.areaId) ?? general : areaChoice?.owner === owner ? subjects.find(area => area.id === areaChoice.id) ?? general : subjects.find(area => area.id === previous?.subject_id) ?? general;
   const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
   const quickSeconds = retainedAttempt?.seconds ?? (durationChoice?.owner === owner ? durationChoice.seconds : rememberedSeconds);
   const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
@@ -152,13 +153,17 @@ export default function HomeScreen() {
     openSession();
   };
 
-  const changeArea = (id: number | null) => {
-    if (hasOpenSession || blocked || quickLock.current || areasLoading) return;
-    setAreaChoice({ owner, id }); setQuickError(false); setAttempt(null);
+  const changeArea = async (id: number | null) => {
+    if (hasOpenSession || blocked || quickLock.current || areasLoading || guided.busy) return;
+    if (id !== null && !subjects.some(area => area.id === id)) return;
+    quickLock.current = true;
+    try {
+      if (await guided.save(preferenceForFocusArea(guided.value, id, subjects.find(area => area.id === id)?.title ?? "Everyday focus"))) { setAreaChoice({ owner, id }); setQuickError(false); setAttempt(null); }
+    } finally { quickLock.current = false; }
   };
   const startFreeSession = async () => {
     if (hasOpenSession) { openSession(); return; }
-    if (quickLock.current || blocked || areasLoading) return;
+    if (quickLock.current || blocked || areasLoading || guided.busy) return;
     quickLock.current = true;
     setAttempt({ owner, seconds: quickSeconds, areaId: quickAreaId, title: quickTitle });
     setQuickStarting(true);
@@ -186,7 +191,7 @@ export default function HomeScreen() {
                 <Text style={styles.greeting}>{greeting}</Text>
                 <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
               </View>
-              <View style={styles.avatarFrame}><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></View>
+              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={50} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
             </View>
             <View style={styles.identityMeta}>
               <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
@@ -212,14 +217,14 @@ export default function HomeScreen() {
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
           </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
-            onStarted={openSession} selectedSeconds={durationChoice?.owner === owner ? durationChoice.seconds : undefined}
+            onStarted={openSession} selectedSeconds={quickSeconds}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }} /> : <FreeFocusCard key={owner}
             seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
             area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
             active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting}
-            disabled={blocked || !!areasLoading} changeDisabled={quickStarting || !!timer.actionBusy} restoring={!!timer.isRestoring}
-            failed={quickError} error={timer.actionError ?? undefined} onChange={changeArea} onStart={() => void startFreeSession()}
+            disabled={blocked || !!areasLoading || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || guided.busy} restoring={!!timer.isRestoring}
+            failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
           />}</View></TourAnchor>
           <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">

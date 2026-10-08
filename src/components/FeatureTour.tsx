@@ -13,7 +13,7 @@ import { colors } from "../constants/theme";
 
 export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress." },
-  { id: "home-focus", route: "/", title: "Make space for focus.", body: "The same controls work for free focus and suggestions. Focus length sets your preset or custom time. Focus area only chooses where this block counts. Then start focusing." },
+  { id: "home-focus", route: "/", title: "Your focus block.", body: "Choose your focus area and time, then start. Suggestions follow the area you choose." },
   { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Switch between suggestions and free focus here, or choose another suggestion. Your quests and progress stay yours." },
   { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Focus areas and session history. Explore Week or Month, and your current and longest streaks." },
@@ -24,7 +24,7 @@ const pendingOwners = new Set<string>();
 export async function prepareFeatureTour(owner: string) { if (owner) { pendingOwners.add(owner); await AsyncStorage.setItem(receiptKey(owner), "pending"); } }
 type Bounds = { top: number; bottom: number; panelHeight: number };
 type Target = { measure: (done: (rect: TourRect) => void) => void; reveal: (rect: TourRect, bounds: Bounds) => boolean };
-const TourContext = createContext<{ register: (id: string, target: Target) => () => void; registerScroll: (route: string, reset: () => void) => () => void; layoutChanged: (id: string) => void; start: () => void; active: boolean; reportDock: (height: number) => void } | null>(null);
+const TourContext = createContext<{ register: (id: string, target: Target) => () => void; registerScroll: (route: string, reset: () => void) => () => void; layoutChanged: (id: string) => void; start: () => void; active: boolean; targetId: string | null; previewLines: number; reportDock: (height: number) => void } | null>(null);
 const ScrollContext = createContext<{ scroll: React.RefObject<ScrollView | null>; offset: React.RefObject<number>; bottomInset: number } | null>(null);
 export const TourScrollView = forwardRef<ScrollView, ScrollViewProps & { tourBottomInset?: number; tourRoute?: string }>(function TourScrollView({ children, onScroll, contentContainerStyle, tourBottomInset = 0, tourRoute, ...props }, forwarded) {
   const scroll = useRef<ScrollView>(null), offset = useRef(0), tour = useContext(TourContext);
@@ -87,7 +87,9 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const registerScroll = useCallback((route: string, reset: () => void) => { scrollTargets.current.set(route, reset); return () => { if (scrollTargets.current.get(route) === reset) scrollTargets.current.delete(route); }; }, []);
   const layoutChanged = useCallback((id: string) => { if (step !== null && TOUR_STEPS[step].id === id && !leaving.current && !returning) { setRect(null); setGeometryRevision(value => value + 1); } }, [step, returning]);
   const active = step !== null;
-  const value = useMemo(() => ({ register, registerScroll, layoutChanged, start, active, reportDock }), [register, registerScroll, layoutChanged, start, active, reportDock]);
+  const targetId = step === null ? null : TOUR_STEPS[step].id;
+  const previewLines = screen.fontScale > 1.2 || screen.height < 700 ? 1 : 2;
+  const value = useMemo(() => ({ register, registerScroll, layoutChanged, start, active, targetId, previewLines, reportDock }), [register, registerScroll, layoutChanged, start, active, targetId, previewLines, reportDock]);
   useEffect(() => {
     if (!armed || pathname !== "/") return;
     const timeout = setTimeout(() => { setArmed(false); setStep(0); }, 750);
@@ -140,7 +142,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           if (![next.x, next.y, next.width, next.height].every(Number.isFinite) || next.width <= 0 || next.height <= 0) { again(); return; }
           if (!revealed) {
             revealed = true;
-            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - 12, panelHeight })) { again(); return; }
+            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - 12, panelHeight: panelHeight + 8 })) { again(); return; }
           }
           if (!last || Math.abs(last.x - next.x) > 1 || Math.abs(last.y - next.y) > 1 || Math.abs(last.height - next.height) > 1 || Math.abs(last.width - next.width) > 1) { last = next; again(); return; }
           const local = overlayRect(next, frame);
@@ -219,7 +221,8 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   useEffect(() => { if (step === null) return; const back = BackHandler.addEventListener("hardwareBackPress", () => { if (!returning) move(-1); return true; }); return () => back.remove(); });
   const viewport = { width: frame?.width ?? screen.width, height: frame?.height ?? screen.height };
   const panelWidth = Math.min(480, viewport.width - 40), bodyHeight = bodySize.id === current?.id ? bodySize.height : 96;
-  const bodyCap = Math.max(48, Math.min(viewport.height * 0.3, viewport.height - insets.top - dockHeight - 24 - 28 - 18 - titleHeight - 44 - 24 - (waitingExpired && !rect && !overviewReady ? 58 : 0)));
+  const availableHeight = viewport.height - dockHeight - 12 - (insets.top + 12);
+  const bodyCap = Math.max(48, Math.min(viewport.height * 0.3, availableHeight - 28 - 18 - titleHeight - 44 - (rect ? rect.height + 14 : 0) - (waitingExpired && !rect && !overviewReady ? 58 : 0)));
   const overview = current?.route !== "/";
   const tipTop = tourTipPosition(overview ? null : rect, panelHeight, insets.top + 12, viewport.height - dockHeight - 12);
   return <TourContext.Provider value={value}><View ref={root} testID="tour-root" collapsable={false} onLayout={measureRoot} style={s.root}>

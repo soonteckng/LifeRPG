@@ -27,10 +27,7 @@ import { colors } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
-import {
-  getSessionHistory,
-  type ProgressSession,
-} from "../../services/progressService";
+import type { ProgressSession } from "../../services/progressService";
 import {
   buildProgress,
   sessionAreaSegments,
@@ -48,7 +45,6 @@ import { sessionCategory } from "../../utils/sessionReporting";
 type Detail =
   | { kind: "day"; key: string }
   | { kind: "area"; key: string }
-  | { kind: "history" }
   | { kind: "period" }
   | { kind: "consistency" };
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
@@ -176,14 +172,6 @@ export default function ProgressScreen() {
   const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedSession, setSelectedSession] =
     useState<ProgressSession | null>(null);
-  const [history, setHistory] = useState<ProgressSession[]>([]);
-  const [historyMore, setHistoryMore] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyError, setHistoryError] = useState(false);
-  const historyOffset = useRef(0),
-    historyBefore = useRef(""),
-    historyRequest = useRef(0),
-    historyBusy = useRef(false);
   const sheetScroll =
     useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
   useEffect(() => {
@@ -198,12 +186,6 @@ export default function ProgressScreen() {
       subscription.remove();
     };
   }, [timeZone]);
-  useEffect(
-    () => () => {
-      historyRequest.current++;
-    },
-    [],
-  );
   useEffect(() => {
     sheetScroll.current?.scrollTo({ y: 0, animated: false });
   }, [detail, selectedSession]);
@@ -216,41 +198,7 @@ export default function ProgressScreen() {
     setDetail(next);
     setSheetVisible(true);
   };
-  const loadHistory = async (reset = false) => {
-    if (historyBusy.current && !reset) return;
-    const request = ++historyRequest.current;
-    historyBusy.current = true;
-    if (reset) {
-      historyOffset.current = 0;
-      historyBefore.current = new Date().toISOString();
-      setHistory([]);
-      setHistoryMore(false);
-    }
-    setHistoryLoading(true);
-    setHistoryError(false);
-    try {
-      const page = await getSessionHistory(
-        historyOffset.current,
-        historyBefore.current,
-      );
-      if (historyRequest.current !== request) return;
-      historyOffset.current += page.sessions.length;
-      setHistory((old) => [
-        ...old,
-        ...page.sessions.filter((item) => !old.some((s) => s.id === item.id)),
-      ]);
-      setHistoryMore(page.hasMore);
-    } catch {
-      if (historyRequest.current === request) setHistoryError(true);
-    } finally {
-      if (historyRequest.current === request) {
-        historyBusy.current = false;
-        setHistoryLoading(false);
-      }
-    }
-  };
   const openHistory = () => open({ kind: "period" });
-  const openAllHistory = () => { open({ kind: "history" }); void loadHistory(true); };
   const currentPeriod = period.end >= today;
   const range = `${calendarLabel(period.start)} – ${calendarLabel(period.end, { month: "short", day: "numeric", year: "numeric" })}`;
   const peak = Math.max(1, ...(analytics?.days.map((d) => d.seconds) ?? []));
@@ -264,16 +212,12 @@ export default function ProgressScreen() {
       ? analytics?.areas.find((a) => a.key === detail.key)
       : null;
   const detailSessions =
-    detail?.kind === "history"
-      ? history
-      : detail?.kind === "period" ? analytics?.sessions ?? []
+    detail?.kind === "period" ? analytics?.sessions ?? []
       : (activeDay?.sessions ?? activeArea?.sessions ?? []);
   const detailTitle = selectedSession
     ? "Session details"
     : detail?.kind === "period" ? `Sessions · ${mode === "week" ? "Week" : "Month"}`
-    : detail?.kind === "history"
-      ? "All session history"
-      : detail?.kind === "consistency"
+    : detail?.kind === "consistency"
         ? "Your consistency"
         : activeDay
           ? calendarLabel(activeDay.key, {
@@ -636,8 +580,6 @@ export default function ProgressScreen() {
         onDismiss={() => {
           setDetail(null);
           setSelectedSession(null);
-          historyRequest.current++;
-          historyBusy.current = false;
         }}
         label="progress details"
         maxHeightRatio={0.86}
@@ -655,8 +597,7 @@ export default function ProgressScreen() {
               </SheetButton>
             )}
             <Text style={s.sheetTitle}>{detailTitle}</Text>
-            {detail?.kind !== "history" &&
-              detail?.kind !== "consistency" &&
+            {detail?.kind !== "consistency" &&
               !selectedSession && <Text style={s.caption}>{range}</Text>}
           </View>
         }
@@ -745,8 +686,7 @@ export default function ProgressScreen() {
             </>
           ) : (
             <>
-              {detail?.kind === "period" && <Pressable accessibilityRole="button" accessibilityLabel="View all session history" onPress={openAllHistory} style={s.loadMore}><Text style={s.link}>View all history</Text></Pressable>}
-              {detail?.kind !== "history" && detail?.kind !== "period" && (
+              {detail?.kind !== "period" && (
                 <>
                   <Text style={s.detailTotal}>
                     {durationLabel(
@@ -792,9 +732,7 @@ export default function ProgressScreen() {
                   onPress={() => setSelectedSession(session)}
                 />
               ))}
-              {!detailSessions.length &&
-                (detail?.kind !== "history" ||
-                  (!historyLoading && !historyError)) && (
+              {!detailSessions.length && (
                   <Empty
                     icon="time-outline"
                     title={
@@ -809,38 +747,6 @@ export default function ProgressScreen() {
                     }
                   />
                 )}
-              {detail?.kind === "history" && (
-                <>
-                  {historyLoading && (
-                    <ActivityIndicator
-                      color={colors.accent}
-                      style={s.historySpinner}
-                    />
-                  )}
-                  {historyError && (
-                    <Text style={s.errorText}>
-                      Couldn’t load sessions. Your history is safe.
-                    </Text>
-                  )}
-                  {(historyMore || historyError) && (
-                    <SheetButton
-                      onPress={() => void loadHistory()}
-                      disabled={historyLoading}
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        historyError
-                          ? "Retry session history"
-                          : "Load more sessions"
-                      }
-                      style={s.loadMore}
-                    >
-                      <Text style={s.link}>
-                        {historyError ? "Retry" : "Load more"}
-                      </Text>
-                    </SheetButton>
-                  )}
-                </>
-              )}
             </>
           )}
         </BottomSheetScrollView>
