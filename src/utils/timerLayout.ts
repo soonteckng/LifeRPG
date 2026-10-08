@@ -1,4 +1,4 @@
-// Shared measured geometry keeps the ring, wheels and countdown on one grid.
+// Shared measured geometry keeps the ring and countdown on one grid.
 export function timerLayout(width: number, height: number, fontScale: number, compact = true) {
   const controlWidth = Math.min(286, Math.max(160, width - 48));
   const baseSize = height < 700 ? 48 : 60;
