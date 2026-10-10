@@ -2,7 +2,7 @@ import { View } from "react-native";
 import { PersonalPage, p } from "../components/PersonalUI";
 import { Text } from "../components/AppText";
 const RULES = [
-  ["Focus, one block at a time", "Free focus and suggestions share one card. Focus length sets 30 or 60 minutes, or a custom timer. Changing Focus area updates your suggestion to match. Everyday focus and custom areas use free focus. Find your next step offers other prompts for your direction. Finish a session to save focus time. Ending early cancels the session and gives no credit."],
+  ["Focus, one block at a time", "Free focus and suggestions share one card. Focus length sets 30 or 60 minutes, or a custom timer. Suggestions follow your Focus area. Choosing Free focus resets the area to Everyday focus; you can choose another area without enabling suggestions. Find your next step offers prompts for the same areas. Finish a session to save focus time. Ending early cancels the session and gives no credit."],
   ["Focus areas fit your life", "Learning, work, creativity, everyday life and wellbeing help you see where your effort goes. Everyday focus fits anything else. Choose the area that fits your session; labels do not measure ability."],
   ["Wellbeing, made clear", "Read a book for pleasure, write in a journal or take a gentle walk. Keep distracting apps closed and give this activity your attention until the timer ends."],
   ["A companion of your own", "Open Personalise on Profile to change your name and choose a complete character look. Your companion breathes, blinks and greets you when tapped. Cosmetic choices keep your saved progress."],

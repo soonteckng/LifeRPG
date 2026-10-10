@@ -1,3 +1,4 @@
+import { FOCUS_AREAS } from "../utils/focusAreas";
 export type FocusNeed = "revision" | "assignments" | "practice" | "work" | "creative" | "life-admin" | "restore";
 // The alias keeps older callers and saved study choices compatible.
 export type StudyNeed = FocusNeed;
@@ -14,13 +15,17 @@ export interface FocusDirection {
   needs: FocusNeed[];
   defaultNeed: FocusNeed;
 }
-export const FOCUS_DIRECTIONS: FocusDirection[] = [
-  { id: "learning", title: "Learning", hint: "Study notes, read to learn, or practise questions.", needs: ["revision", "assignments", "practice"], defaultNeed: "revision" },
-  { id: "work", title: "Work & projects", hint: "Move a work task or personal project forward.", needs: ["work"], defaultNeed: "work" },
-  { id: "creative", title: "Creativity", hint: "Write, draw, make music, or practise a creative skill.", needs: ["creative"], defaultNeed: "creative" },
-  { id: "life-admin", title: "Everyday life", hint: "Plan your day, organise a space, or clear life admin.", needs: ["life-admin"], defaultNeed: "life-admin" },
-  { id: "restore", title: "Wellbeing", hint: "Read for pleasure, journal, or take a gentle walk without scrolling.", needs: ["restore"], defaultNeed: "restore" },
+const directionNeeds: { id: FocusDirection["id"]; areaKey: FocusAreaKey; needs: FocusNeed[]; defaultNeed: FocusNeed }[] = [
+  { id: "learning", areaKey: "learning", needs: ["revision", "assignments", "practice"], defaultNeed: "revision" },
+  { id: "work", areaKey: "work", needs: ["work"], defaultNeed: "work" },
+  { id: "creative", areaKey: "creative", needs: ["creative"], defaultNeed: "creative" },
+  { id: "life-admin", areaKey: "personal", needs: ["life-admin"], defaultNeed: "life-admin" },
+  { id: "restore", areaKey: "wellbeing", needs: ["restore"], defaultNeed: "restore" },
 ];
+export const FOCUS_DIRECTIONS: FocusDirection[] = directionNeeds.map(({ areaKey, ...direction }) => {
+  const area = FOCUS_AREAS.find(item => item.kind === areaKey)!;
+  return { ...direction, title: area.title, hint: area.hint };
+});
 export function focusDirection(need: FocusNeed): FocusDirection {
   return FOCUS_DIRECTIONS.find(direction => direction.needs.includes(need)) ?? FOCUS_DIRECTIONS[0];
 }

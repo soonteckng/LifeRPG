@@ -57,7 +57,6 @@ export default function HomeScreen() {
 
   const [lastFree, setLastFree] = useState<{ owner: string; session: QuickStartSession | null } | null>(null);
   const [quickStarting, setQuickStarting] = useState(false);
-  const [areaChoice, setAreaChoice] = useState<{ owner: string; id: number | null } | null>(null);
   const [durationChoice, setDurationChoice] = useState<{ owner: string; seconds: number } | null>(null);
   const [attempt, setAttempt] = useState<{ owner: string; seconds: number; areaId: number | null; title: string } | null>(null);
   const [quickError, setQuickError] = useState(false);
@@ -79,7 +78,7 @@ export default function HomeScreen() {
   const previous = candidate && candidate.task_id == null && candidate.duration_seconds >= 300 && validSessionSeconds(candidate.duration_seconds) ? candidate : null;
   const rememberedSeconds = previous?.duration_seconds ?? 1800;
   const general = generalArea(subjects);
-  const quickArea = guided.value.areaId !== undefined ? subjects.find(area => area.id === guided.value.areaId) ?? general : areaChoice?.owner === owner ? subjects.find(area => area.id === areaChoice.id) ?? general : subjects.find(area => area.id === previous?.subject_id) ?? general;
+  const quickArea = guided.value.areaId !== undefined ? subjects.find(area => area.id === guided.value.areaId) ?? general : general;
   const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
   const quickSeconds = retainedAttempt?.seconds ?? (durationChoice?.owner === owner ? durationChoice.seconds : rememberedSeconds);
   const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
@@ -156,16 +155,16 @@ export default function HomeScreen() {
   };
 
   const changeArea = async (id: number | null) => {
-    if (hasOpenSession || blocked || quickLock.current || areasLoading || guided.busy) return;
+    if (hasOpenSession || blocked || quickLock.current || areasLoading || questsError || guided.busy) return;
     if (id !== null && !subjects.some(area => area.id === id)) return;
     quickLock.current = true;
     try {
-      if (await guided.save(preferenceForFocusArea(guided.value, id, subjects.find(area => area.id === id)?.title ?? "Everyday focus"))) { setAreaChoice({ owner, id }); setQuickError(false); setAttempt(null); }
+      if (await guided.save(preferenceForFocusArea(guided.value, id, subjects.find(area => area.id === id)?.title ?? "Everyday focus"))) { setQuickError(false); setAttempt(null); }
     } finally { quickLock.current = false; }
   };
   const startFreeSession = async () => {
     if (hasOpenSession) { openSession(); return; }
-    if (quickLock.current || blocked || areasLoading || guided.busy) return;
+    if (quickLock.current || blocked || areasLoading || questsError || guided.busy) return;
     quickLock.current = true;
     setAttempt({ owner, seconds: quickSeconds, areaId: quickAreaId, title: quickTitle });
     setQuickStarting(true);
@@ -218,14 +217,14 @@ export default function HomeScreen() {
             <Text style={styles.focusHeading}>{guided.error ? "Your focus preferences need a retry." : "Getting your focus ready…"}</Text>
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {guided.error && <TouchableOpacity onPress={() => void guided.retry()} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
-          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || areasLoading}
+          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))}
             onStarted={openSession} selectedSeconds={quickSeconds}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }} /> : <FreeFocusCard key={owner}
             seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
             area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
             active={!!hasOpenSession} running={!!timer.isRunning} starting={quickStarting}
-            disabled={blocked || !!areasLoading || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || guided.busy} restoring={!!timer.isRestoring}
+            disabled={blocked || (!hasOpenSession && (areasLoading || questsError)) || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || areasLoading || questsError || guided.busy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
           />}

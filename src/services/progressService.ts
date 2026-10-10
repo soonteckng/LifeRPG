@@ -1,7 +1,6 @@
 import { supabase } from "../../lib/supabase";
-import { orderFocusAreas } from "../utils/focusAreas";
 import { dateKey, shiftDay } from "../utils/progressAnalytics";
-import type { Subject } from "./taskService";
+import { getSubjects, type Subject } from "./taskService";
 import { focusDay, bestFocusStreak } from "../utils/focusDays";
 
 export interface ProgressSession {
@@ -69,12 +68,7 @@ export async function getProgressGoals(
   }
 }
 export async function getProgressSubjects(): Promise<Subject[]> {
-  const { data, error } = await supabase
-    .from("subjects")
-    .select("id, title, level, current_xp, color_code")
-    .order("id", { ascending: true });
-  if (error) throw error;
-  return orderFocusAreas(data ?? []);
+  return getSubjects();
 }
 export async function getSessionHistory(
   offset: number,

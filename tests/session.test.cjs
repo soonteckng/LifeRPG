@@ -982,16 +982,26 @@ test("saved completion carries independent XP banks and server goal credit witho
 
 test("compact Session chips select the saved Life area without touching quest or duration", async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
-  await ui.press("Select Study");
+  await ui.press("Select Learning");
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
-  assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
+  assert.equal(ui.button("Select Learning").props.accessibilityState.selected,true);
   await ui.press("Use 60 minutes");
   assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
   await ui.update({duration:3600,timeLeft:3600});
   await ui.press("Start");
   assert.deepEqual(ui.calls.at(-1),["start",3600,undefined]);
   await ui.cleanup();
+});
+
+test("Session category chips share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
+  const ui=await screenSetup({targetAttributeId:3}, {subjects:[{id:1,title:"General"},{id:2,title:"Fitness & Health"},{id:3,title:"Grooming & Vitality"},{id:4,title:"Work"},{id:5,title:"Creative practice"}]});
+  try {
+    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Select Wellbeing");
+    assert.equal(choices.length,1);assert.equal(ui.button("Select Wellbeing").props.accessibilityState.selected,true);
+    await ui.press("Select Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
+    assert.ok(ui.button("Select Work & projects"));assert.ok(ui.button("Select Creativity"));
+  } finally {await ui.cleanup();}
 });
 
 test("completed Session never labels unassigned character XP as a Life-area award", async()=>{

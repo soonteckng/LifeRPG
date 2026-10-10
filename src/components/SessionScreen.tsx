@@ -1,4 +1,4 @@
-import { focusAreaTitle, generalArea } from "../utils/focusAreas";
+import { focusAreaTitle, focusAreaChoices, generalArea } from "../utils/focusAreas";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
@@ -104,6 +104,7 @@ export default function SessionScreen() {
 
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
   const general = generalArea(subjects);
+  const selectableAreas = focusAreaChoices(subjects, timer.targetAttributeId);
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
   const locked = timer.hasOpenSession || timer.isCompleted || timer.actionBusy || timer.isRestoring;
   const isQuest = timer.linkedTaskId !== null;
@@ -304,14 +305,14 @@ export default function SessionScreen() {
                 <View style={styles.areaSection}>
                   <Text style={styles.secondary}>Focus area</Text>
                   <View style={styles.areaChips}>
-                    {subjects.slice(0, 6).map(item => <TouchableOpacity key={item.id} disabled={locked}
+                    {selectableAreas.slice(0, 6).map(item => <TouchableOpacity key={item.id} disabled={locked}
                       onPress={() => timer.setTargetAttributeId(item.id)} accessibilityRole="button"
                       accessibilityLabel={`Select ${focusAreaTitle(item.title)}`} accessibilityState={{ selected: item.id === timer.targetAttributeId }}
                       style={styles.areaChip}>
                       <View pointerEvents="none" style={[styles.chipSurface, item.id === timer.targetAttributeId && { backgroundColor: lifeAreaColor(item.id, item.color_code) + "1A" }]} />
                       <Text style={[styles.chipText, item.id === timer.targetAttributeId && { color: lifeAreaColor(item.id, item.color_code) }]}>{focusAreaTitle(item.title)}</Text>
                     </TouchableOpacity>)}
-                    {subjects.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose focus area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><View pointerEvents="none" style={styles.chipSurface} /><Text style={styles.chipText}>See all areas</Text></TouchableOpacity>}
+                    {selectableAreas.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose focus area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><View pointerEvents="none" style={styles.chipSurface} /><Text style={styles.chipText}>See all areas</Text></TouchableOpacity>}
                   </View>
                 </View>
               </>}
@@ -372,7 +373,7 @@ export default function SessionScreen() {
         header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Focus area"}</Text>}>
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <SheetChoice label={focusAreaTitle()} onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
-          {picker === "area" && subjects.filter((item) => item.id !== general?.id).map((item) => <SheetChoice key={item.id} label={focusAreaTitle(item.title)} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
+          {picker === "area" && selectableAreas.filter((item) => item.id !== general?.id).map((item) => <SheetChoice key={item.id} label={focusAreaTitle(item.title)} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
           {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => {
             const questArea = subjects.find(subject => subject.id === item.subject_id);
             const tint = lifeAreaColor(item.subject_id, questArea?.color_code);

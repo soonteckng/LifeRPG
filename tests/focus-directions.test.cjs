@@ -83,7 +83,7 @@ test('the chooser shows only the current direction prompts and retains the chose
   const Choice = load('src/components/GuidedChoice.tsx', mocks).default;
   let current;
   function Harness() {
-    const [value, setValue] = React.useState({ version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false });
+    const [value, setValue] = React.useState({ version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false, areaId: 22 });
     current = value;
     return React.createElement(Choice, { value, onChange: setValue });
   }
@@ -98,9 +98,11 @@ test('the chooser shows only the current direction prompts and retains the chose
     assert.equal(current.templateId, 'work-priority');
     await ui.press('Just let me focus');
     assert.equal(current.enabled, false);
+    assert.equal(current.areaId, null);
     assert.equal(current.templateId, 'work-priority');
     assert.doesNotMatch(text(ui.tree.root), /Your starting point/);
     await ui.press('Help me choose a focus');
+    assert.equal(current.areaId, undefined);
     assert.equal(current.templateId, 'work-priority');
     await ui.press('Creativity');
     await ui.press('Spend time with your craft');
