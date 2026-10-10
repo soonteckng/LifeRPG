@@ -72,7 +72,7 @@ test('quest scope switches give haptics and custom minutes are revealed after ke
   const duration=tree.root.findAllByType('View').find(node=>node.props.onLayout);await act(async()=>duration.props.onLayout({nativeEvent:{layout:{y:172}}}));
   const input=tree.root.findAllByType('Input').find(node=>node.props.accessibilityLabel==='Custom duration in minutes');await act(async()=>input.props.onFocus());await act(async()=>events.get('keyboardDidShow')());
   const scroll=tree.root.findAllByType('Scroll').find(node=>node.props.onContentSizeChange);await act(async()=>scroll.props.onContentSizeChange(300,800));assert.deepEqual(scrolls.at(-1),{y:160,animated:false});
-  const list=tree.root.findAllByType('Sheet').find(node=>node.props.label==='quests');assert.equal(list.props.expanded,true);assert.equal(list.props.heightRatio,.66);assert.equal(list.props.compact,undefined);
+  const list=tree.root.findAllByType('Sheet').find(node=>node.props.label==='quests');assert.equal(list.props.compact,true);assert.equal(list.props.maxHeightRatio,.60);assert.equal(list.props.expanded,undefined);assert.equal(list.props.heightRatio,undefined);
   assert.equal(tree.root.findAllByType('Scroll')[0].props.contentContainerStyle.paddingBottom,48);
  }finally{await act(async()=>tree.unmount());}
 });

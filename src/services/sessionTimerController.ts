@@ -63,6 +63,7 @@ export interface SessionTimerControllerSnapshot {
   // A transient view of the tap, never a journal transition or reward authority.
   interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
   displayTimeLeft: number | null;
+  recovered: boolean;
 }
 
 type ActionInput = JournalAction extends infer A ? A extends JournalAction
@@ -105,10 +106,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   // Keep one presentation clock through successful replies. Server snapshots
   // still determine expiry, saved timing and rewards; this clock is never stored.
   let displayClock: { clientSessionId: string | null; running: boolean; remainingMs: number; atMs: number } | null = null;
+  const recoveredIds = new Set<string>();
   let state: SessionTimerControllerSnapshot = {
     record: null, timeLeft: 0, restoring: true, busy: false, error: null,
     restoreError: false, syncStatus: "idle", receipt: null, rewardsVisible: false,
-    ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null,
+    ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false,
   };
 
   const live = () => !disposed && options.authority.currentEpoch() === externalEpoch
@@ -134,7 +136,9 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     if (open || waiting) { selectedId = (open ?? waiting)!.clientSessionId; return; }
     if (selectedId && selected() && selectedId !== hiddenId) return;
     selectedId = [...journal.records].reverse().find(record => record.clientSessionId !== hiddenId
-      && record.state === "completed" && record.dismissedAtMs === null)?.clientSessionId ?? null;
+      && record.state === "completed" && record.sync.state === "rejected" && record.dismissedAtMs === null)?.clientSessionId ?? null;
+    // Synced historical receipts stay in the journal/history. Only current-run
+    // completions or actual pending/rejected work belong in the active surface.
   }
 
   function publish(patch: Partial<SessionTimerControllerSnapshot> = {}): void {
@@ -159,6 +163,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
       ending: !!record && pending(record)?.kind === "cancel", unsyncedSessionCount, interaction: feedback, displayTimeLeft,
+      recovered: !!record && recoveredIds.has(record.clientSessionId),
     };
     for (const listener of listeners) {
       try { listener(state); } catch { /* A view cannot break durable work. */ }
@@ -546,7 +551,12 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
           publish({ restoring: false, restoreError: true, error: "Your saved session needs recovery before continuing." });
           return;
         }
-        journal = loaded.journal; chooseRecord();
+        journal = loaded.journal;
+        for (const record of journal.records) {
+          if (["running", "paused", "not_started"].includes(record.state)
+            || record.state === "completed" && ["pending", "waiting_auth"].includes(record.sync.state)) recoveredIds.add(record.clientSessionId);
+        }
+        chooseRecord();
         // Render the durable countdown before either account or session reads.
         publish({ restoring: false, restoreError: false });
         durableEpoch = journal.admission.epoch + 1;
@@ -572,7 +582,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     getSnapshot: () => {
       if (!live() && (state.record !== null || state.receipt !== null || state.ending || state.unsyncedSessionCount > 0 || state.interaction !== null)) {
         state = { ...state, record: null, receipt: null, timeLeft: 0, rewardsVisible: false,
-          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null };
+          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false };
       }
       return state;
     },

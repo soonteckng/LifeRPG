@@ -24,12 +24,14 @@ try {
 } catch { console.warn("Session notification handler could not be configured."); }
 
 interface SessionSummary {
+  completedAtMs?: number; recovered?: boolean;
   sessionId?: string; suggestion?: SuggestedFocus; xpEarned: number; goldEarned: number;
   minutesSpent: number; durationSeconds: number; questTitle?: string; creditVersion?: number;
   areaXpEarned?: number | null; characterRemainderSeconds?: number; areaRemainderSeconds?: number | null;
   dailyCompletedSeconds?: number; goalReachedNow?: boolean; creditedDate?: string;
 }
 interface TimerContextType {
+  sessionId: string | null; recoveredSession: boolean;
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
@@ -50,7 +52,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 const initialRuntime: SessionTimerControllerSnapshot = {
   record: null, timeLeft: 0, restoring: true, busy: false, error: null, restoreError: false,
   syncStatus: "idle", receipt: null, rewardsVisible: false,
-  ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null,
+  ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false,
 };
 const getClock = (): JournalClock => ({ wallTimeMs: Date.now(), monotonicTimeMs: null, bootId: null });
 const numberOr = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -109,6 +111,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
       && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
       && current.displayTimeLeft === next.displayTimeLeft
+      && current.recovered === next.recovered
       && current.rewardsVisible === next.rewardsVisible ? current : next));
     void controller.initialize();
     const interval = setInterval(() => { void controller.tick(); }, 200);
@@ -164,6 +167,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }
     const summary: SessionSummary = {
       sessionId: receipt.sessionId, suggestion: record.setup.taskId === null ? readSuggestedFocus(record.setup.notes) ?? undefined : undefined,
+      completedAtMs: record.completedAtMs ?? undefined, recovered: runtime.recovered,
       durationSeconds: receipt.durationSeconds, minutesSpent: numberOr(result.minutes, Math.floor(receipt.durationSeconds / 60)),
       xpEarned: numberOr(result.xp_earned), goldEarned: numberOr(result.gold_earned), questTitle: resolvedTitle,
       creditVersion: optionalNumber(result.credit_version), areaXpEarned: nullableNumber(result.area_xp_earned),
@@ -171,7 +175,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       dailyCompletedSeconds: optionalNumber(result.daily_completed_seconds), goalReachedNow: result.goal_reached_now === true,
       creditedDate: typeof result.credited_date === "string" ? result.credited_date : undefined,
     };
-    setSessionSummary(current => current && current.sessionId === summary.sessionId && current.questTitle === summary.questTitle ? current : summary);
+    setSessionSummary(current => current && current.sessionId === summary.sessionId && current.questTitle === summary.questTitle
+      && current.completedAtMs === summary.completedAtMs && current.recovered === summary.recovered ? current : summary);
     if (!seenReceipts.current.has(record.clientSessionId)) {
       seenReceipts.current.add(record.clientSessionId);
       if (auth.accessMode === "online") void reloadProfile().catch(() => false);
@@ -180,7 +185,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       celebrated.current.add(record.clientSessionId);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     }
-  }, [record, receipt, result, resolvedTitle, runtime.rewardsVisible, hapticsEnabled, reloadProfile, auth.accessMode]);
+  }, [record, receipt, result, resolvedTitle, runtime.rewardsVisible, runtime.recovered, hapticsEnabled, reloadProfile, auth.accessMode]);
 
   const notificationId = record?.clientSessionId;
   const notificationState = record?.state;
@@ -238,6 +243,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const retry = async () => { await controllerRef.current?.retry(); };
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId]);
   return <TimerContext.Provider value={{
+    sessionId: record?.serverSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,

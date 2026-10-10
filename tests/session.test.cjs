@@ -1104,10 +1104,15 @@ test("five visible Life areas need no More sheet; additional areas remain select
 
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
+  const scrollResets=[];
+  const CompletionScroll=React.forwardRef((props,ref)=>{
+    React.useImperativeHandle(ref,()=>({scrollTo:position=>scrollResets.push(position)}),[]);
+    return React.createElement('Scroll',props,props.children);
+  });
   const Modal=load("src/components/LevelUpModal.tsx",{
     "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
+    "@gorhom/bottom-sheet":{BottomSheetScrollView:CompletionScroll},
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./ProgressRing":host("Ring"),
@@ -1116,7 +1121,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     "expo-haptics":{},
   }).default;
   let renderer;
-  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
+  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,sessionId:'result-a',durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
   const text=node=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   try {
     const sheet=renderer.root.findByType("PopupSheet");
@@ -1125,14 +1130,26 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(sheet.props.heightRatio,0.85);
     assert.equal(sheet.props.motionMode,'timed');
     assert.equal(sheet.props.maxHeightRatio,0.85);
-    assert.equal(renderer.root.findByType('Scroll').props.enableFooterMarginAdjustment,true);
+    assert.equal(sheet.props.footer,undefined, 'Done must not float above or cover result content');
+    const scroll=renderer.root.findByType('Scroll');
+    assert.equal(scroll.children.at(-1).findByType('Button').props.accessibilityRole,'button');
+    assert.equal(text(scroll.children.at(-1)),'Done');
+    assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
-    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,pending:true,durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',pending:true,recovered:true,durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
     assert.match(text(renderer.root),/Session finished.*Saving your progress/);
     assert.doesNotMatch(text(renderer.root),/Character XP|Progress saved|Recorded/);
+    assert.doesNotMatch(text(renderer.root),/now saved to your account/);
     assert.equal(sheet.props.heightRatio,0.85, 'receipt arrival cannot change the sheet snap point');
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',recovered:true,completedAtMs:Date.UTC(2026,9,11,1,23),durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
+    assert.match(text(renderer.root),/Earlier session saved.*Finished 11 Oct 2026/);
+    assert.match(text(renderer.root),/now saved to your account/);
+    assert.equal(scrollResets.length,1, 'receipt arrival must preserve scroll rather than jump to the top');
+    await act(async()=>renderer.root.findByType('Scroll').props.onLayout()); assert.equal(scrollResets.length,1);
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
+    assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     await act(async()=>renderer.root.findByType("Button").props.onPress());
     assert.deepEqual(calls,["close"]);
   } finally {await act(async()=>renderer.unmount());}

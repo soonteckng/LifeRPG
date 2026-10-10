@@ -38,6 +38,7 @@ export default function GlobalRewardListener() {
   return (
     <LevelUpModal
       visible={rewardsVisible && !insideSession}
+      sessionId={sessionSummary?.sessionId} completedAtMs={sessionSummary?.completedAtMs} recovered={sessionSummary?.recovered}
       xpEarned={sessionSummary?.xpEarned || 0}
       goldEarned={sessionSummary?.goldEarned || 0}
       creditVersion={sessionSummary?.creditVersion}

@@ -423,6 +423,7 @@ export default function SessionScreen() {
         </BottomSheetScrollView>
       </AppSheet>
       <LevelUpModal visible={completionSheetVisible} pending={pendingCompletion}
+        sessionId={timer.sessionId ?? sessionSummary?.sessionId} completedAtMs={sessionSummary?.completedAtMs} recovered={sessionSummary?.recovered ?? timer.recoveredSession}
         syncError={timer.actionBusy ? null : timer.actionError} syncBusy={timer.actionBusy} onRetry={() => void timer.retryCompletion()}
         durationSeconds={sessionSummary?.durationSeconds ?? timer.duration} xpEarned={sessionSummary?.xpEarned}
         goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}

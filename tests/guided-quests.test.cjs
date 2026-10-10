@@ -311,6 +311,13 @@ test('custom focus duration validates bounds and cancel leaves the chosen durati
  const ui=await render(Sheet,{seconds:1859,visible:true,disabled:false,onSave:s=>calls.push(s),onClose:()=>closed++});
  const input=label=>ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel===label);
  try{
+  const sheet=ui.tree.root.findByType('Sheet');
+  assert.equal(sheet.props.compact,true);
+  assert.equal(sheet.props.keyboardBehavior,'interactive','numeric keyboard must lift the short editor without stretching it to full screen');
+  const scroll=ui.tree.root.findByType('Scroll');
+  assert.equal(scroll.props.enableFooterMarginAdjustment,true);
+  assert.equal(scroll.props.keyboardShouldPersistTaps,'handled');
+  assert.equal(scroll.props.contentContainerStyle.paddingBottom,16,'the measured footer adds to a numeric bottom reservation');
   assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'59');
   for(const [m,s] of [['0','0'],['480','1'],['20','60'],['','0'],['x','0']]){
    await act(async()=>{input('Focus minutes').props.onChangeText(m);input('Focus seconds').props.onChangeText(s);});await ui.press('Use this duration');assert.equal(calls.length,0);assert.match(text(ui.tree.root),/Seconds must be/);

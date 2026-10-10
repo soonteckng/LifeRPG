@@ -611,3 +611,124 @@ test('an explicit mutation timeout can exceed read timeout without extending rec
   await controller.refresh(true); assert.equal(controller.getSnapshot().busy, false);
   assert.ok(controller.getSnapshot().error); release.resolve(); h.readHook = null; await controller.dispose();
 });
+
+test('cold launches keep historical synced receipts without restoring a completion surface or submitting completion again', async () => {
+  for (const dismissed of [false, true]) {
+    const h = harness(), first = h.create(); await first.initialize(); await first.start(setup);
+    h.advance(3000); await first.tick();
+    assert.equal(first.getSnapshot().rewardsVisible, true);
+    if (dismissed) first.dismissSummary();
+    const history = clone(h.persisted().records), commands = clone(h.persisted().commands);
+    assert.equal(history[0].dismissedAtMs, null, 'successful receipts retain the existing v1 journal shape');
+    await first.dispose();
+    for (let launch = 0; launch < 3; launch++) {
+      const restored = h.restart(), snapshots = [];
+      restored.subscribe(snapshot => snapshots.push(snapshot));
+      await restored.initialize(); await restored.refresh(true); await restored.tick();
+      assert.equal(restored.getSnapshot().record, null);
+      assert.equal(restored.getSnapshot().receipt, null);
+      assert.equal(restored.getSnapshot().rewardsVisible, false);
+      assert.equal(restored.getSnapshot().recovered, false);
+      assert.equal(restored.getSnapshot().syncStatus, 'idle');
+      assert.ok(snapshots.every(snapshot => snapshot.record === null && !snapshot.rewardsVisible), 'no historical result flashes during admission or refresh');
+      assert.deepEqual(h.persisted().records, history, 'receipt and terminal timing remain durable');
+      assert.deepEqual(h.persisted().commands, commands);
+      assert.equal(h.credits, 1); assert.equal(h.calls.filter(call => call === 'complete').length, 1);
+      await restored.dispose();
+    }
+  }
+});
+
+test('an older synced receipt cannot hide a recovered offline completion, which saves exactly once on reconnect', async () => {
+  const h = harness(), first = h.create(); await first.initialize(); await first.start(setup);
+  h.advance(3000); await first.tick();
+  const historical = clone(h.persisted().records[0]); first.dismissSummary();
+  assert.equal(await first.start({ ...setup, title: 'Second learning block' }), true);
+  h.online = false; h.advance(3000); await first.tick();
+  const pending = clone(first.getSnapshot().record);
+  assert.equal(pending.state, 'completed'); assert.equal(pending.sync.receipt, null);
+  await first.dispose();
+  const restored = h.restart(); await restored.initialize();
+  assert.equal(restored.getSnapshot().record.clientSessionId, pending.clientSessionId);
+  assert.equal(restored.getSnapshot().record.completedAtMs, pending.completedAtMs);
+  assert.equal(restored.getSnapshot().recovered, true);
+  assert.equal(restored.getSnapshot().receipt, null); assert.equal(h.credits, 1);
+  h.online = true; await restored.refresh(true);
+  assert.equal(restored.getSnapshot().record.clientSessionId, pending.clientSessionId);
+  assert.equal(restored.getSnapshot().record.setup.title, 'Second learning block');
+  assert.equal(restored.getSnapshot().recovered, true);
+  assert.equal(restored.getSnapshot().receipt.sessionId, pending.serverSessionId);
+  assert.equal(restored.getSnapshot().rewardsVisible, true);
+  await restored.refresh(true); await restored.tick();
+  assert.equal(h.credits, 2); assert.equal(h.calls.filter(call => call === 'complete').length, 2);
+  assert.deepEqual(h.persisted().records.find(record => record.clientSessionId === historical.clientSessionId), historical);
+  const saved = clone(h.persisted().records);
+  restored.dismissSummary(); await restored.dispose();
+  const reopened = h.restart(); await reopened.initialize();
+  assert.equal(reopened.getSnapshot().record, null); assert.equal(reopened.getSnapshot().rewardsVisible, false);
+  assert.deepEqual(h.persisted().records, saved); assert.equal(h.credits, 2);
+  await reopened.dispose();
+});
+
+test('ending a newer session never falls back to a previous saved completion', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
+  h.advance(3000); await controller.tick();
+  const historical = clone(h.persisted().records[0]); controller.dismissSummary();
+  assert.equal(await controller.start({ ...setup, targetSeconds: 120, title: 'New work' }), true);
+  const newerId = controller.getSnapshot().record.clientSessionId;
+  h.advance(1000); assert.equal(await controller.end(), true);
+  assert.equal(controller.getSnapshot().record.clientSessionId, newerId);
+  assert.equal(controller.getSnapshot().record.state, 'cancelled');
+  assert.equal(controller.getSnapshot().receipt, null); assert.equal(controller.getSnapshot().rewardsVisible, false);
+  assert.equal(await controller.end(), true);
+  await controller.refresh(true); await controller.tick();
+  assert.equal(controller.getSnapshot().record, null);
+  assert.equal(controller.getSnapshot().receipt, null); assert.equal(controller.getSnapshot().rewardsVisible, false);
+  assert.deepEqual(h.persisted().records.find(record => record.clientSessionId === historical.clientSessionId), historical);
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 1);
+  assert.equal(h.calls.filter(call => call === 'complete').length, 1); assert.equal(h.credits, 1);
+  await controller.dispose();
+});
+
+test('fresh completion remains visible in its current run while historical restore suppression leaves its receipt unchanged', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
+  assert.equal(controller.getSnapshot().recovered, false);
+  h.advance(3000); await controller.tick();
+  const saved = clone(h.persisted().records[0]);
+  assert.equal(controller.getSnapshot().record.clientSessionId, saved.clientSessionId);
+  assert.equal(controller.getSnapshot().receipt.sessionId, saved.serverSessionId);
+  assert.equal(controller.getSnapshot().rewardsVisible, true); assert.equal(controller.getSnapshot().recovered, false);
+  await controller.refresh(true); await controller.tick();
+  assert.equal(controller.getSnapshot().rewardsVisible, true);
+  controller.dismissSummary();
+  assert.equal(controller.getSnapshot().rewardsVisible, false);
+  assert.equal(controller.getSnapshot().record.clientSessionId, saved.clientSessionId);
+  assert.deepEqual(controller.getSnapshot().receipt, saved.sync.receipt);
+  assert.deepEqual(h.persisted().records[0], saved);
+  assert.equal(h.credits, 1); assert.equal(h.calls.filter(call => call === 'complete').length, 1);
+  await controller.dispose();
+});
+
+test('a recovered lost completion reply identifies earlier work without another award or celebration', async () => {
+  const h = harness(), first = h.create(); await first.initialize(); await first.start(setup);
+  h.fail.complete = 'lost'; h.advance(3000); await first.tick();
+  const pending = clone(first.getSnapshot().record);
+  assert.equal(h.credits, 1); assert.equal(pending.sync.receipt, null);
+  await first.dispose();
+  const restored = h.restart(); await restored.initialize(); await restored.refresh(true);
+  const snapshot = restored.getSnapshot();
+  assert.equal(snapshot.record.clientSessionId, pending.clientSessionId);
+  assert.equal(snapshot.record.setup.title, setup.title);
+  assert.equal(snapshot.record.completedAtMs, pending.completedAtMs);
+  assert.equal(snapshot.recovered, true);
+  assert.equal(snapshot.receipt.sessionId, pending.serverSessionId);
+  assert.equal(snapshot.receipt.result.already_completed, true);
+  assert.equal(snapshot.rewardsVisible, false);
+  await restored.refresh(true); await restored.tick();
+  assert.equal(h.credits, 1); assert.equal(h.calls.filter(call => call === 'complete').length, 1);
+  await restored.dispose();
+  const reopened = h.restart(); await reopened.initialize();
+  assert.equal(reopened.getSnapshot().record, null); assert.equal(reopened.getSnapshot().rewardsVisible, false);
+  assert.equal(h.persisted().records[0].sync.receipt.sessionId, pending.serverSessionId);
+  await reopened.dispose();
+});

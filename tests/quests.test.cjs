@@ -128,6 +128,10 @@ async function setup(initialTasks = [], hasOpenSession = false) {
 
 test("empty sheet adds a quest and immediately changes the unfinished count", async () => {
   const ui = await setup();
+  const list = () => ui.sheets().find(sheet => sheet.props.label === "quests");
+  assert.equal(list().props.compact, true, 'empty lists fit their content instead of leaving a fixed tall blank panel');
+  assert.equal(list().props.expanded, undefined);
+  assert.equal(list().props.maxHeightRatio, 0.60);
   assert.match(ui.output(), /Create your first quest/);
   assert.equal(ui.count(), 0);
   await ui.press("Add quest");
@@ -136,6 +140,8 @@ test("empty sheet adds a quest and immediately changes the unfinished count", as
   assert.equal(ui.count(), 1);
   assert.equal(ui.tasks()[0].title, "Walk outside");
   assert.ok(ui.button("Edit Walk outside"));
+  assert.equal(list().props.compact, true, 'adding a quest retains content sizing');
+  assert.equal(list().props.maxHeightRatio, 0.60);
   assert.equal(ui.calls.find(([action]) => action === "navigate"), undefined);
   await ui.cleanup();
 });
@@ -269,6 +275,12 @@ test("many quests and long titles remain individually editable with distinct Sta
   assert.equal(ui.count(), 30);
   assert.ok(ui.button("Edit " + title + 29));
   assert.ok(ui.button("Start " + title + 29));
+  const list = () => ui.sheets().find(sheet => sheet.props.label === "quests");
+  assert.equal(list().props.compact, true);
+  assert.equal(list().props.maxHeightRatio, 0.60, 'long lists stay capped and scroll instead of expanding to the screen top');
+  await ui.press("All quests");
+  assert.equal(list().props.compact, true);
+  assert.equal(list().props.maxHeightRatio, 0.60);
   await ui.press("Edit " + title + 29);
   assert.equal(ui.input("Quest name"), title + 29);
   assert.deepEqual(ui.calls, []);
