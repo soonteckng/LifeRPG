@@ -37,8 +37,10 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     if (disabled || preference.busy) return;
     lock.current = true; setBusy(true);
     try {
-      const started = await timer.startSuggestedTimer(focus, areaId);
-      if (alive.current) { if (started) { setFailed(null); onStarted(); } else setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
+      const request = timer.startSuggestedTimer(focus, areaId);
+      onStarted();
+      const started = await request;
+      if (alive.current) { if (started) setFailed(null); else setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
     } catch { if (alive.current) setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   };

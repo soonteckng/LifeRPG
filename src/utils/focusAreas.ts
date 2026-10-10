@@ -7,7 +7,8 @@ const labels: Record<string, string> = {
 // Compatibility for cached rows while the synced catalogue replaces old names.
 export function focusAreaTitle(title?: string | null) {
   const clean = title?.trim();
-  return clean ? labels[clean.toLowerCase()] ?? clean : "Everyday focus";
+  const kind = focusAreaKind(clean);
+  return kind ? FOCUS_AREAS.find(area => area.kind === kind)!.title : clean ? labels[clean.toLowerCase()] ?? clean : "Everyday focus";
 }
 const aliases: Record<FocusAreaKind, string[]> = {
   learning: ["learning", "knowledge", "study"], work: ["work & projects", "work", "career", "projects"],
@@ -16,13 +17,17 @@ const aliases: Record<FocusAreaKind, string[]> = {
   personal: ["life admin", "personal life", "everyday life"], general: ["general", "everyday focus"],
 };
 export const FOCUS_AREAS = [
-  { title: "Everyday focus", hint: "Anything you want to give your attention to.", color: "#AAB3FF" },
-  { title: "Learning", hint: "Reading, studying and building knowledge.", color: "#79BFF2" },
-  { title: "Work & projects", hint: "Work tasks and projects you want to move forward.", color: "#C1A8FA" },
-  { title: "Creativity", hint: "Writing, art, music and practising your craft.", color: "#E98ABC" },
-  { title: "Everyday life", hint: "Planning, organising and taking care of life tasks.", color: "#6DD4B5" },
-  { title: "Wellbeing", hint: "Reading for pleasure, journaling, movement and time to recharge.", color: "#F4AA88" },
+  { kind: "general", title: "Everyday focus", hint: "Anything you want to give your attention to.", color: "#AAB3FF" },
+  { kind: "learning", title: "Learning", hint: "Reading, studying and building knowledge.", color: "#79BFF2" },
+  { kind: "work", title: "Work & projects", hint: "Work tasks and projects you want to move forward.", color: "#C1A8FA" },
+  { kind: "creative", title: "Creativity", hint: "Writing, art, music and practising your craft.", color: "#E98ABC" },
+  { kind: "personal", title: "Everyday life", hint: "Planning, organising and taking care of life tasks.", color: "#6DD4B5" },
+  { kind: "wellbeing", title: "Wellbeing", hint: "Reading for pleasure, journaling, movement and time to recharge.", color: "#F4AA88" },
 ] as const;
+export function missingFocusAreas(areas: { title: string }[]) {
+  const available = new Set(areas.map(area => focusAreaKind(area.title)));
+  return FOCUS_AREAS.filter(area => !available.has(area.kind));
+}
 export function focusAreaDescription(title?: string | null) {
   return FOCUS_AREAS.find(area => area.title === focusAreaTitle(title))?.hint ?? "A focus area you’ve made your own.";
 }

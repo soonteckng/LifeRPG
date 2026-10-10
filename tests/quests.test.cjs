@@ -128,6 +128,10 @@ async function setup(initialTasks = [], hasOpenSession = false) {
 
 test("empty sheet adds a quest and immediately changes the unfinished count", async () => {
   const ui = await setup();
+  const list = () => ui.sheets().find(sheet => sheet.props.label === "quests");
+  assert.equal(list().props.compact, true, 'empty lists fit their content instead of leaving a fixed tall blank panel');
+  assert.equal(list().props.expanded, undefined);
+  assert.equal(list().props.maxHeightRatio, 0.60);
   assert.match(ui.output(), /Create your first quest/);
   assert.equal(ui.count(), 0);
   await ui.press("Add quest");
@@ -136,6 +140,8 @@ test("empty sheet adds a quest and immediately changes the unfinished count", as
   assert.equal(ui.count(), 1);
   assert.equal(ui.tasks()[0].title, "Walk outside");
   assert.ok(ui.button("Edit Walk outside"));
+  assert.equal(list().props.compact, true, 'adding a quest retains content sizing');
+  assert.equal(list().props.maxHeightRatio, 0.60);
   assert.equal(ui.calls.find(([action]) => action === "navigate"), undefined);
   await ui.cleanup();
 });
@@ -269,6 +275,12 @@ test("many quests and long titles remain individually editable with distinct Sta
   assert.equal(ui.count(), 30);
   assert.ok(ui.button("Edit " + title + 29));
   assert.ok(ui.button("Start " + title + 29));
+  const list = () => ui.sheets().find(sheet => sheet.props.label === "quests");
+  assert.equal(list().props.compact, true);
+  assert.equal(list().props.maxHeightRatio, 0.60, 'long lists stay capped and scroll instead of expanding to the screen top');
+  await ui.press("All quests");
+  assert.equal(list().props.compact, true);
+  assert.equal(list().props.maxHeightRatio, 0.60);
   await ui.press("Edit " + title + 29);
   assert.equal(ui.input("Quest name"), title + 29);
   assert.deepEqual(ui.calls, []);
@@ -610,6 +622,27 @@ test("quest completion during an old refresh queues a fresh server read", async 
   } finally { await act(async () => renderer.unmount()); }
 });
 
+test("quest foreground refresh retries after an in-flight offline failure instead of keeping its error", async () => {
+  let state, foreground;
+  const requests = [];
+  const {QuestProvider, useQuests} = load('src/context/QuestContext.tsx', {
+    'react-native': {AppState: {addEventListener: (_, fn) => {foreground = fn; return {remove(){}};}}},
+    './TimerContext': {useTimer: () => ({sessionSummary:null})},
+    '../services/taskService': {getTasks: () => new Promise((resolve, reject) => requests.push({resolve,reject})), getSubjects: async () => subjects},
+  });
+  function Capture(){state = useQuests();return null;}
+  let renderer;
+  try {
+    await act(async () => {renderer = create(React.createElement(QuestProvider,null,React.createElement(Capture)));});
+    let pending; await act(async () => {pending = state.refresh();});
+    await act(async () => foreground('active')); assert.equal(requests.length,1);
+    await act(async () => {requests[0].reject(Error('Connection was offline')); await pending; await new Promise(resolve => setImmediate(resolve));});
+    assert.equal(requests.length,2);
+    await act(async () => requests[1].resolve([task()]));
+    assert.equal(state.error,false); assert.equal(state.tasks[0].title,'Read a chapter');
+  } finally {if(renderer) await act(async () => renderer.unmount());}
+});
+
 test("Home updates on focus, foreground and a clock boundary; unfocused Home does not fetch", async () => {
   const RealDate = global.Date;
   const realTimeout = global.setTimeout, realClear = global.clearTimeout;
@@ -648,6 +681,31 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
     if (renderer) await act(async () => renderer.unmount());
     global.Date = RealDate; global.setTimeout = realTimeout; global.clearTimeout = realClear;
   }
+});
+
+test("Home foreground queues a fresh read after a pre-reconnection request fails", async () => {
+  const {singleFlight} = load('src/utils/singleFlight.ts', {});
+  let finishOld, foreground, reads = 0, loadError = false;
+  const oldRequest = new Promise(resolve => {finishOld = resolve;});
+  const refresh = singleFlight(async () => {
+    reads++;
+    if (reads === 1) { await oldRequest; loadError = true; }
+    else loadError = false;
+  });
+  const {useHomeLifecycle} = load('src/hooks/useHomeLifecycle.ts', {
+    'expo-router': {useFocusEffect: effect => React.useEffect(effect, [effect])},
+    'react-native': {AppState: {addEventListener: (_, fn) => {foreground = fn; return {remove(){}};}}},
+  });
+  function Capture(){useHomeLifecycle(refresh);return null;}
+  let renderer;
+  try {
+    await act(async () => {renderer = create(React.createElement(Capture));});
+    assert.equal(reads, 1);
+    await act(async () => foreground('active')); assert.equal(reads, 1);
+    await act(async () => {finishOld(); await new Promise(resolve => setImmediate(resolve));});
+    assert.equal(reads, 2, 'foreground cannot merely reuse the old offline result');
+    assert.equal(loadError, false);
+  } finally {if(renderer) await act(async () => renderer.unmount());}
 });
 
 
@@ -840,19 +898,34 @@ async function quickHomeSetup(history = null, start = async () => true) {
     update:async(flags={},newOwner=owner,nextHistory=historyValue)=>{timerFlags=flags;owner=newOwner;historyValue=nextHistory;await act(async()=>renderer.update(React.createElement(Home)));},
     output:()=>JSON.stringify(renderer.toJSON()),cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
-test("Home Quick Start shows exact remembered choice, ignores rapid taps and navigates only after success", async()=>{
+test("Home Quick Start opens immediately, retains the exact duration and neutral area, and ignores rapid taps", async()=>{
   let resolve; const pending=new Promise(r=>resolve=r);
   const ui=await quickHomeSetup({task_id:null,subject_id:2,duration_seconds:1859},()=>pending);
   try {
-    assert.match(ui.output(),/30 min 59 sec/); assert.match(ui.output(),/Learning/);
+    assert.match(ui.output(),/30 min 59 sec/); assert.match(ui.output(),/Everyday focus/);
     let first;
     await act(async()=>{first=ui.button("home-start-focus").props.onPress();ui.button("home-start-focus").props.onPress();});
-    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1859,2]]);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1859,1]]);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     assert.equal(ui.button("home-start-focus").props.disabled,true);
     await act(async()=>{resolve(true);await first;});
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
   }finally{await ui.cleanup();}
+});
+
+test("Home can open recovery for an unsaved, rejected or unreadable session even when ordinary starts are blocked", async()=>{
+  const ui=await quickHomeSetup(null,async()=>true);
+  const review=()=>ui.renderer.root.findAllByType("Pressable").find(node=>node.props.accessibilityLabel==="Review saved session");
+  try {
+    assert.equal(review(),undefined);
+    for(const flags of [{isCompleted:true,syncStatus:"waiting",sessionSummary:null},{isCompleted:true,syncStatus:"rejected",sessionSummary:null},{restoreError:true}]) {
+      await ui.update(flags); assert.ok(review());
+      await act(async()=>review().props.onPress());
+    }
+    assert.equal(ui.calls.filter(call=>call[0]==="start").length,0);
+    assert.deepEqual(ui.calls.filter(call=>call[0]==="navigate"),Array.from({length:3},()=>["navigate","/session"]));
+    await ui.update({}); assert.equal(review(),undefined);
+  } finally {await ui.cleanup();}
 });
 test("Home failure stays actionable and the area sheet cannot navigate or change duration", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
@@ -860,7 +933,7 @@ test("Home failure stays actionable and the area sheet cannot navigate or change
     assert.match(ui.output(),/Soon Teck/);assert.match(ui.output(),/30 min/);
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.match(ui.output(),/Retry start/);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     succeeded=true;
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);

@@ -25,12 +25,12 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
     if (next === null) { setError("Choose a time from 1 second to 8 hours. Seconds must be between 0 and 59."); return; }
     onSave(next); onClose();
   };
-  return <AppSheet visible={visible} onRequestClose={onClose} compact keyboardBehavior="fillParent" motionMode="timed" label="focus duration"
+  return <AppSheet visible={visible} onRequestClose={onClose} compact keyboardBehavior="interactive" motionMode="timed" label="focus duration"
     header={<View style={p.sheetHeader}><Text style={p.title}>Make time for focus</Text><Text style={p.body}>Choose a duration for this block.</Text></View>}
     footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surface }}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Use this duration" disabled={disabled} onPress={save} style={p.button}><Text style={p.buttonText}>Use this duration</Text></TouchableOpacity>
     </View>}>
-    <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={[p.sheetBody, { paddingBottom: 16 }]}>
+    <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={{ ...p.sheetBody, paddingBottom: 16 }}>
       <View style={{ flexDirection: "row", gap: 12 }}>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><BottomSheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><BottomSheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>

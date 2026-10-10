@@ -6,12 +6,13 @@ import { FOCUS_AREAS } from "../utils/focusAreas";
 import { colors } from "../constants/theme";
 import { FOCUS_DIRECTIONS, STUDY_NEEDS, defaultFocusId, focusDirection, focusOptions } from "../constants/guidedQuests";
 import type { GuidedPreference } from "../services/guidedPreferenceService";
+import { preferenceForFocusMode } from "../utils/focusPreference";
 
 interface ChoiceProps { value: GuidedPreference; onChange: (value: GuidedPreference) => void; disabled?: boolean }
 const directionVisuals = {
-  learning: { title: "Learning", icon: "book-outline" }, work: { title: "Work & projects", icon: "briefcase-outline" },
-  creative: { title: "Creativity", icon: "color-palette-outline" }, "life-admin": { title: "Everyday life", icon: "checkbox-outline" },
-  restore: { title: "Wellbeing", icon: "leaf-outline" },
+  learning: { icon: "book-outline" }, work: { icon: "briefcase-outline" },
+  creative: { icon: "color-palette-outline" }, "life-admin": { icon: "checkbox-outline" },
+  restore: { icon: "leaf-outline" },
 } as const;
 
 export function FocusDirectionPicker({ value, onChange, disabled = false, compact = false }: ChoiceProps & { compact?: boolean }) {
@@ -24,7 +25,7 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
       return <Pressable key={direction.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={direction.title} accessibilityHint={direction.hint} accessibilityState={{ checked: selected }}
         onPress={() => choose(direction)} style={[s.directionTile, selected && s.selected]}>
         <Ionicons name={visual.icon} size={20} color={tint} />
-        <View style={s.tileCopy}><Text style={[s.tileTitle, selected && s.selectedTitle]}>{visual.title}</Text><Text style={s.tileHint}>{direction.hint}</Text></View>
+        <View style={s.tileCopy}><Text style={[s.tileTitle, selected && s.selectedTitle]}>{direction.title}</Text><Text style={s.tileHint}>{direction.hint}</Text></View>
       </Pressable>;
     })}</View>
   </View>;
@@ -39,13 +40,13 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
 
 export default function GuidedChoice({ value, onChange, disabled = false }: ChoiceProps) {
   const direction = (enabled: boolean, title: string, hint: string, label: string) => <Pressable accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: value.enabled === enabled }} disabled={disabled}
-    onPress={() => onChange({ ...value, enabled, invited: true, ...(enabled && !value.enabled ? { areaId: undefined } : {}) })} style={[s.modeButton, value.enabled === enabled && s.selected]}>
+    onPress={() => { if (value.enabled !== enabled) onChange(preferenceForFocusMode(value, enabled)); }} style={[s.modeButton, value.enabled === enabled && s.selected]}>
     <Text style={[s.modeTitle, value.enabled === enabled && s.selectedTitle]}>{label}</Text>
   </Pressable>;
   return <View style={s.group}>
     <View style={s.modeRow}>
       {direction(true, "Help me choose a focus", "A small starting point for work, learning or everyday life.", "Suggestions")}
-      {direction(false, "Just let me focus", "Your own focus, with the same timer and controls.", "Free focus")}
+      {direction(false, "Just let me focus", "Start with Everyday focus. You can choose another area on Home.", "Free focus")}
     </View>
     {value.enabled && <><View style={s.section}><Text style={s.heading}>Choose a direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} /></View>
       <View style={s.section}><Text style={s.heading}>Your starting point</Text>{focusOptions(value.need).map(task => {

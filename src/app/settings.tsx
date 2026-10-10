@@ -21,7 +21,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { profile, hapticsEnabled, setHapticsEnabled, preferenceError } = useUser();
   const { user, signOut } = useAuth();
-  const { hasOpenSession, isRestoring, restoreError, actionBusy } = useTimer();
+  const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer();
   const [sheet, setSheet] = useState<"signout" | "notifications" | "goal" | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [goalData, setGoalData] = useState<DailyGoalSettings | null>(null);
@@ -160,6 +160,9 @@ export default function SettingsScreen() {
             <Text style={p.body}>{sessionBlocksLogout
               ? "Finish or end your current session before signing out. If restoration failed, return to Session and retry first."
               : "Your character, quests and saved sessions remain with your account. Sign in again to continue."}</Text>
+            {unsyncedSessionCount > 0 && <Text style={p.body} accessibilityRole="alert">
+              {unsyncedSessionCount === 1 ? "1 session is not confirmed yet." : `${unsyncedSessionCount} sessions are not confirmed yet.`} Unconfirmed sessions stay on this phone for this account. To confirm them, reconnect while signed in to this same account. If you sign out, sign back into this account first.
+            </Text>}
             <PersonalButton title={busy ? "Signing out..." : "Sign out"} disabled={busy || sessionBlocksLogout} onPress={() => void logout()} />
             <PersonalButton secondary title="Keep me signed in" disabled={busy} onPress={() => setSheet(null)} />
           </> : sheet === "goal" ? <>

@@ -5,6 +5,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useState,
   useRef,
 } from "react";
@@ -66,7 +67,12 @@ const defaultProfile: UserProfile = {
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const { user } = useAuth();
+  const { user, localOwner, accessMode, cachedProfile, cacheVerifiedProfile } = useAuth();
+  const mode = accessMode ?? (user ? "online" : "signed-out");
+  const ownerId = user?.id ?? localOwner?.id ?? null;
+  const ownerRef = useRef(ownerId);
+  const modeRef = useRef(mode);
+  const cachedRef = useRef(cachedProfile);
 
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState(false);
@@ -77,16 +83,30 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const profileRequest = useRef<Promise<boolean> | null>(null);
   const preferenceQueue = useRef(Promise.resolve());
   const [profile, setProfile] = useState<UserProfile>(defaultProfile);
+  const profileRef = useRef(profile);
   const [soundEnabled, applySound] = useState(true);
   const [hapticsEnabled, applyHaptics] = useState(true);
+  useLayoutEffect(() => {
+    ownerRef.current = ownerId; modeRef.current = mode; cachedRef.current = cachedProfile; profileRef.current = profile;
+  }, [ownerId, mode, cachedProfile, profile]);
 
   const fetchProfile = useCallback(async () => {
-    if (!user) {
+    if (!ownerId) {
       setProfile(defaultProfile);
+      setProfileLoading(false);
       return true;
     }
+    if (mode === "local-only") {
+      const saved = cachedRef.current;
+      const valid = saved?.id === ownerId && saved.onboarding_completed;
+      setProfile(valid ? { ...saved } : defaultProfile);
+      setProfileError(!valid); setProfileLoading(false);
+      return !!valid;
+    }
+    if (!user || mode !== "online") return false;
 
     const version = profileVersion.current;
+    const stillCurrent = () => version === profileVersion.current && ownerRef.current === ownerId && modeRef.current === "online";
     setProfileLoading(true);
     try {
       const { data, error } = await supabase
@@ -94,41 +114,56 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         .select(
           "id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date, daily_goal_minutes, last_goal_completed_date, onboarding_completed, timezone",
         )
-        .eq("id", user.id)
+        .eq("id", ownerId)
         .single();
 
       if (error) {
-        setProfileError(true);
+        if (stillCurrent()) setProfileError(true);
         return false;
       }
 
-      if (data && version === profileVersion.current) {
+      if (data && data.id === ownerId && stillCurrent()) {
         setProfile(data);
         setProfileError(false);
+        try { await cacheVerifiedProfile?.(data); } catch { /* Keep the verified cloud profile available. */ }
       }
-      if (!data) setProfileError(true);
-      return !!data;
-    } catch (error) {
-      console.error("Failed to reload cloud profile:", error);
-      setProfileError(true);
+      if (!data && stillCurrent()) setProfileError(true);
+      return !!data && stillCurrent();
+    } catch {
+      if (stillCurrent()) setProfileError(true);
       return false;
     } finally {
-      setProfileLoading(false);
+      if (stillCurrent()) setProfileLoading(false);
     }
-  }, [user]);
+    // A refreshed User object is not a new account; use its stable ID below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerId, mode, cacheVerifiedProfile]);
   const reloadProfile = useCallback(() => {
-    if (!profileRequest.current)
-      profileRequest.current = fetchProfile().finally(() => {
-        profileRequest.current = null;
+    if (!profileRequest.current) {
+      const request = fetchProfile().finally(() => {
+        if (profileRequest.current === request) profileRequest.current = null;
       });
+      profileRequest.current = request;
+    }
     return profileRequest.current;
   }, [fetchProfile]);
+  const invalidateProfileRequests = useCallback(() => {
+    profileVersion.current++;
+    profileRequest.current = null;
+  }, []);
 
+  // Home's child focus effect can join reloadProfile before our passive load
+  // effect runs. Invalidate ownership in the layout phase, before any such
+  // request starts, rather than making a successful child request obsolete.
+  useLayoutEffect(() => {
+    invalidateProfileRequests();
+    return invalidateProfileRequests;
+  }, [reloadProfile, invalidateProfileRequests]);
   useEffect(() => {
     void reloadProfile();
   }, [reloadProfile]);
 
-  const preferenceKey = `liferpg:preferences:${user?.id ?? "guest"}`;
+  const preferenceKey = `liferpg:preferences:${ownerId ?? "guest"}`;
   useEffect(() => {
     let alive = true;
     const generation = ++preferencesGeneration.current;
@@ -136,8 +171,10 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
     void AsyncStorage.getItem(preferenceKey)
       .then((raw) => {
-        if (!alive || generation !== preferencesGeneration.current || !raw)
+        if (!alive || generation !== preferencesGeneration.current)
           return;
+        applySound(true); applyHaptics(true);
+        if (!raw) return;
         const stored = JSON.parse(raw);
         if (typeof stored.sound === "boolean") {
           preferenceValues.current.sound = stored.sound;
@@ -184,7 +221,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     avatar: string,
     classTitle: string,
   ) => {
-    if (!user) throw new Error("User is not authenticated.");
+    if (!user || mode !== "online") throw new Error("Connect and verify your account before editing your profile.");
+    const owner = user.id;
+    const version = profileVersion.current;
     const clean = username.trim();
     const nameError = profileNameError(clean);
     if (nameError) throw new Error(nameError);
@@ -195,8 +234,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       .select("id, username, avatar, class_title")
       .single();
     if (error || !data) throw error ?? new Error("Profile could not be saved.");
+    if (ownerRef.current !== owner || modeRef.current !== "online" || version !== profileVersion.current) return;
     profileVersion.current++;
-    setProfile((current) => ({ ...current, ...data }));
+    const updated = { ...profileRef.current, ...data };
+    setProfile(updated);
+    try { await cacheVerifiedProfile?.(updated); } catch { /* Cloud edit succeeded; cache is optional. */ }
   };
 
   return (

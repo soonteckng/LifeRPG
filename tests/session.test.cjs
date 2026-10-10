@@ -44,50 +44,127 @@ function load(relativePath, mocks, cache = new Map()) {
 const host = (name) => (props) => React.createElement(name, props, props.children);
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b) => { resolve=a; reject=b; }); return {promise, resolve, reject}; };
 const result = { already_completed: false, xp_earned: 30, gold_earned: 5, minutes: 1, duration_seconds: 60, level: 2, leveled_up: false };
+const PROVIDER_NOW = 1_800_000_000_000;
+const PROVIDER_SCOPE = { backendId: "fixture-backend", ownerId: "11111111-1111-4111-8111-111111111111" };
+const SESSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-000000000001";
+const fixtureServerId = (value) => {
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) return value;
+  let hash = 0;
+  for (const letter of String(value)) hash = (Math.imul(hash, 31) + letter.charCodeAt(0)) >>> 0;
+  return value === "session-1" ? SESSION_ID : `bbbbbbbb-bbbb-4bbb-8bbb-${hash.toString(16).padStart(12, "0")}`;
+};
+const definitiveServerRejection = () => Object.assign(Error("Server rejected the request"), { failureKind: "definitive", requestSent: true });
 
 async function providerSetup(overrides = {}, notifications = null) {
   let state, show = true, tick, foreground;
   const calls = [];
   const realInterval = global.setInterval, realClear = global.clearInterval, realNow = Date.now;
-  let now = 1_000_000;
+  let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false;
+  const serverRows = new Map(), values = new Map();
+  const storage = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); } };
   global.setInterval = (fn) => { tick = fn; return 1; };
   global.clearInterval = () => {};
   Date.now = () => now;
   const service = {
     getOpenActivitySession: async () => null,
-    startActivitySession: async (params) => { calls.push(["start", params]); return "session-1"; },
+    startActivitySession: async (params) => { calls.push(["start", params]); return `bbbbbbbb-bbbb-4bbb-8bbb-${String(++serverIndex).padStart(12, "0")}`; },
     pauseActivitySession: async (id) => { calls.push(["pause",id]); },
     resumeActivitySession: async (id) => { calls.push(["resume",id]); },
     cancelActivitySession: async (id) => { calls.push(["cancel",id]); },
-    completeActivitySession: async (id) => { calls.push(["complete",id]); return result; },
+    completeActivitySession: async (id) => {
+      calls.push(["complete",id]); const target = serverRows.get(id).target_duration_seconds;
+      return { ...result, session_id: id, duration_seconds: target, minutes: Math.floor(target / 60) };
+    },
     ...overrides,
   };
+  // The fake SERVER boundary keeps SQL-style rows. The production journal,
+  // controller, writer and provider remain real; no controller decision is mocked.
+  const mapper = load("src/services/sessionService.ts", { "../../lib/supabase": { supabase: {} } }).mapActivitySessionRow;
+  const observe = () => ({ wallTimeMs: now, monotonicTimeMs: null, bootId: null });
+  function normalizeRow(source) {
+    const id = fixtureServerId(source.id), elapsed = source.elapsed_seconds ?? 0;
+    const status = source.status ?? "active";
+    const started = source.started_at ?? new Date(now - elapsed * 1000).toISOString();
+    return { user_id: PROVIDER_SCOPE.ownerId, task_id: null, subject_id: null, activity_type: "other", notes: null,
+      duration_seconds: 0, elapsed_seconds: elapsed, completed_at: null, credit_result: null, ...source, id,
+      started_at: started, last_resumed_at: status === "active" ? source.last_resumed_at ?? new Date(now).toISOString() : null,
+      paused_at: status === "paused" ? source.paused_at ?? new Date(now).toISOString() : null };
+  }
+  async function initialRows() {
+    if (loadedInitial) return;
+    const source = await service.getOpenActivitySession();
+    loadedInitial = true;
+    if (source) { const row = normalizeRow(source); serverRows.set(row.id, row); }
+  }
+  const elapsed = row => row.elapsed_seconds * 1000 + (row.status === "active" ? Math.max(0, now - Date.parse(row.last_resumed_at)) : 0);
+  service.createJournalSessionTransport = scope => ({
+    async start(setup) {
+      const id = fixtureServerId(await service.startActivitySession({ targetDurationSeconds: setup.targetSeconds,
+        activityType: setup.activityType, taskId: setup.taskId, subjectId: setup.subjectId, notes: setup.notes }));
+      const row = normalizeRow({ id, target_duration_seconds: setup.targetSeconds, activity_type: setup.activityType,
+        task_id: setup.taskId, subject_id: setup.subjectId, notes: setup.notes, status: "active", started_at: new Date(now).toISOString() });
+      serverRows.set(id, row); return id;
+    },
+    async pause(id) {
+      await service.pauseActivitySession(id);
+      const row = serverRows.get(id); row.elapsed_seconds = Math.floor(elapsed(row) / 1000);
+      row.status = "paused"; row.last_resumed_at = null; row.paused_at = new Date(now).toISOString();
+    },
+    async resume(id) {
+      await service.resumeActivitySession(id);
+      const row = serverRows.get(id); row.status = "active"; row.last_resumed_at = new Date(now).toISOString(); row.paused_at = null;
+    },
+    async cancel(id) {
+      await service.cancelActivitySession(id);
+      const row = serverRows.get(id); row.status = "cancelled"; row.completed_at = new Date(now).toISOString();
+    },
+    async complete(id) {
+      const row = serverRows.get(id);
+      if (row.status === "completed") return { sessionId: id, durationSeconds: row.duration_seconds, result: { ...row.credit_result, already_completed: true, goal_reached_now: false } };
+      const saved = { ...await service.completeActivitySession(id), session_id: id };
+      row.status = "completed"; row.duration_seconds = saved.duration_seconds; row.elapsed_seconds = saved.duration_seconds;
+      row.completed_at = new Date(now).toISOString(); row.credit_result = saved;
+      return { sessionId: id, durationSeconds: saved.duration_seconds, result: saved };
+    },
+    async readSession(id) { await initialRows(); return serverRows.has(id) ? mapper(serverRows.get(id), scope, observe()) : null; },
+    async readOpenSessions() {
+      await initialRows();
+      return { complete: true, sessions: [...serverRows.values()].filter(row => ["active", "paused"].includes(row.status)).map(row => mapper(row, scope, observe())) };
+    },
+  });
   const reloadProfile = async () => true;
+  const auth = { user: { id: PROVIDER_SCOPE.ownerId }, localOwner: { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId },
+    accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async () => ({ id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }) };
+  const flush = () => new Promise(resolve => setImmediate(resolve));
   const { TimerProvider, useTimer } = load("src/context/TimerContext.tsx", {
     "react-native": { Platform: { OS: "android" }, AppState: { addEventListener: (_, fn) => { foreground=fn; return { remove() {} }; } } },
     "expo": { isRunningInExpoGo: () => false },
+    "expo-modules-core": { uuid: { v4: () => `aaaaaaaa-aaaa-4aaa-8aaa-${String(++uuidIndex).padStart(12, "0")}` } },
+    "@react-native-async-storage/async-storage": storage,
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
     "../services/sessionService": service,
     "./UserContext": { useUser: () => ({ reloadProfile }) },
+    "./AuthContext": { useAuth: () => auth },
   });
   function Capture() { state = useTimer(); return null; }
   function Page() { return React.createElement("Page"); }
   function Harness() { return React.createElement(TimerProvider,null,React.createElement(Capture),show && React.createElement(Page)); }
   let renderer;
-  await act(async () => { renderer=create(React.createElement(Harness)); });
+  await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
     state: () => state, calls,
-    run: async (fn) => { await act(async () => fn(state)); },
-    advance: async (seconds) => { now += seconds*1000; await act(async () => tick?.()); },
+    run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
+    advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
     backgroundTime: (seconds) => { now += seconds*1000; },
-    foreground: async () => { await act(async () => foreground("active")); },
+    foreground: async () => { await act(async () => { foreground("active"); await flush(); }); },
+    background: async () => { await act(async () => { foreground("background"); await flush(); }); },
     page: async (visible) => { show=visible; await act(async () => renderer.update(React.createElement(Harness))); },
-    cleanup: async () => { await act(async () => renderer.unmount()); global.setInterval=realInterval; global.clearInterval=realClear; Date.now=realNow; },
+    cleanup: async () => { await act(async () => { renderer.unmount(); await flush(); }); global.setInterval=realInterval; global.clearInterval=realClear; Date.now=realNow; },
   };
 }
 
-test("provider blocks repeated starts and preserves failed setup for retry", async () => {
+test("provider blocks repeated starts and preserves an unknown start without reissuing it", async () => {
   const pending = deferred();
   let starts = 0;
   const ui = await providerSetup({ startActivitySession: () => { starts++; return starts === 1 ? pending.promise : Promise.resolve("retry-session"); } });
@@ -96,13 +173,17 @@ test("provider blocks repeated starts and preserves failed setup for retry", asy
   assert.equal(starts,1);
   assert.equal(ui.state().actionBusy,true);
   await ui.run(async () => { pending.reject(Error("Offline")); await first; });
-  assert.equal(ui.state().hasOpenSession,false);
-  assert.match(ui.state().actionError,/start your session/);
-  assert.equal(ui.state().actionBusy,false);
-  await ui.run((s) => s.startTimer(1800,"Read"));
-  assert.equal(starts,2);
   assert.equal(ui.state().hasOpenSession,true);
-  assert.equal(ui.state().actionError,null);
+  assert.equal(ui.state().awaitingStart,true);
+  assert.equal(ui.state().isRunning,false);
+  assert.match(ui.state().actionError,/Waiting to confirm/);
+  assert.equal(ui.state().actionBusy,false);
+  await ui.run((s) => s.retryAction());
+  await ui.run((s) => s.startTimer(1800,"Read"));
+  assert.equal(starts,1);
+  assert.equal(ui.state().hasOpenSession,true);
+  assert.equal(ui.state().duration,1800);
+  assert.equal(ui.state().awaitingStart,true);
   await ui.cleanup();
 });
 
@@ -155,11 +236,11 @@ test("closing rewards preserves completed summary and never re-awards", async ()
 
 test("failed completion remains visible and retries the same session ID", async () => {
   let attempts=0;
-  const ui=await providerSetup({ completeActivitySession: async(id)=>{ assert.equal(id,"session-1"); if (++attempts===1) throw Error("Offline"); return {...result,already_completed:true}; } });
+  const ui=await providerSetup({ completeActivitySession: async(id)=>{ assert.equal(id,SESSION_ID); if (++attempts===1) throw Error("Offline"); return {...result,already_completed:true}; } });
   await ui.run((s)=>s.startTimer(60));
   await ui.advance(61);
   assert.equal(ui.state().isCompleted,true);
-  assert.match(ui.state().actionError,/save your completed session/);
+  assert.match(ui.state().actionError,/Waiting to confirm your progress/);
   await ui.run((s)=>s.retryCompletion());
   assert.equal(attempts,2);
   assert.equal(ui.state().rewardsVisible,false);
@@ -167,17 +248,43 @@ test("failed completion remains visible and retries the same session ID", async 
   await ui.cleanup();
 });
 
-test("failed end preserves the open session; Retry repeats cancellation", async () => {
+test("unknown End preserves its stop intent and retries cancellation against the same owned server session", async () => {
   let attempts=0;
   const ui=await providerSetup({ cancelActivitySession: async()=>{ if(++attempts===1) throw Error("Offline"); } });
   await ui.run((s)=>s.startTimer(1800));
   await ui.run((s)=>s.resetTimer());
-  assert.equal(ui.state().hasOpenSession,true);
-  assert.equal(ui.state().isRunning,true);
+  assert.equal(ui.state().hasOpenSession,false);
+  assert.equal(ui.state().isRunning,false);
+  assert.equal(ui.state().endingSession,true);
+  assert.equal(ui.state().unsyncedSessionCount,1);
   await ui.run((s)=>s.retryAction());
   assert.equal(attempts,2);
   assert.equal(ui.state().hasOpenSession,false);
+  assert.equal(ui.state().isRunning,false);
+  assert.equal(ui.state().endingSession,false);
+  assert.equal(ui.state().unsyncedSessionCount,0);
+  assert.equal(ui.calls.filter(([name])=>name==="complete").length,0);
   await ui.cleanup();
+});
+
+test("provider shows immediate Pause and Resume while awaiting confirmation, and a durable End hides the active timer", async () => {
+  const pauseGate=deferred(),resumeGate=deferred(),cancelGate=deferred();
+  const ui=await providerSetup({pauseActivitySession:async()=>pauseGate.promise,resumeActivitySession:async()=>resumeGate.promise,cancelActivitySession:async()=>cancelGate.promise});
+  try {
+    await ui.run(s=>s.startTimer(1800));let pauseRequest;
+    await ui.run(s=>{pauseRequest=s.pauseTimer();});assert.equal(ui.state().isRunning,false);assert.equal(ui.state().interactionKind,"pause");
+    const remaining=ui.state().timeLeft;await ui.advance(2);assert.equal(ui.state().timeLeft,remaining);
+    await ui.run(async()=>{pauseGate.resolve();await pauseRequest;});assert.equal(ui.state().interactionKind,null);
+    assert.equal(ui.state().timeLeft,remaining, 'successful Pause cannot replace the frozen numeral with the later server value');
+    let resumeRequest;await ui.run(s=>{resumeRequest=s.resumeTimer();});assert.equal(ui.state().isRunning,true);assert.equal(ui.state().interactionKind,"resume");
+    await ui.advance(2); assert.equal(ui.state().timeLeft,remaining-2);
+    await ui.run(async()=>{resumeGate.resolve();await resumeRequest;});assert.equal(ui.state().interactionKind,null);
+    assert.equal(ui.state().timeLeft,remaining-2, 'successful Resume cannot rewind its running preview');
+    let endRequest;await ui.run(s=>{endRequest=s.resetTimer();});
+    assert.equal(ui.state().endingSession,true);assert.equal(ui.state().hasOpenSession,false);assert.equal(ui.state().isRunning,false);
+    assert.equal(ui.state().sessionSummary,null);assert.equal(ui.calls.filter(call=>call[0]==="complete").length,0);
+    await ui.run(async()=>{cancelGate.resolve();await endRequest;});assert.equal(ui.state().endingSession,false);
+  } finally {pauseGate.resolve();resumeGate.resolve();cancelGate.resolve();await ui.cleanup();}
 });
 
 test("restored paused sessions cannot be replaced by Start", async () => {
@@ -204,6 +311,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   let state = {
     duration:1800,timeLeft:1800,isRunning:false,isCompleted:false,hasOpenSession:false,
     isRestoring:false,restoreError:false,actionBusy:false,actionError:null,rewardsVisible:false,
+    endingSession:false,awaitingStart:false,syncStatus:"idle",unsyncedSessionCount:0,
     linkedTaskId:null,targetAttributeId:1,activityType:"other",sessionSummary:null,
     startTimer: async(...args)=>{calls.push(["start",...args]);},
     pauseTimer: async()=>{calls.push(["pause"]);}, resumeTimer: async()=>{calls.push(["resume"]);},
@@ -305,10 +413,10 @@ test("timer nodes stay mounted; running and paused share a flexible centred layo
 test("saved completion displays focused duration while unsaved completion stays at zero",async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,duration:1800});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,0);
-  assert.match(ui.output(),/Saving your session/);
+  assert.match(ui.output(),/Saved on this phone.*Waiting to sync/);
   await ui.update({actionError:"Couldn’t save completion"});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,0);
-  assert.match(ui.output(),/Completion needs attention/);
+  assert.match(ui.output(),/Saved on this phone.*Waiting to sync/);
   await ui.update({actionError:null,sessionSummary:{durationSeconds:1859,minutesSpent:30,xpEarned:30,goldEarned:5,questTitle:"Read"}});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,1859);
   assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
@@ -316,6 +424,37 @@ test("saved completion displays focused duration while unsaved completion stays 
   await ui.update({isCompleted:false,hasOpenSession:true,isRunning:false,sessionSummary:null,timeLeft:900});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,900);
   await ui.cleanup();
+});
+
+test("unknown timing changes disable new timing controls while retry and End remain available",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,syncStatus:"waiting",actionError:"Waiting to confirm your saved session state."});
+  try {
+    assert.equal(ui.button("Pause").props.disabled,true);
+    assert.equal(ui.button("End session").props.disabled,false);
+    assert.equal(ui.button("Retry").props.disabled,false);
+    await ui.press("Retry"); assert.deepEqual(ui.calls.filter(call=>call[0]==="retry"),[["retry"]]);
+  } finally {await ui.cleanup();}
+});
+
+test("a pending End keeps timing controls disabled and offers retry without claiming completion",async()=>{
+  const ui=await screenSetup({hasOpenSession:false,isRunning:false,endingSession:true,syncStatus:"waiting",actionError:"Waiting to confirm your saved session state.",timeLeft:0});
+  try {
+    assert.match(ui.output(),/Session ended/);assert.match(ui.output(),/Your stop is saved on this phone/);
+    assert.equal(ui.button("Start").props.disabled,true);
+    assert.equal(ui.button("End session"),undefined);
+    assert.equal(ui.button("Retry ending session").props.disabled,false);
+  } finally {await ui.cleanup();}
+});
+
+test("rejected saved completion can be acknowledged without claiming a reward or retrying completion",async()=>{
+  const ui=await screenSetup({isCompleted:true,timeLeft:0,syncStatus:"rejected"});
+  try {
+    assert.match(ui.output(),/Your account did not accept it/);
+    assert.doesNotMatch(ui.output(),/Waiting to sync/);
+    assert.ok(ui.button("Keep record and continue"));
+    await ui.press("Keep record and continue");
+    assert.deepEqual(ui.calls.filter(call=>["reset","complete"].includes(call[0])),[["reset"]]);
+  } finally {await ui.cleanup();}
 });
 
 test("quest setup is compact, keeps its association during loading, and never starts automatically",async()=>{
@@ -406,7 +545,7 @@ test("seconds survive countdown boundaries, pause, minimise and completion once"
 
 test("restoration retains sub-minute and mixed durations and legacy activity",async()=>{
   for(const [seconds,elapsed,status] of [[30,7,"paused"],[930,61,"paused"],[930,61,"active"]]){
-    const ui=await providerSetup({getOpenActivitySession:async()=>({id:"saved",task_id:null,subject_id:1,activity_type:"general",target_duration_seconds:seconds,elapsed_seconds:elapsed,status,notes:"",last_resumed_at:new Date(1_000_000).toISOString()})});
+    const ui=await providerSetup({getOpenActivitySession:async()=>({id:"saved",task_id:null,subject_id:1,activity_type:"general",target_duration_seconds:seconds,elapsed_seconds:elapsed,status,notes:"",last_resumed_at:new Date(PROVIDER_NOW).toISOString()})});
     assert.equal(ui.state().duration,seconds);
     assert.equal(ui.state().timeLeft,seconds-elapsed);
     assert.equal(ui.state().activityType,"general");
@@ -732,11 +871,73 @@ test("provider start/pause/resume/end and completion replace or clear both real 
     assert.equal(mock.cancellations.at(-1), "life-rpg-completion-timer");
   } finally { await ui.cleanup(); }
 });
+
+test("backgrounding restores a dismissed ongoing banner without replacing the finish alert, and never restores it after Pause or End", async () => {
+  const mock = notificationMock(), ui = await providerSetup({}, mock.api);
+  const banners = () => mock.requests.filter(r => r.identifier === 'life-rpg-ongoing-timer').length;
+  const finish = () => mock.requests.filter(r => r.identifier === 'life-rpg-completion-timer').length;
+  try {
+    await ui.run(s => s.startTimer(120, 'Read'));
+    const initial = banners(), alarms = finish();
+    await mock.api.dismissNotificationAsync('life-rpg-ongoing-timer');
+    await ui.foreground(); await ui.background();
+    assert.equal(banners(), initial + 1); assert.equal(finish(), alarms);
+    await ui.foreground(); await ui.background(); assert.equal(banners(), initial + 2);
+    await ui.run(s => s.pauseTimer()); const paused = banners();
+    await ui.background(); assert.equal(banners(), paused);
+    await ui.run(s => s.resumeTimer()); await ui.run(s => s.resetTimer()); const ended = banners();
+    await ui.background(); assert.equal(banners(), ended);
+  } finally { await ui.cleanup(); }
+});
+
+test("Start keeps its Pause label visible while confirmation is in flight", async () => {
+  const ui = await screenSetup({ hasOpenSession:true, isRunning:true, awaitingStart:true, interactionKind:'start', actionBusy:true });
+  try {
+    assert.ok(ui.button('Pause')); assert.equal(ui.button('Pause').props.disabled, true);
+    assert.equal(ui.root().findAllByType('Spinner').length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test("normal pending End never inserts the offline retry block into its opening sheet", async () => {
+  const ui = await screenSetup({ hasOpenSession:false, endingSession:true, actionBusy:true, actionError:'Waiting to confirm your saved session state.' });
+  try {
+    assert.match(ui.output(), /Your focus has stopped/); assert.doesNotMatch(ui.output(), /Your stop is saved on this phone/);
+    assert.equal(ui.button('Retry ending session'), undefined);
+    await ui.update({actionBusy:false}); assert.ok(ui.button('Retry ending session'));
+  } finally { await ui.cleanup(); }
+});
+
+test("completion opens one sheet at zero and keeps it open while the receipt arrives", async () => {
+  const ui = await screenSetup({ hasOpenSession:true, isRunning:true, timeLeft:0, duration:60 });
+  try {
+    const popup = ui.root().findByType('CompletionPopup');
+    assert.equal(popup.props.visible,true); assert.equal(popup.props.pending,true);
+    await ui.update({hasOpenSession:false,isCompleted:true,actionBusy:true,syncStatus:'waiting'});
+    assert.equal(ui.root().findByType('CompletionPopup'),popup); assert.equal(popup.props.visible,true);
+    await ui.update({actionBusy:false,syncStatus:'saved',sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0},rewardsVisible:true});
+    assert.equal(ui.root().findByType('CompletionPopup'),popup);
+    assert.equal(popup.props.visible,true); assert.equal(popup.props.pending,false);
+  } finally { await ui.cleanup(); }
+});
+test("saving an End request clears alerts immediately and never completes while cancellation is pending", async () => {
+  const mock = notificationMock(), ui = await providerSetup({ cancelActivitySession: async () => { throw Error("Poor signal"); } }, mock.api);
+  try {
+    await ui.run(s => s.startTimer(30));
+    const scheduled = mock.requests.length;
+    await ui.run(s => s.resetTimer());
+    assert.equal(ui.state().endingSession, true); assert.equal(ui.state().unsyncedSessionCount, 1);
+    assert.deepEqual(mock.cancellations.slice(-2), ["life-rpg-ongoing-timer", "life-rpg-completion-timer"]);
+    await ui.advance(35);
+    assert.equal(ui.state().isCompleted, false); assert.equal(ui.state().endingSession, true);
+    assert.equal(mock.requests.length, scheduled);
+    assert.equal(ui.calls.filter(([name]) => name === "complete").length, 0);
+  } finally { await ui.cleanup(); }
+});
 test("restore replaces active alerts and clears paused/absent stale alerts", async () => {
   for (const status of ["active", "paused", null]) {
     const mock = notificationMock(), ui = await providerSetup({ getOpenActivitySession: async () => status && ({
       id: "saved", task_id: null, subject_id: null, activity_type: "other", target_duration_seconds: 930,
-      elapsed_seconds: 31, status, notes: "", last_resumed_at: new Date(1_000_000).toISOString(),
+      elapsed_seconds: 31, status, notes: "", last_resumed_at: new Date(PROVIDER_NOW).toISOString(),
     }) }, mock.api);
     try {
       assert.deepEqual(mock.cancellations.slice(-2), ["life-rpg-ongoing-timer", "life-rpg-completion-timer"]);
@@ -807,7 +1008,7 @@ test("duration changes cannot abandon an in-flight or failed completion", async 
     await ui.run(s => s.setDurationInMinutes(30));
     assert.equal(ui.state().isCompleted, true);
     assert.equal(ui.state().duration, 1);
-    assert.match(ui.state().actionError, /save/);
+    assert.match(ui.state().actionError, /Waiting to confirm your progress/);
   } finally { await ui.cleanup(); }
 });
 
@@ -850,16 +1051,26 @@ test("saved completion carries independent XP banks and server goal credit witho
 
 test("compact Session chips select the saved Life area without touching quest or duration", async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
-  await ui.press("Select Study");
+  await ui.press("Select Learning");
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
-  assert.equal(ui.button("Select Study").props.accessibilityState.selected,true);
+  assert.equal(ui.button("Select Learning").props.accessibilityState.selected,true);
   await ui.press("Use 60 minutes");
   assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
   await ui.update({duration:3600,timeLeft:3600});
   await ui.press("Start");
   assert.deepEqual(ui.calls.at(-1),["start",3600,undefined]);
   await ui.cleanup();
+});
+
+test("Session category chips share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
+  const ui=await screenSetup({targetAttributeId:3}, {subjects:[{id:1,title:"General"},{id:2,title:"Fitness & Health"},{id:3,title:"Grooming & Vitality"},{id:4,title:"Work"},{id:5,title:"Creative practice"}]});
+  try {
+    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Select Wellbeing");
+    assert.equal(choices.length,1);assert.equal(ui.button("Select Wellbeing").props.accessibilityState.selected,true);
+    await ui.press("Select Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
+    assert.ok(ui.button("Select Work & projects"));assert.ok(ui.button("Select Creativity"));
+  } finally {await ui.cleanup();}
 });
 
 test("completed Session never labels unassigned character XP as a Life-area award", async()=>{
@@ -893,10 +1104,15 @@ test("five visible Life areas need no More sheet; additional areas remain select
 
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
+  const scrollResets=[];
+  const CompletionScroll=React.forwardRef((props,ref)=>{
+    React.useImperativeHandle(ref,()=>({scrollTo:position=>scrollResets.push(position)}),[]);
+    return React.createElement('Scroll',props,props.children);
+  });
   const Modal=load("src/components/LevelUpModal.tsx",{
     "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
+    "@gorhom/bottom-sheet":{BottomSheetScrollView:CompletionScroll},
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./ProgressRing":host("Ring"),
@@ -905,16 +1121,35 @@ test("completion message shows saved exact duration and awards; Done only closes
     "expo-haptics":{},
   }).default;
   let renderer;
-  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
+  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,sessionId:'result-a',durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
   const text=node=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   try {
     const sheet=renderer.root.findByType("PopupSheet");
     assert.equal(sheet.props.label,"session completion");
-    assert.equal(sheet.props.compact,true);
+    assert.equal(sheet.props.expanded,true);
+    assert.equal(sheet.props.heightRatio,0.85);
+    assert.equal(sheet.props.motionMode,'timed');
     assert.equal(sheet.props.maxHeightRatio,0.85);
+    assert.equal(sheet.props.footer,undefined, 'Done must not float above or cover result content');
+    const scroll=renderer.root.findByType('Scroll');
+    assert.equal(scroll.children.at(-1).findByType('Button').props.accessibilityRole,'button');
+    assert.equal(text(scroll.children.at(-1)),'Done');
+    assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',pending:true,recovered:true,durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
+    assert.match(text(renderer.root),/Session finished.*Saving your progress/);
+    assert.doesNotMatch(text(renderer.root),/Character XP|Progress saved|Recorded/);
+    assert.doesNotMatch(text(renderer.root),/now saved to your account/);
+    assert.equal(sheet.props.heightRatio,0.85, 'receipt arrival cannot change the sheet snap point');
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',recovered:true,completedAtMs:Date.UTC(2026,9,11,1,23),durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
+    assert.match(text(renderer.root),/Earlier session saved.*Finished 11 Oct 2026/);
+    assert.match(text(renderer.root),/now saved to your account/);
+    assert.equal(scrollResets.length,1, 'receipt arrival must preserve scroll rather than jump to the top');
+    await act(async()=>renderer.root.findByType('Scroll').props.onLayout()); assert.equal(scrollResets.length,1);
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
+    assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     await act(async()=>renderer.root.findByType("Button").props.onPress());
     assert.deepEqual(calls,["close"]);
   } finally {await act(async()=>renderer.unmount());}
@@ -1023,7 +1258,7 @@ test("Quick Start atomically replaces stale quest draft, blocks rapid starts, an
     await ui.run(s => {start=s.startFreeTimer(1859,3);void s.startFreeTimer(900,4);});
     assert.equal(count,1);
     assert.deepEqual(drafts[0], {targetDurationSeconds:1859,activityType:"other",taskId:null,subjectId:3,notes:""});
-    await ui.run(async () => {pending.reject(Error("Offline")); assert.equal(await start,false);});
+    await ui.run(async () => {pending.reject(definitiveServerRejection()); assert.equal(await start,false);});
     assert.equal(ui.state().duration,1859);
     assert.equal(ui.state().targetAttributeId,3);
     assert.equal(ui.state().linkedTaskId,null);
@@ -1094,7 +1329,7 @@ test("Completion appears once in an animated sheet and exits Session only after 
     assert.equal(ui.calls.filter(c=>c[0]==="reset"||c[0]==="complete").length,0);
   }finally{await ui.cleanup();}
 });
-test("Successful early End shows a cancellation popup; failed End keeps the active session without a success notice",async()=>{
+test("Successful early End shows a stop notice and closes it with Session; an unsaved End keeps the active session",async()=>{
   const ui=await screenSetup({hasOpenSession:true,isRunning:true});
   try {
     await ui.press("End session");
@@ -1104,9 +1339,9 @@ test("Successful early End shows a cancellation popup; failed End keeps the acti
     await ui.update({hasOpenSession:false,isRunning:false,actionBusy:false,actionError:null});
     const popup=ui.root().findAllByType("Sheet").find(s=>s.props.label==="session ended");
     assert.ok(popup);
-    assert.match(ui.output(),/No focus time or XP were recorded/);
+    assert.match(ui.output(),/Ending early does not earn focus time or XP/);
     await act(async()=>popup.props.onRequestClose());
-    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
     const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];
     await act(async()=>closingSheet.props.onDismiss());
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
@@ -1120,6 +1355,36 @@ test("Swipe completion dismissal also exits once when close and native dismissal
     await act(async()=>{popup.props.onClose();popup.props.onDismiss();popup.props.onDismiss();});
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
   }finally{await ui.cleanup();}
+});
+
+test("Pause and Resume feedback keeps controls readable without a spinner, confirmation flash or phase fade",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:false,actionBusy:true,interactionKind:"pause",syncStatus:"waiting"});
+  try {
+    assert.ok(ui.button("Resume"));assert.equal(ui.root().findAllByType("Spinner").length,0);
+    assert.doesNotMatch(ui.output(),/Waiting to confirm/);
+    const fades=ui.animations.filter(animation=>animation.duration===280).length;
+    await ui.update({isRunning:true,interactionKind:"resume"});assert.ok(ui.button("Pause"));
+    assert.equal(ui.animations.filter(animation=>animation.duration===280).length,fades);
+    assert.equal(ui.root().findByProps({testID:"session-actions-motion"}).props.style[1].opacity.value,1);
+    await ui.update({actionBusy:false,interactionKind:null,actionError:"Waiting to confirm your saved session state."});
+    assert.match(ui.output(),/Waiting to confirm your saved session state/);
+  } finally {await ui.cleanup();}
+});
+
+test("a durable End opens its notice before confirmation and begins both dismissals together",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,duration:1800,timeLeft:827},{},true);
+  try {
+    await ui.press("End session");await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+    await ui.update({hasOpenSession:false,isRunning:false,endingSession:true,actionBusy:true,syncStatus:"waiting"});
+    const sheet=ui.root().findAllByType("Sheet").find(node=>node.props.label==="session ended");
+    assert.ok(sheet);assert.equal(sheet.props.motionMode,"timed");assert.doesNotMatch(ui.output(),/Waiting to confirm/);
+    await ui.press("Done ending session");
+    assert.ok(ui.animations.some(animation=>animation.toValue===-0.12),"Session exit starts before the sheet's dismissal callback");
+    assert.equal(ui.calls.filter(call=>call[0]==="dismiss").length,0);
+    await ui.finishExit();assert.equal(ui.calls.filter(call=>call[0]==="dismiss").length,1);
+    const closingSheet=ui.root().findAll(node=>node.props.label==="session ended"&&node.props.visible===false)[0];
+    await act(async()=>closingSheet.props.onDismiss());assert.equal(ui.calls.filter(call=>call[0]==="dismiss").length,1);
+  } finally {await ui.cleanup();}
 });
 
 test("Ended notice retains the running/paused screen and exact countdown through popup and screen dismissal",async()=>{
@@ -1176,7 +1441,7 @@ test("guided Start owns its exact free draft, blocks duplicates and retains meta
   assert.equal(readSuggestedFocus(starts[0][1].notes).title, focus.title);
   await ui.advance(601);
   assert.equal(ui.state().sessionSummary.suggestion.title, focus.title);
-  assert.equal(ui.state().sessionSummary.sessionId, "session-1");
+  assert.equal(ui.state().sessionSummary.sessionId, SESSION_ID);
   assert.equal(ui.state().sessionSummary.questTitle, focus.title);
   await ui.run(s => { s.clearCompletionModal(); s.acknowledgeSummary(); });
   assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
@@ -1193,13 +1458,13 @@ test("restored guided sessions retain their instruction and completion title", a
   await ui.advance(11);
   assert.equal(ui.state().sessionSummary.questTitle,focus.title);
   assert.equal(ui.state().sessionSummary.suggestion.instruction,focus.instruction);
-  assert.equal(ui.state().sessionSummary.sessionId,"restored-guided");
+  assert.equal(ui.state().sessionSummary.sessionId,fixtureServerId("restored-guided"));
   await ui.cleanup();
 });
 
 test("guided failure keeps the draft for exact retry and cannot replace a paused session", async () => {
   let attempts=0;
-  const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw Error("Offline");return "guided-retry";}});
+  const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw definitiveServerRejection();return "guided-retry";}});
   const {suggestedFocus,readSuggestedFocus}=load("src/constants/guidedQuests.ts",{});
   const focus=suggestedFocus("review-topic",true);
   await ui.run(async s=>assert.equal(await s.startSuggestedTimer(focus,null),false));
@@ -1216,7 +1481,7 @@ test("guided failure keeps the draft for exact retry and cannot replace a paused
 
 test("custom suggested durations own exact metadata through start, retry, restoration and completion",async()=>{
  const api=load('src/constants/guidedQuests.ts',{}),focus={...api.suggestedFocus('review-topic'),seconds:2717};let attempts=0;
- const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw Error('Offline');return 'custom-guided';}});
+ const ui=await providerSetup({startActivitySession:async()=>{if(++attempts===1)throw definitiveServerRejection();return 'custom-guided';}});
  try{
   for(const seconds of [0,28801,1.5])await ui.run(async s=>assert.equal(await s.startSuggestedTimer({...focus,seconds},2),false));assert.equal(attempts,0);
   await ui.run(async s=>assert.equal(await s.startSuggestedTimer({...focus,title:'Uncurated title'},2),false));
@@ -1224,7 +1489,7 @@ test("custom suggested durations own exact metadata through start, retry, restor
   await ui.run(s=>s.retryAction());assert.equal(ui.state().duration,2717);assert.equal(api.readSuggestedFocus(ui.state().notes).seconds,2717);
   await ui.advance(2718);assert.equal(ui.state().sessionSummary.suggestion.seconds,2717);
  }finally{await ui.cleanup();}
- const restored=await providerSetup({getOpenActivitySession:async()=>({id:'custom-restored',status:'paused',task_id:null,subject_id:2,activity_type:'other',notes:api.encodeSuggestedFocus(focus),target_duration_seconds:2717,duration_seconds:2717,remaining_seconds:1900})});
+ const restored=await providerSetup({getOpenActivitySession:async()=>({id:'custom-restored',status:'paused',task_id:null,subject_id:2,activity_type:'other',notes:api.encodeSuggestedFocus(focus),target_duration_seconds:2717,elapsed_seconds:817})});
  try{assert.equal(api.readSuggestedFocus(restored.state().notes).seconds,2717);assert.equal(restored.state().duration,2717);}finally{await restored.cleanup();}
 });
 

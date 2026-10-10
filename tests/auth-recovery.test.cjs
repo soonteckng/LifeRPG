@@ -22,6 +22,7 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/OfflineSessionRecovery")) return props => React.createElement("OfflineRecovery", props);
       if (name.endsWith("/FeatureTour")) return { FeatureTourProvider: props => props.children };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
@@ -432,6 +433,94 @@ test("root gate renders recovery before mounting account or onboarding providers
       assert.equal(accountMounts, 0);
     } finally { await act(async () => renderer.unmount()); }
   }
+});
+
+async function rootAdmissionScreen(initial) {
+  let auth = initial, revision = 0, renderer;
+  const counts = { timerMounts: 0, timerUnmounts: 0, userMounts: 0, questMounts: 0 };
+  let timerSequence = 0;
+  const Stack = host("Stack");
+  Stack.Screen = host("Route");
+  Stack.Protected = function Protected({ guard, children }) { return guard ? children : null; };
+  const router = { replace() {}, canGoBack: () => false };
+  function TimerProvider({ children }) {
+    const [identity] = React.useState(() => ++timerSequence);
+    React.useEffect(() => { counts.timerMounts++; return () => { counts.timerUnmounts++; }; }, []);
+    return React.createElement("Timer", { identity }, children);
+  }
+  function UserProvider({ children }) {
+    React.useEffect(() => { counts.userMounts++; }, []);
+    return children;
+  }
+  function QuestProvider({ children }) {
+    React.useEffect(() => { counts.questMounts++; }, []);
+    return children;
+  }
+  const Layout = load("src/app/_layout.tsx", {
+    "expo-router": { Stack, usePathname: () => "/", useRouter: () => router },
+    "react-native": { ...native, Platform: { OS: "android", constants: { reactNativeVersion: { major: 0, minor: 86 } } }, BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    "react-native-gesture-handler": { GestureHandlerRootView: host("Gesture") },
+    "expo-constants": { executionEnvironment: "storeClient" },
+    "../components/PersonalUI": personalUI,
+    "../components/AuthScreen": host("Login"), "../components/RecoveryScreen": host("Recovery"),
+    "../components/OfflineSessionRecovery": host("OfflineRecovery"),
+    "../components/LaunchIntro": function Intro({ children }) { return children; }, "../components/GlobalRewardListener": host("Reward"),
+    "../context/AuthContext": { AuthProvider: function Auth({ children }) { return children; }, useAuth: () => auth },
+    "../context/UserContext": { UserProvider, useUser: () => ({ profile: { id: auth.user?.id ?? auth.localOwner?.id ?? "", onboarding_completed: true }, profileLoading: false, profileError: false, reloadProfile: async () => true }) },
+    "../context/TimerContext": { TimerProvider }, "../context/QuestContext": { QuestProvider },
+    "../hooks/useReducedMotion": { useReducedMotion: () => false },
+    "../utils/sessionTransition": { traceSession() {}, sessionNativeOptions: () => ({}), secondaryNativeOptions: () => ({}) },
+  }).default;
+  await act(async () => { renderer = create(React.createElement(Layout, { revision })); });
+  return { counts, root: () => renderer.root,
+    update: next => act(async () => { auth = { ...auth, ...next }; renderer.update(React.createElement(Layout, { revision: ++revision })); }),
+    cleanup: () => act(async () => renderer.unmount()) };
+}
+const localAuthSnapshot = () => ({ user: null, localOwner: { id: "local-owner", backendId: "fixture.supabase.co" }, loading: false,
+  recovery: "none", accessMode: "local-only", admissionEpoch: 1, sessionError: false,
+  retrySessionVerification: async () => {}, signOut: async () => ({ error: null }) });
+
+test("root admits a local-only owner with no verified user and keeps editable tabs and reward listener absent", async () => {
+  const ui = await rootAdmissionScreen({ ...localAuthSnapshot(), sessionError: true });
+  try {
+    assert.equal(ui.root().findAllByType("OfflineRecovery").length, 1);
+    assert.equal(ui.root().findAllByType("Login").length, 0); assert.equal(ui.root().findAllByType("Recovery").length, 0);
+    assert.equal(ui.root().findAllByType("Stack").length, 0); assert.equal(ui.root().findAllByType("Reward").length, 0);
+    assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.questMounts, 0);
+  } finally { await ui.cleanup(); }
+});
+test("root password-recovery states override even an otherwise eligible local owner before timer mounts", async () => {
+  for (const recovery of ["checking", "ready", "invalid", "success"]) {
+    const ui = await rootAdmissionScreen({ ...localAuthSnapshot(), recovery });
+    try {
+      assert.equal(ui.root().findAllByType("Recovery").length, 1); assert.equal(ui.root().findAllByType("OfflineRecovery").length, 0);
+      assert.equal(ui.counts.timerMounts, 0); assert.equal(ui.counts.userMounts, 0); assert.equal(ui.counts.questMounts, 0);
+    } finally { await ui.cleanup(); }
+  }
+});
+test("same-owner local and online transitions preserve the mounted timer provider and its session identity", async () => {
+  const ui = await rootAdmissionScreen(localAuthSnapshot());
+  try {
+    const identity = ui.root().findByType("Timer").props.identity;
+    await ui.update({ user: { id: "local-owner" }, localOwner: null, accessMode: "online" });
+    assert.equal(ui.root().findAllByType("Stack").length, 1); assert.equal(ui.root().findAllByType("OfflineRecovery").length, 0);
+    assert.equal(ui.root().findByType("Timer").props.identity, identity); assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.timerUnmounts, 0);
+    await ui.update({ user: null, localOwner: { id: "local-owner", backendId: "fixture.supabase.co" }, accessMode: "local-only" });
+    assert.equal(ui.root().findAllByType("OfflineRecovery").length, 1); assert.equal(ui.root().findAllByType("Stack").length, 0);
+    assert.equal(ui.root().findByType("Timer").props.identity, identity); assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.timerUnmounts, 0);
+    assert.equal(ui.counts.userMounts, 1);
+  } finally { await ui.cleanup(); }
+});
+test("root replaces the timer on account switch and unmounts local recovery after signout", async () => {
+  const ui = await rootAdmissionScreen(localAuthSnapshot());
+  try {
+    const original = ui.root().findByType("Timer").props.identity;
+    await ui.update({ user: { id: "other-owner" }, localOwner: null, accessMode: "online", admissionEpoch: 2 });
+    assert.notEqual(ui.root().findByType("Timer").props.identity, original); assert.equal(ui.counts.timerMounts, 2); assert.equal(ui.counts.timerUnmounts, 1);
+    await ui.update({ user: null, localOwner: null, accessMode: "signed-out", admissionEpoch: 3 });
+    assert.equal(ui.root().findAllByType("Login").length, 1); assert.equal(ui.root().findAllByType("Timer").length, 0);
+    assert.equal(ui.counts.timerUnmounts, 2);
+  } finally { await ui.cleanup(); }
 });
 
 test("LifeRPG intro covers signed-out and signed-in content and releases it after animation", async () => {

@@ -1,4 +1,4 @@
-import { orderFocusAreas } from "../utils/focusAreas";
+import { missingFocusAreas, orderFocusAreas } from "../utils/focusAreas";
 import { supabase } from "../../lib/supabase";
 
 export interface Subject {
@@ -134,11 +134,13 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 export async function getSubjects(): Promise<Subject[]> {
-  const { data, error } = await supabase
+  const ownerId = await getCurrentUserId();
+  let { data, error } = await supabase
     .from("subjects")
     .select(
       "id, title, level, current_xp, color_code",
     )
+    .eq("user_id", ownerId)
     .order("title", { ascending: true });
 
   if (error) {
@@ -146,6 +148,14 @@ export async function getSubjects(): Promise<Subject[]> {
     throw error;
   }
 
+  if (missingFocusAreas(data ?? []).length) {
+    if (await getCurrentUserId() !== ownerId) throw new Error("Account changed while loading focus areas.");
+    const repaired = await supabase.rpc("ensure_focus_area_catalog", { expected_owner: ownerId });
+    if (repaired.error) throw new Error("Couldn’t load the complete focus area list. Reconnect and try again.");
+    data = repaired.data;
+    if (!Array.isArray(data) || missingFocusAreas(data).length) throw new Error("The focus area list is incomplete.");
+  }
+  if (await getCurrentUserId() !== ownerId) throw new Error("Account changed while loading focus areas.");
   const subjects = (data ?? []).map((row) => ({
     id: Number(row.id),
     title: row.title,
