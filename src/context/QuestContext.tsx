@@ -57,7 +57,7 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   // Session completion is an external persistence event; reload its server-derived schedule and completion state.
   useEffect(() => { if (sessionSummary) void refresh(true); }, [sessionSummary, refresh]);
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(); });
+    const subscription = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(true); });
     return () => subscription.remove();
   }, [refresh]);
   const remove = useCallback((id: number) => {

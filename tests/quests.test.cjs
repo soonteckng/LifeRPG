@@ -610,6 +610,27 @@ test("quest completion during an old refresh queues a fresh server read", async 
   } finally { await act(async () => renderer.unmount()); }
 });
 
+test("quest foreground refresh retries after an in-flight offline failure instead of keeping its error", async () => {
+  let state, foreground;
+  const requests = [];
+  const {QuestProvider, useQuests} = load('src/context/QuestContext.tsx', {
+    'react-native': {AppState: {addEventListener: (_, fn) => {foreground = fn; return {remove(){}};}}},
+    './TimerContext': {useTimer: () => ({sessionSummary:null})},
+    '../services/taskService': {getTasks: () => new Promise((resolve, reject) => requests.push({resolve,reject})), getSubjects: async () => subjects},
+  });
+  function Capture(){state = useQuests();return null;}
+  let renderer;
+  try {
+    await act(async () => {renderer = create(React.createElement(QuestProvider,null,React.createElement(Capture)));});
+    let pending; await act(async () => {pending = state.refresh();});
+    await act(async () => foreground('active')); assert.equal(requests.length,1);
+    await act(async () => {requests[0].reject(Error('Connection was offline')); await pending; await new Promise(resolve => setImmediate(resolve));});
+    assert.equal(requests.length,2);
+    await act(async () => requests[1].resolve([task()]));
+    assert.equal(state.error,false); assert.equal(state.tasks[0].title,'Read a chapter');
+  } finally {if(renderer) await act(async () => renderer.unmount());}
+});
+
 test("Home updates on focus, foreground and a clock boundary; unfocused Home does not fetch", async () => {
   const RealDate = global.Date;
   const realTimeout = global.setTimeout, realClear = global.clearTimeout;
@@ -648,6 +669,31 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
     if (renderer) await act(async () => renderer.unmount());
     global.Date = RealDate; global.setTimeout = realTimeout; global.clearTimeout = realClear;
   }
+});
+
+test("Home foreground queues a fresh read after a pre-reconnection request fails", async () => {
+  const {singleFlight} = load('src/utils/singleFlight.ts', {});
+  let finishOld, foreground, reads = 0, loadError = false;
+  const oldRequest = new Promise(resolve => {finishOld = resolve;});
+  const refresh = singleFlight(async () => {
+    reads++;
+    if (reads === 1) { await oldRequest; loadError = true; }
+    else loadError = false;
+  });
+  const {useHomeLifecycle} = load('src/hooks/useHomeLifecycle.ts', {
+    'expo-router': {useFocusEffect: effect => React.useEffect(effect, [effect])},
+    'react-native': {AppState: {addEventListener: (_, fn) => {foreground = fn; return {remove(){}};}}},
+  });
+  function Capture(){useHomeLifecycle(refresh);return null;}
+  let renderer;
+  try {
+    await act(async () => {renderer = create(React.createElement(Capture));});
+    assert.equal(reads, 1);
+    await act(async () => foreground('active')); assert.equal(reads, 1);
+    await act(async () => {finishOld(); await new Promise(resolve => setImmediate(resolve));});
+    assert.equal(reads, 2, 'foreground cannot merely reuse the old offline result');
+    assert.equal(loadError, false);
+  } finally {if(renderer) await act(async () => renderer.unmount());}
 });
 
 

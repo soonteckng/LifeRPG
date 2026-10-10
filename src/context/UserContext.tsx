@@ -147,10 +147,19 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
     return profileRequest.current;
   }, [fetchProfile]);
-
-  useEffect(() => {
+  const invalidateProfileRequests = useCallback(() => {
     profileVersion.current++;
     profileRequest.current = null;
+  }, []);
+
+  // Home's child focus effect can join reloadProfile before our passive load
+  // effect runs. Invalidate ownership in the layout phase, before any such
+  // request starts, rather than making a successful child request obsolete.
+  useLayoutEffect(() => {
+    invalidateProfileRequests();
+    return invalidateProfileRequests;
+  }, [reloadProfile, invalidateProfileRequests]);
+  useEffect(() => {
     void reloadProfile();
   }, [reloadProfile]);
 
