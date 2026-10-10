@@ -840,7 +840,7 @@ async function quickHomeSetup(history = null, start = async () => true) {
     update:async(flags={},newOwner=owner,nextHistory=historyValue)=>{timerFlags=flags;owner=newOwner;historyValue=nextHistory;await act(async()=>renderer.update(React.createElement(Home)));},
     output:()=>JSON.stringify(renderer.toJSON()),cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
-test("Home Quick Start remembers the exact duration with a neutral free-focus area, ignores rapid taps and navigates only after success", async()=>{
+test("Home Quick Start opens immediately, retains the exact duration and neutral area, and ignores rapid taps", async()=>{
   let resolve; const pending=new Promise(r=>resolve=r);
   const ui=await quickHomeSetup({task_id:null,subject_id:2,duration_seconds:1859},()=>pending);
   try {
@@ -848,7 +848,7 @@ test("Home Quick Start remembers the exact duration with a neutral free-focus ar
     let first;
     await act(async()=>{first=ui.button("home-start-focus").props.onPress();ui.button("home-start-focus").props.onPress();});
     assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1859,1]]);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     assert.equal(ui.button("home-start-focus").props.disabled,true);
     await act(async()=>{resolve(true);await first;});
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
@@ -875,7 +875,7 @@ test("Home failure stays actionable and the area sheet cannot navigate or change
     assert.match(ui.output(),/Soon Teck/);assert.match(ui.output(),/30 min/);
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.match(ui.output(),/Retry start/);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     succeeded=true;
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);

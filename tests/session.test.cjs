@@ -252,8 +252,8 @@ test("unknown End preserves its stop intent and retries cancellation against the
   const ui=await providerSetup({ cancelActivitySession: async()=>{ if(++attempts===1) throw Error("Offline"); } });
   await ui.run((s)=>s.startTimer(1800));
   await ui.run((s)=>s.resetTimer());
-  assert.equal(ui.state().hasOpenSession,true);
-  assert.equal(ui.state().isRunning,true);
+  assert.equal(ui.state().hasOpenSession,false);
+  assert.equal(ui.state().isRunning,false);
   assert.equal(ui.state().endingSession,true);
   assert.equal(ui.state().unsyncedSessionCount,1);
   await ui.run((s)=>s.retryAction());
@@ -264,6 +264,23 @@ test("unknown End preserves its stop intent and retries cancellation against the
   assert.equal(ui.state().unsyncedSessionCount,0);
   assert.equal(ui.calls.filter(([name])=>name==="complete").length,0);
   await ui.cleanup();
+});
+
+test("provider shows immediate Pause and Resume while awaiting confirmation, and a durable End hides the active timer", async () => {
+  const pauseGate=deferred(),resumeGate=deferred(),cancelGate=deferred();
+  const ui=await providerSetup({pauseActivitySession:async()=>pauseGate.promise,resumeActivitySession:async()=>resumeGate.promise,cancelActivitySession:async()=>cancelGate.promise});
+  try {
+    await ui.run(s=>s.startTimer(1800));let pauseRequest;
+    await ui.run(s=>{pauseRequest=s.pauseTimer();});assert.equal(ui.state().isRunning,false);assert.equal(ui.state().interactionKind,"pause");
+    const remaining=ui.state().timeLeft;await ui.advance(2);assert.equal(ui.state().timeLeft,remaining);
+    await ui.run(async()=>{pauseGate.resolve();await pauseRequest;});assert.equal(ui.state().interactionKind,null);
+    let resumeRequest;await ui.run(s=>{resumeRequest=s.resumeTimer();});assert.equal(ui.state().isRunning,true);assert.equal(ui.state().interactionKind,"resume");
+    await ui.run(async()=>{resumeGate.resolve();await resumeRequest;});assert.equal(ui.state().interactionKind,null);
+    let endRequest;await ui.run(s=>{endRequest=s.resetTimer();});
+    assert.equal(ui.state().endingSession,true);assert.equal(ui.state().hasOpenSession,false);assert.equal(ui.state().isRunning,false);
+    assert.equal(ui.state().sessionSummary,null);assert.equal(ui.calls.filter(call=>call[0]==="complete").length,0);
+    await ui.run(async()=>{cancelGate.resolve();await endRequest;});assert.equal(ui.state().endingSession,false);
+  } finally {pauseGate.resolve();resumeGate.resolve();cancelGate.resolve();await ui.cleanup();}
 });
 
 test("restored paused sessions cannot be replaced by Start", async () => {
@@ -416,12 +433,12 @@ test("unknown timing changes disable new timing controls while retry and End rem
 });
 
 test("a pending End keeps timing controls disabled and offers retry without claiming completion",async()=>{
-  const ui=await screenSetup({hasOpenSession:true,isRunning:true,endingSession:true,syncStatus:"waiting",actionError:"Waiting to confirm your saved session state.",timeLeft:0});
+  const ui=await screenSetup({hasOpenSession:false,isRunning:false,endingSession:true,syncStatus:"waiting",actionError:"Waiting to confirm your saved session state.",timeLeft:0});
   try {
-    assert.match(ui.output(),/Ending your session\. Waiting to confirm/);
-    assert.equal(ui.button("Pause").props.disabled,true);
-    assert.equal(ui.button("End session").props.disabled,true);
-    assert.equal(ui.button("Retry").props.disabled,false);
+    assert.match(ui.output(),/Session ended/);assert.match(ui.output(),/Your stop is saved on this phone/);
+    assert.equal(ui.button("Start").props.disabled,true);
+    assert.equal(ui.button("End session"),undefined);
+    assert.equal(ui.button("Retry ending session").props.disabled,false);
   } finally {await ui.cleanup();}
 });
 
@@ -1236,7 +1253,7 @@ test("Completion appears once in an animated sheet and exits Session only after 
     assert.equal(ui.calls.filter(c=>c[0]==="reset"||c[0]==="complete").length,0);
   }finally{await ui.cleanup();}
 });
-test("Successful early End shows a cancellation popup; failed End keeps the active session without a success notice",async()=>{
+test("Successful early End shows a stop notice and closes it with Session; an unsaved End keeps the active session",async()=>{
   const ui=await screenSetup({hasOpenSession:true,isRunning:true});
   try {
     await ui.press("End session");
@@ -1246,9 +1263,9 @@ test("Successful early End shows a cancellation popup; failed End keeps the acti
     await ui.update({hasOpenSession:false,isRunning:false,actionBusy:false,actionError:null});
     const popup=ui.root().findAllByType("Sheet").find(s=>s.props.label==="session ended");
     assert.ok(popup);
-    assert.match(ui.output(),/No focus time or XP were recorded/);
+    assert.match(ui.output(),/Ending early does not earn focus time or XP/);
     await act(async()=>popup.props.onRequestClose());
-    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
     const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];
     await act(async()=>closingSheet.props.onDismiss());
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
@@ -1262,6 +1279,36 @@ test("Swipe completion dismissal also exits once when close and native dismissal
     await act(async()=>{popup.props.onClose();popup.props.onDismiss();popup.props.onDismiss();});
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
   }finally{await ui.cleanup();}
+});
+
+test("Pause and Resume feedback keeps controls readable without a spinner, confirmation flash or phase fade",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:false,actionBusy:true,interactionKind:"pause",syncStatus:"waiting"});
+  try {
+    assert.ok(ui.button("Resume"));assert.equal(ui.root().findAllByType("Spinner").length,0);
+    assert.doesNotMatch(ui.output(),/Waiting to confirm/);
+    const fades=ui.animations.filter(animation=>animation.duration===280).length;
+    await ui.update({isRunning:true,interactionKind:"resume"});assert.ok(ui.button("Pause"));
+    assert.equal(ui.animations.filter(animation=>animation.duration===280).length,fades);
+    assert.equal(ui.root().findByProps({testID:"session-actions-motion"}).props.style[1].opacity.value,1);
+    await ui.update({actionBusy:false,interactionKind:null,actionError:"Waiting to confirm your saved session state."});
+    assert.match(ui.output(),/Waiting to confirm your saved session state/);
+  } finally {await ui.cleanup();}
+});
+
+test("a durable End opens its notice before confirmation and begins both dismissals together",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,duration:1800,timeLeft:827},{},true);
+  try {
+    await ui.press("End session");await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+    await ui.update({hasOpenSession:false,isRunning:false,endingSession:true,actionBusy:true,syncStatus:"waiting"});
+    const sheet=ui.root().findAllByType("Sheet").find(node=>node.props.label==="session ended");
+    assert.ok(sheet);assert.equal(sheet.props.motionMode,"timed");assert.doesNotMatch(ui.output(),/Waiting to confirm/);
+    await ui.press("Done ending session");
+    assert.ok(ui.animations.some(animation=>animation.toValue===-0.12),"Session exit starts before the sheet's dismissal callback");
+    assert.equal(ui.calls.filter(call=>call[0]==="dismiss").length,0);
+    await ui.finishExit();assert.equal(ui.calls.filter(call=>call[0]==="dismiss").length,1);
+    const closingSheet=ui.root().findAll(node=>node.props.label==="session ended"&&node.props.visible===false)[0];
+    await act(async()=>closingSheet.props.onDismiss());assert.equal(ui.calls.filter(call=>call[0]==="dismiss").length,1);
+  } finally {await ui.cleanup();}
 });
 
 test("Ended notice retains the running/paused screen and exact countdown through popup and screen dismissal",async()=>{

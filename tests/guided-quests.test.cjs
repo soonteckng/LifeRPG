@@ -104,7 +104,7 @@ test('Home starter makes the task smaller and starts once with its title, instru
  await ui.press('Use 30 minutes');assert.match(text(ui.tree.root),/Review your notes/);assert.doesNotMatch(text(ui.tree.root),/A short review/);
  await setTenMinuteCustom(ui);assert.match(text(ui.tree.root),/A short review/);
  await act(async()=>{const button=ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start');void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,0);
+ assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,1);
  await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
 });
 test('suggested focus uses its selected block and falls back to General when Knowledge is missing',async()=>{
@@ -123,7 +123,7 @@ test('suggested focus uses its selected block and falls back to General when Kno
  assert.match(text(ui.tree.root),/Practise questions/);assert.doesNotMatch(text(ui.tree.root),/My assignment/);
  await ui.press('Start focusing');assert.deepEqual(calls,[['practice-question',1,2717]]);await ui.cleanup();
 });
-test('failed guided start retains the exact choice for Retry and never navigates on failure',async()=>{
+test('guided start opens immediately and retains its exact choice when the background start fails',async()=>{
  const calls=[];let opened=0;const Card=load('src/components/GuidedFocusCard.tsx',mocks({
   '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
   '../context/TimerContext':{useTimer:()=>({actionError:'Offline',startSuggestedTimer:async(focus,area)=>{calls.push({focus,area});return calls.length>1;}})},
@@ -133,9 +133,9 @@ test('failed guided start retains the exact choice for Retry and never navigates
  await ui.press('Set a custom focus duration');
  await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
  await ui.press('Use this duration');
- await ui.press('Start focusing');assert.equal(calls[0].focus.seconds,2717);assert.equal(opened,0);assert.match(text(ui.tree.root),/Offline/);
+ await ui.press('Start focusing');assert.equal(calls[0].focus.seconds,2717);assert.equal(opened,1);assert.match(text(ui.tree.root),/Offline/);
  await ui.update({...props,subjects:[{id:2,title:'Knowledge'}]});
- await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,1);await ui.cleanup();
+ await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,2);await ui.cleanup();
 });
 test('new users can choose free focus and retain their badge through the seven-page journey',async()=>{
  const db=storage(),routes=[],calls=[];
@@ -200,7 +200,7 @@ test('creating a personal quest keeps the suggestion and its Start; the quest re
  const questButton=ui.tree.root.findAllByType('Button').find(node=>node.props.testID==='home-quest-7');assert.ok(questButton);
  await act(async()=>questButton.props.onPress());assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.equal(starts,0);assert.deepEqual(routes,['/session']);routes.length=0;
  await act(async()=>{void ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start').props.onPress();});
- assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,[]);
+ assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,['/session']);
  await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.match(text(ui.tree.root),/Continue session/);await ui.cleanup();
 });
 

@@ -85,7 +85,7 @@ export default function HomeScreen() {
   const quickTitle = retainedAttempt?.title ?? quickArea?.title ?? "General";
   const activeSubject = subjects.find(area => area.id === timer.targetAttributeId);
   const activeArea = activeSubject?.title ?? "General";
-  const blocked = !!(timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !sessionSummary));
+  const blocked = !!(timer.actionBusy || timer.endingSession || timer.isRestoring || timer.restoreError || (timer.isCompleted && !sessionSummary));
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
@@ -170,9 +170,9 @@ export default function HomeScreen() {
     setQuickStarting(true);
     setQuickError(false);
     try {
-      const started = await timer.startFreeTimer(quickSeconds, quickAreaId);
-      if (started) openSession();
-      else setQuickError(true);
+      const request = timer.startFreeTimer(quickSeconds, quickAreaId);
+      openSession();
+      if (!await request) setQuickError(true);
     } catch { setQuickError(true); }
     finally { quickLock.current = false; setQuickStarting(false); }
   };
@@ -228,7 +228,7 @@ export default function HomeScreen() {
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
           />}
-          {(timer.restoreError || (timer.isCompleted && !sessionSummary)) && <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={[styles.primaryButton, { marginTop: 12 }]}>
+          {(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary)) && <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={[styles.primaryButton, { marginTop: 12 }]}>
             <Text style={styles.primaryButtonText}>Review saved session</Text>
           </TouchableOpacity>}
           </View></TourAnchor>

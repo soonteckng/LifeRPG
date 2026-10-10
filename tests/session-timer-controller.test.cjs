@@ -127,6 +127,54 @@ test('start, pause, resume and completion persist before their RPC and use saved
   assert.ok(controller.getSnapshot().receipt); await controller.dispose();
 });
 
+test('Start exposes immediate screen feedback while verification is pending without inventing a running session', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  const gate = deferred(); h.verifyHook = () => gate.promise;
+  const request = controller.start({ ...setup, targetSeconds: 120 });
+  assert.deepEqual(controller.getSnapshot().interaction, { kind: 'start', timeLeft: 120 });
+  assert.equal(controller.getSnapshot().record, null); assert.deepEqual(h.persisted().records, []);
+  h.advance(1000); await controller.tick(); assert.equal(controller.getSnapshot().interaction.timeLeft, 120);
+  assert.equal(h.calls.filter(call => call === 'start').length, 0); assert.equal(h.credits, 0);
+  gate.resolve(); assert.equal(await request, true);
+  assert.equal(controller.getSnapshot().interaction, null); assert.equal(controller.getSnapshot().record.state, 'running');
+  await controller.dispose();
+});
+
+test('Pause and Resume respond before verification while their timing preview stays outside the journal', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start({ ...setup, targetSeconds: 120 });
+  const before = clone(h.persisted()), pauseGate = deferred(); h.verifyHook = () => pauseGate.promise;
+  const pausing = controller.pause();
+  assert.deepEqual(controller.getSnapshot().interaction, { kind: 'pause', timeLeft: 120 });
+  assert.equal(controller.getSnapshot().record.state, 'running');
+  h.advance(2000); await controller.tick(); assert.equal(controller.getSnapshot().interaction.timeLeft, 120);
+  assert.deepEqual(h.persisted(), before); assert.equal(h.calls.filter(call => call === 'pause').length, 0);
+  pauseGate.resolve(); assert.equal(await pausing, true); assert.equal(controller.getSnapshot().interaction, null);
+  assert.equal(controller.getSnapshot().record.state, 'paused');
+  const paused = clone(h.persisted()), resumeGate = deferred(); h.verifyHook = () => resumeGate.promise;
+  const resuming = controller.resume();
+  assert.equal(controller.getSnapshot().interaction.kind, 'resume'); assert.equal(controller.getSnapshot().record.state, 'paused');
+  const remaining = controller.getSnapshot().interaction.timeLeft;
+  h.advance(2000); await controller.tick(); assert.equal(controller.getSnapshot().interaction.timeLeft, remaining - 2);
+  assert.deepEqual(h.persisted(), paused); assert.equal(h.credits, 0);
+  resumeGate.resolve(); assert.equal(await resuming, true); assert.equal(controller.getSnapshot().interaction, null);
+  assert.equal(controller.getSnapshot().record.state, 'running'); await controller.dispose();
+});
+
+test('a failed or uncertain timing action drops its preview and retains the established recovery rules', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
+  const before = clone(h.persisted()); h.online = false;
+  const unsent = controller.pause(); assert.equal(controller.getSnapshot().interaction.kind, 'pause');
+  assert.equal(await unsent, false); assert.equal(controller.getSnapshot().interaction, null);
+  assert.deepEqual(h.persisted(), before); assert.equal(controller.getSnapshot().record.state, 'running');
+  h.online = true; h.fail.pause = 'not_applied';
+  assert.equal(await controller.pause(), false); assert.equal(controller.getSnapshot().interaction, null);
+  const count = h.calls.filter(call => call === 'pause').length;
+  h.advance(5000); await controller.tick(); await controller.retry();
+  assert.equal(h.calls.filter(call => call === 'pause').length, count); assert.equal(h.credits, 0);
+  assert.equal(controller.getSnapshot().receipt, null); assert.equal(controller.getSnapshot().syncStatus, 'waiting');
+  await controller.dispose(); assert.equal(controller.getSnapshot().interaction, null);
+});
+
 test('a failed prepare write never reaches start RPC', async () => {
   const h = harness(), controller = h.create(); await controller.initialize();
   h.backend.beforeWrite = async (_, value) => { if (JSON.parse(value).records.length) throw failure('transient'); };

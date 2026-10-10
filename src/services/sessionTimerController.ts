@@ -60,6 +60,8 @@ export interface SessionTimerControllerSnapshot {
   rewardsVisible: boolean;
   ending: boolean;
   unsyncedSessionCount: number;
+  // A transient view of the tap, never a journal transition or reward authority.
+  interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
 }
 
 type ActionInput = JournalAction extends infer A ? A extends JournalAction
@@ -98,10 +100,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let lastAction: "start" | "pause" | "resume" | "cancel" | "complete" | null = null;
   let lastSetup: JournalSetup | null = null;
   let remoteRetryAtMs = 0, remoteRetryAttempts = 0;
+  let interaction: { kind: "start" | "pause" | "resume"; remainingMs: number; atMs: number } | null = null;
   let state: SessionTimerControllerSnapshot = {
     record: null, timeLeft: 0, restoring: true, busy: false, error: null,
     restoreError: false, syncStatus: "idle", receipt: null, rewardsVisible: false,
-    ending: false, unsyncedSessionCount: 0,
+    ending: false, unsyncedSessionCount: 0, interaction: null,
   };
 
   const live = () => !disposed && options.authority.currentEpoch() === externalEpoch
@@ -132,7 +135,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
 
   function publish(patch: Partial<SessionTimerControllerSnapshot> = {}): void {
     const record = live() ? selected() : null;
-    const timer = record ? deriveJournalTimer(record, now()) : null;
+    const clock = live() ? now() : null;
+    const timer = record && clock ? deriveJournalTimer(record, clock) : null;
+    const feedback = interaction && clock ? { kind: interaction.kind,
+      timeLeft: Math.max(0, Math.ceil((interaction.remainingMs - (interaction.kind === "resume" ? Math.max(0, clock.wallTimeMs - interaction.atMs) : 0)) / 1000)) } : null;
     const receipt = record?.sync.receipt ?? null;
     const waiting = !!record && (!!pending(record) || ["pending", "waiting_auth"].includes(record.sync.state));
     const syncStatus = !record ? "idle" : record.sync.state === "rejected" ? "rejected"
@@ -145,7 +151,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       timeLeft: timer ? Math.ceil(timer.remainingMs / 1000) : 0,
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
-      ending: !!record && pending(record)?.kind === "cancel", unsyncedSessionCount,
+      ending: !!record && pending(record)?.kind === "cancel", unsyncedSessionCount, interaction: feedback,
     };
     for (const listener of listeners) {
       try { listener(state); } catch { /* A view cannot break durable work. */ }
@@ -419,13 +425,15 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     publish({ busy: true, error: null });
     try { return (await work()) !== false; }
     catch (error) { await noteFailure(error, pending()?.operationId); return false; }
-    finally { locked = false; if (live()) publish({ busy: false }); }
+    finally { interaction = null; locked = false; if (live()) publish({ busy: false }); }
   }
 
   async function startInternal(setup: JournalSetup): Promise<boolean> {
     validateJournalSetup(setup);
     if (pending() || journal!.records.some(record => ["not_started", "running", "paused"].includes(record.state))) return false;
     lastSetup = copy(setup); lastAction = "start";
+    interaction = { kind: "start", remainingMs: setup.targetSeconds * 1000, atMs: now().wallTimeMs };
+    publish();
     // Verification is a read, before any start intent, so an offline attempt
     // cannot create an unsent legacy start that would be unsafe to retry.
     const verifiedScope = await verify();
@@ -482,6 +490,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       || (kind === "resume" && record.state !== "paused")
       || (kind === "cancel" && record.state !== "running" && record.state !== "paused")) return false;
     lastAction = kind;
+    if (kind !== "cancel") {
+      const tapClock = now();
+      interaction = { kind, remainingMs: deriveJournalTimer(record, tapClock).remainingMs, atMs: tapClock.wallTimeMs };
+      publish();
+    }
     await verify();
     const operationId = uuid();
     await write({ type: "prepare_transition", operationId, clientSessionId: record.clientSessionId, kind, clock: now() });
@@ -539,9 +552,9 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
 
   return {
     getSnapshot: () => {
-      if (!live() && (state.record !== null || state.receipt !== null || state.ending || state.unsyncedSessionCount > 0)) {
+      if (!live() && (state.record !== null || state.receipt !== null || state.ending || state.unsyncedSessionCount > 0 || state.interaction !== null)) {
         state = { ...state, record: null, receipt: null, timeLeft: 0, rewardsVisible: false,
-          busy: false, error: null, ending: false, unsyncedSessionCount: 0 };
+          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null };
       }
       return state;
     },
@@ -586,7 +599,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     dismissSummary() { rewardId = null; if (live()) publish(); },
     async dispose(): Promise<void> {
       if (disposed) return;
-      disposed = true; rewardId = null;
+      disposed = true; rewardId = null; interaction = null;
       publish({ restoring: false, busy: false, error: null, restoreError: false }); listeners.clear();
       const epoch = durableEpoch;
       if (epoch === null) return;

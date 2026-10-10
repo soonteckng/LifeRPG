@@ -34,6 +34,7 @@ interface TimerContextType {
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
   syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; unsyncedSessionCount: number;
+  interactionKind: "start" | "pause" | "resume" | null;
   resolveQuestTitle: (id: number, title: string) => void; activityType: string; targetAttributeId: number | null;
   linkedTaskId: number | null; notes: string; sessionSummary: SessionSummary | null; summaryViewed: boolean;
   acknowledgeSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
@@ -49,7 +50,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 const initialRuntime: SessionTimerControllerSnapshot = {
   record: null, timeLeft: 0, restoring: true, busy: false, error: null, restoreError: false,
   syncStatus: "idle", receipt: null, rewardsVisible: false,
-  ending: false, unsyncedSessionCount: 0,
+  ending: false, unsyncedSessionCount: 0, interaction: null,
 };
 const getClock = (): JournalClock => ({ wallTimeMs: Date.now(), monotonicTimeMs: null, bootId: null });
 const numberOr = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -105,6 +106,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.restoring === next.restoring && current.busy === next.busy && current.error === next.error
       && current.restoreError === next.restoreError && current.syncStatus === next.syncStatus
       && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
+      && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
       && current.rewardsVisible === next.rewardsVisible ? current : next));
     void controller.initialize();
     const interval = setInterval(() => { void controller.tick(); }, 500);
@@ -130,14 +132,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     completionSoundEnabled = soundEnabled;
   }, [soundEnabled, hapticsEnabled, notificationLifecycle]);
 
-  const record = runtime.record?.state === "completed" && runtime.record.clientSessionId === hiddenSavedId
+  const interactionKind = runtime.interaction?.kind ?? null;
+  const record = interactionKind === "start" || (runtime.record?.state === "completed" && runtime.record.clientSessionId === hiddenSavedId)
     ? null : runtime.record;
-  const open = !!record && ["running", "paused", "not_started"].includes(record.state);
+  const open = !runtime.ending && (interactionKind === "start" || !!record && ["running", "paused", "not_started"].includes(record.state));
   const isCompleted = record?.state === "completed";
-  const awaitingStart = record?.state === "not_started";
-  const setup = open || isCompleted ? record!.setup : null;
+  const awaitingStart = interactionKind === "start" || record?.state === "not_started";
+  const setup = record && (open || isCompleted || runtime.ending) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
-  const timeLeft = record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds;
+  const timeLeft = runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);
   const notes = setup?.notes ?? draft.notes;
   const linkedTaskId = setup ? setup.taskId : draft.taskId;
   const targetAttributeId = setup ? setup.subjectId : draft.subjectId;
@@ -178,12 +181,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const notificationState = record?.state;
   const deadline = record?.endsAtMs;
   useEffect(() => {
-    if (notificationState === "running" && !runtime.ending && deadline && deadline > Date.now()) {
+    if (notificationState === "running" && !runtime.ending && interactionKind !== "pause" && runtime.syncStatus !== "waiting" && deadline && deadline > Date.now()) {
       void notificationLifecycle.schedule(Math.max(1, (deadline - Date.now()) / 1000), resolvedTitle);
     } else void notificationLifecycle.clear();
-  }, [notificationId, notificationState, deadline, resolvedTitle, runtime.ending, soundEnabled, hapticsEnabled, notificationLifecycle]);
+  }, [notificationId, notificationState, deadline, resolvedTitle, runtime.ending, runtime.syncStatus, interactionKind, soundEnabled, hapticsEnabled, notificationLifecycle]);
 
-  const locked = () => startInFlight.current || open || runtime.busy || runtime.restoring || runtime.restoreError
+  const locked = () => startInFlight.current || open || runtime.ending || runtime.busy || runtime.restoring || runtime.restoreError
     || (isCompleted && !record?.sync.receipt);
   const prepareDraft = () => {
     if (record?.state === "completed" && record.sync.receipt) {
@@ -205,7 +208,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const controller = controllerRef.current;
     const next = explicit ? { seconds, activityType: "other", taskId: null, subjectId: explicit.subjectId,
       notes: explicit.suggestion ? encodeSuggestedFocus(explicit.suggestion) : "" } : { ...draft, seconds };
-    setDraft(next); setHiddenSavedId(null); setViewedSummaryId(null);
+    setDraft(next); setHiddenSavedId(record?.state === "completed" ? record.clientSessionId : null); setViewedSummaryId(null);
     const startSetup: JournalSetup = { targetSeconds: seconds, activityType: next.activityType,
       taskId: next.taskId, subjectId: next.subjectId, notes: next.notes, title: title ?? readSuggestedFocus(next.notes)?.title ?? null };
     try { return await controller.start(startSetup); }
@@ -226,10 +229,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const retry = async () => { await controllerRef.current?.retry(); };
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId]);
   return <TimerContext.Provider value={{
-    timeLeft, duration, isRunning: record?.state === "running", isCompleted, hasOpenSession: open,
+    timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
-    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, unsyncedSessionCount: runtime.unsyncedSessionCount,
+    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
     retryCompletion: retry, retryAction: retry,
     resolveQuestTitle: (id, title) => { if (id === linkedTaskId) setQuestTitle(current => current?.id === id && current.title === title ? current : { id, title }); },
     activityType, targetAttributeId, linkedTaskId, notes,
@@ -241,7 +244,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     startTimer: async (seconds, title) => { await start(seconds, title); },
     startFreeTimer: (seconds, subjectId) => start(seconds, undefined, { subjectId }), startSuggestedTimer,
     pauseTimer: async () => { await controllerRef.current?.pause(); }, resumeTimer: async () => { await controllerRef.current?.resume(); }, resetTimer,
-    sessionSummary, summaryViewed: summaryId !== null && viewedSummaryId === summaryId, acknowledgeSummary,
+    sessionSummary: receipt?.sessionId === sessionSummary?.sessionId ? sessionSummary : null, summaryViewed: summaryId !== null && viewedSummaryId === summaryId, acknowledgeSummary,
     completedLevelUp, clearCompletionModal: () => controllerRef.current?.dismissSummary(),
   }}>{children}</TimerContext.Provider>;
 }

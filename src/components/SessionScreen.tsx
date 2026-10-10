@@ -34,11 +34,11 @@ type Picker = "duration" | "quest" | "area" | null;
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
-  const [endRequested, setEndRequested] = useState(false);
+  const [endRequested, setEndRequested] = useState(liveTimer.endingSession);
   const [endedClosing, setEndedClosing] = useState(false);
   const [endSnapshot, setEndSnapshot] = useState<Pick<typeof liveTimer, "duration" | "timeLeft" | "isRunning" | "linkedTaskId" | "targetAttributeId" | "activityType"> | null>(null);
-  const cancellationSaved = endRequested && !liveTimer.actionBusy && !liveTimer.hasOpenSession && !liveTimer.actionError && !liveTimer.isCompleted;
-  // Backend cancellation is final, but keep the outgoing active layout behind
+  const cancellationSaved = endRequested && !liveTimer.hasOpenSession && (liveTimer.endingSession || !liveTimer.actionError) && !liveTimer.isCompleted;
+  // The stop is durable before confirmation. Keep the outgoing layout behind
   // its notice until both the popup and this screen have finished leaving.
   const timer = useMemo(() => cancellationSaved && endSnapshot ? { ...liveTimer, ...endSnapshot, hasOpenSession: true } : liveTimer, [cancellationSaved, endSnapshot, liveTimer]);
   const insets = useSafeAreaInsets();
@@ -106,11 +106,11 @@ export default function SessionScreen() {
   const general = generalArea(subjects);
   const selectableAreas = focusAreaChoices(subjects, timer.targetAttributeId);
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
-  const locked = timer.hasOpenSession || timer.isCompleted || timer.actionBusy || timer.isRestoring;
+  const locked = timer.hasOpenSession || timer.endingSession || timer.isCompleted || timer.actionBusy || timer.isRestoring;
   const isQuest = timer.linkedTaskId !== null;
   const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && !task;
-  const phase = timer.isCompleted ? "completed" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
+  const phase = timer.isCompleted ? "completed" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
 
   useEffect(() => afterTransition(() => { void refresh(); }), [refresh]);
   useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
@@ -124,10 +124,11 @@ export default function SessionScreen() {
     return () => { show.remove(); hide.remove(); };
   }, []);
   useLayoutEffect(() => {
+    const controlChange = (lastPhase.current === "running" || lastPhase.current === "paused") && (phase === "running" || phase === "paused");
     const changed = lastPhase.current !== null && lastPhase.current !== phase;
     lastPhase.current = phase;
     opacity.stopAnimation();
-    if (reducedMotion || !changed) { opacity.setValue(1); return; }
+    if (reducedMotion || !changed || controlChange) { opacity.setValue(1); return; }
     // Animate the visible ring, header and controls, not just the empty details.
     opacity.setValue(0);
     const animation = Animated.timing(opacity, { toValue: 1, duration: 280, useNativeDriver: true });
@@ -253,14 +254,15 @@ export default function SessionScreen() {
   };
   const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : suggestion?.title ?? "Free session");
   const status = timer.isRestoring ? "Restoring your session…" : timer.awaitingStart ? "Checking your saved start…"
-    : timer.endingSession ? "Ending your session. Waiting to confirm."
+    : timer.endingSession ? "Session ended"
     : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.syncStatus === "rejected" ? "Kept on this phone. Your account did not accept it." : "Saved on this phone. Waiting to sync."
     : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
-  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
-  const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
+  const disabled = cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
+  const immediateControl = timer.interactionKind === "pause" || timer.interactionKind === "resume";
+  const actionLabel = timer.awaitingStart ? "Starting focus" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
@@ -344,8 +346,8 @@ export default function SessionScreen() {
           </Animated.View>
         </ScrollView>
         <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}]}>
-          {timer.syncStatus === "waiting" && !timer.actionError && <Text style={styles.secondary} accessibilityLiveRegion="polite">{timer.isCompleted ? "Saved on this phone. Waiting to sync." : "Waiting to confirm your session state."}</Text>}
-          {(timer.actionError || timer.restoreError) && <View>
+          {timer.syncStatus === "waiting" && !timer.actionBusy && !cancellationSaved && !timer.actionError && <Text style={styles.secondary} accessibilityLiveRegion="polite">{timer.isCompleted ? "Saved on this phone. Waiting to sync." : "Waiting to confirm your session state."}</Text>}
+          {!cancellationSaved && (timer.actionError || timer.restoreError) && <View>
             <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one."}</Text>
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
@@ -358,10 +360,10 @@ export default function SessionScreen() {
             {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
           </> : <>
             <View style={styles.actionRow}>
-            <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && styles.disabled]} disabled={disabled}
+            <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && !immediateControl && styles.disabled]} disabled={disabled}
               onPress={timer.hasOpenSession ? () => void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
-              {timer.actionBusy ? <ActivityIndicator color={colors.background} /> : <><Ionicons name={timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} /><Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
+              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <><Ionicons name={timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} /><Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
             {timer.hasOpenSession && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy || timer.awaitingStart || timer.endingSession} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
             </View>
@@ -400,16 +402,20 @@ export default function SessionScreen() {
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
-      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.6}
+      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.6} motionMode="timed"
         header={<Text style={styles.endedTitle}>Session ended</Text>}
-        onRequestClose={() => { endedDismissRequested.current = true; setEndedClosing(true); }}
+        onRequestClose={() => { endedDismissRequested.current = true; setEndedClosing(true); minimise("session-ended"); }}
         onDismiss={() => { if (endedDismissRequested.current) minimise("session-ended"); }}>
         <BottomSheetScrollView showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.endedBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]}>
           <View style={styles.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
-          <Text style={styles.secondary}>This session was cancelled. No focus time or XP were recorded.</Text>
+          <Text style={styles.secondary}>Your focus has stopped. Ending early does not earn focus time or XP.</Text>
+          {liveTimer.endingSession && !!liveTimer.actionError && <>
+            <Text style={styles.secondary} accessibilityLiveRegion="polite">Your stop is saved on this phone. Reconnect to confirm it.</Text>
+            <Action label="Retry ending session" disabled={liveTimer.actionBusy} onPress={() => void liveTimer.retryAction()} />
+          </>}
           <SheetButton style={styles.primary} accessibilityRole="button" accessibilityLabel="Done ending session"
-            onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); }}><Text style={styles.primaryText}>Done</Text></SheetButton>
+            onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); minimise("session-ended"); }}><Text style={styles.primaryText}>Done</Text></SheetButton>
         </BottomSheetScrollView>
       </AppSheet>
       <LevelUpModal visible={!!sessionSummary && rewardsVisible}
