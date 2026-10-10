@@ -1,6 +1,6 @@
 # Focus area consistency
 
-Prepared 11 October 2026 for the session-reliability feature branch. The database proposal is not applied.
+Prepared 11 October 2026 for the session-reliability feature branch. **The repair function was approved by the user and installed on 11 October 2026 (Asia/Kuala_Lumpur).** Supabase recorded migration `20261010162742_ensure_focus_area_catalog`; its matching SQL is in `supabase/migrations/`.
 
 ## Behavior
 
@@ -18,11 +18,15 @@ The app calls it only when a default category is missing. It checks the authenti
 
 Installing the SQL creates the function and its restricted permission only. It does not run repair on real accounts. Anonymous and PUBLIC execution are revoked. `focus-area-catalog-repair-rollback.sql` removes the function while retaining rows that might have acquired XP or references; roll back the caller app first.
 
-**Deployment gate:** section 3.1 of `liferpg-stage2-milestone1-brief.md` requires explicit approval for live database changes. The proposal was tested in an isolated in-memory database only. Older incomplete accounts require this function to be deployed before the APK acceptance tests.
+**Deployment gate satisfied:** section 3.1 of `liferpg-stage2-milestone1-brief.md` requires explicit approval for live database changes. The user approved this exact repair function in a later message. It is installed; the app can now request missing defaults for the signed-in account. No account repair was invoked by the coding agent.
+
+Live metadata verification confirmed the expected-owner UUID argument, `SETOF public.subjects` return type, empty search path, authenticated execution, and denial for both anonymous and PUBLIC execution. The stored function-body MD5 (`dc6bad3dd5b2a117c6436d7fb230a141`) matches the approved SQL. The API schema cache was refreshed.
+
+The security advisor reports signed-in execution of a SECURITY DEFINER function, which is intentional for this account-scoped RPC: the caller has category read access, and the function restricts inserts to missing zero-XP defaults for `auth.uid()`, checks the expected owner, and accepts no category payload. Anonymous and PUBLIC execution stay revoked. See the [advisor explanation](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable). Other existing project advisories were outside this approved repair.
 
 ## Validation
 
-The complete Node suite passed: 516 tests, 0 failures, 0 skipped. Typecheck and lint without cache passed in the validation workspace. No native device or live database was used.
+The complete Node suite passed before deployment: 516 tests, 0 failures, 0 skipped. Typecheck and lint without cache passed in the validation workspace. SQL behavior was tested in an isolated in-memory database; deployment verification read schema metadata only. No native device or real-account operation was tested.
 
 The automated suites cover switching modes, durable neutral-area persistence, manual free-focus categorization, retaining the timer, matching directions and area labels, preserving a selected legacy ID, missing-category repair, error gating and account switches during reads.
 
