@@ -228,7 +228,11 @@ export default function HomeScreen() {
             disabled={blocked || !!areasLoading || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || guided.busy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             onDuration={seconds => { if (!hasOpenSession && !blocked && !quickLock.current && !areasLoading && validSessionSeconds(seconds)) { setDurationChoice({ owner, seconds }); setQuickError(false); setAttempt(null); } }}
-          />}</View></TourAnchor>
+          />}
+          {(timer.restoreError || (timer.isCompleted && !sessionSummary)) && <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={[styles.primaryButton, { marginTop: 12 }]}>
+            <Text style={styles.primaryButtonText}>Review saved session</Text>
+          </TouchableOpacity>}
+          </View></TourAnchor>
           <TourAnchor id="home-next-step"><TouchableOpacity style={styles.invitation} onPress={() => setGuidedSettings(true)} accessibilityRole="button" accessibilityLabel="Find your next step" accessibilityHint="Change your focus suggestions or choose free focus">
             <View style={styles.invitationMain}>
               <Text style={styles.link}>Find your next step</Text><Text style={styles.questMeta}>{guided.value.enabled ? "Change your focus suggestions" : "Choose a focus direction"}</Text>

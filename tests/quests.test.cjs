@@ -854,6 +854,21 @@ test("Home Quick Start shows exact remembered choice, ignores rapid taps and nav
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
   }finally{await ui.cleanup();}
 });
+
+test("Home can open recovery for an unsaved, rejected or unreadable session even when ordinary starts are blocked", async()=>{
+  const ui=await quickHomeSetup(null,async()=>true);
+  const review=()=>ui.renderer.root.findAllByType("Pressable").find(node=>node.props.accessibilityLabel==="Review saved session");
+  try {
+    assert.equal(review(),undefined);
+    for(const flags of [{isCompleted:true,syncStatus:"waiting",sessionSummary:null},{isCompleted:true,syncStatus:"rejected",sessionSummary:null},{restoreError:true}]) {
+      await ui.update(flags); assert.ok(review());
+      await act(async()=>review().props.onPress());
+    }
+    assert.equal(ui.calls.filter(call=>call[0]==="start").length,0);
+    assert.deepEqual(ui.calls.filter(call=>call[0]==="navigate"),Array.from({length:3},()=>["navigate","/session"]));
+    await ui.update({}); assert.equal(review(),undefined);
+  } finally {await ui.cleanup();}
+});
 test("Home failure stays actionable and the area sheet cannot navigate or change duration", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
   try {

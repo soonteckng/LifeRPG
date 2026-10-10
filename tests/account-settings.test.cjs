@@ -297,6 +297,48 @@ test("busy/active/paused/restoring/failed sessions block logout; failure remains
     assert.equal(ui.calls().signOutCalls, 2);
   } finally { await ui.cleanup(); }
 });
+test("a pending completed session warns about this phone and account but allows explicit signout", async () => {
+  const ui = await settings({ timer: { hasOpenSession: false, isRestoring: false, restoreError: false, actionBusy: false,
+    isCompleted: true, syncStatus: "waiting", unsyncedSessionCount: 1 } });
+  try {
+    await ui.press("Sign outYour saved progress stays with your account");
+    assert.match(ui.text(), /1 session is not confirmed yet\./);
+    assert.match(ui.text(), /Unconfirmed sessions stay on this phone for this account\./);
+    assert.match(ui.text(), /reconnect while signed in to this same account/);
+    assert.match(ui.text(), /If you sign out, sign back into this account first\./);
+    const warning = ui.renderer.root.findAllByType("Text").find(n => text(n).includes("1 session is not confirmed yet."));
+    assert.equal(warning.props.accessibilityRole, "alert");
+    const button = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Sign out");
+    assert.equal(button.props.disabled, false);
+    await ui.press("Sign out");
+    assert.equal(ui.calls().signOutCalls, 1);
+  } finally { await ui.cleanup(); }
+});
+test("signout explains all unconfirmed sessions without weakening active-session protection", async () => {
+  const ui = await settings({ timer: { hasOpenSession: true, unsyncedSessionCount: 3 } });
+  try {
+    await ui.press("Sign outFinish or end your session first");
+    assert.match(ui.text(), /3 sessions are not confirmed yet\./);
+    const button = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Sign out");
+    assert.equal(button.props.disabled, true);
+    await ui.press("Sign out");
+    assert.equal(ui.calls().signOutCalls, 0);
+  } finally { await ui.cleanup(); }
+});
+test("fully saved sessions keep the ordinary signout confirmation without a pending warning", async () => {
+  const ui = await settings({ timer: { hasOpenSession: false, isRestoring: false, restoreError: false, actionBusy: false,
+    isCompleted: true, syncStatus: "saved", unsyncedSessionCount: 0 } });
+  try {
+    await ui.press("Sign outYour saved progress stays with your account");
+    assert.match(ui.text(), /Your character, quests and saved sessions remain with your account\. Sign in again to continue\./);
+    assert.doesNotMatch(ui.text(), /not confirmed yet|Unconfirmed sessions|sign back into this account first/);
+    await ui.press("Keep me signed in");
+    assert.equal(ui.calls().signOutCalls, 0);
+    await ui.press("Sign outYour saved progress stays with your account");
+    await ui.press("Sign out");
+    assert.equal(ui.calls().signOutCalls, 1);
+  } finally { await ui.cleanup(); }
+});
 test("goal service validates before requesting a server-computed effective date", async () => {
   const calls = [];
   const api = load("src/services/dailyGoalService.ts", {

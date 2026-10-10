@@ -251,11 +251,14 @@ export default function SessionScreen() {
     else start();
   };
   const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : suggestion?.title ?? "Free session");
-  const status = timer.isRestoring ? "Restoring your session…" : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.actionError ? "Completion needs attention" : "Saving your session…" : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
+  const status = timer.isRestoring ? "Restoring your session…" : timer.awaitingStart ? "Checking your saved start…"
+    : timer.endingSession ? "Ending your session. Waiting to confirm."
+    : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.syncStatus === "rejected" ? "Kept on this phone. Your account did not accept it." : "Saved on this phone. Waiting to sync."
+    : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
-  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
+  const disabled = cancellationSaved || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
   const actionLabel = timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
@@ -340,12 +343,17 @@ export default function SessionScreen() {
           </Animated.View>
         </ScrollView>
         <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}]}>
+          {timer.syncStatus === "waiting" && !timer.actionError && <Text style={styles.secondary} accessibilityLiveRegion="polite">{timer.isCompleted ? "Saved on this phone. Waiting to sync." : "Waiting to confirm your session state."}</Text>}
           {(timer.actionError || timer.restoreError) && <View>
-            <Text style={styles.error} accessibilityRole="alert">{timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one."}</Text>
+            <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one."}</Text>
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
           {timer.isCompleted ? !hideCompletedSummary && <>
             <TouchableOpacity style={[styles.primary, { backgroundColor: colors.primary }]} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
+            {timer.syncStatus === "rejected" && !timer.sessionSummary && <>
+              <Text style={styles.secondary}>This record stays on your phone. Continuing does not award progress or complete its quest.</Text>
+              <Action label="Keep record and continue" disabled={timer.actionBusy} onPress={() => void timer.resetTimer()} />
+            </>}
             {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
           </> : <>
             <View style={styles.actionRow}>
@@ -354,7 +362,7 @@ export default function SessionScreen() {
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy ? <ActivityIndicator color={colors.background} /> : <><Ionicons name={timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} /><Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
-            {timer.hasOpenSession && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
+            {timer.hasOpenSession && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy || timer.awaitingStart || timer.endingSession} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
             </View>
             {timer.hasOpenSession && <Text style={styles.cancelHint}>Ending now doesn’t save this session.</Text>}
           </>}

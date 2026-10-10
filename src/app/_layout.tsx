@@ -11,6 +11,7 @@ import AuthScreen from "../components/AuthScreen";
 import RecoveryScreen from "../components/RecoveryScreen";
 import LaunchIntro from "../components/LaunchIntro";
 import GlobalRewardListener from "../components/GlobalRewardListener";
+import OfflineSessionRecovery from "../components/OfflineSessionRecovery";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
@@ -83,6 +84,7 @@ function AppContent() {
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useUser();
+  const { accessMode } = useAuth();
 
   useEffect(() => {
     traceSession("runtime/motion", {
@@ -108,6 +110,7 @@ function AppContent() {
 
   return (
     <TimerProvider>
+      {accessMode === "local-only" ? <OfflineSessionRecovery /> : <>
       <QuestProvider>
         <FeatureTourProvider>
         <GlobalBackHandler />
@@ -208,6 +211,7 @@ function AppContent() {
         <GlobalRewardListener />
         </FeatureTourProvider>
       </QuestProvider>
+      </>}
     </TimerProvider>
   );
 }
@@ -280,7 +284,7 @@ function SessionVerificationError({ onRetry, onSignOut }: {
 }
 
 function AuthGate() {
-  const { user, loading, recovery, sessionError, retrySessionVerification, signOut } = useAuth();
+  const { user, localOwner, loading, recovery, sessionError, retrySessionVerification, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -292,14 +296,15 @@ function AuthGate() {
 
   if (recovery !== "none") return <RecoveryScreen key={recovery} />;
 
-  if (sessionError) return <SessionVerificationError onRetry={retrySessionVerification} onSignOut={signOut} />;
+  if (sessionError && !localOwner) return <SessionVerificationError onRetry={retrySessionVerification} onSignOut={signOut} />;
 
-  if (!user) {
+  const admittedOwner = user?.id ?? localOwner?.id;
+  if (!admittedOwner) {
     return <AuthScreen />;
   }
 
   return (
-    <UserProvider key={user.id}>
+    <UserProvider key={admittedOwner}>
       <ProfileGate />
     </UserProvider>
   );
