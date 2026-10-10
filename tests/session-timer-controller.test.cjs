@@ -133,7 +133,7 @@ test('Start exposes immediate screen feedback while verification is pending with
   const request = controller.start({ ...setup, targetSeconds: 120 });
   assert.deepEqual(controller.getSnapshot().interaction, { kind: 'start', timeLeft: 120 });
   assert.equal(controller.getSnapshot().record, null); assert.deepEqual(h.persisted().records, []);
-  h.advance(1000); await controller.tick(); assert.equal(controller.getSnapshot().interaction.timeLeft, 120);
+  h.advance(1000); await controller.tick(); assert.equal(controller.getSnapshot().interaction.timeLeft, 119);
   assert.equal(h.calls.filter(call => call === 'start').length, 0); assert.equal(h.credits, 0);
   gate.resolve(); assert.equal(await request, true);
   assert.equal(controller.getSnapshot().interaction, null); assert.equal(controller.getSnapshot().record.state, 'running');
@@ -158,6 +158,46 @@ test('Pause and Resume respond before verification while their timing preview st
   assert.deepEqual(h.persisted(), paused); assert.equal(h.credits, 0);
   resumeGate.resolve(); assert.equal(await resuming, true); assert.equal(controller.getSnapshot().interaction, null);
   assert.equal(controller.getSnapshot().record.state, 'running'); await controller.dispose();
+});
+
+test('successful delayed Start, Pause and Resume keep a continuous display clock without changing server timing', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  const startGate = deferred(); h.verifyHook = () => startGate.promise;
+  const starting = controller.start({ ...setup, targetSeconds: 20 });
+  h.advance(1000); await controller.tick();
+  assert.equal(controller.getSnapshot().displayTimeLeft, 19);
+  startGate.resolve(); assert.equal(await starting, true);
+  assert.equal(controller.getSnapshot().displayTimeLeft, 19, 'Start reply cannot restart the visible countdown');
+  assert.equal(controller.getSnapshot().timeLeft, 20, 'server timing stays authoritative');
+  h.verifyHook = null; h.advance(3000); await controller.tick();
+  assert.equal(controller.getSnapshot().displayTimeLeft, 16);
+  const pauseGate = deferred(); h.verifyHook = () => pauseGate.promise;
+  const pausing = controller.pause();
+  h.advance(2000); await controller.tick(); assert.equal(controller.getSnapshot().displayTimeLeft, 16);
+  pauseGate.resolve(); assert.equal(await pausing, true);
+  assert.equal(controller.getSnapshot().displayTimeLeft, 16, 'paused numeral cannot drop when the reply arrives');
+  assert.equal(controller.getSnapshot().timeLeft, 15);
+  h.advance(1000); await controller.tick(); assert.equal(controller.getSnapshot().displayTimeLeft, 16);
+  const resumeGate = deferred(); h.verifyHook = () => resumeGate.promise;
+  const resuming = controller.resume();
+  h.advance(2000); await controller.tick(); assert.equal(controller.getSnapshot().displayTimeLeft, 14);
+  resumeGate.resolve(); assert.equal(await resuming, true);
+  assert.equal(controller.getSnapshot().displayTimeLeft, 14, 'Resume reply cannot bounce the countdown back to 15');
+  assert.equal(controller.getSnapshot().timeLeft, 15);
+  h.advance(1000); await controller.tick(); assert.equal(controller.getSnapshot().displayTimeLeft, 13);
+  await controller.dispose();
+});
+
+test('a display countdown reaching zero cannot expire or reward a later server deadline', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  const gate = deferred(); h.verifyHook = () => gate.promise;
+  const starting = controller.start({ ...setup, targetSeconds: 3 });
+  h.advance(2000); await controller.tick(); gate.resolve(); await starting; h.verifyHook = null;
+  h.advance(1000); await controller.tick();
+  assert.equal(controller.getSnapshot().displayTimeLeft, 0); assert.equal(controller.getSnapshot().timeLeft, 2);
+  assert.equal(controller.getSnapshot().record.state, 'running'); assert.equal(h.credits, 0);
+  h.advance(2000); await controller.tick(); assert.equal(h.credits, 1);
+  assert.equal(controller.getSnapshot().displayTimeLeft, null); await controller.dispose();
 });
 
 test('a failed or uncertain timing action drops its preview and retains the established recovery rules', async () => {

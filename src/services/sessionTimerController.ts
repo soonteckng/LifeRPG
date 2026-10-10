@@ -62,6 +62,7 @@ export interface SessionTimerControllerSnapshot {
   unsyncedSessionCount: number;
   // A transient view of the tap, never a journal transition or reward authority.
   interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
+  displayTimeLeft: number | null;
 }
 
 type ActionInput = JournalAction extends infer A ? A extends JournalAction
@@ -101,10 +102,13 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let lastSetup: JournalSetup | null = null;
   let remoteRetryAtMs = 0, remoteRetryAttempts = 0;
   let interaction: { kind: "start" | "pause" | "resume"; remainingMs: number; atMs: number } | null = null;
+  // Keep one presentation clock through successful replies. Server snapshots
+  // still determine expiry, saved timing and rewards; this clock is never stored.
+  let displayClock: { clientSessionId: string | null; running: boolean; remainingMs: number; atMs: number } | null = null;
   let state: SessionTimerControllerSnapshot = {
     record: null, timeLeft: 0, restoring: true, busy: false, error: null,
     restoreError: false, syncStatus: "idle", receipt: null, rewardsVisible: false,
-    ending: false, unsyncedSessionCount: 0, interaction: null,
+    ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null,
   };
 
   const live = () => !disposed && options.authority.currentEpoch() === externalEpoch
@@ -137,8 +141,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     const record = live() ? selected() : null;
     const clock = live() ? now() : null;
     const timer = record && clock ? deriveJournalTimer(record, clock) : null;
-    const feedback = interaction && clock ? { kind: interaction.kind,
-      timeLeft: Math.max(0, Math.ceil((interaction.remainingMs - (interaction.kind === "resume" ? Math.max(0, clock.wallTimeMs - interaction.atMs) : 0)) / 1000)) } : null;
+    if (!live() || (!interaction && displayClock && (!record || record.clientSessionId !== displayClock.clientSessionId
+      || record.state !== (displayClock.running ? "running" : "paused") || !!pending(record) || timer?.clockWarning))) displayClock = null;
+    const displayTimeLeft = displayClock && clock ? Math.max(0, Math.ceil((displayClock.remainingMs
+      - (displayClock.running ? Math.max(0, clock.wallTimeMs - displayClock.atMs) : 0)) / 1000)) : null;
+    const feedback = interaction && clock ? { kind: interaction.kind, timeLeft: displayTimeLeft ?? state.timeLeft } : null;
     const receipt = record?.sync.receipt ?? null;
     const waiting = !!record && (!!pending(record) || ["pending", "waiting_auth"].includes(record.sync.state));
     const syncStatus = !record ? "idle" : record.sync.state === "rejected" ? "rejected"
@@ -151,7 +158,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       timeLeft: timer ? Math.ceil(timer.remainingMs / 1000) : 0,
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
-      ending: !!record && pending(record)?.kind === "cancel", unsyncedSessionCount, interaction: feedback,
+      ending: !!record && pending(record)?.kind === "cancel", unsyncedSessionCount, interaction: feedback, displayTimeLeft,
     };
     for (const listener of listeners) {
       try { listener(state); } catch { /* A view cannot break durable work. */ }
@@ -423,9 +430,15 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     if (locked || !initialized || !live()) return false;
     locked = true;
     publish({ busy: true, error: null });
-    try { return (await work()) !== false; }
+    let succeeded = false;
+    try { succeeded = (await work()) !== false; return succeeded; }
     catch (error) { await noteFailure(error, pending()?.operationId); return false; }
-    finally { interaction = null; locked = false; if (live()) publish({ busy: false }); }
+    finally {
+      // An uncertain or unsent action must return to the journal's protected
+      // state. Only a confirmed matching transition keeps its display anchor.
+      if (interaction && !succeeded) displayClock = null;
+      interaction = null; locked = false; if (live()) publish({ busy: false });
+    }
   }
 
   async function startInternal(setup: JournalSetup): Promise<boolean> {
@@ -433,6 +446,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     if (pending() || journal!.records.some(record => ["not_started", "running", "paused"].includes(record.state))) return false;
     lastSetup = copy(setup); lastAction = "start";
     interaction = { kind: "start", remainingMs: setup.targetSeconds * 1000, atMs: now().wallTimeMs };
+    displayClock = { clientSessionId: null, running: true, remainingMs: interaction.remainingMs, atMs: interaction.atMs };
     publish();
     // Verification is a read, before any start intent, so an offline attempt
     // cannot create an unsent legacy start that would be unsafe to retry.
@@ -440,6 +454,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     const operationId = uuid(), clientSessionId = uuid();
     await write({ type: "prepare_start", operationId, clientSessionId, setup, clock: now() });
     selectedId = clientSessionId; hiddenId = null; rewardId = null;
+    if (displayClock) displayClock.clientSessionId = clientSessionId;
     let rpcAttempted = false, mutationReplyReceived = false;
     try {
       fence(); rpcAttempted = true;
@@ -492,7 +507,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     lastAction = kind;
     if (kind !== "cancel") {
       const tapClock = now();
-      interaction = { kind, remainingMs: deriveJournalTimer(record, tapClock).remainingMs, atMs: tapClock.wallTimeMs };
+      // Freeze the numeral the user actually tapped, including a tap between
+      // display ticks. Resume continues from this exact paused numeral.
+      interaction = { kind, remainingMs: (state.displayTimeLeft ?? state.timeLeft) * 1000, atMs: tapClock.wallTimeMs };
+      displayClock = { clientSessionId: record.clientSessionId, running: kind === "resume", remainingMs: interaction.remainingMs, atMs: interaction.atMs };
       publish();
     }
     await verify();
@@ -554,7 +572,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     getSnapshot: () => {
       if (!live() && (state.record !== null || state.receipt !== null || state.ending || state.unsyncedSessionCount > 0 || state.interaction !== null)) {
         state = { ...state, record: null, receipt: null, timeLeft: 0, rewardsVisible: false,
-          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null };
+          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null };
       }
       return state;
     },
@@ -599,7 +617,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     dismissSummary() { rewardId = null; if (live()) publish(); },
     async dispose(): Promise<void> {
       if (disposed) return;
-      disposed = true; rewardId = null; interaction = null;
+      disposed = true; rewardId = null; interaction = null; displayClock = null;
       publish({ restoring: false, busy: false, error: null, restoreError: false }); listeners.clear();
       const epoch = durableEpoch;
       if (epoch === null) return;

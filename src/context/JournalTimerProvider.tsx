@@ -50,7 +50,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 const initialRuntime: SessionTimerControllerSnapshot = {
   record: null, timeLeft: 0, restoring: true, busy: false, error: null, restoreError: false,
   syncStatus: "idle", receipt: null, rewardsVisible: false,
-  ending: false, unsyncedSessionCount: 0, interaction: null,
+  ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null,
 };
 const getClock = (): JournalClock => ({ wallTimeMs: Date.now(), monotonicTimeMs: null, bootId: null });
 const numberOr = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -79,6 +79,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     { sound: soundEnabled, haptics: hapticsEnabled }));
   const seenReceipts = useRef(new Set<string>());
   const celebrated = useRef(new Set<string>());
+  const backgroundBanner = useRef<{ title: string; deadline: number } | null>(null);
 
   useEffect(() => {
     if (!ownerId || !backendId) return;
@@ -107,11 +108,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.restoreError === next.restoreError && current.syncStatus === next.syncStatus
       && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
       && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
+      && current.displayTimeLeft === next.displayTimeLeft
       && current.rewardsVisible === next.rewardsVisible ? current : next));
     void controller.initialize();
-    const interval = setInterval(() => { void controller.tick(); }, 500);
+    const interval = setInterval(() => { void controller.tick(); }, 200);
     const appState = AppState.addEventListener("change", next => {
       if (next === "active") void controller.refresh();
+      if (next === "background" && backgroundBanner.current && backgroundBanner.current.deadline > Date.now()) {
+        void notificationLifecycle.refreshOngoing(backgroundBanner.current.title);
+      }
     });
     return () => {
       unsubscribe(); clearInterval(interval); appState.remove();
@@ -140,7 +145,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const awaitingStart = interactionKind === "start" || record?.state === "not_started";
   const setup = record && (open || isCompleted || runtime.ending) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
-  const timeLeft = runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);
+  const timeLeft = runtime.displayTimeLeft ?? runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);
   const notes = setup?.notes ?? draft.notes;
   const linkedTaskId = setup ? setup.taskId : draft.taskId;
   const targetAttributeId = setup ? setup.subjectId : draft.subjectId;
@@ -180,6 +185,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const notificationId = record?.clientSessionId;
   const notificationState = record?.state;
   const deadline = record?.endsAtMs;
+  useLayoutEffect(() => {
+    backgroundBanner.current = notificationState === "running" && !runtime.ending && interactionKind !== "pause"
+      && runtime.syncStatus !== "waiting" && deadline ? { title: resolvedTitle, deadline } : null;
+  }, [notificationState, runtime.ending, interactionKind, runtime.syncStatus, deadline, resolvedTitle]);
   useEffect(() => {
     if (notificationState === "running" && !runtime.ending && interactionKind !== "pause" && runtime.syncStatus !== "waiting" && deadline && deadline > Date.now()) {
       void notificationLifecycle.schedule(Math.max(1, (deadline - Date.now()) / 1000), resolvedTitle);
@@ -229,7 +238,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const retry = async () => { await controllerRef.current?.retry(); };
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId]);
   return <TimerContext.Provider value={{
-    timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
+    timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
     syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,

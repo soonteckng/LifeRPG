@@ -40,7 +40,8 @@ export default function SessionScreen() {
   const cancellationSaved = endRequested && !liveTimer.hasOpenSession && (liveTimer.endingSession || !liveTimer.actionError) && !liveTimer.isCompleted;
   // The stop is durable before confirmation. Keep the outgoing layout behind
   // its notice until both the popup and this screen have finished leaving.
-  const timer = useMemo(() => cancellationSaved && endSnapshot ? { ...liveTimer, ...endSnapshot, hasOpenSession: true } : liveTimer, [cancellationSaved, endSnapshot, liveTimer]);
+  const endingPresentation = endRequested && (liveTimer.actionBusy || cancellationSaved);
+  const timer = useMemo(() => endingPresentation && endSnapshot ? { ...liveTimer, ...endSnapshot, hasOpenSession: true } : liveTimer, [endingPresentation, endSnapshot, liveTimer]);
   const insets = useSafeAreaInsets();
   const { sessionSummary, rewardsVisible, acknowledgeSummary } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
@@ -54,7 +55,10 @@ export default function SessionScreen() {
   const completionDismissRequested = useRef(false);
   const endedDismissRequested = useRef(false);
   const [completionClosing, setCompletionClosing] = useState(false);
-  const hideCompletedSummary = !!sessionSummary && (rewardsVisible || completionClosing);
+  const pendingCompletion = !timer.endingSession && (timer.isCompleted && !sessionSummary && timer.syncStatus !== "rejected"
+    || timer.hasOpenSession && timer.isRunning && timer.timeLeft === 0 && !timer.awaitingStart && timer.syncStatus !== "waiting");
+  const completionSheetVisible = !completionClosing && (pendingCompletion || !!sessionSummary && rewardsVisible);
+  const hideCompletedSummary = completionSheetVisible || completionClosing;
   const [picker, setPicker] = useState<Picker>(null);
   const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
@@ -261,8 +265,8 @@ export default function SessionScreen() {
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
   const disabled = cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
-  const immediateControl = timer.interactionKind === "pause" || timer.interactionKind === "resume";
-  const actionLabel = timer.awaitingStart ? "Starting focus" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
+  const immediateControl = timer.hasOpenSession || timer.awaitingStart || endRequested;
+  const actionLabel = timer.awaitingStart ? "Pause" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
 
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
@@ -275,7 +279,7 @@ export default function SessionScreen() {
         <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
-          <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary ? 30 : ringTop }]}>
+          <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary && !hideCompletedSummary ? 30 : ringTop }]}>
             {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary && !hideCompletedSummary) && <ProgressRing size={ringSize}
               progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
@@ -410,7 +414,7 @@ export default function SessionScreen() {
           contentContainerStyle={[styles.endedBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]}>
           <View style={styles.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
           <Text style={styles.secondary}>Your focus has stopped. Ending early does not earn focus time or XP.</Text>
-          {liveTimer.endingSession && !!liveTimer.actionError && <>
+          {liveTimer.endingSession && !!liveTimer.actionError && !liveTimer.actionBusy && <>
             <Text style={styles.secondary} accessibilityLiveRegion="polite">Your stop is saved on this phone. Reconnect to confirm it.</Text>
             <Action label="Retry ending session" disabled={liveTimer.actionBusy} onPress={() => void liveTimer.retryAction()} />
           </>}
@@ -418,8 +422,9 @@ export default function SessionScreen() {
             onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); minimise("session-ended"); }}><Text style={styles.primaryText}>Done</Text></SheetButton>
         </BottomSheetScrollView>
       </AppSheet>
-      <LevelUpModal visible={!!sessionSummary && rewardsVisible}
-        durationSeconds={sessionSummary?.durationSeconds} xpEarned={sessionSummary?.xpEarned}
+      <LevelUpModal visible={completionSheetVisible} pending={pendingCompletion}
+        syncError={timer.actionBusy ? null : timer.actionError} syncBusy={timer.actionBusy} onRetry={() => void timer.retryCompletion()}
+        durationSeconds={sessionSummary?.durationSeconds ?? timer.duration} xpEarned={sessionSummary?.xpEarned}
         goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}
         areaXpEarned={sessionSummary?.areaXpEarned} goalReachedNow={sessionSummary?.goalReachedNow}
         questTitle={title} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId, area?.color_code)}
