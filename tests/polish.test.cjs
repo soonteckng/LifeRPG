@@ -111,13 +111,39 @@ test('dialog exits as a whole before switching target and rejects duplicate taps
   await ui.advance(900);const outline=()=>ui.tree.root.findByProps({testID:'tour-outline'}).props.style[1];assert.equal(outline().top,120);
   const body=ui.tree.root.findAllByType('Text').find(node=>node.children.includes(ui.api.TOUR_STEPS[0].body));
   await act(async()=>body.props.onLayout({nativeEvent:{layout:{height:81.5}}}));
-  assert.equal(ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0).props.style.height,82,'body height comes from actual native layout, including line spacing');
+  const bodyViewport=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
+  assert.equal(bodyViewport.props.style.height,undefined,'short tips use their natural height instead of clipping to a prior text measurement');
+  assert.ok(bodyViewport.props.style.maxHeight>=82,'native body height fits within the available capped viewport');
+  assert.equal(bodyViewport.props.showsVerticalScrollIndicator,false);
   const next=ui.button('Next tour tip');await act(async()=>{next.props.onPress();next.props.onPress();ui.late.at(-1)({x:20,y:600,width:350,height:100});});
   const exits=ui.animations.filter(a=>a.config.duration===140);assert.equal(exits.length,1);assert.equal(outline().top,120);
   const panel=ui.tree.root.findByProps({testID:'tour-tip'}).props.style[1];assert.equal(panel.transform[0].scale.source,exits[0].value,'scale and opacity reverse together on the native driver');
   exits[0].value.setValue(.3);await ui.advance(220);assert.equal(exits[0].value.value,.3,'the incoming deadline must not flash a departing dialog back to full opacity');
   await ui.finish(exits[0]);assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0);
   await ui.advance(120);assert.equal(outline().top,200);assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'pending');
+ }finally{await ui.cleanup();}
+});
+
+test('quest tour tip keeps its complete sentence and full stop in a natural-height body with a fresh scroll position',async()=>{
+ const ui=await tourHarness({reduced:true});
+ try{
+  await ui.advance(900);
+  const prior=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
+  for(let i=0;i<3;i++){await ui.press('Next tour tip');await ui.advance(140);}
+  const copy=ui.api.TOUR_STEPS[3].body;
+  assert.equal(copy,'Add a quest for something that matters. Tap a quest to set up its focus.');
+  const body=ui.tree.root.findAllByType('Text').find(node=>node.children.includes(copy));
+  assert.ok(body);assert.equal(body.props.numberOfLines,undefined,'guide text must not be shortened with a line limit');
+  const viewport=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
+  assert.notEqual(viewport,prior,'each new tip resets any scroll position from the previous tip');
+  assert.equal(viewport.props.style.height,undefined);
+  await act(async()=>body.props.onLayout({nativeEvent:{layout:{height:46}}}));
+  assert.equal(viewport.props.showsVerticalScrollIndicator,false);
+  await act(async()=>body.props.onLayout({nativeEvent:{layout:{height:500}}}));
+  const overflow=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
+  assert.equal(overflow.props.showsVerticalScrollIndicator,true);
+  assert.equal(overflow.props.persistentScrollbar,true,'large-font overflow is visibly scrollable instead of looking like missing words');
+  assert.ok(ui.button('Next tour tip'),'controls remain available outside the scrollable copy');
  }finally{await ui.cleanup();}
 });
 

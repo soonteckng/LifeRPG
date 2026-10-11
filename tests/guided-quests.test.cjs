@@ -157,19 +157,23 @@ test('new users can select a work direction before the introduction',async()=>{
  const ui=await render(Screen);await ui.press('Help me choose a focus');await ui.press('Continue');await ui.press('Work & projects');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'work');assert.equal(pref.templateId,'project-next-step');await ui.cleanup();
 });
-test('Save as quest writes one quest with the chosen area and duration, without touching session rewards',async()=>{
- const db=storage(),pending=deferred(),calls=[];let upserts=0;
+test('Save as quest opens an editable draft and marks saved only after an explicit successful create',async()=>{
+ const db=storage(),calls=[];
  const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic',true);
  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,
   '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
-  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'completed',suggestion:focus}})},
-  '../context/QuestContext':{useQuests:()=>({tasks:[],upsert:()=>upserts++,refresh:async()=>{}})},
-  '../services/taskService':{createTask:params=>{calls.push(params);return pending.promise;}},
+  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'completed',durationSeconds:60,suggestion:focus}})},
+  './QuestSheet':props=>React.createElement('QuestEditor',props),
+  '../services/taskService':{createTask:params=>{calls.push(params);}},
  })).default;
  const ui=await render(Save,{inSheet:true});await act(async()=>{const button=ui.tree.root.findAllByType('Button')[0];void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.deepEqual(calls[0],{title:focus.title,targetMinutes:10,subjectId:2,repeatRule:'once',difficulty:'easy'});
- await act(async()=>pending.resolve({id:9}));assert.equal(upserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0,'a completed save becomes a status instead of a disabled action');assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
+ assert.equal(calls.length,0);assert.equal(ui.tree.root.findAllByType('QuestEditor').length,1);
+ const editor=ui.tree.root.findByType('QuestEditor');
+ assert.equal(editor.props.editorOnly,true);assert.equal(editor.props.expectedOwnerId,'owner');
+ assert.deepEqual(editor.props.initialDraft,{title:focus.title,minutes:'1',repeat:'once',days:[],subjectId:2});
+ await act(async()=>{editor.props.onCreated({id:9});editor.props.onClose();});
+ assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0,'a completed save becomes a status instead of a disabled action');assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
 });
 
 test('creating a personal quest keeps the suggestion and its Start; the quest remains independently selectable below',async()=>{
@@ -204,7 +208,7 @@ test('creating a personal quest keeps the suggestion and its Start; the quest re
  await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.match(text(ui.tree.root),/Continue session/);await ui.cleanup();
 });
 
-test('ambiguous quest-save failure refreshes existing quests before another insert can be offered',async()=>{
+test('an older matching quest cannot mark a newly completed suggestion as saved',async()=>{
  const db=storage();let inserts=0;const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,
@@ -212,8 +216,98 @@ test('ambiguous quest-save failure refreshes existing quests before another inse
   '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'save-session',suggestion:focus}})},
   '../context/QuestContext':{useQuests:()=>{const[tasks,setTasks]=React.useState([]);return{tasks,upsert(){},refresh:async()=>setTasks([{title:focus.title,subject_id:2,target_minutes:30,is_completed:false}])};}},
   '../services/taskService':{createTask:async()=>{inserts++;throw Error('response lost');}},
+  './QuestSheet':props=>React.createElement('QuestEditor',props),
  })).default;
- const ui=await render(Save,{inSheet:true});await ui.press('Save as quest');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0);assert.ok(ui.tree.root.findAllByType('Text').some(node=>node.props.accessibilityRole==='text'&&node.props.accessibilityLiveRegion==='polite'));await ui.cleanup();
+ const ui=await render(Save,{inSheet:true});assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+ await ui.press('Save as quest');assert.equal(inserts,0);assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+ await act(async()=>ui.tree.root.findByType('QuestEditor').props.onClose());
+ assert.equal(inserts,0);assert.equal(db.values.size,0);assert.match(text(ui.tree.root),/Save as quest/);await ui.cleanup();
+});
+
+test('free and linked quest completions do not offer Save as quest',async()=>{
+ for(const summary of [{sessionId:'free',durationSeconds:60},{sessionId:'quest',durationSeconds:60,questTitle:'Already completed'}]) {
+  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+   '@react-native-async-storage/async-storage':storage().api,
+   '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
+   '../context/TimerContext':{useTimer:()=>({sessionSummary:summary,targetAttributeId:2})},
+   './QuestSheet':host('QuestEditor'),
+  })).default;
+  const ui=await render(Save,{inSheet:true});
+  assert.equal(ui.tree.root.findAllByType('Button').length,0);assert.equal(ui.tree.root.findAllByType('QuestEditor').length,0);
+  await ui.cleanup();
+ }
+});
+
+test('quest prefill uses accepted completed duration and makes extra seconds explicit',async()=>{
+ const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':storage().api,
+  '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
+  '../context/TimerContext':{useTimer:()=>({duration:1800,targetAttributeId:2,sessionSummary:{sessionId:'short',durationSeconds:90,suggestion:focus}})},
+  './QuestSheet':host('QuestEditor'),
+ })).default;
+ const ui=await render(Save,{inSheet:true});await ui.press('Save as quest');
+ const editor=ui.tree.root.findByType('QuestEditor');
+ assert.equal(editor.props.initialDraft.minutes,'2');assert.match(editor.props.durationHint,/1 min 30 sec.*whole-minute/);
+ await ui.cleanup();
+});
+
+test('a late created callback cannot mark another owner or session as saved',async()=>{
+ const db=storage(),focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ let owner='first',sessionId='old';
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':db.api,
+  '../context/UserContext':{useUser:()=>({profile:{id:owner}})},
+  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId,durationSeconds:60,suggestion:focus}})},
+  './QuestSheet':host('QuestEditor'),
+ })).default;
+ const ui=await render(Save,{inSheet:true});await ui.press('Save as quest');
+ const lateCreated=ui.tree.root.findByType('QuestEditor').props.onCreated;
+ owner='second';sessionId='new';await ui.update({inSheet:true});
+ assert.equal(ui.tree.root.findAllByType('QuestEditor').length,0);
+ await act(async()=>lateCreated({id:9}));
+ assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.size,0);
+ await ui.press('Save as quest');const secondCreated=ui.tree.root.findByType('QuestEditor').props.onCreated;
+ sessionId='newer';await ui.update({inSheet:true});await act(async()=>secondCreated({id:10}));
+ assert.equal(ui.tree.root.findAllByType('QuestEditor').length,0);assert.equal(db.values.size,0);
+ await ui.cleanup();
+});
+
+test('the completed-suggestion action uses the real quest editor and waits for Create quest',async()=>{
+ const db=storage(),focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ const pending=deferred(),creates=[],upserts=[];
+ const savedTask={id:93,title:'My next review',target_minutes:5,subject_id:2,repeat_rule:'daily',is_due_today:true,is_completed:false};
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':db.api,
+  'react-native':{...Native,ActivityIndicator:host('Spinner'),Keyboard:{dismiss(){},addListener:()=>({remove(){}})}},
+  'expo-router':{useRouter:()=>({})},
+  '../context/UserContext':{useUser:()=>({profile:{id:'owner'},hapticsEnabled:false})},
+  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'real-editor',durationSeconds:60,suggestion:focus}})},
+  '../context/QuestContext':{useQuests:()=>({tasks:[{...savedTask,title:focus.title,target_minutes:1}],subjects:[{id:2,title:'Learning'}],refresh:async()=>{},upsert:item=>upserts.push(item)})},
+  '../services/taskService':{createTask:(params,options)=>{creates.push([params,options]);return pending.promise;}},
+  './GlassSurface':host('Glass'),
+  './AppSheet':function Sheet(props){
+   React.useEffect(()=>{if(!props.visible&&props.label==='quest editor')props.onDismiss?.();},[props.visible]);
+   return props.visible?React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay):null;
+  },
+ })).default;
+ const ui=await render(Save,{inSheet:true});
+ try {
+  assert.equal(creates.length,0);assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+  await ui.press('Save as quest');assert.equal(ui.tree.root.findAllByType('Sheet').length,1);
+  assert.equal(ui.tree.root.findByType('Sheet').props.label,'quest editor');
+  const field=label=>ui.tree.root.findAllByType('Input').find(node=>node.props.accessibilityLabel===label);
+  assert.equal(field('Quest name').props.value,focus.title);assert.equal(field('Custom duration in minutes').props.value,'1');
+  await ui.press('Cancel');assert.equal(creates.length,0);assert.equal(ui.tree.root.findAllByType('Sheet').length,0);
+  await ui.press('Save as quest');
+  await act(async()=>{field('Quest name').props.onChangeText('My next review');field('Custom duration in minutes').props.onChangeText('5');});
+  await ui.press('Every day');await ui.press('Create quest');
+  assert.deepEqual(creates,[[{title:'My next review',targetMinutes:5,subjectId:2,repeatRule:'daily',difficulty:'medium'},{expectedOwnerId:'owner'}]]);
+  assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+  await act(async()=>pending.resolve(savedTask));
+  assert.deepEqual(upserts,[savedTask]);assert.equal(ui.tree.root.findAllByType('Sheet').length,0);
+  assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.get('liferpg:saved-suggestion:owner:real-editor'),'saved');
+ } finally {await ui.cleanup();}
 });
 
 test('preference Save remains in a safe-area footer outside the scrolling choices and saves the selected need',async()=>{

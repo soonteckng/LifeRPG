@@ -37,6 +37,10 @@ export interface CreateTaskParams {
   difficulty?: "easy" | "medium" | "hard";
 }
 
+export interface CreateTaskOptions {
+  expectedOwnerId?: string;
+}
+
 const TIME_ZONE = "Asia/Kuala_Lumpur";
 
 function getToday(): string {
@@ -211,8 +215,11 @@ export async function createTask({
   subjectId = null,
   repeatRule = "once",
   difficulty = "medium",
-}: CreateTaskParams): Promise<Task> {
+}: CreateTaskParams, { expectedOwnerId }: CreateTaskOptions = {}): Promise<Task> {
   const userId = await getCurrentUserId();
+  if (expectedOwnerId !== undefined && userId !== expectedOwnerId) {
+    throw new Error("Account changed before creating this quest.");
+  }
 
   const cleanTitle = title.trim();
 
@@ -249,6 +256,10 @@ export async function createTask({
   if (error) {
     console.error("Failed to create task:", error);
     throw error;
+  }
+
+  if (expectedOwnerId !== undefined && await getCurrentUserId() !== expectedOwnerId) {
+    throw new Error("Account changed while creating this quest.");
   }
 
   return mapTask(data);

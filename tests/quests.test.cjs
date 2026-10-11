@@ -61,9 +61,9 @@ const native = { View: host("View"), Text: host("Text"), Pressable: host("Pressa
   StyleSheet: { create: (styles) => styles, hairlineWidth: 1, absoluteFill: {} },
   Keyboard: { dismiss() {}, isVisible: () => false, addListener: () => ({ remove() {} }) } };
 
-async function setup(initialTasks = [], hasOpenSession = false) {
+async function setup(initialTasks = [], hasOpenSession = false, options = {}) {
   const calls = [], alerts = [];
-  let currentTasks, changeVisible, failSave = false;
+  let currentTasks, changeVisible, changeOwner, currentOwner = options.ownerId ?? "owner", failSave = false;
   const Context = React.createContext(null);
   const timer = { hasOpenSession, linkedTaskId: hasOpenSession ? 1 : null,
     setLinkedTaskId: (value) => calls.push(["task", value]),
@@ -73,7 +73,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     subject_id: params.subjectId, repeat_rule: params.repeatRule, difficulty: params.difficulty,
     is_due_today: ["once", "daily"].includes(params.repeatRule) || params.repeatRule.includes("Wed") });
   const service = {
-    createTask: async (params) => { calls.push(["create", params]); if (failSave) throw Error("Offline"); return saved(10, params); },
+    createTask: async (params, createOptions) => { calls.push(["create", params]); if (options.createTask) return options.createTask(params, createOptions); if (failSave) throw Error("Offline"); return saved(10, params); },
     updateTask: async (id, params) => { calls.push(["update", id, params]); if (failSave) throw Error("Offline"); return saved(id, params); },
     deleteTask: async (id) => { calls.push(["delete", id]); },
   };
@@ -85,7 +85,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 0 }) },
     "../context/QuestContext": { useQuests: () => React.useContext(Context) },
     "../context/TimerContext": { useTimer: () => timer },
-    "../context/UserContext": { useUser: () => ({ hapticsEnabled: false }) },
+    "../context/UserContext": { useUser: () => ({ hapticsEnabled: false, profile: {id: currentOwner} }) },
     "../services/taskService": service,
     "./AppSheet": (props) => {
       React.useEffect(() => {
@@ -97,6 +97,9 @@ async function setup(initialTasks = [], hasOpenSession = false) {
   function Harness() {
     const [tasks, setTasks] = React.useState(initialTasks);
     const [visible, setVisible] = React.useState(true);
+    const [owner, setOwner] = React.useState(options.ownerId ?? "owner");
+    currentOwner = owner;
+    changeOwner = setOwner;
     changeVisible = setVisible;
     currentTasks = tasks;
     const value = { tasks, subjects, loading: false, refreshing: false, error: false,
@@ -104,7 +107,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
       upsert: (item) => setTasks((items) => items.some((t) => t.id === item.id) ? items.map((t) => t.id === item.id ? item : t) : [...items, item]),
       remove: (id) => setTasks((items) => items.filter((item) => item.id !== id)),
     };
-    return React.createElement(Context.Provider, { value }, React.createElement(QuestSheet, { visible, onClose: () => setVisible(false) }));
+    return React.createElement(Context.Provider, { value }, React.createElement(QuestSheet, { ...options.props, visible, onClose: () => { options.onClose?.(); setVisible(false); } }));
   }
   let renderer;
   await act(async () => { renderer = create(React.createElement(Harness)); });
@@ -120,6 +123,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     alertAction: async (label) => { const action = button(label); assert.ok(action); await act(async () => action.props.onPress()); },
     dismiss: async () => { await act(async () => renderer.root.findAllByType("Sheet").at(-1).props.onRequestClose()); },
     reopen: async () => { await act(async () => changeVisible(true)); },
+    changeOwner: async owner => { await act(async () => changeOwner(owner)); },
     finishDismiss: async () => { await act(async () => renderer.root.findByType("Sheet").props.onDismiss()); },
     output: () => text(renderer.root),
     cleanup: async () => { await act(async () => renderer.unmount()); },
@@ -162,6 +166,115 @@ test("editing preserves difficulty and saves an upcoming schedule without leavin
   await ui.press("All quests");
   assert.ok(ui.button("Edit Read two chapters"));
   await ui.cleanup();
+});
+
+const completedSuggestionDraft = {title:"Review your notes", minutes:"1", repeat:"once", days:[], subjectId:2};
+
+test("saving a completed suggestion opens only the shared editor with editable prefilled details", async () => {
+  let created;
+  const ui=await setup([],false,{props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:item=>{created=item;},durationHint:"Your completed session was one minute."}});
+  try {
+    assert.equal(ui.sheets().length,1);
+    assert.equal(ui.sheets()[0].props.label,"quest editor");
+    assert.equal(ui.sheets()[0].props.keyboardBehavior,"fillParent");
+    assert.equal(ui.sheets()[0].props.guardDismiss,false);
+    assert.equal(ui.input("Quest name"),"Review your notes");
+    assert.equal(ui.input("Custom duration in minutes"),"1");
+    assert.match(ui.output(),/Your completed session was one minute/);
+    assert.doesNotMatch(ui.output(),/Today's quests|All quests|Done today/);
+    assert.equal(ui.calls.length,0,"opening a prefilled draft creates nothing");
+    await ui.type("Quest name","  My next review  ");
+    await ui.press("15 minutes");
+    await ui.press("Selected days");
+    await ui.press("Friday");
+    await ui.press("Everyday focus");
+    await ui.press("Create quest");
+    assert.deepEqual(ui.calls,[['create',{title:"My next review",targetMinutes:15,subjectId:1,repeatRule:"Fri",difficulty:"medium"}]]);
+    assert.equal(created.title,"My next review");
+    assert.equal(created.target_minutes,15);
+    assert.equal(ui.tasks().length,1);
+  } finally {await ui.cleanup();}
+});
+
+test("standalone quest editor Cancel and discarded edits create no quest", async () => {
+  for(const edited of [false,true]) {
+    let closed=0,created=0;
+    const ui=await setup([],false,{onClose:()=>closed++,props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:()=>created++}});
+    try {
+      if(edited)await ui.type("Quest name","An unsaved change");
+      await ui.press("Cancel");
+      if(edited){assert.match(ui.output(),/Discard changes/);assert.equal(closed,0);await ui.alertAction("Discard changes");}
+      assert.equal(ui.calls.length,0);
+      assert.equal(ui.tasks().length,0);
+      assert.equal(created,0);
+      assert.equal(closed,1);
+    } finally {await ui.cleanup();}
+  }
+});
+
+test("standalone quest creation submits once while saving and returns only a successful created row",async()=>{
+  let resolve,created=0,closed=0,requestOptions;
+  const pending=new Promise(done=>{resolve=done;});
+  const ui=await setup([],false,{onClose:()=>closed++,createTask:(_params,options)=>{requestOptions=options;return pending;},props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:()=>created++}});
+  try {
+    const save=ui.button("Create quest");
+    await act(async()=>{save.props.onPress();save.props.onPress();});
+    assert.equal(ui.calls.length,1);
+    assert.deepEqual(requestOptions,{expectedOwnerId:"owner"});
+    assert.equal(ui.button("Create quest").props.disabled,true);
+    await ui.press("Cancel");
+    assert.equal(closed,0);
+    assert.equal(created,0);
+    await act(async()=>resolve(task({id:12,title:completedSuggestionDraft.title,target_minutes:1})));
+    assert.equal(created,1);
+    assert.equal(closed,1);
+    assert.equal(ui.tasks().length,1);
+  } finally {await ui.cleanup();}
+});
+
+test("standalone editor refuses a mismatched completion owner before creating a quest",async()=>{
+  const ui=await setup([],false,{ownerId:"another-owner",props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner"}});
+  try{await ui.press("Create quest");assert.equal(ui.calls.length,0);assert.match(ui.output(),/Your account changed/);}
+  finally{await ui.cleanup();}
+});
+
+test("an unconfirmed standalone create preserves its draft and cannot claim a successful saved quest",async()=>{
+  let created=0,closed=0;
+  const ui=await setup([],false,{onClose:()=>closed++,createTask:async()=>{throw Error('Response lost');},
+    props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:'owner',onCreated:()=>created++}});
+  try {
+    await ui.press('Create quest');
+    assert.equal(ui.calls.length,1);assert.equal(created,0);assert.equal(closed,0);assert.equal(ui.tasks().length,0);
+    assert.equal(ui.input('Quest name'),completedSuggestionDraft.title);
+    assert.match(ui.output(),/Couldn't confirm this quest.*Check your quests/);
+    assert.doesNotMatch(ui.output(),/Quest saved|Saved to your quests/);
+  } finally {await ui.cleanup();}
+});
+
+test("an outgoing owner or unmounted editor cannot publish a late created quest",async()=>{
+  for(const leave of ["owner","unmount"]){
+    let resolve,created=0,closed=0;
+    const pending=new Promise(done=>{resolve=done;});
+    const ui=await setup([],false,{onClose:()=>closed++,createTask:()=>pending,props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:()=>created++}});
+    await ui.press("Create quest");
+    if(leave==="owner")await ui.changeOwner("another-owner");else await ui.cleanup();
+    await act(async()=>resolve(task({id:19,title:"Old owner's quest"})));
+    assert.equal(created,0);assert.equal(closed,0);assert.equal(ui.tasks().length,0);
+    if(leave==="owner")await ui.cleanup();
+  }
+});
+
+test("task creation checks the expected owner before insert and again before returning its row",async()=>{
+  for(const timing of ["before","after","unchanged"]){
+    let userCalls=0,inserts=0;
+    const service=load("src/services/taskService.ts",{
+      '../../lib/supabase':{supabase:{auth:{getUser:async()=>({data:{user:{id:timing==="before"||timing==="after"&&userCalls++>0?"another-owner":"owner"}},error:null})},
+        from:()=>({insert:()=>{inserts++;return{select:()=>({single:async()=>({data:task(),error:null})})};}})}},
+    });
+    const promise=service.createTask({title:"New quest",targetMinutes:1},{expectedOwnerId:"owner"});
+    if(timing==="unchanged"){assert.equal((await promise).id,1);assert.equal(inserts,1);}
+    else{await assert.rejects(promise,/Account changed/);assert.equal(inserts,timing==="before"?0:1);}
+  }
 });
 
 test("Cancel and sheet dismissal protect dirty drafts; discarding leaves saved data untouched", async () => {

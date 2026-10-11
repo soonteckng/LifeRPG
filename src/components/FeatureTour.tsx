@@ -15,7 +15,7 @@ export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress. Tap your level to see the tier path." },
   { id: "home-focus", route: "/", title: "Your focus block.", body: "Choose your focus area and time, then start. Suggestions follow the area you choose." },
   { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Suggestions use the same areas as your focus card. Free focus starts with Everyday focus; you can choose another area on Home. Your quests and progress stay yours." },
-  { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
+  { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something that matters. Tap a quest to set up its focus." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Focus areas and session history. Explore Week or Month, and your current and longest streaks." },
   { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Personalise your companion here. This page also holds your focus areas and milestone collection. Growth reflects the effort you’ve recorded." },
 ] as const;
@@ -245,7 +245,9 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
       </View>
       {!returning && <Animated.View testID="tour-tip" onLayout={event => setPanelHeight(event.nativeEvent.layout.height)} style={[s.tip, { width: panelWidth, left: (viewport.width - panelWidth) / 2, top: tipTop, opacity, transform: [{ scale: reduced ? 1 : opacity.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }]}>
         <View style={{ gap: 10 }}><View style={s.tipHeading}><Text style={[s.title, s.headingTitle]} accessibilityRole="header" onLayout={event => setTitleHeight(event.nativeEvent.layout.height)}>{current.title}</Text><Text style={s.counter}>{(step ?? 0) + 1} of {TOUR_STEPS.length}</Text></View>
-          <ScrollView style={{ height: Math.min(bodyHeight, bodyCap), flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap}>
+          {/* Let short tips size to their text. A fixed measured height can clip
+              the last native line while switching tips or scaling fonts. */}
+          <ScrollView key={current.id} style={{ maxHeight: bodyCap, flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap} persistentScrollbar={bodyHeight > bodyCap}>
             <Text style={s.body} onLayout={event => { const height = Math.ceil(event.nativeEvent.layout.height); if (height > 0) setBodySize(previous => previous.id === current.id && previous.height === height ? previous : { id: current.id, height }); }}>{current.body}</Text>
           </ScrollView>
         </View>
