@@ -1,4 +1,5 @@
 import { focusAreaTitle, focusAreaChoices, generalArea } from "../utils/focusAreas";
+import { questLists } from "../utils/questLists";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
@@ -71,7 +72,20 @@ export default function SessionScreen() {
   const [completionClosing, setCompletionClosing] = useState(false);
   const pendingCompletion = !timer.endingSession && (timer.isCompleted && !sessionSummary && timer.syncStatus !== "rejected"
     || timer.hasOpenSession && timer.isRunning && timer.timeLeft === 0 && !timer.awaitingStart && timer.syncStatus !== "waiting");
-  const completionSheetVisible = !completionClosing && (pendingCompletion || !!sessionSummary && rewardsVisible);
+  const pendingKey = pendingCompletion ? timer.sessionId ?? "awaiting-completion" : null;
+  const [pendingSurface, setPendingSurface] = useState({key: pendingKey, ready: false});
+  if (pendingSurface.key !== pendingKey) setPendingSurface({key: pendingKey, ready: false});
+  const pendingSheetReady = pendingSurface.key === pendingKey && pendingSurface.ready;
+  useEffect(() => {
+    if (!pendingCompletion) return;
+    // A fast online receipt opens the final sheet once. Genuine slow/offline
+    // saving still gets a truthful pending surface after this short grace.
+    const deadline = setTimeout(() => setPendingSurface(current => current.key === pendingKey
+      ? {key: pendingKey, ready: true} : current), 700);
+    return () => clearTimeout(deadline);
+  }, [pendingCompletion, pendingKey]);
+  const completionSheetVisible = !completionClosing && (pendingCompletion && (pendingSheetReady || !!timer.actionError)
+    || !!sessionSummary && rewardsVisible);
   const hideCompletedSummary = completionSheetVisible || completionClosing;
   const [picker, setPicker] = useState<Picker>(null);
   const endedVisible = cancellationSaved && !endedClosing;
@@ -121,16 +135,18 @@ export default function SessionScreen() {
   };
 
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
+  const selectableQuests = questLists(tasks).today;
   const general = generalArea(subjects);
   const selectableAreas = focusAreaChoices(subjects, timer.targetAttributeId);
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
   const locked = timer.hasOpenSession || timer.endingSession || timer.isCompleted || timer.actionBusy || timer.isRestoring;
   const isQuest = timer.linkedTaskId !== null;
   const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
-  const missingQuest = isQuest && !task;
+  const missingQuest = isQuest && (!task || !locked && !selectableQuests.some(item => item.id === timer.linkedTaskId));
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
 
   useEffect(() => afterTransition(() => { void refresh(); }), [refresh]);
+  useEffect(() => { if (picker === "quest") void refresh(true); }, [picker, refresh]);
   useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
@@ -323,7 +339,7 @@ export default function SessionScreen() {
             {phase === "setup" && <View style={styles.setup}>
               {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
-                <Text style={styles.secondary}>{missingQuest ? "Your quest is still linked. Reload its details before starting, or switch to a free session." : "Couldn’t load your choices."}</Text>
+                <Text style={styles.secondary}>{missingQuest ? task ? "This quest is already done or isn’t scheduled for today. Choose another quest or switch to a free session." : "Your quest is still linked. Reload its details before starting, or switch to a free session." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
               </View>}
               {!isQuest && <FocusLengthControl seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
@@ -399,7 +415,7 @@ export default function SessionScreen() {
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <SheetChoice label={focusAreaTitle()} onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
           {picker === "area" && selectableAreas.filter((item) => item.id !== general?.id).map((item) => <SheetChoice key={item.id} label={focusAreaTitle(item.title)} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
-          {picker === "quest" && tasks.filter((item) => item.is_due_today && !item.is_completed_today).map((item) => {
+          {picker === "quest" && selectableQuests.map((item) => {
             const questArea = subjects.find(subject => subject.id === item.subject_id);
             const tint = lifeAreaColor(item.subject_id, questArea?.color_code);
             const selected = timer.linkedTaskId === item.id;
@@ -417,7 +433,7 @@ export default function SessionScreen() {
               <Ionicons name={selected ? "checkmark-circle" : "chevron-forward"} size={20} color={selected ? colors.accent : colors.secondary} />
             </SheetButton>;
           })}
-          {picker === "quest" && !tasks.some((item) => item.is_due_today && !item.is_completed_today) && <View style={styles.questPickerEmpty}>
+          {picker === "quest" && selectableQuests.length === 0 && <View style={styles.questPickerEmpty}>
             <Ionicons name="flag-outline" size={28} color={colors.accent} />
             <Text style={styles.questPickerTitle}>{loading ? "Loading quests…" : "No quests for today"}</Text>
             {!loading && <Text style={styles.secondary}>You can still start a free session.</Text>}

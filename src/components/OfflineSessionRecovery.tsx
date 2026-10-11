@@ -46,9 +46,23 @@ export default function OfflineSessionRecovery() {
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const cached = auth.cachedProfile?.id === auth.localOwner?.id ? auth.cachedProfile
     : profile.id === auth.localOwner?.id ? profile : null;
-  const state = recoveryState(timer);
-  const rawSeconds = state.timer === "planned" ? timer.duration : timer.isCompleted ? 0 : timer.timeLeft;
-  const seconds = Number.isFinite(rawSeconds) ? Math.max(0, Math.floor(rawSeconds)) : 0;
+  const scope = `${auth.localOwner?.backendId ?? ""}:${auth.localOwner?.id ?? ""}:${auth.admissionEpoch}`;
+  const currentState = recoveryState(timer);
+  const rawSeconds = currentState.timer === "planned" ? timer.duration : timer.isCompleted ? 0 : timer.timeLeft;
+  const currentSeconds = Number.isFinite(rawSeconds) ? Math.max(0, Math.floor(rawSeconds)) : 0;
+  const currentPresentation = { scope, state: currentState, seconds: currentSeconds, running: timer.isRunning,
+    restoreError: timer.restoreError, actionError: timer.actionError };
+  const [stable, setStable] = useState<typeof currentPresentation | null>(() => timer.isRestoring ? null : currentPresentation);
+  // A local reload must not flash a draft/empty timer between the last known
+  // record and the newly read journal. A different account never reuses it.
+  if (!timer.isRestoring && (!stable || stable.scope !== scope || stable.state.title !== currentState.title
+    || stable.state.body !== currentState.body || stable.state.timer !== currentState.timer || stable.seconds !== currentSeconds
+    || stable.running !== timer.isRunning || stable.restoreError !== timer.restoreError || stable.actionError !== timer.actionError)) {
+    setStable(currentPresentation);
+  }
+  const presentation = timer.isRestoring && stable?.scope === scope ? stable : currentPresentation;
+  const state = presentation.state;
+  const seconds = presentation.seconds;
   const minutes = Math.floor(seconds / 60), remainder = seconds % 60;
   const timeLabel = `${state.timer === "planned" ? "Planned focus" : "Time remaining"}, ${minutes} ${minutes === 1 ? "minute" : "minutes"}, ${remainder} ${remainder === 1 ? "second" : "seconds"}`;
   const disabled = busy || timer.actionBusy || timer.isRestoring;
@@ -85,15 +99,15 @@ export default function OfflineSessionRecovery() {
         <View style={styles.card}>
           <Text style={styles.statusTitle} accessibilityRole="header">{state.title}</Text>
           {state.timer && <View testID="offline-countdown" accessible accessibilityRole="text" accessibilityLabel={timeLabel}>
-            <Text style={styles.caption}>{state.timer === "planned" ? "Planned focus" : timer.isRunning ? "Time remaining" : "Saved time remaining"}</Text>
+            <Text style={styles.caption}>{state.timer === "planned" ? "Planned focus" : presentation.running ? "Time remaining" : "Saved time remaining"}</Text>
             <View style={[styles.time, { flexDirection: width < 350 || fontScale > 1.5 ? "column" : "row" }]}>
               <View style={styles.unit}><Text testID="offline-minutes" style={styles.number}>{minutes}</Text><Text style={styles.unitLabel}>min</Text></View>
               <View style={styles.unit}><Text testID="offline-seconds" style={styles.number}>{String(remainder).padStart(2, "0")}</Text><Text style={styles.unitLabel}>sec</Text></View>
             </View>
           </View>}
           <Text style={styles.body}>{state.body}</Text>
-          {timer.restoreError && !!timer.actionError && <Text style={styles.error}
-            accessibilityRole="alert" accessibilityLiveRegion="polite">{timer.actionError}</Text>}
+          {presentation.restoreError && !!presentation.actionError && <Text style={styles.error}
+            accessibilityRole="alert" accessibilityLiveRegion="polite">{presentation.actionError}</Text>}
         </View>
         <View style={styles.actions}>
           <Pressable accessibilityRole="button" accessibilityLabel="Retry connection"

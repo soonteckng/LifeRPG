@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 import * as Haptics from "expo-haptics";
 import { uuid } from "expo-modules-core";
@@ -69,9 +69,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const identity = sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL ?? "");
   const backendId = auth.localOwner?.backendId ?? identity?.backendId;
   const ownerId = auth.user?.id ?? auth.localOwner?.id;
+  const controllerScopeKey = ownerId && backendId ? JSON.stringify([ownerId, backendId, auth.admissionEpoch]) : null;
   const controllerRef = useRef<SessionTimerController | null>(null);
   const startInFlight = useRef(false);
   const [runtime, setRuntime] = useState(initialRuntime);
+  const [runtimeScopeKey, setRuntimeScopeKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ seconds: 1800, activityType: "other", subjectId: null as number | null,
     taskId: null as number | null, notes: "" });
   const [hiddenSavedId, setHiddenSavedId] = useState<string | null>(null);
@@ -107,7 +109,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       authority: { currentScope, currentEpoch, verify, beginOperation: verification.beginOperation, endOperation: verification.endOperation }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
     });
     controllerRef.current = controller;
-    const unsubscribe = controller.subscribe(next => setRuntime(current =>
+    const snapshotScopeKey = JSON.stringify([ownerId, backendId, auth.admissionEpoch]);
+    const unsubscribe = controller.subscribe(next => {
+      setRuntimeScopeKey(snapshotScopeKey);
+      setRuntime(current =>
       current.record?.clientSessionId === next.record?.clientSessionId
       && current.record?.revision === next.record?.revision && current.timeLeft === next.timeLeft
       && current.restoring === next.restoring && current.busy === next.busy && current.error === next.error
@@ -116,7 +121,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
       && current.displayTimeLeft === next.displayTimeLeft
       && current.recovered === next.recovered
-      && current.rewardsVisible === next.rewardsVisible ? current : next));
+      && current.rewardsVisible === next.rewardsVisible ? current : next);
+    });
     void controller.initialize();
     const interval = setInterval(() => { void controller.tick(); }, 200);
     const appState = AppState.addEventListener("change", next => {
@@ -168,15 +174,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     ?? readSuggestedFocus(notes)?.title ?? (linkedTaskId === null ? "Free session" : "Quest session");
   const receipt = record?.sync.receipt;
   const result = receipt?.result;
-  const summaryId = receipt ? record!.clientSessionId : null;
-  const [sessionSummary, setSessionSummary] = useState<SessionSummary | null>(null);
-  useEffect(() => {
-    if (!receipt || !result || !record) {
-      // Summary is a view of durable receipt state, never a reward authority.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSessionSummary(null); return;
-    }
-    const summary: SessionSummary = {
+  const summaryId = record?.clientSessionId ?? null;
+  // Controller publications copy their record objects. Memoize the normalized
+  // receipt content instead, so dismissing or checking the same saved result
+  // cannot restart consumers' profile-refresh effects. Scope is part of the
+  // memo identity, and an outgoing account's snapshot clears immediately.
+  const summaryPayload = receipt && result && record && controllerScopeKey !== null && runtimeScopeKey === controllerScopeKey
+    ? JSON.stringify([controllerScopeKey, {
       sessionId: receipt.sessionId, suggestion: record.setup.taskId === null ? readSuggestedFocus(record.setup.notes) ?? undefined : undefined,
       completedAtMs: record.completedAtMs ?? undefined, recovered: runtime.recovered,
       durationSeconds: receipt.durationSeconds, minutesSpent: numberOr(result.minutes, Math.floor(receipt.durationSeconds / 60)),
@@ -185,9 +189,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       characterRemainderSeconds: optionalNumber(result.character_remainder_seconds), areaRemainderSeconds: nullableNumber(result.area_remainder_seconds),
       dailyCompletedSeconds: optionalNumber(result.daily_completed_seconds), goalReachedNow: result.goal_reached_now === true,
       creditedDate: typeof result.credited_date === "string" ? result.credited_date : undefined,
-    };
-    setSessionSummary(current => current && current.sessionId === summary.sessionId && current.questTitle === summary.questTitle
-      && current.completedAtMs === summary.completedAtMs && current.recovered === summary.recovered ? current : summary);
+    }]) : null;
+  const sessionSummary = useMemo<SessionSummary | null>(() => {
+    if (summaryPayload === null) return null;
+    const [, summary] = JSON.parse(summaryPayload) as [string, SessionSummary];
+    return summary;
+  }, [summaryPayload]);
+  useEffect(() => {
+    if (!receipt || !result || !record) return;
     if (!seenReceipts.current.has(record.clientSessionId)) {
       seenReceipts.current.add(record.clientSessionId);
       if (auth.accessMode === "online") void reloadProfile().catch(() => false);
@@ -252,7 +261,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const completedLevelUp = result?.leveled_up === true
     ? { leveledUp: true, newLevel: numberOr(result.level, 1) } : null;
   const retry = async () => { await controllerRef.current?.retry(); };
-  const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId]);
+  const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId, setViewedSummaryId]);
   return <TimerContext.Provider value={{
     sessionId: record?.serverSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,

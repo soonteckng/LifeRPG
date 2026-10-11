@@ -287,7 +287,7 @@ test("many quests and long titles remain individually editable with distinct Sta
   await ui.cleanup();
 });
 
-test("quest list keeps its bottom gap through the installed library's footer adjustment in Today and All", async () => {
+test("quest list reserves only its measured footer and leaves no extra tail gap in Today, All and Done", async () => {
   const hookFile = path.join(require.resolve("@gorhom/bottom-sheet/package.json"), "..", "src/hooks/useBottomSheetContentContainerStyle.ts");
   let footerHeight = 0;
   const { useBottomSheetContentContainerStyle } = load(path.relative(path.resolve(__dirname, ".."), hookFile), {
@@ -307,14 +307,14 @@ test("quest list keeps its bottom gap through the installed library's footer adj
   let renderer;
   try {
     await act(async () => { renderer = create(React.createElement(Adjusted, { style: listStyle() })); });
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 40);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 0);
     await ui.press("All quests");
     footerHeight = 72;
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 72);
     await ui.press("View completed quests");
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 72);
   } finally {
     if (renderer) await act(async () => renderer.unmount());
     await ui.cleanup();
@@ -726,7 +726,7 @@ test("Done today excludes older one-off completions when loaded from persistence
     task({id:5, is_recurring:true, repeat_rule:'daily', last_completed_date:'2000-01-01'}),
   ];
   const service = load('src/services/taskService.ts', {
-    '../../lib/supabase': {supabase:{from:()=>({select:()=>({order:async()=>({data:rows,error:null})})})}},
+    '../../lib/supabase': {supabase:{auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},from:()=>({select:()=>({eq:()=>({order:async()=>({data:rows,error:null})})})})}},
   });
   const saved = await service.getTasks();
   assert.deepEqual(saved.filter(item=>item.is_completed_today).map(item=>item.id).sort(), [1,3]);

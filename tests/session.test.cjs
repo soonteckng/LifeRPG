@@ -57,6 +57,7 @@ const definitiveServerRejection = () => Object.assign(Error("Server rejected the
 
 async function providerSetup(overrides = {}, notifications = null) {
   let state, show = true, tick, foreground;
+  const summarySnapshots = [];
   const calls = [];
   const realInterval = global.setInterval, realClear = global.clearInterval, realNow = Date.now;
   let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false;
@@ -148,13 +149,13 @@ async function providerSetup(overrides = {}, notifications = null) {
     "./UserContext": { useUser: () => ({ reloadProfile }) },
     "./AuthContext": { useAuth: () => auth },
   });
-  function Capture() { state = useTimer(); return null; }
+  function Capture() { state = useTimer(); summarySnapshots.push({ owner: auth.user?.id, backend: auth.localOwner?.backendId, epoch: auth.admissionEpoch, summary: state.sessionSummary }); return null; }
   function Page() { return React.createElement("Page"); }
   function Harness() { return React.createElement(TimerProvider,null,React.createElement(Capture),show && React.createElement(Page)); }
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, calls, verifications: () => verifications,
+    state: () => state, calls, verifications: () => verifications, summarySnapshots,
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
     backgroundTime: (seconds) => { now += seconds*1000; },
@@ -162,6 +163,13 @@ async function providerSetup(overrides = {}, notifications = null) {
     background: async () => { await act(async () => { foreground("background"); await flush(); }); },
     page: async (visible) => { show=visible; await act(async () => renderer.update(React.createElement(Harness))); },
     connection: async (mode) => { auth.accessMode=mode; await act(async()=>{renderer.update(React.createElement(Harness));await flush();}); },
+    changeScope: async (kind) => {
+      if (kind === "owner") { auth.user = { id: "22222222-2222-4222-8222-222222222222" }; auth.localOwner = { ...auth.localOwner, id: auth.user.id }; }
+      if (kind === "backend") auth.localOwner = { ...auth.localOwner, backendId: "other-backend" };
+      auth.admissionEpoch++;
+      auth.verifyCurrentOwner = async () => ({ id: auth.user.id, backendId: auth.localOwner.backendId });
+      await act(async () => { renderer.update(React.createElement(Harness)); await flush(); });
+    },
     cleanup: async () => { await act(async () => { renderer.unmount(); await flush(); }); global.setInterval=realInterval; global.clearInterval=realClear; Date.now=realNow; },
   };
 }
@@ -234,6 +242,21 @@ test("closing rewards preserves completed summary and never re-awards", async ()
   assert.equal(ui.state().sessionSummary,null);
   assert.equal(ui.calls.filter(([name])=>name==="cancel").length,0);
   await ui.cleanup();
+});
+
+test("saved summaries clear in the first render of a different owner, backend or admission", async () => {
+  for (const kind of ["owner", "backend", "admission"]) {
+    const ui = await providerSetup();
+    try {
+      await ui.run(s => s.startTimer(1, "Read")); await ui.advance(1);
+      assert.ok(ui.state().sessionSummary);
+      const before = ui.summarySnapshots.length;
+      await ui.changeScope(kind);
+      const after = ui.summarySnapshots.slice(before);
+      assert.ok(after.length > 0);
+      assert.ok(after.every(snapshot => snapshot.summary === null), `${kind} must not expose the outgoing saved result`);
+    } finally { await ui.cleanup(); }
+  }
 });
 
 test("failed completion remains visible and retries the same session ID", async () => {
@@ -990,10 +1013,13 @@ test("normal pending End never inserts the offline retry block into its opening 
   } finally { await ui.cleanup(); }
 });
 
-test("completion opens one sheet at zero and keeps it open while the receipt arrives", async () => {
+test("a slow completion opens one truthful pending sheet and keeps it open while the receipt arrives", async (t) => {
+  t.mock.timers.enable({apis:["setTimeout"]});
   const ui = await screenSetup({ hasOpenSession:true, isRunning:true, timeLeft:0, duration:60 });
   try {
     const popup = ui.root().findByType('CompletionPopup');
+    assert.equal(popup.props.visible,false);
+    await act(async () => t.mock.timers.tick(800));
     assert.equal(popup.props.visible,true); assert.equal(popup.props.pending,true);
     await ui.update({hasOpenSession:false,isCompleted:true,actionBusy:true,syncStatus:'waiting'});
     assert.equal(ui.root().findByType('CompletionPopup'),popup); assert.equal(popup.props.visible,true);
@@ -1001,6 +1027,37 @@ test("completion opens one sheet at zero and keeps it open while the receipt arr
     assert.equal(ui.root().findByType('CompletionPopup'),popup);
     assert.equal(popup.props.visible,true); assert.equal(popup.props.pending,false);
   } finally { await ui.cleanup(); }
+});
+
+test("a fast online completion opens the final sheet without a brief pending popup", async (t) => {
+  t.mock.timers.enable({apis:["setTimeout"]});
+  const ui = await screenSetup({hasOpenSession:false,isCompleted:true,timeLeft:0,duration:60,syncStatus:'waiting'});
+  try {
+    const popup = ui.root().findByType('CompletionPopup');
+    assert.equal(popup.props.visible,false);
+    await act(async () => t.mock.timers.tick(500));
+    await ui.update({syncStatus:'saved',sessionSummary:{durationSeconds:60,xpEarned:1,goldEarned:0},rewardsVisible:true});
+    assert.equal(popup.props.visible,true); assert.equal(popup.props.pending,false);
+    await act(async () => t.mock.timers.tick(1000));
+    assert.equal(popup.props.visible,true); assert.equal(popup.props.pending,false);
+  } finally {await ui.cleanup();}
+});
+
+test("Done before the completion reply preserves the pending result and does not reopen rewards", async () => {
+  let completions=0;
+  const pending = deferred(), ui = await providerSetup({completeActivitySession:()=>{completions++;return pending.promise;}});
+  try {
+    await ui.run(s=>s.startTimer(60)); await ui.advance(60);
+    assert.equal(ui.state().isCompleted,true); assert.equal(ui.state().sessionSummary,null);
+    await ui.run(s=>{s.clearCompletionModal();s.acknowledgeSummary();});
+    assert.equal(ui.state().summaryViewed,true);
+    await ui.run(()=>pending.resolve(result));
+    assert.ok(ui.state().sessionSummary);
+    assert.equal(ui.state().summaryViewed,true); assert.equal(ui.state().rewardsVisible,false);
+    await ui.run(s=>s.retryCompletion());
+    assert.equal(completions,1);
+    assert.equal(ui.calls.filter(([name])=>name==='cancel').length,0);
+  } finally {await ui.cleanup();}
 });
 test("saving an End request clears alerts immediately and never completes while cancellation is pending", async () => {
   const mock = notificationMock(), ui = await providerSetup({ cancelActivitySession: async () => { throw Error("Poor signal"); } }, mock.api);
@@ -1211,7 +1268,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     const sheet=renderer.root.findByType("PopupSheet");
     assert.equal(sheet.props.label,"session completion");
     assert.equal(sheet.props.expanded,true);
-    assert.equal(sheet.props.heightRatio,0.85);
+    assert.ok(sheet.props.heightRatio < 0.85, 'ordinary results open around their content instead of filling most of the screen');
     assert.equal(sheet.props.motionMode,'timed');
     assert.equal(sheet.props.maxHeightRatio,0.85);
     assert.equal(sheet.props.footer,undefined, 'actions reserve normal-flow height instead of overlaying result content');
@@ -1219,11 +1276,11 @@ test("completion message shows saved exact duration and awards; Done only closes
     const actions=renderer.root.findByProps({testID:'session-result-actions'});
     assert.equal(actions.props.style[0].flexShrink,0);
     assert.equal(scroll.props.style.flex,1);
-    assert.equal(scroll.findAllByType('Button').length,0,'Done and Save for later must not require scrolling through result details');
+    assert.equal(scroll.findAllByType('Button').length,0,'Done and Save as quest must not require scrolling through result details');
     assert.equal(actions.findByType('Button').props.accessibilityRole,'button');
     assert.equal(text(actions.findByType('Button')),'Done');
     assert.equal(actions.findByType('GuidedBoundary').props.compact,true);
-    assert.equal(renderer.root.findByType('Ring').props.size,72);
+    assert.equal(renderer.root.findByType('Ring').props.size,60);
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
@@ -1232,7 +1289,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.match(text(renderer.root),/Session finished.*Saving your progress/);
     assert.doesNotMatch(text(renderer.root),/Character XP|Progress saved|Recorded/);
     assert.doesNotMatch(text(renderer.root),/now saved to your account/);
-    assert.equal(sheet.props.heightRatio,0.85, 'receipt arrival cannot change the sheet snap point');
+    assert.ok(sheet.props.heightRatio <= 0.85, 'pending results keep actions within the capped sheet');
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',recovered:true,completedAtMs:Date.UTC(2026,9,11,1,23),durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
     assert.match(text(renderer.root),/Earlier session saved.*Finished 11 Oct 2026/);
     assert.match(text(renderer.root),/now saved to your account/);
@@ -1242,7 +1299,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     fontScale=1.6;
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
-    assert.equal(renderer.root.findByType('Ring').props.size,56,'large text gets a smaller decorative ring instead of reducing text or hiding actions');
+    assert.equal(renderer.root.findByType('Ring').props.size,48,'large text gets a smaller decorative ring instead of reducing text or hiding actions');
     assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
     assert.equal(scrollResets.length,2);
     await act(async()=>renderer.root.findByType("Button").props.onPress());

@@ -168,17 +168,21 @@ export async function getSubjects(): Promise<Subject[]> {
 }
 
 export async function getTasks(): Promise<Task[]> {
+  const ownerId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("tasks")
     .select(
       "id, title, difficulty, is_completed, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id, last_completed_date, created_at, updated_at, completed_at",
     )
+    .eq("user_id", ownerId)
     .order("created_at", { ascending: false });
 
   if (error) {
     console.error("Failed to load tasks:", error);
     throw error;
   }
+
+  if (await getCurrentUserId() !== ownerId) throw new Error("Account changed while loading quests.");
 
   const tasks = (data ?? []).map(mapTask);
 

@@ -46,7 +46,7 @@ export default function SaveSuggestedQuest({ inSheet = false, compact = false }:
   return <View style={{ gap: 8 }}>
     {saved ? <View style={{ minHeight:52, justifyContent:"center", alignItems:"center" }}>
       <Text style={p.rowTitle} accessibilityRole="text" accessibilityLiveRegion="polite">Saved to your quests ✓</Text>
-    </View> : <Button accessibilityRole="button" accessibilityState={{ disabled: busy || receipt?.identity !== identity, busy }} disabled={busy || receipt?.identity !== identity} onPress={() => void save()} style={[p.button, p.secondaryButton]}><Text style={p.rowTitle}>{busy ? "Saving…" : "Save for later"}</Text></Button>}
+    </View> : <Button accessibilityRole="button" accessibilityState={{ disabled: busy || receipt?.identity !== identity, busy }} disabled={busy || receipt?.identity !== identity} onPress={() => void save()} style={[p.button, p.secondaryButton]}><Text style={p.rowTitle}>{busy ? "Saving…" : "Save as quest"}</Text></Button>}
     {!saved && !compact && <Text style={p.caption}>Adds a one-time quest. You can choose a schedule in Quests later.</Text>}
     {!!error && !saved && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
   </View>;

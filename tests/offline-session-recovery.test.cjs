@@ -25,7 +25,7 @@ const cached = { id: "owner", username: "Soon Teck", daily_goal_minutes: 60, lev
 async function screen(options = {}) {
   const calls = [];
   const forbidden = () => { throw Error("Editable offline action called"); };
-  const auth = { localOwner: { id: "owner", backendId: "fixture.supabase.co" }, cachedProfile: cached,
+  let auth = { localOwner: { id: "owner", backendId: "fixture.supabase.co" }, cachedProfile: cached, admissionEpoch: 1,
     retrySessionVerification: async () => { calls.push("connection"); return options.connection?.(); }, ...options.auth };
   let timer = { timeLeft: 90, duration: 1800, hasOpenSession: true, isRunning: true, isCompleted: false, isRestoring: false,
     restoreError: false, actionBusy: false, actionError: null, awaitingStart: false, syncStatus: "idle", sessionSummary: null,
@@ -43,6 +43,7 @@ async function screen(options = {}) {
   let tree; await act(async () => { tree = create(React.createElement(module.default)); });
   return { root: () => tree.root, calls, button: label => tree.root.findAllByType("Button").find(node => node.props.accessibilityLabel === label),
     update: next => act(async () => { timer = { ...timer, ...next }; tree.update(React.createElement(module.default)); }),
+    auth: next => act(async () => { auth = { ...auth, ...next }; tree.update(React.createElement(module.default)); }),
     cleanup: () => act(async () => tree.unmount()) };
 }
 test("running recovery shows cached name/goal and live countdown with no editing controls or reward estimates", async () => {
@@ -179,4 +180,57 @@ test("foreign cached profile details cannot leak into the local owner's recovery
   const ui = await screen({ auth: { cachedProfile: foreign }, profile: foreign });
   try { assert.match(text(ui.root()), /Welcome back\./); assert.doesNotMatch(text(ui.root()), /Someone Else|Last saved daily goal/); }
   finally { await ui.cleanup(); }
+});
+
+test("reloading a running journal preserves its card and confirmed time instead of flashing a draft", async () => {
+  const ui = await screen();
+  try {
+    await ui.update({ isRestoring: true, hasOpenSession: false, isRunning: false, timeLeft: 1800 });
+    assert.match(text(ui.root()), /Your focus is still here/); assert.doesNotMatch(text(ui.root()), /Restoring your session|No active session/);
+    assert.equal(ui.root().findByProps({ testID: "offline-countdown" }).props.accessibilityLabel, "Time remaining, 1 minute, 30 seconds");
+    assert.equal(ui.button("Retry connection").props.disabled, true);
+    await ui.update({ isRestoring: false, hasOpenSession: true, isRunning: true, timeLeft: 75 });
+    assert.equal(ui.root().findByProps({ testID: "offline-countdown" }).props.accessibilityLabel, "Time remaining, 1 minute, 15 seconds");
+  } finally { await ui.cleanup(); }
+});
+
+test("an idle account retry keeps the same card while local storage reloads", async () => {
+  const ui = await screen({ timer: { hasOpenSession: false, isRunning: false } });
+  try {
+    await ui.update({ isRestoring: true });
+    assert.match(text(ui.root()), /Your account is on this phone/); assert.doesNotMatch(text(ui.root()), /Restoring your session|saved session needs another look/);
+    await ui.update({ isRestoring: false });
+    assert.match(text(ui.root()), /Your account is on this phone/);
+  } finally { await ui.cleanup(); }
+});
+
+test("a real unreadable journal keeps its warning through retry and updates only when reload settles", async () => {
+  const ui = await screen({ timer: { restoreError: true, actionError: "Local saved data could not be read." } });
+  try {
+    await ui.update({ isRestoring: true, restoreError: false, actionError: null, hasOpenSession: false });
+    assert.match(text(ui.root()), /Your saved session needs another look|Local saved data could not be read/);
+    assert.doesNotMatch(text(ui.root()), /Restoring your session|Your account is on this phone/);
+    await ui.update({ isRestoring: false, hasOpenSession: false });
+    assert.match(text(ui.root()), /Your account is on this phone/); assert.doesNotMatch(text(ui.root()), /Local saved data/);
+  } finally { await ui.cleanup(); }
+});
+
+test("saved End presentation survives reload without a phantom countdown", async () => {
+  const ui = await screen({ timer: { endingSession: true, syncStatus: "waiting" } });
+  try {
+    await ui.update({ isRestoring: true, endingSession: false, hasOpenSession: false, syncStatus: "idle" });
+    assert.match(text(ui.root()), /Your request to end is saved/);
+    assert.equal(ui.root().findAllByProps({ testID: "offline-countdown" }).length, 0);
+    await ui.update({ isRestoring: false }); assert.match(text(ui.root()), /Your account is on this phone/);
+  } finally { await ui.cleanup(); }
+});
+
+test("reload presentation cannot retain the previous owner's countdown or error after admission changes", async () => {
+  const ui = await screen();
+  try {
+    await ui.update({ isRestoring: true, hasOpenSession: false, isRunning: false });
+    await ui.auth({ localOwner: { id: "other", backendId: "fixture.supabase.co" }, admissionEpoch: 2, cachedProfile: null });
+    assert.match(text(ui.root()), /Restoring your session/); assert.doesNotMatch(text(ui.root()), /Your focus is still here|Soon Teck/);
+    assert.equal(ui.root().findAllByProps({ testID: "offline-countdown" }).length, 0);
+  } finally { await ui.cleanup(); }
 });

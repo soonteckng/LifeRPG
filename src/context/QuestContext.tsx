@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 import { useTimer } from "./TimerContext";
 import { getSubjects, getTasks, type Subject, type Task } from "../services/taskService";
@@ -9,7 +9,7 @@ interface QuestState {
   loading: boolean;
   refreshing: boolean;
   error: boolean;
-  refresh: () => Promise<void>;
+  refresh: (fresh?: boolean) => Promise<void>;
   upsert: (task: Task) => void;
   remove: (id: number) => void;
 }
@@ -24,6 +24,7 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState(false);
   const revision = useRef(0);
   const request = useRef(0);
+  const alive = useRef(true);
   const loadQuests = useCallback(async () => {
     const currentRequest = ++request.current;
     const currentRevision = revision.current;
@@ -43,24 +44,44 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const pendingRefresh = useRef<Promise<void> | null>(null);
   const refresh = useCallback(function refresh(fresh = false): Promise<void> {
+    if (!alive.current) return Promise.resolve();
     if (fresh && pendingRefresh.current) return pendingRefresh.current.then(() => refresh(), () => refresh());
     if (!pendingRefresh.current) {
-      pendingRefresh.current = loadQuests().finally(() => { pendingRefresh.current = null; });
+      const flight = loadQuests().finally(() => { if (pendingRefresh.current === flight) pendingRefresh.current = null; });
+      pendingRefresh.current = flight;
     }
     return pendingRefresh.current;
   }, [loadQuests]);
   const upsert = useCallback((task: Task) => {
+    if (!alive.current) return;
     revision.current++;
     setTasks((current) => current.some((item) => item.id === task.id)
       ? current.map((item) => item.id === task.id ? task : item) : [task, ...current]);
   }, []);
   // Session completion is an external persistence event; reload its server-derived schedule and completion state.
-  useEffect(() => { if (sessionSummary) void refresh(true); }, [sessionSummary, refresh]);
+  useEffect(() => {
+    if (sessionSummary) {
+      // A read begun before completion can still contain the old actionable row.
+      revision.current++;
+      void refresh(true);
+    }
+  }, [sessionSummary, refresh]);
+  const invalidateReads = useCallback(() => {
+    // AuthGate keys this provider by owner. Ignore reads from an outgoing account.
+    alive.current = false;
+    request.current++;
+    pendingRefresh.current = null;
+  }, []);
+  useLayoutEffect(() => {
+    alive.current = true;
+    return invalidateReads;
+  }, [invalidateReads]);
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => { if (state === "active") void refresh(true); });
     return () => subscription.remove();
   }, [refresh]);
   const remove = useCallback((id: number) => {
+    if (!alive.current) return;
     revision.current++;
     setTasks((current) => current.filter((task) => task.id !== id));
   }, []);

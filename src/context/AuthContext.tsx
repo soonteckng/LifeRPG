@@ -2,7 +2,7 @@ import React, { createContext, useContext, useEffect, useRef, useState, useMemo,
 import type { Session, User } from "@supabase/supabase-js";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { isExpoGoLanRecoveryRedirect, parseRecoveryLink, recoveryLinkError, recoveryStorageKey, validEmail, type RecoveryState } from "../utils/passwordRecovery";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
@@ -27,6 +27,7 @@ interface AuthContextType {
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_VERIFICATION_TIMEOUT_MS = 8000;
+const LOCAL_RECONNECT_INTERVAL_MS = 4000;
 class AuthVerificationTimeout extends Error {
   readonly status = 503;
   constructor() { super("Account verification timed out"); this.name = "AuthRetryableFetchError"; }
@@ -316,9 +317,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
           }
         }
+        const restorationGeneration = verificationGeneration.current;
         const restored = await boundedAuthRequest(supabase.auth.getSession()).catch(error => ({ data: { session: null }, error }));
         if (!live) return;
-        if (!authEventSeen || (!restored.data.session && restored.error && !sessionRef.current && !verified.current)) {
+        // Automatic reconnect can verify an account while the boot SDK read is
+        // still pending, even without an auth callback. Its newer proof wins.
+        if (restorationGeneration === verificationGeneration.current
+          && (!authEventSeen || (!restored.data.session && restored.error && !sessionRef.current && !verified.current))) {
           sessionRef.current = restored.data.session;
           setSession(restored.data.session);
           // A refresh failure may return null while the original credential is
@@ -416,6 +421,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     sessionRef.current = result.data.session; setSession(result.data.session);
     await verifySession(result.data.session, true, result.error);
   };
+  const reconnectVerification = useRef(verifyCurrentOwner);
+  useEffect(() => { reconnectVerification.current = verifyCurrentOwner; });
+  useEffect(() => {
+    if (accessMode !== "local-only" || !localOwner || recovery !== "none") return;
+    let live = true, checking = false;
+    let active = !AppState?.currentState || AppState.currentState === "active";
+    const epoch = admissionEpoch, ownerId = localOwner.id, ownerBackend = localOwner.backendId;
+    const retry = () => {
+      if (!live || !active || checking || admissionClosed.current || recoveryRef.current !== "none"
+        || admissionRevision.current !== epoch || admission.current.mode !== "local-only"
+        || admission.current.owner?.id !== ownerId || admission.current.owner.backendId !== ownerBackend) return;
+      checking = true;
+      // This is a fresh cloud proof, not admission from the cached account.
+      // Manual retry and session sync join the same owner verification flight.
+      void reconnectVerification.current().catch(() => null).finally(() => { checking = false; });
+    };
+    const interval = setInterval(retry, LOCAL_RECONNECT_INTERVAL_MS);
+    const listener = AppState?.addEventListener("change", state => {
+      active = state === "active";
+      if (active) retry();
+    });
+    return () => { live = false; clearInterval(interval); listener?.remove(); };
+  }, [accessMode, localOwner, admissionEpoch, recovery]);
   return (
     <AuthContext.Provider value={{ session, user: verifiedUser?.id === session?.user?.id ? verifiedUser : null, loading: loading || (verifying && accessMode === "signed-out"), recovery,
       sessionError, localOwner, accessMode, admissionEpoch, cachedProfile, cacheVerifiedProfile, verifyCurrentOwner,

@@ -35,6 +35,10 @@ function existing(store, current = session(A, true), cache = marker()) {
 }
 async function mount(options = {}) {
   const store = options.store ?? memory(); let value, authListener, renderer, fetches = 0, userValue;
+  const appListeners = new Set();
+  const appState = { currentState: options.appState ?? "active", addEventListener: (_, fn) => {
+    appListeners.add(fn); return { remove: () => appListeners.delete(fn) };
+  } };
   const auth = {
     onAuthStateChange: fn => { authListener = fn; if (options.initialNullEvent) fn("INITIAL_SESSION", null); return { data: { subscription: { unsubscribe() {} } } }; },
     getSession: async () => ({ data: { session: options.current ?? null }, error: options.restoreError ?? null }),
@@ -44,7 +48,7 @@ async function mount(options = {}) {
   };
   const modules = new Map();
   const mocks = {
-    "../../lib/supabase": { supabase: { auth, from: options.from ?? (() => { throw Error("Unexpected cloud profile read"); }) } }, "react-native": { Platform: { OS: "android" } }, "@react-native-async-storage/async-storage": store,
+    "../../lib/supabase": { supabase: { auth, from: options.from ?? (() => { throw Error("Unexpected cloud profile read"); }) } }, "react-native": { Platform: { OS: "android" }, AppState: appState }, "@react-native-async-storage/async-storage": store,
     "expo-linking": { createURL: () => "liferpg://auth/recovery", getInitialURL: async () => options.url ?? null, addEventListener: () => ({ remove() {} }) },
   };
   const module = load("src/context/AuthContext.tsx", mocks, modules);
@@ -53,6 +57,7 @@ async function mount(options = {}) {
   const child = () => userModule ? React.createElement(userModule.UserProvider, null, React.createElement(Consumer)) : React.createElement(Consumer);
   await act(async () => { renderer = create(React.createElement(module.AuthProvider, null, child())); });
   return { store, value: () => value, user: () => userValue, fetches: () => fetches,
+    appState: state => act(async () => { appState.currentState = state; for (const listener of [...appListeners]) listener(state); }),
     event: (event, current) => act(async () => { if (current?.access_token) store.values.set(backend.authStorageKey, JSON.stringify(current)); authListener(event, current); }),
     run: fn => act(async () => fn(value)), cleanup: () => act(async () => renderer.unmount()) };
 }
@@ -423,4 +428,98 @@ test("same-owner fresh verification during delayed marker save cannot discard th
     assert.equal(JSON.parse(store.values.get(utils.localAccountCacheKey(backend.backendId))).profile.id, A);
     assert.equal(ui.value().cachedProfile.id, A);
   } finally { await ui.cleanup(); }
+});
+
+test("an idle offline foreground account reconnects automatically within one polling interval", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const store = memory(); existing(store, session()); let online = false, reads = 0;
+  const ui = await mount({ store, auth: {
+    getSession: async () => { reads++; return online ? { data: { session: session() }, error: null }
+      : { data: { session: null }, error: offline }; },
+  } });
+  try {
+    assert.equal(ui.value().accessMode, "local-only"); assert.equal(reads, 1);
+    online = true;
+    await act(async () => t.mock.timers.tick(3999)); assert.equal(reads, 1);
+    await act(async () => t.mock.timers.tick(1));
+    assert.equal(reads, 2); assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, A);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("a slow cold SDK read cannot overwrite an automatic reconnect proof without an auth callback", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let reads = 0;
+  const ui = await mount({ store, auth: {
+    getSession: async () => ++reads === 1 ? wait.promise : { data: { session: session() }, error: null },
+  } });
+  try {
+    assert.equal(ui.value().accessMode, "local-only");
+    await act(async () => t.mock.timers.tick(4000));
+    assert.equal(reads, 2); assert.equal(ui.value().accessMode, "online");
+    await act(async () => wait.resolve({ data: { session: session(B) }, error: null }));
+    assert.equal(ui.value().session.user.id, A); assert.equal(ui.value().user.id, A); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("offline verification pauses in the background and checks immediately on return", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const store = memory(); existing(store, session()); let online = false, reads = 0;
+  const ui = await mount({ store, appState: "background", auth: {
+    getSession: async () => { reads++; return online ? { data: { session: session() }, error: null }
+      : { data: { session: null }, error: offline }; },
+  } });
+  try {
+    await act(async () => t.mock.timers.tick(20_000)); assert.equal(reads, 1);
+    online = true; await ui.appState("active");
+    assert.equal(reads, 2); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("automatic foreground reconnect and manual retry share the pending owner verification", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false, reads = 0, userCalls = 0;
+  const ui = await mount({ store, auth: {
+    getSession: async () => { reads++; return hold ? wait.promise : { data: { session: null }, error: offline }; },
+    getUser: async () => { userCalls++; return { data: { user: { id: A } }, error: null }; },
+  } });
+  try {
+    hold = true; let retry;
+    await act(async () => { retry = ui.value().retrySessionVerification(); });
+    await act(async () => t.mock.timers.tick(4000));
+    await ui.appState("background"); await ui.appState("active");
+    assert.equal(reads, 2); assert.equal(userCalls, 0);
+    await act(async () => wait.resolve({ data: { session: session() }, error: null })); await retry;
+    assert.equal(userCalls, 1); assert.equal(ui.value().accessMode, "online");
+    await act(async () => t.mock.timers.tick(8000)); assert.equal(reads, 2);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("late automatic reconnect proof cannot replace a newly admitted account", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let online = false;
+  const ui = await mount({ store, auth: {
+    getSession: async () => online ? { data: { session: session() }, error: null } : { data: { session: null }, error: offline },
+    getUser: async token => token === session(B).access_token ? { data: { user: { id: B } }, error: null } : wait.promise,
+  } });
+  try {
+    online = true; await act(async () => t.mock.timers.tick(4000));
+    await ui.event("SIGNED_IN", session(B));
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, B); assert.equal(ui.value().session.user.id, B);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("explicit signout cancels automatic reconnect and an old proof cannot revive local admission", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let online = false, reads = 0;
+  const ui = await mount({ store, signOutError: offline, auth: {
+    getSession: async () => { reads++; return online ? wait.promise : { data: { session: null }, error: offline }; },
+  } });
+  try {
+    online = true; await act(async () => t.mock.timers.tick(4000)); assert.equal(reads, 2);
+    await ui.run(value => value.signOut());
+    await act(async () => wait.resolve({ data: { session: session() }, error: null }));
+    await act(async () => t.mock.timers.tick(20_000));
+    assert.equal(reads, 2); assert.equal(ui.value().accessMode, "signed-out"); assert.equal(ui.value().user, null);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
 });

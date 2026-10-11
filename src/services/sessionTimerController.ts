@@ -110,6 +110,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let initializing: Promise<void> | null = null;
   let selectedId: string | null = null, hiddenId: string | null = null;
   let rewardId: string | null = null;
+  const dismissedRewardIds = new Set<string>();
   let lastAction: "start" | "pause" | "resume" | "cancel" | "complete" | null = null;
   let lastSetup: JournalSetup | null = null;
   let remoteRetryAtMs = 0, remoteRetryAttempts = 0;
@@ -160,8 +161,13 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     const timer = record && clock ? deriveJournalTimer(record, clock) : null;
     if (!live() || (!interaction && displayClock && (!record || record.clientSessionId !== displayClock.clientSessionId
       || record.state !== (displayClock.running ? "running" : "paused") || !!pending(record) || timer?.clockWarning))) displayClock = null;
-    const displayTimeLeft = displayClock && clock ? Math.max(0, Math.ceil((displayClock.remainingMs
+    const displayRemaining = displayClock && clock ? Math.max(0, Math.ceil((displayClock.remainingMs
       - (displayClock.running ? Math.max(0, clock.wallTimeMs - displayClock.atMs) : 0)) / 1000)) : null;
+    // Responsive tap timing can precede the actual server Start/Resume. Zero is
+    // a terminal promise: never display it while the canonical timer still has
+    // work remaining, since End would correctly cancel that unfinished block.
+    const displayTimeLeft = displayRemaining !== null && displayClock?.running && timer && timer.remainingMs > 0
+      ? Math.max(1, displayRemaining) : displayRemaining;
     const feedback = interaction && clock ? { kind: interaction.kind, timeLeft: displayTimeLeft ?? state.timeLeft } : null;
     const receipt = record?.sync.receipt ?? null;
     const waiting = !!record && (!!pending(record) || ["pending", "waiting_auth"].includes(record.sync.state));
@@ -268,7 +274,12 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       : command && unresolved(command) ? "Waiting to confirm your saved session state."
       : kind === "auth" ? "Connect to the internet to continue."
       : "Couldn’t confirm the session. Connect and retry.";
-    publish({ error: message, restoreError: !record && !lastSetup });
+    // Account/network failure after a successful local load says nothing about
+    // journal readability. Only a genuine local read/quarantine failure may
+    // send the idle offline page into its saved-session recovery branch.
+    const localReadFailure = error instanceof JournalStorageError
+      && ["read_failed", "recovery_required", "quarantine_failed"].includes(error.code);
+    publish({ error: message, restoreError: localReadFailure });
   }
 
   async function reconcileRemote(record: JournalRecord, remote: SessionTimerRemoteSession): Promise<void> {
@@ -465,22 +476,29 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       || command?.kind !== "complete" || !due(record, force)) return;
     let rpcAttempted = false;
     try {
-      const remote = await readKnown(record);
-      if (!remote) throw new ControllerRemoteError();
-      if (remote.status === "completed" || remote.status === "cancelled") {
-        await reconcileRemote(record, remote);
-        return;
-      }
       await verify();
       fence();
       rpcAttempted = true;
+      // This ending intent is already durable, and Complete is idempotent for
+      // this exact UUID. Let its server gate decide in one round trip instead
+      // of reading the same row before every normal completion.
       const receipt = await bounded(options.server.complete(record.serverSessionId), mutationTimeoutMs);
       fence();
       await write({ type: "acknowledge_completion", operationId: command.operationId, receipt });
       // Only this freshly returned, durably stored result can start celebration.
-      rewardId = receipt.result.already_completed === true ? null : record.clientSessionId;
+      rewardId = receipt.result.already_completed === true || dismissedRewardIds.has(record.clientSessionId)
+        ? null : record.clientSessionId;
       publish({ error: null, restoreError: false });
     } catch (error) {
+      if (rpcAttempted && live()) {
+        try {
+          const remote = await readKnown(record);
+          if (remote?.status === "completed" || remote?.status === "cancelled") {
+            await reconcileRemote(record, remote);
+            return;
+          }
+        } catch { /* Keep the original ending intent until a fresh proof succeeds. */ }
+      }
       await noteFailure(error, command.operationId, rpcAttempted);
     }
   }
@@ -796,7 +814,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       if (failed === "cancel" && !selected()) return true;
       if (failed === "pause" || failed === "resume" || failed === "cancel") return controlInternal(failed);
     }),
-    dismissSummary() { rewardId = null; if (live()) publish(); },
+    dismissSummary() {
+      const record = selected();
+      if (record) dismissedRewardIds.add(record.clientSessionId);
+      rewardId = null; if (live()) publish();
+    },
     async dispose(): Promise<void> {
       if (disposed) return;
       disposed = true; rewardId = null; interaction = null; displayClock = null;

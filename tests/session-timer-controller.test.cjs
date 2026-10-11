@@ -176,6 +176,44 @@ test('new Starts persist one identity for the v2 request and its operation, whil
   await controller.dispose();
 });
 
+test('slow online Start cannot display zero while End would still be an early cancellation', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  let delayed = false;
+  h.verifyHook = async () => { if (!delayed) { delayed = true; h.advance(1200); } };
+  assert.equal(await controller.start({ ...setup, targetSeconds: 10 }), true);
+  h.verifyHook = null;
+  h.advance(8800);
+  await controller.tick();
+  const before = controller.getSnapshot();
+  assert.equal(before.timeLeft, 2, 'canonical session still has server-timed work remaining');
+  assert.equal(before.displayTimeLeft, 1, 'presentation must not advertise premature completion');
+  h.advance(1200);
+  assert.equal(journalApi.deriveJournalTimer(h.persisted().records[0], h.clock()).remainingMs, 0);
+  assert.equal(h.persisted().records[0].state, 'running', 'expiry tick has not run yet');
+  await controller.end();
+  assert.equal(h.persisted().records[0].state, 'completed');
+  assert.equal(h.credits, 1);
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 0);
+  controller.dismissSummary();
+  await controller.dispose();
+  const restored = h.restart(); await restored.initialize();
+  assert.equal(h.credits, 1); assert.equal(restored.getSnapshot().unsyncedSessionCount, 0);
+  await restored.dispose();
+});
+
+test('idle offline account checks never report a corrupt or unreadable local journal', async () => {
+  const h = harness(); h.online = false;
+  const controller = h.create(); await controller.initialize();
+  assert.equal(controller.getSnapshot().record, null);
+  assert.equal(controller.getSnapshot().restoring, false);
+  assert.equal(controller.getSnapshot().restoreError, false);
+  await controller.refresh(true);
+  assert.equal(controller.getSnapshot().restoreError, false);
+  h.online = true; await controller.refresh(true);
+  assert.equal(controller.getSnapshot().error, null); assert.equal(controller.getSnapshot().restoreError, false);
+  await controller.dispose();
+});
+
 test('v2 unknown Starts never adopt or end another device session with identical setup and timestamps', async () => {
   for (const status of ['running', 'paused', 'cancelled', 'completed']) {
     const h = harness(), controller = h.create(); await controller.initialize();
@@ -308,13 +346,13 @@ test('successful delayed Start, Pause and Resume keep a continuous display clock
   await controller.dispose();
 });
 
-test('a display countdown reaching zero cannot expire or reward a later server deadline', async () => {
+test('the display stays above zero until the later server deadline is eligible for completion', async () => {
   const h = harness(), controller = h.create(); await controller.initialize();
   const gate = deferred(); h.verifyHook = () => gate.promise;
   const starting = controller.start({ ...setup, targetSeconds: 3 });
   h.advance(2000); await controller.tick(); gate.resolve(); await starting; h.verifyHook = null;
   h.advance(1000); await controller.tick();
-  assert.equal(controller.getSnapshot().displayTimeLeft, 0); assert.equal(controller.getSnapshot().timeLeft, 2);
+  assert.equal(controller.getSnapshot().displayTimeLeft, 1); assert.equal(controller.getSnapshot().timeLeft, 2);
   assert.equal(controller.getSnapshot().record.state, 'running'); assert.equal(h.credits, 0);
   h.advance(2000); await controller.tick(); assert.equal(h.credits, 1);
   assert.equal(controller.getSnapshot().displayTimeLeft, null); await controller.dispose();
@@ -447,18 +485,45 @@ test('server cancellation keeps a locally finished record until explicit acknowl
 test('completion write failure or lost reply never shows rewards before durable receipt and never awards twice', async () => {
   for (const mode of ['write', 'reply']) {
     const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
+    const unsafeRewards = [];
+    controller.subscribe(snapshot => { if (snapshot.rewardsVisible && !snapshot.receipt) unsafeRewards.push(snapshot); });
     if (mode === 'write') {
       h.backend.beforeWrite = async (_, value) => {
         if (JSON.parse(value).records[0]?.sync.receipt) { h.backend.beforeWrite = null; throw failure('transient'); }
       };
-    } else h.fail.complete = 'lost';
+    } else { h.fail.complete = 'lost'; h.completeHook = () => { h.online = false; }; }
     h.advance(3000); await controller.tick();
-    assert.equal(h.credits, 1); assert.equal(controller.getSnapshot().receipt, null); assert.equal(controller.getSnapshot().rewardsVisible, false);
+    assert.equal(h.credits, 1); assert.deepEqual(unsafeRewards, []); assert.equal(controller.getSnapshot().rewardsVisible, false);
+    if (mode === 'reply') assert.equal(controller.getSnapshot().receipt, null);
+    else assert.ok(controller.getSnapshot().receipt, 'fresh server proof can recover a transient receipt write failure immediately');
+    h.online = true;
     await controller.retry();
     assert.equal(h.credits, 1); assert.ok(controller.getSnapshot().receipt);
     assert.equal(controller.getSnapshot().rewardsVisible, false, 'a reconciled saved result cannot celebrate again');
     await controller.dispose();
   }
+});
+
+test('Done while a completion reply is pending keeps the result and suppresses a late celebration', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
+  const entered = deferred(), release = deferred();
+  h.completeHook = async () => { entered.resolve(); await release.promise; };
+  h.advance(3000); const finishing = controller.tick(); await entered.promise;
+  const completedId = controller.getSnapshot().record.clientSessionId;
+  assert.equal(controller.getSnapshot().record.state, 'completed');
+  assert.equal(controller.getSnapshot().receipt, null);
+  controller.dismissSummary();
+  assert.equal(h.persisted().records[0].clientSessionId, completedId);
+  assert.equal(h.persisted().records[0].sync.state, 'pending');
+  release.resolve(); await finishing;
+  assert.equal(h.credits, 1); assert.ok(controller.getSnapshot().receipt);
+  assert.equal(controller.getSnapshot().rewardsVisible, false);
+  await controller.dispose();
+  const reopened = h.restart(); await reopened.initialize(); await reopened.refresh(true);
+  assert.equal(h.credits, 1); assert.equal(h.calls.filter(call => call === 'complete').length, 1);
+  assert.equal(reopened.getSnapshot().record, null); assert.equal(reopened.getSnapshot().rewardsVisible, false);
+  assert.ok(h.persisted().records[0].sync.receipt);
+  await reopened.dispose();
 });
 
 test('fresh owner mismatch fences late start replies and returning owner journal keeps unknown work', async () => {
@@ -831,10 +896,11 @@ test('fresh completion remains visible in its current run while historical resto
 
 test('a recovered lost completion reply identifies earlier work without another award or celebration', async () => {
   const h = harness(), first = h.create(); await first.initialize(); await first.start(setup);
-  h.fail.complete = 'lost'; h.advance(3000); await first.tick();
+  h.fail.complete = 'lost'; h.completeHook = () => { h.online = false; }; h.advance(3000); await first.tick();
   const pending = clone(first.getSnapshot().record);
   assert.equal(h.credits, 1); assert.equal(pending.sync.receipt, null);
   await first.dispose();
+  h.online = true;
   const restored = h.restart(); await restored.initialize(); await restored.refresh(true);
   const snapshot = restored.getSnapshot();
   assert.equal(snapshot.record.clientSessionId, pending.clientSessionId);
@@ -845,7 +911,7 @@ test('a recovered lost completion reply identifies earlier work without another 
   assert.equal(snapshot.receipt.result.already_completed, true);
   assert.equal(snapshot.rewardsVisible, false);
   await restored.refresh(true); await restored.tick();
-  assert.equal(h.credits, 1); assert.equal(h.calls.filter(call => call === 'complete').length, 1);
+  assert.equal(h.credits, 1); assert.equal(h.calls.filter(call => call === 'complete').length, 2);
   await restored.dispose();
   const reopened = h.restart(); await reopened.initialize();
   assert.equal(reopened.getSnapshot().record, null); assert.equal(reopened.getSnapshot().rewardsVisible, false);
@@ -1007,13 +1073,13 @@ test('known running refresh reads its UUID once and does not perform unrelated o
   await controller.dispose();
 });
 
-test('known completion retry does only its receipt preflight and does not delay the saved result for another discovery read', async () => {
+test('known completion retry uses the guarded idempotent completion without a redundant discovery read', async () => {
   const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
   h.online = false; h.advance(3000); await controller.tick();
   h.online = true; const before = h.calls.length;
   await controller.refresh(true);
   const reads = h.calls.slice(before);
-  assert.equal(reads.filter(call => call === 'read').length, 1);
+  assert.equal(reads.filter(call => call === 'read').length, 0);
   assert.equal(reads.filter(call => call === 'complete').length, 1);
   assert.equal(reads.filter(call => call === 'open').length, 0);
   assert.equal(controller.getSnapshot().syncStatus, 'saved'); assert.equal(controller.getSnapshot().busy, false);

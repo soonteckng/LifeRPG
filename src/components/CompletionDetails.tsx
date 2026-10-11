@@ -20,8 +20,8 @@ export type CompletionData = {
 export function CompletionHero({ seconds, title, levelUp = false, compact = false }: {seconds: number; title?: string; levelUp?: boolean; compact?: boolean}) {
   const {fontScale} = useWindowDimensions();
   if (compact) return <View style={s.compactHero}>
-    <ProgressRing size={fontScale > 1.3 ? 56 : 72} progress={1} stroke={5}>
-      <Ionicons name={levelUp ? "sparkles-outline" : "checkmark"} size={28} color={colors.accent} />
+    <ProgressRing size={fontScale > 1.3 ? 48 : 60} progress={1} stroke={4}>
+      <Ionicons name={levelUp ? "sparkles-outline" : "checkmark"} size={26} color={colors.accent} />
     </ProgressRing>
     <View style={s.compactHeroCopy}>
       <Text style={s.caption}>Time focused</Text>
@@ -63,16 +63,16 @@ export function CompletionRows({ summary, areaTitle, areaColor, level, xpRemaini
 }
 const s = StyleSheet.create({
   hero: {alignItems:"center", gap:12},
-  compactHero: {flexDirection:"row", alignItems:"center", gap:16},
-  compactHeroCopy: {flex:1, minWidth:0, gap:2},
-  compactTime: {...type.hero, fontSize:32, lineHeight:40, letterSpacing:-0.5},
-  compactQuest: {...type.body, marginTop:4},
+  compactHero: {flexDirection:"row", alignItems:"center", gap:16, paddingVertical:4},
+  compactHeroCopy: {flex:1, minWidth:0, gap:4},
+  compactTime: {...type.hero, fontSize:36, lineHeight:44, letterSpacing:-0.5},
+  compactQuest: {...type.body, marginTop:4, color:colors.secondary},
   caption: {...type.secondary, flexShrink:1},
   time: {...type.hero, textAlign:"center", letterSpacing:-1},
   quest: {...type.body, textAlign:"center"},
   rows: {borderTopWidth:StyleSheet.hairlineWidth, borderTopColor:colors.line, paddingTop:12, gap:0},
   row: {minHeight:52, paddingVertical:8, flexDirection:"row", alignItems:"center", justifyContent:"space-between", gap:12},
-  compactRow: {minHeight:36, paddingVertical:6, flexDirection:"row", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:8},
+  compactRow: {minHeight:40, paddingVertical:8, flexDirection:"row", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:8},
   continuity: {paddingVertical:8, gap:4},
   value: {...type.body, fontWeight:"500"},
   success: {...type.secondary, color:colors.success, fontWeight:"500"},

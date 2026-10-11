@@ -157,7 +157,7 @@ test('new users can select a work direction before the introduction',async()=>{
  const ui=await render(Screen);await ui.press('Help me choose a focus');await ui.press('Continue');await ui.press('Work & projects');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'work');assert.equal(pref.templateId,'project-next-step');await ui.cleanup();
 });
-test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
+test('Save as quest writes one quest with the chosen area and duration, without touching session rewards',async()=>{
  const db=storage(),pending=deferred(),calls=[];let upserts=0;
  const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic',true);
  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
@@ -213,7 +213,7 @@ test('ambiguous quest-save failure refreshes existing quests before another inse
   '../context/QuestContext':{useQuests:()=>{const[tasks,setTasks]=React.useState([]);return{tasks,upsert(){},refresh:async()=>setTasks([{title:focus.title,subject_id:2,target_minutes:30,is_completed:false}])};}},
   '../services/taskService':{createTask:async()=>{inserts++;throw Error('response lost');}},
  })).default;
- const ui=await render(Save,{inSheet:true});await ui.press('Save for later');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0);assert.ok(ui.tree.root.findAllByType('Text').some(node=>node.props.accessibilityRole==='text'&&node.props.accessibilityLiveRegion==='polite'));await ui.cleanup();
+ const ui=await render(Save,{inSheet:true});await ui.press('Save as quest');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0);assert.ok(ui.tree.root.findAllByType('Text').some(node=>node.props.accessibilityRole==='text'&&node.props.accessibilityLiveRegion==='polite'));await ui.cleanup();
 });
 
 test('preference Save remains in a safe-area footer outside the scrolling choices and saves the selected need',async()=>{
