@@ -87,3 +87,11 @@ test('focus-card preview keeps the same layout from tour step one through four',
   previewFocus=false;await act(async()=>tree.update(React.createElement(Card,props)));assert.equal(layout()[1],false,'normal full card returns underneath the return cover');
  }finally{await act(async()=>tree.unmount());}
 });
+
+test('Home presents an unconfirmed start as planned time rather than a confirmed paused session',async()=>{
+ const Card=load('src/components/FocusCard.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'./ContentReveal':host('Reveal'),'./FocusLengthControl':()=>null,'./FocusAreaSheet':()=>null,'./FeatureTour':{useFeatureTour:()=>({})}}).default;
+ const props={cardID:'pending',startID:'open',title:'Learning',instruction:'Checking the saved start',label:'Suggested focus',contentKey:'pending',area:'Learning',seconds:60,active:true,running:false,awaitingStart:true,onStart(){}};
+ let tree;await act(async()=>{tree=create(React.createElement(Card,props));});
+ try {assert.match(content(tree.root),/Checking session start/);assert.match(content(tree.root),/Planned time/);assert.doesNotMatch(content(tree.root),/Paused|Time remaining/);assert.equal(tree.root.findByProps({testID:'open'}).props.disabled,false);}
+ finally{await act(async()=>tree.unmount());}
+});

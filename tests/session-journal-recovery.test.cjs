@@ -209,6 +209,39 @@ test('start matching is bounded to fifteen seconds and never adopts a delayed ca
   }
 });
 
+test('explicit owned-open recovery restores the unique matching account timer despite start-time or clock correlation failure', () => {
+  const journal = unknown();
+  for (const server of [
+    { ...candidate(), snapshot: { ...candidate().snapshot, startedAtMs: T0 - 60000 } },
+    { ...candidate(), snapshot: { ...candidate().snapshot, startedAtMs: T0 + 60000 } },
+    { ...candidate(), snapshot: { ...candidate().snapshot, observedClock: { ...clock(4000), wallTimeMs: T0 + 60000 } } },
+  ]) {
+    const before = clone(journal);
+    const result = recovery.reconcileLegacyUnknownStart(journal, context(journal, [server], { allowOwnedOpenRecovery: true }));
+    assert.equal(result.kind, 'acknowledge'); assert.equal(result.action.clockWarning, true);
+    const saved = domain.applyJournalAction(journal, result.action);
+    assert.equal(saved.records[0].serverSessionId, SERVER);
+    assert.equal(saved.records[0].clockWarning, true);
+    assert.equal(saved.records[0].sync.receipt, null);
+    assert.equal(saved.commands.length, 1); assert.equal(saved.commands[0].status, 'acknowledged');
+    assert.deepEqual(journal, before, 'recovery evidence is presentation/account restoration, never an in-place mutation');
+  }
+});
+
+test('owned-open recovery never relaxes owner, complete-list, uniqueness or full setup identity requirements', () => {
+  const journal = unknown();
+  const withMode = (sessions, overrides = {}) => context(journal, sessions, { allowOwnedOpenRecovery: true, ...overrides });
+  skipped(journal, withMode([]), 'no_open_session');
+  skipped(journal, withMode([candidate(), candidate()]), 'ambiguous_open_sessions');
+  const incomplete = withMode([candidate()]); incomplete.openSessions.complete = false;
+  skipped(journal, incomplete, 'incomplete_server_read');
+  skipped(journal, withMode([candidate({ scope: OTHER_SCOPE })]), 'server_scope_mismatch');
+  skipped(journal, withMode([candidate()], { verifiedScope: OTHER_SCOPE }), 'scope_mismatch');
+  for (const field of [{ targetSeconds: 60 }, { activityType: 'other' }, { taskId: null }, { subjectId: null }, { notes: 'Other work' }]) {
+    skipped(journal, withMode([candidate({ setup: { ...candidate().setup, ...field } })]), 'setup_mismatch');
+  }
+});
+
 test('a known server identity is not adopted again under a fresh local start', () => {
   let journal = act(domain.createJournal(SCOPE), { type: 'admit', epoch: 1 });
   journal = act(journal, { type: 'prepare_start', operationId: OTHER_START, clientSessionId: OTHER_CLIENT, setup: clone(SETUP), clock: clock(0) });

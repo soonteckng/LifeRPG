@@ -356,6 +356,33 @@ export function createJournalSessionTransport(
       if (rowObject(response.data).id !== id) transportFail("invalid_response");
       return session;
     },
+    readFinishedStart: async (setup, requestedAtMs) => {
+      try { validateJournalSetup(setup); }
+      catch { return transportFail("invalid_request"); }
+      if (!safeInteger(requestedAtMs, 15_000, 8_640_000_000_000_000 - 15_000)) transportFail("invalid_request");
+      const epoch = await verify();
+      let response;
+      try {
+        let query = supabase.from("activity_sessions").select("*", { count: "exact" })
+          .eq("user_id", scope.ownerId).in("status", ["cancelled", "completed"])
+          .eq("target_duration_seconds", setup.targetSeconds).eq("activity_type", setup.activityType)
+          .gte("started_at", new Date(requestedAtMs - 15_000).toISOString())
+          .lte("started_at", new Date(requestedAtMs + 15_000).toISOString());
+        query = setup.taskId === null ? query.is("task_id", null) : query.eq("task_id", setup.taskId);
+        query = setup.subjectId === null ? query.is("subject_id", null) : query.eq("subject_id", setup.subjectId);
+        query = setup.notes === null ? query.is("notes", null) : query.eq("notes", setup.notes);
+        // Two candidates are enough to detect ambiguity. Exact count prevents a
+        // truncated response from posing as a unique owner-scoped match.
+        response = await query.order("id", { ascending: true }).range(0, 1);
+      } catch { return transportFail("request_failed"); }
+      const observed = clock(); assertCurrent(epoch);
+      if (response.error) transportFail("request_failed", responseFailureKind(response.error, response.status, "read_finished_start"));
+      if (!Array.isArray(response.data)) transportFail("invalid_response");
+      const sessions = response.data.map(row => mapActivitySessionRow(row, scope, observed));
+      if (sessions.some(item => item.status !== "completed" && item.status !== "cancelled")) transportFail("invalid_response");
+      const count = safeInteger(response.count) ? response.count : null;
+      return { complete: count !== null && count === sessions.length, sessions };
+    },
     readOpenSessions: async () => {
       const pageSize = 100, maxPages = 10;
       let expectedCount: number | null = null;

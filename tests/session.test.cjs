@@ -133,8 +133,9 @@ async function providerSetup(overrides = {}, notifications = null) {
     },
   });
   const reloadProfile = async () => true;
+  let verifications = 0;
   const auth = { user: { id: PROVIDER_SCOPE.ownerId }, localOwner: { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId },
-    accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async () => ({ id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }) };
+    accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async () => { verifications++; return { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }; } };
   const flush = () => new Promise(resolve => setImmediate(resolve));
   const { TimerProvider, useTimer } = load("src/context/TimerContext.tsx", {
     "react-native": { Platform: { OS: "android" }, AppState: { addEventListener: (_, fn) => { foreground=fn; return { remove() {} }; } } },
@@ -153,13 +154,14 @@ async function providerSetup(overrides = {}, notifications = null) {
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, calls,
+    state: () => state, calls, verifications: () => verifications,
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
     backgroundTime: (seconds) => { now += seconds*1000; },
     foreground: async () => { await act(async () => { foreground("active"); await flush(); }); },
     background: async () => { await act(async () => { foreground("background"); await flush(); }); },
     page: async (visible) => { show=visible; await act(async () => renderer.update(React.createElement(Harness))); },
+    connection: async (mode) => { auth.accessMode=mode; await act(async()=>{renderer.update(React.createElement(Harness));await flush();}); },
     cleanup: async () => { await act(async () => { renderer.unmount(); await flush(); }); global.setInterval=realInterval; global.clearInterval=realClear; Date.now=realNow; },
   };
 }
@@ -285,6 +287,28 @@ test("provider shows immediate Pause and Resume while awaiting confirmation, and
     assert.equal(ui.state().sessionSummary,null);assert.equal(ui.calls.filter(call=>call[0]==="complete").length,0);
     await ui.run(async()=>{cancelGate.resolve();await endRequest;});assert.equal(ui.state().endingSession,false);
   } finally {pauseGate.resolve();resumeGate.resolve();cancelGate.resolve();await ui.cleanup();}
+});
+
+test("provider shares one fresh owner proof per session operation without retaining it for the next tap",async()=>{
+  const ui=await providerSetup();
+  try {
+    const initial=ui.verifications();await ui.run(s=>s.startTimer(60));assert.equal(ui.verifications(),initial+1);
+    await ui.run(s=>s.pauseTimer());assert.equal(ui.verifications(),initial+2);
+    await ui.run(s=>s.resumeTimer());assert.equal(ui.verifications(),initial+3);
+    await ui.run(s=>s.resetTimer());assert.equal(ui.verifications(),initial+4);
+    assert.equal(ui.state().unsyncedSessionCount,0);
+  } finally {await ui.cleanup();}
+});
+
+test("verified reconnection bypasses a pending completion backoff instead of waiting for its old offline retry time",async()=>{
+  let online=false,attempts=0;
+  const ui=await providerSetup({completeActivitySession:async()=>{attempts++;if(!online)throw Error('Offline');return result;}});
+  try {
+    await ui.run(s=>s.startTimer(60));await ui.connection('local-only');await ui.advance(61);
+    assert.equal(ui.state().syncStatus,'waiting');const before=attempts;
+    online=true;await ui.connection('online');
+    assert.equal(attempts,before+1);assert.equal(ui.state().syncStatus,'saved');assert.ok(ui.state().sessionSummary);
+  } finally {await ui.cleanup();}
 });
 
 test("restored paused sessions cannot be replaced by Start", async () => {
@@ -436,6 +460,19 @@ test("unknown timing changes disable new timing controls while retry and End rem
   } finally {await ui.cleanup();}
 });
 
+test("uncertain start is planned instead of paused, End is available, and Retry survives automatic checks",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:false,awaitingStart:true,syncStatus:"waiting",actionError:"Waiting to confirm whether your session started."});
+  try {
+    assert.doesNotMatch(ui.output(),/· Paused/);assert.match(ui.output(),/Checking start/);
+    assert.equal(ui.button("Checking start").props.disabled,true);assert.equal(ui.button("End session").props.disabled,false);
+    const retry=ui.button("Retry");assert.equal(retry.props.disabled,false);
+    await ui.update({actionBusy:true,actionError:null});assert.equal(ui.button("Retry"),retry);assert.equal(retry.props.disabled,true);
+    await ui.update({actionBusy:false,actionError:"Waiting to confirm whether your session started."});assert.equal(ui.button("Retry"),retry);
+    await ui.press("End session");await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+    assert.equal(ui.calls.filter(call=>call[0]==="reset").length,1);
+  } finally {await ui.cleanup();}
+});
+
 test("a pending End keeps timing controls disabled and offers retry without claiming completion",async()=>{
   const ui=await screenSetup({hasOpenSession:false,isRunning:false,endingSession:true,syncStatus:"waiting",actionError:"Waiting to confirm your saved session state.",timeLeft:0});
   try {
@@ -579,6 +616,7 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   const state={isCompleted:false,isRunning:true,actionError:null,sessionSummary:null,timeLeft:930};
   assert.deepEqual(sessionDockState(state),{label:"Session running",detail:"15:30",icon:"play-outline"});
   assert.equal(sessionDockState({...state,isRunning:false}).icon,"pause-outline");
+  assert.deepEqual(sessionDockState({...state,awaitingStart:true,isRunning:false}),{label:"Checking session start",detail:"Review",icon:"sync-outline"});
   assert.equal(sessionDockState({...state,isCompleted:true}).label,"Saving session…");
   assert.equal(sessionDockState({...state,isCompleted:true,actionError:"Offline"}).detail,"Retry");
   const completed=sessionDockState({...state,isCompleted:true,sessionSummary:{},timeLeft:0});
@@ -903,7 +941,8 @@ test("normal pending End never inserts the offline retry block into its opening 
   try {
     assert.match(ui.output(), /Your focus has stopped/); assert.doesNotMatch(ui.output(), /Your stop is saved on this phone/);
     assert.equal(ui.button('Retry ending session'), undefined);
-    await ui.update({actionBusy:false}); assert.ok(ui.button('Retry ending session'));
+    await ui.update({actionBusy:false}); const retry=ui.button('Retry ending session');assert.ok(retry);
+    await ui.update({actionBusy:true,actionError:null}); assert.equal(ui.button('Retry ending session'),retry);assert.equal(retry.props.disabled,true);
   } finally { await ui.cleanup(); }
 });
 
@@ -1105,12 +1144,13 @@ test("five visible Life areas need no More sheet; additional areas remain select
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
   const scrollResets=[];
+  let fontScale=1;
   const CompletionScroll=React.forwardRef((props,ref)=>{
     React.useImperativeHandle(ref,()=>({scrollTo:position=>scrollResets.push(position)}),[]);
     return React.createElement('Scroll',props,props.children);
   });
   const Modal=load("src/components/LevelUpModal.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({fontScale:1})},
+    "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s,hairlineWidth:1},useWindowDimensions:()=>({fontScale})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:CompletionScroll},
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
@@ -1130,10 +1170,16 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(sheet.props.heightRatio,0.85);
     assert.equal(sheet.props.motionMode,'timed');
     assert.equal(sheet.props.maxHeightRatio,0.85);
-    assert.equal(sheet.props.footer,undefined, 'Done must not float above or cover result content');
+    assert.equal(sheet.props.footer,undefined, 'actions reserve normal-flow height instead of overlaying result content');
     const scroll=renderer.root.findByType('Scroll');
-    assert.equal(scroll.children.at(-1).findByType('Button').props.accessibilityRole,'button');
-    assert.equal(text(scroll.children.at(-1)),'Done');
+    const actions=renderer.root.findByProps({testID:'session-result-actions'});
+    assert.equal(actions.props.style[0].flexShrink,0);
+    assert.equal(scroll.props.style.flex,1);
+    assert.equal(scroll.findAllByType('Button').length,0,'Done and Save for later must not require scrolling through result details');
+    assert.equal(actions.findByType('Button').props.accessibilityRole,'button');
+    assert.equal(text(actions.findByType('Button')),'Done');
+    assert.equal(actions.findByType('GuidedBoundary').props.compact,true);
+    assert.equal(renderer.root.findByType('Ring').props.size,72);
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
@@ -1150,6 +1196,11 @@ test("completion message shows saved exact duration and awards; Done only closes
     await act(async()=>renderer.root.findByType('Scroll').props.onLayout()); assert.equal(scrollResets.length,1);
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
+    fontScale=1.6;
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
+    assert.equal(renderer.root.findByType('Ring').props.size,56,'large text gets a smaller decorative ring instead of reducing text or hiding actions');
+    assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
+    assert.equal(scrollResets.length,2);
     await act(async()=>renderer.root.findByType("Button").props.onPress());
     assert.deepEqual(calls,["close"]);
   } finally {await act(async()=>renderer.unmount());}

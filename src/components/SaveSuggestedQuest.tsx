@@ -9,7 +9,7 @@ import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
 import { createTask } from "../services/taskService";
-export default function SaveSuggestedQuest({ inSheet = false }: { inSheet?: boolean }) {
+export default function SaveSuggestedQuest({ inSheet = false, compact = false }: { inSheet?: boolean; compact?: boolean }) {
   const { profile } = useUser();
   const { sessionSummary, targetAttributeId } = useTimer();
   const { tasks, upsert, refresh } = useQuests();
@@ -44,8 +44,10 @@ export default function SaveSuggestedQuest({ inSheet = false }: { inSheet?: bool
     } finally { lock.current = false; setBusy(false); }
   };
   return <View style={{ gap: 8 }}>
-    <Button accessibilityRole="button" accessibilityState={{ disabled: !!saved || busy || receipt?.identity !== identity, busy }} disabled={!!saved || busy || receipt?.identity !== identity} onPress={() => void save()} style={[p.button, p.secondaryButton]}><Text style={p.rowTitle}>{saved ? "Saved to your quests" : busy ? "Saving…" : "Save for later"}</Text></Button>
-    {!saved && <Text style={p.caption}>Adds a one-time quest. You can choose a schedule in Quests later.</Text>}
+    {saved ? <View style={{ minHeight:52, justifyContent:"center", alignItems:"center" }}>
+      <Text style={p.rowTitle} accessibilityRole="text" accessibilityLiveRegion="polite">Saved to your quests ✓</Text>
+    </View> : <Button accessibilityRole="button" accessibilityState={{ disabled: busy || receipt?.identity !== identity, busy }} disabled={busy || receipt?.identity !== identity} onPress={() => void save()} style={[p.button, p.secondaryButton]}><Text style={p.rowTitle}>{busy ? "Saving…" : "Save for later"}</Text></Button>}
+    {!saved && !compact && <Text style={p.caption}>Adds a one-time quest. You can choose a schedule in Quests later.</Text>}
     {!!error && !saved && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
   </View>;
 }

@@ -43,7 +43,7 @@ function savedResult(overrides = {}) {
   };
 }
 function setup({ responses = [], rpcData = SERVER, rpcError = null, rpcStatus = 200, rpcThrows = null,
-  onRpc = () => {}, verify = async () => SCOPE, currentScope = () => SCOPE, currentEpoch = () => 1, elapsedMs = 4251 } = {}) {
+  onRpc = () => {}, onQuery = () => {}, verify = async () => SCOPE, currentScope = () => SCOPE, currentEpoch = () => 1, elapsedMs = 4251 } = {}) {
   const queries = [], rpcs = [], events = [];
   const supabase = {
     async rpc(name, params) {
@@ -57,11 +57,15 @@ function setup({ responses = [], rpcData = SERVER, rpcError = null, rpcStatus = 
         select(fields, options) { query.selection = fields; query.count = options?.count ?? null; return chain; },
         eq(field, value) { query.filters.push(['eq', field, value]); return chain; },
         in(field, values) { query.filters.push(['in', field, values]); return chain; },
+        is(field, value) { query.filters.push(['is', field, value]); return chain; },
+        gte(field, value) { query.filters.push(['gte', field, value]); return chain; },
+        lte(field, value) { query.filters.push(['lte', field, value]); return chain; },
         order(field, options) { query.order = [field, options]; return chain; },
         range(first, last) { query.range = [first, last]; return chain; },
         maybeSingle() { query.maybeSingle = true; return chain; },
         then(resolve, reject) {
           events.push('query'); queries.push(query);
+          onQuery();
           return Promise.resolve(responses.shift() ?? { data: null, error: null, count: null }).then(resolve, reject);
         },
       };
@@ -83,7 +87,7 @@ test('every transport request requires fresh exact owner/backend before sending'
     for (const action of [
       () => mock.transport.start(SETUP), () => mock.transport.pause(SERVER), () => mock.transport.resume(SERVER),
       () => mock.transport.cancel(SERVER), () => mock.transport.complete(SERVER),
-      () => mock.transport.readSession(SERVER), () => mock.transport.readOpenSessions(),
+      () => mock.transport.readSession(SERVER), () => mock.transport.readOpenSessions(), () => mock.transport.readFinishedStart(SETUP,T0),
     ]) await assert.rejects(action, errorCode(verified ? 'scope_mismatch' : 'auth_unavailable'));
     assert.deepEqual(mock.rpcs, []);
     assert.deepEqual(mock.queries, []);
@@ -165,6 +169,30 @@ test('known-ID read includes terminal rows and explicit ownership without open-o
   assert.equal(mock.queries[0].selection, '*');
   assert.equal(mock.queries[0].maybeSingle, true);
   assert.deepEqual(mock.rpcs, []);
+});
+
+test('lost-start terminal lookup is owner/setup/time bounded and distinguishes unique, empty and ambiguous reads',async()=>{
+  const ended=row({status:'cancelled',completed_at:iso(5000),last_resumed_at:null});
+  const mock=setup({responses:[{data:[ended],error:null,count:1}]});
+  const found=await mock.transport.readFinishedStart(SETUP,T0);assert.equal(found.complete,true);assert.equal(found.sessions[0].status,'cancelled');
+  assert.deepEqual(mock.queries[0].range,[0,1]);assert.equal(mock.queries[0].count,'exact');
+  for(const expected of [['eq','user_id',SCOPE.ownerId],['in','status',['cancelled','completed']],['eq','target_duration_seconds',30],['eq','activity_type','learning'],['eq','task_id',7],['eq','subject_id',9],['eq','notes','Read a chapter'],['gte','started_at',iso(-15000)],['lte','started_at',iso(15000)]]) assert.ok(mock.queries[0].filters.some(filter=>JSON.stringify(filter)===JSON.stringify(expected)));
+  const empty=setup({responses:[{data:[],error:null,count:0}]});assert.deepEqual(await empty.transport.readFinishedStart(SETUP,T0),{complete:true,sessions:[]});
+  const ambiguous=setup({responses:[{data:[ended,{...ended,id:OTHER_SERVER}],error:null,count:3}]});assert.equal((await ambiguous.transport.readFinishedStart(SETUP,T0)).complete,false);
+  const nullable=setup({responses:[{data:[],error:null,count:0}]});await nullable.transport.readFinishedStart({...SETUP,taskId:null,subjectId:null,notes:null},T0);
+  assert.deepEqual(nullable.queries[0].filters.slice(-3),[['is','task_id',null],['is','subject_id',null],['is','notes',null]]);
+});
+
+test('finished-start discovery rejects foreign rows, nonterminal responses, invalid clocks and revoked admission',async()=>{
+  for(const bad of [row({user_id:OTHER_SCOPE.ownerId,status:'cancelled',completed_at:iso(1000)}),row()]) {
+    const mock=setup({responses:[{data:[bad],error:null,count:1}]});await assert.rejects(()=>mock.transport.readFinishedStart(SETUP,T0));
+  }
+  const invalid=setup();await assert.rejects(()=>invalid.transport.readFinishedStart(SETUP,NaN),errorCode('invalid_request'));assert.equal(invalid.queries.length,0);
+  let epoch=1;
+  const reply={data:[row({status:'cancelled',completed_at:iso(1000)})],error:null,count:1};
+  // The transport checks admission after the awaited response, before mapping.
+  const revoked=setup({responses:[reply],currentEpoch:()=>epoch,onQuery:()=>epoch++});
+  await assert.rejects(()=>revoked.transport.readFinishedStart(SETUP,T0),errorCode('scope_mismatch'));assert.equal(revoked.queries.length,1);
 });
 
 test('active snapshot preserves elapsed milliseconds from ISO anchors instead of restarting the target', async () => {

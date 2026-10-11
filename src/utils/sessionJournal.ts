@@ -3,6 +3,7 @@ import {
   JOURNAL_MAX_COMMANDS,
   JOURNAL_MAX_RECORDS,
   JOURNAL_RETAIN_SETTLED_RECORDS,
+  JOURNAL_START_STOP_REASON,
   JOURNAL_VERSION,
   JournalValidationError,
   type JournalAction,
@@ -239,7 +240,8 @@ function withSnapshot(record: JournalRecord, snapshot: JournalServerSnapshot): J
     clockWarning: record.clockWarning || (record.clockAnchor !== null
       && deriveJournalTimer(record, snapshot.observedClock).clockWarning),
     sync: { ...record.sync, state: snapshot.state === "cancelled" ? "synced" : "idle",
-      nextAttemptAtMs: null, reasonCode: null },
+      nextAttemptAtMs: null, reasonCode: snapshot.state !== "cancelled" && record.sync.reasonCode === JOURNAL_START_STOP_REASON
+        ? JOURNAL_START_STOP_REASON : null },
   };
 }
 
@@ -326,6 +328,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       if (command.kind !== "start") fail("operation_conflict");
       const record = recordFor(envelope, command.clientSessionId);
       validateSnapshot(action.snapshot);
+      if (action.clockWarning !== undefined && typeof action.clockWarning !== "boolean") fail("invalid_action");
       if (command.status === "acknowledged") {
         if (!snapshotMatches(record, action.snapshot)) fail("snapshot_conflict");
         return detach(envelope);
@@ -335,7 +338,8 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
           && record.serverSessionId !== action.snapshot.serverSessionId)) fail("invalid_transition");
       if (envelope.records.some(item => item.clientSessionId !== record.clientSessionId
         && item.serverSessionId === action.snapshot.serverSessionId)) fail("session_conflict");
-      return advance(envelope, withSnapshot(record, action.snapshot), { ...command, status: "acknowledged" });
+      return advance(envelope, { ...withSnapshot(record, action.snapshot),
+        clockWarning: record.clockWarning || (action.clockWarning ?? false) }, { ...command, status: "acknowledged" });
     }
     case "remember_start_identity": {
       assertVerifiedScope(envelope, action.verifiedScope);
@@ -350,6 +354,14 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       if (envelope.records.some(item => item.serverSessionId === action.serverSessionId)) fail("session_conflict");
       return advance(envelope, { ...record, revision: record.revision + 1, serverSessionId: action.serverSessionId },
         { ...command, status: "unknown" });
+    }
+    case "request_start_end": {
+      const record = recordFor(envelope, action.clientSessionId);
+      const command = envelope.commands.find(item => item.clientSessionId === record.clientSessionId && unresolved(item));
+      if (record.state !== "not_started" || command?.kind !== "start") fail("invalid_transition");
+      if (record.sync.reasonCode === JOURNAL_START_STOP_REASON) return detach(envelope);
+      return advance(envelope, { ...record, revision: record.revision + 1,
+        sync: { ...record.sync, reasonCode: JOURNAL_START_STOP_REASON } });
     }
     case "adopt_server": {
       assertVerifiedScope(envelope, action.verifiedScope);
@@ -448,6 +460,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
     case "prepare_transition": {
       if (!["pause", "resume", "cancel"].includes(action.kind)) fail("invalid_action");
       const record = recordFor(envelope, action.clientSessionId);
+      if (record.sync.reasonCode === JOURNAL_START_STOP_REASON && action.kind !== "cancel") fail("invalid_transition");
       validateJournalClock(action.clock);
       const command = makeCommand(action.operationId, action.clientSessionId, action.kind, action.clock.wallTimeMs,
         { serverSessionId: record.serverSessionId, clock: clockRequest(action.clock) });
@@ -513,6 +526,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
     }
     case "expire": {
       const record = recordFor(envelope, action.clientSessionId);
+      if (record.sync.reasonCode === JOURNAL_START_STOP_REASON) fail("invalid_transition");
       validateJournalClock(action.clock);
       const completedAtMs = record.state === "completed" ? record.completedAtMs
         : record.state === "running" ? record.endsAtMs : record.observedAtMs;

@@ -25,7 +25,10 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
     if (next === null) { setError("Choose a time from 1 second to 8 hours. Seconds must be between 0 and 59."); return; }
     onSave(next); onClose();
   };
-  return <AppSheet visible={visible} onRequestClose={onClose} compact keyboardBehavior="interactive" motionMode="timed" label="focus duration"
+  // Interactive + adjustResize skips the library's keyboard lift on Android.
+  // This short editor uses the measured keyboard offset instead of relying on
+  // the native modal to resize around a device's numeric keyboard.
+  return <AppSheet visible={visible} onRequestClose={onClose} compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="focus duration"
     header={<View style={p.sheetHeader}><Text style={p.title}>Make time for focus</Text><Text style={p.body}>Choose a duration for this block.</Text></View>}
     footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surface }}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Use this duration" disabled={disabled} onPress={save} style={p.button}><Text style={p.buttonText}>Use this duration</Text></TouchableOpacity>

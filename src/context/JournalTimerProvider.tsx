@@ -5,6 +5,7 @@ import { uuid } from "expo-modules-core";
 import { readSuggestedFocus, encodeSuggestedFocus, suggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { createJournalSessionTransport } from "../services/sessionService";
 import { createAsyncStorageSessionJournalStore } from "../services/sessionJournalAsyncStorage";
+import { createSessionOwnerVerification } from "../services/sessionOwnerVerification";
 import { createSessionTimerController, type SessionTimerController, type SessionTimerControllerSnapshot } from "../services/sessionTimerController";
 import { createSessionNotificationLifecycle } from "../services/sessionNotificationService";
 import { getSessionNotifications } from "../utils/sessionNotifications";
@@ -82,6 +83,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const seenReceipts = useRef(new Set<string>());
   const celebrated = useRef(new Set<string>());
   const backgroundBanner = useRef<{ title: string; deadline: number } | null>(null);
+  const refreshAfterAdmission = useRef(false);
 
   useEffect(() => {
     if (!ownerId || !backendId) return;
@@ -92,15 +94,17 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       const backend = current.localOwner?.backendId ?? identity?.backendId;
       return id && backend ? { ownerId: id, backendId: backend } : null;
     };
-    const verify = async (): Promise<JournalScope | null> => {
+    const verifyOwner = async (): Promise<JournalScope | null> => {
       const verified = await authRef.current.verifyCurrentOwner();
       return verified ? { ownerId: verified.id, backendId: verified.backendId } : null;
     };
     const currentEpoch = () => authRef.current.admissionEpoch;
+    const verification = createSessionOwnerVerification({ scope, currentScope, currentEpoch, verify: verifyOwner });
+    const verify = verification.verify;
     const controller = createSessionTimerController({ scope,
       store: createAsyncStorageSessionJournalStore(scope),
       server: createJournalSessionTransport(scope, { ensureVerifiedScope: verify, currentScope, currentEpoch, getClock }),
-      authority: { currentScope, currentEpoch, verify }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
+      authority: { currentScope, currentEpoch, verify, beginOperation: verification.beginOperation, endOperation: verification.endOperation }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
     });
     controllerRef.current = controller;
     const unsubscribe = controller.subscribe(next => setRuntime(current =>
@@ -130,7 +134,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId, backendId, auth.admissionEpoch, restoreAttempt]);
 
-  useEffect(() => { if (auth.accessMode === "online") void controllerRef.current?.refresh(); }, [auth.accessMode]);
+  useEffect(() => { refreshAfterAdmission.current = auth.accessMode === "online"; }, [auth.accessMode, ownerId, backendId, auth.admissionEpoch]);
+  useEffect(() => {
+    if (!refreshAfterAdmission.current || auth.accessMode !== "online" || runtime.busy || runtime.restoring || !controllerRef.current) return;
+    refreshAfterAdmission.current = false;
+    // Reconnection bypasses the offline retry delay. Keep the request queued if
+    // admission finishes while the controller is still reading local storage.
+    void controllerRef.current.refresh(true);
+  }, [auth.accessMode, runtime.busy, runtime.restoring]);
   useEffect(() => {
     notificationLifecycle.activate();
     return () => { void notificationLifecycle.dispose(); };
@@ -145,7 +156,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     ? null : runtime.record;
   const open = !runtime.ending && (interactionKind === "start" || !!record && ["running", "paused", "not_started"].includes(record.state));
   const isCompleted = record?.state === "completed";
-  const awaitingStart = interactionKind === "start" || record?.state === "not_started";
+  const awaitingStart = !runtime.ending && (interactionKind === "start" || record?.state === "not_started");
   const setup = record && (open || isCompleted || runtime.ending) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
   const timeLeft = runtime.displayTimeLeft ?? runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);

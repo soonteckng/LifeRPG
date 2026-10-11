@@ -708,3 +708,39 @@ test('journal byte and collection bounds fail before silently losing records', (
   historical.commands.push(extra);
   throwsCode(() => schema.validateJournalEnvelope(historical, SCOPE), 'too_large');
 });
+
+test('End while Start is unknown uses v1 metadata, preserves request evidence and survives snapshots until atomic cancellation preparation', () => {
+  let journal = act(preparedStart(), { type: 'mark_unknown', operationId: START });
+  const original = clone(command(journal, START));
+  journal = act(journal, { type: 'request_start_end', clientSessionId: CLIENT });
+  assert.equal(record(journal).state, 'not_started');
+  assert.equal(record(journal).sync.reasonCode, wire.JOURNAL_START_STOP_REASON);
+  assert.deepEqual(command(journal, START), original);
+  const saved = schema.parseJournalEnvelope(schema.serializeJournalEnvelope(journal), SCOPE);
+  assert.equal(saved.schemaVersion, 1);
+  assert.deepEqual(Object.keys(record(saved)), Object.keys(record(preparedStart())));
+  assert.deepEqual(act(saved, { type: 'request_start_end', clientSessionId: CLIENT }), saved, 'repeated End does not rewrite evidence');
+  journal = act(saved, { type: 'remember_start_identity', operationId: START, serverSessionId: SERVER, verifiedScope: SCOPE });
+  assert.equal(record(journal).sync.reasonCode, wire.JOURNAL_START_STOP_REASON);
+  const targetMs = SETUP.targetSeconds * 1000;
+  journal = act(journal, { type: 'acknowledge_start', operationId: START, snapshot: snapshot('running', targetMs, targetMs) });
+  assert.equal(record(journal).sync.reasonCode, wire.JOURNAL_START_STOP_REASON);
+  assert.equal(command(journal, START).status, 'acknowledged');
+  throwsCode(() => act(journal, { type: 'expire', operationId: COMPLETE, clientSessionId: CLIENT, clock: clock(targetMs + 1) }), 'invalid_transition');
+  throwsCode(() => act(journal, { type: 'prepare_transition', operationId: PAUSE, clientSessionId: CLIENT, kind: 'pause', clock: clock(targetMs + 1) }), 'invalid_transition');
+  journal = act(journal, { type: 'prepare_transition', operationId: CANCEL, clientSessionId: CLIENT, kind: 'cancel', clock: clock(targetMs + 1) });
+  assert.equal(record(journal).sync.reasonCode, null);
+  assert.equal(command(journal, CANCEL).status, 'prepared');
+  assert.deepEqual(command(journal, START).request, original.request);
+  journal = act(journal, { type: 'acknowledge_transition', operationId: CANCEL, snapshot: snapshot('cancelled', targetMs, targetMs + 2) });
+  assert.equal(record(journal).state, 'cancelled');
+  assert.equal(record(journal).sync.receipt, null);
+  assert.equal(journal.commands.some(item => item.kind === 'complete'), false);
+});
+
+test('a start-stop request cannot be attached to a confirmed or unrelated session', () => {
+  const journal = running(), before = clone(journal);
+  throwsCode(() => act(journal, { type: 'request_start_end', clientSessionId: CLIENT }), 'invalid_transition');
+  throwsCode(() => act(journal, { type: 'request_start_end', clientSessionId: SECOND_CLIENT }), 'unknown_session');
+  assert.deepEqual(journal, before);
+});

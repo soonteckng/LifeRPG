@@ -58,11 +58,11 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
   };
   return <FocusCard cardID="guided-focus-card" startID="guided-start" areaActionID="guided-session-options"
     label="Suggested focus" title={active ? activeSuggestion?.title ?? activeTitle ?? "One thing at a time." : focus.title}
-    instruction={active ? activeSuggestion?.instruction ?? (timer.isRunning ? "Your block is in progress. Return to your session whenever you’re ready." : "Your session is paused. Continue whenever you’re ready.") : focus.instruction}
+    instruction={timer.awaitingStart ? "We’re checking your session start. Open it to review or end the request." : active ? activeSuggestion?.instruction ?? (timer.isRunning ? "Your block is in progress. Return to your session whenever you’re ready." : "Your session is paused. Continue whenever you’re ready.") : focus.instruction}
     contentKey={active ? "active" : focus.templateId + String(focus.smaller)}
     seconds={active ? timer.timeLeft : focus.seconds} area={active ? activeArea?.title ?? "General" : areaTitle}
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
-    active={active} running={!!timer.isRunning} busy={busy} disabled={locked} editDisabled={locked}
+    active={active} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} busy={busy} disabled={locked} editDisabled={locked}
     setupDisabled={busy || areaChanging || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : areaError ? "Couldn’t change your focus area. Your previous choice is still selected. Try again." : preference.error ? "Couldn’t load your preferences. Try Find your next step again." : undefined}
     subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} onArea={id => void chooseArea(id)} onStart={() => void start()} />;
 }

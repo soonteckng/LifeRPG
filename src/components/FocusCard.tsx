@@ -17,7 +17,7 @@ export interface FocusCardProps {
   label: string; title: string; instruction: string; contentKey: string;
   seconds: number; area: string; tint: string; active: boolean; running: boolean;
   busy: boolean; disabled: boolean; editDisabled: boolean; restoring?: boolean;
-  failed?: boolean; error?: string; setupDisabled?: boolean; onDuration: (seconds: number) => void;
+  failed?: boolean; error?: string; setupDisabled?: boolean; awaitingStart?: boolean; onDuration: (seconds: number) => void;
   subjects?: Subject[]; areaId?: number | null; onArea?: (id: number | null) => void; onStart: () => void;
 }
 export default function FocusCard(props: FocusCardProps) {
@@ -27,7 +27,7 @@ export default function FocusCard(props: FocusCardProps) {
   const locked = props.busy || (!props.active && props.disabled);
   const editLocked = props.active || props.busy || props.editDisabled;
   return <View style={[s.card, touring && s.tourCard]} testID={props.cardID}>
-    <Text style={s.label}>{props.active ? props.running ? "In focus" : "Paused" : props.label}</Text>
+    <Text style={s.label}>{props.awaitingStart ? "Checking session start" : props.active ? props.running ? "In focus" : "Paused" : props.label}</Text>
     <View style={[s.prompt, touring && s.tourPrompt]} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
       <Text style={s.title} numberOfLines={touring ? 2 : undefined} accessibilityRole="header">{props.title}</Text>
       <Text style={s.instruction} numberOfLines={touring ? tour?.previewLines ?? 2 : undefined}>{props.instruction}</Text>
@@ -37,7 +37,7 @@ export default function FocusCard(props: FocusCardProps) {
         <Text style={s.meta}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.area} numberOfLines={2}>{areaLabel}</Text><Ionicons name="chevron-forward" size={16} color={colors.accent} /></View>
       </Pressable>}
     <View style={s.duration} testID="focus-card-duration">
-      {props.active ? <><Text style={s.meta}>Time remaining</Text><Text style={s.remaining}>{durationLabel(props.seconds)}</Text></>
+      {props.active ? <><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining}>{durationLabel(props.seconds)}</Text></>
         : <FocusLengthControl seconds={props.seconds} disabled={editLocked} onChange={props.onDuration} />}
     </View>
     <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.primary, locked && s.disabled]}

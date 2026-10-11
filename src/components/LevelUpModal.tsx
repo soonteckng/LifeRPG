@@ -73,24 +73,33 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={onDismiss}
     label="session completion" expanded heightRatio={0.85} maxHeightRatio={0.85} motionMode="timed"
     header={<Text style={s.title} accessibilityRole="header">{pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text>}>
-    <BottomSheetScrollView ref={scroll} onLayout={resetScroll} contentContainerStyle={[s.body, {paddingBottom:Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
+    <View style={s.layout} testID="session-result-layout">
+    <BottomSheetScrollView ref={scroll} onLayout={resetScroll} style={s.scroll} contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
       {recovered && !pending && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
       {!!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
-      <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} />
+      <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
       {pending ? <View style={s.pending}>
         <Text style={s.pendingText} accessibilityLiveRegion="polite">{syncError ? "Your finished session is saved on this phone. Reconnect to confirm your progress." : "Saving your progress…"}</Text>
         {!!syncError && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry saving</Text></TouchableOpacity>}
       </View> : <>
-      <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, goldEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} />
-      <SaveSuggestedQuest inSheet />
+      <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, goldEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} compact />
       </>}
-      <TouchableOpacity accessibilityRole="button" style={s.done} onPress={onClose}><Text style={s.doneText}>Done</Text></TouchableOpacity>
     </BottomSheetScrollView>
+    {/* A normal-flow sibling reserves its actual height below the scroll view.
+        Actions stay visible without floating over rewards or enlarged text. */}
+    <View style={[s.actions, {paddingBottom:Math.max(insets.bottom, 12)}]} testID="session-result-actions">
+      {!pending && <SaveSuggestedQuest inSheet compact />}
+      <TouchableOpacity accessibilityRole="button" style={s.done} onPress={onClose}><Text style={s.doneText}>Done</Text></TouchableOpacity>
+    </View>
+    </View>
   </AppSheet>;
 }
 const s = StyleSheet.create({
   title: { color: colors.text, fontSize: 24, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 16 },
-  body: { paddingHorizontal: 20, paddingBottom: 16, gap: 20 },
+  layout: {flex:1},
+  scroll: {flex:1},
+  body: { paddingHorizontal: 20, paddingBottom: 16, gap: 12 },
+  actions: {flexShrink:0, paddingHorizontal:20, paddingTop:12, gap:10, backgroundColor:colors.surfaceRaised, borderTopWidth:StyleSheet.hairlineWidth, borderTopColor:colors.line},
   finished: {color:colors.secondary, fontSize:14, lineHeight:21, textAlign:"center"},
   pending: {gap:12, paddingVertical:12},
   pendingText: {color:colors.secondary, fontSize:16, lineHeight:23, textAlign:"center"},

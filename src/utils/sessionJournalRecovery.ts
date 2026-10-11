@@ -44,6 +44,9 @@ export interface LegacyStartRecoveryRequest extends JournalActionBase {
   verifiedScope: JournalScope;
   operationId: string;
   openSessions: LegacyOpenSessionRead;
+  // The controller can restore the owner's only matching open timer as account
+  // state, without claiming that timestamp correlation proves this RPC landed.
+  allowOwnedOpenRecovery?: boolean;
 }
 
 export type LegacyStartRecoveryReason =
@@ -123,7 +126,8 @@ export function reconcileLegacyUnknownStart(
       || candidate.setup.taskId !== setup.taskId
       || candidate.setup.subjectId !== setup.subjectId
       || candidate.setup.notes !== setup.notes) return skip("setup_mismatch");
-  if (Math.abs(snapshot.startedAtMs - command.createdAtMs) > LEGACY_START_MATCH_WINDOW_MS) {
+  const startTimeMismatch = Math.abs(snapshot.startedAtMs - command.createdAtMs) > LEGACY_START_MATCH_WINDOW_MS;
+  if (request.allowOwnedOpenRecovery !== true && startTimeMismatch) {
     return skip("start_time_mismatch");
   }
   const originalClock = command.request.clock as unknown as JournalServerSnapshot["observedClock"];
@@ -131,15 +135,18 @@ export function reconcileLegacyUnknownStart(
   const wallDelta = observation.wallTimeMs - originalClock.wallTimeMs;
   const sameBoot = originalClock.bootId !== null && observation.bootId === originalClock.bootId
     && originalClock.monotonicTimeMs !== null && observation.monotonicTimeMs !== null;
+  let clockChanged = false;
   if (sameBoot) {
     const delta = observation.monotonicTimeMs! - originalClock.monotonicTimeMs!;
-    if (delta < 0 || Math.abs(wallDelta - delta) > JOURNAL_CLOCK_WARNING_MS) return skip("clock_changed");
-  } else if (wallDelta < -JOURNAL_CLOCK_WARNING_MS) return skip("clock_changed");
+    clockChanged = delta < 0 || Math.abs(wallDelta - delta) > JOURNAL_CLOCK_WARNING_MS;
+  } else clockChanged = wallDelta < -JOURNAL_CLOCK_WARNING_MS;
+  if (request.allowOwnedOpenRecovery !== true && clockChanged) return skip("clock_changed");
   return {
     kind: "acknowledge",
     action: {
       type: "acknowledge_start", epoch: request.epoch, expectedRevision: request.expectedRevision,
       operationId: command.operationId,
+      ...(request.allowOwnedOpenRecovery === true && (startTimeMismatch || clockChanged) ? { clockWarning: true } : {}),
       snapshot: {
         serverSessionId: snapshot.serverSessionId, state: snapshot.state,
         startedAtMs: snapshot.startedAtMs, elapsedMs: snapshot.elapsedMs,

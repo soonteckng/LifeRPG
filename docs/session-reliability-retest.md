@@ -6,6 +6,22 @@ This version supports recovery and saving when a session **starts online and the
 
 Allow about 25 minutes. For each case, record Pass, Fail or Not tested. Note the session title, finish time, message and number of matching entries in Progress. Use different titles if you create test quests; otherwise write down the finish times to distinguish repeated free sessions. Check the currently selected week/month in Progress.
 
+## Recover the currently stuck session first
+
+After loading this update, reopen online. The app should check the saved start against the account's existing open or recently ended session. A cancelled outcome should release the timer without credit; an existing completed receipt should be preserved without another award or another Start.
+
+If Checking session start remains, use Retry. Once its current check finishes, End is available and records the stop before checking the network. Use End once, then leave the app open online for confirmation. Do not clear app data to remove the pending record. If it remains stuck, report the exact message; an empty server read is deliberately not permission to issue another uncertain Start.
+
+For this retest, first check only these five things:
+
+1. Recover the current session online and verify that Home can start a new session after the old outcome confirms.
+2. Open Custom and tap both duration fields. The keyboard must leave the focused field and save action usable. Check that Save for later and Done are visible on a completed result; after saving, the confirmation must be plain text.
+3. Start one minute online, disconnect both networks, finish, then reconnect and leave the app open. One stable Retry connection action should remain during checking. Confirm one saved result/reward and no repeated result after reopening.
+4. Start two minutes online, wait five seconds, disconnect, and End before zero. Reconnect and verify it stays ended, adds no completed focus time/XP, and allows a new session after confirmation.
+5. Check the current session's finish time/title in Progress so it is not confused with a previous test.
+
+The previously reported Force Stop/recovery cases passed; only repeat them if these targeted checks pass and you want broader coverage. Reboot can remain Not tested. Account separation below simply means another account must not show the first account's timer or results; skip it if you only use one account.
+
 ## 1. Quick visual checks
 
 1. Open Home's Custom focus length and tap Minutes, then Seconds. The short sheet should sit above the keyboard with its contents together, without the large blank gap. Dismiss the keyboard and save a one-minute duration.
@@ -30,7 +46,7 @@ If saving requires Retry, record this case as **automatic sync failed**, then us
 3. The same saved session should return with elapsed time accounted for, not restart at five minutes.
 4. Reconnect and bring the app back to the foreground. If this running-session recovery screen still asks for connection, use Retry connection. End online before the target to clean up.
 
-This connection retry is separate from the automatic confirmation of a finished result in cases 2 and 4.
+The single Retry connection action checks the saved work and verifies the account together. For the automatic-confirmation tests in cases 2 and 4, still wait without pressing it first.
 
 ## 4. Expiry while Force Stopped
 

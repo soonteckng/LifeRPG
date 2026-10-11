@@ -4,8 +4,9 @@ import type {
 } from "../types/sessionJournal";
 import { JournalStorageError, type SessionJournalStore } from "./sessionJournalStore";
 import { applyJournalAction, deriveJournalTimer } from "../utils/sessionJournal";
-import { reconcileLegacyUnknownStart } from "../utils/sessionJournalRecovery";
+import { LEGACY_START_MATCH_WINDOW_MS, reconcileLegacyUnknownStart } from "../utils/sessionJournalRecovery";
 import { isJournalUuid, validateJournalClock, validateJournalScope, validateJournalSetup } from "../utils/sessionJournalSchema";
+import { JOURNAL_START_STOP_REASON } from "../types/sessionJournal";
 
 export interface SessionTimerRemoteSession {
   scope: JournalScope;
@@ -28,12 +29,15 @@ export interface SessionTimerTransport {
   complete(serverSessionId: string): Promise<JournalReceipt>;
   readSession(serverSessionId: string): Promise<SessionTimerRemoteSession | null>;
   readOpenSessions(): Promise<{ complete: boolean; sessions: SessionTimerRemoteSession[] }>;
+  readFinishedStart?(setup: JournalSetup, requestedAtMs: number): Promise<{ complete: boolean; sessions: SessionTimerRemoteSession[] }>;
 }
 
 export interface SessionTimerAuthority {
   currentScope(): JournalScope | null;
   currentEpoch(): number;
   verify(): Promise<JournalScope | null>;
+  beginOperation?(): void;
+  endOperation?(): void;
 }
 
 export interface SessionTimerControllerOptions {
@@ -121,6 +125,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   const selected = () => journal?.records.find(record => record.clientSessionId === selectedId) ?? null;
   const pending = (record?: JournalRecord | null) => journal?.commands.find(command => unresolved(command)
     && (!record || command.clientSessionId === record.clientSessionId)) ?? null;
+  const startStopRequested = (record?: JournalRecord | null) => !!record
+    && record.sync.reasonCode === JOURNAL_START_STOP_REASON;
   function bounded<T>(request: Promise<T>, budgetMs = timeoutMs): Promise<T> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new ControllerTimeoutError()), budgetMs);
@@ -162,7 +168,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       timeLeft: timer ? Math.ceil(timer.remainingMs / 1000) : 0,
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
-      ending: !!record && pending(record)?.kind === "cancel", unsyncedSessionCount, interaction: feedback, displayTimeLeft,
+      ending: !!record && (pending(record)?.kind === "cancel" || startStopRequested(record)), unsyncedSessionCount, interaction: feedback, displayTimeLeft,
       recovered: !!record && recoveredIds.has(record.clientSessionId),
     };
     for (const listener of listeners) {
@@ -246,6 +252,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     const message = error instanceof JournalStorageError ? storageMessage() : record?.state === "completed"
       ? "Saved on this phone. Waiting to confirm your progress."
       : error instanceof ControllerReceiptUnavailableError ? "Your account reports this session as completed, but its saved result isn’t available yet. Your local record is kept while we check again. No new completion will be submitted."
+      : startStopRequested(record) ? "Your request to end is saved on this phone. Waiting to confirm the start so we can end it safely."
       : command?.kind === "cancel" && unresolved(command) ? "Your stop is saved on this phone. Waiting to confirm it."
       : command && unresolved(command) ? "Waiting to confirm your saved session state."
       : kind === "auth" ? "Connect to the internet to continue."
@@ -261,7 +268,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       if (!receipt) {
         // An End intent must never initiate a completion repair or award. Wait
         // for an existing receipt to become readable instead.
-        if (pending(record)?.kind === "cancel") throw new ControllerReceiptUnavailableError();
+        if (pending(record)?.kind === "cancel" || startStopRequested(record)) throw new ControllerReceiptUnavailableError();
         receipt = await bounded(options.server.complete(remote.serverSessionId), mutationTimeoutMs);
         fence();
       }
@@ -304,18 +311,58 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     for (const remote of read.sessions) checkRemote(remote);
     const result = reconcileLegacyUnknownStart(journal!, {
       verifiedScope, epoch: durableEpoch!, expectedRevision: journal!.revision, operationId: command.operationId,
+      allowOwnedOpenRecovery: true,
       openSessions: { scope, complete: read.complete, sessions: read.sessions.map(remote => {
         if (!remote.snapshot || (remote.status !== "running" && remote.status !== "paused")) throw new ControllerRemoteError();
         return { scope: remote.scope, setup: remote.setup, snapshot: remote.snapshot };
       }) },
     });
-    if (result.kind === "acknowledge") await write(result.action);
-    else { scheduleRemoteRetry(); publish({ error: "Waiting to confirm whether your session started.", restoreError: false }); }
+    if (result.kind === "acknowledge") {
+      recoveredIds.add(record.clientSessionId);
+      await write(result.action);
+    } else {
+      // The reply can be lost even though that session was subsequently ended
+      // or completed. Open rows alone cannot recover that terminal outcome.
+      if (result.reason === "no_open_session" && options.server.readFinishedStart) {
+        const finished = await bounded(options.server.readFinishedStart(record.setup, command.createdAtMs));
+        fence();
+        for (const remote of finished.sessions) checkRemote(remote);
+        if (finished.complete && finished.sessions.length === 1) {
+          const remote = finished.sessions[0], actual = remote.setup, expected = record.setup;
+          const matching = actual.targetSeconds === expected.targetSeconds && actual.activityType === expected.activityType
+            && actual.taskId === expected.taskId && actual.subjectId === expected.subjectId && actual.notes === expected.notes
+            && Math.abs(remote.startedAtMs - command.createdAtMs) <= LEGACY_START_MATCH_WINDOW_MS
+            && !journal!.records.some(item => item.clientSessionId !== record.clientSessionId && item.serverSessionId === remote.serverSessionId);
+          if (matching && (remote.status === "cancelled" || remote.status === "completed" && remote.receipt)) {
+            recoveredIds.add(record.clientSessionId);
+            await write({ type: "remember_start_identity", operationId: command.operationId,
+              serverSessionId: remote.serverSessionId, verifiedScope: await verify() });
+            await reconcileRemote(selected()!, remote);
+            return;
+          }
+        }
+      }
+      scheduleRemoteRetry();
+      const error = startStopRequested(record) ? "Your request to end is saved. We’re checking for the original session before confirming it."
+        : result.reason === "no_open_session" ? "Your start is still unconfirmed. No running session was found yet. We’ll keep checking without starting another."
+        : "Waiting to confirm whether your session started.";
+      publish({ error, restoreError: false });
+    }
+  }
+
+  async function prepareRequestedStartStop(): Promise<void> {
+    const record = selected();
+    if (!startStopRequested(record) || !record?.serverSessionId || pending(record)
+      || (record.state !== "running" && record.state !== "paused")) return;
+    // Replacing the marker and installing Cancel is one durable write. Even a
+    // recovered expired snapshot must not auto-complete between these steps.
+    await write({ type: "prepare_transition", operationId: uuid(), clientSessionId: record.clientSessionId,
+      kind: "cancel", clock: now() });
   }
 
   async function expireLocal(): Promise<boolean> {
     const record = selected();
-    if (!record || pending(record) || (record.state !== "running" && record.state !== "paused")) return false;
+    if (!record || pending(record) || startStopRequested(record) || (record.state !== "running" && record.state !== "paused")) return false;
     const clock = now();
     if (!deriveJournalTimer(record, clock).expired) return false;
     lastAction = "complete";
@@ -383,8 +430,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   }
 
   async function refreshInternal(force: boolean): Promise<void> {
+    await prepareRequestedStartStop();
     await expireLocal();
     let command = pending();
+    const hadCommand = command !== null && command !== undefined;
     if (command?.kind === "complete") {
       await syncCompletion(force);
       if (pending()) return;
@@ -393,6 +442,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       if (pending()) return;
     } else if (command?.kind === "start") {
       await reconcileStart(command);
+      await prepareRequestedStartStop();
+      if (pending()?.kind === "cancel") await retryCancellation(pending()!);
       if (pending()) return;
     } else if (command) {
       if (command.status === "prepared") await write({ type: "mark_unknown", operationId: command.operationId });
@@ -403,6 +454,14 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       await reconcileRemote(record, remote);
       if (pending()) return;
     }
+    if (hadCommand) {
+      // The just-read known UUID (or complete owned-open start proof) is enough
+      // to settle this operation. Do not hold controls for unrelated discovery.
+      await expireLocal();
+      if (pending()?.kind === "complete") await syncCompletion(force);
+      if (!pending()) publish({ error: null, restoreError: false });
+      return;
+    }
     const record = selected();
     if (record && (record.state === "running" || record.state === "paused")) {
       const remote = await readKnown(record);
@@ -410,7 +469,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       await reconcileRemote(record, remote);
       await expireLocal();
       if (pending()?.kind === "complete") { await syncCompletion(force); return; }
+      publish({ error: pending() ? "Waiting to confirm your saved session state." : null, restoreError: false });
+      return;
     }
+    if (record?.serverSessionId) { publish({ error: null, restoreError: false }); return; }
     await verify();
     const read = await bounded(options.server.readOpenSessions());
     fence();
@@ -434,6 +496,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   async function run(work: () => Promise<boolean | void>): Promise<boolean> {
     if (locked || !initialized || !live()) return false;
     locked = true;
+    options.authority.beginOperation?.();
     publish({ busy: true, error: null });
     let succeeded = false;
     try { succeeded = (await work()) !== false; return succeeded; }
@@ -443,6 +506,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       // state. Only a confirmed matching transition keeps its display anchor.
       if (interaction && !succeeded) displayClock = null;
       interaction = null; locked = false; if (live()) publish({ busy: false });
+      options.authority.endOperation?.();
     }
   }
 
@@ -483,6 +547,23 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   async function controlInternal(kind: "pause" | "resume" | "cancel"): Promise<boolean> {
     const record = selected();
     if (!record) return false;
+    const startCommand = pending(record);
+    if (kind === "cancel" && record.state === "not_started" && startCommand?.kind === "start") {
+      lastAction = "cancel";
+      await write({ type: "request_start_end", clientSessionId: record.clientSessionId });
+      await reconcileStart(startCommand);
+      await prepareRequestedStartStop();
+      const cancel = pending(selected());
+      if (cancel?.kind === "cancel") return retryCancellation(cancel);
+      return selected()?.state === "cancelled" || selected()?.state === "completed";
+    }
+    if (kind === "cancel" && startStopRequested(record)) {
+      lastAction = "cancel";
+      await prepareRequestedStartStop();
+      const cancel = pending(selected());
+      if (cancel?.kind === "cancel") return retryCancellation(cancel);
+      return false;
+    }
     // With no earlier unresolved intention, reaching the full target wins over
     // a late End tap. A stop saved before expiry still takes precedence.
     if (!pending(record) && (record.state === "running" || record.state === "paused")
@@ -544,6 +625,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     if (initializing) return initializing;
     if (initialized || !live()) return;
     locked = true; publish({ busy: true, restoring: true });
+    options.authority.beginOperation?.();
     initializing = (async () => {
       try {
         const loaded = await options.store.load(); fence();
@@ -573,6 +655,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       } finally {
         locked = false; initializing = null;
         if (live()) publish({ busy: false, restoring: false });
+        options.authority.endOperation?.();
       }
     })();
     return initializing;
@@ -600,7 +683,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       if (locked) { publish(); return false; }
       const record = selected();
       const command = pending(record);
-      const expiry = !!record && !command && (record.state === "running" || record.state === "paused")
+      const expiry = !!record && !command && !startStopRequested(record) && (record.state === "running" || record.state === "paused")
         && deriveJournalTimer(record, now()).expired;
       const retryDue = record?.state === "completed" && record.verification === "server_timed"
         && command?.kind === "complete" && due(record, false);
@@ -617,9 +700,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     refresh: (forceRetry = false) => run(() => refreshInternal(forceRetry)),
     retry: () => run(async () => {
       const failed = lastAction;
+      const confirmingUnknownStart = pending()?.kind === "start";
       await refreshInternal(true);
       if (pending()) return false;
-      if (failed === "start" && lastSetup && !journal!.records.some(record => ["running", "paused", "not_started"].includes(record.state))) {
+      if (failed === "start" && !confirmingUnknownStart && lastSetup
+          && !journal!.records.some(record => ["running", "paused", "not_started"].includes(record.state))) {
         return startInternal(lastSetup);
       }
       if (failed === "pause" || failed === "resume" || failed === "cancel") return controlInternal(failed);
@@ -628,6 +713,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     async dispose(): Promise<void> {
       if (disposed) return;
       disposed = true; rewardId = null; interaction = null; displayClock = null;
+      options.authority.endOperation?.();
       publish({ restoring: false, busy: false, error: null, restoreError: false }); listeners.clear();
       const epoch = durableEpoch;
       if (epoch === null) return;

@@ -26,6 +26,28 @@ interface AuthContextType {
   leaveRecovery: () => Promise<void>;
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AUTH_VERIFICATION_TIMEOUT_MS = 8000;
+class AuthVerificationTimeout extends Error {
+  readonly status = 503;
+  constructor() { super("Account verification timed out"); this.name = "AuthRetryableFetchError"; }
+}
+function boundedAuthRequest<T>(request: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new AuthVerificationTimeout()), AUTH_VERIFICATION_TIMEOUT_MS);
+    request.then(result => { clearTimeout(timeout); resolve(result); }, error => { clearTimeout(timeout); reject(error); });
+  });
+}
+const sameCredentials = (left: Session | null, right: Session | null) => left?.user?.id === right?.user?.id
+  && left?.access_token === right?.access_token && left?.refresh_token === right?.refresh_token;
+const snapshotCredentials = (current: Session | null): Session | null => current ? { ...current, user: { ...current.user } } : null;
+interface SessionVerificationFlight {
+  session: Session | null; epoch: number; recovery: RecoveryState; generation: number;
+  promise: Promise<LocalAccountOwner | null>;
+}
+interface OwnerVerificationFlight {
+  ownerId: string; session: Session | null; epoch: number; cancelled: boolean;
+  promise: Promise<LocalAccountOwner | null>;
+}
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const backend = useMemo(() => sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL), []);
   const accountCache = useMemo(() => backend ? createLocalAccountCache(AsyncStorage, backend.backendId) : null, [backend]);
@@ -36,7 +58,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [sessionError, setSessionError] = useState(false);
   const [verifiedUser, setVerifiedUser] = useState<User | null>(null);
   const verified = useRef<User | null>(null);
+  const verifiedCredentials = useRef<Session | null>(null);
   const verificationGeneration = useRef(0);
+  const sessionVerification = useRef<SessionVerificationFlight | null>(null);
+  const ownerVerification = useRef<OwnerVerificationFlight | null>(null);
   const admissionClosed = useRef(false);
   const cacheRef = useRef<LocalAccountCache | null>(null);
   const [cachedProfile, setCachedProfile] = useState<CachedVerifiedProfile | null>(null);
@@ -63,7 +88,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await accountCache?.clear();
   };
   const revokeAdmission = () => {
-    verificationGeneration.current++; verified.current = null; setVerifiedUser(null);
+    verificationGeneration.current++; verified.current = null; verifiedCredentials.current = null; setVerifiedUser(null);
+    sessionVerification.current = null;
+    if (ownerVerification.current) ownerVerification.current.cancelled = true;
+    ownerVerification.current = null;
     changeAdmission("signed-out", null); setVerifying(false);
   };
   const changeRecovery = (state: RecoveryState) => {
@@ -80,16 +108,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   const redirectTo = Platform.OS === "web" && typeof window === "undefined"
     ? "" : Linking.createURL("auth/recovery");
-  const verifySession = async (current: Session | null, force = false, restorationError: unknown = null): Promise<LocalAccountOwner | null> => {
-    if (admissionClosed.current && recoveryRef.current === "none") return null;
-    if (!force && current?.access_token && current.refresh_token && verified.current?.id === current.user?.id) {
-      return backend && recoveryRef.current === "none" ? { id: verified.current.id, backendId: backend.backendId } : null;
+  const verifySession = (current: Session | null, force = false, restorationError: unknown = null): Promise<LocalAccountOwner | null> => {
+    if (admissionClosed.current && recoveryRef.current === "none") return Promise.resolve(null);
+    current = snapshotCredentials(current);
+    const existing = sessionVerification.current;
+    if (!restorationError && existing && existing.generation === verificationGeneration.current
+      && existing.epoch === admissionRevision.current && existing.recovery === recoveryRef.current
+      && sameCredentials(existing.session, current)) return existing.promise;
+    if (!force && current?.access_token && current.refresh_token && verified.current?.id === current.user?.id
+      && sameCredentials(verifiedCredentials.current, current)) {
+      return Promise.resolve(backend && recoveryRef.current === "none" ? { id: verified.current.id, backendId: backend.backendId } : null);
     }
     const generation = ++verificationGeneration.current;
-    const fresh = () => generation === verificationGeneration.current;
-    if (!force || verified.current?.id !== current?.user?.id) { verified.current = null; setVerifiedUser(null); }
+    let epoch = admissionRevision.current;
+    const recoveryState = recoveryRef.current;
+    const fresh = () => generation === verificationGeneration.current && epoch === admissionRevision.current
+      && recoveryState === recoveryRef.current && sameCredentials(sessionRef.current, current)
+      && !(admissionClosed.current && recoveryRef.current === "none");
+    if (verified.current?.id !== current?.user?.id || !current) {
+      verified.current = null; verifiedCredentials.current = null; setVerifiedUser(null);
+    }
     setSessionError(false);
     setVerifying(true);
+    const flight: SessionVerificationFlight = { session: current, epoch, recovery: recoveryState, generation,
+      promise: Promise.resolve(null) };
+    const work = async (): Promise<LocalAccountOwner | null> => {
     try {
       if (restorationError) throw restorationError;
       if (!current) {
@@ -102,16 +145,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return null;
       }
       if (!current.access_token || !current.refresh_token || !current.user?.id) throw { code: "invalid_session" };
-      const { data, error } = await supabase.auth.getUser(current.access_token);
+      const { data, error } = await boundedAuthRequest(supabase.auth.getUser(current.access_token));
       if (error) throw error;
       if (!data.user || data.user.id !== current.user.id) throw { code: "owner_mismatch" };
       if (!fresh() || sessionRef.current?.user.id !== current.user.id) return null;
-      verified.current = data.user; setVerifiedUser(data.user);
+      verified.current = data.user; verifiedCredentials.current = current; setVerifiedUser(data.user);
       // Recovery may display a network-verified identity but never admits Home
       // or stores a local recovery marker for that recovery session.
       if (recoveryRef.current !== "none") return null;
       const owner = backend ? { id: data.user.id, backendId: backend.backendId } : null;
       changeAdmission("online", owner);
+      epoch = admissionRevision.current;
+      flight.epoch = epoch;
       if (accountCache && owner) {
         const ownerGeneration = admissionRevision.current;
         const sameOwner = () => ownerGeneration === admissionRevision.current && recoveryRef.current === "none"
@@ -124,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return fresh() ? owner : null;
     } catch (error) {
       if (!fresh()) return null;
-      verified.current = null; setVerifiedUser(null);
+      verified.current = null; verifiedCredentials.current = null; setVerifiedUser(null);
       if (recoveryRef.current !== "none") return null;
       const credential = backend ? await readPersistedCredentialOwner(AsyncStorage, backend) : { kind: "missing" as const };
       if (!fresh()) return null;
@@ -145,8 +190,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       return null;
     } finally {
-      if (generation === verificationGeneration.current || !current) setVerifying(false);
+      if (generation === verificationGeneration.current) setVerifying(false);
+      if (sessionVerification.current === flight) sessionVerification.current = null;
     }
+    };
+    sessionVerification.current = flight;
+    flight.promise = work();
+    return flight.promise;
   };
   const cacheVerifiedProfile = useCallback(async (profile: CachedVerifiedProfile) => {
     const generation = admissionRevision.current;
@@ -156,15 +206,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const saved = await accountCache.profile(profile, current);
     if (saved && current()) { cacheRef.current = saved; setCachedProfile(saved.profile); }
   }, [accountCache]);
-  const verifyCurrentOwner = async () => {
+  const verifyCurrentOwner = (): Promise<LocalAccountOwner | null> => {
     const ownerId = admission.current.owner?.id ?? sessionRef.current?.user.id;
-    const generation = verificationGeneration.current;
-    if (!ownerId || recoveryRef.current !== "none") return null;
-    const result = await supabase.auth.getSession().catch(error => ({ data: { session: null }, error }));
-    if (generation !== verificationGeneration.current || admissionClosed.current) return null;
-    if (recoveryRef.current !== "none" || (result.data.session && result.data.session.user.id !== ownerId)) return null;
-    sessionRef.current = result.data.session; setSession(result.data.session);
-    return verifySession(result.data.session, true, result.error);
+    if (!ownerId || recoveryRef.current !== "none" || admissionClosed.current) return Promise.resolve(null);
+    const epoch = admissionRevision.current;
+    const current = snapshotCredentials(sessionRef.current);
+    const existing = ownerVerification.current;
+    if (existing && !existing.cancelled && existing.ownerId === ownerId && existing.epoch === epoch
+      && sameCredentials(existing.session, current)) return existing.promise;
+    const flight: OwnerVerificationFlight = { ownerId, epoch, session: current, cancelled: false,
+      promise: Promise.resolve(null) };
+    const fresh = () => !flight.cancelled && flight.epoch === admissionRevision.current && !admissionClosed.current
+      && recoveryRef.current === "none" && sameCredentials(sessionRef.current, flight.session)
+      && (admission.current.owner?.id ?? sessionRef.current?.user.id) === ownerId;
+    const work = async (): Promise<LocalAccountOwner | null> => {
+      const result = await boundedAuthRequest(supabase.auth.getSession()).catch(error => ({ data: { session: null }, error }));
+      if (!fresh() || (result.data.session && result.data.session.user.id !== ownerId)) return null;
+      // A refresh may return new credentials. Their own fresh getUser check is
+      // required; a same-owner JWT or local marker is never cloud proof.
+      sessionRef.current = result.data.session; setSession(result.data.session);
+      flight.session = snapshotCredentials(result.data.session);
+      return verifySession(result.data.session, true, result.error);
+    };
+    ownerVerification.current = flight;
+    flight.promise = boundedAuthRequest(work()).catch(async error => {
+      if (!fresh()) return null;
+      flight.cancelled = true;
+      // Invalidate any hung proof before admitting only local recovery. The
+      // network request may still resolve, but its generation cannot commit.
+      return verifySession(sessionRef.current, true, error);
+    }).finally(() => { if (ownerVerification.current === flight) ownerVerification.current = null; });
+    return flight.promise;
   };
   useEffect(() => {
     let live = true, authEventSeen = false;
@@ -244,9 +316,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false);
           }
         }
-        const restored = await supabase.auth.getSession().catch(error => ({ data: { session: null }, error }));
+        const restored = await boundedAuthRequest(supabase.auth.getSession()).catch(error => ({ data: { session: null }, error }));
         if (!live) return;
-        if (!authEventSeen || (!restored.data.session && restored.error)) {
+        if (!authEventSeen || (!restored.data.session && restored.error && !sessionRef.current && !verified.current)) {
           sessionRef.current = restored.data.session;
           setSession(restored.data.session);
           // A refresh failure may return null while the original credential is
@@ -269,7 +341,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (live) changeRecovery("invalid");
       } finally { if (live) setLoading(false); }
     })();
-    const cancelVerification = () => { verificationGeneration.current++; };
+    const cancelVerification = () => {
+      verificationGeneration.current++; sessionVerification.current = null;
+      if (ownerVerification.current) ownerVerification.current.cancelled = true;
+      ownerVerification.current = null;
+    };
     return () => { live = false; cancelVerification(); subscription.unsubscribe(); listener.remove(); };
     // The listener and boot guard belong to this provider instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -329,10 +405,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       sessionRef.current = null; setSession(null); changeRecovery("none");
     } finally { saving.current = false; }
   };
+  const retrySessionVerification = async () => {
+    if (admission.current.owner) { await verifyCurrentOwner(); return; }
+    const generation = verificationGeneration.current;
+    const epoch = admissionRevision.current;
+    const current = snapshotCredentials(sessionRef.current);
+    const result = await boundedAuthRequest(supabase.auth.getSession()).catch(error => ({ data: { session: null }, error }));
+    if (generation !== verificationGeneration.current || epoch !== admissionRevision.current
+      || admissionClosed.current || recoveryRef.current !== "none" || !sameCredentials(current, sessionRef.current)) return;
+    sessionRef.current = result.data.session; setSession(result.data.session);
+    await verifySession(result.data.session, true, result.error);
+  };
   return (
     <AuthContext.Provider value={{ session, user: verifiedUser?.id === session?.user?.id ? verifiedUser : null, loading: loading || (verifying && accessMode === "signed-out"), recovery,
       sessionError, localOwner, accessMode, admissionEpoch, cachedProfile, cacheVerifiedProfile, verifyCurrentOwner,
-      retrySessionVerification: async () => { if (admission.current.owner) await verifyCurrentOwner(); else { const result = await supabase.auth.getSession().catch(error => ({ data: { session: null }, error })); sessionRef.current = result.data.session; setSession(result.data.session); await verifySession(result.data.session, true, result.error); } },
+      retrySessionVerification,
       signIn, signUp, signOut, requestPasswordReset, saveRecoveryPassword, leaveRecovery }}>
       {children}
     </AuthContext.Provider>

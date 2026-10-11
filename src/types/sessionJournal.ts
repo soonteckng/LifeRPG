@@ -6,6 +6,9 @@ export const JOURNAL_MAX_RECORDS = 100;
 export const JOURNAL_MAX_COMMANDS = 1000;
 // A recovery cache; full accepted session history remains on the server.
 export const JOURNAL_RETAIN_SETTLED_RECORDS = 20;
+// Existing v1 metadata carries the stop intention until a start UUID is known.
+// It must survive every start snapshot until a cancellation command is durable.
+export const JOURNAL_START_STOP_REASON = "end_requested_before_start_confirmation";
 
 export interface JournalScope { backendId: string; ownerId: string }
 export interface JournalClock {
@@ -86,8 +89,9 @@ export type JournalAction =
   | { type: "admit"; epoch: number; expectedRevision: number }
   | { type: "revoke"; epoch: number; expectedRevision: number }
   | (JournalActionBase & { type: "prepare_start"; operationId: string; clientSessionId: string; setup: JournalSetup; clock: JournalClock })
-  | (JournalActionBase & { type: "acknowledge_start"; operationId: string; snapshot: JournalServerSnapshot })
+  | (JournalActionBase & { type: "acknowledge_start"; operationId: string; snapshot: JournalServerSnapshot; clockWarning?: boolean })
   | (JournalActionBase & { type: "remember_start_identity"; operationId: string; serverSessionId: string; verifiedScope: JournalScope })
+  | (JournalActionBase & { type: "request_start_end"; clientSessionId: string })
   | (JournalActionBase & { type: "adopt_server"; clientSessionId: string; setup: JournalSetup; snapshot: JournalServerSnapshot; verifiedScope: JournalScope; clockWarning?: boolean })
   | (JournalActionBase & { type: "reconcile_server"; clientSessionId: string; setup: JournalSetup; verifiedScope: JournalScope; clock: JournalClock;
       snapshot?: JournalServerSnapshot; receipt?: JournalReceipt; startedAtMs?: number; completedAtMs?: number; operationId?: string; clockWarning?: boolean })

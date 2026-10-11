@@ -192,6 +192,183 @@ test("fresh owner verification calls getUser again; temporary failure switches t
     assert.equal(ui.value().admissionEpoch, epoch);
   } finally { await ui.cleanup(); }
 });
+test("concurrent exact-owner verification shares one fresh SDK read and every caller receives its proof", async () => {
+  const wait = deferred(), store = memory(); existing(store, session());
+  let hold = false, sessionCalls = 0, userCalls = 0;
+  const ui = await mount({ store, current: session(), auth: {
+    getSession: async () => { sessionCalls++; return { data: { session: session() }, error: null }; },
+    getUser: async () => { userCalls++; return hold ? wait.promise : { data: { user: { id: A } }, error: null }; },
+  } });
+  try {
+    hold = true; let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); second = ui.value().verifyCurrentOwner(); });
+    assert.equal(sessionCalls, 2); assert.equal(userCalls, 2);
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.deepEqual(await Promise.all([first, second]), [{ id: A, backendId: backend.backendId }, { id: A, backendId: backend.backendId }]);
+    hold = false;
+    await ui.run(async value => assert.deepEqual(await value.verifyCurrentOwner(), { id: A, backendId: backend.backendId }));
+    assert.equal(userCalls, 3, "settled proof is never a TTL cache for another operation");
+  } finally { await ui.cleanup(); }
+});
+test("a cold owner proof and exact-credential auth callbacks share the same pending getUser verification", async () => {
+  const wait = deferred(), store = memory(); existing(store, session()); let calls = 0;
+  const ui = await mount({ store, current: session(), auth: { getUser: () => { calls++; return wait.promise; } } });
+  try {
+    let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); second = ui.value().verifyCurrentOwner(); });
+    await ui.event("TOKEN_REFRESHED", session());
+    assert.equal(calls, 1);
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.deepEqual(await Promise.all([first, second]), [{ id: A, backendId: backend.backendId }, { id: A, backendId: backend.backendId }]);
+    assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); }
+});
+test("coalesced old-owner callers are fenced after account switch and cannot revive a late cloud reply", async () => {
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false;
+  const ui = await mount({ store, current: session(), auth: { getUser: async token => hold && token === session().access_token
+    ? wait.promise : { data: { user: { id: token === session().access_token ? A : B } }, error: null } } });
+  try {
+    hold = true; let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); second = ui.value().verifyCurrentOwner(); });
+    await ui.event("SIGNED_IN", session(B));
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.deepEqual(await Promise.all([first, second]), [null, null]);
+    assert.equal(ui.value().user.id, B); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); }
+});
+test("same-owner credential refresh fences the old proof and a late invalid reply cannot revoke the new proof", async () => {
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false;
+  const updated = { ...session(), access_token: session().access_token.replace(".signature", ".renewed"), refresh_token: "new-refresh-fixture" };
+  const ui = await mount({ store, current: session(), auth: { getUser: async token => hold && token === session().access_token
+    ? wait.promise : { data: { user: { id: A } }, error: null } } });
+  try {
+    hold = true; let proof;
+    await act(async () => { proof = ui.value().verifyCurrentOwner(); });
+    await ui.event("TOKEN_REFRESHED", updated);
+    await act(async () => wait.resolve({ data: { user: null }, error: { code: "session_not_found", status: 401 } }));
+    assert.equal(await proof, null); assert.equal(ui.value().user.id, A); assert.equal(ui.value().session.access_token, updated.access_token);
+    assert.equal(ui.value().accessMode, "online"); assert.equal(store.values.has(utils.localAccountCacheKey(backend.backendId)), true);
+  } finally { await ui.cleanup(); }
+});
+test("a hung getUser proof times out, releases all joined callers, and a fresh retry ignores the late reply", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false, calls = 0;
+  const ui = await mount({ store, current: session(), auth: { getUser: async () => {
+    calls++; return hold ? wait.promise : { data: { user: { id: A } }, error: null };
+  } } });
+  try {
+    hold = true; let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); second = ui.value().verifyCurrentOwner(); });
+    await act(async () => t.mock.timers.tick(8000));
+    assert.deepEqual(await Promise.all([first, second]), [null, null]);
+    assert.equal(ui.value().accessMode, "local-only"); assert.equal(ui.value().user, null);
+    hold = false;
+    await ui.run(async value => assert.deepEqual(await value.verifyCurrentOwner(), { id: A, backendId: backend.backendId }));
+    assert.equal(calls, 3); assert.equal(ui.value().accessMode, "online");
+    await act(async () => wait.resolve({ data: { user: null }, error: { code: "session_not_found", status: 401 } }));
+    assert.equal(ui.value().user.id, A); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+test("a hung getSession proof releases its owner flight and cannot assign late foreign credentials after retry", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false, calls = 0;
+  const ui = await mount({ store, current: session(), auth: { getSession: async () => {
+    calls++; return hold ? wait.promise : { data: { session: session() }, error: null };
+  } } });
+  try {
+    hold = true; let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); second = ui.value().verifyCurrentOwner(); });
+    assert.equal(calls, 2);
+    await act(async () => t.mock.timers.tick(8000));
+    assert.deepEqual(await Promise.all([first, second]), [null, null]);
+    assert.equal(ui.value().accessMode, "local-only");
+    hold = false;
+    await ui.run(async value => assert.deepEqual(await value.verifyCurrentOwner(), { id: A, backendId: backend.backendId }));
+    await act(async () => wait.resolve({ data: { session: session(B) }, error: null }));
+    assert.equal(ui.value().session.user.id, A); assert.equal(ui.value().user.id, A); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+test("a reconnect proof from a cached owner with no SDK session times out and admits only a newly verified retry", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const wait = deferred(), store = memory(); existing(store, session());
+  let online = false, hold = true, calls = 0;
+  const ui = await mount({ store, restoreError: offline, auth: {
+    getSession: async () => online ? { data: { session: session() }, error: null } : { data: { session: null }, error: offline },
+    getUser: async () => { calls++; return hold ? wait.promise : { data: { user: { id: A } }, error: null }; },
+  } });
+  try {
+    assert.equal(ui.value().session, null); assert.equal(ui.value().accessMode, "local-only");
+    online = true; let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); });
+    await act(async () => { second = ui.value().verifyCurrentOwner(); });
+    assert.equal(calls, 1);
+    await act(async () => t.mock.timers.tick(8000));
+    assert.deepEqual(await Promise.all([first, second]), [null, null]);
+    assert.equal(ui.value().accessMode, "local-only"); assert.equal(ui.value().user, null);
+    hold = false;
+    await ui.run(async value => assert.deepEqual(await value.verifyCurrentOwner(), { id: A, backendId: backend.backendId }));
+    assert.equal(calls, 2); assert.equal(ui.value().accessMode, "online");
+    await act(async () => wait.resolve({ data: { user: null }, error: { code: "session_not_found", status: 401 } }));
+    assert.equal(ui.value().user.id, A); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+test("cold SDK getSession timeout retains only local admission and permits a new verified attempt", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = true;
+  const ui = await mount({ store, current: session(), auth: { getSession: () => hold ? wait.promise
+    : Promise.resolve({ data: { session: session() }, error: null }) } });
+  try {
+    assert.equal(ui.value().accessMode, "local-only");
+    await act(async () => t.mock.timers.tick(8000));
+    assert.equal(ui.value().user, null); assert.equal(ui.value().loading, false);
+    hold = false;
+    await ui.run(value => value.retrySessionVerification());
+    assert.equal(ui.value().user.id, A); assert.equal(ui.value().accessMode, "online");
+    await act(async () => wait.resolve({ data: { session: session(B) }, error: null }));
+    assert.equal(ui.value().session.user.id, A); assert.equal(ui.value().user.id, A);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+test("explicit signout fences every coalesced getUser caller even when the SDK signout fails", async () => {
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false;
+  const ui = await mount({ store, current: session(), signOutError: offline, auth: { getUser: async () => hold ? wait.promise
+    : { data: { user: { id: A } }, error: null } } });
+  try {
+    hold = true; let first, second;
+    await act(async () => { first = ui.value().verifyCurrentOwner(); second = ui.value().verifyCurrentOwner(); });
+    await ui.run(value => value.signOut());
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.deepEqual(await Promise.all([first, second]), [null, null]);
+    assert.equal(ui.value().user, null); assert.equal(ui.value().accessMode, "signed-out");
+    assert.equal(store.values.has(utils.localAccountCacheKey(backend.backendId)), false);
+  } finally { await ui.cleanup(); }
+});
+test("a no-owner connection retry cannot replace a newer account with an old SDK session reply", async () => {
+  const wait = deferred(), store = memory(); let hold = false;
+  const ui = await mount({ store, auth: {
+    getSession: () => hold ? wait.promise : Promise.resolve({ data: { session: null }, error: null }),
+    getUser: async token => ({ data: { user: { id: token === session(B).access_token ? B : A } }, error: null }),
+  } });
+  try {
+    hold = true; let retry;
+    await act(async () => { retry = ui.value().retrySessionVerification(); });
+    await ui.event("SIGNED_IN", session(B));
+    await act(async () => wait.resolve({ data: { session: session(A) }, error: null }));
+    await retry;
+    assert.equal(ui.value().session.user.id, B); assert.equal(ui.value().user.id, B); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); }
+});
+test("a stale cold SDK restoration failure cannot downgrade an account admitted by a newer auth event", async () => {
+  const wait = deferred(), store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session(), auth: {
+    getSession: () => wait.promise,
+    getUser: async token => ({ data: { user: { id: token === session(B).access_token ? B : A } }, error: null }),
+  } });
+  try {
+    await ui.event("SIGNED_IN", session(B));
+    await act(async () => wait.resolve({ data: { session: null }, error: offline }));
+    assert.equal(ui.value().session.user.id, B); assert.equal(ui.value().user.id, B); assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); }
+});
 test("an in-flight owner proof cannot revive admission after explicit signout fails", async () => {
   const wait = deferred(), store = memory(); existing(store, session()); let waitForSession = false;
   const ui = await mount({ store, current: session(), signOutError: offline, auth: { getSession: () => waitForSession ? wait.promise : Promise.resolve({ data: { session: session() }, error: null }) } });

@@ -51,6 +51,7 @@ interface Props {
   // Fixed editors keep their snap point steady while content or keyboard changes.
   heightRatio?: number;
   keyboardBehavior?: "interactive" | "extend" | "fillParent";
+  androidKeyboardInputMode?: "adjustPan" | "adjustResize";
   motionMode?: "spring" | "timed";
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
@@ -143,6 +144,7 @@ export default function AppSheet({
   maxHeightRatio = 0.82,
   heightRatio = 0.88,
   keyboardBehavior,
+  androidKeyboardInputMode = "adjustResize",
   motionMode = "spring",
   overlay,
   footer,
@@ -289,7 +291,7 @@ export default function AppSheet({
               }
               keyboardBlurBehavior="restore"
               enableBlurKeyboardOnGesture
-              android_keyboardInputMode="adjustResize"
+              android_keyboardInputMode={androidKeyboardInputMode}
               overrideReduceMotion={ReduceMotion.System}
               backgroundStyle={styles.surface}
               backdropComponent={backdrop}

@@ -97,7 +97,8 @@ function harness(options = {}) {
     },
   };
   const authority = { currentScope: () => owner, currentEpoch: () => epoch,
-    async verify() { calls.push('verify'); if (verifyHook) await verifyHook(); if (!online) throw failure('auth'); return clone(owner); } };
+    async verify() { calls.push('verify'); if (verifyHook) await verifyHook(); if (!online) throw failure('auth'); return clone(owner); },
+    ...options.operationHooks };
   const create = () => api.createSessionTimerController({ scope, store, server, authority, clock,
     uuid: () => id('3', ++sequence), timeoutMs: options.timeoutMs ?? 100,
     ...(options.mutationTimeoutMs === undefined ? {} : { mutationTimeoutMs: options.mutationTimeoutMs }) });
@@ -731,4 +732,249 @@ test('a recovered lost completion reply identifies earlier work without another 
   assert.equal(reopened.getSnapshot().record, null); assert.equal(reopened.getSnapshot().rewardsVisible, false);
   assert.equal(h.persisted().records[0].sync.receipt.sessionId, pending.serverSessionId);
   await reopened.dispose();
+});
+
+test('a unique matching owned session resolves a lost start reply even when device and server start times differ by a minute', async () => {
+  for (const serverOffset of [-60000, 60000]) {
+    const h = harness(), controller = h.create(); await controller.initialize();
+    h.advance(0, serverOffset); h.fail.start = 'lost';
+    assert.equal(await controller.start({ ...setup, targetSeconds: 120 }), false);
+    assert.equal(controller.getSnapshot().record.state, 'not_started');
+    assert.equal(controller.getSnapshot().record.serverSessionId, null);
+    assert.equal(await controller.retry(), true);
+    const restored = controller.getSnapshot();
+    assert.equal(restored.record.state, 'running'); assert.equal(restored.record.clockWarning, true);
+    assert.equal(restored.recovered, true); assert.equal(restored.error, null);
+    assert.equal(h.calls.filter(call => call === 'start').length, 1, 'restore account state without replaying Start');
+    assert.equal(await controller.pause(), true); assert.equal(await controller.resume(), true);
+    assert.equal(await controller.end(), true); assert.equal(h.credits, 0);
+    await controller.dispose();
+  }
+});
+
+test('End during a lost start acknowledgement saves its intent before verification, survives restart and cancels before recovered expiry', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  h.fail.start = 'lost'; assert.equal(await controller.start({ ...setup, targetSeconds: 60 }), false);
+  const originalCommand = clone(h.persisted().commands[0]);
+  h.online = false; const verifications = h.calls.filter(call => call === 'verify').length;
+  let durableBeforeVerification = false;
+  h.verifyHook = async () => {
+    durableBeforeVerification = controller.getSnapshot().ending && /end_requested/.test(h.persisted().records[0].sync.reasonCode);
+  };
+  assert.equal(await controller.end(), false);
+  assert.equal(durableBeforeVerification, true);
+  assert.equal(h.calls.filter(call => call === 'verify').length, verifications + 1);
+  assert.equal(controller.getSnapshot().ending, true); assert.match(controller.getSnapshot().error, /request to end.*saved/i);
+  assert.deepEqual(h.persisted().commands[0].request, originalCommand.request);
+  await controller.dispose(); h.verifyHook = null;
+  h.advance(90000);
+  const restored = h.restart(); await restored.initialize();
+  assert.equal(restored.getSnapshot().ending, true); assert.equal(h.credits, 0);
+  h.online = true; await restored.refresh(true); await restored.tick();
+  assert.equal(restored.getSnapshot().record.state, 'cancelled'); assert.equal(restored.getSnapshot().ending, false);
+  assert.equal(restored.getSnapshot().receipt, null);
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 1);
+  assert.equal(h.calls.filter(call => call === 'complete').length, 0); assert.equal(h.credits, 0);
+  assert.equal(h.calls.filter(call => call === 'start').length, 1);
+  await restored.dispose();
+});
+
+test('End also escapes a remembered start UUID whose timing read failed, without requiring Pause or Resume first', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  h.readHook = async () => { throw failure('transient'); };
+  assert.equal(await controller.start({ ...setup, targetSeconds: 60 }), false);
+  const record = controller.getSnapshot().record;
+  assert.equal(record.state, 'not_started'); assert.ok(record.serverSessionId);
+  h.readHook = null;
+  assert.equal(await controller.end(), true);
+  assert.equal(controller.getSnapshot().record.state, 'cancelled');
+  assert.equal(h.calls.filter(call => call === 'start').length, 1);
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 1);
+  assert.equal(h.calls.filter(call => call === 'complete').length, 0); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('an interrupted start-stop conversion preserves the marker and never expires or drops the stop on retry', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  h.readHook = async () => { throw failure('transient'); };
+  assert.equal(await controller.start({ ...setup, targetSeconds: 60 }), false); h.readHook = null;
+  h.backend.beforeWrite = async (_, value) => {
+    if (JSON.parse(value).commands.some(command => command.kind === 'cancel')) throw failure('transient');
+  };
+  assert.equal(await controller.end(), false);
+  assert.equal(controller.getSnapshot().record.state, 'running');
+  assert.equal(controller.getSnapshot().ending, true);
+  assert.match(h.persisted().records[0].sync.reasonCode, /end_requested/);
+  assert.equal(h.persisted().commands.some(command => command.kind === 'cancel'), false);
+  const storageError = controller.getSnapshot().error;
+  h.advance(90000); await controller.tick();
+  assert.equal(h.calls.filter(call => call === 'complete').length, 0); assert.equal(h.credits, 0);
+  assert.equal(controller.getSnapshot().error, storageError, 'expired ticks must not erase a pending stop persistence error');
+  assert.equal(controller.getSnapshot().busy, false);
+  h.backend.beforeWrite = null;
+  assert.equal(await controller.end(), true);
+  assert.equal(controller.getSnapshot().record.state, 'cancelled');
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 1); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('an empty owner read preserves an unknown Start and saved End until a delayed original session appears, without another Start', async () => {
+  const h = harness({ timeoutMs: 10 }), controller = h.create(); await controller.initialize();
+  const entered = deferred(), release = deferred(), serverId = id('4', 1);
+  h.server.start = async draft => {
+    h.calls.push('start'); entered.resolve(); await release.promise;
+    const startedAtMs = h.clock().wallTimeMs;
+    h.rows.set(serverId, { id: serverId, setup: clone(draft), status: 'running', startedAtMs,
+      elapsedMs: 0, lastResumedAtMs: startedAtMs, completedAtMs: null, receipt: null });
+    return serverId;
+  };
+  const starting = controller.start({ ...setup, targetSeconds: 60 }); await entered.promise;
+  assert.equal(await starting, false); assert.equal(h.rows.size, 0);
+  assert.equal(await controller.retry(), false);
+  assert.match(controller.getSnapshot().error, /No running session was found/);
+  assert.equal(await controller.end(), false); assert.equal(controller.getSnapshot().ending, true);
+  assert.equal(await controller.retry(), false);
+  assert.equal(controller.getSnapshot().record.state, 'not_started');
+  assert.equal(h.calls.filter(call => call === 'start').length, 1);
+  h.advance(90000); release.resolve(); await Promise.resolve(); await Promise.resolve();
+  await controller.refresh(true);
+  assert.equal(controller.getSnapshot().record.state, 'cancelled');
+  assert.equal(h.calls.filter(call => call === 'start').length, 1);
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 1);
+  assert.equal(h.calls.filter(call => call === 'complete').length, 0); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('End while a remembered Start is remotely completed never invokes completion repair without an existing receipt', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  h.readHook = async () => { throw failure('transient'); };
+  assert.equal(await controller.start({ ...setup, targetSeconds: 60 }), false); h.readHook = null;
+  const row = h.rows.get(controller.getSnapshot().record.serverSessionId);
+  row.status = 'completed'; row.completedAtMs = h.clock().wallTimeMs;
+  assert.equal(await controller.end(), false);
+  assert.equal(controller.getSnapshot().ending, true);
+  assert.match(controller.getSnapshot().error, /No new completion will be submitted/);
+  await controller.refresh(true);
+  assert.equal(h.calls.filter(call => call === 'complete').length, 0);
+  assert.equal(h.calls.filter(call => call === 'cancel').length, 0); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('operation verification hooks wrap initialization and mutations, clear on timeout and disposal, and do not replace epoch fences', async () => {
+  let active = false, begins = 0;
+  const hooks = { beginOperation: () => { assert.equal(active, false); active = true; begins++; }, endOperation: () => { active = false; } };
+  const h = harness({ timeoutMs: 10, operationHooks: hooks }), controller = h.create();
+  h.verifyHook = async () => assert.equal(active, true);
+  await controller.initialize(); assert.equal(active, false); assert.equal(begins, 1);
+  assert.equal(await controller.start(setup), true); assert.equal(active, false); assert.equal(begins, 2);
+  const hanging = deferred(); h.verifyHook = () => hanging.promise;
+  assert.equal(await controller.pause(), false); assert.equal(active, false); assert.equal(begins, 3);
+  hanging.resolve(); h.verifyHook = null;
+  const entered = deferred(), release = deferred();
+  h.readHook = async () => { entered.resolve(); await release.promise; };
+  const refreshing = controller.refresh(true); await entered.promise;
+  assert.equal(active, true); await controller.dispose(); assert.equal(active, false);
+  h.switchOwner(); release.resolve(); await refreshing;
+  assert.equal(active, false); assert.equal(controller.getSnapshot().record, null);
+});
+
+test('known running refresh reads its UUID once and does not perform unrelated open-session discovery', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start({ ...setup, targetSeconds: 120 });
+  const before = h.calls.length;
+  await controller.refresh(true);
+  const reads = h.calls.slice(before);
+  assert.equal(reads.filter(call => call === 'read').length, 1);
+  assert.equal(reads.filter(call => call === 'open').length, 0);
+  assert.equal(controller.getSnapshot().record.state, 'running'); assert.equal(controller.getSnapshot().busy, false);
+  await controller.dispose();
+});
+
+test('known completion retry does only its receipt preflight and does not delay the saved result for another discovery read', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start(setup);
+  h.online = false; h.advance(3000); await controller.tick();
+  h.online = true; const before = h.calls.length;
+  await controller.refresh(true);
+  const reads = h.calls.slice(before);
+  assert.equal(reads.filter(call => call === 'read').length, 1);
+  assert.equal(reads.filter(call => call === 'complete').length, 1);
+  assert.equal(reads.filter(call => call === 'open').length, 0);
+  assert.equal(controller.getSnapshot().syncStatus, 'saved'); assert.equal(controller.getSnapshot().busy, false);
+  assert.equal(h.credits, 1); await controller.dispose();
+});
+
+test('known cancellation retry reads only before and after Cancel, without an extra discovery read', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize(); await controller.start({ ...setup, targetSeconds: 120 });
+  h.online = false; assert.equal(await controller.end(), false);
+  h.online = true; const before = h.calls.length;
+  await controller.refresh(true);
+  const reads = h.calls.slice(before);
+  assert.equal(reads.filter(call => call === 'read').length, 2);
+  assert.equal(reads.filter(call => call === 'cancel').length, 1);
+  assert.equal(reads.filter(call => call === 'open').length, 0);
+  assert.equal(controller.getSnapshot().record.state, 'cancelled'); assert.equal(controller.getSnapshot().busy, false);
+  assert.equal(h.credits, 0); await controller.dispose();
+});
+
+test('unknown Start still uses complete owned-open proof once without a redundant known-session read', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  h.fail.start = 'lost'; assert.equal(await controller.start({ ...setup, targetSeconds: 120 }), false);
+  const before = h.calls.length;
+  await controller.refresh(true);
+  const reads = h.calls.slice(before);
+  assert.equal(reads.filter(call => call === 'open').length, 1);
+  assert.equal(reads.filter(call => call === 'read').length, 0);
+  assert.equal(reads.filter(call => call === 'start').length, 0);
+  assert.equal(controller.getSnapshot().record.state, 'running');
+  assert.equal(controller.getSnapshot().busy, false); await controller.dispose();
+});
+
+test('Retry confirming an expired unknown Start saves that original session without starting its setup again', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  h.fail.start = 'lost'; assert.equal(await controller.start(setup), false);
+  const originalClientId = controller.getSnapshot().record.clientSessionId;
+  h.advance(3000);
+  assert.equal(await controller.retry(), true);
+  assert.equal(controller.getSnapshot().record.clientSessionId, originalClientId);
+  assert.equal(controller.getSnapshot().record.state, 'completed');
+  assert.equal(controller.getSnapshot().receipt.durationSeconds, setup.targetSeconds);
+  assert.equal(controller.getSnapshot().recovered, true);
+  assert.equal(h.calls.filter(call => call === 'start').length, 1);
+  assert.equal(h.calls.filter(call => call === 'complete').length, 1); assert.equal(h.credits, 1);
+  await controller.dispose();
+});
+
+test('lost Start reply with an already cancelled server row clears the stuck local timer without any new mutation', async () => {
+  const h=harness(),controller=h.create();await controller.initialize();h.fail.start='lost';await controller.start(setup);
+  const row=[...h.rows.values()][0];h.advance(1000);row.status='cancelled';row.completedAtMs=h.clock().wallTimeMs;
+  h.server.readFinishedStart=async(draft,requestedAt)=>{h.calls.push('finished');assert.deepEqual(draft,setup);assert.equal(requestedAt,1000000);return{complete:true,sessions:[await h.server.readSession(row.id)]};};
+  const before=h.calls.length;await controller.retry();
+  assert.equal(controller.getSnapshot().record.state,'cancelled');assert.equal(controller.getSnapshot().syncStatus,'saved');assert.equal(controller.getSnapshot().unsyncedSessionCount,0);
+  assert.deepEqual(h.calls.slice(before).filter(call=>['start','complete','cancel'].includes(call)),[]);assert.equal(h.credits,0);
+  await controller.dispose();const reopened=h.restart();await reopened.initialize();assert.equal(reopened.getSnapshot().record,null);await reopened.dispose();
+});
+
+test('lost Start with an existing finished receipt restores its saved result without celebrating or awarding again',async()=>{
+  const h=harness(),controller=h.create();await controller.initialize();h.fail.start='lost';await controller.start(setup);
+  const row=[...h.rows.values()][0];h.advance(4000);row.status='completed';row.completedAtMs=h.clock().wallTimeMs;
+  row.receipt={sessionId:row.id,durationSeconds:setup.targetSeconds,result:{session_id:row.id,duration_seconds:setup.targetSeconds,xp_earned:0,gold_earned:0,already_completed:true}};
+  h.server.readFinishedStart=async()=>({complete:true,sessions:[await h.server.readSession(row.id)]});await controller.retry();
+  assert.equal(controller.getSnapshot().record.state,'completed');assert.equal(controller.getSnapshot().receipt.sessionId,row.id);assert.equal(controller.getSnapshot().recovered,true);assert.equal(controller.getSnapshot().rewardsVisible,false);
+  assert.equal(controller.getSnapshot().unsyncedSessionCount,0);assert.equal(h.calls.filter(call=>call==='start').length,1);assert.equal(h.calls.filter(call=>call==='complete').length,0);
+  await controller.dispose();
+});
+
+test('terminal Start matching keeps ambiguous, unrelated, missing-receipt and missing-row outcomes protected',async()=>{
+  for(const kind of ['ambiguous','setup','time','identity','receipt','empty','incomplete','foreign']) {
+    const h=harness(),controller=h.create();await controller.initialize();h.fail.start='lost';await controller.start(setup);
+    const row=[...h.rows.values()][0];row.status='cancelled';row.completedAtMs=h.clock().wallTimeMs;
+    const candidate=await h.server.readSession(row.id);
+    if(kind==='setup')candidate.setup.notes='Different session';
+    if(kind==='time')candidate.startedAtMs+=15001;
+    if(kind==='receipt'){candidate.status='completed';candidate.snapshot=null;candidate.receipt=null;}
+    if(kind==='foreign')candidate.scope=otherScope;
+    if(kind==='identity')candidate.serverSessionId=h.persisted().records[0].clientSessionId; // rejected snapshot identity conflict
+    h.server.readFinishedStart=async()=>({complete:kind!=='incomplete',sessions:kind==='empty'?[]:kind==='ambiguous'?[candidate,clone(candidate)]:[candidate]});
+    await controller.retry();assert.equal(controller.getSnapshot().record.state,'not_started',kind);assert.equal(controller.getSnapshot().rewardsVisible,false,kind);
+    assert.equal(h.calls.filter(call=>call==='start').length,1,kind);assert.equal(h.calls.filter(call=>call==='complete').length,0,kind);await controller.dispose();
+  }
 });

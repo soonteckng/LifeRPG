@@ -380,6 +380,11 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.keyboardBehavior,"fillParent");
 
     assert.equal(sheetProps.android_keyboardInputMode, "adjustResize");
+    await act(async()=>renderer.update(React.createElement(AppSheet,{...props,compact:true,keyboardBehavior:"interactive",androidKeyboardInputMode:"adjustPan"})));
+    assert.equal(sheetProps.android_keyboardInputMode,"adjustPan");
+    assert.equal(sheetProps.keyboardBehavior,"interactive");
+    await act(async()=>renderer.update(React.createElement(AppSheet,props)));
+    assert.equal(sheetProps.android_keyboardInputMode,"adjustResize",'other existing editors retain their input handling');
     // Native back and backdrop use the same guarded request, before any unmount.
     await act(async () => renderer.root.findByType("Modal").props.onRequestClose());
     assert.equal(requestedClose, 1);

@@ -21,8 +21,8 @@ function recoveryState(timer: ReturnType<typeof useTimer>) {
   if (timer.isRestoring) return { title: "Restoring your session", body: "Reading the session saved on this phone.", timer: null };
   if (timer.restoreError) return { title: "Your saved session needs another look", body: "We couldn’t read the saved session. Try loading it again before making any changes.", timer: null };
   if (timer.syncStatus === "rejected") return { title: "Your session needs review", body: "Your account hasn’t accepted this saved session. Reconnect to review it. Its local record is still available.", timer: null };
-  if (timer.awaitingStart) return { title: "Checking your session start", body: "Your start request is saved. Reconnect to check its outcome before starting again.", timer: "planned" };
   if (timer.endingSession) return { title: "Your request to end is saved", body: "We’ll confirm the cancellation when you reconnect. This phone won’t submit a completion while that request is pending.", timer: null };
+  if (timer.awaitingStart) return { title: "Checking your session start", body: "Your start request is saved. Reconnect to check its outcome before starting again.", timer: "planned" };
   if (timer.syncStatus === "saved") return { title: "Session saved", body: "Your account confirmed this session. The saved result is kept here.", timer: null };
   if (timer.isCompleted || (timer.hasOpenSession && timer.isRunning && timer.timeLeft <= 0)) {
     return { title: "Waiting for account confirmation", body: "The timer has reached zero. Your session stays on this phone while we wait to confirm it with your account. Progress updates after confirmation.", timer: "remaining" };
@@ -38,7 +38,7 @@ export default function OfflineSessionRecovery() {
   const { profile } = useUser();
   const timer = useTimer();
   const { width, fontScale } = useWindowDimensions();
-  const [busy, setBusy] = useState<"connection" | "session" | null>(null);
+  const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
   const lock = useRef(false);
@@ -51,24 +51,23 @@ export default function OfflineSessionRecovery() {
   const seconds = Number.isFinite(rawSeconds) ? Math.max(0, Math.floor(rawSeconds)) : 0;
   const minutes = Math.floor(seconds / 60), remainder = seconds % 60;
   const timeLabel = `${state.timer === "planned" ? "Planned focus" : "Time remaining"}, ${minutes} ${minutes === 1 ? "minute" : "minutes"}, ${remainder} ${remainder === 1 ? "second" : "seconds"}`;
-  const canRetrySession = timer.restoreError || (timer.syncStatus !== "rejected" && (timer.endingSession || timer.awaitingStart || (timer.isCompleted && timer.syncStatus === "waiting")));
-  const disabled = busy !== null || timer.actionBusy;
-  const run = async (kind: "connection" | "session") => {
+  const disabled = busy || timer.actionBusy || timer.isRestoring;
+  const run = async () => {
     if (lock.current || timer.actionBusy) return;
-    lock.current = true; setBusy(kind); setError(""); setFeedback("");
+    lock.current = true; setBusy(true); setError(""); setFeedback("");
     try {
-      if (kind === "connection") await checkConnection(auth.retrySessionVerification());
-      else if (timer.restoreError) timer.retryRestore();
+      // Saved-work retry already verifies the account. Running a separate auth
+      // retry alongside it races admission and repeats the same network check.
+      if (timer.restoreError) timer.retryRestore();
       else if (timer.isCompleted) await timer.retryCompletion();
-      else await timer.retryAction();
-      if (mounted.current) setFeedback(kind === "connection"
-        ? "Connection check finished. This view will update after your account is verified."
-        : "Recovery check finished. Your saved session will update when it can be confirmed.");
+      else if (timer.hasOpenSession || timer.endingSession || timer.awaitingStart) await timer.retryAction();
+      else await checkConnection(auth.retrySessionVerification());
+      if (mounted.current) setFeedback("Your saved session stays on this phone until your account confirms it. We’ll reconnect automatically when the connection returns.");
     } catch {
       if (mounted.current) setError("Couldn’t reconnect yet. Check your connection and try again.");
     } finally {
       lock.current = false;
-      if (mounted.current) setBusy(null);
+      if (mounted.current) setBusy(false);
     }
   };
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} style={styles.page} testID="offline-session-recovery">
@@ -93,20 +92,15 @@ export default function OfflineSessionRecovery() {
             </View>
           </View>}
           <Text style={styles.body}>{state.body}</Text>
-          {!!timer.actionError && <Text style={timer.syncStatus === "waiting" ? styles.body : styles.error}
-            accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"} accessibilityLiveRegion="polite">{timer.actionError}</Text>}
+          {timer.restoreError && !!timer.actionError && <Text style={styles.error}
+            accessibilityRole="alert" accessibilityLiveRegion="polite">{timer.actionError}</Text>}
         </View>
         <View style={styles.actions}>
-          <Pressable accessibilityRole="button" accessibilityLabel={busy === "connection" ? "Checking connection" : "Retry connection"}
-            accessibilityState={{ disabled, busy: busy === "connection" }} disabled={disabled} onPress={() => void run("connection")}
-            style={[styles.button, disabled && styles.disabled]}>
-            <Text style={styles.buttonText}>{busy === "connection" ? "Checking connection…" : "Retry connection"}</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="Retry connection"
+            accessibilityState={{ disabled, busy: busy || timer.actionBusy }} disabled={disabled} onPress={() => void run()}
+            style={styles.button}>
+            <Text style={styles.buttonText}>Retry connection</Text>
           </Pressable>
-          {canRetrySession && <Pressable accessibilityRole="button" accessibilityLabel={busy === "session" ? "Checking saved session" : "Retry saved session"}
-            accessibilityState={{ disabled, busy: busy === "session" }} disabled={disabled} onPress={() => void run("session")}
-            style={[styles.button, styles.secondaryButton, disabled && styles.disabled]}>
-            <Text style={[styles.buttonText, styles.secondaryText]}>{busy === "session" ? "Checking saved session…" : "Retry saved session"}</Text>
-          </Pressable>}
           {!!feedback && <Text accessibilityLiveRegion="polite" style={styles.caption}>{feedback}</Text>}
           {!!error && <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.error}>{error}</Text>}
         </View>
@@ -137,8 +131,5 @@ const styles = StyleSheet.create({
   actions: { gap: 12 },
   button: { minHeight: 52, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.primary },
   buttonText: { ...type.body, fontWeight: "600", color: colors.primaryText, textAlign: "center" },
-  secondaryButton: { backgroundColor: colors.accentSoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  secondaryText: { color: colors.accent },
-  disabled: { opacity: 0.55 },
   error: { ...type.body, color: colors.danger },
 });

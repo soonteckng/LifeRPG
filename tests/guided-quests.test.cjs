@@ -169,7 +169,7 @@ test('Save for later writes one quest with the chosen area and duration, without
  })).default;
  const ui=await render(Save,{inSheet:true});await act(async()=>{const button=ui.tree.root.findAllByType('Button')[0];void button.props.onPress();void button.props.onPress();});
  assert.equal(calls.length,1);assert.deepEqual(calls[0],{title:focus.title,targetMinutes:10,subjectId:2,repeatRule:'once',difficulty:'easy'});
- await act(async()=>pending.resolve({id:9}));assert.equal(upserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
+ await act(async()=>pending.resolve({id:9}));assert.equal(upserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0,'a completed save becomes a status instead of a disabled action');assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
 });
 
 test('creating a personal quest keeps the suggestion and its Start; the quest remains independently selectable below',async()=>{
@@ -213,7 +213,7 @@ test('ambiguous quest-save failure refreshes existing quests before another inse
   '../context/QuestContext':{useQuests:()=>{const[tasks,setTasks]=React.useState([]);return{tasks,upsert(){},refresh:async()=>setTasks([{title:focus.title,subject_id:2,target_minutes:30,is_completed:false}])};}},
   '../services/taskService':{createTask:async()=>{inserts++;throw Error('response lost');}},
  })).default;
- const ui=await render(Save,{inSheet:true});await ui.press('Save for later');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button')[0].props.disabled,true);await ui.cleanup();
+ const ui=await render(Save,{inSheet:true});await ui.press('Save for later');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0);assert.ok(ui.tree.root.findAllByType('Text').some(node=>node.props.accessibilityRole==='text'&&node.props.accessibilityLiveRegion==='polite'));await ui.cleanup();
 });
 
 test('preference Save remains in a safe-area footer outside the scrolling choices and saves the selected need',async()=>{
@@ -314,6 +314,7 @@ test('custom focus duration validates bounds and cancel leaves the chosen durati
   const sheet=ui.tree.root.findByType('Sheet');
   assert.equal(sheet.props.compact,true);
   assert.equal(sheet.props.keyboardBehavior,'interactive','numeric keyboard must lift the short editor without stretching it to full screen');
+  assert.equal(sheet.props.androidKeyboardInputMode,'adjustPan','Android must use the library keyboard offset rather than its adjustResize early exit');
   const scroll=ui.tree.root.findByType('Scroll');
   assert.equal(scroll.props.enableFooterMarginAdjustment,true);
   assert.equal(scroll.props.keyboardShouldPersistTaps,'handled');

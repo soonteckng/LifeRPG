@@ -63,12 +63,12 @@ test("paused recovery describes confirmed paused time and does not offer resume 
 });
 
 test("a saved stop request never looks like a running countdown or a completed reward", async () => {
-  const ui = await screen({ timer: { endingSession: true, syncStatus: "waiting", timeLeft: 0 } });
+  const ui = await screen({ timer: { endingSession: true, awaitingStart: true, syncStatus: "waiting", timeLeft: 0 } });
   try {
     assert.match(text(ui.root()), /Your request to end is saved/);
     assert.match(text(ui.root()), /won’t submit a completion/);
     assert.equal(ui.root().findAllByProps({ testID: "offline-countdown" }).length, 0);
-    await act(async () => ui.button("Retry saved session").props.onPress());
+    await act(async () => ui.button("Retry connection").props.onPress());
     assert.deepEqual(ui.calls, ["action"]);
   } finally { await ui.cleanup(); }
 });
@@ -77,7 +77,7 @@ test("unknown start labels its planned duration instead of suggesting a running 
   try {
     assert.match(text(ui.root()), /Checking your session start/); assert.match(text(ui.root()), /Reconnect to check its outcome before starting again/);
     assert.equal(ui.root().findByProps({ testID: "offline-countdown" }).props.accessibilityLabel, "Planned focus, 30 minutes, 0 seconds");
-    await act(async () => ui.button("Retry saved session").props.onPress()); assert.deepEqual(ui.calls, ["action"]);
+    await act(async () => ui.button("Retry connection").props.onPress()); assert.deepEqual(ui.calls, ["action"]);
   } finally { await ui.cleanup(); }
 });
 test("pending completion stays at zero and makes no confirmed reward claim", async () => {
@@ -87,7 +87,7 @@ test("pending completion stays at zero and makes no confirmed reward claim", asy
       assert.match(text(ui.root()), /Waiting for account confirmation/); assert.match(text(ui.root()), /Progress updates after confirmation/);
       assert.equal(text(ui.root().findByProps({ testID: "offline-minutes" })), "0"); assert.equal(text(ui.root().findByProps({ testID: "offline-seconds" })), "00");
       assert.doesNotMatch(text(ui.root()), /1000|12 gold|XP|earned/);
-      if (isCompleted) { await act(async () => ui.button("Retry saved session").props.onPress()); assert.deepEqual(ui.calls, ["completion"]); }
+      if (isCompleted) { await act(async () => ui.button("Retry connection").props.onPress()); assert.deepEqual(ui.calls, ["completion"]); }
     } finally { await ui.cleanup(); }
   }
 });
@@ -111,34 +111,38 @@ test("restoring, unreadable and rejected records get distinct guidance with no n
     const ui = await screen({ timer });
     try {
       assert.match(text(ui.root()), expected); assert.equal(ui.root().findAllByProps({ testID: "offline-countdown" }).length, 0);
-      assert.equal(!!ui.button("Retry saved session"), retry);
-      if (retry) { await act(async () => ui.button("Retry saved session").props.onPress()); assert.deepEqual(ui.calls, ["restore"]); }
+      assert.equal(ui.root().findAllByType("Button").length, 1);
+      if (retry) { await act(async () => ui.button("Retry connection").props.onPress()); assert.deepEqual(ui.calls, ["restore"]); }
     } finally { await ui.cleanup(); }
   }
 });
 test("connection retry locks repeat taps, exposes busy/disabled state and returns to the ordinary label", async () => {
-  const wait = deferred(), ui = await screen({ connection: () => wait.promise });
+  const wait = deferred(), ui = await screen({ timer: {hasOpenSession:false,isRunning:false}, connection: () => wait.promise });
   try {
     const original = ui.button("Retry connection"); await act(async () => { original.props.onPress(); original.props.onPress(); });
-    assert.deepEqual(ui.calls, ["connection"]); const busy = ui.button("Checking connection");
-    assert.equal(busy.props.disabled, true); assert.deepEqual(busy.props.accessibilityState, { disabled: true, busy: true }); assert.match(text(busy), /Checking connection/);
+    assert.deepEqual(ui.calls, ["connection"]); const busy = ui.button("Retry connection");
+    assert.equal(busy,original); assert.equal(busy.props.disabled, true); assert.deepEqual(busy.props.accessibilityState, { disabled: true, busy: true }); assert.match(text(busy), /Retry connection/);
     await act(async () => wait.resolve()); assert.equal(ui.button("Retry connection").props.disabled, false);
-    const message = ui.root().findAllByType("Text").find(node => /Connection check finished/.test(text(node)));
+    const message = ui.root().findAllByType("Text").find(node => /We’ll reconnect automatically/.test(text(node)));
     assert.equal(message.props.accessibilityLiveRegion, "polite");
   } finally { await ui.cleanup(); }
 });
-test("saved-session retry has its own busy label and prevents connection or duplicate session actions", async () => {
+test("one retry reconnects pending work and stays mounted through repeated taps and automatic busy checks", async () => {
   const wait = deferred(), ui = await screen({ timer: { isCompleted: true, timeLeft: 0, syncStatus: "waiting" }, completion: () => wait.promise });
   try {
-    await act(async () => ui.button("Retry saved session").props.onPress());
-    assert.equal(ui.button("Checking saved session").props.accessibilityState.busy, true);
+    const button = ui.button("Retry connection");
+    await act(async () => button.props.onPress());
+    assert.equal(ui.button("Retry connection").props.accessibilityState.busy, true);
     assert.equal(ui.button("Retry connection").props.disabled, true);
     await act(async () => ui.button("Retry connection").props.onPress()); assert.deepEqual(ui.calls, ["completion"]);
-    await act(async () => wait.resolve()); assert.equal(ui.button("Retry saved session").props.disabled, false);
+    await act(async () => wait.resolve()); assert.equal(ui.button("Retry connection").props.disabled, false);
+    await ui.update({actionBusy:true,actionError:null}); assert.equal(ui.button("Retry connection"),button); assert.equal(button.props.disabled,true);
+    await ui.update({actionBusy:false,actionError:"Saved on this phone. Waiting to confirm your progress."}); assert.equal(ui.button("Retry connection"),button); assert.equal(button.props.disabled,false);
+    assert.equal(ui.root().findAllByType("Button").length,1);
   } finally { await ui.cleanup(); }
 });
 test("retry errors are readable, live-announced and do not expose exception contents", async () => {
-  const ui = await screen({ connection: async () => { throw Error("private token and backend response"); } });
+  const ui = await screen({ timer:{hasOpenSession:false,isRunning:false}, connection: async () => { throw Error("private token and backend response"); } });
   try {
     await act(async () => ui.button("Retry connection").props.onPress());
     assert.match(text(ui.root()), /Couldn’t reconnect yet/); assert.doesNotMatch(text(ui.root()), /private token/);
@@ -147,10 +151,10 @@ test("retry errors are readable, live-announced and do not expose exception cont
 });
 test("a stalled connection check releases the retry control and safely handles a late rejection", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const wait = deferred(), ui = await screen({ connection: () => wait.promise });
+  const wait = deferred(), ui = await screen({ timer:{hasOpenSession:false,isRunning:false}, connection: () => wait.promise });
   try {
     await act(async () => ui.button("Retry connection").props.onPress());
-    assert.equal(ui.button("Checking connection").props.disabled, true);
+    assert.equal(ui.button("Retry connection").props.disabled, true);
     await act(async () => { t.mock.timers.tick(8000); });
     assert.equal(ui.button("Retry connection").props.disabled, false);
     assert.match(text(ui.root()), /Couldn’t reconnect yet/);
@@ -166,7 +170,7 @@ test("screen uses all safe areas, scrolls with large text and keeps accessible c
     assert.equal(ui.root().findByType("Scroll").props.contentContainerStyle.flexGrow, 1);
     const time = ui.root().findAllByType("View").find(node => Array.isArray(node.props.style) && node.props.style.some(style => style?.flexDirection === "column")); assert.ok(time);
     assert.ok(ui.root().findAllByType("Text").every(node => node.props.allowFontScaling !== false));
-    for (const button of ui.root().findAllByType("Button")) { assert.equal(button.props.accessibilityRole, "button"); assert.ok(button.props.style[0].minHeight >= 44); }
+    for (const button of ui.root().findAllByType("Button")) { assert.equal(button.props.accessibilityRole, "button"); assert.ok(button.props.style.minHeight >= 44); }
     assert.ok(ui.root().findAllByType("View").some(node => node.props.accessibilityLabel === "Offline. Working from saved account details on this phone."));
   } finally { await ui.cleanup(); }
 });
