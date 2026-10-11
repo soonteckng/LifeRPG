@@ -1,0 +1,123 @@
+-- DISPOSABLE PostgreSQL DATABASE ONLY. NOT a migration or live-account script.
+-- Manual two-connection acceptance checks. Load progression-bootstrap.sql,
+-- session-start-stop-fixtures.sql, the legacy Start definition from the contract,
+-- goal-completion-base.sql and docs/session-start-stop-repair.sql into a fresh
+-- database first. Use separate connections A/B as the fixture's database owner.
+-- Run each scenario on a fresh database. Replace no IDs with production IDs.
+-- PGlite is single-connection and CANNOT validate these waits/serialization errors.
+-- Setting request.jwt.claim.sub selects a synthetic fixture only, not real auth.
+
+-- 1. Legacy Start already owns the profile; repair must wait and see its row.
+-- A:
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session(60,'learning',null,1,'Synthetic focus');
+-- B (start while A remains uncommitted; this call must WAIT):
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- A: commit;
+-- B: expected 'Another unfinished session...' exception, then rollback;
+-- Verify the legacy row remains active, owner protocol is 1 and no tombstone exists.
+
+-- 2. Repair wins; an old snapshot must never permit a later legacy Start.
+-- A:
+--   begin isolation level repeatable read;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select session_start_protocol_version from public.profiles where id=auth.uid();
+-- B:
+--   set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- A:
+--   select public.start_activity_session(60,'learning',null,1,'Synthetic focus');
+--   Expected SQLSTATE 40001 (concurrent-update serialization failure), rollback.
+-- A, a NEW read-committed transaction:
+--   set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session(60,'learning',null,1,'Synthetic focus');
+--   Expected legacy-start-disabled exception. Direct owner INSERT without a
+--   client_start_id must also fail, proving enforcement below the RPC body.
+--   select public.start_activity_session_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000502',60,'learning',null,1,'Synthetic focus');
+--   Expected new UUID 502, one active session and the old tombstone still present.
+
+-- 3. Completion owns the session first; Stop must fail NOWAIT, never deadlock.
+-- Setup (either connection, autocommit):
+--   set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+--   update public.activity_sessions set started_at=now()-interval '65 seconds',
+--     last_resumed_at=now()-interval '65 seconds' where id='aaaaaaaa-aaaa-4aaa-8aaa-000000000501';
+-- A:
+--   begin;
+--   select * from public.activity_sessions where id='aaaaaaaa-aaaa-4aaa-8aaa-000000000501' for update;
+-- B:
+--   set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+--   Expected SQLSTATE 55P03 immediately, with no partial fence/tombstone mutation.
+-- A: select public.complete_activity_session('aaaaaaaa-aaaa-4aaa-8aaa-000000000501'); commit;
+-- B: repeat Stop. Expected completed acknowledgement, original receipt/XP intact.
+
+-- 4. Two owners race to stop the same client UUID. The losing owner cannot alter
+--    the winner's private row even after ON CONFLICT waits for its transaction.
+-- A:
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- B (must wait on the unique-key conflict):
+--   begin;
+--   set local request.jwt.claim.sub='22222222-2222-4222-8222-222222222222';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,2,'Synthetic focus');
+-- A: commit;
+-- B: expected identity-conflict exception, then rollback;
+-- Verify private request still belongs to owner 1111 with subject 1; owner 2222
+-- still has protocol 1 and can use the legacy Start normally.
+
+-- 5. Same-owner concurrent new Starts remain one unfinished session maximum.
+-- A:
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- B (waits on owner's profile):
+--   set request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000502',60,'learning',null,1,'Synthetic focus');
+-- A: commit;
+-- B: expected unfinished-session exception. Retrying client UUID 501 instead
+-- returns its original ID and does not change started_at or elapsed_seconds.
+
+-- 6. V2 Start and Stop race on the SAME client UUID, both commit orders.
+--    These parallel cases remain UNEXECUTED locally. Use a fresh disposable
+--    database for each subcase, with the two connections described above.
+-- 6a. Start commits first; Stop waits and cancels exactly that one session.
+-- A:
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- B (while A remains uncommitted; must WAIT on the profile lock):
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- A: commit;
+-- B: expected cancelled acknowledgement with session_id UUID 501; commit;
+-- Verify as the disposable database owner:
+--   select id,status,xp_earned,gold_earned from public.activity_sessions
+--     where id='aaaaaaaa-aaaa-4aaa-8aaa-000000000501';
+--   Expected exactly one cancelled row, zero XP and zero gold.
+--   select stopped from liferpg_session_private.start_requests
+--     where client_session_id='aaaaaaaa-aaaa-4aaa-8aaa-000000000501';
+--   Expected true. Repeating Start returns UUID 501 without reviving the row.
+--
+-- 6b. Stop commits first; Start waits and rejects the durable tombstone.
+-- A:
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.confirm_activity_session_stop_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+--   Expected cancelled acknowledgement with session_id null.
+-- B (while A remains uncommitted; must WAIT on the profile lock):
+--   begin;
+--   set local request.jwt.claim.sub='11111111-1111-4111-8111-111111111111';
+--   select public.start_activity_session_v2('aaaaaaaa-aaaa-4aaa-8aaa-000000000501',60,'learning',null,1,'Synthetic focus');
+-- A: commit;
+-- B: expected 'This session start has already been stopped' exception; rollback;
+-- Verify as the disposable database owner:
+--   select count(*) from public.activity_sessions
+--     where id='aaaaaaaa-aaaa-4aaa-8aaa-000000000501';
+--   Expected zero. The private request remains stopped and the owner protocol
+--   remains 2. Repeating Stop returns the original cancelled/null proof.

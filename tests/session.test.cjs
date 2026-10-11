@@ -477,9 +477,53 @@ test("a pending End keeps timing controls disabled and offers retry without clai
   const ui=await screenSetup({hasOpenSession:false,isRunning:false,endingSession:true,syncStatus:"waiting",actionError:"Waiting to confirm your saved session state.",timeLeft:0});
   try {
     assert.match(ui.output(),/Session ended/);assert.match(ui.output(),/Your stop is saved on this phone/);
-    assert.equal(ui.button("Start").props.disabled,true);
+    assert.equal(ui.button("Start"),undefined);
+    assert.equal(ui.button("Stopped").props.disabled,true);
     assert.equal(ui.button("End session"),undefined);
     assert.equal(ui.button("Retry ending session").props.disabled,false);
+    assert.doesNotMatch(ui.output(),/New session|Ready when you are|Planned focus|· Paused/);
+  } finally {await ui.cleanup();}
+});
+
+test("restored End keeps its stopped countdown and suggestion instead of rendering a new setup",async()=>{
+  const api=load("src/constants/guidedQuests.ts",{});
+  const focus={...api.suggestedFocus('review-topic'),seconds:60};
+  const ui=await screenSetup({duration:60,timeLeft:17,hasOpenSession:false,isRunning:false,endingSession:true,
+    syncStatus:'waiting',actionError:'Your stop is saved on this phone. Waiting to confirm it.',notes:api.encodeSuggestedFocus(focus)}, {}, true);
+  try {
+    const stage=ui.root().findByProps({testID:'session-timer-anchor'}).props.style;
+    const control=ui.root().findByType('DurationControl');
+    assert.equal(control.props.seconds,17);
+    assert.match(ui.output(),/Review your notes · Ended/);
+    assert.doesNotMatch(ui.output(),/New session|Ready when you are|· Paused/);
+    assert.equal(ui.button('Start'),undefined);
+    assert.equal(ui.button('Stopped').props.disabled,true);
+    await ui.update({duration:1800,timeLeft:1800,notes:'',endingSession:false,actionError:null,syncStatus:'saved'});
+    assert.equal(ui.root().findByType('DurationControl'),control);
+    assert.equal(control.props.seconds,17,'confirming the stop must not replace the held countdown with the next draft');
+    assert.deepEqual(ui.root().findByProps({testID:'session-timer-anchor'}).props.style,stage);
+    assert.match(ui.output(),/Review your notes · Ended/);
+    assert.equal(ui.button('Retry ending session'),undefined);
+    await ui.press('Done ending session');await ui.finishExit();
+    assert.equal(ui.calls.filter(call=>call[0]==='dismiss').length,1);
+    assert.equal(ui.calls.filter(call=>['start','reset','complete'].includes(call[0])).length,0);
+  } finally {await ui.cleanup();}
+});
+
+test("an End restored after Session mounts exposes its retry and stopped surface immediately",async()=>{
+  const ui=await screenSetup({duration:60,timeLeft:60,isRestoring:true,actionBusy:true}, {}, true);
+  try {
+    await ui.update({isRestoring:false,actionBusy:false,hasOpenSession:false,isRunning:false,endingSession:true,
+      timeLeft:16,syncStatus:'waiting',actionError:'Your request to end is saved on this phone. Waiting to confirm the start.'});
+    assert.doesNotMatch(ui.output(),/New session|Ready when you are|· Paused/);
+    assert.equal(ui.root().findByType('DurationControl').props.seconds,16);
+    assert.equal(ui.button('Start'),undefined);
+    assert.equal(ui.button('Stopped').props.disabled,true);
+    assert.ok(ui.button('Retry ending session'));
+    await ui.press('Retry ending session');
+    assert.deepEqual(ui.calls.filter(call=>['retry','start','reset','complete'].includes(call[0])),[['retry']]);
+    await ui.press('Done ending session');await ui.finishExit();
+    assert.equal(ui.calls.filter(call=>call[0]==='dismiss').length,1);
   } finally {await ui.cleanup();}
 });
 

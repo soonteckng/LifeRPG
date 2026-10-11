@@ -1,11 +1,12 @@
 import type {
   JournalAction, JournalClock, JournalCommand, JournalEnvelope, JournalRecord, JournalReceipt, JournalScope,
   JournalServerSnapshot, JournalSetup,
+  JournalStartStopProof,
 } from "../types/sessionJournal";
 import { JournalStorageError, type SessionJournalStore } from "./sessionJournalStore";
 import { applyJournalAction, deriveJournalTimer } from "../utils/sessionJournal";
 import { LEGACY_START_MATCH_WINDOW_MS, reconcileLegacyUnknownStart } from "../utils/sessionJournalRecovery";
-import { isJournalUuid, validateJournalClock, validateJournalScope, validateJournalSetup } from "../utils/sessionJournalSchema";
+import { isJournalUuid, validateJournalClock, validateJournalReceipt, validateJournalScope, validateJournalSetup } from "../utils/sessionJournalSchema";
 import { JOURNAL_START_STOP_REASON } from "../types/sessionJournal";
 
 export interface SessionTimerRemoteSession {
@@ -22,7 +23,7 @@ export interface SessionTimerRemoteSession {
 }
 
 export interface SessionTimerTransport {
-  start(setup: JournalSetup): Promise<string>;
+  start(setup: JournalSetup, clientSessionId: string): Promise<string>;
   pause(serverSessionId: string): Promise<void>;
   resume(serverSessionId: string): Promise<void>;
   cancel(serverSessionId: string): Promise<void>;
@@ -30,7 +31,10 @@ export interface SessionTimerTransport {
   readSession(serverSessionId: string): Promise<SessionTimerRemoteSession | null>;
   readOpenSessions(): Promise<{ complete: boolean; sessions: SessionTimerRemoteSession[] }>;
   readFinishedStart?(setup: JournalSetup, requestedAtMs: number): Promise<{ complete: boolean; sessions: SessionTimerRemoteSession[] }>;
+  readStartedSession?(clientSessionId: string): Promise<SessionTimerRemoteSession | null>;
+  confirmStartStop?(setup: JournalSetup, clientSessionId: string): Promise<SessionStartStopConfirmation>;
 }
+export type SessionStartStopConfirmation = JournalStartStopProof;
 
 export interface SessionTimerAuthority {
   currentScope(): JournalScope | null;
@@ -75,6 +79,8 @@ type ActionInput = JournalAction extends infer A ? A extends JournalAction
 const sameScope = (left: JournalScope | null, right: JournalScope) =>
   !!left && left.ownerId === right.ownerId && left.backendId === right.backendId;
 const unresolved = (command: JournalCommand) => command.status === "prepared" || command.status === "unknown";
+const sameSetup = (actual: JournalSetup, expected: JournalSetup) =>
+  (["targetSeconds", "activityType", "taskId", "subjectId", "notes"] as const).every(field => actual[field] === expected[field]);
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const MAX_RETRY_MS = 60_000;
 
@@ -83,6 +89,7 @@ class ControllerAuthorityError extends Error {}
 class ControllerRemoteError extends Error {}
 class ControllerTimeoutError extends Error {}
 class ControllerReceiptUnavailableError extends Error {}
+class ControllerStartStopUnavailableError extends Error {}
 
 /**
  * The journal is the local authority. This controller never grants rewards,
@@ -249,7 +256,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     }
     scheduleRemoteRetry();
     const record = selected();
-    const message = error instanceof JournalStorageError ? storageMessage() : record?.state === "completed"
+    const repairUnavailable = error instanceof ControllerStartStopUnavailableError
+      || !!error && typeof error === "object" && "code" in error && error.code === "repair_unavailable";
+    const message = error instanceof JournalStorageError ? storageMessage()
+      : repairUnavailable ? "This session needs the recovery update on the server. Your saved record is kept on this phone."
+      : record?.state === "completed"
       ? "Saved on this phone. Waiting to confirm your progress."
       : error instanceof ControllerReceiptUnavailableError ? "Your account reports this session as completed, but its saved result isn’t available yet. Your local record is kept while we check again. No new completion will be submitted."
       : startStopRequested(record) ? "Your request to end is saved on this phone. Waiting to confirm the start so we can end it safely."
@@ -306,6 +317,29 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     }
     if (command.status === "prepared") await write({ type: "mark_unknown", operationId: command.operationId });
     const verifiedScope = await verify();
+    if (options.server.readStartedSession) {
+      const identified = await bounded(options.server.readStartedSession(record.clientSessionId));
+      fence();
+      if (identified) {
+        checkRemote(identified, record.clientSessionId);
+        if (!sameSetup(identified.setup, record.setup)) throw new ControllerRemoteError();
+        await write({ type: "remember_start_identity", operationId: command.operationId,
+          serverSessionId: identified.serverSessionId, verifiedScope });
+        recoveredIds.add(record.clientSessionId);
+        await reconcileRemote(selected()!, identified);
+        return;
+      }
+    }
+    if (command.operationId === record.clientSessionId) {
+      // New identified Starts share one persistent UUID with their operation.
+      // A different matching account timer cannot prove this request succeeded.
+      if (startStopRequested(record)) await confirmUnknownStartStop(record);
+      else {
+        scheduleRemoteRetry();
+        publish({ error: "Your start is still unconfirmed. No matching session was found yet. We’ll keep checking its saved identity without starting another.", restoreError: false });
+      }
+      return;
+    }
     const read = await bounded(options.server.readOpenSessions());
     fence();
     for (const remote of read.sessions) checkRemote(remote);
@@ -342,12 +376,61 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
           }
         }
       }
+      if (startStopRequested(selected()) && !selected()?.serverSessionId) {
+        await confirmUnknownStartStop(selected()!);
+        return;
+      }
       scheduleRemoteRetry();
       const error = startStopRequested(record) ? "Your request to end is saved. We’re checking for the original session before confirming it."
         : result.reason === "no_open_session" ? "Your start is still unconfirmed. No running session was found yet. We’ll keep checking without starting another."
         : "Waiting to confirm whether your session started.";
       publish({ error, restoreError: false });
     }
+  }
+
+  async function confirmUnknownStartStop(record: JournalRecord): Promise<void> {
+    if (!options.server.confirmStartStop) throw new ControllerStartStopUnavailableError();
+    await verify();
+    const proof = await bounded(options.server.confirmStartStop(record.setup, record.clientSessionId), mutationTimeoutMs);
+    fence();
+    if (!proof || !sameScope(proof.scope, scope) || proof.clientSessionId !== record.clientSessionId
+      || !isJournalUuid(proof.clientSessionId) || proof.legacyStartsFenced !== true
+      || (proof.status !== "cancelled" && proof.status !== "completed")
+      || (proof.serverSessionId !== null && !isJournalUuid(proof.serverSessionId))
+      || (proof.serverSessionId !== null && proof.serverSessionId !== record.clientSessionId)
+      || (proof.serverSessionId === null && proof.status !== "cancelled")) throw new ControllerRemoteError();
+    const verifiedScope = await verify();
+    if (proof.serverSessionId === null) {
+      await write({ type: "acknowledge_start_stop", clientSessionId: record.clientSessionId,
+        setup: record.setup, verifiedScope, clock: now(), proof });
+      hiddenId = record.clientSessionId; selectedId = null; rewardId = null;
+      lastAction = null; lastSetup = null; remoteRetryAtMs = 0; remoteRetryAttempts = 0;
+      publish({ error: null, restoreError: false });
+      return;
+    }
+    const remote = await bounded(options.server.readSession(proof.serverSessionId));
+    fence();
+    if (!remote || remote.status !== proof.status) throw new ControllerRemoteError();
+    checkRemote(remote, proof.serverSessionId);
+    if (!sameSetup(remote.setup, record.setup)) throw new ControllerRemoteError();
+    if (remote.status === "completed") {
+      if (!remote.receipt) throw new ControllerReceiptUnavailableError();
+      validateJournalReceipt(remote.receipt);
+      if (remote.receipt.durationSeconds !== record.setup.targetSeconds || remote.completedAtMs === null
+        || !Number.isSafeInteger(remote.startedAtMs) || !Number.isSafeInteger(remote.completedAtMs)
+        || remote.startedAtMs < 0 || remote.completedAtMs < remote.startedAtMs) throw new ControllerRemoteError();
+    } else {
+      const snapshot = remote.snapshot;
+      if (!snapshot || snapshot.state !== "cancelled" || snapshot.startedAtMs !== remote.startedAtMs
+        || !Number.isSafeInteger(snapshot.startedAtMs) || snapshot.startedAtMs < 0
+        || !Number.isSafeInteger(snapshot.elapsedMs) || snapshot.elapsedMs < 0) throw new ControllerRemoteError();
+      validateJournalClock(snapshot.observedClock);
+    }
+    const confirmedScope = await verify();
+    await write({ type: "remember_start_identity", operationId: pending(record)!.operationId,
+      serverSessionId: proof.serverSessionId, verifiedScope: confirmedScope });
+    recoveredIds.add(record.clientSessionId);
+    await reconcileRemote(selected()!, remote);
   }
 
   async function prepareRequestedStartStop(): Promise<void> {
@@ -520,14 +603,16 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     // Verification is a read, before any start intent, so an offline attempt
     // cannot create an unsent legacy start that would be unsafe to retry.
     const verifiedScope = await verify();
-    const operationId = uuid(), clientSessionId = uuid();
+    // The v1-compatible identity convention distinguishes new v2 Starts from
+    // stored legacy intents, whose operation and client UUIDs were different.
+    const clientSessionId = uuid(), operationId = clientSessionId;
     await write({ type: "prepare_start", operationId, clientSessionId, setup, clock: now() });
     selectedId = clientSessionId; hiddenId = null; rewardId = null;
     if (displayClock) displayClock.clientSessionId = clientSessionId;
     let rpcAttempted = false, mutationReplyReceived = false;
     try {
       fence(); rpcAttempted = true;
-      const serverSessionId = await bounded(options.server.start(setup), mutationTimeoutMs);
+      const serverSessionId = await bounded(options.server.start(setup, clientSessionId), mutationTimeoutMs);
       mutationReplyReceived = true;
       fence();
       await write({ type: "remember_start_identity", operationId, serverSessionId, verifiedScope });
@@ -555,7 +640,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       await prepareRequestedStartStop();
       const cancel = pending(selected());
       if (cancel?.kind === "cancel") return retryCancellation(cancel);
-      return selected()?.state === "cancelled" || selected()?.state === "completed";
+      return hiddenId === record.clientSessionId && !selected() && !pending(record)
+        || selected()?.state === "cancelled" || selected()?.state === "completed";
     }
     if (kind === "cancel" && startStopRequested(record)) {
       lastAction = "cancel";
@@ -707,6 +793,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
           && !journal!.records.some(record => ["running", "paused", "not_started"].includes(record.state))) {
         return startInternal(lastSetup);
       }
+      if (failed === "cancel" && !selected()) return true;
       if (failed === "pause" || failed === "resume" || failed === "cancel") return controlInternal(failed);
     }),
     dismissSummary() { rewardId = null; if (live()) publish(); },

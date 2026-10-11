@@ -1,6 +1,9 @@
 import {
   JournalValidationError,
+  JOURNAL_START_STOP_REASON,
+  JOURNAL_START_STOP_CONFIRMED_REASON,
   type JournalEnvelope,
+  type JournalRecord,
   type JournalScope,
   type JournalValidationCode,
 } from "../types/sessionJournal";
@@ -54,6 +57,28 @@ function equal(left: unknown, right: unknown): boolean {
 }
 function validationReason(error: unknown): JournalValidationCode {
   return error instanceof JournalValidationError ? error.code : "invalid_record";
+}
+function isConfirmedStartStop(before: JournalEnvelope, next: JournalEnvelope, record: JournalRecord, candidate: JournalRecord): boolean {
+  if (record.state !== "not_started" || record.serverSessionId !== null || record.sync.reasonCode !== JOURNAL_START_STOP_REASON
+    || candidate.state !== "cancelled" || candidate.serverSessionId !== null || candidate.sync.state !== "rejected"
+    || candidate.sync.reasonCode !== JOURNAL_START_STOP_CONFIRMED_REASON || candidate.dismissedAtMs === null
+    || candidate.sync.receipt !== null || candidate.sync.nextAttemptAtMs !== null
+    || candidate.sync.attempts !== record.sync.attempts
+    || candidate.revision !== record.revision + 1 || before.records.length !== next.records.length
+    || before.commands.length !== next.commands.length || !equal(before.admission, next.admission)) return false;
+  for (const field of ["startedAtMs", "elapsedMs", "endsAtMs", "completedAtMs", "observedAtMs", "clockAnchor", "clockWarning", "verification"] as const) {
+    if (!equal(record[field], candidate[field])) return false;
+  }
+  const unresolved = before.commands.filter(command => command.clientSessionId === record.clientSessionId
+    && ["prepared", "unknown"].includes(command.status));
+  if (unresolved.length !== 1 || unresolved[0].kind !== "start") return false;
+  return before.records.every(item => item.clientSessionId === record.clientSessionId
+    || equal(item, next.records.find(other => other.clientSessionId === item.clientSessionId)))
+    && before.commands.every(command => {
+      const updated = next.commands.find(item => item.operationId === command.operationId);
+      return command.operationId === unresolved[0].operationId
+        ? equal({ ...command, status: "rejected" }, updated) : equal(command, updated);
+    });
 }
 export function sessionJournalKey(scope: JournalScope): string {
   validateJournalScope(scope);
@@ -180,7 +205,9 @@ export function createSessionJournalStore(storage: SessionJournalStorage, reques
           // settling an unknown command and dismissing it cannot be one shortcut.
           const dismissed = { ...record, dismissedAtMs: candidate.dismissedAtMs };
           const dismissal = { ...before, records: before.records.map(item => item.clientSessionId === record.clientSessionId ? dismissed : item) };
-          if (!isJournalRecordPrunable(dismissal, dismissed)) throw new JournalStorageError("invalid_update", "invalid_record");
+          if (!isJournalRecordPrunable(dismissal, dismissed) && !isConfirmedStartStop(before, next, record, candidate)) {
+            throw new JournalStorageError("invalid_update", "invalid_record");
+          }
         }
       }
       for (const command of before.commands) {

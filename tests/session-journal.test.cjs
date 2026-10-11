@@ -744,3 +744,46 @@ test('a start-stop request cannot be attached to a confirmed or unrelated sessio
   throwsCode(() => act(journal, { type: 'request_start_end', clientSessionId: SECOND_CLIENT }), 'unknown_session');
   assert.deepEqual(journal, before);
 });
+
+test('authenticated absent-Start Stop proof settles and dismisses its evidence atomically without invented timing or rewards', () => {
+  let journal = act(preparedStart(), { type: 'mark_unknown', operationId: START });
+  journal = act(journal, { type: 'request_start_end', clientSessionId: CLIENT });
+  const before = clone(journal), proof = { scope: SCOPE, clientSessionId: CLIENT, serverSessionId: null,
+    status: 'cancelled', legacyStartsFenced: true };
+  const action = { type: 'acknowledge_start_stop', clientSessionId: CLIENT, setup: clone(SETUP),
+    verifiedScope: SCOPE, clock: clock(1000), proof };
+  const saved = act(journal, action), item = record(saved);
+  assert.equal(saved.revision, before.revision + 1); assert.equal(item.revision, record(before).revision + 1);
+  assert.equal(item.state, 'cancelled'); assert.equal(item.serverSessionId, null);
+  assert.equal(item.sync.state, 'rejected'); assert.equal(item.sync.reasonCode, wire.JOURNAL_START_STOP_CONFIRMED_REASON);
+  assert.equal(item.dismissedAtMs, T0 + 1000); assert.equal(item.sync.receipt, null);
+  for (const key of ['startedAtMs', 'elapsedMs', 'endsAtMs', 'completedAtMs', 'clockAnchor', 'observedAtMs', 'verification', 'clockWarning']) {
+    assert.deepEqual(item[key], record(before)[key], key);
+  }
+  assert.deepEqual(command(saved, START), { ...command(before, START), status: 'rejected' });
+  assert.equal(domain.isJournalRecordPrunable(saved, item), true);
+  assert.deepEqual(act(saved, action), saved, 'same verified proof is idempotent');
+  assert.deepEqual(schema.parseJournalEnvelope(schema.serializeJournalEnvelope(saved), SCOPE), saved);
+  assert.equal(saved.schemaVersion, 1); assert.deepEqual(Object.keys(item), Object.keys(record(before)));
+  assert.deepEqual(journal, before);
+});
+
+test('absent-Start Stop acknowledgement rejects false, mismatched and unrequested proofs without changing evidence', () => {
+  const unknown = act(preparedStart(), { type: 'mark_unknown', operationId: START });
+  const waiting = act(unknown, { type: 'request_start_end', clientSessionId: CLIENT });
+  const proof = { scope: SCOPE, clientSessionId: CLIENT, serverSessionId: null, status: 'cancelled', legacyStartsFenced: true };
+  const action = { type: 'acknowledge_start_stop', clientSessionId: CLIENT, setup: clone(SETUP), verifiedScope: SCOPE,
+    clock: clock(1000), proof };
+  for (const modify of [
+    value => { value.proof.scope = OTHER_SCOPE; }, value => { value.verifiedScope = OTHER_SCOPE; },
+    value => { value.proof.clientSessionId = SECOND_CLIENT; }, value => { value.proof.serverSessionId = SERVER; },
+    value => { value.proof.status = 'completed'; }, value => { value.proof.legacyStartsFenced = false; },
+    value => { value.setup.targetSeconds += 1; }, value => { value.setup.notes = 'Different request'; },
+  ]) {
+    const candidate = clone(action); modify(candidate); const before = clone(waiting);
+    assert.throws(() => act(waiting, candidate)); assert.deepEqual(waiting, before);
+  }
+  throwsCode(() => act(unknown, action), 'invalid_transition');
+  const identified = act(waiting, { type: 'remember_start_identity', operationId: START, serverSessionId: SERVER, verifiedScope: SCOPE });
+  throwsCode(() => act(identified, action), 'invalid_transition');
+});

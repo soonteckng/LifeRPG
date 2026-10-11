@@ -4,6 +4,7 @@ import {
   JOURNAL_MAX_RECORDS,
   JOURNAL_RETAIN_SETTLED_RECORDS,
   JOURNAL_START_STOP_REASON,
+  JOURNAL_START_STOP_CONFIRMED_REASON,
   JOURNAL_VERSION,
   JournalValidationError,
   type JournalAction,
@@ -362,6 +363,26 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       if (record.sync.reasonCode === JOURNAL_START_STOP_REASON) return detach(envelope);
       return advance(envelope, { ...record, revision: record.revision + 1,
         sync: { ...record.sync, reasonCode: JOURNAL_START_STOP_REASON } });
+    }
+    case "acknowledge_start_stop": {
+      assertVerifiedScope(envelope, action.verifiedScope);
+      validateJournalSetup(action.setup); validateJournalClock(action.clock);
+      const record = recordFor(envelope, action.clientSessionId), proof = action.proof;
+      if (!proof || proof.clientSessionId !== record.clientSessionId || !isJournalUuid(proof.clientSessionId)
+        || proof.serverSessionId !== null || proof.status !== "cancelled" || proof.legacyStartsFenced !== true
+        || !journalJsonEqual(action.setup, record.setup)) fail("snapshot_conflict");
+      assertVerifiedScope(envelope, proof.scope);
+      const command = envelope.commands.find(item => item.clientSessionId === record.clientSessionId && item.kind === "start");
+      if (record.state === "cancelled" && record.serverSessionId === null && record.sync.state === "rejected"
+        && record.sync.reasonCode === JOURNAL_START_STOP_CONFIRMED_REASON && record.dismissedAtMs !== null
+        && command?.status === "rejected") return detach(envelope);
+      if (record.state !== "not_started" || record.serverSessionId !== null
+        || record.sync.reasonCode !== JOURNAL_START_STOP_REASON || !command || !unresolved(command)) fail("invalid_transition");
+      // An acknowledged server tombstone can settle an absent Start without
+      // inventing a session UUID, timestamp, elapsed duration or reward receipt.
+      return advance(envelope, { ...record, revision: record.revision + 1, state: "cancelled",
+        dismissedAtMs: action.clock.wallTimeMs, sync: { ...record.sync, state: "rejected",
+          nextAttemptAtMs: null, reasonCode: JOURNAL_START_STOP_CONFIRMED_REASON } }, { ...command, status: "rejected" });
     }
     case "adopt_server": {
       assertVerifiedScope(envelope, action.verifiedScope);

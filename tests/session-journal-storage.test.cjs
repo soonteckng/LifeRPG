@@ -357,3 +357,63 @@ test("the optional AsyncStorage adapter keeps backend identity across factories"
   await Promise.all([a.update(next), b.update(next)]);
   assert.equal((await a.load()).journal.revision, 2); assert.equal(backend.commits.length, 2);
 });
+
+async function unknownStoppedStart(store) {
+  const clientSessionId = identity("aaaaaaaa", 777), operationId = identity("cccccccc", 777);
+  const clock = { wallTimeMs: Date.UTC(2026, 9, 10), monotonicTimeMs: 1000, bootId: "fixture-boot" };
+  const setup = { targetSeconds: 60, activityType: "other", taskId: null, subjectId: null, notes: "Kept request", title: "Synthetic focus" };
+  await apply(store, { type: "admit", epoch: 1 });
+  await apply(store, { type: "prepare_start", clientSessionId, operationId, setup, clock });
+  await apply(store, { type: "mark_unknown", operationId });
+  await apply(store, { type: "request_start_end", clientSessionId });
+  const action = { type: "acknowledge_start_stop", clientSessionId, setup, verifiedScope: scope,
+    clock: { ...clock, wallTimeMs: clock.wallTimeMs + 1000, monotonicTimeMs: 2000 },
+    proof: { scope, clientSessionId, serverSessionId: null, status: "cancelled", legacyStartsFenced: true } };
+  return { action, clientSessionId, operationId };
+}
+
+test("absent-Start Stop proof persists settlement and acknowledgement in one write that survives restart", async () => {
+  const backend = memoryStorage(), store = api.createSessionJournalStore(backend, scope);
+  const { action } = await unknownStoppedStart(store), before = (await store.load()).journal;
+  const writes = backend.commits.length, saved = await apply(store, action);
+  assert.equal(backend.commits.length, writes + 1); assert.equal(saved.revision, before.revision + 1);
+  assert.equal(saved.records[0].state, "cancelled"); assert.equal(saved.records[0].serverSessionId, null);
+  assert.equal(saved.records[0].sync.reasonCode, "server_start_stop_confirmed");
+  assert.equal(saved.records[0].dismissedAtMs, action.clock.wallTimeMs); assert.equal(saved.records[0].sync.receipt, null);
+  assert.deepEqual(saved.commands[0], { ...before.commands[0], status: "rejected" });
+  assert.deepEqual((await api.createSessionJournalStore(backend, scope).load()).journal, saved);
+  assert.deepEqual(await apply(store, action), saved); assert.equal(backend.commits.length, writes + 1);
+});
+
+test("an interrupted absent-Start Stop acknowledgement retains all unknown evidence until its atomic retry", async () => {
+  const backend = memoryStorage(), store = api.createSessionJournalStore(backend, scope);
+  const { action } = await unknownStoppedStart(store), raw = backend.values.get(store.key), writes = backend.commits.length;
+  backend.beforeWrite = async () => { throw new Error("do-not-display-this-draft"); };
+  await assert.rejects(apply(store, action), errorCode("write_failed"));
+  assert.equal(backend.values.get(store.key), raw); assert.equal(backend.commits.length, writes);
+  const reopened = api.createSessionJournalStore(backend, scope);
+  assert.equal((await reopened.load()).journal.records[0].sync.reasonCode, "end_requested_before_start_confirmation");
+  backend.beforeWrite = null; const saved = await apply(reopened, action);
+  assert.equal(backend.commits.length, writes + 1); assert.equal(saved.records[0].dismissedAtMs, action.clock.wallTimeMs);
+  assert.deepEqual((await api.createSessionJournalStore(backend, scope).load()).journal, saved);
+});
+
+test("the atomic start-stop dismissal exception cannot bypass evidence, timing or admission guards", async () => {
+  for (const mutate of [
+    value => { value.records[0].sync.reasonCode = "arbitrary_rejection"; },
+    value => { value.records[0].sync.attempts += 1; },
+    value => { value.records[0].elapsedMs = 1; },
+    value => { value.admission.epoch += 1; },
+    value => { value.admission.active = false; },
+    value => { value.commands[0].request.setup.notes = "changed evidence"; },
+  ]) {
+    const backend = memoryStorage(), store = api.createSessionJournalStore(backend, scope);
+    const { action } = await unknownStoppedStart(store), raw = backend.values.get(store.key);
+    await assert.rejects(store.update(current => {
+      const candidate = domain.applyJournalAction(current, { epoch: current.admission.epoch,
+        expectedRevision: current.revision, ...action }); mutate(candidate); return candidate;
+    }), errorCode("invalid_update"));
+    assert.equal(backend.values.get(store.key), raw);
+    assert.equal((await store.load()).journal.records[0].state, "not_started");
+  }
+});

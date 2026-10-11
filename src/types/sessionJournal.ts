@@ -9,6 +9,7 @@ export const JOURNAL_RETAIN_SETTLED_RECORDS = 20;
 // Existing v1 metadata carries the stop intention until a start UUID is known.
 // It must survive every start snapshot until a cancellation command is durable.
 export const JOURNAL_START_STOP_REASON = "end_requested_before_start_confirmation";
+export const JOURNAL_START_STOP_CONFIRMED_REASON = "server_start_stop_confirmed";
 
 export interface JournalScope { backendId: string; ownerId: string }
 export interface JournalClock {
@@ -34,6 +35,13 @@ export interface JournalReceipt {
   sessionId: string;
   durationSeconds: number;
   result: { [key: string]: JournalJson };
+}
+export interface JournalStartStopProof {
+  scope: JournalScope;
+  clientSessionId: string;
+  serverSessionId: string | null;
+  status: "cancelled" | "completed";
+  legacyStartsFenced: true;
 }
 export interface JournalRecord {
   clientSessionId: string;
@@ -92,6 +100,8 @@ export type JournalAction =
   | (JournalActionBase & { type: "acknowledge_start"; operationId: string; snapshot: JournalServerSnapshot; clockWarning?: boolean })
   | (JournalActionBase & { type: "remember_start_identity"; operationId: string; serverSessionId: string; verifiedScope: JournalScope })
   | (JournalActionBase & { type: "request_start_end"; clientSessionId: string })
+  | (JournalActionBase & { type: "acknowledge_start_stop"; clientSessionId: string; setup: JournalSetup;
+      verifiedScope: JournalScope; clock: JournalClock; proof: JournalStartStopProof })
   | (JournalActionBase & { type: "adopt_server"; clientSessionId: string; setup: JournalSetup; snapshot: JournalServerSnapshot; verifiedScope: JournalScope; clockWarning?: boolean })
   | (JournalActionBase & { type: "reconcile_server"; clientSessionId: string; setup: JournalSetup; verifiedScope: JournalScope; clock: JournalClock;
       snapshot?: JournalServerSnapshot; receipt?: JournalReceipt; startedAtMs?: number; completedAtMs?: number; operationId?: string; clockWarning?: boolean })

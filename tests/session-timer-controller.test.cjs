@@ -50,10 +50,10 @@ function harness(options = {}) {
     assert.ok(persisted().commands.some(command => command.kind === kind && ['prepared', 'unknown'].includes(command.status)), `${kind} must be durable before RPC`);
   };
   const server = {
-    async start(draft) {
+    async start(draft, clientSessionId) {
       calls.push('start'); assertPrepared('start');
       if (fail.start === 'definitive') throw failure('definitive');
-      const row = { id: id('4', rows.size + 1), setup: clone(draft), status: 'running', startedAtMs: serverTime,
+      const row = { id: clientSessionId, setup: clone(draft), status: 'running', startedAtMs: serverTime,
         elapsedMs: 0, lastResumedAtMs: serverTime, completedAtMs: null, receipt: null };
       rows.set(row.id, row);
       if (startHook) await startHook(row);
@@ -91,6 +91,7 @@ function harness(options = {}) {
       return clone(row.receipt);
     },
     async readSession(serverId) { calls.push('read'); if (readHook) await readHook(serverId); return rows.has(serverId) ? remote(rows.get(serverId)) : null; },
+    async readStartedSession(clientSessionId) { calls.push('identity'); if (readHook) await readHook(clientSessionId); return rows.has(clientSessionId) ? remote(rows.get(clientSessionId)) : null; },
     async readOpenSessions() {
       calls.push('open'); if (openHook) await openHook();
       return { complete: true, sessions: [...rows.values()].filter(row => ['running', 'paused'].includes(row.status)).map(remote) };
@@ -111,6 +112,124 @@ function harness(options = {}) {
     restart() { epoch++; return create(); }, switchOwner() { epoch++; owner = otherScope; },
   };
 }
+
+async function unknownStartWithoutRow(h, controller, draft = setup) {
+  const originalStart = h.server.start;
+  h.server.start = async (requested, clientSessionId) => {
+    h.calls.push('start');
+    const record = h.persisted().records.at(-1);
+    assert.equal(clientSessionId, record.clientSessionId, 'Start must carry its previously saved client identity');
+    assert.deepEqual(requested, record.setup);
+    throw failure('transient');
+  };
+  assert.equal(await controller.start(draft), false);
+  h.server.start = originalStart;
+  const record = clone(controller.getSnapshot().record);
+  assert.equal(record.state, 'not_started'); assert.equal(record.serverSessionId, null); assert.equal(h.rows.size, 0);
+  return record;
+}
+async function legacyUnknownStart(h, draft = setup, serverOffset = 0) {
+  const clock = h.clock(), clientSessionId = id('3', 999), operationId = id('1', 999);
+  await h.store.update(current => journalApi.applyJournalAction(current, { type: 'admit',
+    epoch: current.admission.epoch + 1, expectedRevision: current.revision }));
+  await h.store.update(current => journalApi.applyJournalAction(current, { type: 'prepare_start', operationId, clientSessionId,
+    setup: clone(draft), clock, epoch: current.admission.epoch, expectedRevision: current.revision }));
+  await h.store.update(current => journalApi.applyJournalAction(current, { type: 'mark_unknown', operationId,
+    epoch: current.admission.epoch, expectedRevision: current.revision }));
+  const row = { id: id('4', 1), setup: clone(draft), status: 'running', startedAtMs: clock.wallTimeMs + serverOffset,
+    elapsedMs: 0, lastResumedAtMs: clock.wallTimeMs + serverOffset, completedAtMs: null, receipt: null };
+  h.rows.set(row.id, row); h.calls.push('start'); // The legacy request was sent before this controller was created.
+  h.online = false;
+  const controller = h.create(); await controller.initialize(); h.online = true;
+  return { controller, row, record: clone(controller.getSnapshot().record) };
+}
+function stoppedProof(record, overrides = {}) {
+  return { scope: clone(scope), clientSessionId: record.clientSessionId, serverSessionId: null,
+    status: 'cancelled', legacyStartsFenced: true, ...overrides };
+}
+function identifiedRow(h, record, status) {
+  const startedAtMs = h.clock().wallTimeMs;
+  const row = { id: record.clientSessionId, setup: { ...clone(record.setup), title: null }, status,
+    startedAtMs, elapsedMs: status === 'completed' ? record.setup.targetSeconds * 1000 : 0,
+    lastResumedAtMs: startedAtMs, completedAtMs: status === 'running' ? null : startedAtMs + record.setup.targetSeconds * 1000,
+    receipt: null };
+  if (status === 'completed') row.receipt = { sessionId: row.id, durationSeconds: record.setup.targetSeconds,
+    result: { session_id: row.id, duration_seconds: record.setup.targetSeconds, xp_earned: 1,
+      gold_earned: 0, already_completed: true, goal_reached_now: false } };
+  h.rows.set(row.id, row);
+  return row;
+}
+
+test('new Starts persist one identity for the v2 request and its operation, while retaining the v1 wire format', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  let sentId;
+  const original = h.server.start;
+  h.server.start = async (draft, clientSessionId) => {
+    sentId = clientSessionId;
+    const journal = h.persisted(), record = journal.records.at(-1), command = journal.commands.at(-1);
+    assert.equal(journal.schemaVersion, 1); assert.equal(clientSessionId, record.clientSessionId);
+    assert.equal(command.operationId, clientSessionId); assert.equal(command.clientSessionId, clientSessionId);
+    return original(draft, clientSessionId);
+  };
+  assert.equal(await controller.start(setup), true);
+  assert.equal(controller.getSnapshot().record.serverSessionId, sentId);
+  await controller.dispose();
+});
+
+test('v2 unknown Starts never adopt or end another device session with identical setup and timestamps', async () => {
+  for (const status of ['running', 'paused', 'cancelled', 'completed']) {
+    const h = harness(), controller = h.create(); await controller.initialize();
+    const record = await unknownStartWithoutRow(h, controller, { ...setup, targetSeconds: 60 });
+    const otherId = id('4', 777), row = identifiedRow(h, { ...record, clientSessionId: otherId }, status);
+    const immutableRow = clone(row), before = h.calls.length;
+    h.server.readFinishedStart = async () => {
+      h.calls.push('finished'); return { complete: true, sessions: [await h.server.readSession(otherId)] };
+    };
+    assert.equal(await controller.retry(), false, status);
+    assert.equal(controller.getSnapshot().record.serverSessionId, null, status);
+    assert.equal(controller.getSnapshot().record.state, 'not_started', status);
+    assert.equal(controller.getSnapshot().receipt, null, status);
+    assert.match(controller.getSnapshot().error, /saved identity/i, status);
+    h.server.confirmStartStop = async () => { h.calls.push('confirm-stop'); throw failure('transient'); };
+    assert.equal(await controller.end(), false, status);
+    assert.equal(controller.getSnapshot().ending, true, status);
+    assert.equal(controller.getSnapshot().record.serverSessionId, null, status);
+    const calls = h.calls.slice(before);
+    assert.equal(calls.filter(call => ['open', 'finished', 'cancel', 'complete', 'start'].includes(call)).length, 0, status);
+    assert.equal(calls.filter(call => call === 'confirm-stop').length, 1, status);
+    assert.deepEqual(h.rows.get(otherId), immutableRow, status); assert.equal(h.credits, 0, status);
+    await controller.dispose();
+  }
+});
+
+test('server Stop tombstone can settle an unknown v2 Start before its delayed original request arrives', async () => {
+  const h = harness({ timeoutMs: 10 }), controller = h.create(); await controller.initialize();
+  const entered = deferred(), release = deferred(), settled = deferred(), tombstones = new Set();
+  const originalStart = h.server.start;
+  h.server.start = async (draft, clientSessionId) => {
+    h.calls.push('delayed-start'); entered.resolve(); await release.promise;
+    try {
+      if (tombstones.has(clientSessionId)) throw failure('definitive');
+      return await originalStart(draft, clientSessionId);
+    } finally { settled.resolve(); }
+  };
+  const starting = controller.start({ ...setup, targetSeconds: 60 }); await entered.promise;
+  assert.equal(await starting, false); const unknown = clone(controller.getSnapshot().record);
+  h.server.confirmStartStop = async (draft, clientSessionId) => {
+    assert.deepEqual(draft, unknown.setup); assert.equal(clientSessionId, unknown.clientSessionId);
+    tombstones.add(clientSessionId); return stoppedProof(unknown);
+  };
+  assert.equal(await controller.end(), true);
+  assert.equal(controller.getSnapshot().record, null); assert.equal(h.rows.size, 0);
+  const confirmed = clone(h.persisted());
+  release.resolve(); await settled.promise; await Promise.resolve();
+  assert.equal(h.rows.size, 0); assert.equal(h.credits, 0); assert.deepEqual(h.persisted(), confirmed);
+  h.server.start = originalStart;
+  assert.equal(await controller.start(setup), true);
+  assert.notEqual(controller.getSnapshot().record.clientSessionId, unknown.clientSessionId);
+  assert.equal(h.rows.size, 1); assert.equal(h.calls.filter(call => call === 'complete' || call === 'cancel').length, 0);
+  await controller.dispose();
+});
 
 test('start, pause, resume and completion persist before their RPC and use saved server snapshots', async () => {
   const h = harness(), controller = h.create(); await controller.initialize();
@@ -736,9 +855,8 @@ test('a recovered lost completion reply identifies earlier work without another 
 
 test('a unique matching owned session resolves a lost start reply even when device and server start times differ by a minute', async () => {
   for (const serverOffset of [-60000, 60000]) {
-    const h = harness(), controller = h.create(); await controller.initialize();
-    h.advance(0, serverOffset); h.fail.start = 'lost';
-    assert.equal(await controller.start({ ...setup, targetSeconds: 120 }), false);
+    const h = harness(); h.advance(0, serverOffset);
+    const { controller } = await legacyUnknownStart(h, { ...setup, targetSeconds: 120 }, serverOffset);
     assert.equal(controller.getSnapshot().record.state, 'not_started');
     assert.equal(controller.getSnapshot().record.serverSessionId, null);
     assert.equal(await controller.retry(), true);
@@ -820,8 +938,8 @@ test('an interrupted start-stop conversion preserves the marker and never expire
 
 test('an empty owner read preserves an unknown Start and saved End until a delayed original session appears, without another Start', async () => {
   const h = harness({ timeoutMs: 10 }), controller = h.create(); await controller.initialize();
-  const entered = deferred(), release = deferred(), serverId = id('4', 1);
-  h.server.start = async draft => {
+  const entered = deferred(), release = deferred();
+  h.server.start = async (draft, serverId) => {
     h.calls.push('start'); entered.resolve(); await release.promise;
     const startedAtMs = h.clock().wallTimeMs;
     h.rows.set(serverId, { id: serverId, setup: clone(draft), status: 'running', startedAtMs,
@@ -831,7 +949,7 @@ test('an empty owner read preserves an unknown Start and saved End until a delay
   const starting = controller.start({ ...setup, targetSeconds: 60 }); await entered.promise;
   assert.equal(await starting, false); assert.equal(h.rows.size, 0);
   assert.equal(await controller.retry(), false);
-  assert.match(controller.getSnapshot().error, /No running session was found/);
+  assert.match(controller.getSnapshot().error, /No matching session was found/);
   assert.equal(await controller.end(), false); assert.equal(controller.getSnapshot().ending, true);
   assert.equal(await controller.retry(), false);
   assert.equal(controller.getSnapshot().record.state, 'not_started');
@@ -915,9 +1033,8 @@ test('known cancellation retry reads only before and after Cancel, without an ex
   assert.equal(h.credits, 0); await controller.dispose();
 });
 
-test('unknown Start still uses complete owned-open proof once without a redundant known-session read', async () => {
-  const h = harness(), controller = h.create(); await controller.initialize();
-  h.fail.start = 'lost'; assert.equal(await controller.start({ ...setup, targetSeconds: 120 }), false);
+test('legacy unknown Start still uses complete owned-open proof once without a redundant known-session read', async () => {
+  const h = harness(), { controller } = await legacyUnknownStart(h, { ...setup, targetSeconds: 120 });
   const before = h.calls.length;
   await controller.refresh(true);
   const reads = h.calls.slice(before);
@@ -944,8 +1061,7 @@ test('Retry confirming an expired unknown Start saves that original session with
 });
 
 test('lost Start reply with an already cancelled server row clears the stuck local timer without any new mutation', async () => {
-  const h=harness(),controller=h.create();await controller.initialize();h.fail.start='lost';await controller.start(setup);
-  const row=[...h.rows.values()][0];h.advance(1000);row.status='cancelled';row.completedAtMs=h.clock().wallTimeMs;
+  const h=harness(),{controller,row}=await legacyUnknownStart(h);h.advance(1000);row.status='cancelled';row.completedAtMs=h.clock().wallTimeMs;
   h.server.readFinishedStart=async(draft,requestedAt)=>{h.calls.push('finished');assert.deepEqual(draft,setup);assert.equal(requestedAt,1000000);return{complete:true,sessions:[await h.server.readSession(row.id)]};};
   const before=h.calls.length;await controller.retry();
   assert.equal(controller.getSnapshot().record.state,'cancelled');assert.equal(controller.getSnapshot().syncStatus,'saved');assert.equal(controller.getSnapshot().unsyncedSessionCount,0);
@@ -954,8 +1070,7 @@ test('lost Start reply with an already cancelled server row clears the stuck loc
 });
 
 test('lost Start with an existing finished receipt restores its saved result without celebrating or awarding again',async()=>{
-  const h=harness(),controller=h.create();await controller.initialize();h.fail.start='lost';await controller.start(setup);
-  const row=[...h.rows.values()][0];h.advance(4000);row.status='completed';row.completedAtMs=h.clock().wallTimeMs;
+  const h=harness(),{controller,row}=await legacyUnknownStart(h);h.advance(4000);row.status='completed';row.completedAtMs=h.clock().wallTimeMs;
   row.receipt={sessionId:row.id,durationSeconds:setup.targetSeconds,result:{session_id:row.id,duration_seconds:setup.targetSeconds,xp_earned:0,gold_earned:0,already_completed:true}};
   h.server.readFinishedStart=async()=>({complete:true,sessions:[await h.server.readSession(row.id)]});await controller.retry();
   assert.equal(controller.getSnapshot().record.state,'completed');assert.equal(controller.getSnapshot().receipt.sessionId,row.id);assert.equal(controller.getSnapshot().recovered,true);assert.equal(controller.getSnapshot().rewardsVisible,false);
@@ -965,8 +1080,7 @@ test('lost Start with an existing finished receipt restores its saved result wit
 
 test('terminal Start matching keeps ambiguous, unrelated, missing-receipt and missing-row outcomes protected',async()=>{
   for(const kind of ['ambiguous','setup','time','identity','receipt','empty','incomplete','foreign']) {
-    const h=harness(),controller=h.create();await controller.initialize();h.fail.start='lost';await controller.start(setup);
-    const row=[...h.rows.values()][0];row.status='cancelled';row.completedAtMs=h.clock().wallTimeMs;
+    const h=harness(),{controller,row}=await legacyUnknownStart(h);row.status='cancelled';row.completedAtMs=h.clock().wallTimeMs;
     const candidate=await h.server.readSession(row.id);
     if(kind==='setup')candidate.setup.notes='Different session';
     if(kind==='time')candidate.startedAtMs+=15001;
@@ -976,5 +1090,197 @@ test('terminal Start matching keeps ambiguous, unrelated, missing-receipt and mi
     h.server.readFinishedStart=async()=>({complete:kind!=='incomplete',sessions:kind==='empty'?[]:kind==='ambiguous'?[candidate,clone(candidate)]:[candidate]});
     await controller.retry();assert.equal(controller.getSnapshot().record.state,'not_started',kind);assert.equal(controller.getSnapshot().rewardsVisible,false,kind);
     assert.equal(h.calls.filter(call=>call==='start').length,1,kind);assert.equal(h.calls.filter(call=>call==='complete').length,0,kind);await controller.dispose();
+  }
+});
+
+test('server tombstone proof settles an absent legacy Start and saved End atomically, then Home can start another session', async () => {
+  const h = harness(), { controller, record } = await legacyUnknownStart(h, { ...setup, targetSeconds: 60 });
+  h.rows.clear();
+  const originalCommand = clone(h.persisted().commands[0]);
+  h.server.confirmStartStop = async (requested, clientSessionId) => {
+    h.calls.push('confirm-stop'); assert.deepEqual(requested, record.setup); assert.equal(clientSessionId, record.clientSessionId);
+    assert.equal(controller.getSnapshot().ending, true, 'local End is durable before server confirmation');
+    return stoppedProof(record);
+  };
+  assert.equal(await controller.end(), true);
+  assert.equal(controller.getSnapshot().record, null); assert.equal(controller.getSnapshot().ending, false);
+  assert.equal(controller.getSnapshot().unsyncedSessionCount, 0); assert.equal(controller.getSnapshot().error, null);
+  const stopped = h.persisted().records[0];
+  assert.equal(stopped.state, 'cancelled'); assert.equal(stopped.serverSessionId, null);
+  assert.equal(stopped.sync.state, 'rejected'); assert.equal(stopped.sync.reasonCode, 'server_start_stop_confirmed');
+  assert.equal(stopped.dismissedAtMs, h.clock().wallTimeMs); assert.equal(stopped.elapsedMs, 0);
+  assert.equal(stopped.startedAtMs, null); assert.equal(stopped.completedAtMs, null); assert.equal(stopped.sync.receipt, null);
+  assert.deepEqual(h.persisted().commands[0], { ...originalCommand, status: 'rejected' });
+  assert.equal(h.calls.filter(call => call === 'complete' || call === 'cancel').length, 0); assert.equal(h.credits, 0);
+  await controller.dispose();
+  const restored = h.restart(); await restored.initialize();
+  assert.equal(restored.getSnapshot().record, null); assert.equal(restored.getSnapshot().unsyncedSessionCount, 0);
+  assert.equal(h.calls.filter(call => call === 'confirm-stop').length, 1, 'cold restore does not re-confirm a saved tombstone');
+  const originalStart = h.server.start;
+  h.server.start = async (requested, clientSessionId) => {
+    assert.notEqual(clientSessionId, record.clientSessionId);
+    assert.equal(clientSessionId, h.persisted().records.at(-1).clientSessionId);
+    return originalStart(requested, clientSessionId);
+  };
+  assert.equal(await restored.start(setup), true); assert.equal(restored.getSnapshot().record.state, 'running');
+  assert.equal(h.credits, 0); await restored.dispose();
+});
+
+test('legacy terminal time mismatch cannot strand a saved End after authenticated fence proof confirms no session identity', async () => {
+  const h = harness(), { controller, record } = await legacyUnknownStart(h);
+  h.rows.clear();
+  const oldId = id('4', 1);
+  h.rows.set(oldId, { id: oldId, setup: clone(record.setup), status: 'cancelled', startedAtMs: h.clock().wallTimeMs - 60000,
+    elapsedMs: 0, lastResumedAtMs: null, completedAtMs: h.clock().wallTimeMs - 50000, receipt: null });
+  h.server.readFinishedStart = async () => ({ complete: true, sessions: [await h.server.readSession(oldId)] });
+  h.server.confirmStartStop = async () => { h.calls.push('confirm-stop'); return stoppedProof(record); };
+  assert.equal(await controller.end(), true);
+  assert.equal(controller.getSnapshot().record, null); assert.equal(controller.getSnapshot().error, null);
+  assert.equal(h.persisted().records[0].serverSessionId, null, 'do not falsely bind an unrelated historical row');
+  assert.equal(h.rows.get(oldId).status, 'cancelled');
+  assert.equal(h.calls.filter(call => call === 'confirm-stop').length, 1); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('lost tombstone reply retains original End evidence and reconnect retries that same identity before permitting a new Start', async () => {
+  const h = harness(), first = h.create(); await first.initialize();
+  const record = await unknownStartWithoutRow(h, first);
+  let attempts = 0, serverStopped = false;
+  h.server.confirmStartStop = async (requested, clientSessionId) => {
+    h.calls.push('confirm-stop'); assert.equal(clientSessionId, record.clientSessionId); assert.deepEqual(requested, record.setup);
+    serverStopped = true;
+    if (++attempts === 1) throw failure('transient');
+    return stoppedProof(record);
+  };
+  assert.equal(await first.end(), false); assert.equal(serverStopped, true);
+  assert.equal(first.getSnapshot().ending, true); assert.equal(h.persisted().commands[0].status, 'unknown');
+  assert.equal(h.persisted().records[0].dismissedAtMs, null);
+  h.online = false; await first.dispose();
+  const restored = h.restart(); await restored.initialize(); assert.equal(restored.getSnapshot().ending, true);
+  h.online = true; assert.equal(await restored.retry(), true);
+  assert.equal(restored.getSnapshot().record, null); assert.equal(restored.getSnapshot().unsyncedSessionCount, 0);
+  assert.equal(attempts, 2); assert.equal(h.calls.filter(call => call === 'start').length, 1); assert.equal(h.credits, 0);
+  await restored.dispose();
+});
+
+test('failed local tombstone acknowledgement cannot lose the saved End; restart repeats proof and saves settlement in one write', async () => {
+  const h = harness(), first = h.create(); await first.initialize();
+  const record = await unknownStartWithoutRow(h, first);
+  let proofs = 0;
+  h.server.confirmStartStop = async () => { proofs++; return stoppedProof(record); };
+  h.backend.beforeWrite = async (_, value) => {
+    if (JSON.parse(value).records[0].sync.reasonCode === 'server_start_stop_confirmed') throw failure('transient');
+  };
+  assert.equal(await first.end(), false); assert.equal(first.getSnapshot().ending, true);
+  assert.equal(h.persisted().records[0].state, 'not_started'); assert.equal(h.persisted().records[0].dismissedAtMs, null);
+  assert.equal(h.persisted().commands[0].status, 'unknown');
+  h.backend.beforeWrite = null; await first.dispose();
+  const restored = h.restart(); await restored.initialize();
+  assert.equal(restored.getSnapshot().record, null); assert.equal(restored.getSnapshot().error, null);
+  assert.equal(restored.getSnapshot().unsyncedSessionCount, 0); assert.equal(proofs, 2);
+  assert.equal(h.persisted().records[0].state, 'cancelled'); assert.notEqual(h.persisted().records[0].dismissedAtMs, null);
+  assert.equal(h.credits, 0); await restored.dispose();
+});
+
+test('malformed, foreign, unfenced or mismatched stop proofs never retire an unconfirmed Start', async () => {
+  for (const change of [{ scope: otherScope }, { clientSessionId: id('5', 1) }, { legacyStartsFenced: false },
+    { serverSessionId: 'invalid' }, { status: 'running' }, { status: 'completed' }, { serverSessionId: id('4', 99) }]) {
+    const h = harness(), controller = h.create(); await controller.initialize();
+    const record = await unknownStartWithoutRow(h, controller);
+    h.server.confirmStartStop = async () => stoppedProof(record, change);
+    assert.equal(await controller.end(), false);
+    assert.equal(controller.getSnapshot().record.state, 'not_started'); assert.equal(controller.getSnapshot().ending, true);
+    assert.equal(h.persisted().records[0].serverSessionId, null); assert.equal(h.persisted().records[0].dismissedAtMs, null);
+    assert.equal(h.persisted().commands[0].status, 'unknown'); assert.equal(h.credits, 0);
+    await controller.dispose();
+  }
+});
+
+test('an unrelated open account session and server conflict cannot be cancelled or adopted as proof for another Start', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  const record = await unknownStartWithoutRow(h, controller);
+  const unrelated = identifiedRow(h, { ...record, clientSessionId: id('4', 2), setup: { ...record.setup, notes: 'Unrelated work' } }, 'running');
+  h.server.confirmStartStop = async () => { h.calls.push('confirm-stop'); throw failure('definitive'); };
+  assert.equal(await controller.end(), false);
+  assert.equal(h.rows.get(unrelated.id).status, 'running'); assert.equal(h.persisted().records[0].serverSessionId, null);
+  assert.equal(controller.getSnapshot().ending, true); assert.equal(h.persisted().commands[0].status, 'unknown');
+  assert.equal(h.calls.filter(call => call === 'cancel' || call === 'complete').length, 0); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('owner changes fence a delayed stop proof before it can settle the previous account journal', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  const record = await unknownStartWithoutRow(h, controller), entered = deferred(), release = deferred();
+  h.server.confirmStartStop = async () => { entered.resolve(); await release.promise; return stoppedProof(record); };
+  const ending = controller.end(); await entered.promise;
+  const before = clone(h.persisted()); h.switchOwner(); release.resolve();
+  assert.equal(await ending, false); assert.equal(controller.getSnapshot().record, null);
+  assert.deepEqual(h.persisted(), before); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('missing stop capability explicitly preserves the record instead of suggesting endless connection retries', async () => {
+  for (const endpoint of [false, true]) {
+    const h = harness(), controller = h.create(); await controller.initialize();
+    await unknownStartWithoutRow(h, controller);
+    if (endpoint) h.server.confirmStartStop = async () => { throw Object.assign(failure('transient'), { code: 'repair_unavailable' }); };
+    assert.equal(await controller.end(), false);
+    assert.match(controller.getSnapshot().error, /recovery update on the server/);
+    assert.equal(controller.getSnapshot().ending, true); assert.equal(h.persisted().commands[0].status, 'unknown');
+    assert.equal(h.persisted().records[0].dismissedAtMs, null); assert.equal(h.credits, 0);
+    await controller.dispose();
+  }
+});
+
+test('client identity lookup resolves a lost identified Start without legacy timestamp matching or a second Start request', async () => {
+  const h = harness(), controller = h.create(); await controller.initialize();
+  const record = await unknownStartWithoutRow(h, controller, { ...setup, targetSeconds: 60 });
+  identifiedRow(h, record, 'running');
+  h.server.readStartedSession = async clientId => { h.calls.push('identity'); return h.server.readSession(clientId); };
+  const before = h.calls.length; assert.equal(await controller.retry(), true);
+  assert.equal(controller.getSnapshot().record.serverSessionId, record.clientSessionId);
+  assert.equal(controller.getSnapshot().record.state, 'running'); assert.equal(controller.getSnapshot().recovered, true);
+  assert.equal(h.calls.slice(before).filter(call => call === 'identity').length, 1);
+  assert.equal(h.calls.slice(before).filter(call => call === 'open').length, 0);
+  assert.equal(h.calls.filter(call => call === 'start').length, 1); assert.equal(h.credits, 0);
+  await controller.dispose();
+});
+
+test('canonical terminal stop proofs reconcile their exact UUID and receipt without cancel or completion repair', async () => {
+  for (const status of ['cancelled', 'completed']) {
+    const h = harness(), controller = h.create(); await controller.initialize();
+    const record = await unknownStartWithoutRow(h, controller);
+    h.server.confirmStartStop = async () => {
+      h.calls.push('confirm-stop'); identifiedRow(h, record, status);
+      return stoppedProof(record, { serverSessionId: record.clientSessionId, status });
+    };
+    assert.equal(await controller.end(), true);
+    assert.equal(controller.getSnapshot().record.serverSessionId, record.clientSessionId);
+    assert.equal(controller.getSnapshot().record.state, status); assert.equal(controller.getSnapshot().ending, false);
+    assert.equal(controller.getSnapshot().rewardsVisible, false);
+    assert.equal(controller.getSnapshot().unsyncedSessionCount, 0);
+    assert.equal(h.calls.filter(call => call === 'cancel' || call === 'complete').length, 0); assert.equal(h.credits, 0);
+    await controller.dispose();
+  }
+});
+
+test('terminal proof preflight rejects mismatched canonical status, payload and missing receipts before binding a UUID', async () => {
+  for (const kind of ['status', 'setup', 'receipt', 'snapshot']) {
+    const h = harness(), controller = h.create(); await controller.initialize();
+    const record = await unknownStartWithoutRow(h, controller);
+    h.server.confirmStartStop = async () => {
+      const status = kind === 'receipt' ? 'completed' : 'cancelled';
+      const row = identifiedRow(h, record, kind === 'status' ? 'running' : status);
+      if (kind === 'setup') row.setup.notes = 'Different block';
+      if (kind === 'receipt') row.receipt = null;
+      return stoppedProof(record, { serverSessionId: record.clientSessionId, status });
+    };
+    const read = h.server.readSession;
+    if (kind === 'snapshot') h.server.readSession = async serverId => { const remote = await read(serverId); remote.snapshot = null; return remote; };
+    assert.equal(await controller.end(), false);
+    assert.equal(h.persisted().records[0].serverSessionId, null, kind);
+    assert.equal(controller.getSnapshot().record.state, 'not_started', kind); assert.equal(controller.getSnapshot().ending, true, kind);
+    assert.equal(h.calls.filter(call => call === 'complete' || call === 'cancel').length, 0, kind);
+    assert.equal(h.credits, 0); await controller.dispose();
   }
 });

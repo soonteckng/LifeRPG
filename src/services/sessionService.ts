@@ -131,7 +131,7 @@ export async function completeActivitySession(
   });
 }
 
-export type SessionTransportCode = "auth_unavailable" | "scope_mismatch" | "invalid_request" | "invalid_response" | "request_failed";
+export type SessionTransportCode = "auth_unavailable" | "scope_mismatch" | "invalid_request" | "invalid_response" | "request_failed" | "repair_unavailable";
 export type SessionTransportFailureKind = "auth" | "transient" | "definitive";
 export class SessionTransportError extends Error {
   constructor(public readonly code: SessionTransportCode, public readonly failureKind: SessionTransportFailureKind =
@@ -310,7 +310,16 @@ export function createJournalSessionTransport(
     catch { return transportFail("request_failed", "transient", true); }
     try { assertCurrent(epoch); }
     catch (error) { return mutationFailure(error, true); }
-    if (response.error) transportFail("request_failed", responseFailureKind(response.error, response.status, name), true);
+    if (response.error) {
+      const details = response.error as { code?: string };
+      if (["start_activity_session_v2", "confirm_activity_session_stop_v2"].includes(name)
+          && details.code === "PGRST202") {
+        // An absent endpoint is a definite non-dispatch, never permission to
+        // fall back to the legacy Start with an unidentified mutation.
+        transportFail("repair_unavailable", name === "start_activity_session_v2" ? "definitive" : "transient", true);
+      }
+      transportFail("request_failed", responseFailureKind(response.error, response.status, name), true);
+    }
     return response.data as T;
   };
   const control = async (name: string, id: string) => {
@@ -318,15 +327,38 @@ export function createJournalSessionTransport(
     await rpc(name, { p_session_id: id });
   };
   return {
-    start: async setup => {
+    start: async (setup, clientSessionId) => {
       try { validateJournalSetup(setup); }
       catch { return transportFail("invalid_request", "definitive", false); }
-      const id = await rpc<unknown>("start_activity_session", {
+      validId(clientSessionId, true);
+      const id = await rpc<unknown>("start_activity_session_v2", {
+        p_client_session_id: clientSessionId,
         p_target_duration_seconds: setup.targetSeconds, p_activity_type: setup.activityType,
         p_task_id: setup.taskId, p_subject_id: setup.subjectId, p_notes: setup.notes,
       });
-      if (!isJournalUuid(id)) transportFail("invalid_response", "transient", true);
+      if (!isJournalUuid(id) || id !== clientSessionId) transportFail("invalid_response", "transient", true);
       return id;
+    },
+    confirmStartStop: async (setup, clientSessionId) => {
+      try { validateJournalSetup(setup); }
+      catch { return transportFail("invalid_request", "definitive", false); }
+      validId(clientSessionId, true);
+      const raw = await rpc<unknown>("confirm_activity_session_stop_v2", {
+        p_client_session_id: clientSessionId,
+        p_target_duration_seconds: setup.targetSeconds, p_activity_type: setup.activityType,
+        p_task_id: setup.taskId, p_subject_id: setup.subjectId, p_notes: setup.notes,
+      });
+      let proof: Record<string, unknown>;
+      try { proof = rowObject(raw); }
+      catch (error) { return mutationFailure(error, true); }
+      if (proof.client_session_id !== clientSessionId || proof.legacy_starts_fenced !== true
+          || !(proof.session_id === null || proof.session_id === clientSessionId)
+          || !["cancelled", "completed"].includes(proof.status as string)
+          || (proof.status === "completed" && proof.session_id === null)) {
+        transportFail("invalid_response", "transient", true);
+      }
+      return { scope: { ...scope }, clientSessionId, serverSessionId: proof.session_id as string | null,
+        status: proof.status as "cancelled" | "completed", legacyStartsFenced: true };
     },
     pause: id => control("pause_activity_session", id),
     resume: id => control("resume_activity_session", id),
@@ -355,6 +387,21 @@ export function createJournalSessionTransport(
       const session = mapActivitySessionRow(response.data, scope, observed);
       if (rowObject(response.data).id !== id) transportFail("invalid_response");
       return session;
+    },
+    readStartedSession: async clientSessionId => {
+      validId(clientSessionId);
+      const epoch = await verify();
+      let response;
+      try {
+        response = await supabase.from("activity_sessions").select("*")
+          .eq("user_id", scope.ownerId).eq("id", clientSessionId).maybeSingle();
+      } catch { return transportFail("request_failed"); }
+      const observed = clock(); assertCurrent(epoch);
+      if (response.error) transportFail("request_failed", responseFailureKind(response.error, response.status, "read_started_session"));
+      if (response.data === null) return null;
+      const raw = rowObject(response.data);
+      if (raw.id !== clientSessionId || raw.client_start_id !== clientSessionId) transportFail("invalid_response");
+      return mapActivitySessionRow(raw, scope, observed);
     },
     readFinishedStart: async (setup, requestedAtMs) => {
       try { validateJournalSetup(setup); }

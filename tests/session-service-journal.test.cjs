@@ -85,7 +85,7 @@ test('every transport request requires fresh exact owner/backend before sending'
   for (const verified of [null, OTHER_SCOPE, { ...SCOPE, backendId: 'different-backend' }]) {
     const mock = setup({ verify: async () => verified });
     for (const action of [
-      () => mock.transport.start(SETUP), () => mock.transport.pause(SERVER), () => mock.transport.resume(SERVER),
+      () => mock.transport.start(SETUP, SERVER), () => mock.transport.pause(SERVER), () => mock.transport.resume(SERVER),
       () => mock.transport.cancel(SERVER), () => mock.transport.complete(SERVER),
       () => mock.transport.readSession(SERVER), () => mock.transport.readOpenSessions(), () => mock.transport.readFinishedStart(SETUP,T0),
     ]) await assert.rejects(action, errorCode(verified ? 'scope_mismatch' : 'auth_unavailable'));
@@ -97,7 +97,7 @@ test('every transport request requires fresh exact owner/backend before sending'
 test('owner changes after a sent RPC prevent an acknowledgement under the new owner', async () => {
   let current = SCOPE;
   const mock = setup({ currentScope: () => current, onRpc: () => { current = OTHER_SCOPE; } });
-  await assert.rejects(() => mock.transport.start(SETUP), errorCode('scope_mismatch'));
+  await assert.rejects(() => mock.transport.start(SETUP, SERVER), errorCode('scope_mismatch'));
   assert.equal(mock.rpcs.length, 1);
   assert.deepEqual(mock.events, ['verify', 'rpc']);
 });
@@ -108,7 +108,7 @@ test('same-owner connection loss after a start reply preserves its known server 
     verify: async () => { checks++; if (!online) throw Error('Network unavailable'); return SCOPE; },
     onRpc: () => { online = false; }, currentScope: () => SCOPE, currentEpoch: () => 1,
   });
-  const serverSessionId = await mock.transport.start(SETUP);
+  const serverSessionId = await mock.transport.start(SETUP, SERVER);
   assert.equal(serverSessionId, SERVER);
   assert.equal(checks, 1);
   assert.deepEqual(mock.events, ['verify', 'rpc']);
@@ -120,21 +120,21 @@ test('same-owner connection loss after a start reply preserves its known server 
 test('a genuine admission epoch change also fences a successful same-owner reply', async () => {
   let epoch = 1;
   const mock = setup({ currentEpoch: () => epoch, onRpc: () => { epoch = 2; } });
-  await assert.rejects(() => mock.transport.start(SETUP), errorCode('scope_mismatch'));
+  await assert.rejects(() => mock.transport.start(SETUP, SERVER), errorCode('scope_mismatch'));
   assert.equal(mock.rpcs.length, 1);
 });
 
 test('only mutating pre-dispatch failures prove that no RPC was sent', async () => {
   const denied = setup({ verify: async () => { throw Error('Network unavailable'); } });
-  await assert.rejects(() => denied.transport.start(SETUP), error => error.failureKind === 'auth' && error.requestSent === false);
+  await assert.rejects(() => denied.transport.start(SETUP, SERVER), error => error.failureKind === 'auth' && error.requestSent === false);
   await assert.rejects(() => denied.transport.pause(SERVER), error => error.requestSent === false);
   assert.deepEqual(denied.rpcs, []);
   await assert.rejects(() => denied.transport.readSession(SERVER), error => error.requestSent === undefined);
   const invalid = setup();
-  await assert.rejects(() => invalid.transport.start({ ...SETUP, targetSeconds: 0 }), error => error.requestSent === false);
+  await assert.rejects(() => invalid.transport.start({ ...SETUP, targetSeconds: 0 }, SERVER), error => error.requestSent === false);
   assert.deepEqual(invalid.rpcs, []);
   const sent = setup({ rpcThrows: Error('Network outcome unknown') });
-  await assert.rejects(() => sent.transport.start(SETUP), error => error.requestSent === true);
+  await assert.rejects(() => sent.transport.start(SETUP, SERVER), error => error.requestSent === true);
   assert.equal(sent.rpcs.length, 1);
   const malformedReply = setup({ rpcData: savedResult({ duration_seconds: 0 }) });
   await assert.rejects(() => malformedReply.transport.complete(SERVER), error => error.requestSent === true);
@@ -142,18 +142,60 @@ test('only mutating pre-dispatch failures prove that no RPC was sent', async () 
   await assert.rejects(() => failedRead.transport.readSession(SERVER), error => error.requestSent === undefined);
 });
 
-test('existing legacy RPC names and five-argument start payload stay unchanged', async () => {
+test('journal Start uses persistent identity and existing control RPCs stay unchanged', async () => {
   const mock = setup();
-  assert.equal(await mock.transport.start(SETUP), SERVER);
+  assert.equal(await mock.transport.start(SETUP, SERVER), SERVER);
   await mock.transport.pause(SERVER);
   await mock.transport.resume(SERVER);
   await mock.transport.cancel(SERVER);
   assert.deepEqual(mock.rpcs, [
-    { name: 'start_activity_session', params: { p_target_duration_seconds: 30, p_activity_type: 'learning', p_task_id: 7, p_subject_id: 9, p_notes: 'Read a chapter' } },
+    { name: 'start_activity_session_v2', params: { p_client_session_id: SERVER, p_target_duration_seconds: 30, p_activity_type: 'learning', p_task_id: 7, p_subject_id: 9, p_notes: 'Read a chapter' } },
     { name: 'pause_activity_session', params: { p_session_id: SERVER } },
     { name: 'resume_activity_session', params: { p_session_id: SERVER } },
     { name: 'cancel_activity_session', params: { p_session_id: SERVER } },
   ]);
+});
+
+test('unknown Start reads its exact owner-scoped client identity, including terminal rows', async () => {
+  const mock = setup({ responses: [{ data: row({ client_start_id: SERVER, status: 'cancelled', completed_at: iso(4000) }), error: null }] });
+  const remote = await mock.transport.readStartedSession(SERVER);
+  assert.equal(remote.serverSessionId, SERVER);
+  assert.equal(remote.status, 'cancelled');
+  assert.deepEqual(mock.queries[0].filters, [['eq', 'user_id', SCOPE.ownerId], ['eq', 'id', SERVER]]);
+  assert.deepEqual(mock.rpcs, []);
+  for (const bad of [row(), row({ id: OTHER_SERVER, client_start_id: SERVER }), row({ client_start_id: OTHER_SERVER })]) {
+    const malformed = setup({ responses: [{ data: bad, error: null }] });
+    await assert.rejects(() => malformed.transport.readStartedSession(SERVER), errorCode('invalid_response'));
+  }
+});
+
+test('server Stop proof is exact, scoped and cannot invent a completed result', async () => {
+  const raw = { client_session_id: SERVER, session_id: null, status: 'cancelled', legacy_starts_fenced: true };
+  const mock = setup({ rpcData: raw });
+  assert.deepEqual(await mock.transport.confirmStartStop(SETUP, SERVER), {
+    scope: SCOPE, clientSessionId: SERVER, serverSessionId: null, status: 'cancelled', legacyStartsFenced: true,
+  });
+  assert.deepEqual(mock.rpcs, [{ name: 'confirm_activity_session_stop_v2', params: {
+    p_client_session_id: SERVER, p_target_duration_seconds: 30, p_activity_type: 'learning', p_task_id: 7, p_subject_id: 9, p_notes: 'Read a chapter',
+  } }]);
+  for (const bad of [null, { ...raw, client_session_id: OTHER_SERVER }, { ...raw, legacy_starts_fenced: false },
+    { ...raw, status: 'active' }, { ...raw, status: 'completed' }, { ...raw, session_id: OTHER_SERVER }]) {
+    await assert.rejects(() => setup({ rpcData: bad }).transport.confirmStartStop(SETUP, SERVER), error => error.code === 'invalid_response' && error.requestSent === true);
+  }
+});
+
+test('new mutation proofs fence owner changes and never fall back to legacy Start', async () => {
+  let current = SCOPE;
+  const mock = setup({ currentScope: () => current, onRpc: () => { current = OTHER_SCOPE; } });
+  await assert.rejects(() => mock.transport.confirmStartStop(SETUP, SERVER), errorCode('scope_mismatch'));
+  assert.equal(mock.rpcs.length, 1);
+  const absent = { code: 'PGRST202', message: 'Function is not installed' };
+  const missing = setup({ rpcError: absent, rpcStatus: 404 });
+  await assert.rejects(() => missing.transport.start(SETUP, SERVER), error => error.code === 'repair_unavailable' && error.failureKind === 'definitive');
+  await assert.rejects(() => missing.transport.confirmStartStop(SETUP, SERVER), error => error.code === 'repair_unavailable' && error.failureKind === 'transient');
+  assert.deepEqual(missing.rpcs.map(rpc => rpc.name), ['start_activity_session_v2', 'confirm_activity_session_stop_v2']);
+  const different = setup({ rpcData: OTHER_SERVER });
+  await assert.rejects(() => different.transport.start(SETUP, SERVER), errorCode('invalid_response'));
 });
 
 test('known-ID read includes terminal rows and explicit ownership without open-only filtering', async () => {
@@ -321,17 +363,17 @@ test('explicit transactional start rejection is definitive while network and ser
     { code: '42501', message: 'permission denied' },
   ]) {
     const mock = setup({ rpcError, rpcStatus: 400 });
-    await assert.rejects(() => mock.transport.start(SETUP), error => error.failureKind === 'definitive' && mock.api.classifySessionTransportError(error) === 'definitive');
+    await assert.rejects(() => mock.transport.start(SETUP, SERVER), error => error.failureKind === 'definitive' && mock.api.classifySessionTransportError(error) === 'definitive');
     assert.equal(mock.rpcs.length, 1);
   }
   const network = setup({ rpcThrows: Error('fixture_network_details_not_public') });
-  await assert.rejects(() => network.transport.start(SETUP), error => error.failureKind === 'transient' && !error.message.includes('fixture_network_details_not_public'));
+  await assert.rejects(() => network.transport.start(SETUP, SERVER), error => error.failureKind === 'transient' && !error.message.includes('fixture_network_details_not_public'));
   const server = setup({ rpcError: { code: 'P0001', message: 'infrastructure failure' }, rpcStatus: 503 });
-  await assert.rejects(() => server.transport.start(SETUP), error => error.failureKind === 'transient');
+  await assert.rejects(() => server.transport.start(SETUP, SERVER), error => error.failureKind === 'transient');
   const auth = setup({ rpcError: { code: 'PGRST301', message: 'expired credentials' }, rpcStatus: 401 });
-  await assert.rejects(() => auth.transport.start(SETUP), error => error.failureKind === 'auth');
+  await assert.rejects(() => auth.transport.start(SETUP, SERVER), error => error.failureKind === 'auth');
   const denied = setup({ rpcError: { code: '42501', message: 'permission denied' }, rpcStatus: 403 });
-  await assert.rejects(() => denied.transport.start(SETUP), error => error.failureKind === 'definitive');
+  await assert.rejects(() => denied.transport.start(SETUP, SERVER), error => error.failureKind === 'definitive');
   const readFailed = setup({ responses: [{ data: null, error: { code: '22023', message: 'invalid read' }, status: 400 }] });
   await assert.rejects(() => readFailed.transport.readSession(SERVER), error => error.failureKind === 'transient');
 });
