@@ -284,7 +284,7 @@ function SessionVerificationError({ onRetry, onSignOut }: {
 }
 
 function AuthGate() {
-  const { user, localOwner, loading, recovery, sessionError, retrySessionVerification, signOut } = useAuth();
+  const { user, localOwner, loading, recovery, sessionError, authEntryMode, retrySessionVerification, signOut } = useAuth();
 
   if (loading) {
     return (
@@ -300,7 +300,7 @@ function AuthGate() {
 
   const admittedOwner = user?.id ?? localOwner?.id;
   if (!admittedOwner) {
-    return <AuthScreen />;
+    return <AuthScreen initialMode={authEntryMode} />;
   }
 
   return (

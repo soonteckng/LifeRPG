@@ -54,6 +54,9 @@ declare v_user uuid:=auth.uid(); v_profile public.profiles%rowtype; v_last times
 begin
   if v_user is null then raise exception 'Not authenticated'; end if;
   if p_goal_minutes is null or p_goal_minutes<30 or p_goal_minutes>480 then raise exception 'Choose 30 to 480 minutes'; end if;
+  -- A row lock cannot refresh an older ledger snapshot under repeatable read.
+  -- Ordinary PostgREST calls use read committed, which rereads after this lock.
+  if current_setting('transaction_isolation')<>'read committed' then raise exception 'Goal scheduling requires read committed'; end if;
   select * into v_profile from public.profiles where id=v_user for update;
   if not found or not v_profile.onboarding_completed then raise exception 'Finish onboarding first'; end if;
   select max(updated_at) into v_last from public.daily_goal_changes where user_id=v_user;

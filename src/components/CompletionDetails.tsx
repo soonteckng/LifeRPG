@@ -24,7 +24,7 @@ export function CompletionHero({ seconds, title, levelUp = false, compact = fals
       <Ionicons name={levelUp ? "sparkles-outline" : "checkmark"} size={26} color={colors.accent} />
     </ProgressRing>
     <View style={s.compactHeroCopy}>
-      <Text style={s.caption}>Time focused</Text>
+      <Text style={s.caption}>Time recorded</Text>
       <Text style={s.compactTime}>{durationLabel(seconds)}</Text>
       {!!title && <Text style={s.compactQuest}>{title}</Text>}
     </View>
@@ -33,7 +33,7 @@ export function CompletionHero({ seconds, title, levelUp = false, compact = fals
     <ProgressRing size={fontScale > 1.3 ? 112 : 144} progress={1} stroke={8}>
       <Ionicons name={levelUp ? "sparkles-outline" : "checkmark"} size={52} color={colors.accent} />
     </ProgressRing>
-    <Text style={s.caption}>Time focused</Text>
+    <Text style={s.caption}>Time recorded</Text>
     <Text style={s.time}>{durationLabel(seconds)}</Text>
     {!!title && <Text style={s.quest} numberOfLines={2}>{title}</Text>}
   </View>;

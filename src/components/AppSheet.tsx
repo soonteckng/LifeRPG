@@ -16,6 +16,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -33,6 +34,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Easing, ReduceMotion, runOnJS, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "../constants/motion";
+import { registerSheetActivity } from "../utils/sheetActivity";
 
 const listTiming = { duration: 220, easing: Easing.out(Easing.cubic) };
 
@@ -56,6 +58,7 @@ interface Props {
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
   label: string;
+  activityId?: symbol;
 }
 
 const DismissContext = createContext({
@@ -149,12 +152,29 @@ export default function AppSheet({
   overlay,
   footer,
   label,
+  activityId,
 }: Props) {
   const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const timingConfigs = useBottomSheetTimingConfigs(listTiming);
   const animationConfigs = motionMode === "timed" ? timingConfigs : springConfigs;
   const ref = useRef<BottomSheet>(null);
   const [mounted, setMounted] = useState(visible);
+  const [activityToken] = useState(() => activityId ?? Symbol("app-sheet"));
+  const mountedRef = useRef(mounted);
+  const releaseActivity = useRef<(() => void) | null>(null);
+  const releaseBlocker = useCallback(() => {
+    const release = releaseActivity.current;
+    releaseActivity.current = null;
+    release?.();
+  }, []);
+  useLayoutEffect(() => {
+    mountedRef.current = mounted;
+    if (mounted && !releaseActivity.current) releaseActivity.current = registerSheetActivity(activityToken);
+    // iOS still owns a native modal while its dismissal callback is pending.
+    // Android/web finish at the bottom sheet's own close callback.
+    else if (!mounted && Platform.OS !== "ios") releaseBlocker();
+  }, [activityToken, mounted, releaseBlocker]);
+  useLayoutEffect(() => releaseBlocker, [releaseBlocker]);
   const [previousVisible, setPreviousVisible] = useState(visible);
   const keyboardVisible = useRef(false);
   const { height } = useWindowDimensions();
@@ -251,7 +271,12 @@ export default function AppSheet({
       navigationBarTranslucent={false}
       onRequestClose={requestBack}
       onDismiss={() => {
-        if (Platform.OS === "ios") onDismiss?.();
+        // A delayed dismissal from an older close cannot release a reopened
+        // sheet, replay navigation, or notify an already unmounted owner.
+        if (Platform.OS === "ios" && !mountedRef.current && releaseActivity.current) {
+          releaseBlocker();
+          onDismiss?.();
+        }
       }}
     >
       {mounted && (

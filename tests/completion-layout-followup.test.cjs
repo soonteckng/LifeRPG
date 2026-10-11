@@ -44,6 +44,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     './AppSheet':values=>React.createElement('Sheet',values,values.header,values.children),
     '../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{level:1,current_xp:1}})},
     'expo-haptics':{},
+    '@react-native-async-storage/async-storage':{getItem:async()=>null,setItem:async()=>{}},
   }).default;
   const initial = {visible:true,sessionId:'one',durationSeconds:60,xpEarned:1,onClose(){},...props};
   let tree;

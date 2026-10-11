@@ -18,6 +18,7 @@ import { validSessionSeconds } from "../../utils/sessionSetup";
 import CharacterMark from "../../components/CharacterMark";
 import ContentReveal from "../../components/ContentReveal";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
+import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
@@ -38,7 +39,7 @@ import {
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { getLastFreeSession, type QuickStartSession, getFocusStreak } from "../../services/progressService";
-import { DEFAULT_TIMEZONE, durationLabel } from "../../utils/progressAnalytics";
+import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
@@ -206,10 +207,10 @@ export default function HomeScreen() {
           </TouchableOpacity>}
           <View style={styles.guidedGoal}>
             <View testID="home-compact-goal" style={styles.guidedGoal}>
-              <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.guidedGoalHeading} accessibilityRole="button" accessibilityLabel={`Daily focus goal. ${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes. Change your goal`}>
-                <Text style={[styles.focusHeading, styles.goalLabel]}>Today’s focus</Text><View style={styles.goalValue}><Text style={styles.goalValueText}>{`${durationLabel(safeCompletedSeconds)} / ${dailyGoalMinutes} min`}</Text><Ionicons name="options-outline" size={18} color={colors.accent} /></View>
+              <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.guidedGoalHeading} accessibilityRole="button" accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Change your goal`}>
+                <Text style={[styles.focusHeading, styles.goalLabel]}>{isGoalComplete ? "Daily goal reached" : "Today’s effort"}</Text><View style={styles.goalValue}><Text style={styles.goalValueText}>{dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}</Text><Ionicons name="options-outline" size={18} color={colors.accent} /></View>
               </TouchableOpacity>
-              <View style={styles.guidedTrack} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: `${durationLabel(safeCompletedSeconds)} of ${dailyGoalMinutes} minutes` }}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
+              <View style={styles.guidedTrack} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
               {isGoalComplete && <Text style={styles.questMeta}>Goal reached. Your effort counts.</Text>}
             </View>
           </View></View></TourAnchor>
@@ -287,8 +288,8 @@ Your quests will appear here.</Text>
 const styles = StyleSheet.create({
   guidedGoalSection: { flexGrow: 0, paddingTop: 0, gap: 12 },
   guidedGoal: { width: "100%", gap: 8 },
-  guidedGoalHeading: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 12 },
-  goalLabel: { flex: 1 }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 0 }, goalValueText: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  guidedGoalHeading: { minHeight: 44, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, rowGap: 4 },
+  goalLabel: { flexGrow: 1 }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }, goalValueText: { color: colors.secondary, fontSize: 14, lineHeight: 20, flexShrink: 1, fontVariant: ["tabular-nums"] },
   guidedTrack: { height: 4, borderRadius: 3, backgroundColor: colors.line, overflow: "hidden" },
   guidedFill: { height: 4, borderRadius: 3, backgroundColor: colors.accent },
   invitation: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", gap: 8 },

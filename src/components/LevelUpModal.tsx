@@ -12,6 +12,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import * as Haptics from "expo-haptics";
+import DailyEffortCelebration from "./DailyEffortCelebration";
+import { useDailyEffortCelebration } from "../hooks/useDailyEffortCelebration";
 
 
 interface RewardModalProps {
@@ -28,6 +30,8 @@ interface RewardModalProps {
   goalReachedNow?: boolean;
   minutesSpent?: number;
   durationSeconds?: number;
+  creditedDate?: string;
+  dailyCompletedSeconds?: number;
   questTitle?: string;
   areaTitle?: string;
   areaColor?: string;
@@ -47,9 +51,12 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   creditVersion, areaXpEarned, goalReachedNow, minutesSpent = 0, durationSeconds,
   questTitle, areaTitle, areaColor, isLevelUp = false, newLevel, currentXP, requiredXP, onClose, onDismiss,
   pending = false, syncError, syncBusy = false, onRetry,
-  sessionId, completedAtMs, recovered = false,
+  sessionId, completedAtMs, recovered = false, creditedDate, dailyCompletedSeconds,
 }: RewardModalProps) {
   const { hapticsEnabled, profile } = useUser();
+  const firstStepToday = useDailyEffortCelebration({visible, pending, recovered, sessionId,
+    ownerId:profile?.id, timeZone:profile?.timezone, creditedDate, dailyCompletedSeconds,
+    durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion});
   const insets = useSafeAreaInsets();
   const screen = useWindowDimensions();
   const windowHeight = screen.height || 844;
@@ -98,6 +105,7 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
       {recovered && !pending && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
       {!!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
+      {firstStepToday && <DailyEffortCelebration />}
       {pending ? <View style={s.pending}>
         <Text style={s.pendingText} accessibilityLiveRegion="polite">{syncError ? "Your finished session is saved on this phone. Reconnect to confirm your progress." : "Saving your progress…"}</Text>
         {!!syncError && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry saving</Text></TouchableOpacity>}

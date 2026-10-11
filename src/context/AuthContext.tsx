@@ -6,11 +6,13 @@ import { AppState, Platform } from "react-native";
 import { supabase } from "../../lib/supabase";
 import { isExpoGoLanRecoveryRedirect, parseRecoveryLink, recoveryLinkError, recoveryStorageKey, validEmail, type RecoveryState } from "../utils/passwordRecovery";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { authEntryPreference, authEntryStorageKey, type AuthEntryMode } from "../services/authEntryPreference";
 import { createLocalAccountCache, readPersistedCredentialOwner, localRecoveryOwner, isTemporaryAuthFailure, isExpiredAuthFailure,
   type LocalAccountOwner, type LocalAccountCache, type CachedVerifiedProfile } from "../services/localAccountCache";
 interface AuthContextType {
   session: Session | null; user: User | null; loading: boolean; recovery: RecoveryState;
   sessionError: boolean;
+  authEntryMode: AuthEntryMode;
   localOwner: LocalAccountOwner | null;
   accessMode: "online" | "local-only" | "signed-out";
   admissionEpoch: number;
@@ -57,6 +59,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [verifying, setVerifying] = useState(false);
   const [sessionError, setSessionError] = useState(false);
+  const [authEntryMode, setAuthEntryMode] = useState<AuthEntryMode>("sign-up");
+  const returningEntry = useRef(false);
+  const rememberSignInEntry = async () => {
+    returningEntry.current = true;
+    setAuthEntryMode("sign-in");
+    // A failed presentation preference must not change auth or recovery proof.
+    try { await AsyncStorage.setItem(authEntryStorageKey, "sign-in"); } catch { /* Best effort device preference. */ }
+  };
   const [verifiedUser, setVerifiedUser] = useState<User | null>(null);
   const verified = useRef<User | null>(null);
   const verifiedCredentials = useRef<Session | null>(null);
@@ -156,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (recoveryRef.current !== "none") return null;
       const owner = backend ? { id: data.user.id, backendId: backend.backendId } : null;
       changeAdmission("online", owner);
+      if (!returningEntry.current) void rememberSignInEntry();
       epoch = admissionRevision.current;
       flight.epoch = epoch;
       if (accountCache && owner) {
@@ -298,11 +309,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const listener = Linking.addEventListener("url", ({ url }) => { void handleLink(url); });
     void (async () => {
       try {
-        const [credential, cached, marker, url] = await Promise.all([
+        const [credential, cached, marker, url, entry] = await Promise.all([
           backend ? readPersistedCredentialOwner(AsyncStorage, backend) : Promise.resolve({ kind: "missing" as const }),
           accountCache?.load().catch(() => null) ?? Promise.resolve(null), AsyncStorage.getItem(recoveryStorageKey), Linking.getInitialURL(),
+          AsyncStorage.getItem(authEntryStorageKey).catch(() => null),
         ]);
         if (!live) return;
+        if (!returningEntry.current) setAuthEntryMode(authEntryPreference(entry, credential.kind !== "missing" || !!cached || !!marker));
         if (!verified.current || verified.current.id === cached?.ownerId) cacheRef.current = cached;
         const initialRecoveryLink = url ? parseRecoveryLink(url, redirectTo) : null;
         if (marker || initialRecoveryLink) {
@@ -369,6 +382,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     admissionClosed.current = true;
     revokeAdmission(); setCachedProfile(null);
     const generation = verificationGeneration.current;
+    await rememberSignInEntry();
     let cacheError: Error | null = null;
     try { await clearAccountCache(); } catch { cacheError = new Error("Could not clear local account access. Please retry sign out."); }
     if (generation !== verificationGeneration.current) return { error: new Error("Account changed before sign out finished. Please retry.") };
@@ -446,7 +460,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [accessMode, localOwner, admissionEpoch, recovery]);
   return (
     <AuthContext.Provider value={{ session, user: verifiedUser?.id === session?.user?.id ? verifiedUser : null, loading: loading || (verifying && accessMode === "signed-out"), recovery,
-      sessionError, localOwner, accessMode, admissionEpoch, cachedProfile, cacheVerifiedProfile, verifyCurrentOwner,
+      sessionError, authEntryMode, localOwner, accessMode, admissionEpoch, cachedProfile, cacheVerifiedProfile, verifyCurrentOwner,
       retrySessionVerification,
       signIn, signUp, signOut, requestPasswordReset, saveRecoveryPassword, leaveRecovery }}>
       {children}

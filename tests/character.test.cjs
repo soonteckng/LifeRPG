@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
+      if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
@@ -150,7 +152,7 @@ async function screen(file, mocks) {
     "../services/dailyProgressService": { getTodayProgress: async () => null },
     expo: { isRunningInExpoGo: () => false },
     "react-native": Native,
-    "react-native-safe-area-context": { SafeAreaView: host("Safe") },
+    "react-native-safe-area-context": { SafeAreaView: host("Safe"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "../hooks/useReducedMotion": { useReducedMotion: () => true },
     "../services/dailyGoalService": { getDailyGoalSettings: async () => ({ local_date: "2026-10-03", next_effective_date: "2026-10-04", today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false }), scheduleDailyGoal: async () => { throw Error("Not configured"); } },
@@ -221,14 +223,14 @@ test("failed login exposes error, preserves inputs and allows retry", async () =
     },
   });
   try {
-    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 0);
+    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
     await ui.input("Email", "person@example.com");
     await ui.input("Password", "password");
-    const surface = ui.renderer.root.findAllByType("View").find(n => n.props.testID === "auth-surface");
+    const surface = ui.renderer.root.findByType("Scroll");
     await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 450 } } }));
     assert.equal(ui.renderer.root.findAllByType("Portrait").length, 0);
     assert.match(ui.text(), /Welcome back/);
-    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 0);
+    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
     await ui.press("Sign in");
     assert.match(ui.text(), /Offline/);
     assert.equal(
@@ -877,6 +879,25 @@ test('Profile level opens the shared tier path with the saved XP balance',async(
   await act(async()=>popup.props.onClose());assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,false);
  }finally{await ui.cleanup();}
 });
+
+test("Profile opts only its hero into entrance greetings and pauses it behind profile sheets", async () => {
+  const ui = await profileScreen();
+  try {
+    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 170);
+    assert.equal(hero().props.greetOnFocus, true);
+    assert.equal(hero().props.animate, true);
+    assert.equal(ui.renderer.root.findAllByType("Portrait").find(node => node.props.interactive === false).props.greetOnFocus, undefined);
+    await ui.press("Personalise profile");
+    assert.equal(hero().props.animate, false);
+    await ui.press("Save changes");
+    assert.equal(hero().props.animate, true);
+    const levels = ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel?.includes("View level tiers"));
+    await act(async () => levels.props.onPress());
+    assert.equal(hero().props.animate, false);
+    await act(async () => ui.renderer.root.findByType("TierSheet").props.onClose());
+    assert.equal(hero().props.animate, true);
+  } finally { await ui.cleanup(); }
+});
 test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
   const ui = await profileScreen();
   try {
@@ -1025,17 +1046,17 @@ test("idle motion cancels directly on frozen-tab blur, background and Reduce Mot
  const element=()=>React.createElement(context.Provider,{value:navigation},React.createElement(Consumer));
  let renderer;await act(async()=>{renderer=create(element());});
  try{
-  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,2);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
+  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,3);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
   focused=false;listeners.blur();assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
   let count=repeats().length;appState('background');appState('active');assert.equal(repeats().length,count,'backgrounded or unfocused screens cannot restart motion');
-  focused=true;listeners.focus();assert.equal(repeats().length,count+2);
+  focused=true;listeners.focus();assert.equal(repeats().length,count+3);
   reduced=true;count=repeats().length;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
   reduced=false;enabled=false;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);
  }finally{await act(async()=>renderer.unmount());}
  // Auth renders before the app navigator: no navigation context is required.
  const before=fake.events.filter(event=>event.kind==='repeat').length;
  enabled=true;await act(async()=>{renderer=create(React.createElement(Consumer));});
- assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+2);await act(async()=>renderer.unmount());
+ assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+3);await act(async()=>renderer.unmount());
 });
 
 test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {

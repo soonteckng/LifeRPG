@@ -21,6 +21,7 @@ function load(file, mocks = {}, modules = new Map()) {
 }
 const utils = load("src/services/localAccountCache.ts"), { sessionBackendIdentity } = load("src/utils/sessionBackend.ts");
 const backend = sessionBackendIdentity(backendUrl);
+const authEntry = load("src/services/authEntryPreference.ts");
 const A = "10000000-0000-4000-8000-000000000001", B = "10000000-0000-4000-8000-000000000002";
 const offline = { name: "AuthRetryableFetchError", status: 503 };
 const profile = id => ({ id, username: id === A ? "Soon Teck" : "Other", avatar: "hero", class_title: "Scholar", level: 3, current_xp: 22, gold: 5,
@@ -61,6 +62,76 @@ async function mount(options = {}) {
     event: (event, current) => act(async () => { if (current?.access_token) store.values.set(backend.authStorageKey, JSON.stringify(current)); authListener(event, current); }),
     run: fn => act(async () => fn(value)), cleanup: () => act(async () => renderer.unmount()) };
 }
+
+test("a fresh install opens Create account while a remembered signed-out device opens Sign in without account admission", async () => {
+  for (const saved of [null, "sign-in", "invalid-value"]) {
+    const store = memory();
+    if (saved !== null) store.values.set(authEntry.authEntryStorageKey, saved);
+    const ui = await mount({ store });
+    try {
+      assert.equal(ui.value().authEntryMode, saved === "sign-in" ? "sign-in" : "sign-up");
+      assert.equal(ui.value().accessMode, "signed-out");
+      assert.equal(ui.value().user, null); assert.equal(ui.value().localOwner, null);
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test("an existing verified account retains normal Home admission and remembers Sign in after credentials disappear", async () => {
+  const store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session() });
+  try {
+    assert.equal(ui.value().authEntryMode, "sign-in");
+    assert.equal(ui.value().accessMode, "online");
+    assert.equal(ui.value().user.id, A);
+    assert.equal(store.values.get(authEntry.authEntryStorageKey), "sign-in");
+  } finally { await ui.cleanup(); }
+  store.values.delete(backend.authStorageKey);
+  store.values.delete(utils.localAccountCacheKey(backend.backendId));
+  const returning = await mount({ store });
+  try { assert.equal(returning.value().authEntryMode, "sign-in"); assert.equal(returning.value().accessMode, "signed-out"); }
+  finally { await returning.cleanup(); }
+});
+
+test("explicit sign-out remembers Sign in across restart without clearing the session journal or readmitting the owner", async () => {
+  const store = memory(); existing(store, session());
+  store.values.set("retained-session-journal", "pending-work");
+  const ui = await mount({ store, current: session() });
+  try {
+    await ui.run(value => value.signOut());
+    assert.equal(ui.value().authEntryMode, "sign-in"); assert.equal(ui.value().accessMode, "signed-out");
+    assert.equal(store.values.get("retained-session-journal"), "pending-work");
+  } finally { await ui.cleanup(); }
+  const restarted = await mount({ store });
+  try {
+    assert.equal(restarted.value().authEntryMode, "sign-in"); assert.equal(restarted.value().user, null);
+    assert.equal(restarted.value().localOwner, null);
+  } finally { await restarted.cleanup(); }
+});
+
+test("the entry preference is never cloud or offline admission evidence, including with malformed credentials", async () => {
+  const store = memory();
+  store.values.set(authEntry.authEntryStorageKey, "sign-in");
+  store.values.set(backend.authStorageKey, "{malformed");
+  store.values.set(utils.localAccountCacheKey(backend.backendId), JSON.stringify(marker()));
+  const ui = await mount({ store, restoreError: offline });
+  try {
+    assert.equal(ui.value().authEntryMode, "sign-in"); assert.equal(ui.value().accessMode, "signed-out");
+    assert.equal(ui.value().user, null); assert.equal(ui.value().localOwner, null);
+  } finally { await ui.cleanup(); }
+});
+
+test("presentation preference storage failures do not turn normal sign-in into password recovery or prevent logout", async () => {
+  const store = memory(); existing(store, session());
+  const read = store.getItem, write = store.setItem;
+  store.getItem = async key => { if (key === authEntry.authEntryStorageKey) throw Error("Preference unavailable"); return read(key); };
+  store.setItem = async (key, value) => { if (key === authEntry.authEntryStorageKey) throw Error("Preference unavailable"); return write(key, value); };
+  const ui = await mount({ store, current: session() });
+  try {
+    assert.equal(ui.value().recovery, "none"); assert.equal(ui.value().accessMode, "online");
+    await ui.run(async value => assert.equal((await value.signOut()).error, null));
+    assert.equal(ui.value().accessMode, "signed-out"); assert.equal(ui.value().authEntryMode, "sign-in");
+  } finally { await ui.cleanup(); }
+});
 
 test("backend identity is journal-safe, path/protocol/port distinct, and retains exact issuer base", () => {
   assert.equal(backend.backendId, "fixture-project.supabase.co");

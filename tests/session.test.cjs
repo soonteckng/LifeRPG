@@ -467,7 +467,7 @@ test("saved completion displays focused duration while unsaved completion stays 
   await ui.update({actionError:null,sessionSummary:{durationSeconds:1859,minutesSpent:30,xpEarned:30,goldEarned:5,questTitle:"Read"}});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,1859);
   assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
-  assert.match(ui.output(),/Time focused/);
+  assert.match(ui.output(),/Time recorded/);
   await ui.update({isCompleted:false,hasOpenSession:true,isRunning:false,sessionSummary:null,timeLeft:900});
   assert.equal(ui.root().findByType("DurationControl").props.seconds,900);
   await ui.cleanup();
@@ -619,11 +619,11 @@ test("back dismisses keyboard, then picker, then the screen without resetting",a
 
 test("completed screen offers Done and New session while retaining the summary",async()=>{
   const ui=await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{questTitle:"Read",minutesSpent:30,durationSeconds:1800,xpEarned:30,goldEarned:5}});
-  assert.match(ui.output(),/Time focused30 min/);
+  assert.match(ui.output(),/Time recorded30 min/);
   assert.ok(ui.button("Done")); assert.ok(ui.button("New session"));
   await ui.press("Done");
   assert.deepEqual(ui.calls,[["summary-viewed"],["dismiss"]]);
-  assert.match(ui.output(),/Time focused30 min/);
+  assert.match(ui.output(),/Time recorded30 min/);
   await ui.cleanup();
 });
 test("seconds survive countdown boundaries, pause, minimise and completion once", async()=>{
@@ -1491,7 +1491,7 @@ test("Successful early End shows a stop notice and closes it with Session; an un
     await ui.update({hasOpenSession:false,isRunning:false,actionBusy:false,actionError:null});
     const popup=ui.root().findAllByType("Sheet").find(s=>s.props.label==="session ended");
     assert.ok(popup);
-    assert.match(ui.output(),/Ending early does not earn focus time or XP/);
+    assert.match(ui.output(),/Ending early does not earn recorded time or XP/);
     await act(async()=>popup.props.onRequestClose());
     assert.equal(ui.calls.filter(c=>c[0]==="dismiss").length,1);
     const closingSheet=ui.root().findAll(node=>node.props.label==="session ended" && node.props.visible===false)[0];

@@ -289,7 +289,7 @@ export default function SessionScreen() {
   const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading quest…" : "Quest unavailable") : suggestion?.title ?? "Free session");
   const status = phase === "ended" ? "Session ended" : timer.isRestoring ? "Restoring your session…" : timer.awaitingStart ? "Checking your saved start…"
     : timer.endingSession ? "Session ended"
-    : timer.isCompleted ? timer.sessionSummary ? "Time focused" : timer.syncStatus === "rejected" ? "Kept on this phone. Your account did not accept it." : "Saved on this phone. Waiting to sync."
+    : timer.isCompleted ? timer.sessionSummary ? "Time recorded" : timer.syncStatus === "rejected" ? "Kept on this phone. Your account did not accept it." : "Saved on this phone. Waiting to sync."
     : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
@@ -448,7 +448,7 @@ export default function SessionScreen() {
         <BottomSheetScrollView showsVerticalScrollIndicator={false}
           contentContainerStyle={[styles.endedBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]}>
           <View style={styles.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
-          <Text style={styles.secondary}>Your focus has stopped. Ending early does not earn focus time or XP.</Text>
+          <Text style={styles.secondary}>Your focus has stopped. Ending early does not earn recorded time or XP.</Text>
           {endRecoveryShown && <>
             <Text style={styles.secondary} accessibilityLiveRegion="polite">Your stop is saved on this phone. Reconnect to confirm it.</Text>
             <Action label="Retry ending session" disabled={liveTimer.actionBusy} onPress={() => void liveTimer.retryAction()} />
@@ -462,6 +462,7 @@ export default function SessionScreen() {
         syncError={timer.actionBusy ? null : timer.actionError} syncBusy={timer.actionBusy} onRetry={() => void timer.retryCompletion()}
         durationSeconds={sessionSummary?.durationSeconds ?? timer.duration} xpEarned={sessionSummary?.xpEarned}
         goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}
+        creditedDate={sessionSummary?.creditedDate} dailyCompletedSeconds={sessionSummary?.dailyCompletedSeconds}
         areaXpEarned={sessionSummary?.areaXpEarned} goalReachedNow={sessionSummary?.goalReachedNow}
         questTitle={title} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId, area?.color_code)}
         isLevelUp={!!timer.completedLevelUp?.leveledUp} newLevel={timer.completedLevelUp?.newLevel}

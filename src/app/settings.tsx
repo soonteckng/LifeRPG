@@ -1,6 +1,6 @@
 import { Text } from "../components/AppText";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Linking, Platform, Switch, View } from "react-native";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { AppState, Platform, Switch, View } from "react-native";
 import { useRouter } from "expo-router";
 import AppSheet from "../components/AppSheet";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
@@ -14,7 +14,7 @@ import { enableNotifications, readNotificationPermission, type NotificationPermi
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { dateKey } from "../utils/progressAnalytics";
 import { getTodayProgress } from "../services/dailyProgressService";
-import { openAlarmSettings } from "../services/notificationPermissionService";
+import { openAlarmSettings, openNotificationSettings } from "../services/notificationPermissionService";
 import { afterTransition } from "../utils/afterTransition";
 
 export default function SettingsScreen() {
@@ -24,7 +24,8 @@ export default function SettingsScreen() {
   const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer();
   const [sheet, setSheet] = useState<"signout" | "notifications" | "goal" | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
-  const [goalData, setGoalData] = useState<DailyGoalSettings | null>(null);
+  const [loadedGoalData, setGoalData] = useState<DailyGoalSettings | null>(null);
+  const goalData = loadedGoalData?.user_id === profile.id ? loadedGoalData : null;
   const [goalError, setGoalError] = useState("");
   const [savedTodayGoal, setSavedTodayGoal] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
@@ -32,10 +33,13 @@ export default function SettingsScreen() {
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const lock = useRef(false);
   const goalGeneration = useRef(0), permissionGeneration = useRef(0);
+  const goalOwner = useRef(profile.id);
+  useLayoutEffect(() => { goalOwner.current = profile.id; goalGeneration.current++; }, [profile.id]);
   const loadGoal = useCallback(async () => {
     const request = ++goalGeneration.current;
+    setGoalData(null); setGoalError("Checking your latest goal schedule...");
     try {
-      const data = await getDailyGoalSettings();
+      const data = await getDailyGoalSettings(profile.id);
       if (request === goalGeneration.current) { setGoalData(data); setGoalError(""); }
     } catch (failure) {
       // Stored daily targets remain authoritative even without the editing API.
@@ -44,11 +48,11 @@ export default function SettingsScreen() {
         setSavedTodayGoal(today?.goal_minutes ?? null);
         setGoalData(null);
         setGoalError(missingGoalAPI(failure)
-          ? "Your daily goal is read-only. Goal changes are not available yet."
-          : "Could not check goal editing availability. Your current goal is unchanged.");
+          ? "Goal settings are temporarily unavailable. Please try again later."
+          : "Could not check your goal. Reconnect and try again.");
       }
     }
-  }, [profile.timezone]);
+  }, [profile.id, profile.timezone]);
   const refreshPermission = useCallback(async () => {
     const request = ++permissionGeneration.current;
     const result = await readNotificationPermission();
@@ -80,15 +84,19 @@ export default function SettingsScreen() {
     const minutes = parseDailyGoal(draft), validation = validateDailyGoal(minutes);
     if (validation) { setError(validation); return; }
     lock.current = true; setBusy(true); setError("");
+    const request = goalGeneration.current, owner = profile.id;
     try {
-      const result = await scheduleDailyGoal(minutes);
+      const result = await scheduleDailyGoal(minutes, profile.id);
+      if (request !== goalGeneration.current || owner !== goalOwner.current) return;
       goalGeneration.current++; setGoalData(result); setGoalError("");
       setSavedGoal(`Your ${result.next_goal_minutes}-minute goal starts on ${result.next_effective_date} in ${result.timezone}. Today's target and previous achievements stay unchanged.`);
     } catch (failure) {
+      if (owner !== goalOwner.current) return;
+      setGoalData(null);
       if (missingGoalAPI(failure)) {
         setGoalData(null);
-        setGoalError("Your daily goal is read-only. Goal changes are not available yet.");
-      } else setError("Could not schedule your goal. Your current goal is unchanged. Check your connection and try again later.");
+        setGoalError("Goal settings are temporarily unavailable. Please try again later.");
+      } else { setGoalError("Check your latest goal schedule before trying again."); setError("Could not schedule or confirm your goal change. A delayed change may still arrive. Check the current schedule before choosing another goal."); }
       void loadGoal();
     }
     finally { lock.current = false; setBusy(false); }
@@ -102,35 +110,34 @@ export default function SettingsScreen() {
         const result = await enableNotifications();
         if (request === permissionGeneration.current) setPermission(result);
         else await refreshPermission();
-      } else if (permission.action === "settings") await Linking.openSettings();
+      } else if (permission.action === "settings") await openNotificationSettings();
       else await refreshPermission();
     } catch { setError("Could not update notification permission. Try again or check your phone settings."); }
     finally { lock.current = false; setBusy(false); }
   };
   const open = (next: typeof sheet) => {
     if (lock.current) return;
-    if (next === "goal" && (!goalData?.scheduling_available || !goalData.weekly_limit_available || !goalData.can_change_goal || goalError)) return;
     setError(""); setSheet(next);
     if (next === "goal") { setDraft(String(goalData?.next_goal_minutes ?? profile.daily_goal_minutes)); setSavedGoal(""); void loadGoal(); }
     if (next === "notifications") void refreshPermission();
   };
   const canEditGoal = !!goalData?.scheduling_available && goalData.weekly_limit_available && goalData.can_change_goal && !goalError;
-  const goalAvailability = goalData?.weekly_limit_available && goalData.next_change_at && !goalData.can_change_goal
+  const goalAvailability = goalData?.scheduling_available && goalData.weekly_limit_available && goalData.next_change_at && !goalData.can_change_goal
     ? `You can change your goal again on ${new Intl.DateTimeFormat(undefined, { timeZone: profile.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(goalData.next_change_at))}.`
-    : "Your daily goal is read-only. Goal changes are not available yet.";
+    : "Goal settings are temporarily unavailable. Please try again later.";
   const goalSummary = goalData
     ? `Today: ${goalData.today_goal_minutes} min${goalData.pending ? ` · ${goalData.next_goal_minutes} min from ${goalData.next_effective_date}` : ""}`
     : `Today: ${savedTodayGoal ?? profile.daily_goal_minutes} min`;
   return (
-    <PersonalPage title="Settings" subtitle="Make focus feel right for you." back animateTransition expandFromIcon>
+    <PersonalPage title="Settings" subtitle="Make LifeRPG feel right for you." back animateTransition expandFromIcon>
       <View style={sectionStyle}>
         <Text style={p.label}>Account</Text>
       <PersonalRow icon="person-circle-outline" title={profile.username} subtitle={user?.email ?? "Signed in"} />
         <View style={p.divider} />
       </View>
       <View style={sectionStyle}>
-        <Text style={p.label}>Focus & feedback</Text>
-        <PersonalRow icon="flag-outline" title="Daily focus goal" subtitle={goalSummary} onPress={canEditGoal ? () => open("goal") : undefined} />
+        <Text style={p.label}>Goals & feedback</Text>
+        <PersonalRow icon="flag-outline" title="Daily goal" subtitle={goalSummary} onPress={() => open("goal")} />
         {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
         <PersonalRow icon="phone-portrait-outline" title="Haptic feedback" subtitle="Gentle feedback when you interact"
@@ -142,7 +149,7 @@ export default function SettingsScreen() {
         <Text style={p.label}>Help & notifications</Text>
         <PersonalRow icon="notifications-outline" title="Notifications" subtitle={permission?.label ?? "Checking permission..."} onPress={() => open("notifications")} />
         <View style={p.divider} />
-        <PersonalRow icon="information-circle-outline" title="How LifeRPG works" subtitle="Focus, growth, goals and consistency" onPress={() => router.navigate("./guide")} />
+        <PersonalRow icon="information-circle-outline" title="How LifeRPG works" subtitle="Sessions, growth, goals and consistency" onPress={() => router.navigate("./guide")} />
       </View>
 
       <View style={sectionStyle}>
@@ -151,10 +158,10 @@ export default function SettingsScreen() {
           subtitle={sessionBlocksLogout ? "Finish or end your session first" : "Your saved progress stays with your account"} onPress={() => open("signout")} />
       </View>
       <Text style={p.caption}>LifeRPG · Your effort, reflected. Character attributes describe recorded practice and consistency.</Text>
-      <AppSheet label={sheet === "signout" ? "Sign out" : sheet === "goal" ? "Daily focus goal" : "Notifications"}
+      <AppSheet label={sheet === "signout" ? "Sign out" : sheet === "goal" ? "Daily goal" : "Notifications"}
         motionMode="timed" compact
         visible={sheet !== null} guardDismiss={busy} onRequestClose={() => { if (!busy) setSheet(null); }}
-        header={<View style={p.sheetHeader}><Text style={p.title}>{sheet === "signout" ? "Sign out of LifeRPG?" : sheet === "goal" ? "Daily focus goal" : "Session notifications"}</Text></View>}>
+        header={<View style={p.sheetHeader}><Text style={p.title}>{sheet === "signout" ? "Sign out of LifeRPG?" : sheet === "goal" ? "Daily goal" : "Session notifications"}</Text></View>}>
         <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={p.sheetBody}>
           {sheet === "signout" ? <>
             <Text style={p.body}>{sessionBlocksLogout
@@ -172,22 +179,23 @@ export default function SettingsScreen() {
                 <Text style={p.body}>Today: {goalData.today_goal_minutes} minutes. Changes start on {goalData.next_effective_date} in {goalData.timezone}.</Text>
                 <Text style={p.body}>The target for today and historical achievements stay unchanged. Editing a goal does not award or remove rewards or streaks.</Text>
                 <Text style={p.body}>Choose at least 30 minutes per day. You can change this once every seven days.</Text>
-                <BottomSheetTextInput accessibilityLabel="Daily focus goal in minutes" style={p.input} keyboardType="number-pad"
+                <BottomSheetTextInput accessibilityLabel="Daily goal in minutes" style={p.input} keyboardType="number-pad"
                   value={draft} onChangeText={value => { setDraft(value); setSavedGoal(""); }} editable={!busy} maxLength={3}
                   placeholder="Minutes (30-480)" placeholderTextColor={colors.muted} />
                 <PersonalButton title={busy ? "Saving..." : "Save daily goal"} disabled={busy || !!savedGoal} onPress={() => void saveGoal()} />
               </>}
+            {!!goalError && <PersonalButton secondary title="Retry goal check" disabled={busy} onPress={() => void loadGoal()} />}
           </> : <>
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
             {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
-              <Text style={p.body}>For background timer alerts, allow Notifications and Alarms & reminders in your phone’s special app access. These are separate permissions. Battery restrictions can delay alerts.</Text>
+              <Text style={p.body}>Notifications and Alarms & reminders are separate permissions. Open LifeRPG’s app settings, then allow Alarms & reminders. Battery restrictions can delay alerts.</Text>
               <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
               <Text style={p.body}>{permission?.supported ? "Turn the Alarms & reminders switch on for LifeRPG. Then return here to check notification access." : "Check both switches for Expo Go in this preview. Test background alerts with an installed LifeRPG build; this preview cannot verify the alarm switch."}</Text>
             </>}
             {permission?.supported && <Text style={p.body}>Phone permissions control whether session alerts can appear. Permission being allowed does not guarantee delivery; phone settings and battery restrictions can affect alerts.</Text>}
             {permission?.action && <PersonalButton title={busy ? "Please wait..." : permission.action === "enable" ? "Enable notifications" : permission.action === "settings" ? "Open phone settings" : "Retry permission check"}
               disabled={busy} onPress={() => void notificationAction()} />}
-            {!permission?.supported && <PersonalButton title="Notification settings" accessibilityLabel="Open phone notification settings" onPress={() => { void Linking.openSettings().catch(() => setError("Couldn’t open phone settings.")); }} />}
+            {!permission?.supported && <PersonalButton title="Notification settings" accessibilityLabel="Open phone notification settings" onPress={() => { void openNotificationSettings().catch(() => setError("Couldn’t open phone settings.")); }} />}
           </>}
           {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
         </BottomSheetScrollView>

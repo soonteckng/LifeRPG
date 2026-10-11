@@ -48,6 +48,7 @@ export default function GuidedChoice({ value, onChange, disabled = false }: Choi
       {direction(true, "Help me choose a focus", "A small starting point for work, learning or everyday life.", "Suggestions")}
       {direction(false, "Just let me focus", "Start with Everyday focus. You can choose another area on Home.", "Free focus")}
     </View>
+    {!value.enabled && <View style={[s.row, s.selected]}><Ionicons name="ellipse" size={12} color={FOCUS_AREAS[0].color} /><View style={s.detail}><Text style={s.title}>Everyday focus</Text><Text style={s.body}>A space for whatever matters today. Start here, or choose another area on Home.</Text></View></View>}
     {value.enabled && <><View style={s.section}><Text style={s.heading}>Choose a direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} /></View>
       <View style={s.section}><Text style={s.heading}>Your starting point</Text>{focusOptions(value.need).map(task => {
         const title = STUDY_NEEDS.find(need => need.id === task.need)?.title ?? task.title;

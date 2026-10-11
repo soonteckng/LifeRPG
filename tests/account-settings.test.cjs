@@ -22,6 +22,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
+      if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
@@ -151,6 +153,7 @@ async function settings(options = {}) {
     } },
     "../services/notificationPermissionService": {
       readNotificationPermission: async () => { reads++; return options.permission?.(reads) ?? { label: "Not allowed", action: "enable", supported: true }; },
+      openNotificationSettings: async () => { phoneCalls++; },
       enableNotifications: async () => { enableCalls++; return { label: "Allowed on this device", action: "settings", supported: true }; },
     },
     "../services/dailyProgressService": { getTodayProgress: async () => options.savedGoal ? { goal_minutes: options.savedGoal } : null },
@@ -173,7 +176,7 @@ test("Settings starts with identity, separates logout and contains no inert Moti
     assert.doesNotMatch(ui.text(), /Edit profile/);
     assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction/);
     assert.doesNotMatch(ui.text(), /Motion|EAS|Expo Go|native build|widgets/);
-    await ui.press("How LifeRPG worksFocus, growth, goals and consistency");
+    await ui.press("How LifeRPG worksSessions, growth, goals and consistency");
     assert.deepEqual(ui.calls().navigate, ["./guide"]);
   } finally { await ui.cleanup(); }
 });
@@ -181,11 +184,11 @@ test("goal editor validates, submits once and explains next-local-day without ch
   const wait = defer();
   const ui = await settings({ wait: wait.promise });
   try {
-    await ui.press("Daily focus goalToday: 60 min");
-    await ui.input("Daily focus goal in minutes", "0");
+    await ui.press("Daily goalToday: 60 min");
+    await ui.input("Daily goal in minutes", "0");
     await ui.press("Save daily goal");
     assert.equal(ui.calls().saveCalls, 0);
-    await ui.input("Daily focus goal in minutes", "30");
+    await ui.input("Daily goal in minutes", "30");
     let first;
     await act(async () => {
       const button = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Save daily goal");
@@ -202,8 +205,8 @@ test("goal editor validates, submits once and explains next-local-day without ch
 test("goal save failure preserves the draft and exposes retry without a successful outcome", async () => {
   const ui = await settings({ saveError: true });
   try {
-    await ui.press("Daily focus goalToday: 60 min");
-    await ui.input("Daily focus goal in minutes", "45");
+    await ui.press("Daily goalToday: 60 min");
+    await ui.input("Daily goal in minutes", "45");
     await ui.press("Save daily goal");
     assert.match(ui.text(), /Could not schedule/);
     assert.doesNotMatch(ui.text(), /Your 45-minute goal starts/);
@@ -214,9 +217,9 @@ test("missing or unconfirmed goal capability stays read-only without a broken ed
   for (const options of [{ loadError: true }, { noCapability: true }, { goal: { weekly_limit_available: false } }]) {
     const ui = await settings(options);
     try {
-      const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily focus goalToday: 60 min");
-      assert.equal(row.props.onPress, undefined);
-      assert.match(ui.text(), /read-only/);
+      const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily goalToday: 60 min");
+      assert.equal(typeof row.props.onPress, "function");
+      assert.match(ui.text(), /temporarily unavailable/);
       assert.doesNotMatch(ui.text(), /Retry goal loading|Save daily goal/);
       assert.equal(ui.calls().saveCalls, 0);
       await ui.foreground();
@@ -228,11 +231,36 @@ test("missing or unconfirmed goal capability stays read-only without a broken ed
 test("weekly cooldown prevents editing and displays the server's next allowed time", async () => {
   const ui = await settings({ goal: { can_change_goal: false, next_change_at: "2026-10-10T10:00:00Z" } });
   try {
-    const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily focus goalToday: 60 min");
-    assert.equal(row.props.onPress, undefined);
+    const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily goalToday: 60 min");
+    assert.equal(typeof row.props.onPress, "function");
+    await act(async () => row.props.onPress());
+    assert.equal(ui.renderer.root.findAllByType("Input").length, 0);
     assert.match(ui.text(), /change your goal again/);
     assert.equal(ui.calls().saveCalls, 0);
   } finally { await ui.cleanup(); }
+});
+
+test("goal scheduling verifies the intended account before making a write", async () => {
+  let writes = 0;
+  const api = load("src/services/dailyGoalService.ts", {
+    "../../lib/supabase": { supabase: {
+      auth: { getUser: async () => ({ data: { user: { id: "other" } }, error: null }) },
+      rpc: async () => { writes++; return { data: goalData, error: null }; },
+    } },
+  });
+  await assert.rejects(() => api.scheduleDailyGoal(75, "account"), /Confirm your account/);
+  assert.equal(writes, 0);
+});
+
+test("goal reads and saved schedules never accept another account's response", async () => {
+  const api = load("src/services/dailyGoalService.ts", {
+    "../../lib/supabase": { supabase: {
+      auth: { getUser: async () => ({ data: { user: { id: "account" } }, error: null }) },
+      rpc: async () => ({ data: { ...goalData, user_id: "other" }, error: null }),
+    } },
+  });
+  await assert.rejects(() => api.getDailyGoalSettings("account"), /account changed/);
+  await assert.rejects(() => api.scheduleDailyGoal(75, "account"), /account changed/);
 });
 
 test("older goal APIs fail closed for weekly editing while legacy daily targets remain readable", async () => {
@@ -249,7 +277,7 @@ test("Settings keeps the saved target for today when goal editing is unavailable
   const ui = await settings({ loadError: true, savedGoal: 90 });
   try {
     assert.match(ui.text(), /Today: 90 min/);
-    assert.match(ui.text(), /read-only/);
+    assert.match(ui.text(), /temporarily unavailable/);
     assert.equal(ui.calls().saveCalls, 0);
   } finally { await ui.cleanup(); }
 });

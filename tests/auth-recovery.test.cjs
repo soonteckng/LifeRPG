@@ -47,6 +47,7 @@ const session = { user: { id: "account-a" }, access_token: "fixture", refresh_to
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; };
 async function provider(options = {}) {
   let value, authListener, linkListener, stored = options.marker ?? null;
+  const presentation = new Map();
   const calls = [], writes = [];
   const auth = {
     getUser: async () => ({ data: { user: session.user }, error: null }),
@@ -93,9 +94,9 @@ async function provider(options = {}) {
       addEventListener: (_, fn) => { linkListener = fn; return { remove() {} }; },
     },
     "@react-native-async-storage/async-storage": {
-      getItem: async () => stored,
-      setItem: async (_, data) => { if (options.storageError) throw Error("Storage failed"); stored = data; writes.push(data); },
-      removeItem: async () => { stored = null; writes.push(null); },
+      getItem: async key => key === recovery.recoveryStorageKey ? stored : presentation.get(key) ?? null,
+      setItem: async (key, data) => { if (options.storageError) throw Error("Storage failed"); if (key === recovery.recoveryStorageKey) { stored = data; writes.push(data); } else presentation.set(key, data); },
+      removeItem: async key => { if (key === recovery.recoveryStorageKey) { stored = null; writes.push(null); } else presentation.delete(key); },
     },
   });
   function Consumer() { value = module.useAuth(); return null; }
@@ -235,6 +236,8 @@ const native = {
   View: host("View"), Text: host("Text"), TextInput: host("Input"),
   Pressable: host("Button"), ScrollView: host("Scroll"), KeyboardAvoidingView: host("Keyboard"),
   ActivityIndicator: host("Spinner"), Platform: { OS: "android" },
+  Keyboard: { dismiss() {} },
+  Animated: { Value: class { setValue() {} }, View: host("Animated"), timing: () => ({ start() {}, stop() {} }) },
 };
 const personalUI = { p: {}, PersonalButton: host("Button") };
 async function recoveryScreen(auth, props = {}, options = {}) {
@@ -244,6 +247,7 @@ async function recoveryScreen(auth, props = {}, options = {}) {
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "./PersonalUI": personalUI,
     "../context/AuthContext": { useAuth: () => auth },
+    "../hooks/useReducedMotion": { useReducedMotion: () => true },
   }).default;
   let renderer;
   await act(async () => { renderer = create(React.createElement(Component, props), {
@@ -311,13 +315,16 @@ test("recovery errors are inline once and reveal their field through keyboard an
     const place = (node, y, height) => node.props.onLayout({ nativeEvent: { layout: { x: 0, y, width: 272, height } } });
     try {
       const keyboard = ui.renderer.root.findByType("Keyboard");
-      assert.equal(keyboard.props.behavior, os === "ios" ? "padding" : "height");
+      assert.equal(keyboard.props.behavior, os === "ios" ? "padding" : undefined);
+      assert.equal(keyboard.props.enabled, os === "ios");
       assert.equal(keyboard.props.keyboardVerticalOffset, 24);
       const scroll = ui.renderer.root.findByType("Scroll");
       assert.equal(scroll.props.keyboardShouldPersistTaps, "handled");
       assert.equal(scroll.props.keyboardDismissMode, "none");
       assert.equal(scroll.props.contentContainerStyle.flexGrow, 1);
-      assert.equal(scroll.findAllByType("Text").some(n => n.props.accessibilityRole === "header"), false);
+      assert.equal(scroll.findAllByType("Text").some(n => n.props.accessibilityRole === "header"), true);
+      assert.equal(scroll.props.automaticallyAdjustKeyboardInsets, false);
+      scrolls.length = 0;
       await ui.input("New password", "short");
       await ui.input("Confirm new password", "short");
       await act(async () => {
@@ -479,6 +486,22 @@ async function rootAdmissionScreen(initial) {
 const localAuthSnapshot = () => ({ user: null, localOwner: { id: "local-owner", backendId: "fixture.supabase.co" }, loading: false,
   recovery: "none", accessMode: "local-only", admissionEpoch: 1, sessionError: false,
   retrySessionVerification: async () => {}, signOut: async () => ({ error: null }) });
+
+test("root chooses the remembered auth form only after recovery and owner admission have been resolved", async () => {
+  for (const authEntryMode of ["sign-up", "sign-in"]) {
+    const ui = await rootAdmissionScreen({ ...localAuthSnapshot(), localOwner: null, accessMode: "signed-out", authEntryMode });
+    try {
+      assert.equal(ui.root().findByType("Login").props.initialMode, authEntryMode);
+      assert.equal(ui.counts.userMounts, 0); assert.equal(ui.counts.timerMounts, 0);
+      await ui.update({ user: { id: "verified-owner" }, accessMode: "online" });
+      assert.equal(ui.root().findAllByType("Login").length, 0);
+      assert.equal(ui.root().findAllByType("Stack").length, 1);
+      await ui.update({ recovery: "ready" });
+      assert.equal(ui.root().findAllByType("Recovery").length, 1);
+      assert.equal(ui.root().findAllByType("Stack").length, 0);
+    } finally { await ui.cleanup(); }
+  }
+});
 
 test("root admits a local-only owner with no verified user and keeps editable tabs and reward listener absent", async () => {
   const ui = await rootAdmissionScreen({ ...localAuthSnapshot(), sessionError: true });

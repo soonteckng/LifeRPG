@@ -25,6 +25,21 @@ export interface ProgressDay {
 const DAY = 86400000;
 export const DEFAULT_TIMEZONE = "Asia/Kuala_Lumpur";
 const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+const clockFormatters = new Map<string, Intl.DateTimeFormat>();
+/** Compare matching local clock times, rather than today's partial day with a full earlier day. */
+export function localClockSeconds(date: Date, timeZone: string): number {
+  let formatter = clockFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-GB", {
+      timeZone, hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    });
+    if (clockFormatters.size >= 16) clockFormatters.delete(clockFormatters.keys().next().value!);
+    clockFormatters.set(timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(date);
+  const value = (type: string) => Number(parts.find(part => part.type === type)?.value ?? 0);
+  return value("hour") * 3600 + value("minute") * 60 + value("second");
+}
 export function dateKey(date: Date, timeZone: string): string {
   let formatter = dayFormatters.get(timeZone);
   if (!formatter) {
@@ -155,11 +170,15 @@ export function buildProgress(
       daysBetween(period.previousStart, period.previousEnd),
     ) + 1;
   const previousCutoff = shiftDay(period.previousStart, comparisonDays - 1);
+  const partialPeriod = period.start <= period.today && period.today <= period.end;
+  const cutoffClock = localClockSeconds(now, timeZone);
   const comparisonSeconds = days
     .filter((d) => d.key <= shiftDay(period.start, comparisonDays - 1))
     .reduce((sum, d) => sum + d.seconds, 0);
   const previousSeconds = local
-    .filter((s) => s.key >= period.previousStart && s.key <= previousCutoff)
+    .filter((s) => s.key >= period.previousStart && s.key <= previousCutoff
+      && (!partialPeriod || s.key < previousCutoff
+        || localClockSeconds(new Date(s.session.completed_at!), timeZone) <= cutoffClock))
     .reduce((sum, s) => sum + s.session.duration_seconds, 0);
   const groups = new Map<
     string,
@@ -200,7 +219,41 @@ export function buildProgress(
     previousCutoff,
     comparisonSeconds,
     comparisonDays,
+    partialPeriod,
   };
+}
+
+export type ProgressAnalytics = ReturnType<typeof buildProgress>;
+
+export function progressHeroDay(
+  analytics: ProgressAnalytics,
+  period: ProgressPeriod,
+  selectedKey: string | null,
+): ProgressDay | undefined {
+  const selected = analytics.days.find(day => day.key === selectedKey);
+  if (selected) return selected;
+  return analytics.days.find(day => day.key === period.today)
+    ?? [...analytics.days].reverse().find(day => day.sessions.length > 0)
+    ?? analytics.days.at(-1);
+}
+
+/** Ongoing periods describe what is recorded without judging an unfinished day. */
+export function progressPeriodMessage(analytics: ProgressAnalytics, period: ProgressPeriod): string {
+  const count = analytics.sessions.length;
+  if (!count) return `Your next completed session will begin this ${period.mode}'s record.`;
+  if (analytics.partialPeriod && analytics.comparisonDays === 1)
+    return `A new ${period.mode}, ${count === 1 ? "one session" : `${count} sessions`} finished. There is time ahead.`;
+  const comparison = analytics.previousSeconds > 0
+    ? Math.round((analytics.comparisonSeconds - analytics.previousSeconds) / analytics.previousSeconds * 100)
+    : null;
+  // A percentage based on a tiny earlier sample is noisy, even when technically comparable.
+  const enoughHistory = analytics.previousSeconds >= 300;
+  if (enoughHistory && comparison !== null && (!analytics.partialPeriod || comparison > 0)) {
+    if (!comparison) return `The same recorded effort as the previous ${period.mode}.`;
+    const scope = analytics.partialPeriod ? `this point in the previous ${period.mode}` : `the same days of the previous ${period.mode}`;
+    return `${Math.abs(comparison)}% ${comparison > 0 ? "more" : "less"} recorded effort than ${scope}.`;
+  }
+  return `${count} ${count === 1 ? "session" : "sessions"} finished across ${analytics.activeDays} ${analytics.activeDays === 1 ? "day" : "days"}. Each completed session counts.`;
 }
 
 

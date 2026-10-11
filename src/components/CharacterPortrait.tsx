@@ -4,10 +4,10 @@ import CharacterArt from "./CharacterArt";
 import { characterLook } from "../utils/characterAppearance";
 import { useCharacterMotion } from "../hooks/useCharacterMotion";
 
-export default function CharacterPortrait({ avatar, level = 1, developed = 0, size = 176, animate = true, interactive = true }: {
-  avatar: string; level?: number; developed?: number; size?: number; animate?: boolean; interactive?: boolean;
+export default function CharacterPortrait({ avatar, level = 1, developed = 0, size = 176, animate = true, interactive = true, greetOnFocus = false }: {
+  avatar: string; level?: number; developed?: number; size?: number; animate?: boolean; interactive?: boolean; greetOnFocus?: boolean;
 }) {
-  const motion = useCharacterMotion(animate), look = characterLook(avatar);
+  const motion = useCharacterMotion(animate, greetOnFocus), look = characterLook(avatar);
   const [expression, setExpression] = useState(0);
   const art = <CharacterArt avatar={avatar} size={size} expression={expression} bodyStyle={motion.bodyStyle} eyeStyle={motion.eyeStyle} armStyle={motion.armStyle} />;
   if (!interactive) return <View style={{ width: size, height: size, alignSelf: "center" }} importantForAccessibility="no-hide-descendants">{art}</View>;

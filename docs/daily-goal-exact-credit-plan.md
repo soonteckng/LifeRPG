@@ -1,0 +1,15 @@
+# Weekly daily-goal changes
+
+This is an unapplied proposal. Applying either SQL file to the live database requires the user's explicit approval.
+
+`daily-goal-exact-credit.sql` creates an owner-scoped goal ledger and three authenticated RPCs. A completed-onboarding account may choose 30 through 480 minutes once every 168 elapsed hours. The change starts at the next local calendar day in the profile's time zone. Today and existing daily records keep their stored targets. A settings response includes today's target, tomorrow's target, the effective date, pending status and the next eligible change time.
+
+The ledger has RLS and authenticated SELECT only. Client INSERT, UPDATE and DELETE are denied. The scheduler identifies the account through `auth.uid()`, requires completed onboarding, validates bounds and locks its profile before rereading the cooldown. Read-committed isolation is required so a retained transaction snapshot cannot bypass the newly saved ledger row. A trigger prevents direct changes to an onboarded account's baseline goal, including under legacy grants. Initial onboarding can still select an in-range baseline.
+
+Installation guards the exact inspected completion definition with MD5 `f1610035d1eaeddcd2a9108eadcd8e33`. Its only completion edits replace the two baseline goal assignments with the saved-date resolver. Server duration checks, planned-duration caps, ownership checks, row locks, exact second credit, character and area XP banks, linked-quest completion and immutable duplicate receipts remain byte-for-byte identical. The transaction aborts on definition drift. No saved profile balances, daily rows, quests or sessions are rewritten by installation.
+
+The rollback proposal pauses new scheduling and advertises it as unavailable. It retains accepted ledger entries, pending effective dates, the resolver, profile guard and patched completion function. Returning to the original baseline resolver would incorrectly discard already accepted future goals, so the rollback intentionally preserves those dates and all history.
+
+Disposable PGlite tests reproduce the inspected completion hash from the normalized-LF snapshot and execute the actual proposal and rollback. Coverage includes the exact two-assignment patch, inclusive bounds and null rejection, 168-hour boundary, account isolation, onboarding, anonymous access, RLS/write grants, direct baseline edits, time-zone tomorrow boundaries, saved historical targets, active server-timed duration caps, exact XP remainders, duplicate completion receipts and transactional drift abort.
+
+PGlite uses one connection. It does not prove simultaneous PostgreSQL transaction scheduling. Before public release, use two real connections to the disposable fixture: begin a scheduling call on account A and hold its transaction; start a second scheduling call for the same account; commit the first; the second must reject the 168-hour cooldown after acquiring the profile lock. Verify exactly one accepted ledger row. Repeat with different accounts and confirm their changes remain independent.

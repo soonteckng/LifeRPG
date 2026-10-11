@@ -9,6 +9,7 @@ import { Text } from "../../components/AppText";
 import ContentReveal from "../../components/ContentReveal";
 import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
+import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { Ionicons } from "@expo/vector-icons";
 import {
@@ -38,6 +39,8 @@ import {
   nextAnchor,
   periodFor,
   previousAnchor,
+  progressHeroDay,
+  progressPeriodMessage,
   type PeriodMode,
 } from "../../utils/progressAnalytics";
 import { sessionCategory } from "../../utils/sessionReporting";
@@ -149,12 +152,13 @@ export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
 
-  const [today, setToday] = useState(() => dateKey(new Date(), timeZone));
+  const [clock, setClock] = useState(() => new Date());
+  const today = dateKey(clock, timeZone);
   const [mode, setMode] = useState<PeriodMode>("week");
   const [anchor, setAnchor] = useState<string | null>(null);
   const period = useMemo(
-    () => periodFor(mode, anchor ?? today, timeZone),
-    [mode, anchor, today, timeZone],
+    () => periodFor(mode, anchor ?? today, timeZone, clock),
+    [mode, anchor, today, timeZone, clock],
   );
   const { data, error, loading, refresh } = useProgressData(
     period,
@@ -169,13 +173,14 @@ export default function ProgressScreen() {
     [data, period, timeZone],
   );
   const [detail, setDetail] = useState<Detail | null>(null);
+  const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedSession, setSelectedSession] =
     useState<ProgressSession | null>(null);
   const sheetScroll =
     useRef<React.ElementRef<typeof BottomSheetScrollView>>(null);
   useEffect(() => {
-    const update = () => setToday(dateKey(new Date(), timeZone));
+    const update = () => setClock(new Date());
     update();
     const interval = setInterval(update, 60000);
     const subscription = AppState.addEventListener("change", (state) => {
@@ -194,6 +199,7 @@ export default function ProgressScreen() {
   };
   const open = (next: Detail) => {
     tick();
+    if (next.kind === "day") setSelectedDayKey(next.key);
     setSelectedSession(null);
     setDetail(next);
     setSheetVisible(true);
@@ -226,20 +232,14 @@ export default function ProgressScreen() {
               day: "numeric",
             })
           : (activeArea?.title ?? "Details");
-  const comparison =
-    analytics && analytics.previousSeconds > 0
-      ? Math.round(
-          ((analytics.comparisonSeconds - analytics.previousSeconds) /
-            analytics.previousSeconds) *
-            100,
-        )
-      : null;
-  const comparisonLabel =
-    comparison === null
-      ? "Your time adds up, one session at a time."
-      : comparison === 0
-        ? "Matching your previous pace."
-        : `${Math.abs(comparison)}% ${comparison > 0 ? "more" : "less"} focus time versus the same days of the previous ${mode}.`;
+  const heroDay = analytics ? progressHeroDay(analytics, period, selectedDayKey) : undefined;
+  const dayLabel = heroDay?.key === today ? "Today’s effort"
+    : heroDay ? `${calendarLabel(heroDay.key, { weekday: "short", month: "short", day: "numeric" })} · recorded effort` : "Recorded effort";
+  const finishedSessions = heroDay?.sessions.length ?? 0;
+  const dayMessage = finishedSessions
+    ? `${finishedSessions} ${finishedSessions === 1 ? "session" : "sessions"} finished${heroDay?.goal?.goal_completed ? " · daily goal reached" : ""}.`
+    : heroDay?.future ? "Time ahead for what matters." : "Complete a session to record your effort here.";
+  const comparisonLabel = analytics ? progressPeriodMessage(analytics, period) : "";
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
@@ -264,6 +264,7 @@ export default function ProgressScreen() {
               key={value}
               onPress={() => {
                 tick();
+                setSelectedDayKey(null);
                 setMode(value);
               }}
               accessibilityRole="tab"
@@ -282,6 +283,7 @@ export default function ProgressScreen() {
             style={s.navButton}
             onPress={() => {
               tick();
+              setSelectedDayKey(null);
               setAnchor(previousAnchor(period));
             }}
             accessibilityRole="button"
@@ -293,6 +295,7 @@ export default function ProgressScreen() {
             style={s.periodCenter}
             onPress={() => {
               tick();
+              setSelectedDayKey(null);
               setAnchor(null);
             }}
             accessibilityRole="button"
@@ -308,6 +311,7 @@ export default function ProgressScreen() {
             disabled={currentPeriod}
             onPress={() => {
               tick();
+              setSelectedDayKey(null);
               setAnchor(nextAnchor(period));
             }}
             accessibilityRole="button"
@@ -360,19 +364,18 @@ export default function ProgressScreen() {
         ) : (
           analytics && (
             <ContentReveal>
-              <View style={s.hero}>
+              <View style={s.hero} testID="progress-day-hero">
+                <Text style={s.caption}>{dayLabel}</Text>
                 <Text
                   style={s.focusValue}
                   adjustsFontSizeToFit
                   minimumFontScale={0.6}
                   numberOfLines={1}
                 >
-                  {durationLabel(analytics.seconds)}
+                  {durationLabel(heroDay?.seconds ?? 0)}
                 </Text>
-                <Text style={s.heroDescription} accessibilityLabel={`${comparisonLabel}${analytics.previousSeconds > 0 ? ` First ${analytics.comparisonDays} days compared; ${durationLabel(analytics.previousSeconds)} previously.` : ""}`}>
-                  {analytics.sessions.length
-                    ? comparisonLabel
-                    : "Make a little space for what matters."}
+                <Text style={s.heroDescription}>
+                  {dayMessage}
                 </Text>
               </View>
               <View style={s.card}>
@@ -414,7 +417,7 @@ export default function ProgressScreen() {
                         </View>
                       </View>
                       <Text
-                        style={[s.dayLabel, day.key === today && s.todayLabel]}
+                        style={[s.dayLabel, day.key === heroDay?.key && s.todayLabel]}
                       >
                         {calendarLabel(
                           day.key,
@@ -435,7 +438,7 @@ export default function ProgressScreen() {
                     <View
                       style={[s.legendDot, { backgroundColor: colors.accent }]}
                     />
-                    <Text style={s.caption}>Dot · focus day</Text>
+                    <Text style={s.caption}>Dot · active day</Text>
                   </View>
                   <View style={s.legendItem}>
                     <View style={[s.legendDot, { backgroundColor: green }]} />
@@ -449,6 +452,13 @@ export default function ProgressScreen() {
                     counts.
                   </Text>
                 )}
+              </View>
+              <View style={s.periodSummary} testID="progress-period-summary">
+                <View style={s.periodSummaryHeading}>
+                  <Text style={s.rowTitle}>{mode === "week" ? "Week total" : "Month total"}</Text>
+                  <Text style={s.periodSummaryValue}>{durationLabel(analytics.seconds)}</Text>
+                </View>
+                <Text style={s.comparisonNote}>{comparisonLabel}</Text>
               </View>
               {mode === "month" && <View style={[s.card, s.calendarCard]}>
                 <View style={s.calendarWeekdays}>
@@ -540,7 +550,7 @@ export default function ProgressScreen() {
               <Pressable
                 onPress={() => open({ kind: "consistency" })}
                 accessibilityRole="button"
-                accessibilityLabel={`${data.streak}-day focus streak. Learn about focus and daily goals`}
+                accessibilityLabel={`${data.streak}-day streak. Learn about completed sessions and daily goals`}
                 style={s.consistency}
               >
                 <View style={s.streakIcon}>
@@ -553,7 +563,7 @@ export default function ProgressScreen() {
                 <View style={s.flex}>
                   <Text style={s.streakNumber}>
                     {data.streak > 0
-                      ? `${data.streak}-day focus streak`
+                      ? `${data.streak}-day streak`
                       : "Your next day starts here"}
                   </Text>
                   <Text style={s.caption}>
@@ -561,7 +571,7 @@ export default function ProgressScreen() {
                       ? "A little time, day after day."
                       : "Complete any session to begin."}
                   </Text>
-                  <Text style={s.caption}>Longest focus streak: {data.longestStreak ?? 0} days</Text>
+                  <Text style={s.caption}>Longest streak: {data.longestStreak ?? 0} days</Text>
                 </View>
                 <Ionicons
                   name="chevron-forward"
@@ -658,11 +668,11 @@ export default function ProgressScreen() {
                   color={colors.accent}
                 />
                 <Text style={s.summaryValue}>{data?.streak ?? 0} days</Text>
-                <Text style={s.rowTitle}>Current focus streak</Text>
+                <Text style={s.rowTitle}>Current streak</Text>
               </View>
-              <View style={s.detailRow}><Text style={s.caption}>Longest focus streak</Text><Text style={s.rowTitle}>{data?.longestStreak ?? 0} days</Text></View>
+              <View style={s.detailRow}><Text style={s.caption}>Longest streak</Text><Text style={s.rowTitle}>{data?.longestStreak ?? 0} days</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Sessions</Text><Text style={s.rowTitle}>{analytics?.sessions.length ?? 0}</Text></View>
-              <View style={s.detailRow}><Text style={s.caption}>Focus days this {mode}</Text><Text style={s.rowTitle}>{analytics?.activeDays ?? 0}</Text></View>
+              <View style={s.detailRow}><Text style={s.caption}>Active days this {mode}</Text><Text style={s.rowTitle}>{analytics?.activeDays ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Goal days this {mode}</Text><Text style={s.rowTitle}>{analytics?.goalDays ?? 0}</Text></View>
               <Text style={s.explainTitle}>Showing up counts</Text>
               <Text style={s.explain}>
@@ -673,12 +683,12 @@ export default function ProgressScreen() {
               <Text style={s.explainTitle}>Keep your rhythm</Text>
               <Text style={s.explain}>
                 Your streak continues across consecutive active days. If you
-                haven’t focused today, yesterday’s streak stays visible until
+                haven’t completed a session today, yesterday’s streak stays visible until
                 today ends. Dates use your account’s time zone ({timeZone}).
               </Text>
               <Text style={s.explainTitle}>Daily goals are a separate win</Text>
               <Text style={s.explain}>
-                A green dot marks a saved daily-goal achievement. Focus time includes every completed second.
+                A green dot marks a saved daily-goal achievement. Recorded effort includes every completed second.
                 Goal credit follows the saved daily record. Older sessions used whole minutes;
                 sessions credited by the new system count seconds and carry leftover seconds toward XP.
                 Historical rewards and achievements stay unchanged.
@@ -716,7 +726,7 @@ export default function ProgressScreen() {
                       <Text style={s.goalStatusText}>
                         {activeDay.goal.goal_completed
                           ? "Daily goal reached"
-                          : `${durationLabel(creditedDailySeconds(activeDay.goal))} of ${activeDay.goal.goal_minutes} min credited`}
+                          : `${dailyGoalRatio(creditedDailySeconds(activeDay.goal), activeDay.goal.goal_minutes)} credited`}
                       </Text>
                     </View>
                   )}
@@ -742,7 +752,7 @@ export default function ProgressScreen() {
                     }
                     body={
                       activeDay?.future
-                        ? "Your next moments of focus will appear here."
+                        ? "Your next completed sessions will appear here."
                         : "Each completed session will become part of your story."
                     }
                   />
@@ -813,7 +823,7 @@ const s = StyleSheet.create({
   periodTitle: { color: colors.secondary, fontWeight: "500", fontSize: 15 },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
   hero: {
-    paddingTop: 8, paddingBottom: 10,
+    paddingTop: 4, paddingBottom: 6,
   },
   focusValue: {
     color: colors.text,
@@ -835,6 +845,9 @@ const s = StyleSheet.create({
     lineHeight: 17,
     marginTop: 4,
   },
+  periodSummary: { paddingTop: 16, gap: 3 },
+  periodSummaryHeading: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  periodSummaryValue: { color: colors.text, fontSize: 19, lineHeight: 26, fontWeight: "500", fontVariant: ["tabular-nums"] },
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",

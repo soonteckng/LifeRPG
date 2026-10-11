@@ -7,7 +7,7 @@ function load(file,mocks={},cache=new Map()){
  const filename=path.resolve(__dirname,'..',file);if(cache.has(filename))return cache.get(filename).exports;
  const module={exports:{}};cache.set(filename,module);const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
-  if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
+  if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvite');if(name==='expo-constants')return {expoConfig:{android:{package:'com.soonteck.liferpg'}}};if(name==='expo')return {isRunningInExpoGo:()=>false};if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvitation');if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
   if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
  },module,module.exports);return module.exports;
 }
@@ -36,10 +36,21 @@ test('animated secondary-page exit preserves navigation to Home for the quick to
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Guide',subtitle:'',back:true,animateTransition:true},'Guide'));});
  try{await act(async()=>prevent({data:{action}}));assert.equal(dispatched.length,0);await act(async()=>finish({finished:true}));assert.deepEqual(dispatched,[action]);}finally{await act(async()=>tree.unmount());}
 });
-test('Android exact-alarm settings use special access and fall back to app settings',async()=>{
+test('alarm settings open the current app without sending users to an unscoped application list',async()=>{
+ const calls=[];
+ const api=load('src/services/notificationPermissionService.ts',{'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async action=>calls.push(action),openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
+ await api.openAlarmSettings();assert.deepEqual(calls,['app-settings']);
+});
+test('Android notification settings target LifeRPG and fall back to its app page on unsupported phones',async()=>{
  const calls=[];let fail=false;
- const api=load('src/services/notificationPermissionService.ts',{'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async action=>{calls.push(action);if(fail)throw Error('Unavailable');},openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
- await api.openAlarmSettings();assert.deepEqual(calls,['android.settings.REQUEST_SCHEDULE_EXACT_ALARM']);fail=true;await api.openAlarmSettings();assert.equal(calls.at(-1),'app-settings');
+ const api=load('src/services/notificationPermissionService.ts',{'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async (action,extra)=>{calls.push({action,extra});if(fail)throw Error('Unsupported');},openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
+ await api.openNotificationSettings();assert.deepEqual(calls[0],{action:'android.settings.APP_NOTIFICATION_SETTINGS',extra:[{key:'android.provider.extra.APP_PACKAGE',value:'com.soonteck.liferpg'}]});
+ fail=true;await api.openNotificationSettings();assert.equal(calls.at(-1),'app-settings');
+});
+test('notification settings in Expo Go target the preview application instead of another LifeRPG install',async()=>{
+ const calls=[];
+ const api=load('src/services/notificationPermissionService.ts',{'expo':{isRunningInExpoGo:()=>true},'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async()=>calls.push('intent'),openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
+ await api.openNotificationSettings();assert.deepEqual(calls,['app-settings']);
 });
 test('notification actions share fixed typography and preserve descriptive accessibility labels',async()=>{
  const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},StyleSheet:{create:value=>value}},'expo-router':{},'expo-router/react-navigation':{},'react-native-safe-area-context':{},'@expo/vector-icons':{},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header')});
@@ -61,10 +72,11 @@ test('daily goal sheet validates the minimum and prevents duplicate schedule wri
  }finally{await act(async()=>tree.unmount());}
 });
 
-async function tourHarness({ failure, reduced = false, receipt = 'pending', actualScroll = false } = {}) {
+async function tourHarness({ failure, reduced = false, receipt = 'pending', actualScroll = false, invitation = null } = {}) {
  const saved={setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
  let now=0,serial=0,tree,tour,back,changeRoute,pathname='/',owner='alice',attempts=0,targetY=700;
  const timers=new Map(),animations=[],routes=[],scrolls=[],events=[],geometry=new Map(),receipts=new Map(receipt?[['liferpg:tour:v1:alice',receipt]]:[]);
+ if(invitation)receipts.set('liferpg:notification-intro:v1:alice',invitation);
  global.setTimeout=(callback,delay=0)=>{const id=++serial;timers.set(id,{callback,at:now+delay});return id;};global.clearTimeout=id=>timers.delete(id);
  const advance=async ms=>{const end=now+ms;let turns=0;while(true){const next=[...timers].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;if(++turns>200)throw Error('Timer loop');now=next[1].at;timers.delete(next[0]);await act(async()=>next[1].callback());}now=end;};
  class Value { constructor(value){this.value=value;}setValue(value){this.value=value;}interpolate(config){return {source:this,config};} }
@@ -80,7 +92,7 @@ async function tourHarness({ failure, reduced = false, receipt = 'pending', actu
  await act(async()=>{tree=create(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture)),{createNodeMock:element=>({measureInWindow:done=>{if(failure==='root')return;element.props.testID==='tour-root'?done(0,-24,390,824):done(20,targetY,350,100);}})});});
  await act(async()=>tree.root.findByProps({testID:'tour-root'}).props.onLayout());
  const button=label=>tree.root.findAllByType('Button').find(node=>node.props.accessibilityLabel===label);
- return {api,tree,animations,routes,scrolls,events,receipts,late,advance,button,layout:async(id,rect)=>act(async()=>{geometry.set(id,rect);tour.layoutChanged(id);}),reportDock:async height=>act(async()=>tour.reportDock(height)),text:()=>tree.root.findAllByType('Text').map(n=>n.children.join('')).join(' '),attempts:()=>attempts,press:async label=>act(async()=>button(label).props.onPress()),back:async()=>act(async()=>back()),owner:async value=>{owner=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
+ return {api,tree,animations,routes,scrolls,events,receipts,late,advance,button,replay:async()=>act(async()=>tour.start()),layout:async(id,rect)=>act(async()=>{geometry.set(id,rect);tour.layoutChanged(id);}),reportDock:async height=>act(async()=>tour.reportDock(height)),text:()=>tree.root.findAllByType('Text').map(n=>n.children.join('')).join(' '),attempts:()=>attempts,press:async label=>act(async()=>button(label).props.onPress()),back:async()=>act(async()=>back()),owner:async value=>{owner=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
   finish:async item=>act(async()=>{item.value.setValue(item.config.toValue);item.callback?.({finished:true});}),
   cleanup:async()=>{await act(async()=>tree.unmount());Object.assign(global,saved);},
  };
@@ -290,4 +302,34 @@ test('tour reveal uses one native animated scroll and waits before attaching its
   await ui.advance(880);assert.equal(ui.scrolls.length,1);assert.equal(ui.scrolls[0].animated,true);assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0,'no outline on an intermediate scrolling frame');
   await ui.advance(400);assert.equal(ui.scrolls.length,1,'do not restart the native scroll');assert.equal(ui.tree.root.findAllByType('Animated').filter(node=>node.props.testID==='tour-outline').length,1);
  }finally{await ui.cleanup();}
+});
+
+test('only a genuinely prepared automatic new-user guide readies the notification invitation after returning Home',async()=>{
+ for(const manual of [false,true]){
+  const ui=await tourHarness({reduced:true,receipt:manual?'done':'pending',invitation:'pending-guide'});
+  try{
+   if(manual)await ui.replay();
+   await ui.advance(900);
+   for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(140);}
+   assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'pending-guide');
+   await ui.press('Explore LifeRPG');await ui.advance(140);
+   assert.equal(ui.routes.at(-1),'/');
+   assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),manual?'pending-guide':'ready');
+   assert.equal(ui.tree.root.findByType('NotificationInvite').props.tourActive,false);
+  }finally{await ui.cleanup();}
+ }
+});
+
+test('new-account tour preparation persists both guide and invitation without rearming a dismissed invitation',async()=>{
+ const storage=new Map();
+ const api=load('src/components/FeatureTour.tsx',{'react-native':{StyleSheet:{create:value=>value}},'@react-native-async-storage/async-storage':{getItem:async key=>storage.get(key)||null,setItem:async(key,value)=>storage.set(key,value)},'expo-router':{},'react-native-safe-area-context':{},'../context/UserContext':{},'../context/TimerContext':{},'../hooks/useReducedMotion':{}});
+ await api.prepareFeatureTour('new-owner');
+ assert.equal(storage.get('liferpg:tour:v1:new-owner'),'pending');
+ assert.equal(storage.get('liferpg:notification-intro:v1:new-owner'),'pending-guide');
+ storage.set('liferpg:notification-intro:v1:new-owner','handled');
+ await api.prepareFeatureTour('new-owner');
+ assert.equal(storage.get('liferpg:notification-intro:v1:new-owner'),'handled');
+ await api.prepareFeatureTour('stale-owner',()=>false);
+ assert.equal(storage.has('liferpg:tour:v1:stale-owner'),false);
+ assert.equal(storage.has('liferpg:notification-intro:v1:stale-owner'),false);
 });
