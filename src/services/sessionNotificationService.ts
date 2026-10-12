@@ -21,6 +21,7 @@ export function createSessionNotificationLifecycle(
   initialPreferences: Preferences,
 ) {
   let disposed = false;
+  let nativeOwned = false;
   let settings = initialPreferences;
   const preferences = () => settings;
   const attempt = async (operation: () => Promise<unknown>) => {
@@ -79,8 +80,25 @@ export function createSessionNotificationLifecycle(
     setPreferences: (next: Preferences) => { settings = next; },
     ensureChannels,
     clear: () => run(true, clearRequests),
+    // Renderer takeover must prove both old requests are cancelled. Ordinary
+    // fallback cleanup is best effort; swallowing a failure here could leave
+    // two finish alerts scheduled. Once chosen, never create fallback alerts.
+    clearForNative: () => {
+      nativeOwned = true;
+      const revision = ++generation;
+      const task = queue.catch(() => {}).then(async () => {
+        if (!api || disposed || revision !== generation) throw new Error("Notification takeover is unavailable");
+        for (const id of [ONGOING_NOTIFICATION_ID, COMPLETION_NOTIFICATION_ID]) {
+          await api.cancelScheduledNotificationAsync(id);
+          await api.dismissNotificationAsync(id);
+          if (revision !== generation) throw new Error("Notification takeover was superseded");
+        }
+      });
+      queue = task.catch(() => {});
+      return task;
+    },
     schedule: (seconds: number, questTitle?: string) => run(true, async current => {
-      if (!api) return;
+      if (!api || nativeOwned) return;
       const settings = preferences();
       await clearRequests();
       if (!current()) return;
@@ -105,7 +123,7 @@ export function createSessionNotificationLifecycle(
       }));
     }),
     refreshOngoing: (questTitle?: string) => run(false, async current => {
-      if (!api) return;
+      if (!api || nativeOwned) return;
       await attempt(() => api.cancelScheduledNotificationAsync(ONGOING_NOTIFICATION_ID));
       await attempt(() => api.dismissNotificationAsync(ONGOING_NOTIFICATION_ID));
       if (current()) await ongoing(questTitle);

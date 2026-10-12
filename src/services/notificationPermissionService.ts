@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { isRunningInExpoGo } from "expo";
 import { getSessionNotifications } from "../utils/sessionNotifications";
 import { ONGOING_CHANNEL_ID } from "./sessionNotificationService";
+import { getNativeSessionCountdownModule } from "./nativeSessionCountdown";
 export interface NotificationPermission {
   label: string;
   action: "enable" | "settings" | "retry" | null;
@@ -20,6 +21,15 @@ export async function readNotificationPermission(): Promise<NotificationPermissi
   if (!api) return { label: "Notifications are unavailable here", action: null, supported: false };
   try { return notificationPermission(await api.getPermissionsAsync()); }
   catch { return { label: "Could not read notification permission", action: "retry", supported: true }; }
+}
+export async function readExactAlarmAccess(): Promise<"allowed" | "not_allowed" | null> {
+  const module = await getNativeSessionCountdownModule();
+  if (!module) return null;
+  try {
+    const capabilities = await module.capabilities();
+    return capabilities.supported && typeof capabilities.exactAlarms === "boolean"
+      ? capabilities.exactAlarms ? "allowed" : "not_allowed" : null;
+  } catch { return null; }
 }
 export async function enableNotifications() {
   const api = getSessionNotifications();

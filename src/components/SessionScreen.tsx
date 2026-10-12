@@ -7,7 +7,7 @@ import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
-import { Stack, useFocusEffect, useNavigation } from "expo-router";
+import { Stack, useFocusEffect, useNavigation, useLocalSearchParams } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
@@ -90,6 +90,19 @@ export default function SessionScreen() {
   const [picker, setPicker] = useState<Picker>(null);
   const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const params = useLocalSearchParams?.<{ countdownAction?: string }>() ?? {};
+  const { consumeNotificationAction, isRestoring: notificationRestoring, actionBusy: notificationBusy } = liveTimer;
+  const handledNotification = useRef<string | null>(null);
+  useEffect(() => {
+    const nonce = params.countdownAction;
+    if (typeof nonce !== "string" || handledNotification.current === nonce || notificationRestoring || notificationBusy) return;
+    handledNotification.current = nonce;
+    let current = true;
+    void consumeNotificationAction?.(nonce).then(action => {
+      if (current && action === "end") setConfirmEnd(true);
+    }).catch(() => {});
+    return () => { current = false; };
+  }, [params.countdownAction, consumeNotificationAction, notificationRestoring, notificationBusy]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const timerBounds = useRef({ top: 0, bottom: 0 });
   const timerView = useRef<View>(null);

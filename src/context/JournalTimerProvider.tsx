@@ -8,6 +8,8 @@ import { createAsyncStorageSessionJournalStore } from "../services/sessionJourna
 import { createSessionOwnerVerification } from "../services/sessionOwnerVerification";
 import { createSessionTimerController, type SessionTimerController, type SessionTimerControllerSnapshot } from "../services/sessionTimerController";
 import { createSessionNotificationLifecycle } from "../services/sessionNotificationService";
+import { createNativeSessionCountdownLifecycle } from "../services/nativeSessionCountdown";
+import { createSessionCountdownCoordinator } from "../services/sessionCountdownCoordinator";
 import { getSessionNotifications } from "../utils/sessionNotifications";
 import { validSessionSeconds } from "../utils/sessionSetup";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
@@ -48,6 +50,7 @@ interface TimerContextType {
   pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<void>;
   setDurationInMinutes: (minutes: number) => void; setDurationInSeconds: (seconds: number) => void;
   completedLevelUp: { leveledUp: boolean; newLevel: number } | null; clearCompletionModal: () => void;
+  consumeNotificationAction: (nonce: string) => Promise<"end" | null>;
 }
 const TimerContext = createContext<TimerContextType | undefined>(undefined);
 const initialRuntime: SessionTimerControllerSnapshot = {
@@ -60,7 +63,7 @@ const numberOr = (value: unknown, fallback = 0) => typeof value === "number" && 
 const optionalNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : undefined;
 const nullableNumber = (value: unknown) => value === null ? null : optionalNumber(value);
 
-/** Foreground journal adapter. Android's native authority replaces it before the combined release. */
+/** The tested JS journal remains authoritative; native code renders only its notification projection. */
 export function TimerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const { reloadProfile, soundEnabled = true, hapticsEnabled = true } = useUser();
@@ -71,6 +74,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const ownerId = auth.user?.id ?? auth.localOwner?.id;
   const controllerScopeKey = ownerId && backendId ? JSON.stringify([ownerId, backendId, auth.admissionEpoch]) : null;
   const controllerRef = useRef<SessionTimerController | null>(null);
+  const countdownRef = useRef<ReturnType<typeof createSessionCountdownCoordinator> | null>(null);
+  const runtimeRef = useRef(initialRuntime);
+  const [renderer, setRenderer] = useState<{ scopeKey: string; native: boolean } | null>(null);
   const startInFlight = useRef(false);
   const [runtime, setRuntime] = useState(initialRuntime);
   const [runtimeScopeKey, setRuntimeScopeKey] = useState<string | null>(null);
@@ -85,6 +91,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const seenReceipts = useRef(new Set<string>());
   const celebrated = useRef(new Set<string>());
   const backgroundBanner = useRef<{ title: string; deadline: number } | null>(null);
+  const notificationTitle = useRef("Session");
+  const notificationPreferences = useRef({ sound: soundEnabled, haptics: hapticsEnabled });
   const refreshAfterAdmission = useRef(false);
 
   useEffect(() => {
@@ -103,14 +111,25 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const currentEpoch = () => authRef.current.admissionEpoch;
     const verification = createSessionOwnerVerification({ scope, currentScope, currentEpoch, verify: verifyOwner });
     const verify = verification.verify;
+    const store = createAsyncStorageSessionJournalStore(scope);
     const controller = createSessionTimerController({ scope,
-      store: createAsyncStorageSessionJournalStore(scope),
+      store,
       server: createJournalSessionTransport(scope, { ensureVerifiedScope: verify, currentScope, currentEpoch, getClock }),
       authority: { currentScope, currentEpoch, verify, beginOperation: verification.beginOperation, endOperation: verification.endOperation }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
     });
     controllerRef.current = controller;
     const snapshotScopeKey = JSON.stringify([ownerId, backendId, auth.admissionEpoch]);
+    const countdown = createSessionCountdownCoordinator({ scope, store, controller,
+      native: createNativeSessionCountdownLifecycle({ scope, newLeaseId: () => uuid.v4().toLowerCase(),
+        clearLegacy: () => notificationLifecycle.clearForNative() }), currentScope, currentEpoch,
+      currentRecordId: () => runtimeRef.current.record?.clientSessionId ?? null,
+      busy: () => runtimeRef.current.busy || runtimeRef.current.restoring, clock: getClock });
+    countdownRef.current = countdown;
+    void countdown.initialize().then(() => {
+      if (countdownRef.current === countdown) setRenderer({ scopeKey: snapshotScopeKey, native: countdown.ownsNative() });
+    });
     const unsubscribe = controller.subscribe(next => {
+      runtimeRef.current = next;
       setRuntimeScopeKey(snapshotScopeKey);
       setRuntime(current =>
       current.record?.clientSessionId === next.record?.clientSessionId
@@ -127,18 +146,22 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const interval = setInterval(() => { void controller.tick(); }, 200);
     const appState = AppState.addEventListener("change", next => {
       if (next === "active") void controller.refresh();
-      if (next === "background" && backgroundBanner.current && backgroundBanner.current.deadline > Date.now()) {
+      if (next === "background" && countdown.ownsNative()) {
+        void countdown.refresh(notificationTitle.current, notificationPreferences.current, true);
+      } else if (next === "background" && backgroundBanner.current && backgroundBanner.current.deadline > Date.now()) {
         void notificationLifecycle.refreshOngoing(backgroundBanner.current.title);
       }
     });
     return () => {
       unsubscribe(); clearInterval(interval); appState.remove();
       if (controllerRef.current === controller) controllerRef.current = null;
+      if (countdownRef.current === countdown) countdownRef.current = null;
+      void countdown.dispose();
       void controller.dispose();
     };
     // Mode changes keep the same journal/controller. Identity or admission revocation replaces it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ownerId, backendId, auth.admissionEpoch, restoreAttempt]);
+  }, [ownerId, backendId, auth.admissionEpoch, restoreAttempt, notificationLifecycle]);
 
   useEffect(() => { refreshAfterAdmission.current = auth.accessMode === "online"; }, [auth.accessMode, ownerId, backendId, auth.admissionEpoch]);
   useEffect(() => {
@@ -154,6 +177,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   }, [notificationLifecycle]);
   useEffect(() => {
     notificationLifecycle.setPreferences({ sound: soundEnabled, haptics: hapticsEnabled });
+    notificationPreferences.current = { sound: soundEnabled, haptics: hapticsEnabled };
     completionSoundEnabled = soundEnabled;
   }, [soundEnabled, hapticsEnabled, notificationLifecycle]);
 
@@ -211,14 +235,24 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const notificationState = record?.state;
   const deadline = record?.endsAtMs;
   useLayoutEffect(() => {
+    notificationTitle.current = resolvedTitle;
     backgroundBanner.current = notificationState === "running" && !runtime.ending && interactionKind !== "pause"
       && runtime.syncStatus !== "waiting" && deadline ? { title: resolvedTitle, deadline } : null;
   }, [notificationState, runtime.ending, interactionKind, runtime.syncStatus, deadline, resolvedTitle]);
   useEffect(() => {
+    if (!renderer || renderer.scopeKey !== controllerScopeKey || runtime.restoring) return;
+    if (renderer.native || countdownRef.current?.ownsNative()) {
+      void countdownRef.current?.refresh(resolvedTitle, { sound: soundEnabled, haptics: hapticsEnabled });
+    }
+  }, [record?.revision, notificationState, resolvedTitle, runtime.ending, runtime.syncStatus, runtime.restoring,
+    interactionKind, soundEnabled, hapticsEnabled, renderer, controllerScopeKey]);
+  useEffect(() => {
+    if (!renderer || renderer.scopeKey !== controllerScopeKey || renderer.native || countdownRef.current?.ownsNative()) return;
     if (notificationState === "running" && !runtime.ending && interactionKind !== "pause" && runtime.syncStatus !== "waiting" && deadline && deadline > Date.now()) {
       void notificationLifecycle.schedule(Math.max(1, (deadline - Date.now()) / 1000), resolvedTitle);
     } else void notificationLifecycle.clear();
-  }, [notificationId, notificationState, deadline, resolvedTitle, runtime.ending, runtime.syncStatus, interactionKind, soundEnabled, hapticsEnabled, notificationLifecycle]);
+  }, [notificationId, notificationState, deadline, resolvedTitle, runtime.ending, runtime.syncStatus,
+    interactionKind, soundEnabled, hapticsEnabled, notificationLifecycle, renderer, controllerScopeKey]);
 
   const locked = () => startInFlight.current || open || runtime.ending || runtime.busy || runtime.restoring || runtime.restoreError
     || (isCompleted && !record?.sync.receipt);
@@ -262,6 +296,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     ? { leveledUp: true, newLevel: numberOr(result.level, 1) } : null;
   const retry = async () => { await controllerRef.current?.retry(); };
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId, setViewedSummaryId]);
+  const consumeNotificationAction = useCallback((nonce: string) => countdownRef.current?.action(nonce) ?? Promise.resolve(null), []);
   return <TimerContext.Provider value={{
     sessionId: record?.serverSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
@@ -281,6 +316,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     pauseTimer: async () => { await controllerRef.current?.pause(); }, resumeTimer: async () => { await controllerRef.current?.resume(); }, resetTimer,
     sessionSummary: receipt?.sessionId === sessionSummary?.sessionId ? sessionSummary : null, summaryViewed: summaryId !== null && viewedSummaryId === summaryId, acknowledgeSummary,
     completedLevelUp, clearCompletionModal: () => controllerRef.current?.dismissSummary(),
+    consumeNotificationAction,
   }}>{children}</TimerContext.Provider>;
 }
 export function useTimer() {

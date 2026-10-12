@@ -926,6 +926,34 @@ test("iOS retains immediate and interval triggers without Android channel fields
   assert.equal(mock.requests[1].content.priority, undefined);
   assert.equal(mock.channels.length, 0);
 });
+
+test("native takeover propagates legacy cancellation failure and never creates competing fallback alerts", async () => {
+  const service = load("src/services/sessionNotificationService.ts", {}), mock = notificationMock();
+  const lifecycle = service.createSessionNotificationLifecycle(mock.api, "android", { sound: true, haptics: true });
+  await lifecycle.schedule(60);
+  const original = mock.api.cancelScheduledNotificationAsync;
+  let fail = true;
+  mock.api.cancelScheduledNotificationAsync = async id => {
+    if (id === service.COMPLETION_NOTIFICATION_ID && fail) { fail = false; throw Error("cancellation not confirmed"); }
+    return original(id);
+  };
+  await assert.rejects(lifecycle.clearForNative(), /cancellation not confirmed/);
+  const posted = mock.requests.length;
+  await lifecycle.schedule(60); await lifecycle.refreshOngoing();
+  assert.equal(mock.requests.length, posted);
+  await lifecycle.clearForNative();
+  assert.deepEqual(mock.cancellations.slice(-2), [service.ONGOING_NOTIFICATION_ID, service.COMPLETION_NOTIFICATION_ID]);
+  assert.deepEqual(mock.dismissals.slice(-2), [service.ONGOING_NOTIFICATION_ID, service.COMPLETION_NOTIFICATION_ID]);
+  await lifecycle.dispose();
+});
+
+test("native takeover cannot succeed without the legacy scheduler or after disposal", async () => {
+  const service = load("src/services/sessionNotificationService.ts", {}), mock = notificationMock();
+  const unavailable = service.createSessionNotificationLifecycle(null, "android", { sound: true, haptics: true });
+  await assert.rejects(unavailable.clearForNative());
+  const disposed = service.createSessionNotificationLifecycle(mock.api, "android", { sound: true, haptics: true });
+  await disposed.dispose(); await assert.rejects(disposed.clearForNative());
+});
 test("effect reactivation restores scheduling and preference changes apply to the next alert", async () => {
   const api = load("src/services/sessionNotificationService.ts", {}), mock = notificationMock();
   const lifecycle = api.createSessionNotificationLifecycle(mock.api, "android", { sound: true, haptics: true });

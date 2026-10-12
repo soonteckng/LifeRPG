@@ -10,7 +10,7 @@ import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useTimer } from "../context/TimerContext";
 import { getDailyGoalSettings, missingGoalAPI, scheduleDailyGoal, type DailyGoalSettings } from "../services/dailyGoalService";
-import { enableNotifications, readNotificationPermission, type NotificationPermission } from "../services/notificationPermissionService";
+import { enableNotifications, readNotificationPermission, readExactAlarmAccess, type NotificationPermission } from "../services/notificationPermissionService";
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { dateKey } from "../utils/progressAnalytics";
 import { getTodayProgress } from "../services/dailyProgressService";
@@ -24,6 +24,7 @@ export default function SettingsScreen() {
   const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer();
   const [sheet, setSheet] = useState<"signout" | "notifications" | "goal" | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [alarmAccess, setAlarmAccess] = useState<"allowed" | "not_allowed" | null>(null);
   const [loadedGoalData, setGoalData] = useState<DailyGoalSettings | null>(null);
   const goalData = loadedGoalData?.user_id === profile.id ? loadedGoalData : null;
   const [goalError, setGoalError] = useState("");
@@ -55,8 +56,8 @@ export default function SettingsScreen() {
   }, [profile.id, profile.timezone]);
   const refreshPermission = useCallback(async () => {
     const request = ++permissionGeneration.current;
-    const result = await readNotificationPermission();
-    if (request === permissionGeneration.current) setPermission(result);
+    const [result, alarm] = await Promise.all([readNotificationPermission(), readExactAlarmAccess?.() ?? Promise.resolve(null)]);
+    if (request === permissionGeneration.current) { setPermission(result); setAlarmAccess(alarm); }
   }, []);
   useEffect(() => {
     let mounted = true;
@@ -187,6 +188,9 @@ export default function SettingsScreen() {
             {!!goalError && <PersonalButton secondary title="Retry goal check" disabled={busy} onPress={() => void loadGoal()} />}
           </> : <>
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
+            {alarmAccess && <Text style={p.body}>{alarmAccess === "allowed"
+              ? "Precise timer alerts are allowed on this device."
+              : "Precise timer alerts are off. Your timer still works; finish alerts may arrive later. Enable Alarms & reminders for more precise alerts."}</Text>}
             {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
               <Text style={p.body}>Notifications and Alarms & reminders are separate permissions. Open LifeRPG’s Alarms & reminders page and allow its switch. Battery restrictions can delay alerts.</Text>
               <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
