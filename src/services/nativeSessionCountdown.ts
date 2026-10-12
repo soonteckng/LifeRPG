@@ -15,6 +15,7 @@ export interface NativeSessionCountdownModule {
   refresh(leaseId: string, preferencesJson: string): Promise<boolean>;
   capabilities(): Promise<NativeSessionCountdownCapabilities>;
   consumeAction?(leaseId: string, nonce: string): Promise<SessionCountdownActionToken | null>;
+  takeForegroundAction?(leaseId: string): Promise<string | null>;
 }
 export interface SessionCountdownPreferences { sound: boolean; haptics: boolean }
 export interface NativeSessionCountdownOptions {
@@ -214,6 +215,16 @@ export function createNativeSessionCountdownLifecycle(options: NativeSessionCoun
         try {
           const token = await module.consumeAction(expectedLease, nonce);
           return current(expected) && lease === expectedLease && validToken(token, scope) ? copy(token) : null;
+        } catch { return null; }
+      });
+    },
+    async takeForegroundAction(): Promise<string | null> {
+      const expected = localGeneration, expectedLease = lease;
+      return ordered(async () => {
+        if (!current(expected) || !active || !expectedLease || lease !== expectedLease || !module?.takeForegroundAction) return null;
+        try {
+          const nonce = await module.takeForegroundAction(expectedLease);
+          return current(expected) && lease === expectedLease && isJournalUuid(nonce) ? nonce : null;
         } catch { return null; }
       });
     },

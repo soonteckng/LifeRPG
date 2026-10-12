@@ -220,3 +220,29 @@ test('disposed instances cannot reactivate or publish', async () => {
   assert.equal(await life.activate(), false); assert.equal(await life.publish(projection(), prefs), false);
   assert.equal(await life.consumeAction(nextLease()), null); assert.equal(api.calls.length, count);
 });
+
+test('foreground notices are optional for older binaries and cannot cross a cleared lease', async () => {
+  const api = fakeNative(), life = lifecycle(api);
+  assert.equal(await life.takeForegroundAction(), null);
+  await life.publish(projection(), prefs);
+  assert.equal(await life.takeForegroundAction(), null);
+  const notice = nextLease(); let queries = 0;
+  api.takeForegroundAction = async () => { queries++; return notice; };
+  assert.equal(await life.takeForegroundAction(), notice);
+  api.takeForegroundAction = async () => 'invented';
+  assert.equal(await life.takeForegroundAction(), null);
+  await life.clear(); assert.equal(await life.takeForegroundAction(), null);
+  assert.equal(queries, 1); await life.dispose();
+});
+test('a pending foreground notice cannot return after the renderer has switched accounts', async () => {
+  const api = fakeNative(), life = lifecycle(api), gate = deferred();
+  await life.publish(projection(), prefs);
+  api.takeForegroundAction = () => gate.promise;
+  const checking = life.takeForegroundAction(); await Promise.resolve();
+  // Global generation changes synchronously on activation, before its queued
+  // native work can run. The old notice remains fenced even across a lost reply.
+  const other = lifecycle(api, { scope: { ...SCOPE, ownerId: '22222222-2222-4222-8222-222222222222' } });
+  const activation = other.activate(); gate.resolve(nextLease());
+  assert.equal(await checking, null); assert.equal(await activation, true);
+  await life.dispose(); await other.dispose();
+});

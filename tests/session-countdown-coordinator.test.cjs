@@ -40,12 +40,13 @@ function running() {
       startedAtMs: vectors.clock.wallTimeMs, elapsedMs: 0, observedClock: clock(0) } });
 }
 function harness(journal = running()) {
-  const state = { journal, scope: { ...SCOPE }, epoch: 8, record: CLIENT, busy: false, clock: clock(5000), token: null };
+  const state = { journal, scope: { ...SCOPE }, epoch: 8, record: CLIENT, busy: false, clock: clock(5000), token: null, launch: null };
   const calls = [], native = {
     async activate() { calls.push(['activate']); return true; }, ownsNative: () => true,
     async publish(...args) { calls.push(['publish', ...args]); return true; },
     async clear(...args) { calls.push(['clear', ...args]); return true; },
     async consumeAction(nonce) { calls.push(['consume', nonce]); return state.token; },
+    async takeForegroundAction() { calls.push(['foreground']); const launch = state.launch; state.launch = null; return launch; },
     async dispose() { calls.push(['dispose']); },
   };
   const store = { async load() { return { kind: 'ready', journal: state.journal }; } };
@@ -140,4 +141,25 @@ test('disposal during a pending read cannot resurrect a notification', async () 
   const refresh = h.co.refresh('Learning', prefs); await h.co.dispose();
   gate.resolve({ kind: 'ready', journal: h.state.journal }); await refresh;
   assert.deepEqual(h.calls, [['dispose']]);
+});
+
+test('foreground before consuming a warm action skips only its incidental reconciliation', async () => {
+  const h = harness(); h.state.token = h.token('pause'); h.state.launch = ACTION;
+  assert.equal(await h.co.shouldRefreshOnForeground(), false);
+  await h.co.action(ACTION);
+  assert.equal(await h.co.shouldRefreshOnForeground(), true);
+  assert.deepEqual(h.calls.map(c => c[0]), ['foreground', 'consume', 'pause', 'foreground']);
+});
+test('consuming the warm action before foreground still preserves its one-shot refresh notice', async () => {
+  const h = harness(); h.state.token = h.token('end'); h.state.launch = ACTION;
+  assert.equal(await h.co.action(ACTION), 'end');
+  assert.equal(await h.co.shouldRefreshOnForeground(), false);
+  assert.equal(await h.co.shouldRefreshOnForeground(), true);
+  assert.deepEqual(h.calls.map(c => c[0]), ['consume', 'foreground', 'foreground']);
+});
+test('ordinary or cold launches reconcile, and account revocation during the native query cannot refresh the old controller', async () => {
+  const h = harness(); assert.equal(await h.co.shouldRefreshOnForeground(), true);
+  const gate = deferred(); h.native.takeForegroundAction = () => gate.promise;
+  const refreshing = h.co.shouldRefreshOnForeground(); h.state.epoch++; gate.resolve(null);
+  assert.equal(await refreshing, false); assert.equal(await h.co.shouldRefreshOnForeground(), false);
 });

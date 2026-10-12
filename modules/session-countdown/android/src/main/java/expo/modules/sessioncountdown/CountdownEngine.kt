@@ -49,6 +49,11 @@ internal object CountdownEngine {
     return duration.coerceIn(0, projection.targetMs)
   }
 
+  // Android's chronometer displays a whole second before the app's ceil-based
+  // numeral unless its DISPLAY base is shifted. Never shift the alarm anchor,
+  // timeout, stored deadline, elapsed time or completion eligibility.
+  fun chronometerWhen(wallMs: Long, remainingMs: Long): Long = wallMs + remainingMs + 999
+
   fun repairAnchor(current: CountdownState, wallMs: Long, elapsedMs: Long, bootId: String): CountdownState {
     val projection = current.projection ?: return current
     if (current.cleared || projection.phase != "running") return current

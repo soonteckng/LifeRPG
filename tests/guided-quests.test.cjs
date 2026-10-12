@@ -5,6 +5,7 @@ const React = require('react'), { act, create } = require('react-test-renderer')
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const host = name => props => React.createElement(name, props, props.children);
 const text = node => node.children.map(child => typeof child === 'string' ? child : text(child)).join('');
+const selectedCustomDuration = ui => ui.tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === 'Set a custom focus duration').props.accessibilityValue.text;
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b)=>{resolve=a;reject=b;}); return {promise,resolve,reject}; };
 function load(file, mocks = {}, cache = new Map()) {
   const filename = path.resolve(__dirname, '..', file);
@@ -354,7 +355,7 @@ test('choosing a preset or custom duration never rewrites the saved suggestion d
  assert.match(text(ui.tree.root),/A short review/);
  await ui.press('Set a custom focus duration');
  await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('42');});
- await ui.press('Use this duration');assert.match(text(ui.tree.root),/42 min/);assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
+ await ui.press('Use this duration');assert.equal(selectedCustomDuration(ui),'42 min');assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
  await ui.cleanup();ui=await render(Card,props);assert.match(text(ui.tree.root),/Review your notes/);await ui.cleanup();
 });
 
@@ -463,7 +464,7 @@ test('choosing a focus area updates its direction, prompt and saved category whi
   await ui.press('Choose focus area');assert.equal(entered,0);assert.equal(calls.length,0);
   assert.doesNotMatch(text(ui.tree.root.findByType('Sheet')),/Minutes|Seconds|Focus length/);
   await ui.press('Choose Work & projects');assert.equal(entered,0);assert.equal(calls.length,0);
-  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/Move a project forward/);assert.doesNotMatch(text(ui.tree.root),/Review your notes/);assert.match(text(ui.tree.root),/30 min 59 sec/);
+  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/Move a project forward/);assert.doesNotMatch(text(ui.tree.root),/Review your notes/);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');
   await ui.press('Start focusing');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],3);assert.equal(entered,1);
  }finally{await ui.cleanup();}
 });
@@ -485,7 +486,7 @@ test('both Home choosers share the saved area and direction, including free focu
  })).default;
  const ui=await render(Home);
  try{
-  assert.match(text(ui.tree.root),/30 min 59 sec/);await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');assert.match(text(ui.tree.root),/30 min 59 sec/);
+  assert.equal(selectedCustomDuration(ui),'30 min 59 sec');await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');assert.equal(selectedCustomDuration(ui),'30 min 59 sec');
   await setTenMinuteCustom(ui);await ui.press('Choose focus area');await ui.press('Choose Work & projects');
   assert.match(text(ui.tree.root),/A small project step/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,3);
   await ui.press('Find your next step');
@@ -497,7 +498,7 @@ test('both Home choosers share the saved area and direction, including free focu
   assert.match(text(ui.tree.root),/Free focus/);assert.match(text(ui.tree.root),/Everyday focus/);
   assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,null);
   assert.equal(api.parseGuidedPreference(db.values.get('liferpg:guided:v1:owner')).areaId,null);
-  assert.match(text(ui.tree.root),/10 min/);
+  assert.equal(selectedCustomDuration(ui),'10 min');
   await ui.press('Choose focus area');await ui.press('Choose Learning');
   assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
   assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,2);

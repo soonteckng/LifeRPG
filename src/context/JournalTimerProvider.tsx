@@ -145,7 +145,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     void controller.initialize();
     const interval = setInterval(() => { void controller.tick(); }, 200);
     const appState = AppState.addEventListener("change", next => {
-      if (next === "active") void controller.refresh();
+      if (next === "active") void countdown.shouldRefreshOnForeground().then(shouldRefresh => {
+        if (shouldRefresh && countdownRef.current === countdown) void controller.refresh();
+      });
       if (next === "background" && countdown.ownsNative()) {
         void countdown.refresh(notificationTitle.current, notificationPreferences.current, true);
       } else if (next === "background" && backgroundBanner.current && backgroundBanner.current.deadline > Date.now()) {

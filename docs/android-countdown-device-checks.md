@@ -19,3 +19,13 @@ Use your existing test account. Start with Wi-Fi/mobile data on, no unfinished s
 13. **Settings → Force stop:** Android deliberately stops notification/alarm delivery for a force-stopped package. Reopen LifeRPG explicitly. Its saved session must recover safely; do not judge the missing alert while force-stopped as an app crash.
 
 This round tests native notifications and recovery of sessions started online. Offline Start, offline local Pause/Resume, widgets, iOS Live Activities and Android promoted status chips are later work. Automated checks cannot guarantee zero device bugs; keep this as a preview until these installed tests pass.
+
+## User's build 6 results
+
+Reported passes: 1, 4, 5, 6, 7, 8 and 10. Haptics were confirmed in 9; sound was not explicitly reported. Cases 2/3 opened the timer but did not perform the requested action, so warm-action behavior needs correction and retesting. Case 11 (expiry boundary) and 12 (reboot) were not tested. Case 13 was reported as “should be pass”, so it remains tentative. Additional defects: the running notification showed one second less than the in-app timer, and a remembered eight-minute duration replaced the Custom label.
+
+## Follow-up retest
+
+1. Start a two-minute session and check the app and notification during the same second. The constant one-second lead should be gone; independent screen redraws may briefly straddle a second boundary. Lock the phone and let a one-minute session finish: its real deadline and single alert must remain correct.
+2. Keep the app running in the background (do not force-stop/remove it). Tap Pause in app: it should open the timer and pause through the normal verified control. Then background it and tap Resume in app: counting should resume. End in app should open the usual confirmation; cancel once, then confirm. Cold recovery still opens the timer for user control.
+3. Verify the duration option says Custom. Open it, choose 2 minutes 15 seconds, save, then reopen it: the editor should show 2 and 15. The label should stay Custom. Selecting 30 or 60 minutes should still select the corresponding preset.

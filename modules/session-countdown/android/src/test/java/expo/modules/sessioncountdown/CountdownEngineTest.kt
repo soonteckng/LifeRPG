@@ -84,6 +84,33 @@ class CountdownEngineTest {
     assertEquals(50_000L, CountdownEngine.remaining(current, 5, 30_000, "boot-a"))
     assertFalse(CountdownEngine.expire(current, 5_000_000, 30_000, "boot-a").accepted)
   }
+  @Test fun notificationWholeSecondsMatchAppCeilingInsteadOfShowingOneSecondAhead() {
+    val wall = 1_000_000L
+    for (remaining in listOf(1L, 250L, 999L, 1000L, 1001L, 1250L, 1999L, 16_250L, 29_750L, 60_000L)) {
+      val appSeconds = (remaining + 999) / 1000
+      val androidSeconds = (CountdownEngine.chronometerWhen(wall, remaining) - wall) / 1000
+      assertEquals(appSeconds, androidSeconds)
+    }
+    // Current AOSP uses Math.round((base-now-499)/1000f), equivalent
+    // away from its millisecond boundary to truncation. Check fractional
+    // samples against that actual formula as well as the older integer one.
+    for (remaining in listOf(250L, 750L, 1250L, 16_250L, 29_750L)) {
+      val base = CountdownEngine.chronometerWhen(wall, remaining)
+      val androidSeconds = Math.round((base - wall - 499).toFloat() / 1000f).toLong()
+      assertEquals((remaining + 999) / 1000, androidSeconds)
+    }
+  }
+  @Test fun displayRoundingNeverDelaysExpiryOrChangesTheStoredCountdown() {
+    val current = activeState()
+    val anchor = current.anchor
+    val remaining = CountdownEngine.remaining(current, 1_059_750, 79_750, "boot-a")
+    assertEquals(250L, remaining)
+    assertEquals(1L, (CountdownEngine.chronometerWhen(1_059_750, remaining) - 1_059_750) / 1000)
+    assertFalse(CountdownEngine.expire(current, 1_059_750, 79_750, "boot-a").accepted)
+    assertTrue(CountdownEngine.expire(current, 1_060_000, 80_000, "boot-a").accepted)
+    assertEquals(anchor, current.anchor)
+    assertEquals(1_060_000L, current.projection!!.deadlineMs)
+  }
   @Test fun rebootRepairsElapsedAnchorFromBoundedWallDeadline() {
     val current = CountdownEngine.repairAnchor(activeState(), 1_025_000, 5000, "boot-b")
     assertEquals("boot-b", current.anchor!!.bootId)

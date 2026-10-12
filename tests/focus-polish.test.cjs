@@ -46,7 +46,7 @@ test('30/60 presets and Custom respect disabled state and the haptic preference 
   assert.equal(button('Use 10 minutes'),undefined);await act(async()=>button('Use 30 minutes').props.onPress());assert.equal(haptics,0);
   await act(async()=>button('Use 60 minutes').props.onPress());assert.deepEqual(changes,[3600]);assert.equal(haptics,1);
   props={...props,seconds:3600};enabled=false;await act(async()=>tree.update(React.createElement(Control,props)));await act(async()=>button('Use 30 minutes').props.onPress());assert.equal(haptics,1);
-  enabled=true;props={...props,seconds:600,disabled:true};await act(async()=>tree.update(React.createElement(Control,props)));assert.equal(button('Set a custom focus duration').props.accessibilityState.selected,true);assert.equal(content(button('Set a custom focus duration')),'10 min');await act(async()=>button('Use 60 minutes').props.onPress());assert.equal(changes.length,2);
+  enabled=true;props={...props,seconds:600,disabled:true};await act(async()=>tree.update(React.createElement(Control,props)));assert.equal(button('Set a custom focus duration').props.accessibilityState.selected,true);assert.equal(content(button('Set a custom focus duration')),'Custom');assert.equal(button('Set a custom focus duration').props.accessibilityValue.text,'10 min');await act(async()=>button('Use 60 minutes').props.onPress());assert.equal(changes.length,2);
   props={...props,disabled:false};await act(async()=>tree.update(React.createElement(Control,props)));await act(async()=>button('Set a custom focus duration').props.onPress());assert.equal(haptics,2);assert.equal(tree.root.findByType('CustomSheet').props.seconds,600);
  }finally{await act(async()=>tree.unmount());}
 });

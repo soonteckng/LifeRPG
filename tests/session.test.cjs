@@ -55,7 +55,7 @@ const fixtureServerId = (value) => {
 };
 const definitiveServerRejection = () => Object.assign(Error("Server rejected the request"), { failureKind: "definitive", requestSent: true });
 
-async function providerSetup(overrides = {}, notifications = null) {
+async function providerSetup(overrides = {}, notifications = null, nativeLifecycle = null) {
   let state, show = true, tick, foreground;
   const summarySnapshots = [];
   const calls = [];
@@ -146,6 +146,7 @@ async function providerSetup(overrides = {}, notifications = null) {
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
     "../services/sessionService": service,
+    ...(nativeLifecycle ? { "../services/nativeSessionCountdown": { createNativeSessionCountdownLifecycle: () => nativeLifecycle } } : {}),
     "./UserContext": { useUser: () => ({ reloadProfile }) },
     "./AuthContext": { useAuth: () => auth },
   });
@@ -195,6 +196,57 @@ test("provider blocks repeated starts and preserves an unknown start without rei
   assert.equal(ui.state().duration,1800);
   assert.equal(ui.state().awaitingStart,true);
   await ui.cleanup();
+});
+
+function nativeForegroundHarness() {
+  let projection = null, token = null, launch = null;
+  let sequence = 0;
+  return { ownsNative: () => true, activate: async () => true,
+    async publish(value) { projection = value; return true; },
+    async clear() { projection = null; return true; }, async dispose() {},
+    issue(kind) {
+      assert.ok(projection, 'The real provider must publish the active journal before this notification tap');
+      const nonce = `90000000-0000-4000-8000-${String(++sequence).padStart(12,'0')}`;
+      token = { version: 1, identity: JSON.parse(JSON.stringify(projection.identity)), operationId: nonce, kind };
+      launch = nonce; return nonce;
+    },
+    async consumeAction(nonce) {
+      if (!token || nonce !== token.operationId) return null;
+      const issued = token; token = null; return issued;
+    },
+    async takeForegroundAction() { const captured = launch; launch = null; return captured; },
+  };
+}
+test('warm notification Pause/Resume keeps strict revisions through foreground and uses each real control once', async () => {
+  const native = nativeForegroundHarness(), ui = await providerSetup({}, null, native);
+  try {
+    await ui.run(s => s.startTimer(60, 'Read'));
+    const pause = native.issue('pause'), before = ui.verifications();
+    await ui.foreground();
+    assert.equal(ui.verifications(), before, 'A trusted launch must not replace its action revision before consumption');
+    await ui.run(s => s.consumeNotificationAction(pause));
+    assert.equal(ui.state().isRunning, false);
+    assert.equal(ui.calls.filter(c => c[0] === 'pause').length, 1);
+    const resume = native.issue('resume');
+    await ui.foreground(); await ui.run(s => s.consumeNotificationAction(resume));
+    assert.equal(ui.state().isRunning, true);
+    assert.equal(ui.calls.filter(c => c[0] === 'resume').length, 1);
+    const verified = ui.verifications();
+    await ui.foreground();
+    assert.ok(ui.verifications() > verified, 'An ordinary subsequent foreground still reconciles with the server');
+  } finally { await ui.cleanup(); }
+});
+test('warm End consumed before foreground still opens confirmation without incidental reconciliation or cancellation', async () => {
+  const native = nativeForegroundHarness(), ui = await providerSetup({}, null, native);
+  try {
+    await ui.run(s => s.startTimer(60, 'Read'));
+    const nonce = native.issue('end'); let result;
+    await ui.run(async s => { result = await s.consumeNotificationAction(nonce); });
+    assert.equal(result, 'end'); const verified = ui.verifications();
+    await ui.foreground(); assert.equal(ui.verifications(), verified);
+    assert.equal(ui.calls.some(c => c[0] === 'cancel' || c[0] === 'complete'), false);
+    await ui.foreground(); assert.ok(ui.verifications() > verified);
+  } finally { await ui.cleanup(); }
 });
 
 test("minimise/reopen keeps running and paused identity, settings and remaining time", async () => {
@@ -384,7 +436,8 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       BackHandler:{addEventListener:(_,fn)=>{back=fn;return{remove(){}};}},
       Animated:{createAnimatedComponent:component=>component,Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}},View:host("AnimatedView"),timing:(value,config)=>({start(callback){animations.push({...config,from:value.value});if(deferExit && config.toValue===-0.12) exitCallback=callback;else { value.setValue(config.toValue); callback?.({finished:true}); }},stop(){}})},
     },
-    "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect])},
+    "expo-router":{Stack:{Screen:host("Options")},useNavigation:()=>router,useFocusEffect:(effect)=>React.useEffect(effect,[effect]),
+      useLocalSearchParams:()=>({countdownAction:state.notificationNonce})},
     "expo-router/react-navigation":{usePreventRemove:()=>{}},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("SheetScroll"),TouchableOpacity:host("Button")},
@@ -422,6 +475,40 @@ test("opening Custom keeps the timer display and applied duration stable",async(
   assert.equal(after.seconds,before.seconds);
   assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
   await ui.cleanup();
+});
+
+test('accepted notification End confirmation survives an unrelated busy rerender', async () => {
+  const pending = deferred(); let consumed = 0;
+  const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
+    notificationNonce: '90000000-0000-4000-8000-000000000001',
+    consumeNotificationAction: () => { consumed++; return pending.promise; } });
+  try {
+    await ui.update({ actionBusy: true });
+    await act(async () => { pending.resolve('end'); });
+    assert.equal(consumed, 1);
+    assert.equal(ui.root().findByType('Confirm').props.title, 'End this session?');
+    assert.equal(ui.calls.some(c => c[0] === 'reset'), false);
+  } finally { await ui.cleanup(); }
+});
+test('a late notification End response cannot prompt for a replacement session', async () => {
+  const pending = deferred();
+  const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
+    notificationNonce: '90000000-0000-4000-8000-000000000001', consumeNotificationAction: () => pending.promise });
+  try {
+    await ui.update({ sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-000000000002' });
+    await act(async () => { pending.resolve('end'); });
+    assert.equal(ui.root().findAllByType('Confirm').length, 0);
+  } finally { await ui.cleanup(); }
+});
+test('a late notification End response cannot prompt over a finished session', async () => {
+  const pending = deferred();
+  const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
+    notificationNonce: '90000000-0000-4000-8000-000000000001', consumeNotificationAction: () => pending.promise });
+  try {
+    await ui.update({ hasOpenSession: false, isRunning: false, isCompleted: true });
+    await act(async () => { pending.resolve('end'); });
+    assert.equal(ui.root().findAllByType('Confirm').length, 0);
+  } finally { await ui.cleanup(); }
 });
 
 test("downward session swipe uses the existing animated close and inner sheets take priority",async()=>{

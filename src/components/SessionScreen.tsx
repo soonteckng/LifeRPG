@@ -93,15 +93,28 @@ export default function SessionScreen() {
   const params = useLocalSearchParams?.<{ countdownAction?: string }>() ?? {};
   const { consumeNotificationAction, isRestoring: notificationRestoring, actionBusy: notificationBusy } = liveTimer;
   const handledNotification = useRef<string | null>(null);
+  const notificationView = useRef({ mounted: false, sessionId: liveTimer.sessionId, ending: liveTimer.endingSession,
+    open: liveTimer.hasOpenSession, completed: liveTimer.isCompleted });
+  useLayoutEffect(() => {
+    notificationView.current.sessionId = liveTimer.sessionId;
+    notificationView.current.ending = liveTimer.endingSession;
+    notificationView.current.open = liveTimer.hasOpenSession;
+    notificationView.current.completed = liveTimer.isCompleted;
+  }, [liveTimer.sessionId, liveTimer.endingSession, liveTimer.hasOpenSession, liveTimer.isCompleted]);
+  useEffect(() => {
+    const view = notificationView.current;
+    view.mounted = true;
+    return () => { view.mounted = false; };
+  }, []);
   useEffect(() => {
     const nonce = params.countdownAction;
     if (typeof nonce !== "string" || handledNotification.current === nonce || notificationRestoring || notificationBusy) return;
     handledNotification.current = nonce;
-    let current = true;
+    const sessionId = notificationView.current.sessionId;
     void consumeNotificationAction?.(nonce).then(action => {
-      if (current && action === "end") setConfirmEnd(true);
+      const view = notificationView.current;
+      if (view.mounted && view.sessionId === sessionId && view.open && !view.completed && !view.ending && action === "end") setConfirmEnd(true);
     }).catch(() => {});
-    return () => { current = false; };
   }, [params.countdownAction, consumeNotificationAction, notificationRestoring, notificationBusy]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const timerBounds = useRef({ top: 0, bottom: 0 });

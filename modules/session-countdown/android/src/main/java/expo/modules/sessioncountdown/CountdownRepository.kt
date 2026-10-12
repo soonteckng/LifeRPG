@@ -12,6 +12,7 @@ internal class CountdownRepository(context: Context) {
     // All bridges and receivers use the default app process and the same lock.
     // AtomicFile guarantees replacement, not read/modify/write serialization.
     private val lock = Any()
+    private val launches = CountdownLaunchPolicy()
   }
   private val file = AtomicFile(File(context.filesDir, "liferpg-session-countdown-v1.json"))
   private val notifications = CountdownNotifications(context.applicationContext)
@@ -46,6 +47,7 @@ internal class CountdownRepository(context: Context) {
     val old = read()
     val decision = CountdownEngine.activate(old, lease, scope)
     if (!decision.accepted) return@synchronized false
+    launches.retain(decision.state)
     if (decision.state != old) { write(decision.state); notifications.cancelAll() }
     true
   }
@@ -57,6 +59,7 @@ internal class CountdownRepository(context: Context) {
       notifications.wallMs(), notifications.elapsedMs(), notifications.bootId()) { UUID.randomUUID().toString() }
     if (!decision.accepted) return@synchronized false
     write(decision.state)
+    launches.retain(decision.state)
     expireOrRender(decision.state)
     true
   }
@@ -70,6 +73,7 @@ internal class CountdownRepository(context: Context) {
     val decision = CountdownEngine.clear(expiry.state, lease)
     if (!decision.accepted) return@synchronized false
     if (decision.state != old) write(decision.state)
+    launches.retain(decision.state)
     if (expiry.accepted) {
       try { notifications.finished(expiry.state) }
       catch (_: Exception) { Log.w("LifeRPGCountdown", "The session finish alert is unavailable; progress remains in the app.") }
@@ -94,6 +98,21 @@ internal class CountdownRepository(context: Context) {
     if (token == null) return@synchronized null
     write(state)
     token.map()
+  }
+  fun captureLaunch(intent: Intent): Boolean = synchronized(lock) {
+    val uri = intent.data ?: return@synchronized false
+    if (intent.action != Intent.ACTION_VIEW || !uri.isHierarchical || uri.scheme != "liferpg"
+      || uri.authority != "session" || !uri.path.isNullOrEmpty() || uri.fragment != null
+      || uri.queryParameterNames != setOf("countdownAction")) return@synchronized false
+    val values = uri.getQueryParameters("countdownAction")
+    if (values.size != 1 || runCatching { CountdownParser.lease(values[0]) }.isFailure) return@synchronized false
+    // The deep link is only a hint. A matching, currently issued native action
+    // proves this launch; invented/stale links cannot postpone reconciliation.
+    launches.capture(read(), values[0])
+  }
+  fun takeForegroundAction(lease: String): String? = synchronized(lock) {
+    if (runCatching { CountdownParser.lease(lease) }.isFailure) return@synchronized null
+    launches.take(read(), lease)
   }
   fun onAlarm(intent: Intent) = synchronized(lock) {
     val current = read()

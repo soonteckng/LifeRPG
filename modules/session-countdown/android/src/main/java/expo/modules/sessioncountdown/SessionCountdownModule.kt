@@ -18,6 +18,10 @@ class SessionCountdownModule : Module() {
     AsyncFunction("refresh") { leaseId: String, preferencesJson: String -> CountdownRepository(context).refresh(leaseId, preferencesJson) }
     AsyncFunction("capabilities") { CountdownRepository(context).capabilities() }
     AsyncFunction("consumeAction") { leaseId: String, nonce: String -> CountdownRepository(context).consumeAction(leaseId, nonce) }
+    AsyncFunction("takeForegroundAction") { leaseId: String -> CountdownRepository(context).takeForegroundAction(leaseId) }
+    // Android delivers onNewIntent before onResume. Capture only a native-
+    // issued warm action, before JS's foreground refresh can retire its nonce.
+    OnNewIntent { intent -> runCatching { CountdownRepository(context).captureLaunch(intent) } }
     // Deliberately no OnDestroy cleanup: process death/React restart must not
     // cancel an OS countdown or a persisted expiry alarm.
   }

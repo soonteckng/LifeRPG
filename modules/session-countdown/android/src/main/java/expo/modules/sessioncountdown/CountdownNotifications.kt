@@ -128,7 +128,7 @@ internal class CountdownNotifications(private val context: Context) {
     if (!paused) {
       // setWhen is converted by Android to its system chronometer base. The OS
       // updates seconds without running JavaScript or posting each second.
-      val displayDeadline = wallMs() + remaining
+      val displayDeadline = CountdownEngine.chronometerWhen(wallMs(), remaining)
       builder.setWhen(displayDeadline).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
       public.setWhen(displayDeadline).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
       if (Build.VERSION.SDK_INT >= 26) {

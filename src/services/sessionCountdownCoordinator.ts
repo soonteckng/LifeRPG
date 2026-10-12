@@ -30,6 +30,15 @@ export function createSessionCountdownCoordinator(options: CountdownCoordinatorO
   return {
     initialize: () => live() ? options.native.activate() : Promise.resolve(false),
     ownsNative: options.native.ownsNative,
+    async shouldRefreshOnForeground(): Promise<boolean> {
+      if (!live()) return false;
+      // A warm notification action needs its exact saved revision. The native
+      // launch notice survives consuming that nonce, so either route/AppState
+      // event order skips only this incidental refresh. Cold/ordinary launches
+      // still use normal server reconciliation. This grants no command itself.
+      const nonce = await options.native.takeForegroundAction();
+      return live() && nonce === null;
+    },
     async refresh(title: string, preferences: SessionCountdownPreferences, force = false): Promise<void> {
       const request = ++revision;
       try {
