@@ -6,6 +6,8 @@ This follow-up builds on the session recovery branch. It does not add new offlin
 
 The first daily-effort/account update at commit 837de21 was JavaScript only. The approved follow-up adds Expo IntentLauncher and its lockfile, so it needs a fresh installed Android preview build. The manifest keeps the existing notification and alarm permissions; there is no new permission. Pulling GitHub code or publishing an OTA update alone cannot add the native module to an older installed app.
 
+The subsequent account-form correction changes only JavaScript and docs/tests: it explicitly handles Android keyboards that overlay an unchanged window, and refines the sign-in/create-account appearance. It can be delivered through EAS Update to the matching version 1.1.0/build 5 runtime; it does not add another native module or require another rebuild of that installed version.
+
 Daily goal editing was explicitly approved and installed as migration `20261011183822_daily_goal_exact_credit_weekly_schedule`. Live read-only checks verified the exact two goal-selection edits and preservation of existing baseline and historical targets. No account goal was changed during installation. The approved Android alarm route opens LifeRPG's own toggle with a package data URI and falls back to current app settings if unavailable. Notifications opens LifeRPG's specific notification settings with the same fallback. System highlighting cannot be controlled by the app.
 
 ## Checks with an existing account
@@ -24,7 +26,7 @@ Use an account with no recorded session on its current local day. Complete a one
 
 ## Account forms and new-user setup
 
-1. After explicit sign-out, the next launch defaults to Sign in. Switching to Create account remains possible. Test every field with the keyboard open, password visibility, one missing-field error and one failed sign-in. Fields, errors and controls should remain reachable without the earlier large keyboard gap.
+1. After explicit sign-out, the next launch defaults to Sign in. Switching to Create account remains possible. Test email and password with the keyboard open on both forms. The companion/header becomes compact while typing. Each focused textbox and its validation error must stay above the keyboard; longer messages and buttons remain scrollable. Show/hide the password and reopen the keyboard twice. Change the keyboard height using its autofill/suggestion panel if available. Trigger one missing-field error and one failed sign-in. There should be neither a blocked textbox nor the earlier large keyboard gap.
 2. Open Forgot password. Verify its centered layout without the keyboard, smooth transition and readable validation. Use a test account's real recovery link to check new-password confirmation and return to Sign in. The existing generic email response and recovery ownership checks remain intact.
 3. On a genuinely clean install, the launch animation leads to Create account. Do not clear storage or uninstall an account with unconfirmed sessions to simulate this check; use a separate test installation/device after all pending work has synced.
 4. Create a new test account. Initial goal selection and the introduction explain that later changes are limited to once every seven days and start the following day. Finish the complete guide. Home then offers optional notifications if supported and currently disabled.

@@ -236,7 +236,7 @@ const native = {
   View: host("View"), Text: host("Text"), TextInput: host("Input"),
   Pressable: host("Button"), ScrollView: host("Scroll"), KeyboardAvoidingView: host("Keyboard"),
   ActivityIndicator: host("Spinner"), Platform: { OS: "android" },
-  Keyboard: { dismiss() {} },
+  Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
   Animated: { Value: class { setValue() {} }, View: host("Animated"), timing: () => ({ start() {}, stop() {} }) },
 };
 const personalUI = { p: {}, PersonalButton: host("Button") };

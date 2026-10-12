@@ -50,33 +50,35 @@ export default function AuthScreen({ initialMode = "sign-in" }: { initialMode?: 
   return <AuthFormFrame transitionKey={register ? "sign-up" : "sign-in"}
     title={register ? "Create your account" : "Welcome back"}
     description={register ? "Choose something that matters. See your effort grow." : "Your next small step is waiting for you."}
-    hero={<CharacterPortrait avatar="🌱" size={100} />}>
-    {({ tight, focus, layout }) => <>
-      <View onLayout={event => layout("email", event)} style={{ gap: 6 }}>
-        <Text style={[p.caption, { color: colors.secondary }]}>Email</Text>
+    hero={<CharacterPortrait avatar="🌱" size={124} interactive={false} />}>
+    {({ tight, active, focus, blur, layout }) => <>
+      <View onLayout={event => layout("email", event)} style={{ gap: 8 }}>
+        <Text style={{ color: colors.neutral, fontSize: 14, lineHeight: 20, fontWeight: "500" }}>Email</Text>
         <TextInput accessibilityLabel="Email" editable={!busy}
-          style={[p.input, { backgroundColor: colors.surface, borderColor: colors.border, minHeight: 52 }]}
+          style={[p.input, { backgroundColor: colors.surface, borderColor: fieldError === "email" ? colors.danger : active === "email" ? colors.accent : colors.border,
+            borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }]}
           placeholder="you@example.com" placeholderTextColor={colors.muted}
           keyboardType="email-address" autoCapitalize="none" autoCorrect={false}
           autoComplete="email" textContentType="emailAddress" value={email} onChangeText={setEmail}
-          onFocus={() => focus("email")} returnKeyType="next" />
+          onFocus={() => focus("email")} onBlur={() => blur("email")} returnKeyType="next" />
         {fieldError === "email" && !!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
       </View>
-      <View onLayout={event => layout("password", event)} style={{ gap: 6 }}>
-        <Text style={[p.caption, { color: colors.secondary }]}>Password</Text>
+      <View onLayout={event => layout("password", event)} style={{ gap: 8 }}>
+        <Text style={{ color: colors.neutral, fontSize: 14, lineHeight: 20, fontWeight: "500" }}>Password</Text>
         <PasswordInput accessibilityLabel="Password" editable={!busy}
-          style={{ backgroundColor: colors.surface, borderColor: colors.border, minHeight: 52 }}
+          style={{ backgroundColor: colors.surface, borderColor: fieldError === "password" ? colors.danger : active === "password" ? colors.accent : colors.border,
+            borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }}
           placeholder={register ? "Create a password" : "Your password"}
           autoComplete={register ? "new-password" : "current-password"}
           textContentType={register ? "newPassword" : "password"}
-          value={password} onChangeText={setPassword} onFocus={() => focus("password")}
+          value={password} onChangeText={setPassword} onFocus={() => focus("password")} onBlur={() => blur("password")}
           returnKeyType="done" submitBehavior="submit" onSubmitEditing={() => void submit(focus)}
           error={fieldError === "password" ? error : undefined} />
       </View>
       {!register && <Pressable accessibilityRole="button" disabled={busy}
         onPress={() => { Keyboard.dismiss(); setForgot(true); }}
         style={{ alignSelf: "flex-end", paddingVertical: 6, minHeight: 36, justifyContent: "center" }}>
-        <Text style={[p.body, { color: colors.accent }]}>Forgot password?</Text>
+        <Text style={{ color: colors.accent, fontSize: 14, lineHeight: 20 }}>Forgot password?</Text>
       </Pressable>}
       <View onLayout={event => layout("submit", event)} style={{ gap: 12 }}>
         {!!error && !fieldError && <Text style={p.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
@@ -89,8 +91,9 @@ export default function AuthScreen({ initialMode = "sign-in" }: { initialMode?: 
         onPress={() => {
           Keyboard.dismiss(); setRegister(current => !current); setError(""); setMessage(""); setFieldError(null);
         }}>
-        <Text style={[p.body, { color: colors.accent, textAlign: "center" }]}>
-          {register ? "Already have an account? Sign in" : "New here? Create an account"}
+        <Text style={{ color: colors.secondary, fontSize: 15, lineHeight: 23, textAlign: "center" }}>
+          {register ? "Already have an account? " : "New here? "}
+          <Text style={{ color: colors.accent, fontSize: 15, fontWeight: "500" }}>{register ? "Sign in" : "Create an account"}</Text>
         </Text>
       </Pressable>
     </>}

@@ -28,7 +28,7 @@ const text = node => typeof node === "string" ? node : (node.children ?? []).map
 const native = {
   View: host("View"), Text: host("Text"), TextInput: host("Input"), ScrollView: host("Scroll"),
   KeyboardAvoidingView: host("KeyboardArea"), ActivityIndicator: host("Spinner"),
-  Platform: { OS: "android" }, Keyboard: { dismiss() {} },
+  Platform: { OS: "android" }, Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
 };
 function mocksFor({ os = "android", reduced = true, animations = [] } = {}) {
   return {
@@ -59,7 +59,7 @@ test("keyboard reveal keeps visible controls still and moves only enough for a f
   assert.equal(layout.authFieldScrollOffset(undefined, 300, 80), 80);
 });
 
-test("auth form uses native Android resize once, centers short forms, and includes its centered position when revealing a control", async () => {
+test("auth form preserves iOS avoidance and includes its centered position when revealing a control", async () => {
   for (const os of ["android", "ios"]) {
     const moves = [], animations = [];
     const Frame = load("src/components/AuthFormFrame.tsx", mocksFor({ os, animations })).default;
@@ -85,12 +85,129 @@ test("auth form uses native Android resize once, centers short forms, and includ
         renderer.root.findByType("Input").props.onFocus();
       });
       assert.equal(moves.at(-1).y, 22);
-      assert.equal(scroll.props.contentContainerStyle.paddingBottom, 16);
+      assert.equal(scroll.props.contentContainerStyle.paddingBottom, 50);
       assert.equal(renderer.root.findAllByType("Portrait").length, 0);
       assert.equal(renderer.root.findAllByType("View").find(node => node.props.testID === "field").props.tight, true);
       assert.equal(animations.length, 0);
     } finally { await act(async () => renderer.unmount()); }
   }
+});
+
+test("keyboard overlap handles full overlay, native resize and partial resize without double subtraction", () => {
+  assert.equal(layout.authKeyboardOverlap(24, 776, 500), 300);
+  assert.equal(layout.authKeyboardOverlap(24, 476, 500), 0);
+  assert.equal(layout.authKeyboardOverlap(24, 576, 500), 100);
+  assert.equal(layout.authKeyboardOverlap(24, 776, undefined), 0);
+  assert.equal(layout.authKeyboardOverlap(24, 776, 900), 0);
+  assert.equal(layout.authKeyboardOverlap(24, 776, 0), 776);
+  assert.equal(layout.authKeyboardOverlap(24, 776, NaN), 0);
+});
+
+async function keyboardForm({ metrics, delayed = false } = {}) {
+  const events = new Map(), removed = [], measures = [], moves = [];
+  let geometry = { y: 24, height: 776 };
+  const mocks = mocksFor();
+  mocks["react-native"].Keyboard = {
+    metrics: () => metrics, dismiss() {},
+    addListener(name, callback) { events.set(name, callback); return { remove() { removed.push(name); events.delete(name); } }; },
+  };
+  const Frame = load("src/components/AuthFormFrame.tsx", mocks).default;
+  const make = key => React.createElement(Frame, { title: "Account", transitionKey: key, hero: React.createElement("Portrait") },
+    ({ focus, layout: place }) => React.createElement("View", { testID: "field", onLayout: event => place("password", event) },
+      React.createElement("Input", { onFocus: () => focus("password") })));
+  let renderer;
+  await act(async () => { renderer = create(make("sign-up"), { createNodeMock: element => {
+    if (element.type === "Scroll") return { scrollTo: move => moves.push(move) };
+    if (element.props.testID === "auth-keyboard-host") return { measureInWindow: callback => {
+      if (delayed) measures.push(callback); else callback(0, geometry.y, 360, geometry.height);
+    } };
+    return null;
+  } }); });
+  const emit = async (name, screenY = 500, height = 300) => act(async () => events.get(name)?.({ endCoordinates: { screenY, height } }));
+  const node = id => renderer.root.findAllByType("View").find(item => item.props.testID === id);
+  return { renderer, emit, node, measures, moves, events, removed, make,
+    geometry: value => { geometry = value; },
+    cleanup: async () => act(async () => renderer.unmount()) };
+}
+
+test("Android overlay makes room for a keyboard even when the window never resizes", async () => {
+  const ui = await keyboardForm();
+  try {
+    const scroll = ui.renderer.root.findByType("Scroll");
+    await act(async () => {
+      scroll.props.onLayout({ nativeEvent: { layout: { height: 776 } } });
+      ui.node("auth-fields").props.onLayout({ nativeEvent: { layout: { y: 100 } } });
+      ui.node("field").props.onLayout({ nativeEvent: { layout: { y: 430, height: 60 } } });
+      ui.renderer.root.findByType("Input").props.onFocus();
+    });
+    await ui.emit("keyboardDidShow");
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 300);
+    assert.equal(ui.renderer.root.findAllByType("Portrait").length, 0);
+    await act(async () => scroll.props.onLayout({ nativeEvent: { layout: { height: 476 } } }));
+    assert.equal(ui.moves.at(-1).y, 126);
+    assert.equal(scroll.props.contentContainerStyle.justifyContent, "flex-start");
+    assert.equal(scroll.props.contentContainerStyle.paddingBottom, 16);
+    await ui.emit("keyboardDidShow", 440, 360);
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 360);
+    // Changing our child layout must not measure the shortened child and undo the inset.
+    await act(async () => ui.node("auth-keyboard-host").props.onLayout());
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 360);
+    await ui.emit("keyboardDidHide");
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 0);
+    assert.equal(ui.moves.at(-1).y, 0);
+  } finally { await ui.cleanup(); }
+  assert.equal(ui.events.size, 0);
+});
+
+test("native resize removes only the remaining overlay, including a keyboard visible at mount", async () => {
+  const ui = await keyboardForm({ metrics: { screenY: 500, height: 300 } });
+  try {
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 300);
+    ui.geometry({ y: 24, height: 576 });
+    await act(async () => ui.node("auth-keyboard-host").props.onLayout());
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 100);
+    ui.geometry({ y: 24, height: 476 });
+    await act(async () => ui.node("auth-keyboard-host").props.onLayout());
+    assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test("hide and unmount invalidate pending native keyboard measurements", async () => {
+  const ui = await keyboardForm({ delayed: true });
+  await ui.emit("keyboardDidShow");
+  const oldShow = ui.measures.at(-1);
+  await ui.emit("keyboardDidHide");
+  await act(async () => oldShow(0, 24, 360, 776));
+  assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 0);
+  await ui.emit("keyboardDidShow");
+  const oldHeight = ui.measures.at(-1);
+  await ui.emit("keyboardDidShow", 440, 360);
+  await act(async () => ui.measures.at(-1)(0, 24, 360, 776));
+  await act(async () => oldHeight(0, 24, 360, 776));
+  assert.equal(ui.node("auth-keyboard-inset").props.style.paddingBottom, 360);
+  await ui.emit("keyboardDidShow");
+  const afterUnmount = ui.measures.at(-1);
+  await ui.cleanup();
+  assert.doesNotThrow(() => afterUnmount(0, 24, 360, 776));
+  assert.equal(ui.events.size, 0);
+});
+
+test("switching forms keeps field geometry available when native fields do not re-layout", async () => {
+  const ui = await keyboardForm();
+  try {
+    const scroll = ui.renderer.root.findByType("Scroll");
+    await act(async () => {
+      scroll.props.onLayout({ nativeEvent: { layout: { height: 220 } } });
+      ui.node("auth-fields").props.onLayout({ nativeEvent: { layout: { y: 90 } } });
+      ui.node("field").props.onLayout({ nativeEvent: { layout: { y: 130, height: 60 } } });
+      ui.renderer.update(ui.make("sign-in"));
+    });
+    await act(async () => ui.renderer.root.findByType("Input").props.onFocus());
+    assert.equal(ui.moves.at(-1).y, 72);
+    ui.moves.length = 0;
+    await act(async () => scroll.props.onScroll({ nativeEvent: { contentOffset: { y: 120 } } }));
+    assert.equal(ui.moves.length, 0);
+  } finally { await ui.cleanup(); }
 });
 
 test("auth and reset forms animate their changed screen once and respect Reduce Motion", async () => {
@@ -108,6 +225,16 @@ test("auth and reset forms animate their changed screen once and respect Reduce 
       if (reduced) assert.equal(renderer.root.findByType("Animated").props.style.opacity, 1);
     } finally { await act(async () => renderer.unmount()); }
   }
+});
+
+test("web account forms mount without the native-only Keyboard.metrics API", async () => {
+  const mocks = mocksFor({ os: "web" });
+  mocks["react-native"].Keyboard = { dismiss() {}, addListener: () => ({ remove() {} }) };
+  const Frame = load("src/components/AuthFormFrame.tsx", mocks).default;
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Frame, { title: "Account", transitionKey: "sign-in" }, () => React.createElement("Input"))); });
+  try { assert.match(text(renderer.root), /Account/); }
+  finally { await act(async () => renderer.unmount()); }
 });
 
 test("Create account can switch to Sign in and reset without losing drafts or using the wrong auth action", async () => {

@@ -48,17 +48,19 @@ export default function RecoveryScreen({ requestOnly = false, onBack }: { reques
   return <AuthFormFrame transitionKey={checking ? "checking" : success ? "success" : requesting ? "request-recovery" : "save-password"}
     title={checking ? "Checking recovery link" : success ? "Password updated" : requesting ? "Reset your password" : "Set new password"}
     description={checking ? "We’re checking that this link belongs to your account." : success ? "You’re ready to return to your account." : requesting ? "We’ll send a secure link to your email." : "Choose a password you can keep safe."}>
-    {({ focus, layout }) => <>
+    {({ active, focus, blur, layout }) => <>
       {checking ? <><ActivityIndicator color={colors.accent} /><Text style={p.body}>Verifying your recovery link...</Text></> : <>
         {success ? <Text style={p.body} accessibilityRole="alert">Your password was saved. Return to sign in with your new password.</Text> : <>
           {invalid && <Text style={p.error} accessibilityRole="alert">{recoveryLinkError}</Text>}
           {requesting ? <>
-            <View onLayout={event => layout("email", event)} style={{ gap: 6 }}>
-              <Text style={[p.caption, { color: colors.secondary }]}>Account email</Text>
-              <TextInput accessibilityLabel="Email" style={[p.input, { backgroundColor: colors.surface, borderColor: colors.border, minHeight: 52 }]}
+            <View onLayout={event => layout("email", event)} style={{ gap: 8 }}>
+              <Text style={{ color: colors.neutral, fontSize: 14, lineHeight: 20, fontWeight: "500" }}>Account email</Text>
+              <TextInput accessibilityLabel="Email" style={[p.input, { backgroundColor: colors.surface,
+                borderColor: fieldError?.field === "email" ? colors.danger : active === "email" ? colors.accent : colors.border,
+                borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }]}
                 placeholder="you@example.com" placeholderTextColor={colors.muted} keyboardType="email-address"
                 autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress"
-                value={email} onChangeText={setEmail} onFocus={() => focus("email")} editable={!busy && !sent}
+                value={email} onChangeText={setEmail} onFocus={() => focus("email")} onBlur={() => blur("email")} editable={!busy && !sent}
                 returnKeyType="done" submitBehavior="submit" onSubmitEditing={() => void submit(focus)} />
               {fieldError?.field === "email" && <Text style={p.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{fieldError.message}</Text>}
             </View>
@@ -72,14 +74,16 @@ export default function RecoveryScreen({ requestOnly = false, onBack }: { reques
             <Text style={p.body}>Use at least 8 characters. A longer password with letters, numbers, and symbols is stronger.</Text>
             <View onLayout={event => layout("password", event)}>
               <PasswordInput accessibilityLabel="New password" placeholder="New password" autoComplete="new-password" textContentType="newPassword"
-                style={{ backgroundColor: colors.surface, borderColor: colors.border, minHeight: 52 }}
-                value={password} onChangeText={setPassword} onFocus={() => focus("password")} editable={!busy}
+                style={{ backgroundColor: colors.surface, borderColor: active === "password" ? colors.accent : colors.border,
+                  borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }}
+                value={password} onChangeText={setPassword} onFocus={() => focus("password")} onBlur={() => blur("password")} editable={!busy}
                 error={fieldError?.field === "password" ? fieldError.message : undefined} />
             </View>
             <View onLayout={event => layout("confirmation", event)}>
               <PasswordInput accessibilityLabel="Confirm new password" placeholder="Confirm new password" autoComplete="new-password" textContentType="newPassword"
-                style={{ backgroundColor: colors.surface, borderColor: colors.border, minHeight: 52 }}
-                value={confirmation} onChangeText={setConfirmation} onFocus={() => focus("confirmation")} editable={!busy}
+                style={{ backgroundColor: colors.surface, borderColor: active === "confirmation" ? colors.accent : colors.border,
+                  borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }}
+                value={confirmation} onChangeText={setConfirmation} onFocus={() => focus("confirmation")} onBlur={() => blur("confirmation")} editable={!busy}
                 returnKeyType="done" submitBehavior="submit" onSubmitEditing={() => void submit(focus)}
                 error={fieldError?.field === "confirmation" ? fieldError.message : undefined} />
             </View>

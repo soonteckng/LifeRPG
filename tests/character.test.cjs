@@ -125,7 +125,7 @@ const Native = {
     timing: () => ({ start() {}, stop() {} }),
   },
   AppState: { addEventListener: () => ({ remove() {} }) },
-  Keyboard: { dismiss() {} },
+  Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
   Switch: host("Switch"),
   Linking: { openSettings: async () => {} },
   Text: host("Text"),
