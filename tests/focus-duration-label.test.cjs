@@ -30,7 +30,7 @@ function load(file, cache = new Map()) {
   return module.exports;
 }
 
-test('a remembered eight-minute session keeps a plain Custom option and exact editor value', async () => {
+test('an explicitly selected eight-minute duration keeps a plain Custom option and exact editor value', async () => {
   const Control = load('src/components/FocusLengthControl.tsx').default;
   let tree, seconds = 480;
   const props = () => ({ seconds, onChange: value => { seconds = value; } });
@@ -58,6 +58,36 @@ test('a remembered eight-minute session keeps a plain Custom option and exact ed
     await act(async () => custom().props.onPress());
     assert.equal(field('Focus minutes').props.value, '22');
     assert.equal(field('Focus seconds').props.value, '59');
+  } finally { await act(async () => tree.unmount()); }
+});
+
+test('an explicitly remembered Custom default opens independently of the selected preset', async () => {
+  const Control = load('src/components/FocusLengthControl.tsx').default;
+  let tree, selected = 3600, remembered = 1379, customSaves = 0;
+  const props = () => ({ seconds: selected, customSeconds: remembered, onChange: value => { selected = value; }, onCustomSave: value => { selected = value; remembered = value; customSaves++; } });
+  await act(async () => { tree = create(React.createElement(Control, props())); });
+  const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
+  const field = label => tree.root.findAllByType('Input').find(node => node.props.accessibilityLabel === label);
+  try {
+    await act(async () => button('Set a custom focus duration').props.onPress());
+    assert.equal(field('Focus minutes').props.value, '22');
+    assert.equal(field('Focus seconds').props.value, '59');
+    await act(async () => field('Focus minutes').props.onChangeText('17'));
+    await act(async () => tree.root.findByType('Sheet').props.onRequestClose());
+    assert.equal(customSaves, 0, 'cancelling does not remember an unfinished edit');
+    await act(async () => button('Set a custom focus duration').props.onPress());
+    assert.equal(field('Focus minutes').props.value, '22');
+    await act(async () => { field('Focus minutes').props.onChangeText('2'); field('Focus seconds').props.onChangeText('15'); });
+    await act(async () => button('Use this duration').props.onPress());
+    assert.equal(customSaves, 1);
+    assert.equal(selected, 135);
+    await act(async () => tree.update(React.createElement(Control, props())));
+    await act(async () => button('Use 30 minutes').props.onPress());
+    await act(async () => tree.update(React.createElement(Control, props())));
+    assert.equal(selected, 1800);
+    await act(async () => button('Set a custom focus duration').props.onPress());
+    assert.equal(field('Focus minutes').props.value, '2');
+    assert.equal(field('Focus seconds').props.value, '15');
   } finally { await act(async () => tree.unmount()); }
 });
 

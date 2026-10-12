@@ -31,6 +31,7 @@ function load(file, mocks = {}, cache = new Map()) {
 const Native = { View:host('View'), ScrollView:host('Scroll'), KeyboardAvoidingView:host('KeyboardArea'), Keyboard:{dismiss(){}}, StyleSheet:{create:s=>s,hairlineWidth:0.5}, Platform:{OS:'android'} };
 function storage() { const values=new Map(); return {values,api:{getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}}}; }
 function mocks(extra={}) {return {
+  '@react-native-async-storage/async-storage':storage().api,
   'react-native':Native,
   'expo-haptics':{selectionAsync:async()=>{}},
   '../context/UserContext':{useUser:()=>({hapticsEnabled:false})},
@@ -486,7 +487,7 @@ test('both Home choosers share the saved area and direction, including free focu
  })).default;
  const ui=await render(Home);
  try{
-  assert.equal(selectedCustomDuration(ui),'30 min 59 sec');await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');assert.equal(selectedCustomDuration(ui),'30 min 59 sec');
+  assert.equal(selectedCustomDuration(ui),'');await ui.press('Find your next step');await ui.press('Learning');await ui.press('Save preferences');assert.equal(selectedCustomDuration(ui),'');
   await setTenMinuteCustom(ui);await ui.press('Choose focus area');await ui.press('Choose Work & projects');
   assert.match(text(ui.tree.root),/A small project step/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,3);
   await ui.press('Find your next step');
@@ -494,7 +495,7 @@ test('both Home choosers share the saved area and direction, including free focu
   assert.equal(radio('Work & projects').props.accessibilityState.checked,true);
   await ui.press('Creativity');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/A little room to create/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,undefined);
-  await ui.press('Find your next step');await ui.press('Just let me focus');await ui.press('Save preferences');
+  await ui.press('Find your next step');await ui.press('Free focus');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/Free focus/);assert.match(text(ui.tree.root),/Everyday focus/);
   assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,null);
   assert.equal(api.parseGuidedPreference(db.values.get('liferpg:guided:v1:owner')).areaId,null);
@@ -502,7 +503,7 @@ test('both Home choosers share the saved area and direction, including free focu
   await ui.press('Choose focus area');await ui.press('Choose Learning');
   assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
   assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,2);
-  await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');
+  await ui.press('Find your next step');await ui.press('Learning');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/A short review/);
   await ui.press('Choose focus area');await ui.press('Choose Everyday focus');
   assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);

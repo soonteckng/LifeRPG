@@ -995,7 +995,7 @@ test("Today and All occupy equal native containers with identical full-width tou
   await ui.cleanup();
 });
 
-async function quickHomeSetup(history = null, start = async () => true) {
+async function quickHomeSetup(history = null, start = async () => true, durationStorage = null) {
   const calls=[];
   let owner="owner-a", timerFlags={}, historyValue=history;
   const setters = {
@@ -1004,6 +1004,7 @@ async function quickHomeSetup(history = null, start = async () => true) {
     setActivityType:v=>calls.push(["activity",v]), setNotes:v=>calls.push(["notes",v]),
   };
   const Home=load("src/app/(tabs)/index.tsx", {
+    "@react-native-async-storage/async-storage":durationStorage ?? {getItem:async()=>null,setItem:async()=>{}},
     "react-native":{...native, ScrollView:host("ScrollView"), useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
     "@expo/vector-icons":{Ionicons:host("Icon")}, "expo-haptics":{},
     "expo-router":{useRouter:()=>({navigate:route=>calls.push(["navigate",route])})},
@@ -1026,10 +1027,11 @@ test("Home Quick Start opens immediately, retains the exact duration and neutral
   let resolve; const pending=new Promise(r=>resolve=r);
   const ui=await quickHomeSetup({task_id:null,subject_id:2,duration_seconds:1859},()=>pending);
   try {
-    assert.match(ui.output(),/30 min 59 sec/); assert.match(ui.output(),/Everyday focus/);
+    assert.match(ui.output(),/30 min/); assert.match(ui.output(),/Everyday focus/);
     let first;
     await act(async()=>{first=ui.button("home-start-focus").props.onPress();ui.button("home-start-focus").props.onPress();});
-    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1859,1]]);
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1]]);
+    assert.equal(ui.calls.some(call=>call[0]==="history"),false,'saved session history must not choose the setup duration');
     assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     assert.equal(ui.button("home-start-focus").props.disabled,true);
     await act(async()=>{resolve(true);await first;});
@@ -1085,10 +1087,10 @@ test("Home continues active or paused sessions and protects restoration/completi
     assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
   }finally{await ui.cleanup();}
 });
-test("Home history does not leak across accounts; missing areas fall back to General and tiny/quest rows are ignored",async()=>{
+test("Home ignores session history when choosing the initial preset across accounts",async()=>{
   const ui=await quickHomeSetup({task_id:null,subject_id:99,duration_seconds:1859});
   try {
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min 59 sec, Everyday focus");
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
     await ui.update({},"owner-b",null);
     assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
     await ui.update({},"owner-c",{task_id:2,subject_id:2,duration_seconds:900});
@@ -1111,6 +1113,32 @@ test("free focus presets and custom seconds start the selected time and cannot l
   assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, Everyday focus');
   await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start').at(-1),['start',2717,1]);
   await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+ }finally{await ui.cleanup();}
+});
+
+test('Home cold restart keeps the preset and uses only the explicitly saved Custom editor default',async()=>{
+ const values=new Map(),db={getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}};
+ let ui=await quickHomeSetup({task_id:null,duration_seconds:480},async()=>true,db);
+ const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
+ const input=label=>ui.renderer.root.findAllByType('Input').find(n=>n.props.accessibilityLabel===label);
+ try{
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+  await act(async()=>control('Use 60 minutes').props.onPress());
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'60','the first Custom editor uses the selected preset');
+  await act(async()=>{input('Focus minutes').props.onChangeText('2');input('Focus seconds').props.onChangeText('15');});
+  await act(async()=>control('Use this duration').props.onPress());
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 2 min 15 sec, Everyday focus');
+  await ui.cleanup();
+  ui=await quickHomeSetup({task_id:null,duration_seconds:480},async()=>true,db);
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 60 min, Everyday focus');
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'2');assert.equal(input('Focus seconds').props.value,'15');
+  await act(async()=>ui.renderer.root.findAllByType('Sheet').find(n=>n.props.label==='focus duration').props.onRequestClose());
+  await ui.update({},'another-account',null);
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'0');
  }finally{await ui.cleanup();}
 });
 

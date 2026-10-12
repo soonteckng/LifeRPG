@@ -489,6 +489,7 @@ export default function SessionScreen() {
         durationSeconds={sessionSummary?.durationSeconds ?? timer.duration} xpEarned={sessionSummary?.xpEarned}
         goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}
         creditedDate={sessionSummary?.creditedDate} dailyCompletedSeconds={sessionSummary?.dailyCompletedSeconds}
+        dailyGoalMinutes={sessionSummary?.dailyGoalMinutes}
         areaXpEarned={sessionSummary?.areaXpEarned} goalReachedNow={sessionSummary?.goalReachedNow}
         questTitle={title} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId, area?.color_code)}
         isLevelUp={!!timer.completedLevelUp?.leveledUp} newLevel={timer.completedLevelUp?.newLevel}

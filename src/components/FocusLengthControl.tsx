@@ -8,8 +8,8 @@ import FocusDurationSheet from "./FocusDurationSheet";
 import { colors } from "../constants/theme";
 import { durationLabel } from "../utils/sessionSetup";
 
-export default function FocusLengthControl({ seconds, disabled = false, onChange, onCustom }: {
-  seconds: number; disabled?: boolean; onChange: (seconds: number) => void; onCustom?: () => void;
+export default function FocusLengthControl({ seconds, customSeconds, disabled = false, onChange, onCustomSave, onCustom }: {
+  seconds: number; customSeconds?: number | null; disabled?: boolean; onChange: (seconds: number) => void; onCustomSave?: (seconds: number) => void; onCustom?: () => void;
 }) {
   const [custom, setCustom] = useState(false);
   const { hapticsEnabled } = useUser();
@@ -26,7 +26,7 @@ export default function FocusLengthControl({ seconds, disabled = false, onChange
         <Text style={[s.text, customSelected && s.selectedText]}>Custom</Text>
       </Pressable>
     </View>
-    {!onCustom && <FocusDurationSheet seconds={seconds} visible={custom} disabled={disabled} onClose={() => setCustom(false)} onSave={onChange} />}
+    {!onCustom && <FocusDurationSheet seconds={customSeconds ?? seconds} visible={custom} disabled={disabled} onClose={() => setCustom(false)} onSave={onCustomSave ?? onChange} />}
   </View>;
 }
 const s = StyleSheet.create({

@@ -113,6 +113,31 @@ function harness(options = {}) {
   };
 }
 
+test('display scheduler lands on whole-second boundaries without moving expiry or saved timing', async () => {
+  const h = harness(), controller = h.create();
+  await controller.initialize(); await controller.start(setup);
+  const deadline = controller.getSnapshot().record.endsAtMs;
+  h.advance(907);
+  assert.equal(controller.nextTickDelayMs(), 97);
+  h.advance(controller.nextTickDelayMs()); await controller.tick();
+  assert.equal(controller.getSnapshot().displayTimeLeft, 2);
+  assert.equal(controller.getSnapshot().record.endsAtMs, deadline);
+  assert.equal(h.credits, 0);
+  h.advance(1995); await controller.tick(); assert.equal(h.credits, 0);
+  h.advance(1); await controller.tick(); assert.equal(h.credits, 1);
+  await controller.dispose();
+});
+
+test('paused and retired timers retain the retry heartbeat without scheduling fractional display changes', async () => {
+  const h = harness(), controller = h.create();
+  await controller.initialize(); await controller.start(setup);
+  h.advance(907); await controller.pause();
+  assert.equal(controller.nextTickDelayMs(), 200);
+  h.advance(500); assert.equal(controller.nextTickDelayMs(), 200);
+  h.switchOwner(); assert.equal(controller.nextTickDelayMs(), 200);
+  await controller.dispose();
+});
+
 async function unknownStartWithoutRow(h, controller, draft = setup) {
   const originalStart = h.server.start;
   h.server.start = async (requested, clientSessionId) => {

@@ -776,6 +776,16 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     subscribe(listener: (snapshot: SessionTimerControllerSnapshot) => void) {
       listeners.add(listener); return () => { listeners.delete(listener); };
     },
+    nextTickDelayMs(): number {
+      if (!live()) return 200;
+      const clock = now(), record = selected();
+      // Keep the existing retry heartbeat, but land the display tick just after
+      // either countdown's next whole-second boundary. No timing is changed.
+      const remaining = [record?.state === "running" ? deriveJournalTimer(record, clock).remainingMs : null,
+        displayClock?.running ? Math.max(0, displayClock.remainingMs - Math.max(0, clock.wallTimeMs - displayClock.atMs)) : null];
+      return remaining.reduce<number>((delay, value) => value === null || value <= 0 ? delay
+        : Math.min(delay, Math.max(1, Math.ceil(value % 1000 || 1000) + 4)), 200);
+    },
     initialize,
     start: (setup: JournalSetup) => run(() => startInternal(setup)),
     pause: () => run(() => controlInternal("pause")),

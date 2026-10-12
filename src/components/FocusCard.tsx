@@ -18,6 +18,7 @@ export interface FocusCardProps {
   seconds: number; area: string; tint: string; active: boolean; running: boolean;
   busy: boolean; disabled: boolean; editDisabled: boolean; restoring?: boolean;
   failed?: boolean; error?: string; setupDisabled?: boolean; awaitingStart?: boolean; onDuration: (seconds: number) => void;
+  customSeconds?: number | null; onCustomDuration?: (seconds: number) => void;
   subjects?: Subject[]; areaId?: number | null; onArea?: (id: number | null) => void; onStart: () => void;
 }
 export default function FocusCard(props: FocusCardProps) {
@@ -38,7 +39,7 @@ export default function FocusCard(props: FocusCardProps) {
       </Pressable>}
     <View style={s.duration} testID="focus-card-duration">
       {props.active ? <><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining}>{durationLabel(props.seconds)}</Text></>
-        : <FocusLengthControl seconds={props.seconds} disabled={editLocked} onChange={props.onDuration} />}
+        : <FocusLengthControl seconds={props.seconds} customSeconds={props.customSeconds} disabled={editLocked} onChange={props.onDuration} onCustomSave={props.onCustomDuration} />}
     </View>
     <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.primary, locked && s.disabled]}
       accessibilityRole="button" accessibilityLabel={props.active ? "Continue session" : `Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>

@@ -14,15 +14,24 @@ export interface DailyEffortEvidence {
   creditVersion?: number;
   dailyCompletedSeconds?: number;
   durationSeconds?: number;
+  dailyGoalMinutes?: number;
+  goalReachedNow?: boolean;
+}
+
+export type DailyAchievement = "first-session" | "daily-goal";
+export interface DailyAchievementDisplay {
+  firstSession: boolean;
+  dailyGoal: boolean;
 }
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
-/** The server's exact daily total proves this was the day's first credit. */
-export function firstDailyEffortEvidence(value: DailyEffortEvidence, nowMs = Date.now()): boolean {
-  if (!value.visible || value.pending || value.recovered || !value.ownerId || !value.sessionId || value.creditVersion !== 1) return false;
+/** Only a confirmed receipt for the account's current local day can celebrate. */
+function currentDailyReceipt(value: DailyEffortEvidence, nowMs: number): boolean {
+  if (!value.visible || value.pending || !value.ownerId || !value.sessionId || value.creditVersion !== 1) return false;
   if (!value.creditedDate || !datePattern.test(value.creditedDate) || !value.timeZone) return false;
-  if (!Number.isSafeInteger(value.durationSeconds) || (value.durationSeconds ?? 0) <= 0 || value.dailyCompletedSeconds !== value.durationSeconds) return false;
+  if (!Number.isSafeInteger(value.durationSeconds) || (value.durationSeconds ?? 0) <= 0
+    || !Number.isSafeInteger(value.dailyCompletedSeconds) || (value.dailyCompletedSeconds ?? 0) < (value.durationSeconds ?? 0)) return false;
   try {
     const parts = new Intl.DateTimeFormat("en-GB", {timeZone:value.timeZone, year:"numeric", month:"2-digit", day:"2-digit"}).formatToParts(new Date(nowMs));
     const part = (type: string) => parts.find(item => item.type === type)?.value;
@@ -30,14 +39,32 @@ export function firstDailyEffortEvidence(value: DailyEffortEvidence, nowMs = Dat
   } catch { return false; }
 }
 
+/** The receipt's exact daily snapshot proves this was the day's first credit. */
+export function firstDailyEffortEvidence(value: DailyEffortEvidence, nowMs = Date.now()): boolean {
+  return currentDailyReceipt(value, nowMs) && value.dailyCompletedSeconds === value.durationSeconds;
+}
+
+/** Stored receipt totals, unlike the live profile, preserve the actual crossing. */
+export function dailyGoalEvidence(value: DailyEffortEvidence, nowMs = Date.now()): boolean {
+  if (!currentDailyReceipt(value, nowMs)) return false;
+  if (Number.isSafeInteger(value.dailyGoalMinutes) && (value.dailyGoalMinutes ?? 0) > 0 && (value.dailyGoalMinutes ?? 0) <= 480) {
+    const target = (value.dailyGoalMinutes ?? 0) * 60;
+    const after = value.dailyCompletedSeconds ?? 0;
+    return after >= target && after - (value.durationSeconds ?? 0) < target;
+  }
+  return value.goalReachedNow === true;
+}
+
 // Both completion surfaces share the same process queue. Storage remains the
 // authority after a restart; the ledger is small and isolated per account.
 const queues = new Map<string, Promise<unknown>>();
 export function createDailyEffortClaims(storage: DailyEffortClaimStorage, backendId: string) {
   return {
-    async claim(ownerId: string, date: string, isCurrent: () => boolean): Promise<boolean> {
+    async claim(ownerId: string, date: string, isCurrent: () => boolean, achievement: DailyAchievement = "first-session"): Promise<boolean> {
       if (!ownerId || !backendId || !datePattern.test(date)) return false;
-      const key = `liferpg:daily-effort:v1:${encodeURIComponent(backendId)}:${encodeURIComponent(ownerId)}`;
+      // Keep the original first-session ledger so an update does not replay it.
+      const prefix = achievement === "daily-goal" ? "liferpg:daily-goal-celebration:v1" : "liferpg:daily-effort:v1";
+      const key = `${prefix}:${encodeURIComponent(backendId)}:${encodeURIComponent(ownerId)}`;
       const before = queues.get(key) ?? Promise.resolve();
       const request = before.catch(() => {}).then(async () => {
         if (!isCurrent()) return false;

@@ -50,6 +50,7 @@ export default function GlobalRewardListener() {
       durationSeconds={sessionSummary?.durationSeconds}
       creditedDate={sessionSummary?.creditedDate}
       dailyCompletedSeconds={sessionSummary?.dailyCompletedSeconds}
+      dailyGoalMinutes={sessionSummary?.dailyGoalMinutes}
       questTitle={linkedTaskId != null ? quest?.title || (sessionSummary?.questTitle !== "Quest session" ? sessionSummary?.questTitle : "Quest") : sessionSummary?.suggestion?.title ?? "Free session"}
       areaTitle={area?.title}
       areaColor={lifeAreaColor(targetAttributeId,area?.color_code)}

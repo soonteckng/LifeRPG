@@ -12,6 +12,7 @@ import { createNativeSessionCountdownLifecycle } from "../services/nativeSession
 import { createSessionCountdownCoordinator } from "../services/sessionCountdownCoordinator";
 import { getSessionNotifications } from "../utils/sessionNotifications";
 import { validSessionSeconds } from "../utils/sessionSetup";
+import { createCountdownTicker } from "../utils/countdownTicker";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import type { JournalClock, JournalScope, JournalSetup } from "../types/sessionJournal";
 import { useAuth } from "./AuthContext";
@@ -31,7 +32,7 @@ interface SessionSummary {
   sessionId?: string; suggestion?: SuggestedFocus; xpEarned: number; goldEarned: number;
   minutesSpent: number; durationSeconds: number; questTitle?: string; creditVersion?: number;
   areaXpEarned?: number | null; characterRemainderSeconds?: number; areaRemainderSeconds?: number | null;
-  dailyCompletedSeconds?: number; goalReachedNow?: boolean; creditedDate?: string;
+  dailyCompletedSeconds?: number; dailyGoalMinutes?: number; goalReachedNow?: boolean; creditedDate?: string;
 }
 interface TimerContextType {
   sessionId: string | null; recoveredSession: boolean;
@@ -128,8 +129,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     void countdown.initialize().then(() => {
       if (countdownRef.current === countdown) setRenderer({ scopeKey: snapshotScopeKey, native: countdown.ownsNative() });
     });
+    const ticker = createCountdownTicker(() => { void controller.tick(); }, () => controller.nextTickDelayMs());
     const unsubscribe = controller.subscribe(next => {
       runtimeRef.current = next;
+      ticker.reschedule();
       setRuntimeScopeKey(snapshotScopeKey);
       setRuntime(current =>
       current.record?.clientSessionId === next.record?.clientSessionId
@@ -143,7 +146,6 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.rewardsVisible === next.rewardsVisible ? current : next);
     });
     void controller.initialize();
-    const interval = setInterval(() => { void controller.tick(); }, 200);
     const appState = AppState.addEventListener("change", next => {
       if (next === "active") void countdown.shouldRefreshOnForeground().then(shouldRefresh => {
         if (shouldRefresh && countdownRef.current === countdown) void controller.refresh();
@@ -155,7 +157,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => {
-      unsubscribe(); clearInterval(interval); appState.remove();
+      unsubscribe(); ticker.dispose(); appState.remove();
       if (controllerRef.current === controller) controllerRef.current = null;
       if (countdownRef.current === countdown) countdownRef.current = null;
       void countdown.dispose();
@@ -213,7 +215,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       xpEarned: numberOr(result.xp_earned), goldEarned: numberOr(result.gold_earned), questTitle: resolvedTitle,
       creditVersion: optionalNumber(result.credit_version), areaXpEarned: nullableNumber(result.area_xp_earned),
       characterRemainderSeconds: optionalNumber(result.character_remainder_seconds), areaRemainderSeconds: nullableNumber(result.area_remainder_seconds),
-      dailyCompletedSeconds: optionalNumber(result.daily_completed_seconds), goalReachedNow: result.goal_reached_now === true,
+      dailyCompletedSeconds: optionalNumber(result.daily_completed_seconds), dailyGoalMinutes: optionalNumber(result.daily_goal_minutes), goalReachedNow: result.goal_reached_now === true,
       creditedDate: typeof result.credited_date === "string" ? result.credited_date : undefined,
     }]) : null;
   const sessionSummary = useMemo<SessionSummary | null>(() => {

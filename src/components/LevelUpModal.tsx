@@ -6,6 +6,7 @@ import { useUser } from "../context/UserContext";
 import { CompletionHero, CompletionRows } from "./CompletionDetails";
 import { colors } from "../constants/theme";
 import { completionSheetHeight } from "../utils/completionSheetLayout";
+import { DEFAULT_TIMEZONE } from "../utils/progressAnalytics";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -32,6 +33,7 @@ interface RewardModalProps {
   durationSeconds?: number;
   creditedDate?: string;
   dailyCompletedSeconds?: number;
+  dailyGoalMinutes?: number;
   questTitle?: string;
   areaTitle?: string;
   areaColor?: string;
@@ -51,12 +53,12 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   creditVersion, areaXpEarned, goalReachedNow, minutesSpent = 0, durationSeconds,
   questTitle, areaTitle, areaColor, isLevelUp = false, newLevel, currentXP, requiredXP, onClose, onDismiss,
   pending = false, syncError, syncBusy = false, onRetry,
-  sessionId, completedAtMs, recovered = false, creditedDate, dailyCompletedSeconds,
+  sessionId, completedAtMs, recovered = false, creditedDate, dailyCompletedSeconds, dailyGoalMinutes,
 }: RewardModalProps) {
   const { hapticsEnabled, profile } = useUser();
-  const firstStepToday = useDailyEffortCelebration({visible, pending, recovered, sessionId,
-    ownerId:profile?.id, timeZone:profile?.timezone, creditedDate, dailyCompletedSeconds,
-    durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion});
+  const achievements = useDailyEffortCelebration({visible, pending, recovered, sessionId,
+    ownerId:profile?.id, timeZone:profile?.timezone || DEFAULT_TIMEZONE, creditedDate, dailyCompletedSeconds,
+    dailyGoalMinutes, goalReachedNow, durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion});
   const insets = useSafeAreaInsets();
   const screen = useWindowDimensions();
   const windowHeight = screen.height || 844;
@@ -91,7 +93,7 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   useEffect(resetScroll, [visible, sessionId, resetScroll]);
   let finishedLabel: string | null = null;
   if (completedAtMs !== undefined && Number.isFinite(completedAtMs)) {
-    try { finishedLabel = new Intl.DateTimeFormat("en-GB", { dateStyle:"medium", timeStyle:"short", timeZone:profile?.timezone ?? "Asia/Kuala_Lumpur" }).format(new Date(completedAtMs)); }
+    try { finishedLabel = new Intl.DateTimeFormat("en-GB", { dateStyle:"medium", timeStyle:"short", timeZone:profile?.timezone || DEFAULT_TIMEZONE }).format(new Date(completedAtMs)); }
     catch { /* Missing/invalid legacy metadata must not invent a finish time. */ }
   }
   useEffect(() => {
@@ -102,10 +104,10 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
     header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}>
     <View style={s.layout} testID="session-result-layout">
     <BottomSheetScrollView ref={scroll} onLayout={resetScroll} onContentSizeChange={(_width, height) => measure("body", height)} style={s.scroll} contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      {(achievements.firstSession || achievements.dailyGoal) && <DailyEffortCelebration {...achievements} />}
       {recovered && !pending && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
       {!!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
-      {firstStepToday && <DailyEffortCelebration />}
       {pending ? <View style={s.pending}>
         <Text style={s.pendingText} accessibilityLiveRegion="polite">{syncError ? "Your finished session is saved on this phone. Reconnect to confirm your progress." : "Saving your progress…"}</Text>
         {!!syncError && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry saving</Text></TouchableOpacity>}

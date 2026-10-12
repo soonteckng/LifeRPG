@@ -146,6 +146,10 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
     "../services/sessionService": service,
+    "../utils/countdownTicker": { createCountdownTicker: (callback) => {
+      const handle = setInterval(callback, 200);
+      return { reschedule() {}, dispose() { clearInterval(handle); } };
+    } },
     ...(nativeLifecycle ? { "../services/nativeSessionCountdown": { createNativeSessionCountdownLifecycle: () => nativeLifecycle } } : {}),
     "./UserContext": { useUser: () => ({ reloadProfile }) },
     "./AuthContext": { useAuth: () => auth },
