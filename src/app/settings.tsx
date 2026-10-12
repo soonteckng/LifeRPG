@@ -188,9 +188,9 @@ export default function SettingsScreen() {
           </> : <>
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
             {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
-              <Text style={p.body}>Notifications and Alarms & reminders are separate permissions. Open LifeRPG’s app settings, then allow Alarms & reminders. Battery restrictions can delay alerts.</Text>
+              <Text style={p.body}>Notifications and Alarms & reminders are separate permissions. Open LifeRPG’s Alarms & reminders page and allow its switch. Battery restrictions can delay alerts.</Text>
               <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
-              <Text style={p.body}>{permission?.supported ? "Turn the Alarms & reminders switch on for LifeRPG. Then return here to check notification access." : "Check both switches for Expo Go in this preview. Test background alerts with an installed LifeRPG build; this preview cannot verify the alarm switch."}</Text>
+              <Text style={p.body}>{permission?.supported ? "These buttons open LifeRPG’s own permission pages. Turn on the Alarms & reminders switch, then return here to check notification access. Your phone controls how its Settings screens look." : "Check both switches for Expo Go in this preview. Test background alerts with an installed LifeRPG build; this preview cannot verify the alarm switch."}</Text>
             </>}
             {permission?.supported && <Text style={p.body}>Phone permissions control whether session alerts can appear. Permission being allowed does not guarantee delivery; phone settings and battery restrictions can affect alerts.</Text>}
             {permission?.action && <PersonalButton title={busy ? "Please wait..." : permission.action === "enable" ? "Enable notifications" : permission.action === "settings" ? "Open phone settings" : "Retry permission check"}

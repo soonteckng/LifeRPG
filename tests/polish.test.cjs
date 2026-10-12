@@ -36,10 +36,10 @@ test('animated secondary-page exit preserves navigation to Home for the quick to
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Guide',subtitle:'',back:true,animateTransition:true},'Guide'));});
  try{await act(async()=>prevent({data:{action}}));assert.equal(dispatched.length,0);await act(async()=>finish({finished:true}));assert.deepEqual(dispatched,[action]);}finally{await act(async()=>tree.unmount());}
 });
-test('alarm settings open the current app without sending users to an unscoped application list',async()=>{
+test('alarm settings open the current app toggle directly without sending users to an unscoped application list',async()=>{
  const calls=[];
- const api=load('src/services/notificationPermissionService.ts',{'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async action=>calls.push(action),openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
- await api.openAlarmSettings();assert.deepEqual(calls,['app-settings']);
+ const api=load('src/services/notificationPermissionService.ts',{'expo-intent-launcher':{ActivityAction:{REQUEST_SCHEDULE_EXACT_ALARM:'android.settings.REQUEST_SCHEDULE_EXACT_ALARM'},startActivityAsync:async(action,params)=>calls.push({action,params})},'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async action=>calls.push(action),openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
+ await api.openAlarmSettings();assert.deepEqual(calls,[{action:'android.settings.REQUEST_SCHEDULE_EXACT_ALARM',params:{data:'package:com.soonteck.liferpg'}}]);
 });
 test('Android notification settings target LifeRPG and fall back to its app page on unsupported phones',async()=>{
  const calls=[];let fail=false;
@@ -332,4 +332,44 @@ test('new-account tour preparation persists both guide and invitation without re
  await api.prepareFeatureTour('stale-owner',()=>false);
  assert.equal(storage.has('liferpg:tour:v1:stale-owner'),false);
  assert.equal(storage.has('liferpg:notification-intro:v1:stale-owner'),false);
+});
+
+test('exact-alarm routing uses the configured installed package and falls back if its native activity is unsupported',async()=>{
+ const calls=[];let fail=false;
+ const api=load('src/services/notificationPermissionService.ts',{
+  'expo-constants':{expoConfig:{android:{package:'com.soonteck.liferpg.preview'}}},
+  'expo-intent-launcher':{ActivityAction:{REQUEST_SCHEDULE_EXACT_ALARM:'android.settings.REQUEST_SCHEDULE_EXACT_ALARM'},startActivityAsync:async(action,params)=>{calls.push({action,params});if(fail)throw Error('ActivityNotFound');}},
+  'react-native':{Platform:{OS:'android',Version:'35'},Linking:{openSettings:async()=>calls.push('app-settings')}},
+  '../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'},
+ });
+ await api.openAlarmSettings();assert.equal(calls[0].params.data,'package:com.soonteck.liferpg.preview');
+ fail=true;await api.openAlarmSettings();assert.equal(calls.at(-1),'app-settings');
+});
+
+test('an older Android binary without IntentLauncher still opens app settings without failing module import at startup',async()=>{
+ const calls=[];
+ const mocks={'react-native':{Platform:{OS:'android',Version:35},Linking:{openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}};
+ Object.defineProperty(mocks,'expo-intent-launcher',{get(){calls.push('native-load');throw Error('Missing native module');}});
+ const api=load('src/services/notificationPermissionService.ts',mocks);
+ assert.deepEqual(calls,[]);
+ await api.openAlarmSettings();assert.deepEqual(calls,['native-load','app-settings']);
+});
+
+test('alarm routing never imports Android IntentLauncher or guesses the LifeRPG package outside a supported installed build',async()=>{
+ const cases=[{os:'ios',version:35},{os:'web',version:35},{os:'android',version:30},{os:'android',version:undefined},{os:'android',version:35,expoGo:true},{os:'android',version:35,packageName:null},{os:'android',version:35,packageName:'package:foreign.app'}];
+ for(const example of cases){
+  const calls=[];
+  const mocks={'expo':{isRunningInExpoGo:()=>!!example.expoGo},'expo-constants':{expoConfig:{android:{package:example.packageName===undefined?'com.soonteck.liferpg':example.packageName}}},'react-native':{Platform:{OS:example.os,Version:example.version},Linking:{openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}};
+  Object.defineProperty(mocks,'expo-intent-launcher',{get(){throw Error('Native module must not load');}});
+  const api=load('src/services/notificationPermissionService.ts',mocks);
+  await api.openAlarmSettings();assert.deepEqual(calls,['app-settings']);
+ }
+});
+
+test('notification routing falls back to the current app settings when its installed package is missing or malformed',async()=>{
+ for(const packageName of [null,'',123,'package:com.other.app']){
+  const calls=[];
+  const api=load('src/services/notificationPermissionService.ts',{'expo-constants':{expoConfig:{android:{package:packageName}}},'react-native':{Platform:{OS:'android',Version:35},Linking:{sendIntent:async()=>calls.push('unscoped-intent'),openSettings:async()=>calls.push('app-settings')}},'../utils/sessionNotifications':{getSessionNotifications:()=>null},'./sessionNotificationService':{ONGOING_CHANNEL_ID:'timer'}});
+  await api.openNotificationSettings();assert.deepEqual(calls,['app-settings']);
+ }
 });

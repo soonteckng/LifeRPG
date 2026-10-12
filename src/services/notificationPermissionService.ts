@@ -35,15 +35,27 @@ export async function enableNotifications() {
 }
 
 export async function openAlarmSettings() {
-  // Linking.sendIntent cannot attach the package data URI required by the
-  // exact-alarm intent. Open this app's page instead of an unscoped app list.
-  // The direct alarm toggle awaits approval for the native IntentLauncher module.
-  await Linking.openSettings();
+  const packageName = installedAndroidPackage();
+  if (!packageName || !(Number(Platform.Version) >= 31)) return Linking.openSettings();
+  try {
+    // Load only on a supported installed Android build. An older binary with
+    // no native module must fall back without crashing the rest of Settings.
+    const IntentLauncher = await import("expo-intent-launcher");
+    await IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.REQUEST_SCHEDULE_EXACT_ALARM, {
+      data: `package:${packageName}`,
+    });
+  } catch { await Linking.openSettings(); }
+}
+
+function installedAndroidPackage(): string | undefined {
+  if (Platform.OS !== "android" || isRunningInExpoGo()) return undefined;
+  const packageName = Constants.expoConfig?.android?.package;
+  return typeof packageName === "string" && /^(?:[A-Za-z_]\w*\.)+[A-Za-z_]\w*$/.test(packageName) ? packageName : undefined;
 }
 
 export async function openNotificationSettings() {
-  const packageName = isRunningInExpoGo() ? undefined : Constants.expoConfig?.android?.package;
-  if (Platform.OS !== "android" || !packageName) return Linking.openSettings();
+  const packageName = installedAndroidPackage();
+  if (!packageName) return Linking.openSettings();
   try {
     await Linking.sendIntent("android.settings.APP_NOTIFICATION_SETTINGS", [
       { key: "android.provider.extra.APP_PACKAGE", value: packageName },
