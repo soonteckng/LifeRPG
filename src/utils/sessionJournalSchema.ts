@@ -178,7 +178,9 @@ function validateRecord(value: unknown, version: number): JsonObject {
     if (item.state !== "completed" || sync.state !== "synced") invalid();
   }
   if (item.dismissedAtMs !== null
-      && ((!hasTiming && sync.state !== "rejected") || !["completed", "cancelled"].includes(item.state as string))) invalid();
+      && ((!hasTiming && sync.state !== "rejected" && !(version === JOURNAL_CLIENT_TIMING_VERSION
+        && (item.state === "completed" || item.state === "cancelled" && sync.state === "synced")))
+        || !["completed", "cancelled"].includes(item.state as string))) invalid();
   if (hasTiming) {
     validateClientTiming(item);
   } else if (item.state === "not_started") {
@@ -318,7 +320,8 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
       if (imports.length !== 1 || ((record.sync as JsonObject).state === "synced" && imports[0].status !== "acknowledged")) invalid();
     }
     if (record.dismissedAtMs !== null && commands.some(item => isUnresolved(item)
-      && !(record.clientTiming && item.kind === "import"))) invalid();
+      && !(record.clientTiming && item.kind === "import")
+      && !(envelope.schemaVersion === JOURNAL_CLIENT_TIMING_VERSION && record.state === "completed" && item.kind === "complete"))) invalid();
     if (record.state === "not_started" && !commands.some(item => item.kind === "start" && isUnresolved(item))) invalid();
     if (record.state === "not_started" && record.serverSessionId !== null
         && !commands.some(item => item.kind === "start" && item.status === "unknown")) invalid();

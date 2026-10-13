@@ -15,7 +15,7 @@ interface QuestState {
 }
 const QuestContext = createContext<QuestState | null>(null);
 
-export function QuestProvider({ children }: { children: React.ReactNode }) {
+export function QuestProvider({ children, online = true }: { children: React.ReactNode; online?: boolean }) {
   const { sessionSummary, cloudSaveVersion } = useTimer();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -25,6 +25,8 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   const revision = useRef(0);
   const request = useRef(0);
   const alive = useRef(true);
+  const onlineRef = useRef(online);
+  useLayoutEffect(() => { onlineRef.current = online; }, [online]);
   const loadQuests = useCallback(async () => {
     const currentRequest = ++request.current;
     const currentRevision = revision.current;
@@ -44,7 +46,7 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const pendingRefresh = useRef<Promise<void> | null>(null);
   const refresh = useCallback(function refresh(fresh = false): Promise<void> {
-    if (!alive.current) return Promise.resolve();
+    if (!alive.current || !onlineRef.current) return Promise.resolve();
     if (fresh && pendingRefresh.current) return pendingRefresh.current.then(() => refresh(), () => refresh());
     if (!pendingRefresh.current) {
       const flight = loadQuests().finally(() => { if (pendingRefresh.current === flight) pendingRefresh.current = null; });
@@ -60,12 +62,17 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   }, []);
   // Session completion is an external persistence event; reload its server-derived schedule and completion state.
   useEffect(() => {
-    if (sessionSummary || cloudSaveVersion > 0) {
+    if (online && (sessionSummary || cloudSaveVersion > 0)) {
       // A read begun before completion can still contain the old actionable row.
       revision.current++;
       void refresh(true);
     }
-  }, [sessionSummary, cloudSaveVersion, refresh]);
+  }, [sessionSummary, cloudSaveVersion, refresh, online]);
+  useEffect(() => {
+    if (!online) {
+      request.current++; pendingRefresh.current = null; setRefreshing(false);
+    } else void refresh();
+  }, [online, refresh]);
   const invalidateReads = useCallback(() => {
     // AuthGate keys this provider by owner. Ignore reads from an outgoing account.
     alive.current = false;

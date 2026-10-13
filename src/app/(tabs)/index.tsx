@@ -127,6 +127,7 @@ export default function HomeScreen() {
 
   const openSession = () => {
     setQuestsVisible(false);
+    timer.reviewSummary?.();
     if (hapticsEnabled) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }

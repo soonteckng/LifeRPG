@@ -87,7 +87,7 @@ export function sessionJournalKey(scope: JournalScope): string {
 
 function isClientPresentationDismissal(before: JournalEnvelope, next: JournalEnvelope,
   record: JournalRecord, candidate: JournalRecord): boolean {
-  return !!record.clientTiming && ["completed", "cancelled"].includes(record.state)
+  return next.schemaVersion === 2 && (record.state === "completed" || !!record.clientTiming && record.state === "cancelled")
     && equal({ ...record, revision: record.revision + 1, dismissedAtMs: candidate.dismissedAtMs }, candidate)
     && equal(before.commands.filter(command => command.clientSessionId === record.clientSessionId),
       next.commands.filter(command => command.clientSessionId === record.clientSessionId));

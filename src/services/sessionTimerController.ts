@@ -125,6 +125,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let rewardId: string | null = null;
   const dismissedRewardIds = new Set<string>();
   const pendingDismissals = new Map<string, number>();
+  const savedNoticeIds = new Set<string>();
+  let dismissalFlush: Promise<void> | null = null;
   let discoverAfterConflictDismissal = false;
   let lastAction: "start" | "pause" | "resume" | "cancel" | "complete" | null = null;
   let lastSetup: JournalSetup | null = null;
@@ -174,6 +176,25 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       && record.state === "completed" && record.sync.state === "rejected" && record.dismissedAtMs === null)?.clientSessionId ?? null;
     // Synced historical receipts stay in the journal/history. Only current-run
     // completions or actual pending/rejected work belong in the active surface.
+  }
+
+  function presentSavedNotice(): void {
+    if (selected() || journal?.records.some(item => ["running", "paused", "not_started"].includes(item.state))) return;
+    for (const id of savedNoticeIds) {
+      savedNoticeIds.delete(id);
+      const saved = journal?.records.find(item => item.clientSessionId === id);
+      if (!saved?.sync.receipt || saved.state !== "completed") continue;
+      selectedId = id; hiddenId = null; rewardId = null; recoveredIds.add(id);
+      return;
+    }
+  }
+
+  function savedAfterDismissal(clientSessionId: string): void {
+    const saved = journal?.records.find(item => item.clientSessionId === clientSessionId);
+    if (saved?.sync.receipt && (saved.dismissedAtMs !== null || dismissedRewardIds.has(clientSessionId))) {
+      savedNoticeIds.add(clientSessionId);
+      presentSavedNotice();
+    }
   }
 
   function publish(patch: Partial<SessionTimerControllerSnapshot> = {}): void {
@@ -397,6 +418,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
         await write({ type: "acknowledge_import", clientSessionId: record.clientSessionId,
           receipt: remoteCompletedBeforeEnd ? null : result.receipt,
           remoteCompletedReceipt: remoteCompletedBeforeEnd ? result.receipt! : undefined, verifiedScope: await verify() });
+        savedAfterDismissal(record.clientSessionId);
         if (result.receipt && selectedId === record.clientSessionId && record.dismissedAtMs === null
           && !dismissedRewardIds.has(record.clientSessionId) && !recoveredIds.has(record.clientSessionId) && result.outcome === "accepted") rewardId = record.clientSessionId;
         publish({ error: null, restoreError: false, cloudSaveVersion: state.cloudSaveVersion + 1 });
@@ -566,8 +588,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   }
 
   async function syncCompletion(force: boolean): Promise<void> {
-    const record = selected();
-    const command = pending(record);
+    const command = legacyPending();
+    const record = command?.kind === "complete" ? journal?.records.find(item => item.clientSessionId === command.clientSessionId) : null;
     if (!record || record.state !== "completed" || record.verification !== "server_timed" || record.sync.receipt || !record.serverSessionId
       || command?.kind !== "complete" || !due(record, force)) return;
     let rpcAttempted = false;
@@ -581,16 +603,20 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const receipt = await bounded(options.server.complete(record.serverSessionId), mutationTimeoutMs);
       fence();
       await write({ type: "acknowledge_completion", operationId: command.operationId, receipt });
+      savedAfterDismissal(record.clientSessionId);
       // Only this freshly returned, durably stored result can start celebration.
-      rewardId = receipt.result.already_completed === true || dismissedRewardIds.has(record.clientSessionId)
+      rewardId = receipt.result.already_completed === true || record.dismissedAtMs !== null || recoveredIds.has(record.clientSessionId)
+        || dismissedRewardIds.has(record.clientSessionId)
         ? null : record.clientSessionId;
-      publish({ error: null, restoreError: false });
+      publish({ error: null, restoreError: false, cloudSaveVersion: state.cloudSaveVersion + 1 });
     } catch (error) {
       if (rpcAttempted && live()) {
         try {
           const remote = await readKnown(record);
           if (remote?.status === "completed" || remote?.status === "cancelled") {
             await reconcileRemote(record, remote);
+            savedAfterDismissal(record.clientSessionId);
+            publish({ cloudSaveVersion: state.cloudSaveVersion + 1 });
             return;
           }
         } catch { /* Keep the original ending intent until a fresh proof succeeds. */ }
@@ -717,10 +743,22 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     publish({ error: command ? "Waiting to confirm your saved session state." : null, restoreError: false });
   }
 
-  async function flushDismissals(): Promise<void> {
-    for (const [clientSessionId, dismissedAtMs] of pendingDismissals) {
-      await write({ type: "dismiss", clientSessionId, dismissedAtMs }); pendingDismissals.delete(clientSessionId);
-    }
+  function flushDismissals(): Promise<void> {
+    if (dismissalFlush) return dismissalFlush;
+    dismissalFlush = (async () => {
+      for (const [clientSessionId, dismissedAtMs] of pendingDismissals) {
+        await write({ type: "dismiss", clientSessionId, dismissedAtMs }); pendingDismissals.delete(clientSessionId);
+      }
+      presentSavedNotice();
+      if (live()) publish();
+    })().finally(() => {
+      dismissalFlush = null;
+      if (discoverAfterConflictDismissal && live() && !locked && !options.offline?.isLocalOnly()) {
+        discoverAfterConflictDismissal = false;
+        void run(() => refreshInternal(true), true);
+      }
+    });
+    return dismissalFlush;
   }
 
   async function runLocal(work: () => Promise<boolean | void>): Promise<boolean> {
@@ -1003,8 +1041,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const command = pending(record);
       const expiry = !!record && !command && !startStopRequested(record) && (record.state === "running" || record.state === "paused")
         && deriveJournalTimer(record, now()).expired;
-      const retryDue = record?.state === "completed" && record.verification === "server_timed"
-        && command?.kind === "complete" && due(record, false);
+      const completionCommand = legacyPending();
+      const queuedServerRecord = completionCommand?.kind === "complete"
+        ? journal?.records.find(item => item.clientSessionId === completionCommand.clientSessionId) : null;
+      const retryDue = queuedServerRecord?.state === "completed" && due(queuedServerRecord, false);
       const clientRetryDue = !!options.offline && !options.offline.isLocalOnly() && !!journal
         && journal.records.some(item => !!item.clientTiming && ["completed", "cancelled"].includes(item.state)
           && ["pending", "waiting_auth"].includes(item.sync.state) && due(item, false));
@@ -1036,12 +1076,14 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const record = selected();
       if (record) dismissedRewardIds.add(record.clientSessionId);
       rewardId = null;
-      if (record?.clientTiming && ["completed", "cancelled"].includes(record.state)) {
+      if (record && ["completed", "cancelled"].includes(record.state)) {
         if (record.sync.state === "rejected") discoverAfterConflictDismissal = true;
         hiddenId = record.clientSessionId; selectedId = null;
-        pendingDismissals.set(record.clientSessionId, now().wallTimeMs);
-        if (!locked) void run(async () => { /* finally persists the presentation change */ });
-        else if (localDuringRemote) void runLocal(async () => { /* no network wait to dismiss locally */ });
+        if (record.dismissedAtMs === null && !pendingDismissals.has(record.clientSessionId)) pendingDismissals.set(record.clientSessionId, now().wallTimeMs);
+        // Presentation writes use the same serialized store without taking a
+        // network-operation lock. Done must neither await HTTP nor briefly
+        // reject the user's next Start after a confirmed result.
+        void flushDismissals().catch(() => { if (live()) publish({ error: storageMessage() }); });
       }
       if (live()) publish();
     },

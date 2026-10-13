@@ -10,11 +10,24 @@ import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
 import { makeQuestDraft, type QuestDraft } from "../utils/questDraft";
 import { durationLabel, validSessionSeconds } from "../utils/sessionSetup";
-export default function SaveSuggestedQuest({ inSheet = false, compact = false }: { inSheet?: boolean; compact?: boolean }) {
+import type { SuggestedFocus } from "../constants/guidedQuests";
+export interface SuggestedQuestCompletion {
+  ownerId: string;
+  sessionId: string;
+  suggestion: SuggestedFocus;
+  durationSeconds: number;
+  targetAttributeId: number | null;
+}
+export default function SaveSuggestedQuest({ inSheet = false, compact = false, completion, disabled = false }: {
+  inSheet?: boolean; compact?: boolean; completion?: SuggestedQuestCompletion; disabled?: boolean;
+}) {
   const { profile } = useUser();
-  const { sessionSummary, targetAttributeId } = useTimer();
+  const timer = useTimer();
+  const sessionSummary = completion ?? timer.sessionSummary;
+  const targetAttributeId = completion ? completion.targetAttributeId : timer.targetAttributeId;
+  const ownerId = completion?.ownerId ?? profile.id;
   const focus = sessionSummary?.suggestion;
-  const identity = profile.id && sessionSummary?.sessionId ? `liferpg:saved-suggestion:${profile.id}:${sessionSummary.sessionId}` : "";
+  const identity = ownerId && sessionSummary?.sessionId ? `liferpg:saved-suggestion:${ownerId}:${sessionSummary.sessionId}` : "";
   const [receipt, setReceipt] = useState<{ identity: string; saved: boolean } | null>(null);
   const [editor, setEditor] = useState<{identity: string; draft: QuestDraft; hint?: string} | null>(null);
   const editorLock = useRef<string | null>(null);
@@ -36,7 +49,7 @@ export default function SaveSuggestedQuest({ inSheet = false, compact = false }:
   const saved = receipt?.identity === identity && receipt.saved;
   const Button = inSheet ? SheetButton : Pressable;
   const openEditor = () => {
-    if (editorLock.current || saved || receipt?.identity !== identity) return;
+    if (disabled || profile.id !== ownerId || editorLock.current || saved || receipt?.identity !== identity) return;
     const seconds = sessionSummary?.durationSeconds ?? focus.seconds;
     if (!validSessionSeconds(seconds)) return;
     const draft = { ...makeQuestDraft(), title: focus.title, minutes: String(Math.ceil(seconds / 60)), subjectId: targetAttributeId };
@@ -52,11 +65,11 @@ export default function SaveSuggestedQuest({ inSheet = false, compact = false }:
   return <View style={{ gap: 8 }}>
     {saved ? <View style={{ minHeight:52, justifyContent:"center", alignItems:"center" }}>
       <Text style={p.rowTitle} accessibilityRole="text" accessibilityLiveRegion="polite">Saved to your quests ✓</Text>
-    </View> : <Button accessibilityRole="button" accessibilityState={{disabled: receipt?.identity !== identity}}
-      disabled={receipt?.identity !== identity} onPress={openEditor} style={[p.button, p.secondaryButton]}><Text style={p.rowTitle}>Save as quest</Text></Button>}
+    </View> : <Button accessibilityRole="button" accessibilityState={{disabled: disabled || receipt?.identity !== identity}}
+      disabled={disabled || receipt?.identity !== identity} onPress={openEditor} style={[p.button, p.secondaryButton]}><Text style={p.rowTitle}>Save as quest</Text></Button>}
     {!saved && !compact && <Text style={p.caption}>Review its name, duration and schedule before creating it.</Text>}
     {editor?.identity === identity && <QuestSheet key={identity} visible editorOnly initialDraft={editor.draft}
-      durationHint={editor.hint} expectedOwnerId={profile.id} onClose={closeEditor}
+      durationHint={editor.hint} expectedOwnerId={ownerId} onClose={closeEditor}
       onCreated={() => {
         if (currentIdentity.current !== identity) return;
         setReceipt({identity, saved: true});

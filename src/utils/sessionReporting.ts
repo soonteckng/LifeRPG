@@ -13,7 +13,7 @@ export function sessionCategory(session: { subject_id: number | null; activity_t
 export function sessionDockState(state: { isCompleted: boolean; isRunning: boolean; actionError: string | null; sessionSummary: unknown; timeLeft: number; awaitingStart?: boolean }) {
   if (state.awaitingStart) return { label: "Checking session start", detail: "Review", icon: "sync-outline" as const };
   if (state.isCompleted) {
-    if (state.sessionSummary) return { label: "Session complete", detail: "View summary", icon: "checkmark-circle-outline" as const };
+    if (state.sessionSummary) return { label: "Session saved", detail: "Review session", icon: "checkmark-circle-outline" as const };
     if (state.actionError) return { label: "Couldn't save session", detail: "Retry", icon: "alert-circle-outline" as const };
     return { label: "Saving session…", detail: "", icon: "sync-outline" as const };
   }

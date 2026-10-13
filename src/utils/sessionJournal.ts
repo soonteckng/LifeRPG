@@ -633,7 +633,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
         if (record.state === "completed") {
           // A remote cancellation cannot rewrite a locally finished deadline.
           if (snapshot.state !== "cancelled") return detach(envelope);
-          if (record.sync.receipt || record.dismissedAtMs !== null) fail("invalid_transition");
+          if (record.sync.receipt) fail("invalid_transition");
           if (!pending || pending.kind !== "complete") fail("invalid_transition");
           pending.status = "rejected";
           return advanceRemote(envelope, { ...record, revision: record.revision + 1,
@@ -663,7 +663,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
           || !timestamp(action.startedAtMs) || !timestamp(action.completedAtMs)
           || action.completedAtMs < action.startedAtMs
           || (record.startedAtMs !== null && record.startedAtMs !== action.startedAtMs)
-          || record.state === "cancelled" || record.dismissedAtMs !== null) fail("receipt_conflict");
+          || record.state === "cancelled" || record.dismissedAtMs !== null && record.state !== "completed") fail("receipt_conflict");
       if (record.sync.receipt !== null) {
         if (!sameReceipt(record.sync.receipt, receipt)) fail("receipt_conflict");
         return detach(envelope);
@@ -826,13 +826,16 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       if (!timestamp(action.dismissedAtMs)) fail("invalid_action");
       const record = recordFor(envelope, action.clientSessionId);
       if ((record.state !== "completed" && record.state !== "cancelled")
-          || (!record.clientTiming && record.sync.state !== "rejected")) {
+          || (record.state === "cancelled" && !record.clientTiming && !["synced", "rejected"].includes(record.sync.state))) {
         fail("invalid_transition");
       }
       if (envelope.commands.some(command => command.clientSessionId === record.clientSessionId && unresolved(command)
-          && !(record.clientTiming && command.kind === "import"))) fail("unresolved_command");
+          && !(record.clientTiming && command.kind === "import")
+          && !(record.state === "completed" && command.kind === "complete"))) fail("unresolved_command");
       if (record.dismissedAtMs !== null) return detach(envelope);
-      return advance(envelope, {
+      // v2 allows closing a terminal result's presentation while its original
+      // completion command remains durable and independently retryable.
+      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION }, {
         ...record, revision: record.revision + 1, dismissedAtMs: action.dismissedAtMs,
       });
     }

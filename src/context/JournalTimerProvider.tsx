@@ -45,16 +45,16 @@ interface TimerContextType {
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
-  syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; unsyncedSessionCount: number;
+  syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; sessionEnded: boolean; unsyncedSessionCount: number;
   interactionKind: "start" | "pause" | "resume" | null;
   resolveQuestTitle: (id: number, title: string) => void; activityType: string; targetAttributeId: number | null;
   linkedTaskId: number | null; notes: string; sessionSummary: SessionSummary | null; summaryViewed: boolean;
-  acknowledgeSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
+  acknowledgeSummary: () => void; reviewSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
   setTargetAttributeId: (id: number | null) => void; setLinkedTaskId: (id: number | null) => void;
   startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
   startFreeTimer: (totalSeconds: number, subjectId: number | null) => Promise<boolean>;
   startSuggestedTimer: (focus: SuggestedFocus, subjectId: number | null) => Promise<boolean>;
-  pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<void>;
+  pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<boolean>;
   setDurationInMinutes: (minutes: number) => void; setDurationInSeconds: (seconds: number) => void;
   completedLevelUp: { leveledUp: boolean; newLevel: number } | null; clearCompletionModal: () => void;
   consumeNotificationAction: (nonce: string) => Promise<"end" | null>;
@@ -204,7 +204,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const open = !runtime.ending && (interactionKind === "start" || !!record && ["running", "paused", "not_started"].includes(record.state));
   const isCompleted = record?.state === "completed";
   const awaitingStart = !runtime.ending && (interactionKind === "start" || record?.state === "not_started");
-  const setup = record && (open || isCompleted || runtime.ending) ? record.setup : null;
+  const sessionEnded = record?.state === "cancelled";
+  const setup = record && (open || isCompleted || runtime.ending || sessionEnded) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
   const timeLeft = runtime.displayTimeLeft ?? runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);
   const notes = setup?.notes ?? draft.notes;
@@ -215,7 +216,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     ?? readSuggestedFocus(notes)?.title ?? (linkedTaskId === null ? "Free session" : "Quest session");
   const receipt = record?.sync.receipt;
   const result = receipt?.result;
-  const summaryId = record?.clientSessionId ?? null;
+  const summaryId = record ? `${record.clientSessionId}:${receipt ? "confirmed" : "pending"}` : null;
   // Controller publications copy their record objects. Memoize the normalized
   // receipt content instead, so dismissing or checking the same saved result
   // cannot restart consumers' profile-refresh effects. Scope is part of the
@@ -314,9 +315,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     return start(focus.seconds, validated.title, { subjectId, suggestion: { ...validated, seconds: focus.seconds } });
   };
   const resetTimer = async () => {
-    if (!controllerRef.current || runtime.restoring || runtime.restoreError) return;
-    const saved = await controllerRef.current.end();
-    if (saved) { setHiddenSavedId(null); setViewedSummaryId(null); setQuestTitle(null); }
+    if (!controllerRef.current || runtime.restoring || runtime.restoreError) return false;
+    const controller = controllerRef.current;
+    const saved = await controller.end();
+    // Done can close a durably saved stop while its HTTP confirmation waits.
+    // A late reply must not reset that acknowledgement or another account's UI.
+    if (saved && controllerRef.current === controller) { setHiddenSavedId(null); setQuestTitle(null); }
+    return saved;
   };
   const completedLevelUp = result?.leveled_up === true
     ? { leveledUp: true, newLevel: numberOr(result.level, 1) } : null;
@@ -332,7 +337,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
-    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
+    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
     retryCompletion: retry, retryAction: retry,
     resolveQuestTitle: (id, title) => { if (id === linkedTaskId) setQuestTitle(current => current?.id === id && current.title === title ? current : { id, title }); },
     activityType, targetAttributeId, linkedTaskId, notes,
@@ -345,6 +350,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     startFreeTimer: (seconds, subjectId) => start(seconds, undefined, { subjectId }), startSuggestedTimer,
     pauseTimer: async () => { await controllerRef.current?.pause(); }, resumeTimer: async () => { await controllerRef.current?.resume(); }, resetTimer,
     sessionSummary: receipt?.sessionId === sessionSummary?.sessionId ? sessionSummary : null, summaryViewed: summaryId !== null && viewedSummaryId === summaryId, acknowledgeSummary,
+    reviewSummary: () => { if (runtime.ending || sessionEnded || isCompleted) setViewedSummaryId(null); },
     completedLevelUp, clearCompletionModal: () => controllerRef.current?.dismissSummary(),
     consumeNotificationAction,
   }}>{children}</TimerContext.Provider>;

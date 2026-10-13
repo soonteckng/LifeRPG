@@ -1,7 +1,6 @@
 import { focusAreaTitle, focusAreaChoices, generalArea } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import { readSuggestedFocus } from "../constants/guidedQuests";
-import SaveSuggestedQuest from "./SaveSuggestedQuest";
 import TouchableOpacity from "./MotionPressable";
 import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
@@ -13,9 +12,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
-import LevelUpModal from "./LevelUpModal";
 import ProgressRing from "./ProgressRing";
-import { CompletionHero, CompletionRows } from "./CompletionDetails";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
@@ -25,6 +22,7 @@ import FocusLengthControl from "./FocusLengthControl";
 import FocusDurationSheet from "./FocusDurationSheet";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
+import { useAuth } from "../context/AuthContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
@@ -35,30 +33,34 @@ type Picker = "duration" | "quest" | "area" | null;
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
+  const auth = useAuth();
+  const onlineSurfaces = auth.accessMode !== "local-only";
+  const ownerId = auth.user?.id ?? auth.localOwner?.id;
+  const presentable = liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded;
+  const [heldTimer, setHeldTimer] = useState<{ ownerId: string | undefined; timer: typeof liveTimer } | null>(() => presentable ? { ownerId, timer: liveTimer } : null);
+  if (presentable && (!heldTimer || heldTimer.ownerId !== ownerId || heldTimer.timer !== liveTimer)) setHeldTimer({ ownerId, timer: liveTimer });
+  const visibleTimer = useMemo(() => !presentable && heldTimer && heldTimer.ownerId === ownerId ? {
+    ...heldTimer.timer, isRestoring:liveTimer.isRestoring, restoreError:liveTimer.restoreError,
+    actionBusy:liveTimer.actionBusy, actionError:liveTimer.actionError,
+  } : liveTimer, [presentable, heldTimer, ownerId, liveTimer]);
   const captureEndSnapshot = (source: typeof liveTimer) => ({duration:source.duration, timeLeft:source.timeLeft,
     isRunning:source.isRunning, linkedTaskId:source.linkedTaskId, targetAttributeId:source.targetAttributeId,
     activityType:source.activityType, notes:source.notes});
-  const [endRequested, setEndRequested] = useState(liveTimer.endingSession);
-  const [endedClosing, setEndedClosing] = useState(false);
-  const [endSnapshot, setEndSnapshot] = useState<ReturnType<typeof captureEndSnapshot> | null>(() => liveTimer.endingSession ? captureEndSnapshot(liveTimer) : null);
-  if (liveTimer.endingSession && !endRequested) {
+  const [endRequested, setEndRequested] = useState(liveTimer.endingSession || liveTimer.sessionEnded);
+  const [endSnapshot, setEndSnapshot] = useState<ReturnType<typeof captureEndSnapshot> | null>(() => liveTimer.endingSession || liveTimer.sessionEnded ? captureEndSnapshot(liveTimer) : null);
+  if ((liveTimer.endingSession || liveTimer.sessionEnded) && !endRequested) {
     // Recovery may arrive after the route mounts. Adopt its durable stop for
     // presentation instead of leaving an empty setup behind disabled controls.
     setEndRequested(true);
     setEndSnapshot(current => current ?? captureEndSnapshot(liveTimer));
   }
-  const [endRecovery, setEndRecovery] = useState({ ending: liveTimer.endingSession, shown: false });
-  const endRecoveryShown = liveTimer.endingSession && (endRecovery.shown || !!liveTimer.actionError && !liveTimer.actionBusy);
-  if (endRecovery.ending !== liveTimer.endingSession || endRecovery.shown !== endRecoveryShown) {
-    setEndRecovery({ ending: liveTimer.endingSession, shown: endRecoveryShown });
-  }
   const cancellationSaved = endRequested && !liveTimer.hasOpenSession && (liveTimer.endingSession || !liveTimer.actionError) && !liveTimer.isCompleted;
   // The stop is durable before confirmation. Keep the outgoing layout behind
   // its notice until both the popup and this screen have finished leaving.
   const endingPresentation = endRequested && (liveTimer.actionBusy || cancellationSaved);
-  const timer = useMemo(() => endingPresentation && endSnapshot ? { ...liveTimer, ...endSnapshot, hasOpenSession: true } : liveTimer, [endingPresentation, endSnapshot, liveTimer]);
+  const timer = useMemo(() => endingPresentation && endSnapshot ? { ...visibleTimer, ...endSnapshot, hasOpenSession: true } : visibleTimer, [endingPresentation, endSnapshot, visibleTimer]);
   const insets = useSafeAreaInsets();
-  const { sessionSummary, rewardsVisible, acknowledgeSummary } = timer;
+  const { sessionSummary, rewardsVisible } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
@@ -67,29 +69,9 @@ export default function SessionScreen() {
   const ringSize = Math.min(height < 700 ? 252 : 300, width - 48);
   const timerStageHeight = Math.max(300, ringSize + 24, labelHeight + rowHeight * 3 + 44);
   const ringTop = 12 + labelHeight + rowHeight * 1.5 - ringSize / 2;
-  const completionDismissRequested = useRef(false);
-  const endedDismissRequested = useRef(false);
-  const [completionClosing, setCompletionClosing] = useState(false);
-  const pendingCompletion = !timer.endingSession && (timer.isCompleted && !sessionSummary && timer.syncStatus !== "rejected"
-    || timer.hasOpenSession && timer.isRunning && timer.timeLeft === 0 && !timer.awaitingStart && timer.syncStatus !== "waiting");
-  const pendingKey = pendingCompletion ? timer.sessionId ?? "awaiting-completion" : null;
-  const [pendingSurface, setPendingSurface] = useState({key: pendingKey, ready: false});
-  if (pendingSurface.key !== pendingKey) setPendingSurface({key: pendingKey, ready: false});
-  const pendingSheetReady = pendingSurface.key === pendingKey && pendingSurface.ready;
-  useEffect(() => {
-    if (!pendingCompletion) return;
-    // A fast online receipt opens the final sheet once. Genuine slow/offline
-    // saving still gets a truthful pending surface after this short grace.
-    const deadline = setTimeout(() => setPendingSurface(current => current.key === pendingKey
-      ? {key: pendingKey, ready: true} : current), 700);
-    return () => clearTimeout(deadline);
-  }, [pendingCompletion, pendingKey]);
-  const completionSheetVisible = !completionClosing && (pendingCompletion && (pendingSheetReady || !!timer.actionError)
-    || !!sessionSummary && rewardsVisible);
-  const hideCompletedSummary = completionSheetVisible || completionClosing;
   const [picker, setPicker] = useState<Picker>(null);
-  const endedVisible = cancellationSaved && !endedClosing;
   const [confirmEnd, setConfirmEnd] = useState(false);
+  if (!onlineSurfaces && (picker !== null || confirmEnd)) { setPicker(null); setConfirmEnd(false); }
   const params = useLocalSearchParams?.<{ countdownAction?: string }>() ?? {};
   const { consumeNotificationAction, isRestoring: notificationRestoring, actionBusy: notificationBusy } = liveTimer;
   const handledNotification = useRef<string | null>(null);
@@ -130,9 +112,6 @@ export default function SessionScreen() {
     animation.start();
     return () => animation.stop();
   }, [screenMotion, reducedMotion]);
-  useFocusEffect(useCallback(() => {
-    if (sessionSummary && !rewardsVisible) acknowledgeSummary();
-  }, [sessionSummary, rewardsVisible, acknowledgeSummary]));
   const [opacity] = useState(() => new Animated.Value(1));
   const [timerTranslate] = useState(() => new Animated.Value(0));
   const stageY = useRef<number | null>(null);
@@ -184,6 +163,9 @@ export default function SessionScreen() {
     return () => { show.remove(); hide.remove(); };
   }, []);
   useLayoutEffect(() => {
+    if (!onlineSurfaces) Keyboard.dismiss();
+  }, [onlineSurfaces]);
+  useLayoutEffect(() => {
     const controlChange = (lastPhase.current === "running" || lastPhase.current === "paused") && (phase === "running" || phase === "paused");
     const changed = lastPhase.current !== null && lastPhase.current !== phase;
     lastPhase.current = phase;
@@ -197,12 +179,11 @@ export default function SessionScreen() {
   }, [phase, reducedMotion, opacity]);
 
   const dismissLayer = useCallback(() => {
-    if (completionClosing || endedClosing) return false;
     if (Keyboard.isVisible() || keyboardVisible) { Keyboard.dismiss(); return true; }
     if (picker) { setPicker(null); return true; }
     if (confirmEnd) { setConfirmEnd(false); return true; }
     return false;
-  }, [keyboardVisible, picker, confirmEnd, completionClosing, endedClosing]);
+  }, [keyboardVisible, picker, confirmEnd]);
   const minimise = useCallback((source = "header") => {
     const layerDismissed = source === "completion" || source === "session-ended" ? false : dismissLayer();
     const state = navigation.getState();
@@ -271,13 +252,45 @@ export default function SessionScreen() {
     }) as never);
     return () => { start(); end(); };
   }, [navigation]);
-  usePreventRemove((!completionClosing && !endedClosing && (!!picker || keyboardVisible || confirmEnd)) || !exitReady, () => {
+  usePreventRemove((!!picker || keyboardVisible || confirmEnd) || !exitReady, () => {
     traceSession("removal deferred", { picker, keyboardVisible, confirmEnd, exitReady });
     minimise("navigation-back");
   });
   // Release the removal guard before dispatching the pop; no timeout or native
   // exit runs alongside the controlled animation.
   useEffect(() => { if (exitReady) navigation.goBack(); }, [exitReady, navigation]);
+  const heldSessionSurface = useRef(liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded);
+  const endAcknowledgement = useRef({ ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed });
+  const pendingExit = useRef<{ ownerId: typeof ownerId; source: string } | null>(null);
+  useEffect(() => {
+    const previous = endAcknowledgement.current;
+    endAcknowledgement.current = { ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed };
+    const newlyViewed = previous.ownerId === ownerId && previous.sessionId === liveTimer.sessionId
+      && !previous.viewed && liveTimer.summaryViewed;
+    if (newlyViewed && (liveTimer.endingSession || liveTimer.sessionEnded)) {
+      pendingExit.current = { ownerId, source:"session-ended" };
+    }
+    else if (liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded) heldSessionSurface.current = true;
+    else if (heldSessionSurface.current && !liveTimer.isRestoring && !liveTimer.actionBusy && !liveTimer.restoreError) {
+      pendingExit.current = { ownerId, source:"settled-session" };
+    }
+    if (pendingExit.current?.ownerId !== ownerId) pendingExit.current = null;
+    if (!pendingExit.current) return;
+    let cancelled = false;
+    const exit = () => {
+      const requested = pendingExit.current;
+      if (cancelled || !requested || requested.ownerId !== ownerId) return;
+      pendingExit.current = null; minimise(requested.source);
+    };
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      const frame = globalThis.requestAnimationFrame(exit);
+      return () => { cancelled = true; globalThis.cancelAnimationFrame(frame); };
+    }
+    void Promise.resolve().then(exit);
+    return () => { cancelled = true; };
+  }, [liveTimer.hasOpenSession, liveTimer.isCompleted, liveTimer.endingSession, liveTimer.sessionEnded,
+    liveTimer.isRestoring, liveTimer.actionBusy, liveTimer.restoreError, liveTimer.summaryViewed,
+    liveTimer.sessionId, ownerId, minimise]);
   useFocusEffect(useCallback(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => { minimise("android-back"); return true; });
     return () => subscription.remove();
@@ -301,11 +314,6 @@ export default function SessionScreen() {
     timer.setLinkedTaskId(null); timer.setTargetAttributeId(general?.id ?? null);
     selectMinutes(30);
   };
-  const newSession = async () => {
-    await timer.resetTimer();
-    timer.setLinkedTaskId(null); timer.setTargetAttributeId(general?.id ?? null); timer.setActivityType("other"); timer.setNotes("");
-    applyDuration(1800);
-  };
   const retry = () => {
     if (timer.restoreError) timer.retryRestore();
     else if (timer.isCompleted) void timer.retryCompletion();
@@ -324,7 +332,7 @@ export default function SessionScreen() {
   const immediateControl = timer.hasOpenSession || timer.awaitingStart || endRequested;
   const checkingStart = timer.awaitingStart && !timer.interactionKind;
   const actionLabel = phase === "ended" ? "Stopped" : checkingStart ? "Checking start" : timer.awaitingStart ? "Pause" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
-  const needsRecovery = !cancellationSaved && !timer.endingSession && !hideCompletedSummary
+  const needsRecovery = !cancellationSaved && !timer.endingSession && !timer.isCompleted
     && (timer.restoreError || timer.actionError || timer.syncStatus === "waiting" && !timer.interactionKind);
   const recoveryMessage = timer.awaitingStart ? "Checking the session saved on this phone. You can end it while we confirm its start."
     : timer.syncStatus === "waiting" ? timer.isCompleted ? "Your finished session is saved on this phone. We’ll confirm it when you reconnect." : "Waiting to confirm your saved session state."
@@ -338,21 +346,21 @@ export default function SessionScreen() {
       <Stack.Screen options={{ gestureEnabled: false }} />
       <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader title={phase === "ended" ? "Session ended" : phase === "setup" ? isQuest ? "Quest session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })} testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor, { minHeight: timerStageHeight }]}>
+        <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
+          importantForAccessibility={timer.isCompleted ? "no-hide-descendants" : "auto"}
+          testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor,
+            { minHeight: timerStageHeight }, timer.isCompleted && {opacity:0}]}>
           <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
-          <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: phase === "completed" && sessionSummary && !hideCompletedSummary ? 30 : ringTop }]}>
-            {(phase !== "setup" || isQuest) && !(phase === "completed" && sessionSummary && !hideCompletedSummary) && <ProgressRing size={ringSize}
+          <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
+            {(phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
               progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
           </Animated.View>
-          <View style={[styles.timerControl, { width: controlWidth }, phase === "completed" && !!sessionSummary && !hideCompletedSummary && { opacity: 0 }]} importantForAccessibility={phase === "completed" && sessionSummary && !hideCompletedSummary ? "no-hide-descendants" : "auto"}>
+          <View style={[styles.timerControl, { width: controlWidth }]}>
             <SessionCountdown seconds={displayedSeconds}
               compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`} />
           </View>
-          {phase === "completed" && sessionSummary && !hideCompletedSummary && <View style={styles.completedHero}>
-            <CompletionHero seconds={sessionSummary.durationSeconds} title={title} levelUp={!!timer.completedLevelUp?.leveledUp} />
-          </View>}
           <Text style={[styles.status, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
@@ -405,10 +413,6 @@ export default function SessionScreen() {
               </TouchableOpacity>}
             </View>}
 
-            {timer.isCompleted && timer.sessionSummary && !hideCompletedSummary && <><CompletionRows summary={timer.sessionSummary} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId,area?.color_code)} />
-              <SaveSuggestedQuest />
-              {timer.completedLevelUp?.leveledUp && <Text style={styles.levelUp} accessibilityLiveRegion="polite">Level up · Level {timer.completedLevelUp.newLevel}</Text>}
-            </>}
           </Animated.View>
         </ScrollView>
         <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}]}>
@@ -416,14 +420,7 @@ export default function SessionScreen() {
             <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
             <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
-          {timer.isCompleted ? !hideCompletedSummary && <>
-            <TouchableOpacity style={[styles.primary, { backgroundColor: colors.primary }]} onPress={() => minimise("header")} accessibilityRole="button"><Text style={styles.primaryText}>Done</Text></TouchableOpacity>
-            {timer.syncStatus === "rejected" && !timer.sessionSummary && <>
-              <Text style={styles.secondary}>This record stays on your phone. Continuing does not award progress or complete its quest.</Text>
-              <Action label="Keep record and continue" disabled={timer.actionBusy} onPress={() => void timer.resetTimer()} />
-            </>}
-            {timer.sessionSummary && <Action label="New session" onPress={() => void newSession()} />}
-          </> : <>
+          {!timer.isCompleted && <>
             <View style={styles.actionRow}>
             <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && !immediateControl && styles.disabled]} disabled={disabled}
               onPress={timer.hasOpenSession ? () => void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
@@ -436,7 +433,7 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={!sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
+      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
         header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose a quest" : "Focus area"}</Text>}>
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <SheetChoice label={focusAreaTitle()} onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
@@ -467,36 +464,8 @@ export default function SessionScreen() {
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
-      <AppSheet visible={endedVisible} label="session ended" compact maxHeightRatio={0.6} motionMode="timed"
-        header={<Text style={styles.endedTitle}>Session ended</Text>}
-        onRequestClose={() => { endedDismissRequested.current = true; setEndedClosing(true); minimise("session-ended"); }}
-        onDismiss={() => { if (endedDismissRequested.current) minimise("session-ended"); }}>
-        <BottomSheetScrollView showsVerticalScrollIndicator={false}
-          contentContainerStyle={[styles.endedBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]}>
-          <View style={styles.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
-          <Text style={styles.secondary}>Your focus has stopped. Ending early does not earn recorded time or XP.</Text>
-          {endRecoveryShown && <>
-            <Text style={styles.secondary} accessibilityLiveRegion="polite">Your stop is saved on this phone. Reconnect to confirm it.</Text>
-            <Action label="Retry ending session" disabled={liveTimer.actionBusy} onPress={() => void liveTimer.retryAction()} />
-          </>}
-          <SheetButton style={styles.primary} accessibilityRole="button" accessibilityLabel="Done ending session"
-            onPress={() => { endedDismissRequested.current = true; setEndedClosing(true); minimise("session-ended"); }}><Text style={styles.primaryText}>Done</Text></SheetButton>
-        </BottomSheetScrollView>
-      </AppSheet>
-      <LevelUpModal visible={completionSheetVisible} pending={pendingCompletion}
-        sessionId={timer.sessionId ?? sessionSummary?.sessionId} completedAtMs={sessionSummary?.completedAtMs} recovered={sessionSummary?.recovered ?? timer.recoveredSession}
-        syncError={timer.actionBusy ? null : timer.actionError} syncBusy={timer.actionBusy} onRetry={() => void timer.retryCompletion()}
-        durationSeconds={sessionSummary?.durationSeconds ?? timer.duration} xpEarned={sessionSummary?.xpEarned}
-        goldEarned={sessionSummary?.goldEarned} creditVersion={sessionSummary?.creditVersion}
-        creditedDate={sessionSummary?.creditedDate} dailyCompletedSeconds={sessionSummary?.dailyCompletedSeconds}
-        dailyGoalMinutes={sessionSummary?.dailyGoalMinutes}
-        areaXpEarned={sessionSummary?.areaXpEarned} goalReachedNow={sessionSummary?.goalReachedNow}
-        questTitle={title} areaTitle={area?.title} areaColor={lifeAreaColor(timer.targetAttributeId, area?.color_code)}
-        isLevelUp={!!timer.completedLevelUp?.leveledUp} newLevel={timer.completedLevelUp?.newLevel}
-        onClose={() => { completionDismissRequested.current = true; setCompletionClosing(true); timer.clearCompletionModal(); acknowledgeSummary(); }}
-        onDismiss={() => { if (completionDismissRequested.current) minimise("completion"); }} />
-      <FocusDurationSheet visible={!sessionSummary && picker === "duration"} seconds={timer.duration} disabled={locked} onClose={() => setPicker(null)} onSave={applyDuration} />
-      {confirmEnd && !sessionSummary && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
+      <FocusDurationSheet visible={onlineSurfaces && !sessionSummary && picker === "duration"} seconds={timer.duration} disabled={locked} onClose={() => setPicker(null)} onSave={applyDuration} />
+      {onlineSurfaces && confirmEnd && !sessionSummary && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
         onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndSnapshot(captureEndSnapshot(timer)); setEndRequested(true); void liveTimer.resetTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
@@ -515,10 +484,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },
-  completedHero: { position: "absolute", top: 24, left: 0, right: 0 },
   timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },
-  completedTime: { position: "absolute", top: 196, left: 0, right: 0, alignItems: "center", gap: 6 },
-  levelUp: { color: colors.accent, fontSize: 17, lineHeight: 24, textAlign: "center", paddingVertical: 12 },
   activeTitle: { color: colors.secondary, fontSize: 16, fontWeight: "500", textAlign: "center", marginTop: 6 },
   areaSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
   areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
@@ -570,9 +536,6 @@ const styles = StyleSheet.create({
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
   summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },
-  endedTitle: {color:colors.text, fontSize:24, lineHeight:30, fontWeight:"500", paddingHorizontal:20, paddingBottom:12},
-  endedBody: {paddingHorizontal:20, gap:16},
-  endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center"},
   pickerTitle: { color: colors.text, fontSize: 21, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 16 },
   pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },
