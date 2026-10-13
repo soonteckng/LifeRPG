@@ -1,4 +1,4 @@
-import { orderFocusAreas } from "../utils/focusAreas";
+import { missingFocusAreas, orderFocusAreas } from "../utils/focusAreas";
 import { supabase } from "../../lib/supabase";
 
 export interface Subject {
@@ -35,6 +35,10 @@ export interface CreateTaskParams {
   subjectId?: number | null;
   repeatRule?: string;
   difficulty?: "easy" | "medium" | "hard";
+}
+
+export interface CreateTaskOptions {
+  expectedOwnerId?: string;
 }
 
 const TIME_ZONE = "Asia/Kuala_Lumpur";
@@ -134,11 +138,13 @@ async function getCurrentUserId(): Promise<string> {
 }
 
 export async function getSubjects(): Promise<Subject[]> {
-  const { data, error } = await supabase
+  const ownerId = await getCurrentUserId();
+  let { data, error } = await supabase
     .from("subjects")
     .select(
       "id, title, level, current_xp, color_code",
     )
+    .eq("user_id", ownerId)
     .order("title", { ascending: true });
 
   if (error) {
@@ -146,6 +152,14 @@ export async function getSubjects(): Promise<Subject[]> {
     throw error;
   }
 
+  if (missingFocusAreas(data ?? []).length) {
+    if (await getCurrentUserId() !== ownerId) throw new Error("Account changed while loading focus areas.");
+    const repaired = await supabase.rpc("ensure_focus_area_catalog", { expected_owner: ownerId });
+    if (repaired.error) throw new Error("Couldn’t load the complete focus area list. Reconnect and try again.");
+    data = repaired.data;
+    if (!Array.isArray(data) || missingFocusAreas(data).length) throw new Error("The focus area list is incomplete.");
+  }
+  if (await getCurrentUserId() !== ownerId) throw new Error("Account changed while loading focus areas.");
   const subjects = (data ?? []).map((row) => ({
     id: Number(row.id),
     title: row.title,
@@ -158,17 +172,21 @@ export async function getSubjects(): Promise<Subject[]> {
 }
 
 export async function getTasks(): Promise<Task[]> {
+  const ownerId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("tasks")
     .select(
       "id, title, difficulty, is_completed, xp_awarded, is_recurring, repeat_rule, target_minutes, subject_id, last_completed_date, created_at, updated_at, completed_at",
     )
+    .eq("user_id", ownerId)
     .order("created_at", { ascending: false });
 
   if (error) {
     console.error("Failed to load tasks:", error);
     throw error;
   }
+
+  if (await getCurrentUserId() !== ownerId) throw new Error("Account changed while loading quests.");
 
   const tasks = (data ?? []).map(mapTask);
 
@@ -197,8 +215,11 @@ export async function createTask({
   subjectId = null,
   repeatRule = "once",
   difficulty = "medium",
-}: CreateTaskParams): Promise<Task> {
+}: CreateTaskParams, { expectedOwnerId }: CreateTaskOptions = {}): Promise<Task> {
   const userId = await getCurrentUserId();
+  if (expectedOwnerId !== undefined && userId !== expectedOwnerId) {
+    throw new Error("Account changed before creating this quest.");
+  }
 
   const cleanTitle = title.trim();
 
@@ -235,6 +256,10 @@ export async function createTask({
   if (error) {
     console.error("Failed to create task:", error);
     throw error;
+  }
+
+  if (expectedOwnerId !== undefined && await getCurrentUserId() !== expectedOwnerId) {
+    throw new Error("Account changed while creating this quest.");
   }
 
   return mapTask(data);

@@ -481,7 +481,7 @@ test("Progress uses one selected period and shared animated sheet for drilldowns
   const ui = await screenHarness();
   try {
     assert.match(ui.text(), /30s/);
-    assert.match(ui.text(), /2-day focus streak/);
+    assert.match(ui.text(), /2-day streak/);
     await ui.press("Month view");
     assert.ok(
       ui.renderer.root
@@ -561,8 +561,8 @@ test("compact Progress keeps the chart before allocation and opens area drilldow
   const ui=await screenHarness();
   try {
     const text=ui.text();
-    assert.ok(text.indexOf("30s") < text.indexOf("Dot · focus day"));
-    assert.ok(text.indexOf("Dot · focus day") < text.indexOf("Where it went"));
+    assert.ok(text.indexOf("30s") < text.indexOf("Dot · active day"));
+    assert.ok(text.indexOf("Dot · active day") < text.indexOf("Where it went"));
     assert.ok(text.indexOf("Where it went") < text.indexOf("Sessions"));
     const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
     assert.ok(area);
@@ -582,7 +582,7 @@ test("Progress chart uses a compact first-screen layout budget", async()=>{
     const aboveChart = s.page.paddingTop + Math.ceil(s.title.fontSize * 1.3) + s.header.marginBottom
       + s.segmentButton.minHeight + s.hero.paddingTop + Math.ceil(s.focusValue.fontSize * 1.3)
       + s.focusValue.marginTop + s.heroDescription.marginTop + s.heroDescription.lineHeight * 2
-      + s.hero.paddingBottom;
+      + s.hero.paddingBottom + s.caption.lineHeight;
     const chart = s.card.paddingVertical * 2 + s.caption.lineHeight + s.chartHeader.marginBottom
       + s.chart.paddingTop + s.barTrack.height + s.barTrack.marginBottom + Math.ceil(s.dayLabel.fontSize * 1.3)
       + s.dayStatus.height + s.dayStatus.marginTop + s.legend.marginTop + s.caption.lineHeight;
@@ -679,4 +679,106 @@ test("Quick Start history is bounded, owner filtered and excludes quests, tiny s
 
 test("Progress stays focused on analytics and does not duplicate Profile's milestone collection entry",async()=>{
  const ui=await screenHarness();try{assert.equal(ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??'')).length,0);assert.doesNotMatch(ui.text(),/Keep growing at your pace/);}finally{await ui.cleanup();}
+});
+
+test("a new local week compares the same clock time and does not discourage a first session", () => {
+  const clock = new Date("2026-10-11T17:00:00Z"); // Monday, 01:00 in the account zone.
+  const period = periodFor("week", "2026-10-12", TZ, clock);
+  const result = buildProgress(period, [
+    session("today", 120, "2026-10-11T16:45:00Z"),
+    session("previous-early", 300, "2026-10-04T16:30:00Z"),
+    session("previous-later", 1800, "2026-10-05T13:00:00Z"),
+  ], [], TZ, areas, clock);
+  assert.equal(result.seconds, 120);
+  assert.equal(result.previousSeconds, 300, "previous Monday evening cannot count against Monday morning");
+  assert.equal(result.comparisonDays, 1);
+  assert.equal(result.partialPeriod, true);
+  assert.match(analytics.progressPeriodMessage(result, period), /A new week, one session finished/);
+  assert.doesNotMatch(analytics.progressPeriodMessage(result, period), /less|%|focus time/);
+});
+
+test("an unfinished period suppresses negative percentages and uses only previous matching local hours", () => {
+  const clock = new Date("2026-10-13T02:00:00Z"); // Tuesday, 10:00 local.
+  const period = periodFor("week", "2026-10-13", TZ, clock);
+  const result = buildProgress(period, [
+    session("monday", 120, "2026-10-12T01:00:00Z"),
+    session("tuesday", 60, "2026-10-13T01:00:00Z"),
+    session("previous-monday", 60, "2026-10-05T13:00:00Z"),
+    session("previous-tuesday-morning", 300, "2026-10-06T01:00:00Z"),
+    session("previous-tuesday-later", 900, "2026-10-06T03:00:00Z"),
+  ], [], TZ, areas, clock);
+  assert.equal(result.previousSeconds, 360);
+  assert.equal(result.comparisonSeconds, 180);
+  assert.match(analytics.progressPeriodMessage(result, period), /2 sessions finished across 2 days/);
+  assert.doesNotMatch(analytics.progressPeriodMessage(result, period), /less|%/);
+});
+
+test("completed periods may compare saved effort but never use a tiny earlier sample for percentages", () => {
+  const period = periodFor("week", "2026-10-05", TZ, new Date("2026-10-12T03:00:00Z"));
+  const result = buildProgress(period, [
+    session("current", 300, "2026-10-05T13:00:00Z"),
+    session("previous", 600, "2026-09-28T13:00:00Z"),
+  ], [], TZ, areas, new Date("2026-10-12T03:00:00Z"));
+  assert.equal(result.partialPeriod, false);
+  assert.match(analytics.progressPeriodMessage(result, period), /50% less recorded effort/);
+  const tiny = { ...result, previousSeconds: 60 };
+  assert.doesNotMatch(analytics.progressPeriodMessage(tiny, period), /%/);
+});
+
+test("comparison uses account-local clock times through daylight saving changes", () => {
+  const zone = "America/New_York", clock = new Date("2026-03-08T07:30:00Z"); // 03:30 after the spring change.
+  const period = periodFor("week", "2026-03-08", zone, clock);
+  const result = buildProgress(period, [
+    session("current", 120, "2026-03-08T07:15:00Z"),
+    session("previous-before", 300, "2026-03-01T08:15:00Z"), // 03:15, before cutoff.
+    session("previous-after", 600, "2026-03-01T09:00:00Z"), // 04:00, later than cutoff.
+  ], [], zone, areas, clock);
+  assert.equal(analytics.localClockSeconds(clock, zone), 3 * 3600 + 30 * 60);
+  assert.equal(result.previousSeconds, 300);
+});
+
+test("daily-goal ratios keep both sides in minutes without discarding over-goal effort or exact seconds", () => {
+  const { dailyGoalRatio } = load("src/utils/dailyGoalPresentation.ts");
+  assert.equal(dailyGoalRatio(3660, 60), "61 / 60 min");
+  assert.equal(dailyGoalRatio(3630, 60), "60 min 30 sec / 60 min");
+  assert.equal(dailyGoalRatio(0, 60), "0 / 60 min");
+  assert.equal(dailyGoalRatio(28800, 480), "480 / 480 min");
+  assert.equal(dailyGoalRatio(NaN, 60), "0 / 60 min");
+});
+
+test("Progress separates today's effort from the period total and keeps a tapped day as the primary value", async () => {
+  const today = dateKey(new Date(), TZ);
+  const previousDay = shiftDay(today, -1);
+  const rows = [session("today", 120, new Date(Date.now() - 1000).toISOString()), session("earlier", 1800, previousDay + "T04:00:00Z")];
+  const ui = await screenHarness({ sessionRows: rows });
+  const text = node => typeof node === "string" ? node : (node.children ?? []).map(text).join("");
+  try {
+    await ui.press("Month view");
+    const hero = () => ui.renderer.root.findByProps({ testID: "progress-day-hero" });
+    const summary = ui.renderer.root.findByProps({ testID: "progress-period-summary" });
+    assert.match(text(hero()), /Today’s effort2m1 session finished/);
+    assert.match(text(summary), /Month total32m/);
+    assert.doesNotMatch(text(hero()), /32m|focus time|less/);
+    const day = ui.renderer.root.findAllByType("Button").find(button =>
+      button.props.accessibilityLabel?.includes(calendarLabelForTest(previousDay)) && button.props.accessibilityLabel?.includes("30m,"));
+    assert.ok(day);
+    await act(async () => day.props.onPress());
+    assert.match(text(hero()), /recorded effort30m1 session finished/);
+    await act(async () => ui.renderer.root.findByType("Sheet").props.onRequestClose());
+    await act(async () => ui.renderer.root.findByType("Sheet").props.onDismiss());
+    assert.match(text(hero()), /recorded effort30m/);
+  } finally { await ui.cleanup(); }
+});
+
+function calendarLabelForTest(key) { return analytics.calendarLabel(key); }
+
+test("historical periods show an actual labeled day rather than calling a period total today's effort", () => {
+  const clock = new Date("2026-10-12T02:00:00Z");
+  const period = periodFor("week", "2026-10-05", TZ, clock);
+  const result = buildProgress(period, [session("monday", 120, "2026-10-05T02:00:00Z"), session("friday", 600, "2026-10-09T02:00:00Z")], [], TZ, areas, clock);
+  assert.equal(result.seconds, 720);
+  assert.equal(analytics.progressHeroDay(result, period, null).key, "2026-10-09");
+  assert.equal(analytics.progressHeroDay(result, period, null).seconds, 600);
+  assert.equal(analytics.progressHeroDay(result, period, "2026-10-05").seconds, 120);
+  assert.equal(analytics.progressHeroDay(result, period, "2026-09-29").key, "2026-10-09", "a day outside this period is never reused");
 });

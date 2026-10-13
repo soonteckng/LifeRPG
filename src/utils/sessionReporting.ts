@@ -10,7 +10,8 @@ export function sessionCategory(session: { subject_id: number | null; activity_t
   return !session.activity_type || ["other", "general"].includes(session.activity_type) ? focusAreaTitle() : formatSessionActivity(session.activity_type);
 }
 
-export function sessionDockState(state: { isCompleted: boolean; isRunning: boolean; actionError: string | null; sessionSummary: unknown; timeLeft: number }) {
+export function sessionDockState(state: { isCompleted: boolean; isRunning: boolean; actionError: string | null; sessionSummary: unknown; timeLeft: number; awaitingStart?: boolean }) {
+  if (state.awaitingStart) return { label: "Checking session start", detail: "Review", icon: "sync-outline" as const };
   if (state.isCompleted) {
     if (state.sessionSummary) return { label: "Session complete", detail: "View summary", icon: "checkmark-circle-outline" as const };
     if (state.actionError) return { label: "Couldn't save session", detail: "Retry", icon: "alert-circle-outline" as const };

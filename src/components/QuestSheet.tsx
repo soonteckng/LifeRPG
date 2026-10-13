@@ -6,7 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity as Pressable } from "@gorhom/bottom-sheet";
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
@@ -19,24 +19,45 @@ import { DAYS, DURATIONS, draftKey, makeQuestDraft, questParams, validateQuestDr
 import AppSheet from "./AppSheet";
 import SheetConfirmation, { type SheetConfirmationProps } from "./SheetConfirmation";
 
-interface Props { visible: boolean; onClose: () => void; onDismiss?: (navigating: boolean) => void; onStartSession?: () => void; initialScope?: "today" | "all" }
+interface Props {
+  visible: boolean; onClose: () => void; onDismiss?: (navigating: boolean) => void;
+  onStartSession?: () => void; initialScope?: "today" | "all";
+  editorOnly?: boolean; initialDraft?: QuestDraft; expectedOwnerId?: string;
+  onCreated?: (task: Task) => void; durationHint?: string;
+}
 interface Editor { task: Task | null; initial: QuestDraft; draft: QuestDraft }
 
-export default function QuestSheet({ visible, onClose, onDismiss, onStartSession, initialScope = "today" }: Props) {
+function newEditor(draft: QuestDraft): Editor {
+  return { task: null, initial: { ...draft, days: [...draft.days] }, draft: { ...draft, days: [...draft.days] } };
+}
+
+export default function QuestSheet({ visible, onClose, onDismiss, onStartSession, initialScope = "today",
+  editorOnly = false, initialDraft, expectedOwnerId, onCreated, durationHint,
+}: Props) {
   const { tasks, subjects, loading, refreshing, error, refresh, upsert, remove } = useQuests();
-  const { hapticsEnabled } = useUser();
+  const { hapticsEnabled, profile } = useUser();
   const timer = useTimer();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [scope, setScope] = useState(initialScope);
   const [showDone, setShowDone] = useState(false);
-  const [editor, setEditor] = useState<Editor | null>(null);
-  const [editorVisible, setEditorVisible] = useState(false);
+  const [editor, setEditor] = useState<Editor | null>(() => editorOnly && initialDraft ? newEditor(initialDraft) : null);
+  const [editorVisible, setEditorVisible] = useState(editorOnly && visible && !!initialDraft);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [customDuration, setCustomDuration] = useState(false);
+  const [customDuration, setCustomDuration] = useState(editorOnly && !!initialDraft && !DURATIONS.includes(Number(initialDraft.minutes)));
   const mutationLock = useRef(false);
+  const mutationEpoch = useRef(0);
+  const alive = useRef(true);
+  const visibleRef = useRef(visible);
+  useLayoutEffect(() => { visibleRef.current = visible; }, [visible]);
+  useLayoutEffect(() => {
+    const epoch = mutationEpoch.current + 1;
+    alive.current = true;
+    mutationEpoch.current = epoch;
+    return () => { alive.current = false; mutationEpoch.current = epoch + 1; };
+  }, [profile?.id, expectedOwnerId]);
   const [confirmation, setConfirmation] = useState<Omit<SheetConfirmationProps, "onCancel"> | null>(null);
   const closeAfterEditor = useRef(false);
   const afterDismiss = useRef<(() => void) | null>(null);
@@ -91,29 +112,40 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     setFormError(null);
   };
 
-  const mutate = async (operation: () => Promise<void>) => {
+  const mutate = async (operation: (current: () => boolean) => Promise<void>) => {
     if (mutationLock.current) return;
+    const epoch = mutationEpoch.current;
+    const current = () => alive.current && visibleRef.current && mutationEpoch.current === epoch;
     mutationLock.current = true;
     setBusy(true);
     setFormError(null);
     try {
-      await operation();
+      await operation(current);
+      if (!current()) return;
       if (hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       leaveEditor();
     } catch (error) {
+      if (!current()) return;
       const detail = error && typeof error === "object" && "message" in error ? String(error.message) : "Check your connection and try again.";
-      setFormError(`Couldn't update this quest. ${detail}`);
-    } finally { mutationLock.current = false; setBusy(false); }
+      setFormError(editorOnly ? "Couldn't confirm this quest. Check your quests before creating it again."
+        : `Couldn't update this quest. ${detail}`);
+    } finally { mutationLock.current = false; if (current()) setBusy(false); }
   };
   const save = () => {
     if (!editor) return;
+    if (expectedOwnerId !== undefined && profile?.id !== expectedOwnerId) {
+      setFormError("Your account changed. Reopen this session before creating a quest.");
+      return;
+    }
     const validation = validateQuestDraft(editor.draft);
     if (validation) { setFormError(validation); if (!editor.draft.title.trim()) titleRef.current?.focus(); return; }
-    void mutate(async () => {
+    void mutate(async (current) => {
       const params = questParams(editor.draft, subjects, editor.task);
-      const saved = editor.task ? await updateTask(editor.task.id, params) : await createTask(params);
+      const saved = editor.task ? await updateTask(editor.task.id, params) : await createTask(params, { expectedOwnerId });
+      if (!current()) return;
       upsert(saved);
       setMessage(saved.is_due_today ? "Quest saved." : "Quest saved. You'll find it in All quests until it's due.");
+      if (!editor.task) onCreated?.(saved);
     });
   };
   const activeQuest = !!editor?.task && timer.hasOpenSession && timer.linkedTaskId === editor.task.id;
@@ -126,8 +158,8 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       return;
     }
     setConfirmation({ title: "Delete quest?", message: `“${task.title}” will be removed${task.is_recurring ? ", including future repeats" : ""}. This cannot be undone.`,
-      cancelLabel: "Keep quest", confirmLabel: "Delete quest", onConfirm: () => { setConfirmation(null); void mutate(async () => {
-        await deleteTask(task.id); remove(task.id); setMessage("Quest deleted.");
+      cancelLabel: "Keep quest", confirmLabel: "Delete quest", onConfirm: () => { setConfirmation(null); void mutate(async (current) => {
+        await deleteTask(task.id); if (!current()) return; remove(task.id); setMessage("Quest deleted.");
       }); },
     });
   };
@@ -194,20 +226,10 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   );
 
   const confirmationOverlay = confirmation ? <SheetConfirmation {...confirmation} onCancel={() => setConfirmation(null)} /> : null;
-  return (
-    <AppSheet visible={visible} onRequestClose={requestClose} onDismiss={() => {
-      setEditor(null); setEditorVisible(false); setFormError(null); setScope(initialScope); setShowDone(false); setMessage(null);
-      const next = afterDismiss.current; afterDismiss.current = null; onDismiss?.(!!next); next?.();
-    }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader} expanded heightRatio={0.66} motionMode="timed"
-      footer={done.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={showDone ? "Show unfinished quests" : "View completed quests"}
-        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
-        <Text style={styles.link}>{showDone ? "Back to quests" : `Done today (${done.length})`}</Text><Ionicons name="chevron-forward" size={20} color={colors.accent} />
-      </Pressable> : undefined}
-      overlay={<>
-        {!editor && confirmationOverlay}
-        {editor && <AppSheet visible={editorVisible} onRequestClose={requestClose}
+  const editorSheet = editor ? <AppSheet visible={editorVisible && (!editorOnly || visible)} onRequestClose={requestClose}
           onDismiss={() => { setEditor(null); setFormError(null); focusedField.current = null;
-            if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
+            if (editorOnly) { onClose(); onDismiss?.(false); }
+            else if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
           guardDismiss={dirty || busy || !!confirmation} expanded motionMode="timed" keyboardBehavior="fillParent" label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
           <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField} onContentSizeChange={revealFocusedField}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
@@ -222,6 +244,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
             </View>
             <View style={styles.field} onLayout={(event) => { durationY.current = event.nativeEvent.layout.y; revealFocusedField(); }}>
               <Text style={styles.label}>Duration <Text style={styles.subtitle}>· minutes</Text></Text>
+              {durationHint && <Text style={styles.helper}>{durationHint}</Text>}
               <View style={styles.options}>
                 {DURATIONS.map((minutes) => <Choice key={minutes} label={String(minutes)} accessibilityLabel={`${minutes} minutes`}
                   selected={!customDuration && Number(editor.draft.minutes) === minutes}
@@ -267,11 +290,24 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
 
           </View>
           </BottomSheetScrollView>
-        </AppSheet>}
+        </AppSheet> : null;
+  if (editorOnly) return editorSheet;
+  return (
+    <AppSheet visible={visible} onRequestClose={requestClose} onDismiss={() => {
+      setEditor(null); setEditorVisible(false); setFormError(null); setScope(initialScope); setShowDone(false); setMessage(null);
+      const next = afterDismiss.current; afterDismiss.current = null; onDismiss?.(!!next); next?.();
+    }} guardDismiss={busy || !!confirmation || !!editor} label="quests" header={listHeader} compact maxHeightRatio={0.60} motionMode="timed"
+      footer={done.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={showDone ? "Show unfinished quests" : "View completed quests"}
+        onPress={() => setShowDone(value => !value)} style={[styles.doneFooter, { paddingBottom: Math.max(insets.bottom, 14) + 12 }]}>
+        <Text style={styles.link}>{showDone ? "Back to quests" : `Done today (${done.length})`}</Text><Ionicons name="chevron-forward" size={20} color={colors.accent} />
+      </Pressable> : undefined}
+      overlay={<>
+        {!editor && confirmationOverlay}
+        {editorSheet}
       </>}>
-      {/* Footer adjustment in bottom-sheet 5.2 expects an object; an array loses
-          its numeric paddingBottom when the library reserves footer space. */}
-      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ ...styles.body, paddingBottom: Math.max(insets.bottom, 16) + 24 }}>
+      {/* The library reserves the measured Done today footer, including its safe
+          area. Extra bottom padding here would leave a blank tail above it. */}
+      <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={{ ...styles.body, paddingBottom: done.length > 0 ? 0 : Math.max(insets.bottom, 16) + 8 }}>
 
           <>
             {!editor && formError && <Text style={styles.headerError} accessibilityRole="alert">{formError}</Text>}

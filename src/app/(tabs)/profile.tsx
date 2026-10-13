@@ -32,7 +32,7 @@ import {
 import { colors } from "../../constants/theme";
 import { useUser } from "../../context/UserContext";
 import { useCharacterData } from "../../hooks/useCharacterData";
-import { earnedMilestones, lifeAreaGrowth } from "../../utils/characterGrowth";
+import { earnedMilestones, profileFocusAreaGrowth } from "../../utils/characterGrowth";
 import { durationLabel } from "../../utils/progressAnalytics";
 
 import CharacterLookPicker from "../../components/CharacterLookPicker";
@@ -66,7 +66,7 @@ export default function ProfileScreen() {
       void reloadProfile();
     }, [reloadProfile]),
   );
-  const areas = (data?.areas ?? []).map(lifeAreaGrowth);
+  const areas = profileFocusAreaGrowth(data?.areas ?? []);
   const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
   const required = requiredCharacterXP(profile.level);
   const open = () => {
@@ -118,9 +118,9 @@ export default function ProfileScreen() {
       action={<View ref={settingsIcon} collapsable={false}><Pressable accessibilityRole="button" accessibilityLabel="Open Settings" onPress={openSettings} style={p.back}><Ionicons name="settings-outline" size={23} color={colors.accent} /></Pressable></View>}>
       <ContentReveal><View style={s.stack}>
         <View style={s.hero} testID="profile-companion-card">
-          <CharacterPortrait avatar={profile.avatar} size={170} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen} />
+          <CharacterPortrait avatar={profile.avatar} size={170} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen} greetOnFocus />
           <View style={s.identity}><Text style={s.username} numberOfLines={2}>{profile.username}</Text><Text style={p.caption}>{savedLook.title} · Your companion</Text></View>
-          <View style={s.levelBlock}><View style={s.levelRow}><Pressable style={s.levelPill} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={s.levelText}>Level {profile.level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></Pressable><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} /><Text style={s.growthHint}>Your next level grows with completed focus.</Text></View>
+          <View style={s.levelBlock}><View style={s.levelRow}><Pressable style={s.levelPill} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={s.levelText}>Level {profile.level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></Pressable><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} /><Text style={s.growthHint}>Your next level grows with the effort you record.</Text></View>
           <PersonalButton title="Personalise" accessibilityLabel="Personalise profile" secondary onPress={open} />
         </View>
         {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}

@@ -21,6 +21,8 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
+      if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
@@ -88,6 +90,46 @@ test("custom Life areas retain their identity and growth without assigning attri
     required: 150,
   });
 });
+
+test("Profile combines legacy Wellbeing progress once while preserving rows and real identities", () => {
+  const fitness = {...area(3, 3, 20), title:"Fitness & Health"};
+  const grooming = {...area(4, 2, 40), title:"Grooming & Vitality"};
+  const canonical = {...area(8, 1, 15), title:"Wellbeing", color_code:"#F4AA88"};
+  const custom = {...area(42, 3, 12), title:"My ceramics"};
+  const sameNamedCustom = {...area(43, 1, 7), title:"My ceramics"};
+  const input = [fitness, grooming, canonical, canonical, custom, sameNamedCustom];
+  const before = JSON.stringify(input);
+  const result = growth.profileFocusAreaGrowth(input);
+  assert.equal(result.length, 3);
+  assert.deepEqual(result[0], {...canonical, level:3, current_xp:125, current:125, required:150});
+  assert.deepEqual(result.slice(1).map(item => [item.id, item.level, item.current]), [[42,3,12],[43,1,7]]);
+  assert.equal(JSON.stringify(input), before, "source XP, IDs and rows stay unchanged");
+});
+
+test("combined focus area progress carries XP across the real subject-level boundaries", () => {
+  for (const [leftLevel, leftXP, rightLevel, rightXP, expectedLevel, expectedXP] of [
+    [1,0,1,0,1,0], [1,24,1,25,1,49], [1,25,1,25,2,0],
+    [2,49,2,0,2,99], [2,50,2,0,3,0], [3,149,1,0,3,149], [3,149,1,1,4,0],
+  ]) {
+    const result = growth.profileFocusAreaGrowth([
+      {...area(1,leftLevel,leftXP), title:"Fitness & Health"},
+      {...area(2,rightLevel,rightXP), title:"Grooming & Vitality"},
+    ]);
+    assert.equal(result.length,1);assert.equal(result[0].title,"Wellbeing");
+    assert.equal(result[0].level,expectedLevel);assert.equal(result[0].current,expectedXP);
+    assert.equal(result[0].required,expectedLevel * 50);
+  }
+});
+
+test("Profile area order follows Find your next step with the Free focus default last", () => {
+  const titles = ["General", "Wellbeing", "Life Admin", "Creativity", "Work & projects", "Knowledge"];
+  const rows = titles.map((title,index) => ({...area(index+1,1,index),title}));
+  const catalogue = load("src/utils/focusAreas.ts");
+  const directions = load("src/constants/guidedQuests.ts").FOCUS_DIRECTIONS;
+  const result = growth.profileFocusAreaGrowth(rows).map(item => catalogue.focusAreaTitle(item.title));
+  assert.deepEqual(result,[...directions.map(direction => direction.title),"Everyday focus"]);
+  assert.deepEqual(rows.map(item => item.title),titles,"sorting must not change the shared snapshot");
+});
 test("milestones use exact seconds and deduplicate saved sessions", () => {
   const a = session("a", "2026-10-01", 30),
     b = session("b", "2026-10-01", 3570);
@@ -123,7 +165,7 @@ const Native = {
     timing: () => ({ start() {}, stop() {} }),
   },
   AppState: { addEventListener: () => ({ remove() {} }) },
-  Keyboard: { dismiss() {} },
+  Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
   Switch: host("Switch"),
   Linking: { openSettings: async () => {} },
   Text: host("Text"),
@@ -150,7 +192,7 @@ async function screen(file, mocks) {
     "../services/dailyProgressService": { getTodayProgress: async () => null },
     expo: { isRunningInExpoGo: () => false },
     "react-native": Native,
-    "react-native-safe-area-context": { SafeAreaView: host("Safe") },
+    "react-native-safe-area-context": { SafeAreaView: host("Safe"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
     "../hooks/useReducedMotion": { useReducedMotion: () => true },
     "../services/dailyGoalService": { getDailyGoalSettings: async () => ({ local_date: "2026-10-03", next_effective_date: "2026-10-04", today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false }), scheduleDailyGoal: async () => { throw Error("Not configured"); } },
@@ -221,14 +263,14 @@ test("failed login exposes error, preserves inputs and allows retry", async () =
     },
   });
   try {
-    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 0);
+    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
     await ui.input("Email", "person@example.com");
     await ui.input("Password", "password");
-    const surface = ui.renderer.root.findAllByType("View").find(n => n.props.testID === "auth-surface");
+    const surface = ui.renderer.root.findByType("Scroll");
     await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 450 } } }));
     assert.equal(ui.renderer.root.findAllByType("Portrait").length, 0);
     assert.match(ui.text(), /Welcome back/);
-    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 0);
+    assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
     await ui.press("Sign in");
     assert.match(ui.text(), /Offline/);
     assert.equal(
@@ -868,6 +910,24 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   }
 });
 
+test("Profile renders one Wellbeing row in the shared direction order with its combined XP meter", async () => {
+  const rows = [
+    {...area(1,1,0),title:"General"}, {...area(2,3,20),title:"Fitness & Health"},
+    {...area(3,1,0),title:"Life Admin"}, {...area(4,1,0),title:"Creativity"},
+    {...area(5,1,0),title:"Work & projects"}, {...area(6,1,0),title:"Knowledge"},
+    {...area(7,2,40),title:"Grooming & Vitality"}, {...area(8,1,15),title:"Wellbeing"},
+  ];
+  const ui = await profileScreen({"../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions:[]},loading:false,error:false,refresh:async()=>{}})}});
+  try {
+    const displayed = ui.renderer.root.findAllByType("View").filter(node => node.props.accessible && typeof node.props.accessibilityLabel === "string");
+    assert.deepEqual(displayed.map(node => node.props.accessibilityLabel.split(", level ")[0]),
+      ["Learning","Work & projects","Creativity","Everyday life","Wellbeing","Everyday focus"]);
+    const wellbeing = displayed[4];
+    assert.equal(wellbeing.props.accessibilityLabel,"Wellbeing, level 3, 125 of 150 XP to the next level");
+    assert.equal(wellbeing.findByType("Meter").props.value,125/150);
+  } finally {await ui.cleanup();}
+});
+
 test('Profile level opens the shared tier path with the saved XP balance',async()=>{
  const ui=await profileScreen();
  try{
@@ -876,6 +936,25 @@ test('Profile level opens the shared tier path with the saved XP balance',async(
   const popup=ui.renderer.root.findByType('TierSheet');assert.equal(popup.props.visible,true);assert.equal(popup.props.level,3);assert.equal(popup.props.currentXP,20);
   await act(async()=>popup.props.onClose());assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,false);
  }finally{await ui.cleanup();}
+});
+
+test("Profile opts only its hero into entrance greetings and pauses it behind profile sheets", async () => {
+  const ui = await profileScreen();
+  try {
+    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 170);
+    assert.equal(hero().props.greetOnFocus, true);
+    assert.equal(hero().props.animate, true);
+    assert.equal(ui.renderer.root.findAllByType("Portrait").find(node => node.props.interactive === false).props.greetOnFocus, undefined);
+    await ui.press("Personalise profile");
+    assert.equal(hero().props.animate, false);
+    await ui.press("Save changes");
+    assert.equal(hero().props.animate, true);
+    const levels = ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel?.includes("View level tiers"));
+    await act(async () => levels.props.onPress());
+    assert.equal(hero().props.animate, false);
+    await act(async () => ui.renderer.root.findByType("TierSheet").props.onClose());
+    assert.equal(hero().props.animate, true);
+  } finally { await ui.cleanup(); }
 });
 test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
   const ui = await profileScreen();
@@ -1025,17 +1104,17 @@ test("idle motion cancels directly on frozen-tab blur, background and Reduce Mot
  const element=()=>React.createElement(context.Provider,{value:navigation},React.createElement(Consumer));
  let renderer;await act(async()=>{renderer=create(element());});
  try{
-  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,2);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
+  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,3);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
   focused=false;listeners.blur();assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
   let count=repeats().length;appState('background');appState('active');assert.equal(repeats().length,count,'backgrounded or unfocused screens cannot restart motion');
-  focused=true;listeners.focus();assert.equal(repeats().length,count+2);
+  focused=true;listeners.focus();assert.equal(repeats().length,count+3);
   reduced=true;count=repeats().length;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
   reduced=false;enabled=false;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);
  }finally{await act(async()=>renderer.unmount());}
  // Auth renders before the app navigator: no navigation context is required.
  const before=fake.events.filter(event=>event.kind==='repeat').length;
  enabled=true;await act(async()=>{renderer=create(React.createElement(Consumer));});
- assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+2);await act(async()=>renderer.unmount());
+ assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+3);await act(async()=>renderer.unmount());
 });
 
 test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {

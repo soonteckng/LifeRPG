@@ -8,8 +8,8 @@ import FocusDurationSheet from "./FocusDurationSheet";
 import { colors } from "../constants/theme";
 import { durationLabel } from "../utils/sessionSetup";
 
-export default function FocusLengthControl({ seconds, disabled = false, onChange, onCustom }: {
-  seconds: number; disabled?: boolean; onChange: (seconds: number) => void; onCustom?: () => void;
+export default function FocusLengthControl({ seconds, customSeconds, disabled = false, onChange, onCustomSave, onCustom }: {
+  seconds: number; customSeconds?: number | null; disabled?: boolean; onChange: (seconds: number) => void; onCustomSave?: (seconds: number) => void; onCustom?: () => void;
 }) {
   const [custom, setCustom] = useState(false);
   const { hapticsEnabled } = useUser();
@@ -22,11 +22,11 @@ export default function FocusLengthControl({ seconds, disabled = false, onChange
         accessibilityRole="button" accessibilityLabel={`Use ${value / 60} minutes`} accessibilityState={{ selected: seconds === value, disabled }}
         style={[s.option, seconds === value && s.selected]}><Text style={[s.text, seconds === value && s.selectedText]}>{value / 60} min</Text></Pressable>)}
       <Pressable onPress={() => { if (disabled) return; feedback(); if (onCustom) onCustom(); else setCustom(true); }} disabled={disabled} accessibilityRole="button" accessibilityLabel="Set a custom focus duration"
-        accessibilityState={{ selected: customSelected, disabled }} style={[s.option, customSelected && s.selected]}>
-        <Text style={[s.text, customSelected && s.selectedText]}>{customSelected ? durationLabel(seconds) : "Custom"}</Text>
+        accessibilityState={{ selected: customSelected, disabled }} accessibilityValue={{ text: customSelected ? durationLabel(seconds) : "" }} style={[s.option, customSelected && s.selected]}>
+        <Text style={[s.text, customSelected && s.selectedText]}>Custom</Text>
       </Pressable>
     </View>
-    {!onCustom && <FocusDurationSheet seconds={seconds} visible={custom} disabled={disabled} onClose={() => setCustom(false)} onSave={onChange} />}
+    {!onCustom && <FocusDurationSheet seconds={customSeconds ?? seconds} visible={custom} disabled={disabled} onClose={() => setCustom(false)} onSave={onCustomSave ?? onChange} />}
   </View>;
 }
 const s = StyleSheet.create({

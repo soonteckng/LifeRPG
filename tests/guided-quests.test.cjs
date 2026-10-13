@@ -5,6 +5,7 @@ const React = require('react'), { act, create } = require('react-test-renderer')
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const host = name => props => React.createElement(name, props, props.children);
 const text = node => node.children.map(child => typeof child === 'string' ? child : text(child)).join('');
+const selectedCustomDuration = ui => ui.tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === 'Set a custom focus duration').props.accessibilityValue.text;
 const deferred = () => { let resolve, reject; const promise = new Promise((a,b)=>{resolve=a;reject=b;}); return {promise,resolve,reject}; };
 function load(file, mocks = {}, cache = new Map()) {
   const filename = path.resolve(__dirname, '..', file);
@@ -30,6 +31,7 @@ function load(file, mocks = {}, cache = new Map()) {
 const Native = { View:host('View'), ScrollView:host('Scroll'), KeyboardAvoidingView:host('KeyboardArea'), Keyboard:{dismiss(){}}, StyleSheet:{create:s=>s,hairlineWidth:0.5}, Platform:{OS:'android'} };
 function storage() { const values=new Map(); return {values,api:{getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}}}; }
 function mocks(extra={}) {return {
+  '@react-native-async-storage/async-storage':storage().api,
   'react-native':Native,
   'expo-haptics':{selectionAsync:async()=>{}},
   '../context/UserContext':{useUser:()=>({hapticsEnabled:false})},
@@ -104,7 +106,7 @@ test('Home starter makes the task smaller and starts once with its title, instru
  await ui.press('Use 30 minutes');assert.match(text(ui.tree.root),/Review your notes/);assert.doesNotMatch(text(ui.tree.root),/A short review/);
  await setTenMinuteCustom(ui);assert.match(text(ui.tree.root),/A short review/);
  await act(async()=>{const button=ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start');void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,0);
+ assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,1);
  await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
 });
 test('suggested focus uses its selected block and falls back to General when Knowledge is missing',async()=>{
@@ -123,7 +125,7 @@ test('suggested focus uses its selected block and falls back to General when Kno
  assert.match(text(ui.tree.root),/Practise questions/);assert.doesNotMatch(text(ui.tree.root),/My assignment/);
  await ui.press('Start focusing');assert.deepEqual(calls,[['practice-question',1,2717]]);await ui.cleanup();
 });
-test('failed guided start retains the exact choice for Retry and never navigates on failure',async()=>{
+test('guided start opens immediately and retains its exact choice when the background start fails',async()=>{
  const calls=[];let opened=0;const Card=load('src/components/GuidedFocusCard.tsx',mocks({
   '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
   '../context/TimerContext':{useTimer:()=>({actionError:'Offline',startSuggestedTimer:async(focus,area)=>{calls.push({focus,area});return calls.length>1;}})},
@@ -133,9 +135,9 @@ test('failed guided start retains the exact choice for Retry and never navigates
  await ui.press('Set a custom focus duration');
  await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
  await ui.press('Use this duration');
- await ui.press('Start focusing');assert.equal(calls[0].focus.seconds,2717);assert.equal(opened,0);assert.match(text(ui.tree.root),/Offline/);
+ await ui.press('Start focusing');assert.equal(calls[0].focus.seconds,2717);assert.equal(opened,1);assert.match(text(ui.tree.root),/Offline/);
  await ui.update({...props,subjects:[{id:2,title:'Knowledge'}]});
- await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,1);await ui.cleanup();
+ await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,2);await ui.cleanup();
 });
 test('new users can choose free focus and retain their badge through the seven-page journey',async()=>{
  const db=storage(),routes=[],calls=[];
@@ -157,19 +159,23 @@ test('new users can select a work direction before the introduction',async()=>{
  const ui=await render(Screen);await ui.press('Help me choose a focus');await ui.press('Continue');await ui.press('Work & projects');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');
  assert.equal(db.values.has('liferpg:guided:v1:student'),false);await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');const pref=JSON.parse(db.values.get('liferpg:guided:v1:student'));assert.equal(pref.enabled,true);assert.equal(pref.need,'work');assert.equal(pref.templateId,'project-next-step');await ui.cleanup();
 });
-test('Save for later writes one quest with the chosen area and duration, without touching session rewards',async()=>{
- const db=storage(),pending=deferred(),calls=[];let upserts=0;
+test('Save as quest opens an editable draft and marks saved only after an explicit successful create',async()=>{
+ const db=storage(),calls=[];
  const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic',true);
  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,
   '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
-  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'completed',suggestion:focus}})},
-  '../context/QuestContext':{useQuests:()=>({tasks:[],upsert:()=>upserts++,refresh:async()=>{}})},
-  '../services/taskService':{createTask:params=>{calls.push(params);return pending.promise;}},
+  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'completed',durationSeconds:60,suggestion:focus}})},
+  './QuestSheet':props=>React.createElement('QuestEditor',props),
+  '../services/taskService':{createTask:params=>{calls.push(params);}},
  })).default;
  const ui=await render(Save,{inSheet:true});await act(async()=>{const button=ui.tree.root.findAllByType('Button')[0];void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.deepEqual(calls[0],{title:focus.title,targetMinutes:10,subjectId:2,repeatRule:'once',difficulty:'easy'});
- await act(async()=>pending.resolve({id:9}));assert.equal(upserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
+ assert.equal(calls.length,0);assert.equal(ui.tree.root.findAllByType('QuestEditor').length,1);
+ const editor=ui.tree.root.findByType('QuestEditor');
+ assert.equal(editor.props.editorOnly,true);assert.equal(editor.props.expectedOwnerId,'owner');
+ assert.deepEqual(editor.props.initialDraft,{title:focus.title,minutes:'1',repeat:'once',days:[],subjectId:2});
+ await act(async()=>{editor.props.onCreated({id:9});editor.props.onClose();});
+ assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button').length,0,'a completed save becomes a status instead of a disabled action');assert.equal(db.values.get('liferpg:saved-suggestion:owner:completed'),'saved');await ui.cleanup();
 });
 
 test('creating a personal quest keeps the suggestion and its Start; the quest remains independently selectable below',async()=>{
@@ -200,11 +206,11 @@ test('creating a personal quest keeps the suggestion and its Start; the quest re
  const questButton=ui.tree.root.findAllByType('Button').find(node=>node.props.testID==='home-quest-7');assert.ok(questButton);
  await act(async()=>questButton.props.onPress());assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.equal(starts,0);assert.deepEqual(routes,['/session']);routes.length=0;
  await act(async()=>{void ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start').props.onPress();});
- assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,[]);
+ assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,['/session']);
  await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.match(text(ui.tree.root),/Continue session/);await ui.cleanup();
 });
 
-test('ambiguous quest-save failure refreshes existing quests before another insert can be offered',async()=>{
+test('an older matching quest cannot mark a newly completed suggestion as saved',async()=>{
  const db=storage();let inserts=0;const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
   '@react-native-async-storage/async-storage':db.api,
@@ -212,8 +218,98 @@ test('ambiguous quest-save failure refreshes existing quests before another inse
   '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'save-session',suggestion:focus}})},
   '../context/QuestContext':{useQuests:()=>{const[tasks,setTasks]=React.useState([]);return{tasks,upsert(){},refresh:async()=>setTasks([{title:focus.title,subject_id:2,target_minutes:30,is_completed:false}])};}},
   '../services/taskService':{createTask:async()=>{inserts++;throw Error('response lost');}},
+  './QuestSheet':props=>React.createElement('QuestEditor',props),
  })).default;
- const ui=await render(Save,{inSheet:true});await ui.press('Save for later');assert.equal(inserts,1);assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(ui.tree.root.findAllByType('Button')[0].props.disabled,true);await ui.cleanup();
+ const ui=await render(Save,{inSheet:true});assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+ await ui.press('Save as quest');assert.equal(inserts,0);assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+ await act(async()=>ui.tree.root.findByType('QuestEditor').props.onClose());
+ assert.equal(inserts,0);assert.equal(db.values.size,0);assert.match(text(ui.tree.root),/Save as quest/);await ui.cleanup();
+});
+
+test('free and linked quest completions do not offer Save as quest',async()=>{
+ for(const summary of [{sessionId:'free',durationSeconds:60},{sessionId:'quest',durationSeconds:60,questTitle:'Already completed'}]) {
+  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+   '@react-native-async-storage/async-storage':storage().api,
+   '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
+   '../context/TimerContext':{useTimer:()=>({sessionSummary:summary,targetAttributeId:2})},
+   './QuestSheet':host('QuestEditor'),
+  })).default;
+  const ui=await render(Save,{inSheet:true});
+  assert.equal(ui.tree.root.findAllByType('Button').length,0);assert.equal(ui.tree.root.findAllByType('QuestEditor').length,0);
+  await ui.cleanup();
+ }
+});
+
+test('quest prefill uses accepted completed duration and makes extra seconds explicit',async()=>{
+ const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':storage().api,
+  '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
+  '../context/TimerContext':{useTimer:()=>({duration:1800,targetAttributeId:2,sessionSummary:{sessionId:'short',durationSeconds:90,suggestion:focus}})},
+  './QuestSheet':host('QuestEditor'),
+ })).default;
+ const ui=await render(Save,{inSheet:true});await ui.press('Save as quest');
+ const editor=ui.tree.root.findByType('QuestEditor');
+ assert.equal(editor.props.initialDraft.minutes,'2');assert.match(editor.props.durationHint,/1 min 30 sec.*whole-minute/);
+ await ui.cleanup();
+});
+
+test('a late created callback cannot mark another owner or session as saved',async()=>{
+ const db=storage(),focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ let owner='first',sessionId='old';
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':db.api,
+  '../context/UserContext':{useUser:()=>({profile:{id:owner}})},
+  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId,durationSeconds:60,suggestion:focus}})},
+  './QuestSheet':host('QuestEditor'),
+ })).default;
+ const ui=await render(Save,{inSheet:true});await ui.press('Save as quest');
+ const lateCreated=ui.tree.root.findByType('QuestEditor').props.onCreated;
+ owner='second';sessionId='new';await ui.update({inSheet:true});
+ assert.equal(ui.tree.root.findAllByType('QuestEditor').length,0);
+ await act(async()=>lateCreated({id:9}));
+ assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.size,0);
+ await ui.press('Save as quest');const secondCreated=ui.tree.root.findByType('QuestEditor').props.onCreated;
+ sessionId='newer';await ui.update({inSheet:true});await act(async()=>secondCreated({id:10}));
+ assert.equal(ui.tree.root.findAllByType('QuestEditor').length,0);assert.equal(db.values.size,0);
+ await ui.cleanup();
+});
+
+test('the completed-suggestion action uses the real quest editor and waits for Create quest',async()=>{
+ const db=storage(),focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ const pending=deferred(),creates=[],upserts=[];
+ const savedTask={id:93,title:'My next review',target_minutes:5,subject_id:2,repeat_rule:'daily',is_due_today:true,is_completed:false};
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':db.api,
+  'react-native':{...Native,ActivityIndicator:host('Spinner'),Keyboard:{dismiss(){},addListener:()=>({remove(){}})}},
+  'expo-router':{useRouter:()=>({})},
+  '../context/UserContext':{useUser:()=>({profile:{id:'owner'},hapticsEnabled:false})},
+  '../context/TimerContext':{useTimer:()=>({targetAttributeId:2,sessionSummary:{sessionId:'real-editor',durationSeconds:60,suggestion:focus}})},
+  '../context/QuestContext':{useQuests:()=>({tasks:[{...savedTask,title:focus.title,target_minutes:1}],subjects:[{id:2,title:'Learning'}],refresh:async()=>{},upsert:item=>upserts.push(item)})},
+  '../services/taskService':{createTask:(params,options)=>{creates.push([params,options]);return pending.promise;}},
+  './GlassSurface':host('Glass'),
+  './AppSheet':function Sheet(props){
+   React.useEffect(()=>{if(!props.visible&&props.label==='quest editor')props.onDismiss?.();},[props.visible]);
+   return props.visible?React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay):null;
+  },
+ })).default;
+ const ui=await render(Save,{inSheet:true});
+ try {
+  assert.equal(creates.length,0);assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+  await ui.press('Save as quest');assert.equal(ui.tree.root.findAllByType('Sheet').length,1);
+  assert.equal(ui.tree.root.findByType('Sheet').props.label,'quest editor');
+  const field=label=>ui.tree.root.findAllByType('Input').find(node=>node.props.accessibilityLabel===label);
+  assert.equal(field('Quest name').props.value,focus.title);assert.equal(field('Custom duration in minutes').props.value,'1');
+  await ui.press('Cancel');assert.equal(creates.length,0);assert.equal(ui.tree.root.findAllByType('Sheet').length,0);
+  await ui.press('Save as quest');
+  await act(async()=>{field('Quest name').props.onChangeText('My next review');field('Custom duration in minutes').props.onChangeText('5');});
+  await ui.press('Every day');await ui.press('Create quest');
+  assert.deepEqual(creates,[[{title:'My next review',targetMinutes:5,subjectId:2,repeatRule:'daily',difficulty:'medium'},{expectedOwnerId:'owner'}]]);
+  assert.doesNotMatch(text(ui.tree.root),/Saved to your quests/);
+  await act(async()=>pending.resolve(savedTask));
+  assert.deepEqual(upserts,[savedTask]);assert.equal(ui.tree.root.findAllByType('Sheet').length,0);
+  assert.match(text(ui.tree.root),/Saved to your quests/);assert.equal(db.values.get('liferpg:saved-suggestion:owner:real-editor'),'saved');
+ } finally {await ui.cleanup();}
 });
 
 test('preference Save remains in a safe-area footer outside the scrolling choices and saves the selected need',async()=>{
@@ -260,7 +356,7 @@ test('choosing a preset or custom duration never rewrites the saved suggestion d
  assert.match(text(ui.tree.root),/A short review/);
  await ui.press('Set a custom focus duration');
  await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('42');});
- await ui.press('Use this duration');assert.match(text(ui.tree.root),/42 min/);assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
+ await ui.press('Use this duration');assert.equal(selectedCustomDuration(ui),'42 min');assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
  await ui.cleanup();ui=await render(Card,props);assert.match(text(ui.tree.root),/Review your notes/);await ui.cleanup();
 });
 
@@ -311,6 +407,14 @@ test('custom focus duration validates bounds and cancel leaves the chosen durati
  const ui=await render(Sheet,{seconds:1859,visible:true,disabled:false,onSave:s=>calls.push(s),onClose:()=>closed++});
  const input=label=>ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel===label);
  try{
+  const sheet=ui.tree.root.findByType('Sheet');
+  assert.equal(sheet.props.compact,true);
+  assert.equal(sheet.props.keyboardBehavior,'interactive','numeric keyboard must lift the short editor without stretching it to full screen');
+  assert.equal(sheet.props.androidKeyboardInputMode,'adjustPan','Android must use the library keyboard offset rather than its adjustResize early exit');
+  const scroll=ui.tree.root.findByType('Scroll');
+  assert.equal(scroll.props.enableFooterMarginAdjustment,true);
+  assert.equal(scroll.props.keyboardShouldPersistTaps,'handled');
+  assert.equal(scroll.props.contentContainerStyle.paddingBottom,16,'the measured footer adds to a numeric bottom reservation');
   assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'59');
   for(const [m,s] of [['0','0'],['480','1'],['20','60'],['','0'],['x','0']]){
    await act(async()=>{input('Focus minutes').props.onChangeText(m);input('Focus seconds').props.onChangeText(s);});await ui.press('Use this duration');assert.equal(calls.length,0);assert.match(text(ui.tree.root),/Seconds must be/);
@@ -361,7 +465,7 @@ test('choosing a focus area updates its direction, prompt and saved category whi
   await ui.press('Choose focus area');assert.equal(entered,0);assert.equal(calls.length,0);
   assert.doesNotMatch(text(ui.tree.root.findByType('Sheet')),/Minutes|Seconds|Focus length/);
   await ui.press('Choose Work & projects');assert.equal(entered,0);assert.equal(calls.length,0);
-  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/Move a project forward/);assert.doesNotMatch(text(ui.tree.root),/Review your notes/);assert.match(text(ui.tree.root),/30 min 59 sec/);
+  assert.match(text(ui.tree.root),/Work & projects/);assert.match(text(ui.tree.root),/Move a project forward/);assert.doesNotMatch(text(ui.tree.root),/Review your notes/);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');
   await ui.press('Start focusing');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],3);assert.equal(entered,1);
  }finally{await ui.cleanup();}
 });
@@ -383,7 +487,7 @@ test('both Home choosers share the saved area and direction, including free focu
  })).default;
  const ui=await render(Home);
  try{
-  assert.match(text(ui.tree.root),/30 min 59 sec/);await ui.press('Find your next step');await ui.press('Help me choose a focus');await ui.press('Save preferences');assert.match(text(ui.tree.root),/30 min 59 sec/);
+  assert.equal(selectedCustomDuration(ui),'');await ui.press('Find your next step');await ui.press('Learning');await ui.press('Save preferences');assert.equal(selectedCustomDuration(ui),'');
   await setTenMinuteCustom(ui);await ui.press('Choose focus area');await ui.press('Choose Work & projects');
   assert.match(text(ui.tree.root),/A small project step/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,3);
   await ui.press('Find your next step');
@@ -391,6 +495,16 @@ test('both Home choosers share the saved area and direction, including free focu
   assert.equal(radio('Work & projects').props.accessibilityState.checked,true);
   await ui.press('Creativity');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/A little room to create/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,undefined);
+  await ui.press('Find your next step');await ui.press('Free focus');await ui.press('Save preferences');
+  assert.match(text(ui.tree.root),/Free focus/);assert.match(text(ui.tree.root),/Everyday focus/);
+  assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,null);
+  assert.equal(api.parseGuidedPreference(db.values.get('liferpg:guided:v1:owner')).areaId,null);
+  assert.equal(selectedCustomDuration(ui),'10 min');
+  await ui.press('Choose focus area');await ui.press('Choose Learning');
+  assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
+  assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,2);
+  await ui.press('Find your next step');await ui.press('Learning');await ui.press('Save preferences');
+  assert.match(text(ui.tree.root),/A short review/);
   await ui.press('Choose focus area');await ui.press('Choose Everyday focus');
   assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
   db.api.setItem=async()=>{throw Error('Offline');};await ui.press('Choose focus area');await ui.press('Choose Work & projects');assert.match(text(ui.tree.root),/Couldn’t save your focus area/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,1);assert.equal(ui.tree.root.findAllByType('Button').some(b=>text(b)==='Retry start'),false);

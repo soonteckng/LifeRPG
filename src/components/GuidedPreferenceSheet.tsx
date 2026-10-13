@@ -1,6 +1,7 @@
 import { View } from "react-native";
 import { colors } from "../constants/theme";
 import { useState } from "react";
+import * as Haptics from "expo-haptics";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
@@ -9,8 +10,11 @@ import { Text } from "./AppText";
 import { p } from "./PersonalUI";
 import type { GuidedPreference } from "../services/guidedPreferenceService";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
+import { useUser } from "../context/UserContext";
 export default function GuidedPreferenceSheet({ owner, visible, onClose }: { owner: string; visible: boolean; onClose: () => void }) {
   const preference = useGuidedPreference(owner);
+  const { hapticsEnabled } = useUser();
+  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
   const [draft, setDraft] = useState<GuidedPreference | null>(null);
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) { setWasVisible(visible); if (visible) setDraft(null); }
@@ -23,7 +27,7 @@ export default function GuidedPreferenceSheet({ owner, visible, onClose }: { own
     </View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment showsVerticalScrollIndicator contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 16, gap: 12 }}>
       <Text style={p.body}>Optional suggestions. Change direction without changing your quests or progress.</Text>
-      <GuidedChoice value={choice} onChange={setDraft} disabled={preference.busy || !preference.ready} />
+      <GuidedChoice value={choice} onChange={setDraft} disabled={preference.busy || !preference.ready} onSelection={feedback} />
       {preference.error && <><Text style={p.error} accessibilityRole="alert">Couldn’t save or load your suggestion preferences. Try again.</Text>{!preference.ready && <SheetButton onPress={() => void preference.retry()} accessibilityRole="button"><Text style={p.rowTitle}>Retry loading</Text></SheetButton>}</>}
 
     </BottomSheetScrollView>

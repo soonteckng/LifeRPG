@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.sessioncountdown'
+version = '1.0.0'
+
+android {
+  namespace 'expo.modules.sessioncountdown'
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  testImplementation 'junit:junit:4.13.2'
+  // Real JSON parsing for JVM tests; production uses Android's org.json.
+  testImplementation 'org.json:json:20240303'
+}

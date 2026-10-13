@@ -2,6 +2,7 @@ import { requiredCharacterXP } from "../utils/levelTiers";
 import { useEffect } from "react";
 import { usePathname } from "expo-router";
 import LevelUpModal from "./LevelUpModal";
+import PostSessionCelebration from "./PostSessionCelebration";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
 import { useQuests } from "../context/QuestContext";
@@ -36,8 +37,9 @@ export default function GlobalRewardListener() {
   const requiredXP = requiredCharacterXP(currentLevel);
 
   return (
-    <LevelUpModal
+    <><LevelUpModal
       visible={rewardsVisible && !insideSession}
+      sessionId={sessionSummary?.sessionId} completedAtMs={sessionSummary?.completedAtMs} recovered={sessionSummary?.recovered}
       xpEarned={sessionSummary?.xpEarned || 0}
       goldEarned={sessionSummary?.goldEarned || 0}
       creditVersion={sessionSummary?.creditVersion}
@@ -47,6 +49,9 @@ export default function GlobalRewardListener() {
       goalReachedNow={sessionSummary?.goalReachedNow}
       minutesSpent={sessionSummary?.minutesSpent || 0}
       durationSeconds={sessionSummary?.durationSeconds}
+      creditedDate={sessionSummary?.creditedDate}
+      dailyCompletedSeconds={sessionSummary?.dailyCompletedSeconds}
+      dailyGoalMinutes={sessionSummary?.dailyGoalMinutes}
       questTitle={linkedTaskId != null ? quest?.title || (sessionSummary?.questTitle !== "Quest session" ? sessionSummary?.questTitle : "Quest") : sessionSummary?.suggestion?.title ?? "Free session"}
       areaTitle={area?.title}
       areaColor={lifeAreaColor(targetAttributeId,area?.color_code)}
@@ -55,7 +60,7 @@ export default function GlobalRewardListener() {
       currentXP={currentXP}
       requiredXP={requiredXP}
       onClose={() => { clearCompletionModal(); acknowledgeSummary(); }}
-    />
+    /><PostSessionCelebration insideSession={insideSession} /></>
   );
 }
 

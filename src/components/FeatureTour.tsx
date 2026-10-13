@@ -10,18 +10,27 @@ import { overlayRect, spotlightRect, tourTipPosition, tourScrollDelta, type Tour
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import { colors } from "../constants/theme";
+import { notificationOnboardingStore } from "../services/notificationOnboardingStore";
+import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
 
 export const TOUR_STEPS = [
-  { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Each completed focus block adds to today’s progress. Tap your level to see the tier path." },
+  { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Change your goal once every seven days; the new target starts tomorrow. Completed task sessions add to today’s progress. Tap your level to see the tier path." },
   { id: "home-focus", route: "/", title: "Your focus block.", body: "Choose your focus area and time, then start. Suggestions follow the area you choose." },
-  { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Switch between suggestions and free focus here, or choose another suggestion. Your quests and progress stay yours." },
-  { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something you want to work on. Tap a quest to set up its focus session." },
-  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "Progress gathers your focus time, Focus areas and session history. Explore Week or Month, and your current and longest streaks." },
+  { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Suggestions use the same areas as your focus card. Free focus starts with Everyday focus; you can choose another area on Home. Your quests and progress stay yours." },
+  { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something that matters. Tap a quest to set up its focus." },
+  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "See the effort you recorded each day, with Week or Month totals alongside it. Explore your task sessions, areas and current and longest streaks." },
   { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Personalise your companion here. This page also holds your focus areas and milestone collection. Growth reflects the effort you’ve recorded." },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
 const pendingOwners = new Set<string>();
-export async function prepareFeatureTour(owner: string) { if (owner) { pendingOwners.add(owner); await AsyncStorage.setItem(receiptKey(owner), "pending"); } }
+export async function prepareFeatureTour(owner: string, current: () => boolean = () => true) {
+  if (!owner || !current()) return;
+  // The optional invitation must not prevent account setup if its own marker
+  // cannot be saved. Only new-account setup prepares this invitation.
+  await notificationOnboardingStore.prepare(owner, current).catch(() => {});
+  if (!current()) return;
+  pendingOwners.add(owner); await AsyncStorage.setItem(receiptKey(owner), "pending");
+}
 type Bounds = { top: number; bottom: number; panelHeight: number };
 type Target = { measure: (done: (rect: TourRect) => void) => void; reveal: (rect: TourRect, bounds: Bounds) => boolean };
 const TourContext = createContext<{ register: (id: string, target: Target) => () => void; registerScroll: (route: string, reset: () => void) => () => void; layoutChanged: (id: string) => void; start: () => void; active: boolean; targetId: string | null; previewFocus: boolean; previewLines: number; reportDock: (height: number) => void } | null>(null);
@@ -72,6 +81,8 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const owner = profile.id ?? "", eligible = profile.onboarding_completed && !timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !timer.rewardsVisible && !(timer.isCompleted && !timer.sessionSummary);
   const [step, setStep] = useState<number | null>(null), [rect, setRect] = useState<TourRect | null>(null), [retry, setRetry] = useState(0), [waitingExpired, setWaitingExpired] = useState(false);
   const [armed, setArmed] = useState(false), [returning, setReturning] = useState(false);
+  const [invitationRevision, setInvitationRevision] = useState(0);
+  const newUserTour = useRef(false);
   const [scope, setScope] = useState(() => ({ owner, eligible }));
   if (scope.owner !== owner || scope.eligible !== eligible) { setScope({ owner, eligible }); setStep(null); setRect(null); setWaitingExpired(false); setArmed(false); setReturning(false); }
   const targets = useRef(new Map<string, Target>()), advancing = useRef(false), leaving = useRef(false), announced = useRef(""), alive = useRef(true), root = useRef<View>(null), epoch = useRef(0);
@@ -87,7 +98,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const invalidate = useCallback(() => { epoch.current++; }, []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; invalidate(); }; }, [invalidate]);
   useLayoutEffect(() => { epoch.current++; }, [owner, eligible]);
-  const start = useCallback(() => { if (owner && eligible) { epoch.current++; advancing.current = false; leaving.current = false; announced.current = ""; opacity.setValue(0); sceneOpacity.setValue(0); highlightOpacity.setValue(0); setWaitingExpired(false); setRect(null); setReturning(false); setArmed(true); router.navigate("/"); } }, [owner, eligible, router, opacity, highlightOpacity, sceneOpacity]);
+  const start = useCallback((newAccount = false) => { if (owner && eligible) { epoch.current++; newUserTour.current = newAccount; advancing.current = false; leaving.current = false; announced.current = ""; opacity.setValue(0); sceneOpacity.setValue(0); highlightOpacity.setValue(0); setWaitingExpired(false); setRect(null); setReturning(false); setArmed(true); router.navigate("/"); } }, [owner, eligible, router, opacity, highlightOpacity, sceneOpacity]);
   const register = useCallback((id: string, target: Target) => { targets.current.set(id, target); return () => { if (targets.current.get(id) === target) targets.current.delete(id); }; }, []);
   const registerScroll = useCallback((route: string, reset: () => void) => { scrollTargets.current.set(route, reset); return () => { if (scrollTargets.current.get(route) === reset) scrollTargets.current.delete(route); }; }, []);
   const layoutChanged = useCallback((id: string) => { if (step !== null && TOUR_STEPS[step].id === id && !leaving.current && !returning) { setRect(null); setGeometryRevision(value => value + 1); } }, [step, returning]);
@@ -112,7 +123,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true; const request = epoch.current;
     if (owner && eligible) {
-      void Promise.resolve(pendingOwners.has(owner) ? "pending" : AsyncStorage.getItem(receiptKey(owner))).then(receipt => { if (live && request === epoch.current && receipt === "pending") start(); }).catch(() => {});
+      void Promise.resolve(pendingOwners.has(owner) ? "pending" : AsyncStorage.getItem(receiptKey(owner))).then(receipt => { if (live && request === epoch.current && receipt === "pending") start(true); }).catch(() => {});
     }
     return () => { live = false; };
   }, [owner, eligible, start]);
@@ -189,6 +200,14 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     setReturning(false);
     pendingOwners.delete(owner);
     void AsyncStorage.setItem(receiptKey(owner), "done").catch(() => {});
+    if (newUserTour.current) {
+      newUserTour.current = false;
+      const generation = epoch.current;
+      const current = () => alive.current && generation === epoch.current;
+      void notificationOnboardingStore.finishGuide(owner, current).then(() => {
+        if (current()) setInvitationRevision(value => value + 1);
+      }).catch(() => {});
+    }
   }, [owner, opacity]);
   useEffect(() => {
     if (!returning) return;
@@ -238,6 +257,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const tipTop = tourTipPosition(overview ? null : rect, panelHeight, insets.top + 12, viewport.height - dockHeight - 12);
   return <TourContext.Provider value={value}><View ref={root} testID="tour-root" collapsable={false} onLayout={measureRoot} style={s.root}>
     <View style={s.root} accessibilityElementsHidden={step !== null} importantForAccessibility={step !== null ? "no-hide-descendants" : "auto"}>{children}</View>
+    <NotificationOnboardingPrompt tourActive={armed || active || returning} revision={invitationRevision} />
     {current && <View testID="tour-overlay" style={s.overlay} accessibilityViewIsModal>
       <View testID="tour-content-mask" pointerEvents="none" style={[StyleSheet.absoluteFill, { bottom: dockHeight, overflow: "hidden" }]}>
         {overview ? <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(3,6,12,0.12)" }]} /> : rect ? <><View style={[s.dim, { top: 0, left: 0, right: 0, height: rect.y }]} /><View style={[s.dim, { top: rect.y, left: 0, width: rect.x, height: rect.height }]} /><View style={[s.dim, { top: rect.y, left: rect.x + rect.width, right: 0, height: rect.height }]} /><View style={[s.dim, { top: rect.y + rect.height, bottom: 0, left: 0, right: 0 }]} /><Animated.View style={[s.dim, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: reduced ? 0 : highlightOpacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} /><Animated.View testID="tour-outline" style={[s.outline, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: highlightOpacity }]} /></> : <View style={[StyleSheet.absoluteFill, s.dim]} />}
@@ -245,7 +265,9 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
       </View>
       {!returning && <Animated.View testID="tour-tip" onLayout={event => setPanelHeight(event.nativeEvent.layout.height)} style={[s.tip, { width: panelWidth, left: (viewport.width - panelWidth) / 2, top: tipTop, opacity, transform: [{ scale: reduced ? 1 : opacity.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }]}>
         <View style={{ gap: 10 }}><View style={s.tipHeading}><Text style={[s.title, s.headingTitle]} accessibilityRole="header" onLayout={event => setTitleHeight(event.nativeEvent.layout.height)}>{current.title}</Text><Text style={s.counter}>{(step ?? 0) + 1} of {TOUR_STEPS.length}</Text></View>
-          <ScrollView style={{ height: Math.min(bodyHeight, bodyCap), flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap}>
+          {/* Let short tips size to their text. A fixed measured height can clip
+              the last native line while switching tips or scaling fonts. */}
+          <ScrollView key={current.id} style={{ maxHeight: bodyCap, flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap} persistentScrollbar={bodyHeight > bodyCap}>
             <Text style={s.body} onLayout={event => { const height = Math.ceil(event.nativeEvent.layout.height); if (height > 0) setBodySize(previous => previous.id === current.id && previous.height === height ? previous : { id: current.id, height }); }}>{current.body}</Text>
           </ScrollView>
         </View>

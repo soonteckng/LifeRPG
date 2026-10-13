@@ -11,6 +11,7 @@ expo-env.d.ts
 
 # Native
 .kotlin/
+.native-countdown-jvm/
 *.orig.*
 *.jks
 *.p8

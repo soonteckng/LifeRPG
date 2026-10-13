@@ -2,13 +2,13 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
 
-export function useHomeLifecycle(refresh: () => Promise<void>) {
+export function useHomeLifecycle(refresh: (fresh?: boolean) => Promise<void>) {
   const [hour, setHour] = useState(() => new Date().getHours());
   const focused = useRef(false);
   useFocusEffect(useCallback(() => {
     focused.current = true;
     setHour(new Date().getHours());
-    void refresh();
+    void refresh(true);
     return () => { focused.current = false; };
   }, [refresh]));
   useEffect(() => {
@@ -21,7 +21,9 @@ export function useHomeLifecycle(refresh: () => Promise<void>) {
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active" && focused.current) {
         setHour(new Date().getHours());
-        void refresh();
+        // Queue a new read after any request begun before the connection
+        // changed. Merely joining that request can preserve its offline error.
+        void refresh(true);
       }
     });
     return () => { clearTimeout(timer); subscription.remove(); };

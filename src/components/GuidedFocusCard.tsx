@@ -8,8 +8,9 @@ import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { preferenceForFocusArea } from "../utils/focusPreference";
 import { useTimer } from "../context/TimerContext";
 import type { Subject } from "../services/taskService";
-export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled, onStarted, selectedSeconds, onDuration }: {
+export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled, onStarted, selectedSeconds, customSeconds, onDuration, onCustomDuration }: {
   owner: string; subjects: Subject[]; activeTitle?: string; disabled: boolean; onStarted: () => void; selectedSeconds?: number; onDuration?: (seconds: number) => void;
+  customSeconds?: number | null; onCustomDuration?: (seconds: number) => void;
 }) {
   const preference = useGuidedPreference(owner), timer = useTimer();
   const [selection, setSelection] = useState<number | null>(null);
@@ -27,9 +28,9 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
   const locked = disabled || busy || preference.busy || areaChanging;
   const active = !!timer.hasOpenSession, activeSuggestion = active ? readSuggestedFocus(timer.notes) : null;
   const activeArea = subjects.find(item => item.id === timer.targetAttributeId);
-  const chooseDuration = (next: number) => {
+  const chooseDuration = (next: number, custom = false) => {
     if (lock.current || locked || active || !validSessionSeconds(next)) return;
-    setSelection(next); setFailed(null); onDuration?.(next);
+    setSelection(next); setFailed(null); if (custom && onCustomDuration) onCustomDuration(next); else onDuration?.(next);
   };
   const start = async () => {
     if (lock.current || busy) return;
@@ -37,8 +38,10 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     if (disabled || preference.busy) return;
     lock.current = true; setBusy(true);
     try {
-      const started = await timer.startSuggestedTimer(focus, areaId);
-      if (alive.current) { if (started) { setFailed(null); onStarted(); } else setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
+      const request = timer.startSuggestedTimer(focus, areaId);
+      onStarted();
+      const started = await request;
+      if (alive.current) { if (started) setFailed(null); else setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
     } catch { if (alive.current) setFailed({ defaults: preference.value, focus, areaId, areaTitle }); }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   };
@@ -56,11 +59,11 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
   };
   return <FocusCard cardID="guided-focus-card" startID="guided-start" areaActionID="guided-session-options"
     label="Suggested focus" title={active ? activeSuggestion?.title ?? activeTitle ?? "One thing at a time." : focus.title}
-    instruction={active ? activeSuggestion?.instruction ?? (timer.isRunning ? "Your block is in progress. Return to your session whenever you’re ready." : "Your session is paused. Continue whenever you’re ready.") : focus.instruction}
+    instruction={timer.awaitingStart ? "We’re checking your session start. Open it to review or end the request." : active ? activeSuggestion?.instruction ?? (timer.isRunning ? "Your block is in progress. Return to your session whenever you’re ready." : "Your session is paused. Continue whenever you’re ready.") : focus.instruction}
     contentKey={active ? "active" : focus.templateId + String(focus.smaller)}
     seconds={active ? timer.timeLeft : focus.seconds} area={active ? activeArea?.title ?? "General" : areaTitle}
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
-    active={active} running={!!timer.isRunning} busy={busy} disabled={locked} editDisabled={locked}
+    active={active} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} busy={busy} disabled={locked} editDisabled={locked}
     setupDisabled={busy || areaChanging || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : areaError ? "Couldn’t change your focus area. Your previous choice is still selected. Try again." : preference.error ? "Couldn’t load your preferences. Try Find your next step again." : undefined}
-    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} onArea={id => void chooseArea(id)} onStart={() => void start()} />;
+    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} customSeconds={customSeconds} onCustomDuration={next => chooseDuration(next, true)} onArea={id => void chooseArea(id)} onStart={() => void start()} />;
 }

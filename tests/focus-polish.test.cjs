@@ -46,7 +46,7 @@ test('30/60 presets and Custom respect disabled state and the haptic preference 
   assert.equal(button('Use 10 minutes'),undefined);await act(async()=>button('Use 30 minutes').props.onPress());assert.equal(haptics,0);
   await act(async()=>button('Use 60 minutes').props.onPress());assert.deepEqual(changes,[3600]);assert.equal(haptics,1);
   props={...props,seconds:3600};enabled=false;await act(async()=>tree.update(React.createElement(Control,props)));await act(async()=>button('Use 30 minutes').props.onPress());assert.equal(haptics,1);
-  enabled=true;props={...props,seconds:600,disabled:true};await act(async()=>tree.update(React.createElement(Control,props)));assert.equal(button('Set a custom focus duration').props.accessibilityState.selected,true);assert.equal(content(button('Set a custom focus duration')),'10 min');await act(async()=>button('Use 60 minutes').props.onPress());assert.equal(changes.length,2);
+  enabled=true;props={...props,seconds:600,disabled:true};await act(async()=>tree.update(React.createElement(Control,props)));assert.equal(button('Set a custom focus duration').props.accessibilityState.selected,true);assert.equal(content(button('Set a custom focus duration')),'Custom');assert.equal(button('Set a custom focus duration').props.accessibilityValue.text,'10 min');await act(async()=>button('Use 60 minutes').props.onPress());assert.equal(changes.length,2);
   props={...props,disabled:false};await act(async()=>tree.update(React.createElement(Control,props)));await act(async()=>button('Set a custom focus duration').props.onPress());assert.equal(haptics,2);assert.equal(tree.root.findByType('CustomSheet').props.seconds,600);
  }finally{await act(async()=>tree.unmount());}
 });
@@ -72,8 +72,8 @@ test('quest scope switches give haptics and custom minutes are revealed after ke
   const duration=tree.root.findAllByType('View').find(node=>node.props.onLayout);await act(async()=>duration.props.onLayout({nativeEvent:{layout:{y:172}}}));
   const input=tree.root.findAllByType('Input').find(node=>node.props.accessibilityLabel==='Custom duration in minutes');await act(async()=>input.props.onFocus());await act(async()=>events.get('keyboardDidShow')());
   const scroll=tree.root.findAllByType('Scroll').find(node=>node.props.onContentSizeChange);await act(async()=>scroll.props.onContentSizeChange(300,800));assert.deepEqual(scrolls.at(-1),{y:160,animated:false});
-  const list=tree.root.findAllByType('Sheet').find(node=>node.props.label==='quests');assert.equal(list.props.expanded,true);assert.equal(list.props.heightRatio,.66);assert.equal(list.props.compact,undefined);
-  assert.equal(tree.root.findAllByType('Scroll')[0].props.contentContainerStyle.paddingBottom,48);
+  const list=tree.root.findAllByType('Sheet').find(node=>node.props.label==='quests');assert.equal(list.props.compact,true);assert.equal(list.props.maxHeightRatio,.60);assert.equal(list.props.expanded,undefined);assert.equal(list.props.heightRatio,undefined);
+  assert.equal(tree.root.findAllByType('Scroll')[0].props.contentContainerStyle.paddingBottom,32);
  }finally{await act(async()=>tree.unmount());}
 });
 
@@ -86,4 +86,12 @@ test('focus-card preview keeps the same layout from tour step one through four',
   for(const id of ['home-focus','home-next-step','home-quests']){targetId=id;await act(async()=>tree.update(React.createElement(Card,props)));assert.deepEqual(layout(),first);const instruction=tree.root.findAllByType('Text').find(node=>content(node)===props.instruction);assert.equal(instruction.props.numberOfLines,2);}
   previewFocus=false;await act(async()=>tree.update(React.createElement(Card,props)));assert.equal(layout()[1],false,'normal full card returns underneath the return cover');
  }finally{await act(async()=>tree.unmount());}
+});
+
+test('Home presents an unconfirmed start as planned time rather than a confirmed paused session',async()=>{
+ const Card=load('src/components/FocusCard.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'./ContentReveal':host('Reveal'),'./FocusLengthControl':()=>null,'./FocusAreaSheet':()=>null,'./FeatureTour':{useFeatureTour:()=>({})}}).default;
+ const props={cardID:'pending',startID:'open',title:'Learning',instruction:'Checking the saved start',label:'Suggested focus',contentKey:'pending',area:'Learning',seconds:60,active:true,running:false,awaitingStart:true,onStart(){}};
+ let tree;await act(async()=>{tree=create(React.createElement(Card,props));});
+ try {assert.match(content(tree.root),/Checking session start/);assert.match(content(tree.root),/Planned time/);assert.doesNotMatch(content(tree.root),/Paused|Time remaining/);assert.equal(tree.root.findByProps({testID:'open'}).props.disabled,false);}
+ finally{await act(async()=>tree.unmount());}
 });

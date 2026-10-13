@@ -61,9 +61,9 @@ const native = { View: host("View"), Text: host("Text"), Pressable: host("Pressa
   StyleSheet: { create: (styles) => styles, hairlineWidth: 1, absoluteFill: {} },
   Keyboard: { dismiss() {}, isVisible: () => false, addListener: () => ({ remove() {} }) } };
 
-async function setup(initialTasks = [], hasOpenSession = false) {
+async function setup(initialTasks = [], hasOpenSession = false, options = {}) {
   const calls = [], alerts = [];
-  let currentTasks, changeVisible, failSave = false;
+  let currentTasks, changeVisible, changeOwner, currentOwner = options.ownerId ?? "owner", failSave = false;
   const Context = React.createContext(null);
   const timer = { hasOpenSession, linkedTaskId: hasOpenSession ? 1 : null,
     setLinkedTaskId: (value) => calls.push(["task", value]),
@@ -73,7 +73,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     subject_id: params.subjectId, repeat_rule: params.repeatRule, difficulty: params.difficulty,
     is_due_today: ["once", "daily"].includes(params.repeatRule) || params.repeatRule.includes("Wed") });
   const service = {
-    createTask: async (params) => { calls.push(["create", params]); if (failSave) throw Error("Offline"); return saved(10, params); },
+    createTask: async (params, createOptions) => { calls.push(["create", params]); if (options.createTask) return options.createTask(params, createOptions); if (failSave) throw Error("Offline"); return saved(10, params); },
     updateTask: async (id, params) => { calls.push(["update", id, params]); if (failSave) throw Error("Offline"); return saved(id, params); },
     deleteTask: async (id) => { calls.push(["delete", id]); },
   };
@@ -85,7 +85,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 0 }) },
     "../context/QuestContext": { useQuests: () => React.useContext(Context) },
     "../context/TimerContext": { useTimer: () => timer },
-    "../context/UserContext": { useUser: () => ({ hapticsEnabled: false }) },
+    "../context/UserContext": { useUser: () => ({ hapticsEnabled: false, profile: {id: currentOwner} }) },
     "../services/taskService": service,
     "./AppSheet": (props) => {
       React.useEffect(() => {
@@ -97,6 +97,9 @@ async function setup(initialTasks = [], hasOpenSession = false) {
   function Harness() {
     const [tasks, setTasks] = React.useState(initialTasks);
     const [visible, setVisible] = React.useState(true);
+    const [owner, setOwner] = React.useState(options.ownerId ?? "owner");
+    currentOwner = owner;
+    changeOwner = setOwner;
     changeVisible = setVisible;
     currentTasks = tasks;
     const value = { tasks, subjects, loading: false, refreshing: false, error: false,
@@ -104,7 +107,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
       upsert: (item) => setTasks((items) => items.some((t) => t.id === item.id) ? items.map((t) => t.id === item.id ? item : t) : [...items, item]),
       remove: (id) => setTasks((items) => items.filter((item) => item.id !== id)),
     };
-    return React.createElement(Context.Provider, { value }, React.createElement(QuestSheet, { visible, onClose: () => setVisible(false) }));
+    return React.createElement(Context.Provider, { value }, React.createElement(QuestSheet, { ...options.props, visible, onClose: () => { options.onClose?.(); setVisible(false); } }));
   }
   let renderer;
   await act(async () => { renderer = create(React.createElement(Harness)); });
@@ -120,6 +123,7 @@ async function setup(initialTasks = [], hasOpenSession = false) {
     alertAction: async (label) => { const action = button(label); assert.ok(action); await act(async () => action.props.onPress()); },
     dismiss: async () => { await act(async () => renderer.root.findAllByType("Sheet").at(-1).props.onRequestClose()); },
     reopen: async () => { await act(async () => changeVisible(true)); },
+    changeOwner: async owner => { await act(async () => changeOwner(owner)); },
     finishDismiss: async () => { await act(async () => renderer.root.findByType("Sheet").props.onDismiss()); },
     output: () => text(renderer.root),
     cleanup: async () => { await act(async () => renderer.unmount()); },
@@ -128,6 +132,10 @@ async function setup(initialTasks = [], hasOpenSession = false) {
 
 test("empty sheet adds a quest and immediately changes the unfinished count", async () => {
   const ui = await setup();
+  const list = () => ui.sheets().find(sheet => sheet.props.label === "quests");
+  assert.equal(list().props.compact, true, 'empty lists fit their content instead of leaving a fixed tall blank panel');
+  assert.equal(list().props.expanded, undefined);
+  assert.equal(list().props.maxHeightRatio, 0.60);
   assert.match(ui.output(), /Create your first quest/);
   assert.equal(ui.count(), 0);
   await ui.press("Add quest");
@@ -136,6 +144,8 @@ test("empty sheet adds a quest and immediately changes the unfinished count", as
   assert.equal(ui.count(), 1);
   assert.equal(ui.tasks()[0].title, "Walk outside");
   assert.ok(ui.button("Edit Walk outside"));
+  assert.equal(list().props.compact, true, 'adding a quest retains content sizing');
+  assert.equal(list().props.maxHeightRatio, 0.60);
   assert.equal(ui.calls.find(([action]) => action === "navigate"), undefined);
   await ui.cleanup();
 });
@@ -156,6 +166,115 @@ test("editing preserves difficulty and saves an upcoming schedule without leavin
   await ui.press("All quests");
   assert.ok(ui.button("Edit Read two chapters"));
   await ui.cleanup();
+});
+
+const completedSuggestionDraft = {title:"Review your notes", minutes:"1", repeat:"once", days:[], subjectId:2};
+
+test("saving a completed suggestion opens only the shared editor with editable prefilled details", async () => {
+  let created;
+  const ui=await setup([],false,{props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:item=>{created=item;},durationHint:"Your completed session was one minute."}});
+  try {
+    assert.equal(ui.sheets().length,1);
+    assert.equal(ui.sheets()[0].props.label,"quest editor");
+    assert.equal(ui.sheets()[0].props.keyboardBehavior,"fillParent");
+    assert.equal(ui.sheets()[0].props.guardDismiss,false);
+    assert.equal(ui.input("Quest name"),"Review your notes");
+    assert.equal(ui.input("Custom duration in minutes"),"1");
+    assert.match(ui.output(),/Your completed session was one minute/);
+    assert.doesNotMatch(ui.output(),/Today's quests|All quests|Done today/);
+    assert.equal(ui.calls.length,0,"opening a prefilled draft creates nothing");
+    await ui.type("Quest name","  My next review  ");
+    await ui.press("15 minutes");
+    await ui.press("Selected days");
+    await ui.press("Friday");
+    await ui.press("Everyday focus");
+    await ui.press("Create quest");
+    assert.deepEqual(ui.calls,[['create',{title:"My next review",targetMinutes:15,subjectId:1,repeatRule:"Fri",difficulty:"medium"}]]);
+    assert.equal(created.title,"My next review");
+    assert.equal(created.target_minutes,15);
+    assert.equal(ui.tasks().length,1);
+  } finally {await ui.cleanup();}
+});
+
+test("standalone quest editor Cancel and discarded edits create no quest", async () => {
+  for(const edited of [false,true]) {
+    let closed=0,created=0;
+    const ui=await setup([],false,{onClose:()=>closed++,props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:()=>created++}});
+    try {
+      if(edited)await ui.type("Quest name","An unsaved change");
+      await ui.press("Cancel");
+      if(edited){assert.match(ui.output(),/Discard changes/);assert.equal(closed,0);await ui.alertAction("Discard changes");}
+      assert.equal(ui.calls.length,0);
+      assert.equal(ui.tasks().length,0);
+      assert.equal(created,0);
+      assert.equal(closed,1);
+    } finally {await ui.cleanup();}
+  }
+});
+
+test("standalone quest creation submits once while saving and returns only a successful created row",async()=>{
+  let resolve,created=0,closed=0,requestOptions;
+  const pending=new Promise(done=>{resolve=done;});
+  const ui=await setup([],false,{onClose:()=>closed++,createTask:(_params,options)=>{requestOptions=options;return pending;},props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:()=>created++}});
+  try {
+    const save=ui.button("Create quest");
+    await act(async()=>{save.props.onPress();save.props.onPress();});
+    assert.equal(ui.calls.length,1);
+    assert.deepEqual(requestOptions,{expectedOwnerId:"owner"});
+    assert.equal(ui.button("Create quest").props.disabled,true);
+    await ui.press("Cancel");
+    assert.equal(closed,0);
+    assert.equal(created,0);
+    await act(async()=>resolve(task({id:12,title:completedSuggestionDraft.title,target_minutes:1})));
+    assert.equal(created,1);
+    assert.equal(closed,1);
+    assert.equal(ui.tasks().length,1);
+  } finally {await ui.cleanup();}
+});
+
+test("standalone editor refuses a mismatched completion owner before creating a quest",async()=>{
+  const ui=await setup([],false,{ownerId:"another-owner",props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner"}});
+  try{await ui.press("Create quest");assert.equal(ui.calls.length,0);assert.match(ui.output(),/Your account changed/);}
+  finally{await ui.cleanup();}
+});
+
+test("an unconfirmed standalone create preserves its draft and cannot claim a successful saved quest",async()=>{
+  let created=0,closed=0;
+  const ui=await setup([],false,{onClose:()=>closed++,createTask:async()=>{throw Error('Response lost');},
+    props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:'owner',onCreated:()=>created++}});
+  try {
+    await ui.press('Create quest');
+    assert.equal(ui.calls.length,1);assert.equal(created,0);assert.equal(closed,0);assert.equal(ui.tasks().length,0);
+    assert.equal(ui.input('Quest name'),completedSuggestionDraft.title);
+    assert.match(ui.output(),/Couldn't confirm this quest.*Check your quests/);
+    assert.doesNotMatch(ui.output(),/Quest saved|Saved to your quests/);
+  } finally {await ui.cleanup();}
+});
+
+test("an outgoing owner or unmounted editor cannot publish a late created quest",async()=>{
+  for(const leave of ["owner","unmount"]){
+    let resolve,created=0,closed=0;
+    const pending=new Promise(done=>{resolve=done;});
+    const ui=await setup([],false,{onClose:()=>closed++,createTask:()=>pending,props:{editorOnly:true,initialDraft:completedSuggestionDraft,expectedOwnerId:"owner",onCreated:()=>created++}});
+    await ui.press("Create quest");
+    if(leave==="owner")await ui.changeOwner("another-owner");else await ui.cleanup();
+    await act(async()=>resolve(task({id:19,title:"Old owner's quest"})));
+    assert.equal(created,0);assert.equal(closed,0);assert.equal(ui.tasks().length,0);
+    if(leave==="owner")await ui.cleanup();
+  }
+});
+
+test("task creation checks the expected owner before insert and again before returning its row",async()=>{
+  for(const timing of ["before","after","unchanged"]){
+    let userCalls=0,inserts=0;
+    const service=load("src/services/taskService.ts",{
+      '../../lib/supabase':{supabase:{auth:{getUser:async()=>({data:{user:{id:timing==="before"||timing==="after"&&userCalls++>0?"another-owner":"owner"}},error:null})},
+        from:()=>({insert:()=>{inserts++;return{select:()=>({single:async()=>({data:task(),error:null})})};}})}},
+    });
+    const promise=service.createTask({title:"New quest",targetMinutes:1},{expectedOwnerId:"owner"});
+    if(timing==="unchanged"){assert.equal((await promise).id,1);assert.equal(inserts,1);}
+    else{await assert.rejects(promise,/Account changed/);assert.equal(inserts,timing==="before"?0:1);}
+  }
 });
 
 test("Cancel and sheet dismissal protect dirty drafts; discarding leaves saved data untouched", async () => {
@@ -269,13 +388,19 @@ test("many quests and long titles remain individually editable with distinct Sta
   assert.equal(ui.count(), 30);
   assert.ok(ui.button("Edit " + title + 29));
   assert.ok(ui.button("Start " + title + 29));
+  const list = () => ui.sheets().find(sheet => sheet.props.label === "quests");
+  assert.equal(list().props.compact, true);
+  assert.equal(list().props.maxHeightRatio, 0.60, 'long lists stay capped and scroll instead of expanding to the screen top');
+  await ui.press("All quests");
+  assert.equal(list().props.compact, true);
+  assert.equal(list().props.maxHeightRatio, 0.60);
   await ui.press("Edit " + title + 29);
   assert.equal(ui.input("Quest name"), title + 29);
   assert.deepEqual(ui.calls, []);
   await ui.cleanup();
 });
 
-test("quest list keeps its bottom gap through the installed library's footer adjustment in Today and All", async () => {
+test("quest list reserves only its measured footer and leaves no extra tail gap in Today, All and Done", async () => {
   const hookFile = path.join(require.resolve("@gorhom/bottom-sheet/package.json"), "..", "src/hooks/useBottomSheetContentContainerStyle.ts");
   let footerHeight = 0;
   const { useBottomSheetContentContainerStyle } = load(path.relative(path.resolve(__dirname, ".."), hookFile), {
@@ -295,14 +420,14 @@ test("quest list keeps its bottom gap through the installed library's footer adj
   let renderer;
   try {
     await act(async () => { renderer = create(React.createElement(Adjusted, { style: listStyle() })); });
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 40);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 0);
     await ui.press("All quests");
     footerHeight = 72;
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 72);
     await ui.press("View completed quests");
     await act(async () => renderer.update(React.createElement(Adjusted, { style: listStyle() })));
-    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 112);
+    assert.equal(renderer.root.findByType("Adjusted").props.style.paddingBottom, 72);
   } finally {
     if (renderer) await act(async () => renderer.unmount());
     await ui.cleanup();
@@ -368,6 +493,11 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.keyboardBehavior,"fillParent");
 
     assert.equal(sheetProps.android_keyboardInputMode, "adjustResize");
+    await act(async()=>renderer.update(React.createElement(AppSheet,{...props,compact:true,keyboardBehavior:"interactive",androidKeyboardInputMode:"adjustPan"})));
+    assert.equal(sheetProps.android_keyboardInputMode,"adjustPan");
+    assert.equal(sheetProps.keyboardBehavior,"interactive");
+    await act(async()=>renderer.update(React.createElement(AppSheet,props)));
+    assert.equal(sheetProps.android_keyboardInputMode,"adjustResize",'other existing editors retain their input handling');
     // Native back and backdrop use the same guarded request, before any unmount.
     await act(async () => renderer.root.findByType("Modal").props.onRequestClose());
     assert.equal(requestedClose, 1);
@@ -532,27 +662,33 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
   await act(async () => refresh());
-  assert.match(output(), /25m \/ 60 min/);
+  assert.match(output(), /25 \/ 60 min/);
   progressMinutes = 26;
   summary = { id: "saved-session" };
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.match(output(), /26m \/ 60 min/);
+  assert.match(output(), /26 \/ 60 min/);
   failed = true;
   await act(async () => refresh());
-  assert.match(output(), /26m \/ 60 min/);
+  assert.match(output(), /26 \/ 60 min/);
   assert.ok(retry());
   failed = false;
   await act(async () => retry().props.onPress());
   assert.equal(retry(), undefined);
   creditFields = { credit_version: 1, completed_seconds: 30 };
   await act(async () => refresh());
-  assert.match(output(), /30s \/ 60 min/);
+  assert.match(output(), /0 min 30 sec \/ 60 min/);
   creditFields.completed_seconds = 60;
   await act(async () => refresh());
-  assert.match(output(), /1m \/ 60 min/);
+  assert.match(output(), /1 \/ 60 min/);
+  creditFields.completed_seconds = 3660;
+  await act(async () => refresh());
+  assert.match(output(), /61 \/ 60 min/);
+  assert.match(output(), /Daily goal reached/);
+  const goalBar = renderer.root.findAllByType("View").find(node => node.props.accessibilityRole === "progressbar");
+  assert.equal(goalBar.props.accessibilityValue.now, 3600, "only the bar is capped, while 61 minutes stays visible");
   creditFields.completed_seconds = 0;
   await act(async () => refresh());
-  assert.match(output(), /0m \/ 60 min/);
+  assert.match(output(), /0 \/ 60 min/);
   await act(async () => renderer.unmount());
 });
 
@@ -610,6 +746,27 @@ test("quest completion during an old refresh queues a fresh server read", async 
   } finally { await act(async () => renderer.unmount()); }
 });
 
+test("quest foreground refresh retries after an in-flight offline failure instead of keeping its error", async () => {
+  let state, foreground;
+  const requests = [];
+  const {QuestProvider, useQuests} = load('src/context/QuestContext.tsx', {
+    'react-native': {AppState: {addEventListener: (_, fn) => {foreground = fn; return {remove(){}};}}},
+    './TimerContext': {useTimer: () => ({sessionSummary:null})},
+    '../services/taskService': {getTasks: () => new Promise((resolve, reject) => requests.push({resolve,reject})), getSubjects: async () => subjects},
+  });
+  function Capture(){state = useQuests();return null;}
+  let renderer;
+  try {
+    await act(async () => {renderer = create(React.createElement(QuestProvider,null,React.createElement(Capture)));});
+    let pending; await act(async () => {pending = state.refresh();});
+    await act(async () => foreground('active')); assert.equal(requests.length,1);
+    await act(async () => {requests[0].reject(Error('Connection was offline')); await pending; await new Promise(resolve => setImmediate(resolve));});
+    assert.equal(requests.length,2);
+    await act(async () => requests[1].resolve([task()]));
+    assert.equal(state.error,false); assert.equal(state.tasks[0].title,'Read a chapter');
+  } finally {if(renderer) await act(async () => renderer.unmount());}
+});
+
 test("Home updates on focus, foreground and a clock boundary; unfocused Home does not fetch", async () => {
   const RealDate = global.Date;
   const realTimeout = global.setTimeout, realClear = global.clearTimeout;
@@ -650,6 +807,31 @@ test("Home updates on focus, foreground and a clock boundary; unfocused Home doe
   }
 });
 
+test("Home foreground queues a fresh read after a pre-reconnection request fails", async () => {
+  const {singleFlight} = load('src/utils/singleFlight.ts', {});
+  let finishOld, foreground, reads = 0, loadError = false;
+  const oldRequest = new Promise(resolve => {finishOld = resolve;});
+  const refresh = singleFlight(async () => {
+    reads++;
+    if (reads === 1) { await oldRequest; loadError = true; }
+    else loadError = false;
+  });
+  const {useHomeLifecycle} = load('src/hooks/useHomeLifecycle.ts', {
+    'expo-router': {useFocusEffect: effect => React.useEffect(effect, [effect])},
+    'react-native': {AppState: {addEventListener: (_, fn) => {foreground = fn; return {remove(){}};}}},
+  });
+  function Capture(){useHomeLifecycle(refresh);return null;}
+  let renderer;
+  try {
+    await act(async () => {renderer = create(React.createElement(Capture));});
+    assert.equal(reads, 1);
+    await act(async () => foreground('active')); assert.equal(reads, 1);
+    await act(async () => {finishOld(); await new Promise(resolve => setImmediate(resolve));});
+    assert.equal(reads, 2, 'foreground cannot merely reuse the old offline result');
+    assert.equal(loadError, false);
+  } finally {if(renderer) await act(async () => renderer.unmount());}
+});
+
 
 
 
@@ -663,7 +845,7 @@ test("Done today excludes older one-off completions when loaded from persistence
     task({id:5, is_recurring:true, repeat_rule:'daily', last_completed_date:'2000-01-01'}),
   ];
   const service = load('src/services/taskService.ts', {
-    '../../lib/supabase': {supabase:{from:()=>({select:()=>({order:async()=>({data:rows,error:null})})})}},
+    '../../lib/supabase': {supabase:{auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},from:()=>({select:()=>({eq:()=>({order:async()=>({data:rows,error:null})})})})}},
   });
   const saved = await service.getTasks();
   assert.deepEqual(saved.filter(item=>item.is_completed_today).map(item=>item.id).sort(), [1,3]);
@@ -813,7 +995,7 @@ test("Today and All occupy equal native containers with identical full-width tou
   await ui.cleanup();
 });
 
-async function quickHomeSetup(history = null, start = async () => true) {
+async function quickHomeSetup(history = null, start = async () => true, durationStorage = null) {
   const calls=[];
   let owner="owner-a", timerFlags={}, historyValue=history;
   const setters = {
@@ -822,6 +1004,7 @@ async function quickHomeSetup(history = null, start = async () => true) {
     setActivityType:v=>calls.push(["activity",v]), setNotes:v=>calls.push(["notes",v]),
   };
   const Home=load("src/app/(tabs)/index.tsx", {
+    "@react-native-async-storage/async-storage":durationStorage ?? {getItem:async()=>null,setItem:async()=>{}},
     "react-native":{...native, ScrollView:host("ScrollView"), useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
     "@expo/vector-icons":{Ionicons:host("Icon")}, "expo-haptics":{},
     "expo-router":{useRouter:()=>({navigate:route=>calls.push(["navigate",route])})},
@@ -840,19 +1023,35 @@ async function quickHomeSetup(history = null, start = async () => true) {
     update:async(flags={},newOwner=owner,nextHistory=historyValue)=>{timerFlags=flags;owner=newOwner;historyValue=nextHistory;await act(async()=>renderer.update(React.createElement(Home)));},
     output:()=>JSON.stringify(renderer.toJSON()),cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
-test("Home Quick Start shows exact remembered choice, ignores rapid taps and navigates only after success", async()=>{
+test("Home Quick Start opens immediately, retains the exact duration and neutral area, and ignores rapid taps", async()=>{
   let resolve; const pending=new Promise(r=>resolve=r);
   const ui=await quickHomeSetup({task_id:null,subject_id:2,duration_seconds:1859},()=>pending);
   try {
-    assert.match(ui.output(),/30 min 59 sec/); assert.match(ui.output(),/Learning/);
+    assert.match(ui.output(),/30 min/); assert.match(ui.output(),/Everyday focus/);
     let first;
     await act(async()=>{first=ui.button("home-start-focus").props.onPress();ui.button("home-start-focus").props.onPress();});
-    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1859,2]]);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1]]);
+    assert.equal(ui.calls.some(call=>call[0]==="history"),false,'saved session history must not choose the setup duration');
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     assert.equal(ui.button("home-start-focus").props.disabled,true);
     await act(async()=>{resolve(true);await first;});
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
   }finally{await ui.cleanup();}
+});
+
+test("Home can open recovery for an unsaved, rejected or unreadable session even when ordinary starts are blocked", async()=>{
+  const ui=await quickHomeSetup(null,async()=>true);
+  const review=()=>ui.renderer.root.findAllByType("Pressable").find(node=>node.props.accessibilityLabel==="Review saved session");
+  try {
+    assert.equal(review(),undefined);
+    for(const flags of [{isCompleted:true,syncStatus:"waiting",sessionSummary:null},{isCompleted:true,syncStatus:"rejected",sessionSummary:null},{restoreError:true}]) {
+      await ui.update(flags); assert.ok(review());
+      await act(async()=>review().props.onPress());
+    }
+    assert.equal(ui.calls.filter(call=>call[0]==="start").length,0);
+    assert.deepEqual(ui.calls.filter(call=>call[0]==="navigate"),Array.from({length:3},()=>["navigate","/session"]));
+    await ui.update({}); assert.equal(review(),undefined);
+  } finally {await ui.cleanup();}
 });
 test("Home failure stays actionable and the area sheet cannot navigate or change duration", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
@@ -860,7 +1059,7 @@ test("Home failure stays actionable and the area sheet cannot navigate or change
     assert.match(ui.output(),/Soon Teck/);assert.match(ui.output(),/30 min/);
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.match(ui.output(),/Retry start/);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,0);
+    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
     succeeded=true;
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);
@@ -888,10 +1087,10 @@ test("Home continues active or paused sessions and protects restoration/completi
     assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
   }finally{await ui.cleanup();}
 });
-test("Home history does not leak across accounts; missing areas fall back to General and tiny/quest rows are ignored",async()=>{
+test("Home ignores session history when choosing the initial preset across accounts",async()=>{
   const ui=await quickHomeSetup({task_id:null,subject_id:99,duration_seconds:1859});
   try {
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min 59 sec, Everyday focus");
+    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
     await ui.update({},"owner-b",null);
     assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
     await ui.update({},"owner-c",{task_id:2,subject_id:2,duration_seconds:900});
@@ -914,6 +1113,32 @@ test("free focus presets and custom seconds start the selected time and cannot l
   assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, Everyday focus');
   await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start').at(-1),['start',2717,1]);
   await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+ }finally{await ui.cleanup();}
+});
+
+test('Home cold restart keeps the preset and uses only the explicitly saved Custom editor default',async()=>{
+ const values=new Map(),db={getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}};
+ let ui=await quickHomeSetup({task_id:null,duration_seconds:480},async()=>true,db);
+ const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
+ const input=label=>ui.renderer.root.findAllByType('Input').find(n=>n.props.accessibilityLabel===label);
+ try{
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+  await act(async()=>control('Use 60 minutes').props.onPress());
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'60','the first Custom editor uses the selected preset');
+  await act(async()=>{input('Focus minutes').props.onChangeText('2');input('Focus seconds').props.onChangeText('15');});
+  await act(async()=>control('Use this duration').props.onPress());
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 2 min 15 sec, Everyday focus');
+  await ui.cleanup();
+  ui=await quickHomeSetup({task_id:null,duration_seconds:480},async()=>true,db);
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 60 min, Everyday focus');
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'2');assert.equal(input('Focus seconds').props.value,'15');
+  await act(async()=>ui.renderer.root.findAllByType('Sheet').find(n=>n.props.label==='focus duration').props.onRequestClose());
+  await ui.update({},'another-account',null);
+  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
+  await act(async()=>control('Set a custom focus duration').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'0');
  }finally{await ui.cleanup();}
 });
 

@@ -27,6 +27,8 @@ function storage() {
 const mocks = {
   'react-native': { View: host('View'), StyleSheet: { create: value => value, hairlineWidth: 0.5 } },
   '@expo/vector-icons': { Ionicons: host('Icon') },
+  'expo-haptics': { selectionAsync: async () => {} },
+  '../context/UserContext': { useUser: () => ({ hapticsEnabled: true }) },
   './AppText': { Text: host('Text') },
 };
 async function render(Component) {
@@ -79,16 +81,20 @@ test('old study choices and saved exact-second wording restore through the expan
   assert.equal(api.readSuggestedFocus('liferpg:suggested:v1:{"id":"uncurated-prompt","smaller":false}'), null);
 });
 
-test('the chooser shows only the current direction prompts and retains the chosen prompt when free focus is toggled', async () => {
+test('the six-category chooser shows only the selected starting points and retains the chosen prompt across Free focus', async () => {
   const Choice = load('src/components/GuidedChoice.tsx', mocks).default;
   let current;
   function Harness() {
-    const [value, setValue] = React.useState({ version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false });
+    const [value, setValue] = React.useState({ version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false, areaId: 22 });
     current = value;
     return React.createElement(Choice, { value, onChange: setValue });
   }
   const ui = await render(Harness);
   try {
+    const labels = () => ui.tree.root.findAllByType('Button').map(button => button.props.accessibilityLabel);
+    assert.deepEqual(labels().slice(0, 6), ['Learning', 'Work & projects', 'Creativity', 'Everyday life', 'Wellbeing', 'Free focus']);
+    assert.equal(labels().includes('Help me choose a focus'), false);
+    assert.equal(labels().includes('Just let me focus'), false);
     assert.match(text(ui.tree.root), /Review and remember/);
     assert.doesNotMatch(text(ui.tree.root), /Make a first draft/);
     await ui.press('Work & projects');
@@ -96,17 +102,97 @@ test('the chooser shows only the current direction prompts and retains the chose
     assert.doesNotMatch(text(ui.tree.root), /Review and remember|Practise what you’re learning/);
     await ui.press('Make room for a priority');
     assert.equal(current.templateId, 'work-priority');
-    await ui.press('Just let me focus');
+    await ui.press('Free focus');
     assert.equal(current.enabled, false);
+    assert.equal(current.areaId, null);
     assert.equal(current.templateId, 'work-priority');
-    assert.doesNotMatch(text(ui.tree.root), /Your starting point/);
-    await ui.press('Help me choose a focus');
+    assert.match(text(ui.tree.root), /Your starting point/);
+    assert.match(text(ui.tree.root), /Make this time your own/);
+    assert.match(text(ui.tree.root), /Choose your time on Home and begin at your own pace/);
+    assert.match(text(ui.tree.root), /Everyday focus to start/);
+    assert.doesNotMatch(text(ui.tree.root), /Choose a small step to begin with/);
+    assert.doesNotMatch(text(ui.tree.root), /Make room for a priority/);
+    assert.equal(ui.tree.root.findAllByType('Button').length, 6);
+    assert.deepEqual(ui.tree.root.findAllByType('Button').filter(button => button.props.accessibilityState.checked).map(button => button.props.accessibilityLabel), ['Free focus']);
+    await ui.press('Work & projects');
+    assert.equal(current.enabled, true);
+    assert.equal(current.areaId, undefined);
     assert.equal(current.templateId, 'work-priority');
     await ui.press('Creativity');
     await ui.press('Spend time with your craft');
     assert.equal(current.need, 'creative');
     assert.equal(current.templateId, 'creative-practice');
+    await ui.press('Everyday life');
+    assert.match(text(ui.tree.root), /Clear a small life task/);
+    assert.doesNotMatch(text(ui.tree.root), /Spend time with your craft/);
+    await ui.press('Wellbeing');
+    assert.match(text(ui.tree.root), /Make time to recharge/);
+    assert.doesNotMatch(text(ui.tree.root), /Clear a small life task/);
   } finally { await ui.cleanup(); }
+});
+
+test('category and starting-point choices give one haptic per enabled tap, respect settings and ignore disabled taps', async () => {
+  let hapticsEnabled = true, haptics = 0, disabled = false;
+  const initial = { version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false };
+  const Sheet = load('src/components/GuidedPreferenceSheet.tsx', {
+    ...mocks,
+    'expo-haptics': { selectionAsync: async () => { haptics++; } },
+    '../context/UserContext': { useUser: () => ({ hapticsEnabled }) },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ value: initial, ready: true, busy: disabled }) },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 16 }) },
+    '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), TouchableOpacity: host('Button') },
+    './AppSheet': props => React.createElement('Sheet', props, props.header, props.children, props.footer),
+    './PersonalUI': { p: {} },
+  }).default;
+  function Harness() {
+    return React.createElement(Sheet, { owner: 'person', visible: true, onClose() {} });
+  }
+  const ui = await render(Harness);
+  try {
+    await ui.press('Learning');
+    await ui.press('Work & projects');
+    await ui.press('Make room for a priority');
+    await ui.press('Free focus');
+    assert.equal(haptics, 4);
+    hapticsEnabled = false;
+    await act(async () => ui.tree.update(React.createElement(Harness)));
+    await ui.press('Learning');
+    await ui.press('Move an assignment forward');
+    assert.equal(haptics, 4);
+    const checkedLabels = () => ui.tree.root.findAllByType('Button').filter(button => button.props.accessibilityState?.checked).map(button => button.props.accessibilityLabel);
+    const before = checkedLabels();
+    disabled = true; hapticsEnabled = true;
+    await act(async () => ui.tree.update(React.createElement(Harness)));
+    for (const button of ui.tree.root.findAllByType('Button').filter(button => button.props.accessibilityRole === 'radio')) {
+      assert.equal(button.props.disabled, true);
+      await act(async () => button.props.onPress());
+    }
+    assert.deepEqual(checkedLabels(), before);
+    assert.equal(haptics, 4);
+  } finally { await ui.cleanup(); }
+});
+
+test('six-category selections round-trip through saved preferences without reviving a previous Home area', async () => {
+  const db = storage();
+  const prefs = load('src/services/guidedPreferenceService.ts', { '@react-native-async-storage/async-storage': db.api });
+  const choices = load('src/utils/focusPreference.ts');
+  const catalog = load('src/constants/guidedQuests.ts');
+  await prefs.guidedPreferenceStore.load('person');
+  let value = { version: 1, enabled: true, invited: true, need: 'work', templateId: 'work-priority', smaller: false, areaId: 456 };
+  value = choices.preferenceForFocusMode(value, false);
+  assert.equal(await prefs.guidedPreferenceStore.save('person', value), true);
+  let restored = prefs.parseGuidedPreference(db.values.get('liferpg:guided:v1:person'));
+  assert.equal(restored.enabled, false); assert.equal(restored.areaId, null);
+  for (const direction of catalog.FOCUS_DIRECTIONS) {
+    restored = choices.preferenceForFocusDirection(restored, direction);
+    assert.equal(restored.enabled, true);
+    assert.equal(restored.areaId, undefined);
+    assert.equal(catalog.focusDirection(restored.need).id, direction.id);
+    assert.equal(catalog.suggestedFocusAreaKey(restored.templateId), direction.id === 'restore' ? 'wellbeing' : direction.id === 'life-admin' ? 'personal' : direction.id);
+    assert.equal(await prefs.guidedPreferenceStore.save('person', restored), true);
+    assert.deepEqual(prefs.parseGuidedPreference(db.values.get('liferpg:guided:v1:person')), JSON.parse(JSON.stringify(restored)));
+    restored = choices.preferenceForFocusMode(restored, false);
+  }
 });
 
 test('compact onboarding directions keep an existing learning prompt until a different direction is chosen', async () => {
