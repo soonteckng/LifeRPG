@@ -32,7 +32,7 @@ import {
 import { colors } from "../../constants/theme";
 import { useUser } from "../../context/UserContext";
 import { useCharacterData } from "../../hooks/useCharacterData";
-import { earnedMilestones, lifeAreaGrowth } from "../../utils/characterGrowth";
+import { earnedMilestones, profileFocusAreaGrowth } from "../../utils/characterGrowth";
 import { durationLabel } from "../../utils/progressAnalytics";
 
 import CharacterLookPicker from "../../components/CharacterLookPicker";
@@ -66,7 +66,7 @@ export default function ProfileScreen() {
       void reloadProfile();
     }, [reloadProfile]),
   );
-  const areas = (data?.areas ?? []).map(lifeAreaGrowth);
+  const areas = profileFocusAreaGrowth(data?.areas ?? []);
   const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
   const required = requiredCharacterXP(profile.level);
   const open = () => {

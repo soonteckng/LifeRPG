@@ -1,11 +1,45 @@
 import type { Subject } from "../services/taskService";
 import type { ProgressSession } from "../services/progressService";
 import { focusDay, bestFocusStreak } from "./focusDays";
+import { FOCUS_AREA_PRESENTATION_ORDER, focusAreaKind, focusAreaTitle } from "./focusAreas";
 
 // Use the saved focus area directly: changing its presentation never remaps XP.
 export function lifeAreaGrowth(area: Subject) {
   const level = Math.max(1, Math.floor(area.level || 1));
   return { ...area, level, current: Math.max(0, area.current_xp || 0), required: level * 50 };
+}
+
+// A profile summary combines legacy aliases without changing the real area
+// IDs used by quests and sessions. Keep all earned XP, including prior levels.
+export function profileFocusAreaGrowth(areas: Subject[]) {
+  const groups = new Map<string, {area: Subject; totalXP: number; count: number}>();
+  for (const area of new Map(areas.map(item => [item.id, item])).values()) {
+    const kind = focusAreaKind(area.title);
+    const key = kind ?? `custom:${area.id}`;
+    const level = Number.isFinite(area.level) ? Math.max(1, Math.floor(area.level)) : 1;
+    const currentXP = Number.isFinite(area.current_xp) ? Math.max(0, area.current_xp) : 0;
+    const totalXP = 25 * level * (level - 1) + currentXP;
+    const previous = groups.get(key);
+    if (!previous) groups.set(key, {area, totalXP, count:1});
+    else {
+      previous.totalXP += totalXP; previous.count++;
+      const canonical = focusAreaTitle(area.title).toLowerCase();
+      if (area.title.trim().toLowerCase() === canonical && previous.area.title.trim().toLowerCase() !== canonical) previous.area = area;
+    }
+  }
+  return [...groups.values()].map(({area, totalXP, count}) => {
+    if (count === 1) return lifeAreaGrowth(area);
+    // Subject progression consumes 50 * level XP per level, unlike the
+    // character curve. Invert its cumulative sum for this display only.
+    const level = Math.max(1, Math.floor((1 + Math.sqrt(1 + 4 * totalXP / 25)) / 2));
+    return lifeAreaGrowth({...area, title:focusAreaTitle(area.title), level, current_xp:totalXP - 25 * level * (level - 1)});
+  }).sort((a, b) => {
+    const rank = (title: string) => {
+      const kind = focusAreaKind(title);
+      return kind ? FOCUS_AREA_PRESENTATION_ORDER.indexOf(kind) : FOCUS_AREA_PRESENTATION_ORDER.length;
+    };
+    return rank(a.title) - rank(b.title) || a.title.localeCompare(b.title) || a.id - b.id;
+  });
 }
 
 export const MILESTONE_TRACKS = [

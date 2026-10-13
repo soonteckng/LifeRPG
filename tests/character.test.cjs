@@ -90,6 +90,46 @@ test("custom Life areas retain their identity and growth without assigning attri
     required: 150,
   });
 });
+
+test("Profile combines legacy Wellbeing progress once while preserving rows and real identities", () => {
+  const fitness = {...area(3, 3, 20), title:"Fitness & Health"};
+  const grooming = {...area(4, 2, 40), title:"Grooming & Vitality"};
+  const canonical = {...area(8, 1, 15), title:"Wellbeing", color_code:"#F4AA88"};
+  const custom = {...area(42, 3, 12), title:"My ceramics"};
+  const sameNamedCustom = {...area(43, 1, 7), title:"My ceramics"};
+  const input = [fitness, grooming, canonical, canonical, custom, sameNamedCustom];
+  const before = JSON.stringify(input);
+  const result = growth.profileFocusAreaGrowth(input);
+  assert.equal(result.length, 3);
+  assert.deepEqual(result[0], {...canonical, level:3, current_xp:125, current:125, required:150});
+  assert.deepEqual(result.slice(1).map(item => [item.id, item.level, item.current]), [[42,3,12],[43,1,7]]);
+  assert.equal(JSON.stringify(input), before, "source XP, IDs and rows stay unchanged");
+});
+
+test("combined focus area progress carries XP across the real subject-level boundaries", () => {
+  for (const [leftLevel, leftXP, rightLevel, rightXP, expectedLevel, expectedXP] of [
+    [1,0,1,0,1,0], [1,24,1,25,1,49], [1,25,1,25,2,0],
+    [2,49,2,0,2,99], [2,50,2,0,3,0], [3,149,1,0,3,149], [3,149,1,1,4,0],
+  ]) {
+    const result = growth.profileFocusAreaGrowth([
+      {...area(1,leftLevel,leftXP), title:"Fitness & Health"},
+      {...area(2,rightLevel,rightXP), title:"Grooming & Vitality"},
+    ]);
+    assert.equal(result.length,1);assert.equal(result[0].title,"Wellbeing");
+    assert.equal(result[0].level,expectedLevel);assert.equal(result[0].current,expectedXP);
+    assert.equal(result[0].required,expectedLevel * 50);
+  }
+});
+
+test("Profile area order follows Find your next step with the Free focus default last", () => {
+  const titles = ["General", "Wellbeing", "Life Admin", "Creativity", "Work & projects", "Knowledge"];
+  const rows = titles.map((title,index) => ({...area(index+1,1,index),title}));
+  const catalogue = load("src/utils/focusAreas.ts");
+  const directions = load("src/constants/guidedQuests.ts").FOCUS_DIRECTIONS;
+  const result = growth.profileFocusAreaGrowth(rows).map(item => catalogue.focusAreaTitle(item.title));
+  assert.deepEqual(result,[...directions.map(direction => direction.title),"Everyday focus"]);
+  assert.deepEqual(rows.map(item => item.title),titles,"sorting must not change the shared snapshot");
+});
 test("milestones use exact seconds and deduplicate saved sessions", () => {
   const a = session("a", "2026-10-01", 30),
     b = session("b", "2026-10-01", 3570);
@@ -868,6 +908,24 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   } finally {
     await ui.cleanup();
   }
+});
+
+test("Profile renders one Wellbeing row in the shared direction order with its combined XP meter", async () => {
+  const rows = [
+    {...area(1,1,0),title:"General"}, {...area(2,3,20),title:"Fitness & Health"},
+    {...area(3,1,0),title:"Life Admin"}, {...area(4,1,0),title:"Creativity"},
+    {...area(5,1,0),title:"Work & projects"}, {...area(6,1,0),title:"Knowledge"},
+    {...area(7,2,40),title:"Grooming & Vitality"}, {...area(8,1,15),title:"Wellbeing"},
+  ];
+  const ui = await profileScreen({"../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions:[]},loading:false,error:false,refresh:async()=>{}})}});
+  try {
+    const displayed = ui.renderer.root.findAllByType("View").filter(node => node.props.accessible && typeof node.props.accessibilityLabel === "string");
+    assert.deepEqual(displayed.map(node => node.props.accessibilityLabel.split(", level ")[0]),
+      ["Learning","Work & projects","Creativity","Everyday life","Wellbeing","Everyday focus"]);
+    const wellbeing = displayed[4];
+    assert.equal(wellbeing.props.accessibilityLabel,"Wellbeing, level 3, 125 of 150 XP to the next level");
+    assert.equal(wellbeing.findByType("Meter").props.value,125/150);
+  } finally {await ui.cleanup();}
 });
 
 test('Profile level opens the shared tier path with the saved XP balance',async()=>{

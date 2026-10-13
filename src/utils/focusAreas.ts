@@ -1,5 +1,7 @@
 import type { Subject } from "../services/taskService";
 export type FocusAreaKind = "learning" | "work" | "creative" | "wellbeing" | "personal" | "general";
+// Direction cards use this order, with the neutral Free focus choice last.
+export const FOCUS_AREA_PRESENTATION_ORDER: readonly FocusAreaKind[] = ["learning", "work", "creative", "personal", "wellbeing", "general"];
 const labels: Record<string, string> = {
   general: "Everyday focus", knowledge: "Learning", "fitness & health": "Wellbeing",
   "grooming & vitality": "Wellbeing", "life admin": "Everyday life",

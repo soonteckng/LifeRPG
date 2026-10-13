@@ -28,7 +28,7 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
     <View style={s.directionGrid}>{directions.map(direction => {
       const selected = direction ? selectedDirection(direction.id) : !value.enabled;
       const visual = direction ? directionVisuals[direction.id] : { icon: "sparkles-outline" as const };
-      const tint = direction ? FOCUS_AREAS[FOCUS_DIRECTIONS.indexOf(direction) + 1].color : FOCUS_AREAS[0].color;
+      const tint = FOCUS_AREAS.find(area => area.title === direction?.title)?.color ?? FOCUS_AREAS[0].color;
       const title = direction?.title ?? "Free focus";
       const hint = direction?.hint ?? "Your own idea, at your own pace.";
       return <Pressable key={direction?.id ?? "free-focus"} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: selected, disabled }}

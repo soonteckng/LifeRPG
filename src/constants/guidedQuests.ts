@@ -1,4 +1,4 @@
-import { FOCUS_AREAS } from "../utils/focusAreas";
+import { FOCUS_AREAS, FOCUS_AREA_PRESENTATION_ORDER } from "../utils/focusAreas";
 export type FocusNeed = "revision" | "assignments" | "practice" | "work" | "creative" | "life-admin" | "restore";
 // The alias keeps older callers and saved study choices compatible.
 export type StudyNeed = FocusNeed;
@@ -22,7 +22,9 @@ const directionNeeds: { id: FocusDirection["id"]; areaKey: FocusAreaKey; needs: 
   { id: "life-admin", areaKey: "personal", needs: ["life-admin"], defaultNeed: "life-admin" },
   { id: "restore", areaKey: "wellbeing", needs: ["restore"], defaultNeed: "restore" },
 ];
-export const FOCUS_DIRECTIONS: FocusDirection[] = directionNeeds.map(({ areaKey, ...direction }) => {
+export const FOCUS_DIRECTIONS: FocusDirection[] = [...directionNeeds].sort((a, b) =>
+  FOCUS_AREA_PRESENTATION_ORDER.indexOf(a.areaKey) - FOCUS_AREA_PRESENTATION_ORDER.indexOf(b.areaKey)
+).map(({ areaKey, ...direction }) => {
   const area = FOCUS_AREAS.find(item => item.kind === areaKey)!;
   return { ...direction, title: area.title, hint: area.hint };
 });
