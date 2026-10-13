@@ -199,13 +199,22 @@ export function createSessionJournalStore(storage: SessionJournalStorage, reques
         }
         if (record.clientTiming) {
           const prior = record.clientTiming, proposedTiming = candidate.clientTiming;
+          // Closing a just-opened interval in the same millisecond contributes
+          // no effort. Only that empty final interval may be omitted; every
+          // earlier closed interval remains immutable.
+          const emptyFinalRemoved = proposedTiming && prior.segments.length === proposedTiming.segments.length + 1
+            && prior.segments.at(-1)?.endedAtMs === null
+            && candidate.observedAtMs === prior.segments.at(-1)?.startedAtMs
+            && candidate.elapsedMs === record.elapsedMs && record.state === "running"
+            && ["paused", "cancelled"].includes(candidate.state);
           if (!proposedTiming || proposedTiming.policyVersion !== prior.policyVersion
               || proposedTiming.offlineOrigin !== prior.offlineOrigin
               || proposedTiming.serverRevision !== prior.serverRevision
               || proposedTiming.serverObservedAtMs !== prior.serverObservedAtMs
               || proposedTiming.serverConfirmedMs !== prior.serverConfirmedMs
-              || proposedTiming.segments.length < prior.segments.length
+              || proposedTiming.segments.length < prior.segments.length && !emptyFinalRemoved
               || prior.segments.some((segment, index) => {
+                if (emptyFinalRemoved && index === prior.segments.length - 1) return false;
                 const updated = proposedTiming.segments[index];
                 return updated.startedAtMs !== segment.startedAtMs
                   || (segment.endedAtMs !== null && updated.endedAtMs !== segment.endedAtMs);

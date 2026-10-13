@@ -74,6 +74,16 @@ test("a saved stop request never looks like a running countdown or a completed r
     assert.deepEqual(ui.calls, ["action"]);
   } finally { await ui.cleanup(); }
 });
+
+test("a legacy pending End retains its single retry even when offline Start is granted", async () => {
+  const ui = await screen({ timer: { offlineAvailable: true, clientReported: false, endingSession: true, syncStatus: "waiting" } });
+  try {
+    assert.equal(ui.root().findAllByType("OfflineWorkspace").length, 0);
+    assert.match(text(ui.root()), /Your request to end is saved/);
+    assert.deepEqual(ui.root().findAllByType("Button").map(node => node.props.accessibilityLabel), ["Retry connection"]);
+    await act(async () => ui.button("Retry connection").props.onPress()); assert.deepEqual(ui.calls, ["action"]);
+  } finally { await ui.cleanup(); }
+});
 test("unknown start labels its planned duration instead of suggesting a running countdown", async () => {
   const ui = await screen({ timer: { awaitingStart: true, isRunning: false, timeLeft: 0, syncStatus: "waiting" } });
   try {

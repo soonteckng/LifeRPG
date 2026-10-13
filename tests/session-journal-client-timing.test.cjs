@@ -126,3 +126,16 @@ test('a stored terminal import cannot be retimed or discarded by an arbitrary st
   await assert.rejects(() => store.update(j => ({ ...j, revision: j.revision + 1, records: [], commands: [] })));
   assert.equal(values.get(store.key), before);
 });
+
+test('empty open intervals can close immediately but completed effort cannot be removed from storage', async () => {
+  const values = new Map(), adapter = { getItem: async key => values.get(key) ?? null, setItem: async (key, raw) => values.set(key, raw) };
+  const store = storage.createSessionJournalStore(adapter, scope); values.set(store.key, schema.serializeJournalEnvelope(started()));
+  await store.update(j => act(j, { type: 'local_pause', clientSessionId: id(1), clock: clock(0) }));
+  await store.update(j => act(j, { type: 'local_resume', clientSessionId: id(1), clock: clock(1) }));
+  await store.update(j => act(j, { type: 'local_pause', clientSessionId: id(1), clock: clock(2) }));
+  const before = values.get(store.key);
+  await assert.rejects(() => store.update(j => {
+    j.revision++; j.records[0].revision++; j.records[0].clientTiming.segments = []; j.records[0].elapsedMs = 0; return j;
+  }));
+  assert.equal(values.get(store.key), before);
+});

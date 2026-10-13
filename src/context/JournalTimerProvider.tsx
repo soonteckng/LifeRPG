@@ -39,6 +39,7 @@ interface SessionSummary {
 interface TimerContextType {
   offlineAvailable: boolean;
   clientReported: boolean;
+  offlineControlsAvailable: boolean;
   cloudSaveVersion: number;
   sessionId: string | null; recoveredSession: boolean;
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
@@ -325,6 +326,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   return <TimerContext.Provider value={{
     offlineAvailable: runtime.offlineAvailable,
     clientReported: !!record?.clientTiming,
+    offlineControlsAvailable: !!record?.clientTiming || runtime.offlineAvailable && !!record?.serverCheckpoint,
     cloudSaveVersion: runtime.cloudSaveVersion,
     sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,

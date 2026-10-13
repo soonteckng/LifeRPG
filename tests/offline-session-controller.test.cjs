@@ -22,7 +22,7 @@ const setup = { targetSeconds: 3, activityType: 'learning', taskId: null, subjec
 const failure = () => Object.assign(new Error('network fixture'), { failureKind: 'transient' });
 function harness() {
   const values = new Map(), rows = new Map(), submissions = [], receipts = new Map(), calls = [];
-  let time = 1000000, epoch = 1, owner = scope, online = true, grant = true, sequence = 0, credits = 0, loseReply = false;
+  let time = 1000000, epoch = 1, owner = scope, online = true, grant = true, sequence = 0, credits = 0, loseReply = false, submitHook = null, snapshotWarning = false;
   const storage = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => values.set(key, value) };
   const store = createSessionJournalStore(storage, scope);
   const clock = () => ({ wallTimeMs: time, monotonicTimeMs: null, bootId: null });
@@ -44,10 +44,11 @@ function harness() {
   const offline = {
     async load() {}, async refresh() {}, isLocalOnly: () => !online,
     readFreshGrant: () => grant && owner === scope ? { scope, policyVersion: 1, grantedAtMs: 1, serverTimeMs: 1, expiresAtMs: 999999999, lastSeenAtMs: time } : null,
-    async readSnapshot(sessionId, clientId) { await ensure(); const row = rows.get(sessionId); return { session: remote(row), revision: row.revision, clientSessionId: clientId, serverTimeMs: time,
+    async readSnapshot(sessionId, clientId) { await ensure(); const row = rows.get(sessionId); if (clientId && clientId !== row.id) throw failure(); return { session: { ...remote(row), clockWarning: snapshotWarning }, revision: row.revision, clientSessionId: row.id, serverTimeMs: time,
       handoff: { revision: row.revision, observedAtMs: time, confirmedMs: elapsed(row) } }; },
     async submit(clientId, payload) {
       await ensure(); submissions.push(clone(payload));
+      if (submitHook) await submitHook(clientId, payload);
       const saved = receipts.get(clientId);
       if (saved) return saved.outcome === 'rejected' ? clone(saved) : { ...clone(saved), outcome: 'already_saved' };
       const sessionId = payload.serverSessionId ?? id(9000 + submissions.length);
@@ -62,8 +63,10 @@ function harness() {
   };
   const create = () => createSessionTimerController({ scope, store, server, offline, clock, uuid: () => id(++sequence), timeoutMs: 100,
     authority: { currentScope: () => owner, currentEpoch: () => epoch, verify: ensure } });
-  return { create, store, storage, values, rows, submissions, receipts, calls, get credits() { return credits; },
+  return { create, store, storage, values, rows, submissions, receipts, calls, server, get credits() { return credits; },
     set online(value) { online = value; }, set grant(value) { grant = value; }, set loseReply(value) { loseReply = value; },
+    set submitHook(value) { submitHook = value; },
+    set snapshotWarning(value) { snapshotWarning = value; },
     advance(ms) { time += ms; }, switchOwner() { owner = other; epoch++; }, restart() { epoch++; return create(); },
     persisted() { return JSON.parse(values.get(store.key)); } };
 }
@@ -135,7 +138,7 @@ test('account changes fence cached capability, local controls and uploads immedi
 });
 test('immediate Pause and Resume do not leave zero-length intervals that prevent upload', async () => {
   const h = harness(); h.online = false; const c = h.create(); await c.initialize(); await c.start(setup);
-  await c.pause(); await c.resume(); h.advance(3000); await c.tick(); h.online = true; await c.refresh(true);
+  assert.equal(await c.pause(), true); assert.equal(await c.resume(), true); h.advance(3000); await c.tick(); h.online = true; await c.refresh(true);
   assert.equal(h.submissions[0].segments.length, 1); assert.ok(h.submissions[0].segments.every(segment => segment.endedAtMs > segment.startedAtMs)); assert.equal(h.credits, 1); await c.dispose();
 });
 test('a mixed session left paused longer than the completion span limit can still End without rewards', async () => {
@@ -167,4 +170,66 @@ test('an existing server completion settles a pending local End without changing
     revision: 4, verification: 'server_timed', ending: 'completed', receipt: { sessionId: record.serverSessionId, durationSeconds: 3, result: { already_completed: true, goal_reached_now: false } } });
   h.online = true; await c.refresh(true); assert.equal(c.getSnapshot().ending, false); assert.equal(c.getSnapshot().record.state, 'cancelled');
   assert.equal(c.getSnapshot().record.sync.reasonCode, 'server_completed_before_end'); assert.equal(c.getSnapshot().rewardsVisible, false); assert.equal(h.credits, 0); await c.dispose();
+});
+
+function heldReply() { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; }
+test('uploading an earlier result never blocks local Pause, Resume, End or the next Start', async () => {
+  const h = harness(); h.online = false; const c = h.create(); await c.initialize(); await c.start(setup);
+  h.advance(3000); await c.tick(); c.dismissSummary(); await new Promise(resolve => setImmediate(resolve));
+  h.advance(1); await c.start({ ...setup, targetSeconds: 300 });
+  const currentId = c.getSnapshot().record.clientSessionId;
+  const reply = heldReply(), entered = heldReply();
+  h.submitHook = async () => { entered.resolve(); await reply.promise; };
+  h.online = true; const upload = c.refresh(true); await entered.promise;
+  try {
+    assert.equal(c.getSnapshot().busy, false);
+    h.advance(1000); assert.equal(await c.pause(), true); assert.equal(c.getSnapshot().record.state, 'paused');
+    h.advance(1000); assert.equal(await c.resume(), true); assert.equal(c.getSnapshot().record.state, 'running');
+    assert.equal(await c.end(), true, JSON.stringify(c.getSnapshot())); assert.equal(c.getSnapshot().record.state, 'cancelled');
+    c.dismissSummary(); await new Promise(resolve => setImmediate(resolve));
+    assert.notEqual(h.persisted().records.find(row => row.clientSessionId === currentId).dismissedAtMs, null);
+    h.advance(1); assert.equal(await c.start({ ...setup, targetSeconds: 60 }), true);
+    assert.equal(c.getSnapshot().record.clientTiming.offlineOrigin, true);
+    assert.equal(c.getSnapshot().busy, false);
+  } finally { h.submitHook = null; reply.resolve(); await upload; }
+  assert.equal(h.credits, 1); assert.equal(c.getSnapshot().record.state, 'running');
+  assert.equal(c.getSnapshot().record.setup.targetSeconds, 60); await c.dispose();
+});
+test('expiry and Done persist while an earlier result is waiting for its upload reply', async () => {
+  const h = harness(); h.online = false; const c = h.create(); await c.initialize(); await c.start(setup);
+  h.advance(3000); await c.tick(); c.dismissSummary(); await new Promise(resolve => setImmediate(resolve));
+  h.advance(1); await c.start(setup); const secondId = c.getSnapshot().record.clientSessionId;
+  const reply = heldReply(), entered = heldReply(); h.submitHook = async () => { entered.resolve(); await reply.promise; };
+  h.online = true; const upload = c.refresh(true); await entered.promise;
+  try {
+    h.advance(3000); await c.tick(); assert.equal(c.getSnapshot().record.state, 'completed');
+    c.dismissSummary(); await new Promise(resolve => setImmediate(resolve));
+    const persisted = h.persisted().records.find(row => row.clientSessionId === secondId);
+    assert.equal(persisted.state, 'completed'); assert.notEqual(persisted.dismissedAtMs, null);
+    assert.equal(c.getSnapshot().record, null);
+  } finally { h.submitHook = null; reply.resolve(); await upload; }
+  await c.refresh(true); assert.equal(h.credits, 2); assert.equal(c.getSnapshot().rewardsVisible, false); await c.dispose();
+});
+test('cold discovery adopts the server client identity and retains its trusted offline-control baseline', async () => {
+  const h = harness(), serverId = id(7000); await h.server.start(setup, serverId);
+  const c = h.create(); await c.initialize();
+  assert.equal(c.getSnapshot().record.clientSessionId, serverId);
+  assert.equal(c.getSnapshot().record.serverCheckpoint.clientSessionId, serverId);
+  h.online = false; h.advance(1000); assert.equal(await c.pause(), true);
+  assert.equal(c.getSnapshot().record.state, 'paused'); assert.equal(await c.resume(), true);
+  h.advance(2000); await c.tick(); h.online = true; await c.refresh(true);
+  assert.equal(h.credits, 1); await c.dispose();
+});
+test('cold reopening permits local Start before an earlier dismissed upload replies', async () => {
+  const h = harness(); h.online = false; let c = h.create(); await c.initialize(); await c.start(setup);
+  h.advance(3000); await c.tick(); c.dismissSummary(); await new Promise(resolve => setImmediate(resolve)); await c.dispose();
+  h.online = true; const reply = heldReply(), entered = heldReply(); h.submitHook = async () => { entered.resolve(); await reply.promise; };
+  c = h.restart(); const reopening = c.initialize(); await entered.promise;
+  try { assert.equal(c.getSnapshot().busy, false); assert.equal(await c.start({ ...setup, targetSeconds: 60 }), true); }
+  finally { h.submitHook = null; reply.resolve(); await reopening; }
+  assert.equal(c.getSnapshot().record.state, 'running'); assert.equal(h.credits, 1); await c.dispose();
+});
+test('cold adoption preserves the authoritative snapshot clock warning', async () => {
+  const h = harness(); await h.server.start(setup, id(7001)); h.snapshotWarning = true;
+  const c = h.create(); await c.initialize(); assert.equal(c.getSnapshot().record.clockWarning, true); await c.dispose();
 });

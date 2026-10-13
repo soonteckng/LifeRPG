@@ -20,7 +20,7 @@ function load(file, mocks, modules = new Map()) {
 const text = node => typeof node === 'string' ? node : (node.children ?? []).map(text).join('');
 async function screen(options = {}) {
   const calls = [];
-  let timer = { offlineAvailable: true, clientReported: false, isRunning: false, hasOpenSession: false, endingSession: false, isCompleted: false,
+  let timer = { offlineAvailable: true, clientReported: false, offlineControlsAvailable: true, isRunning: false, hasOpenSession: false, endingSession: false, isCompleted: false,
     syncStatus: 'idle', timeLeft: 90, duration: 1800, isRestoring: false, actionBusy: false, actionError: null, unsyncedSessionCount: 0,
     startSuggestedTimer: async (focus, area) => { calls.push(['start-learning', focus.seconds, area]); return true; }, startFreeTimer: async (seconds, area) => { calls.push(['start-free', seconds, area]); return true; },
     pauseTimer: async () => calls.push(['pause']), resumeTimer: async () => calls.push(['resume']), resetTimer: async () => calls.push(['end']),
@@ -59,5 +59,10 @@ test('Done stays available during pending sync and never calls Retry or fabricat
 test('single reconnect button verifies the account; cached missing areas never invent a subject ID', async () => {
   const ui = await screen({ areas: [], haptics: false });
   try { await ui.press('Start session'); await ui.press('Retry connection'); assert.ok(ui.calls.some(call => call[0] === 'start-learning' && call[2] === null)); assert.ok(ui.calls.some(call => call[0] === 'verify')); assert.ok(!ui.calls.some(call => call[0] === 'haptic')); }
+  finally { await ui.cleanup(); }
+});
+test('uncertain server controls are visibly disabled while End remains available to save the stop', async () => {
+  const ui = await screen({ timer: { hasOpenSession: true, isRunning: true, syncStatus: 'waiting', clientReported: false, offlineControlsAvailable: false } });
+  try { assert.equal(ui.button('Pause session').props.disabled, true); assert.notEqual(ui.button('End session').props.disabled, true); assert.match(text(ui.root()), /Reconnect to confirm/); await ui.press('End session'); assert.ok(ui.calls.some(call => call[0] === 'end')); }
   finally { await ui.cleanup(); }
 });

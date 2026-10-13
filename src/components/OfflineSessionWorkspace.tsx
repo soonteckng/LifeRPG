@@ -42,6 +42,7 @@ export default function OfflineSessionWorkspace() {
   const active = timer.hasOpenSession && !timer.endingSession;
   const terminal = timer.isCompleted || timer.endingSession || timer.syncStatus === "rejected";
   const busy = timer.isRestoring || timer.actionBusy || localBusy;
+  const uncertain = !timer.clientReported && (timer.syncStatus === "waiting" || !timer.offlineControlsAvailable);
   const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
   const action = async (work: () => Promise<unknown>) => {
     if (busy) return;
@@ -70,7 +71,7 @@ export default function OfflineSessionWorkspace() {
             <Text style={s.caption}>{timer.isRunning ? "Time remaining" : "Paused"}</Text>
           </ProgressRing>
           <View style={s.controls}>
-            <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel={timer.isRunning ? "Pause session" : "Resume session"}
+            <Pressable disabled={busy || uncertain} accessibilityRole="button" accessibilityState={{ disabled: busy || uncertain }} accessibilityLabel={timer.isRunning ? "Pause session" : "Resume session"}
               onPress={() => void action(timer.isRunning ? timer.pauseTimer : timer.resumeTimer)} style={[s.button, s.grow]}>
               <Text style={s.buttonText}>{timer.isRunning ? "Pause" : "Resume"}</Text>
             </Pressable>
@@ -78,6 +79,7 @@ export default function OfflineSessionWorkspace() {
               <Text style={s.link}>End</Text>
             </Pressable>
           </View>
+          {uncertain && <Text style={s.caption}>Reconnect to confirm the previous state before pausing or resuming. You can still End this session.</Text>}
           <Text style={s.caption}>Ending early doesn’t earn progress.</Text>
         </View> : terminal ? <View style={s.card}>
           <Text style={s.cardTitle}>{timer.isCompleted ? `${sessionTime(timer.duration)} completed` : "Your request to end is saved"}</Text>
@@ -96,7 +98,8 @@ export default function OfflineSessionWorkspace() {
             <Text style={s.choiceText}>{seconds / 60} min</Text></Pressable>)}
             <Pressable disabled={busy} accessibilityRole="button" onPress={() => { feedback(); setCustom(true); }} style={s.choice}><Text style={s.choiceText}>Custom</Text></Pressable>
           </View>
-          <Pressable disabled={busy || !duration.ready} accessibilityRole="button" accessibilityLabel="Start session" onPress={() => void start()} style={s.button}><Text style={s.buttonText}>Start · {sessionTime(duration.selectedSeconds)}</Text></Pressable>
+          <Pressable disabled={busy || !duration.ready || !timer.offlineAvailable} accessibilityRole="button" accessibilityLabel="Start session" onPress={() => void start()} style={s.button}><Text style={s.buttonText}>Start · {sessionTime(duration.selectedSeconds)}</Text></Pressable>
+          {!timer.offlineAvailable && <Text style={s.caption}>Reconnect before starting another session. Your saved work stays on this phone.</Text>}
         </View>}
         {timer.unsyncedSessionCount > 0 && <Text style={s.caption} accessibilityLiveRegion="polite">{timer.unsyncedSessionCount} {timer.unsyncedSessionCount === 1 ? "session waiting" : "sessions waiting"} to sync. Your records stay on this phone.</Text>}
         {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}

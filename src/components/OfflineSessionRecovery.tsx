@@ -85,7 +85,8 @@ export default function OfflineSessionRecovery() {
       if (mounted.current) setBusy(false);
     }
   };
-  if ((timer.offlineAvailable || timer.clientReported) && !timer.restoreError && !timer.awaitingStart) return <OfflineSessionWorkspace />;
+  if ((timer.offlineAvailable || timer.clientReported) && !timer.restoreError && !timer.awaitingStart
+    && !(timer.endingSession && !timer.clientReported)) return <OfflineSessionWorkspace />;
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} style={styles.page} testID="offline-session-recovery">
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.content}>

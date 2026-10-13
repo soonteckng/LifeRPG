@@ -83,8 +83,10 @@ async function orderedRace(firstSql, secondSql) {
 async function main() {
   const empty = await run("select case when not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','auth') and c.relkind in ('r','p')) and not exists(select 1 from pg_roles where rolname in ('anon','authenticated')) then 1 else 0 end;");
   assert.equal(empty[0], '1', 'fresh isolated cluster/database required; existing objects are never removed');
-  await run([read('tests/sql/progression-bootstrap.sql'), read('tests/sql/session-start-stop-fixtures.sql'), read('docs/progression-live-contract.sql'),
-    read('docs/goal-completion-base.sql'), read('docs/daily-goal-exact-credit.sql'), read('docs/session-start-stop-repair.sql'), read('docs/session-offline-sync.sql')].join('\n'));
+  await run([read('tests/sql/progression-bootstrap.sql'), read('tests/sql/session-start-stop-fixtures.sql'),
+    "create unique index one_open_activity_session_per_user on public.activity_sessions(user_id) where status in ('active','paused')",
+    read('docs/progression-live-contract.sql'), read('docs/goal-completion-base.sql'), read('docs/daily-goal-exact-credit.sql'),
+    read('docs/session-start-stop-repair.sql'), read('docs/session-offline-sync.sql')].join('\n;\n'));
   const now = Number((await run('select floor(extract(epoch from clock_timestamp())*1000)::bigint;'))[0]);
   const a = payload(1, now - 6 * 86400000);
   const duplicate = await race(a, a);
@@ -98,13 +100,13 @@ async function main() {
   await run(asOwner(`select public.start_activity_session_v2('${mixedId}',60,'learning',null,1,'Synthetic concurrency');
     update public.activity_sessions set started_at=clock_timestamp()-interval '65 seconds',last_resumed_at=clock_timestamp()-interval '65 seconds' where id='${mixedId}';`));
   const snap = JSON.parse((await run(asOwner(`select public.session_sync_snapshot_v1('${mixedId}');`)))[0]);
-  const mixed = payload(4, new Date(snap.started_at).getTime());
-  mixed.serverSessionId = mixedId; mixed.expectedRevision = snap.sync_revision;
-  mixed.serverConfirmedMs = snap.sync_handoff.confirmed_ms; mixed.serverObservedAtMs = snap.sync_handoff.observed_at_ms;
-  mixed.endedAtMs = snap.sync_handoff.observed_at_ms; mixed.segments = [];
+  const mixedPayload = payload(4, new Date(snap.started_at).getTime());
+  mixedPayload.serverSessionId = mixedId; mixedPayload.expectedRevision = snap.sync_revision;
+  mixedPayload.serverConfirmedMs = snap.sync_handoff.confirmed_ms; mixedPayload.serverObservedAtMs = snap.sync_handoff.observed_at_ms;
+  mixedPayload.endedAtMs = snap.sync_handoff.observed_at_ms; mixedPayload.segments = [];
   const completion = query(`begin; ${asOwner(`select public.complete_activity_session('${mixedId}');`)} select 'COMPLETE_READY'; select pg_sleep(0.8); commit;`, 'COMPLETE_READY');
   await completion.ready;
-  const importReply = query(asOwner(submit(mixed)));
+  const importReply = query(asOwner(submit(mixedPayload)));
   await completion.complete;
   const saved = JSON.parse((await importReply.complete)[0]);
   assert.equal(saved.outcome, 'already_saved'); assert.equal(saved.verification_class, 'server_timed');

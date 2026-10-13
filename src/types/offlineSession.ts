@@ -1,6 +1,6 @@
 import type { JournalReceipt, JournalScope } from "./sessionJournal";
-export type { ClientSessionSubmission } from "./sessionJournal";
 import type { SessionTimerRemoteSession } from "../services/sessionTimerController";
+export type { ClientSessionSubmission } from "./sessionJournal";
 
 export const OFFLINE_POLICY_VERSION = 1 as const;
 export const OFFLINE_CAPABILITY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

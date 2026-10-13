@@ -32,6 +32,7 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
     await db.exec("set timezone='UTC'");
     await db.exec(read('tests/sql/progression-bootstrap.sql'));
     await db.exec(read('tests/sql/session-start-stop-fixtures.sql'));
+    await db.exec("create unique index one_open_activity_session_per_user on public.activity_sessions(user_id) where status in ('active','paused')");
     const legacy = read('docs/progression-live-contract.sql');
     await db.exec(legacy);
     await db.exec(read('docs/goal-completion-base.sql'));
@@ -383,6 +384,13 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
     assert.equal((await snapshot(db, id(1), id(2))).client_session_id, id(2));
   }));
 
+  test('SQL offline: historical imports preserve the actual one-open index beside a distinct running timer', async () => withDb(async db => {
+    const input = await payload(db, 88);
+    await start(db, 87);
+    assert.equal((await submit(db, input)).outcome, 'accepted');
+    assert.equal((await db.query("select count(*)::integer as n from public.activity_sessions where status in ('active','paused')")).rows[0].n, 1);
+    assert.equal((await db.query("select count(*)::integer as n from public.activity_sessions where status='completed'")).rows[0].n, 1);
+  }));
   test('SQL offline: free sessions accept null titles and preserve the full existing notes limit', async () => withDb(async db => {
     const input = await payload(db, 89);
     input.setup.title = null; input.setup.notes = 'x'.repeat(10000); input.setup.subjectId = null;

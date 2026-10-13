@@ -144,6 +144,11 @@ begin
   kernel:=replace(source,'public.complete_activity_session(p_session_id uuid)',
     'liferpg_session_private.credit_session(p_session_id uuid, p_import boolean, p_import_end timestamptz)');
   if kernel=source then raise exception 'Unexpected completion signature'; end if;
+  kernel:=replace(kernel,$old$  if v_session.status not in ('active', 'paused') then$old$,$new$  if v_session.status not in ('active', 'paused') and not (
+    p_import and v_session.status='cancelled' and v_session.verification_class='client_reported'
+    and exists(select 1 from liferpg_session_private.client_submissions s where s.user_id=v_user_id
+      and s.session_id=v_session.id and s.client_session_id=v_session.client_session_id and s.outcome='pending')
+  ) then$new$);
   kernel:=replace(kernel,$old$  v_local_date := (
     now() at time zone v_profile.timezone
   )::date;$old$,$new$  v_local_date := (
@@ -408,7 +413,10 @@ begin
     values(owner,client_session_id,submission,'pending',server_id);
     insert into public.activity_sessions(id,user_id,client_session_id,task_id,subject_id,activity_type,target_duration_seconds,
       status,notes,started_at,elapsed_seconds,verification_class,client_reported_started_at,client_reported_ended_at,server_received_at,client_clock_warning)
-    values(server_id,owner,client_session_id,task,subject,activity,target,'paused',note,start_at,target,'client_reported',start_at,end_at,received,warning);
+    -- A private pending placeholder is never an open server timer. The credit
+    -- kernel admits only this registered import, preserving the live one-open
+    -- unique index even when historical work precedes another running timer.
+    values(server_id,owner,client_session_id,task,subject,activity,target,'cancelled',note,start_at,target,'client_reported',start_at,end_at,received,warning);
   else
     insert into liferpg_session_private.client_submissions(user_id,client_session_id,submission,outcome,session_id)
     values(owner,client_session_id,submission,'pending',server_id);
