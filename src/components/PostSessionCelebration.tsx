@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { AppState, Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { Animated, AppState, Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
 import { useDailyAchievementClaim } from "../hooks/useDailyEffortCelebration";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 import { dailyAchievementQueue } from "../services/dailyAchievementQueue";
 import { dailyGoalEvidence, firstDailyEffortEvidence, type DailyAchievementDisplay } from "../services/dailyEffortCelebrationService";
 import { registerSheetActivity, useActiveSheetCount } from "../utils/sheetActivity";
@@ -11,15 +12,67 @@ import DailyEffortCelebration from "./DailyEffortCelebration";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 
-export function DailyAchievementMoment({visible, preparing = false, achievements, onClose, activityId}: {
-  visible: boolean; preparing?: boolean; achievements: DailyAchievementDisplay; onClose: () => void; activityId: symbol;
+export function DailyAchievementMoment({visible, preparing = false, achievements, onClose, activityId, presentationId}: {
+  visible: boolean; preparing?: boolean; achievements: DailyAchievementDisplay; onClose: () => void; activityId: symbol; presentationId?: number;
 }) {
   const insets = useSafeAreaInsets();
+  const reducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(visible);
+  const [opacity] = useState(() => new Animated.Value(1));
+  const [presentation, setPresentation] = useState({visible, id:presentationId, closing:false});
+  const generation = useRef(0);
+  const closed = useRef(false);
+  const animation = useRef<Animated.CompositeAnimation | null>(null);
+  const finishClose = useRef<(() => void) | null>(null);
   const visibleRef = useRef(visible), release = useRef<(() => void) | null>(null);
   const releaseActivity = useCallback(() => { release.current?.(); release.current = null; }, []);
+  if (presentation.visible !== visible || presentation.id !== presentationId) setPresentation({visible, id:presentationId, closing:false});
   if (visible && !mounted) setMounted(true);
   if (!visible && !preparing && mounted && Platform.OS !== "ios") setMounted(false);
+  useLayoutEffect(() => {
+    const token = generation.current + 1;
+    generation.current = token;
+    closed.current = false;
+    finishClose.current = null;
+    animation.current?.stop(); animation.current = null;
+    opacity.setValue(1);
+    return () => {
+      generation.current = token + 1;
+      finishClose.current = null;
+      animation.current?.stop(); animation.current = null;
+    };
+  }, [visible, presentationId, opacity]);
+  const close = useCallback(() => {
+    if (!visibleRef.current || closed.current || finishClose.current) return;
+    const token = generation.current;
+    const finish = () => {
+      if (generation.current !== token || !visibleRef.current || finishClose.current !== finish) return;
+      closed.current = true;
+      finishClose.current = null;
+      const running = animation.current; animation.current = null; running?.stop();
+      onClose();
+    };
+    finishClose.current = finish;
+    setPresentation(current => ({...current, closing:true}));
+    if (reducedMotion) { finish(); return; }
+    const fade = Animated.timing(opacity, {toValue:0, duration:200, useNativeDriver:true});
+    animation.current = fade;
+    fade.start(({finished}) => {
+      if (finished) { finish(); return; }
+      if (generation.current !== token || finishClose.current !== finish) return;
+      finishClose.current = null; animation.current = null;
+      opacity.setValue(1);
+      setPresentation(current => ({...current, closing:false}));
+    });
+  }, [onClose, opacity, reducedMotion]);
+  useEffect(() => {
+    const listener = AppState.addEventListener("change", state => {
+      // The user has already chosen Continue. Do not strand a faded modal if
+      // Android suspends its animation while the app enters the background.
+      if (state !== "active") finishClose.current?.();
+    });
+    return () => listener.remove();
+  }, []);
   useLayoutEffect(() => {
     visibleRef.current = visible;
     // Reserve the moment before its asynchronous ledger claim, so an optional
@@ -29,17 +82,17 @@ export function DailyAchievementMoment({visible, preparing = false, achievements
   }, [visible, preparing, mounted, activityId, releaseActivity]);
   useLayoutEffect(() => () => { release.current?.(); release.current = null; }, []);
   return <Modal testID="daily-achievement-moment" visible={visible} transparent animationType="none"
-    statusBarTranslucent onRequestClose={onClose} onDismiss={() => {
+    statusBarTranslucent onRequestClose={close} onDismiss={() => {
       if (Platform.OS === "ios" && !visibleRef.current) { releaseActivity(); setMounted(false); }
     }}>
-    {mounted && <View style={[s.page, {paddingTop:insets.top + 12, paddingBottom:Math.max(insets.bottom, 16)}]}
-      accessibilityViewIsModal onAccessibilityEscape={onClose}>
+    {mounted && <Animated.View style={[s.page, {opacity, paddingTop:insets.top + 12, paddingBottom:Math.max(insets.bottom, 16)}]}
+      pointerEvents={presentation.closing ? "none" : "auto"} accessibilityViewIsModal onAccessibilityEscape={close}>
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
         <DailyEffortCelebration {...achievements} />
       </ScrollView>
       <View style={s.actions}><Pressable accessibilityRole="button" accessibilityLabel="Continue from celebration"
-        onPress={onClose} style={s.continue}><Text style={s.continueText}>Continue</Text></Pressable></View>
-    </View>}
+        disabled={presentation.closing} onPress={close} style={s.continue}><Text style={s.continueText}>Continue</Text></Pressable></View>
+    </Animated.View>}
   </Modal>;
 }
 
@@ -72,6 +125,7 @@ export default function PostSessionCelebration({insideSession}: {insideSession: 
   }, [request, matchingOwner, today, canPresent, achievements.ready, visible, alreadyShown]);
   const retained = lastShown?.owner === profile?.id ? lastShown.achievements : {firstSession:false, dailyGoal:false};
   return <DailyAchievementMoment visible={visible} preparing={canPresent && !alreadyShown && !achievements.ready} activityId={activityId}
+    presentationId={request?.id ?? lastShown?.id}
     achievements={visible ? displayed : retained}
     onClose={() => { const id = request?.id ?? lastShown?.id; if (id !== undefined) dailyAchievementQueue.dismiss(id); }} />;
 }

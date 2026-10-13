@@ -47,7 +47,14 @@ local date are checked again before display.
 
 The moment has one 720 ms entrance. Reduce Motion renders it statically, and
 backgrounding stops the animation. Returning to the foreground does not replay
-it or claim again. A displayed moment stays available until Continue. Existing
+it or claim again. Continue fades the entire moment out over 200 ms before
+dismissing it, including its hardware-back and accessibility-escape paths.
+The modal and its presentation reservation stay in place until the fade finishes;
+repeated taps cannot start another dismissal. Reduce Motion dismisses immediately.
+If the app backgrounds during an already requested close, the close finishes
+without waiting for a suspended animation. Hiding, replacing or unmounting the
+moment invalidates old animation callbacks before another presentation opens.
+A displayed moment stays available until Continue. Existing
 reward confirmation, XP, quest completion and syncing are unchanged.
 
 Device checks should use an existing account with no recorded session on the
@@ -60,3 +67,7 @@ switching, large text and Reduce Motion. Done remains available without
 scrolling through rewards. The ledger suppresses repeats on this installation;
 it does not sync celebration acknowledgements to other devices. No new native
 module or database change is required.
+
+As of 13 October 2026, the daily-goal-only moment and the combined first-session
+and daily-goal moment remain **untested on the user's phone**. Automated receipt,
+ledger and presentation checks do not replace those device tests.

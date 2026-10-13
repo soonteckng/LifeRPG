@@ -998,6 +998,8 @@ test("Android actual scheduling payloads route ongoing and timed alerts through 
     assert.equal(ongoing.content.sound, false);
     assert.deepEqual(completion.trigger, { type: "timeInterval", seconds: 930, repeats: false, channelId: api.completionChannelId(preferences) });
     assert.equal(completion.content.channelId, undefined);
+    assert.equal(completion.content.title, "Time well spent");
+    assert.equal(completion.content.body, "Your session is finished. Open LifeRPG to see your progress.");
     assert.equal(completion.content.sound, sound ? "default" : false);
     assert.deepEqual(completion.content.data, { type: "COMPLETION" });
     const channel = mock.channels.find(([id]) => id === completion.trigger.channelId)[1];
@@ -1015,6 +1017,8 @@ test("iOS retains immediate and interval triggers without Android channel fields
   assert.equal(mock.requests[0].trigger, null);
   assert.deepEqual(mock.requests[1].trigger, { type: "timeInterval", seconds: 30, repeats: false });
   assert.equal(mock.requests[1].content.priority, undefined);
+  assert.equal(mock.requests[1].content.title, "Time well spent");
+  assert.equal(mock.requests[1].content.body, "Your session is finished. Open LifeRPG to see your progress.");
   assert.equal(mock.channels.length, 0);
 });
 

@@ -109,8 +109,9 @@ export function createSessionNotificationLifecycle(
       await attempt(() => api.scheduleNotificationAsync({
         identifier: COMPLETION_NOTIFICATION_ID,
         content: {
-          title: "⚔️ Session Complete!",
-          body: questTitle ? `Quest "${questTitle}" is complete! Open LifeRPG to see your rewards.` : "Your session is complete! Open LifeRPG to see your rewards.",
+          title: "Time well spent",
+          // The timer can finish before its result is confirmed with the account.
+          body: "Your session is finished. Open LifeRPG to see your progress.",
           sound: settings.sound ? "default" : false,
           ...(platform === "android" ? { priority: api.AndroidNotificationPriority.MAX } : {}),
           data: { type: "COMPLETION" },

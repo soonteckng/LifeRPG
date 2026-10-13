@@ -27,15 +27,29 @@ function storage() {
 }
 const host = type => props => React.createElement(type,props,props.children);
 
-async function setup({insideSession = false, state = 'active', platform = 'android', saved = storage()} = {}) {
-  const listeners = new Set(), cache = new Map();
-  let profile = {id:'owner-a',timezone:'Asia/Kuala_Lumpur'}, route = insideSession, now = NOW;
+async function setup({insideSession = false, state = 'active', platform = 'android', saved = storage(), reduced = false} = {}) {
+  const listeners = new Set(), cache = new Map(), animations = [];
+  let profile = {id:'owner-a',timezone:'Asia/Kuala_Lumpur'}, route = insideSession, now = NOW, reducedMotion = reduced;
   const originalNow = Date.now; Date.now = () => now;
+  class Value {
+    constructor(value) {this.value=value;}
+    setValue(value) {this.value=value;}
+    interpolate(config) {return {source:this,config};}
+    stopAnimation() {}
+  }
+  const appState = {currentState:state,addEventListener:(_event,listener)=>{listeners.add(listener);return {remove:()=>listeners.delete(listener)};}};
   const mocks = {
-    'react-native':{AppState:{currentState:state,addEventListener:(_event,listener)=>{listeners.add(listener);return {remove:()=>listeners.delete(listener)};}},Modal:host('Modal'),Platform:{OS:platform},ScrollView:host('Scroll'),View:host('View'),StyleSheet:{create:value=>value}},
+    'react-native':{AppState:appState,Modal:host('Modal'),Platform:{OS:platform},ScrollView:host('Scroll'),View:host('View'),StyleSheet:{create:value=>value},Animated:{Value,View:host('AnimatedView'),timing:(value,config)=>{
+      const animation={value,config,callback:null,settled:false,stopped:false,
+        start(callback){this.callback=callback;},
+        stop(){if(this.settled)return;this.stopped=true;this.settled=true;this.callback?.({finished:false});},
+        finish(finished=true){if(this.settled)return;this.settled=true;if(finished)value.setValue(config.toValue);this.callback?.({finished});},
+      };animations.push(animation);return animation;
+    }}},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:34})},
     '@react-native-async-storage/async-storage':saved,
     '../context/UserContext':{useUser:()=>({profile})},
+    '../hooks/useReducedMotion':{useReducedMotion:()=>reducedMotion},
     './DailyEffortCelebration':host('Achievement'), './MotionPressable':host('Button'), './AppText':{Text:host('Text')},
   };
   const Component = load('src/components/PostSessionCelebration.tsx',mocks,cache).default;
@@ -44,7 +58,7 @@ async function setup({insideSession = false, state = 'active', platform = 'andro
   let renderer;
   await act(async()=>{renderer=create(React.createElement(Component,{insideSession:route}));});
   return {
-    queue,sheets,saved,renderer,
+    queue,sheets,saved,renderer,animations,
     moment:()=>renderer.root.findByProps({testID:'daily-achievement-moment'}),
     flags:()=>renderer.root.findByType('Achievement').props,
     enqueue:async value=>act(async()=>{queue.enqueue(value);}),
@@ -52,10 +66,16 @@ async function setup({insideSession = false, state = 'active', platform = 'andro
       if ('insideSession' in values) route=values.insideSession;
       if ('owner' in values) profile={...profile,id:values.owner};
       if ('now' in values) now=values.now;
+      if ('reduced' in values) reducedMotion=values.reduced;
       renderer.update(React.createElement(Component,{insideSession:route}));
     }),
-    state:async next=>act(async()=>{for(const listener of listeners)listener(next);}),
-    continue:async()=>act(async()=>renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.onPress()),
+    state:async next=>act(async()=>{appState.currentState=next;for(const listener of listeners)listener(next);}),
+    beginClose:async()=>act(async()=>renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.onPress()),
+    finishFade:async(finished=true)=>act(async()=>animations.findLast(animation=>!animation.settled)?.finish(finished)),
+    continue:async()=>{
+      await act(async()=>renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.onPress());
+      await act(async()=>animations.findLast(animation=>!animation.settled)?.finish());
+    },
     cleanup:async()=>{await act(async()=>renderer.unmount());Date.now=originalNow;assert.equal(sheets.activeSheetCount(),0);},
   };
 }
@@ -220,4 +240,136 @@ test('iOS keeps its activity reservation through native dismissal and stale call
     await ui.continue();assert.equal(ui.moment().props.visible,false);assert.equal(ui.sheets.activeSheetCount(),1);
     await act(async()=>ui.moment().props.onDismiss());assert.equal(ui.sheets.activeSheetCount(),0);
   } finally {if(release)await act(async()=>release());await ui.cleanup();}
+});
+
+test('Continue fades the whole moment before dismissing its queue and Android sheet reservation',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());const request=ui.queue.snapshot();
+    await ui.beginClose();
+    assert.equal(ui.queue.snapshot(),request,'the confirmed moment remains queued during its visual exit');
+    assert.equal(ui.moment().props.visible,true);assert.equal(ui.sheets.activeSheetCount(),1);
+    assert.equal(ui.animations.length,1);const fade=ui.animations[0];
+    assert.equal(fade.config.toValue,0);assert.equal(fade.config.duration,200);assert.equal(fade.config.useNativeDriver,true);
+    const page=ui.renderer.root.findByType('AnimatedView');
+    assert.equal(page.props.pointerEvents,'none');assert.ok(page.props.style.some(style=>style.opacity===fade.value));
+    assert.equal(page.findByProps({accessibilityLabel:'Continue from celebration'}).props.disabled,true,'the footer fades with the artwork');
+    await ui.finishFade();
+    assert.equal(ui.queue.snapshot(),null);assert.equal(ui.moment().props.visible,false);assert.equal(ui.sheets.activeSheetCount(),0);
+  } finally {await ui.cleanup();}
+});
+
+test('rapid Continue, Back and accessibility escape requests share one guarded dismissal',async()=>{
+  const ui=await setup();let changes=0;const unsubscribe=ui.queue.subscribe(()=>changes++);
+  try {
+    await ui.enqueue(evidence());const changesBeforeClose=changes;
+    const press=ui.renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.onPress;
+    const back=ui.moment().props.onRequestClose;
+    const escape=ui.renderer.root.findByType('AnimatedView').props.onAccessibilityEscape;
+    await act(async()=>{press();press();back();escape();});
+    assert.equal(ui.animations.length,1);assert.equal(changes,changesBeforeClose);
+    await ui.finishFade();assert.equal(changes,changesBeforeClose+1);assert.equal(ui.queue.snapshot(),null);
+    await act(async()=>ui.animations[0].callback({finished:true}));assert.equal(changes,changesBeforeClose+1,'late native completion cannot dismiss again');
+  } finally {unsubscribe();await ui.cleanup();}
+});
+
+test('Reduce Motion dismisses without starting an exit animation',async()=>{
+  const ui=await setup({reduced:true});
+  try {
+    await ui.enqueue(evidence());let dismissals=0;const dismiss=ui.queue.dismiss;
+    ui.queue.dismiss=id=>{dismissals++;dismiss(id);};
+    const press=ui.renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.onPress;
+    const back=ui.moment().props.onRequestClose;
+    const escape=ui.renderer.root.findByType('AnimatedView').props.onAccessibilityEscape;
+    await act(async()=>{press();press();back();escape();});
+    assert.equal(ui.animations.length,0);assert.equal(ui.queue.snapshot(),null);
+    assert.equal(dismissals,1,'synchronous close calls before a parent rerender are guarded too');
+    assert.equal(ui.moment().props.visible,false);assert.equal(ui.sheets.activeSheetCount(),0);
+  } finally {await ui.cleanup();}
+});
+
+test('route interruption cancels a pending exit and restores the same held moment safely',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());const request=ui.queue.snapshot(), writes=ui.saved.writes.length;
+    await ui.beginClose();const fade=ui.animations[0], stale=fade.callback;
+    await ui.update({insideSession:true});
+    assert.equal(fade.stopped,true);assert.equal(ui.moment().props.visible,false);assert.equal(ui.queue.snapshot(),request);
+    await ui.update({insideSession:false});
+    assert.equal(ui.moment().props.visible,true);assert.equal(fade.value.value,1);
+    assert.equal(ui.renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.disabled,false);
+    await act(async()=>stale({finished:true}));assert.equal(ui.queue.snapshot(),request);
+    assert.equal(ui.saved.writes.length,writes,'reopening does not claim an achievement twice');
+    await ui.continue();assert.equal(ui.queue.snapshot(),null);
+  } finally {await ui.cleanup();}
+});
+
+test('replacing a request while its fade is running protects the later daily-goal moment',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());await ui.beginClose();const stale=ui.animations[0].callback;
+    await ui.enqueue(evidence({sessionId:'goal-later',durationSeconds:60,dailyCompletedSeconds:1800,dailyGoalMinutes:30}));
+    const replacement=ui.queue.snapshot();assert.equal(ui.flags().dailyGoal,true);assert.equal(ui.flags().firstSession,false);
+    assert.equal(ui.moment().props.visible,true);assert.equal(ui.animations[0].stopped,true);
+    assert.equal(ui.renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.disabled,false);
+    await act(async()=>stale({finished:true}));assert.equal(ui.queue.snapshot(),replacement,'old completion cannot dequeue a newer achievement');
+    await ui.continue();assert.equal(ui.queue.snapshot(),null);
+  } finally {await ui.cleanup();}
+});
+
+test('account replacement during the fade cannot dismiss the next account\'s moment',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());await ui.beginClose();const stale=ui.animations[0].callback;
+    await ui.update({owner:'owner-b'});assert.equal(ui.queue.snapshot(),null);assert.equal(ui.moment().props.visible,false);
+    await ui.enqueue(evidence({ownerId:'owner-b',sessionId:'session-b'}));const next=ui.queue.snapshot();
+    assert.equal(ui.moment().props.visible,true);
+    await act(async()=>stale({finished:true}));assert.equal(ui.queue.snapshot(),next);assert.equal(ui.moment().props.visible,true);
+    await ui.continue();assert.equal(ui.queue.snapshot(),null);
+  } finally {await ui.cleanup();}
+});
+
+test('backgrounding after Continue finishes the chosen close without stranding or replaying a faded modal',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());await ui.beginClose();const fade=ui.animations[0], stale=fade.callback;
+    await ui.state('background');
+    assert.equal(ui.queue.snapshot(),null);assert.equal(ui.moment().props.visible,false);assert.equal(ui.sheets.activeSheetCount(),0);
+    assert.equal(fade.stopped,true);
+    await act(async()=>stale({finished:true}));await ui.state('active');
+    assert.equal(ui.moment().props.visible,false);assert.equal(ui.queue.snapshot(),null);
+  } finally {await ui.cleanup();}
+});
+
+test('an interrupted animation keeps the moment visible and allows a fresh Continue',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());const request=ui.queue.snapshot();await ui.beginClose();
+    const interrupted=ui.animations[0];interrupted.value.setValue(0.4);
+    await ui.finishFade(false);
+    assert.equal(ui.queue.snapshot(),request);assert.equal(ui.moment().props.visible,true);assert.equal(ui.sheets.activeSheetCount(),1);
+    assert.equal(interrupted.value.value,1);assert.equal(ui.renderer.root.findByProps({accessibilityLabel:'Continue from celebration'}).props.disabled,false);
+    await ui.continue();assert.equal(ui.animations.length,2);assert.equal(ui.queue.snapshot(),null);
+  } finally {await ui.cleanup();}
+});
+
+test('iOS holds its reservation during the fade and until the native modal has actually dismissed',async()=>{
+  const ui=await setup({platform:'ios'});
+  try {
+    await ui.enqueue(evidence());await ui.beginClose();
+    assert.equal(ui.moment().props.visible,true);assert.notEqual(ui.queue.snapshot(),null);assert.equal(ui.sheets.activeSheetCount(),1);
+    await ui.finishFade();
+    assert.equal(ui.queue.snapshot(),null);assert.equal(ui.moment().props.visible,false);assert.equal(ui.sheets.activeSheetCount(),1);
+    await act(async()=>ui.moment().props.onDismiss());assert.equal(ui.sheets.activeSheetCount(),0);
+  } finally {await ui.cleanup();}
+});
+
+test('unmount invalidates a pending native fade callback before another request is queued',async()=>{
+  const ui=await setup();
+  try {
+    await ui.enqueue(evidence());await ui.beginClose();const stale=ui.animations[0].callback;
+    await act(async()=>ui.renderer.unmount());assert.equal(ui.sheets.activeSheetCount(),0);assert.equal(ui.queue.snapshot(),null);
+    ui.queue.enqueue(evidence({sessionId:'next-host',dailyCompletedSeconds:1800,dailyGoalMinutes:30}));const next=ui.queue.snapshot();
+    assert.notEqual(next,null);await act(async()=>stale({finished:true}));assert.equal(ui.queue.snapshot(),next);
+  } finally {await ui.cleanup();}
 });
