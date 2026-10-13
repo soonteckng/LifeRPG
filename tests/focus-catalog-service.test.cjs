@@ -37,7 +37,7 @@ function service(rows, options = {}) {
     },
     rpc: async (name, params) => { calls.push(['rpc', name, params]); return { data: options.repaired ?? full, error: options.error ?? null }; },
   };
-  return { calls, api: load('src/services/taskService.ts', { '../../lib/supabase': { supabase } }) };
+  return { calls, api: load('src/services/taskService.ts', { '../../lib/supabase': { supabase }, './offlineFocusCatalog': { cacheOfflineFocusAreas: async () => {} } }) };
 }
 test('complete catalogues load owned real IDs without repair or changing earned XP', async () => {
   const rows = [...full, { id: 90, title: 'My ceramics', level: 3, current_xp: 17 }];

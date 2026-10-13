@@ -146,6 +146,10 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
     "../services/sessionService": service,
+    "../services/offlineSessionService": {
+      createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, readFreshGrant: () => null }),
+      createOfflineSessionTransport: () => ({ readSnapshot: async () => null, submit: async () => { throw Error("Offline capability is disabled in this legacy fixture"); } }),
+    },
     "../utils/countdownTicker": { createCountdownTicker: (callback) => {
       const handle = setInterval(callback, 200);
       return { reschedule() {}, dispose() { clearInterval(handle); } };

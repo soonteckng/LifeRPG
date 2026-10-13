@@ -7,6 +7,7 @@ import { type } from "../constants/typography";
 import { useAuth } from "../context/AuthContext";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
+import OfflineSessionWorkspace from "./OfflineSessionWorkspace";
 
 function checkConnection(request: Promise<void>): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -84,6 +85,7 @@ export default function OfflineSessionRecovery() {
       if (mounted.current) setBusy(false);
     }
   };
+  if ((timer.offlineAvailable || timer.clientReported) && !timer.restoreError && !timer.awaitingStart) return <OfflineSessionWorkspace />;
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} style={styles.page} testID="offline-session-recovery">
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.content}>

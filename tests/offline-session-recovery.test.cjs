@@ -39,6 +39,7 @@ async function screen(options = {}) {
     "react-native-safe-area-context": { SafeAreaView: host("SafeArea") }, "./AppText": { Text: host("Text") },
     "../context/AuthContext": { useAuth: () => auth }, "../context/UserContext": { useUser: () => ({ profile: options.profile ?? cached, updateProfile: forbidden }) },
     "../context/TimerContext": { useTimer: () => timer },
+    "./OfflineSessionWorkspace": host("OfflineWorkspace"),
   });
   let tree; await act(async () => { tree = create(React.createElement(module.default)); });
   return { root: () => tree.root, calls, button: label => tree.root.findAllByType("Button").find(node => node.props.accessibilityLabel === label),

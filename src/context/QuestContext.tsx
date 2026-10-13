@@ -16,7 +16,7 @@ interface QuestState {
 const QuestContext = createContext<QuestState | null>(null);
 
 export function QuestProvider({ children }: { children: React.ReactNode }) {
-  const { sessionSummary } = useTimer();
+  const { sessionSummary, cloudSaveVersion } = useTimer();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -60,12 +60,12 @@ export function QuestProvider({ children }: { children: React.ReactNode }) {
   }, []);
   // Session completion is an external persistence event; reload its server-derived schedule and completion state.
   useEffect(() => {
-    if (sessionSummary) {
+    if (sessionSummary || cloudSaveVersion > 0) {
       // A read begun before completion can still contain the old actionable row.
       revision.current++;
       void refresh(true);
     }
-  }, [sessionSummary, refresh]);
+  }, [sessionSummary, cloudSaveVersion, refresh]);
   const invalidateReads = useCallback(() => {
     // AuthGate keys this provider by owner. Ignore reads from an outgoing account.
     alive.current = false;

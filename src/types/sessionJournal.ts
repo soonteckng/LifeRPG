@@ -1,5 +1,8 @@
 // Wire format shared with the future native adapter. No credentials belong here.
 export const JOURNAL_VERSION = 1 as const;
+export const JOURNAL_CLIENT_TIMING_VERSION = 2 as const;
+export const JOURNAL_CLIENT_MAX_SEGMENTS = 256;
+export const JOURNAL_CLIENT_MAX_SPAN_MS = 86_400_000;
 export const JOURNAL_CLOCK_WARNING_MS = 15_000;
 export const JOURNAL_MAX_BYTES = 512 * 1024;
 export const JOURNAL_MAX_RECORDS = 100;
@@ -27,7 +30,7 @@ export interface JournalSetup {
 }
 export type JournalState = "not_started" | "running" | "paused" | "completed" | "cancelled";
 export type JournalSyncState = "idle" | "pending" | "waiting_auth" | "synced" | "rejected";
-export type JournalCommandKind = "start" | "pause" | "resume" | "cancel" | "complete";
+export type JournalCommandKind = "start" | "pause" | "resume" | "cancel" | "complete" | "import";
 export type JournalCommandStatus = "prepared" | "unknown" | "acknowledged" | "rejected" | "superseded";
 export type JournalJson = null | boolean | number | string | JournalJson[] | { [key: string]: JournalJson };
 
@@ -42,6 +45,30 @@ export interface JournalStartStopProof {
   serverSessionId: string | null;
   status: "cancelled" | "completed";
   legacyStartsFenced: true;
+}
+export interface JournalClientTiming {
+  policyVersion: 1;
+  offlineOrigin: boolean;
+  segments: { startedAtMs: number; endedAtMs: number | null }[];
+  serverRevision: number | null;
+  serverObservedAtMs: number | null;
+  // Confirmed cumulative elapsed at the anchor. Historical paused gaps are not
+  // reconstructed as active intervals; only subsequent local intervals follow.
+  serverConfirmedMs: number;
+}
+export interface ClientSessionSubmission {
+  policyVersion: 1;
+  ending: "completed" | "cancelled";
+  clientSessionId: string;
+  serverSessionId: string | null;
+  expectedRevision: number | null;
+  setup: JournalSetup;
+  startedAtMs: number;
+  endedAtMs: number;
+  serverConfirmedMs: number;
+  serverObservedAtMs: number | null;
+  segments: { startedAtMs: number; endedAtMs: number }[];
+  clockWarning: boolean;
 }
 export interface JournalRecord {
   clientSessionId: string;
@@ -58,6 +85,8 @@ export interface JournalRecord {
   dismissedAtMs: number | null;
   verification: "server_timed" | "client_reported";
   clockWarning: boolean;
+  clientTiming?: JournalClientTiming;
+  serverCheckpoint?: { revision: number; observedAtMs: number; confirmedMs: number; clientSessionId: string };
   sync: {
     state: JournalSyncState;
     attempts: number;
@@ -76,7 +105,7 @@ export interface JournalCommand {
   request: { [key: string]: JournalJson };
 }
 export interface JournalEnvelope {
-  schemaVersion: typeof JOURNAL_VERSION;
+  schemaVersion: typeof JOURNAL_VERSION | typeof JOURNAL_CLIENT_TIMING_VERSION;
   scope: JournalScope;
   revision: number;
   admission: { epoch: number; active: boolean };
@@ -113,6 +142,17 @@ export type JournalAction =
   | (JournalActionBase & { type: "acknowledge_completion"; operationId: string; receipt: JournalReceipt })
   | (JournalActionBase & { type: "defer_sync"; clientSessionId: string; nowMs: number; delayMs: number; reasonCode: string; waitingAuth: boolean })
   | (JournalActionBase & { type: "dismiss"; clientSessionId: string; dismissedAtMs: number })
+  | (JournalActionBase & { type: "local_start"; clientSessionId: string; setup: JournalSetup; clock: JournalClock })
+  | (JournalActionBase & { type: "enter_client_timing"; clientSessionId: string; clock: JournalClock;
+      serverRevision: number; serverObservedAtMs: number; serverConfirmedMs?: number })
+  | (JournalActionBase & { type: "remember_server_checkpoint"; clientSessionId: string;
+      serverCheckpoint: NonNullable<JournalRecord["serverCheckpoint"]>; verifiedScope: JournalScope })
+  | (JournalActionBase & { type: "local_pause" | "local_resume"; clientSessionId: string; clock: JournalClock })
+  | (JournalActionBase & { type: "local_cancel"; clientSessionId: string; clock: JournalClock; operationId?: string })
+  | (JournalActionBase & { type: "local_expire"; clientSessionId: string; operationId: string; clock: JournalClock })
+  | (JournalActionBase & { type: "acknowledge_import"; clientSessionId: string; receipt: JournalReceipt | null;
+      remoteCompletedReceipt?: JournalReceipt; verifiedScope: JournalScope })
+  | (JournalActionBase & { type: "reject_import"; clientSessionId: string; reasonCode: string })
   | (JournalActionBase & { type: "compact" });
 
 export type JournalValidationCode = "invalid_json" | "unsupported_version" | "invalid_record" | "scope_mismatch" | "too_large";

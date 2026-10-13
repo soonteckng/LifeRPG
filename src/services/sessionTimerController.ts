@@ -4,7 +4,8 @@ import type {
   JournalStartStopProof,
 } from "../types/sessionJournal";
 import { JournalStorageError, type SessionJournalStore } from "./sessionJournalStore";
-import { applyJournalAction, deriveJournalTimer } from "../utils/sessionJournal";
+import { applyJournalAction, buildClientSessionSubmission, deriveJournalTimer, queuedClientCompletions } from "../utils/sessionJournal";
+import type { ClientSessionSubmission, ClientSessionSubmitResult, OfflineCapabilityGrant, SessionSyncSnapshot } from "../types/offlineSession";
 import { LEGACY_START_MATCH_WINDOW_MS, reconcileLegacyUnknownStart } from "../utils/sessionJournalRecovery";
 import { isJournalUuid, validateJournalClock, validateJournalReceipt, validateJournalScope, validateJournalSetup } from "../utils/sessionJournalSchema";
 import { JOURNAL_START_STOP_REASON } from "../types/sessionJournal";
@@ -54,6 +55,14 @@ export interface SessionTimerControllerOptions {
   timeoutMs?: number;
   mutationTimeoutMs?: number;
   classifyError?(error: unknown): "transient" | "auth" | "definitive";
+  offline?: {
+    load(): Promise<unknown>;
+    readFreshGrant(): OfflineCapabilityGrant | null;
+    refresh(): Promise<unknown>;
+    isLocalOnly(): boolean;
+    readSnapshot(serverSessionId: string, clientSessionId: string): Promise<SessionSyncSnapshot | null>;
+    submit(clientSessionId: string, submission: ClientSessionSubmission): Promise<ClientSessionSubmitResult>;
+  };
 }
 
 export interface SessionTimerControllerSnapshot {
@@ -72,6 +81,8 @@ export interface SessionTimerControllerSnapshot {
   interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
   displayTimeLeft: number | null;
   recovered: boolean;
+  offlineAvailable: boolean;
+  cloudSaveVersion: number;
 }
 
 type ActionInput = JournalAction extends infer A ? A extends JournalAction
@@ -92,8 +103,9 @@ class ControllerReceiptUnavailableError extends Error {}
 class ControllerStartStopUnavailableError extends Error {}
 
 /**
- * The journal is the local authority. This controller never grants rewards,
- * starts offline, or retries uncertain legacy timing mutations blindly.
+ * The journal is the local authority. A previously verified capability permits
+ * local timing; only a server receipt confirms rewards. Uncertain legacy
+ * timing mutations are never retried blindly.
  * Native notifications and React rendering remain adapters of its snapshots.
  */
 export function createSessionTimerController(options: SessionTimerControllerOptions) {
@@ -111,6 +123,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let selectedId: string | null = null, hiddenId: string | null = null;
   let rewardId: string | null = null;
   const dismissedRewardIds = new Set<string>();
+  const pendingDismissals = new Map<string, number>();
+  let discoverAfterConflictDismissal = false;
   let lastAction: "start" | "pause" | "resume" | "cancel" | "complete" | null = null;
   let lastSetup: JournalSetup | null = null;
   let remoteRetryAtMs = 0, remoteRetryAttempts = 0;
@@ -122,7 +136,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let state: SessionTimerControllerSnapshot = {
     record: null, timeLeft: 0, restoring: true, busy: false, error: null,
     restoreError: false, syncStatus: "idle", receipt: null, rewardsVisible: false,
-    ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false,
+    ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false, offlineAvailable: false, cloudSaveVersion: 0,
   };
 
   const live = () => !disposed && options.authority.currentEpoch() === externalEpoch
@@ -135,6 +149,12 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     && (!record || command.clientSessionId === record.clientSessionId)) ?? null;
   const startStopRequested = (record?: JournalRecord | null) => !!record
     && record.sync.reasonCode === JOURNAL_START_STOP_REASON;
+  const offlineAvailable = () => {
+    const grant = options.offline?.readFreshGrant();
+    return live() && !!grant && sameScope(grant.scope, scope);
+  };
+  const locallyAdmitted = () => offlineAvailable() && options.offline?.isLocalOnly() === true;
+  const legacyPending = () => journal?.commands.find(command => unresolved(command) && command.kind !== "import") ?? null;
   function bounded<T>(request: Promise<T>, budgetMs = timeoutMs): Promise<T> {
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new ControllerTimeoutError()), budgetMs);
@@ -146,7 +166,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     if (!journal) { selectedId = null; return; }
     const open = journal.records.find(record => ["not_started", "running", "paused"].includes(record.state));
     const waiting = journal.records.find(record => record.state === "completed"
-      && ["pending", "waiting_auth"].includes(record.sync.state));
+      && ["pending", "waiting_auth"].includes(record.sync.state) && record.dismissedAtMs === null && record.clientSessionId !== hiddenId);
     if (open || waiting) { selectedId = (open ?? waiting)!.clientSessionId; return; }
     if (selectedId && selected() && selectedId !== hiddenId) return;
     selectedId = [...journal.records].reverse().find(record => record.clientSessionId !== hiddenId
@@ -181,8 +201,9 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       timeLeft: timer ? Math.ceil(timer.remainingMs / 1000) : 0,
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
-      ending: !!record && (pending(record)?.kind === "cancel" || startStopRequested(record)), unsyncedSessionCount, interaction: feedback, displayTimeLeft,
+      ending: !!record && (pending(record)?.kind === "cancel" || record.state === "cancelled" && pending(record)?.kind === "import" || startStopRequested(record)), unsyncedSessionCount, interaction: feedback, displayTimeLeft,
       recovered: !!record && recoveredIds.has(record.clientSessionId),
+      offlineAvailable: offlineAvailable(),
     };
     for (const listener of listeners) {
       try { listener(state); } catch { /* A view cannot break durable work. */ }
@@ -316,6 +337,75 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     fence();
     if (remote) checkRemote(remote, record.serverSessionId);
     return remote;
+  }
+
+  async function rememberCheckpoint(record: JournalRecord): Promise<void> {
+    if (!offlineAvailable() || !options.offline || !record.serverSessionId || record.clientTiming || pending(record)
+      || !["running", "paused"].includes(record.state)) return;
+    const result = await bounded(options.offline.readSnapshot(record.serverSessionId, record.clientSessionId));
+    fence();
+    if (!result) throw new ControllerRemoteError();
+    checkRemote(result.session, record.serverSessionId);
+    if (result.clientSessionId !== record.clientSessionId || !sameSetup(result.session.setup, record.setup)) throw new ControllerRemoteError();
+    await reconcileRemote(record, result.session);
+    const current = journal!.records.find(item => item.clientSessionId === record.clientSessionId);
+    if (!current || !result.handoff || !["running", "paused"].includes(current.state)) return;
+    await write({ type: "remember_server_checkpoint", clientSessionId: current.clientSessionId,
+      verifiedScope: await verify(), serverCheckpoint: { revision: result.handoff.revision,
+        observedAtMs: result.handoff.observedAtMs, confirmedMs: result.handoff.confirmedMs, clientSessionId: current.clientSessionId } });
+  }
+
+  async function enterLocalTiming(record: JournalRecord): Promise<boolean> {
+    if (record.clientTiming) return true;
+    if (!offlineAvailable() || pending(record) || !record.serverCheckpoint) return false;
+    const anchor = record.serverCheckpoint;
+    await write({ type: "enter_client_timing", clientSessionId: record.clientSessionId,
+      clock: { wallTimeMs: anchor.observedAtMs, monotonicTimeMs: null, bootId: null },
+      serverRevision: anchor.revision, serverObservedAtMs: anchor.observedAtMs, serverConfirmedMs: anchor.confirmedMs });
+    return true;
+  }
+
+  async function syncClientQueue(force: boolean): Promise<void> {
+    if (!journal || !options.offline || options.offline.isLocalOnly()) return;
+    for (const record of queuedClientCompletions(journal, scope)) {
+      if (!due(record, force)) continue;
+      const command = pending(record);
+      try {
+        await verify();
+        const payload = buildClientSessionSubmission(record);
+        const result = await bounded(options.offline.submit(record.clientSessionId, payload), mutationTimeoutMs);
+        fence();
+        if (result.clientSessionId !== record.clientSessionId) throw new ControllerRemoteError();
+        if (result.outcome === "rejected") {
+          if (result.reasonCode === "policy_disabled") {
+            await write({ type: "defer_sync", clientSessionId: record.clientSessionId, nowMs: now().wallTimeMs,
+              delayMs: MAX_RETRY_MS, reasonCode: "policy_disabled", waitingAuth: false });
+            publish({ error: "Saved on this phone. Sync is temporarily unavailable." });
+            continue;
+          }
+          await write({ type: "reject_import", clientSessionId: record.clientSessionId, reasonCode: result.reasonCode });
+          continue;
+        }
+        const remoteCompletedBeforeEnd = payload.ending === "cancelled" && result.ending === "completed" && result.outcome === "already_saved";
+        if (result.ending !== payload.ending && !remoteCompletedBeforeEnd || result.receipt && (result.receipt.sessionId !== result.serverSessionId
+          || result.receipt.durationSeconds !== record.setup.targetSeconds)) throw new ControllerRemoteError();
+        await write({ type: "acknowledge_import", clientSessionId: record.clientSessionId,
+          receipt: remoteCompletedBeforeEnd ? null : result.receipt,
+          remoteCompletedReceipt: remoteCompletedBeforeEnd ? result.receipt! : undefined, verifiedScope: await verify() });
+        if (result.receipt && selectedId === record.clientSessionId && record.dismissedAtMs === null
+          && !dismissedRewardIds.has(record.clientSessionId) && !recoveredIds.has(record.clientSessionId) && result.outcome === "accepted") rewardId = record.clientSessionId;
+        publish({ error: null, restoreError: false, cloudSaveVersion: state.cloudSaveVersion + 1 });
+      } catch (error) {
+        if (!live()) return;
+        // Imports are idempotent, but an HTTP timeout is still an unknown reply.
+        if (command?.status === "prepared") await write({ type: "mark_unknown", operationId: command.operationId });
+        const kind = classify(error);
+        await write({ type: "defer_sync", clientSessionId: record.clientSessionId, nowMs: now().wallTimeMs,
+          delayMs: Math.min(MAX_RETRY_MS, 1000 * 2 ** Math.min(record.sync.attempts, 6)), reasonCode: kind === "auth" ? "authentication" : "connection", waitingAuth: kind === "auth" });
+        publish({ error: "Saved on this phone. We’ll sync when connected." });
+        return;
+      }
+    }
   }
 
   async function reconcileStart(command: JournalCommand): Promise<void> {
@@ -460,7 +550,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     const clock = now();
     if (!deriveJournalTimer(record, clock).expired) return false;
     lastAction = "complete";
-    await write({ type: "expire", clientSessionId: record.clientSessionId, operationId: uuid(), clock });
+    await write({ type: record.clientTiming ? "local_expire" : "expire", clientSessionId: record.clientSessionId, operationId: uuid(), clock });
     return true;
   }
 
@@ -531,9 +621,18 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   }
 
   async function refreshInternal(force: boolean): Promise<void> {
+    if (options.offline) {
+      // The single manual reconnect action must still verify the owner. Local
+      // admission permits timing, never authenticated server reconciliation.
+      if (force && options.offline.isLocalOnly()) await verify();
+      if (!options.offline.isLocalOnly()) await bounded(options.offline.refresh());
+      await expireLocal();
+      await syncClientQueue(force);
+      if (selected()?.clientTiming || options.offline.isLocalOnly()) { publish({ restoreError: false }); return; }
+    }
     await prepareRequestedStartStop();
     await expireLocal();
-    let command = pending();
+    let command = legacyPending();
     const hadCommand = command !== null && command !== undefined;
     if (command?.kind === "complete") {
       await syncCompletion(force);
@@ -553,6 +652,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const remote = await readKnown(record);
       if (!remote) throw new ControllerRemoteError();
       await reconcileRemote(record, remote);
+      await rememberCheckpoint(selected()!);
       if (pending()) return;
     }
     if (hadCommand) {
@@ -568,6 +668,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const remote = await readKnown(record);
       if (!remote) throw new ControllerRemoteError();
       await reconcileRemote(record, remote);
+      if (offlineAvailable()) { try { await rememberCheckpoint(selected()!); } catch { /* refresh preserves confirmed timer */ } }
       await expireLocal();
       if (pending()?.kind === "complete") { await syncCompletion(force); return; }
       publish({ error: pending() ? "Waiting to confirm your saved session state." : null, restoreError: false });
@@ -583,9 +684,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       checkRemote(remote);
       if (!remote.snapshot || (remote.status !== "running" && remote.status !== "paused")) throw new ControllerRemoteError();
       const known = journal!.records.find(item => item.serverSessionId === remote.serverSessionId);
-      if (!known) {
+      if (!known || known.clientTiming && known.sync.state === "rejected" && known.dismissedAtMs !== null) {
         await write({ type: "adopt_server", clientSessionId: uuid(), setup: remote.setup,
           snapshot: remote.snapshot, verifiedScope: scope, clockWarning: remote.clockWarning });
+        if (!known) { try { await rememberCheckpoint(selected()!); } catch { /* a legacy mapping may need online controls */ } }
         await expireLocal();
         if (pending()?.kind === "complete") await syncCompletion(force);
       }
@@ -606,21 +708,48 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       // An uncertain or unsent action must return to the journal's protected
       // state. Only a confirmed matching transition keeps its display anchor.
       if (interaction && !succeeded) displayClock = null;
-      interaction = null; locked = false; if (live()) publish({ busy: false });
+      interaction = null;
+      if (live()) {
+        for (const [clientSessionId, dismissedAtMs] of pendingDismissals) {
+          try { await write({ type: "dismiss", clientSessionId, dismissedAtMs }); pendingDismissals.delete(clientSessionId); }
+          catch { publish({ error: storageMessage() }); break; }
+        }
+      }
+      locked = false; if (live()) publish({ busy: false });
       options.authority.endOperation?.();
+      if (discoverAfterConflictDismissal && live() && !options.offline?.isLocalOnly()) {
+        discoverAfterConflictDismissal = false;
+        void run(() => refreshInternal(true));
+      }
     }
   }
 
   async function startInternal(setup: JournalSetup): Promise<boolean> {
     validateJournalSetup(setup);
-    if (pending() || journal!.records.some(record => ["not_started", "running", "paused"].includes(record.state))) return false;
+    if (legacyPending() || journal!.records.some(record => ["not_started", "running", "paused"].includes(record.state))) return false;
     lastSetup = copy(setup); lastAction = "start";
     interaction = { kind: "start", remainingMs: setup.targetSeconds * 1000, atMs: now().wallTimeMs };
     displayClock = { clientSessionId: null, running: true, remainingMs: interaction.remainingMs, atMs: interaction.atMs };
     publish();
     // Verification is a read, before any start intent, so an offline attempt
     // cannot create an unsent legacy start that would be unsafe to retry.
-    const verifiedScope = await verify();
+    const localStart = async () => {
+      const clientSessionId = uuid();
+      await write({ type: "local_start", clientSessionId, setup, clock: now() });
+      selectedId = clientSessionId; hiddenId = null; rewardId = null;
+      displayClock = null; interaction = null;
+      publish({ error: null, restoreError: false });
+      return true;
+    };
+    if (locallyAdmitted()) return localStart();
+    let verifiedScope: JournalScope;
+    try { verifiedScope = await verify(); }
+    catch (error) {
+      // No mutation has been dispatched. A cached scoped grant can admit this
+      // local Start; never take this fallback after an uncertain Start reply.
+      if (locallyAdmitted() || classify(error) === "transient" && offlineAvailable()) return localStart();
+      throw error;
+    }
     // The v1-compatible identity convention distinguishes new v2 Starts from
     // stored legacy intents, whose operation and client UUIDs were different.
     const clientSessionId = uuid(), operationId = clientSessionId;
@@ -638,6 +767,9 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const remote = await readKnown(record);
       if (!remote) throw new ControllerRemoteError();
       await reconcileRemote(record, remote);
+      // Missing capability keeps the established online flow unchanged.
+      // A checkpoint failure cannot turn a confirmed Start into a failed one.
+      if (offlineAvailable()) { try { await rememberCheckpoint(selected()!); } catch { /* local controls remain gated */ } }
       return selected()?.state === "running" || selected()?.state === "paused";
     } catch (error) {
       const provenNotSent = rpcAttempted && !mutationReplyReceived && !!error && typeof error === "object"
@@ -672,11 +804,27 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     // a late End tap. A stop saved before expiry still takes precedence.
     if (!pending(record) && (record.state === "running" || record.state === "paused")
         && deriveJournalTimer(record, now()).expired) {
-      await expireLocal(); await syncCompletion(true); return false;
+      await expireLocal();
+      if (record.clientTiming) await syncClientQueue(true); else await syncCompletion(true);
+      return false;
     }
     if (kind === "cancel" && (record.state === "completed" || record.state === "cancelled") && !pending(record)) {
       if (record.sync.state === "rejected") await write({ type: "dismiss", clientSessionId: record.clientSessionId, dismissedAtMs: now().wallTimeMs });
       hiddenId = record.clientSessionId; selectedId = null; rewardId = null; publish({ error: null }); return true;
+    }
+    if ((record.clientTiming || locallyAdmitted() || kind === "cancel" && offlineAvailable() && !!record.serverCheckpoint) && !pending(record)
+      && (record.state === "running" || record.state === "paused")) {
+      if (!await enterLocalTiming(record)) {
+        publish({ error: "Reconnect once to prepare this session for offline controls." }); return false;
+      }
+      const current = selected()!;
+      if (kind === "pause" && current.state !== "running" || kind === "resume" && current.state !== "paused") return false;
+      lastAction = kind; displayClock = null; interaction = null;
+      await write({ type: kind === "pause" ? "local_pause" : kind === "resume" ? "local_resume" : "local_cancel",
+        clientSessionId: current.clientSessionId, clock: now(), operationId: kind === "cancel" ? uuid() : undefined } as ActionInput);
+      publish({ error: null, restoreError: false });
+      if (kind === "cancel") await syncClientQueue(true);
+      return true;
     }
     if (kind === "cancel" && record.serverSessionId && (record.state === "running" || record.state === "paused")) {
       lastAction = "cancel";
@@ -703,7 +851,15 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       displayClock = { clientSessionId: record.clientSessionId, running: kind === "resume", remainingMs: interaction.remainingMs, atMs: interaction.atMs };
       publish();
     }
-    await verify();
+    try { await verify(); }
+    catch (error) {
+      if ((!locallyAdmitted() && classify(error) !== "transient") || !offlineAvailable() || !record.serverCheckpoint) throw error;
+      // Verification failed before preparing/sending a Pause or Resume.
+      await enterLocalTiming(record);
+      displayClock = null; interaction = null;
+      await write({ type: kind === "pause" ? "local_pause" : "local_resume", clientSessionId: record.clientSessionId, clock: now() });
+      publish({ error: null }); return true;
+    }
     const operationId = uuid();
     await write({ type: "prepare_transition", operationId, clientSessionId: record.clientSessionId, kind, clock: now() });
     let rpcAttempted = false, mutationReplyReceived = false;
@@ -715,6 +871,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       const remote = await readKnown(selected()!);
       if (!remote) throw new ControllerRemoteError();
       await reconcileRemote(selected()!, remote);
+      if (offlineAvailable()) { try { await rememberCheckpoint(selected()!); } catch { /* keep confirmed online control */ } }
       const current = selected();
       return current?.state === (kind === "pause" ? "paused" : kind === "resume" ? "running" : "cancelled");
     } catch (error) {
@@ -732,6 +889,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     options.authority.beginOperation?.();
     initializing = (async () => {
       try {
+        if (options.offline) { await bounded(options.offline.load()); fence(); }
         const loaded = await options.store.load(); fence();
         if (loaded.kind !== "ready") {
           publish({ restoring: false, restoreError: true, error: "Your saved session needs recovery before continuing." });
@@ -767,9 +925,9 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
 
   return {
     getSnapshot: () => {
-      if (!live() && (state.record !== null || state.receipt !== null || state.ending || state.unsyncedSessionCount > 0 || state.interaction !== null)) {
+      if (!live() && (state.record !== null || state.receipt !== null || state.ending || state.unsyncedSessionCount > 0 || state.interaction !== null || state.offlineAvailable)) {
         state = { ...state, record: null, receipt: null, timeLeft: 0, rewardsVisible: false,
-          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false };
+          busy: false, error: null, ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false, offlineAvailable: false };
       }
       return state;
     },
@@ -801,13 +959,17 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
         && deriveJournalTimer(record, now()).expired;
       const retryDue = record?.state === "completed" && record.verification === "server_timed"
         && command?.kind === "complete" && due(record, false);
-      const reconcileDue = !!command && command.kind !== "complete" && (now().wallTimeMs >= remoteRetryAtMs
+      const clientRetryDue = !!options.offline && !options.offline.isLocalOnly() && !!journal
+        && journal.records.some(item => !!item.clientTiming && ["completed", "cancelled"].includes(item.state)
+          && ["pending", "waiting_auth"].includes(item.sync.state) && due(item, false));
+      const reconcileDue = !!command && command.kind !== "complete" && command.kind !== "import" && (now().wallTimeMs >= remoteRetryAtMs
         || remoteRetryAtMs - now().wallTimeMs > MAX_RETRY_MS);
-      if (!expiry && !retryDue && !reconcileDue) { publish(); return true; }
+      if (!expiry && !retryDue && !reconcileDue && !clientRetryDue) { publish(); return true; }
       return run(async () => {
         if (reconcileDue) { await refreshInternal(false); return; }
         await expireLocal();
-        await syncCompletion(false);
+        await syncClientQueue(false);
+        if (!selected()?.clientTiming) await syncCompletion(false);
         publish();
       });
     },
@@ -827,7 +989,14 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     dismissSummary() {
       const record = selected();
       if (record) dismissedRewardIds.add(record.clientSessionId);
-      rewardId = null; if (live()) publish();
+      rewardId = null;
+      if (record?.clientTiming && ["completed", "cancelled"].includes(record.state)) {
+        if (record.sync.state === "rejected") discoverAfterConflictDismissal = true;
+        hiddenId = record.clientSessionId; selectedId = null;
+        pendingDismissals.set(record.clientSessionId, now().wallTimeMs);
+        if (!locked) void run(async () => { /* finally persists the presentation change */ });
+      }
+      if (live()) publish();
     },
     async dispose(): Promise<void> {
       if (disposed) return;
