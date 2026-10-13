@@ -7,6 +7,7 @@ import { type } from "../constants/typography";
 import { useAuth } from "../context/AuthContext";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
+import OfflineSessionWorkspace from "./OfflineSessionWorkspace";
 
 function checkConnection(request: Promise<void>): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -33,7 +34,7 @@ function recoveryState(timer: ReturnType<typeof useTimer>) {
 }
 
 /** Local recovery only. Editable tabs and controls return after online verification. */
-export default function OfflineSessionRecovery() {
+export default function OfflineSessionRecovery({ active = true }: { active?: boolean }) {
   const auth = useAuth();
   const { profile } = useUser();
   const timer = useTimer();
@@ -84,6 +85,8 @@ export default function OfflineSessionRecovery() {
       if (mounted.current) setBusy(false);
     }
   };
+  if ((timer.offlineAvailable || timer.clientReported) && !timer.restoreError && !timer.awaitingStart
+    && !(timer.endingSession && !timer.clientReported)) return <OfflineSessionWorkspace active={active} />;
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} style={styles.page} testID="offline-session-recovery">
     <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.content}>

@@ -11,7 +11,7 @@ import AuthScreen from "../components/AuthScreen";
 import RecoveryScreen from "../components/RecoveryScreen";
 import LaunchIntro from "../components/LaunchIntro";
 import GlobalRewardListener from "../components/GlobalRewardListener";
-import OfflineSessionRecovery from "../components/OfflineSessionRecovery";
+import SessionConnectionContent from "../components/SessionConnectionContent";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
@@ -110,11 +110,10 @@ function AppContent() {
 
   return (
     <TimerProvider>
-      {accessMode === "local-only" ? <OfflineSessionRecovery /> : <>
-      <QuestProvider>
+      <QuestProvider online={accessMode === "online"}>
         <FeatureTourProvider>
         <GlobalBackHandler />
-
+        <SessionConnectionContent>
         <Stack
           screenListeners={({ route, navigation }) =>
             route.name.startsWith("session")
@@ -207,11 +206,10 @@ function AppContent() {
             }}
           />
         </Stack>
-
+        </SessionConnectionContent>
         <GlobalRewardListener />
         </FeatureTourProvider>
       </QuestProvider>
-      </>}
     </TimerProvider>
   );
 }

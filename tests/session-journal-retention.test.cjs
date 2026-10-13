@@ -114,7 +114,7 @@ test('protected-only capacity refuses session 101; explicit dismissal releases r
   assert.equal(appended.records.filter(record => record.sync.state === 'rejected').length, 99);
 });
 
-test('active and unresolved work cannot be dismissed or pruned', () => {
+test('active work cannot be dismissed; hiding an unresolved finish never makes it prunable', () => {
   let journal = start(admitted(), 1);
   assert.equal(domain.isJournalRecordPrunable(journal, journal.records[0]), false);
   assert.throws(() => act(journal, { type: 'dismiss', clientSessionId: id('2', 1), dismissedAtMs: 20000 }), error => error.code === 'invalid_transition');
@@ -122,7 +122,14 @@ test('active and unresolved work cannot be dismissed or pruned', () => {
   journal = act(journal, { type: 'mark_unknown', operationId: id('5', 1) });
   assert.equal(domain.isJournalRecordPrunable(journal, journal.records[0]), false);
   assert.deepEqual(act(journal, { type: 'compact' }), journal);
-  assert.throws(() => act(journal, { type: 'dismiss', clientSessionId: id('2', 1), dismissedAtMs: 20000 }));
+  const dismissed = act(journal, { type: 'dismiss', clientSessionId: id('2', 1), dismissedAtMs: 20000 });
+  assert.equal(dismissed.schemaVersion, 2);
+  assert.equal(dismissed.records[0].dismissedAtMs, 20000);
+  assert.deepEqual(dismissed.commands, journal.commands);
+  assert.equal(dismissed.records[0].completedAtMs, journal.records[0].completedAtMs);
+  assert.equal(dismissed.records[0].sync.state, journal.records[0].sync.state);
+  assert.equal(domain.isJournalRecordPrunable(dismissed, dismissed.records[0]), false);
+  assert.deepEqual(act(dismissed, { type: 'compact' }), dismissed);
 });
 
 test('command 1001 fails without pruning active history but can prune a settled record below the ceiling', () => {

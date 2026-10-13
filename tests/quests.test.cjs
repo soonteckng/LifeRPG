@@ -1053,6 +1053,19 @@ test("Home can open recovery for an unsaved, rejected or unreadable session even
     await ui.update({}); assert.equal(review(),undefined);
   } finally {await ui.cleanup();}
 });
+test("Home explicitly reopens an acknowledged pending End before navigating to its safe recovery route",async()=>{
+  const ui=await quickHomeSetup(null,async()=>true);
+  try {
+    await ui.update({endingSession:true,actionError:'Waiting to confirm the saved stop.',summaryViewed:true,
+      reviewSummary:()=>ui.calls.push(['review'])});
+    const review=ui.renderer.root.findAllByType('Pressable').find(node=>node.props.accessibilityLabel==='Review saved session');
+    assert.ok(review);ui.calls.length=0;
+    await act(async()=>review.props.onPress());
+    assert.deepEqual(ui.calls,[['review'],['navigate','/session']]);
+    assert.equal(ui.calls.filter(c=>c[0]==='start').length,0);
+  }finally{await ui.cleanup();}
+});
+
 test("Home failure stays actionable and the area sheet cannot navigate or change duration", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
   try {

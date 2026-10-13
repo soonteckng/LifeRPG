@@ -1,5 +1,7 @@
 import { missingFocusAreas, orderFocusAreas } from "../utils/focusAreas";
 import { supabase } from "../../lib/supabase";
+import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { cacheOfflineFocusAreas } from "./offlineFocusCatalog";
 
 export interface Subject {
   id: number;
@@ -168,7 +170,10 @@ export async function getSubjects(): Promise<Subject[]> {
     color_code: row.color_code ?? null,
   }));
 
-  return orderFocusAreas(subjects);
+  const ordered = orderFocusAreas(subjects);
+  const backend = sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL ?? "");
+  if (backend) await cacheOfflineFocusAreas({ ownerId, backendId: backend.backendId }, ordered).catch(() => {});
+  return ordered;
 }
 
 export async function getTasks(): Promise<Task[]> {

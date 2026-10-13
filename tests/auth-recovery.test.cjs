@@ -424,6 +424,7 @@ test("root gate renders recovery before mounting account or onboarding providers
       "../components/RecoveryScreen": host("Recovery"),
       "../components/LaunchIntro": props => props.children,
       "../components/GlobalRewardListener": host("Reward"),
+      "../components/SessionConnectionContent": props => props.children,
       "../context/AuthContext": {
         AuthProvider: props => props.children,
         useAuth: () => ({ user: recovery === "none" ? null : session.user, loading: false, recovery }),
@@ -459,9 +460,19 @@ async function rootAdmissionScreen(initial) {
     React.useEffect(() => { counts.userMounts++; }, []);
     return children;
   }
-  function QuestProvider({ children }) {
+  function QuestProvider({ children, online }) {
     React.useEffect(() => { counts.questMounts++; }, []);
-    return children;
+    return React.createElement("Quests", { online }, children);
+  }
+  // Admission tests observe the stable navigation boundary. Its native fades,
+  // pointer blocking and obsolete-route decisions are exercised by the real
+  // component in session-connection-surface.test.cjs.
+  function SessionConnectionContent({ children }) {
+    const localOnly = auth.accessMode === "local-only";
+    return React.createElement("ConnectionBoundary", { localOnly },
+      React.createElement("OnlineSurface", { active: !localOnly }, children),
+      localOnly ? React.createElement("OfflineRecovery", { active: true }) : null,
+    );
   }
   const Layout = load("src/app/_layout.tsx", {
     "expo-router": { Stack, usePathname: () => "/", useRouter: () => router },
@@ -471,6 +482,7 @@ async function rootAdmissionScreen(initial) {
     "../components/PersonalUI": personalUI,
     "../components/AuthScreen": host("Login"), "../components/RecoveryScreen": host("Recovery"),
     "../components/OfflineSessionRecovery": host("OfflineRecovery"),
+    "../components/SessionConnectionContent": SessionConnectionContent,
     "../components/LaunchIntro": function Intro({ children }) { return children; }, "../components/GlobalRewardListener": host("Reward"),
     "../context/AuthContext": { AuthProvider: function Auth({ children }) { return children; }, useAuth: () => auth },
     "../context/UserContext": { UserProvider, useUser: () => ({ profile: { id: auth.user?.id ?? auth.localOwner?.id ?? "", onboarding_completed: true }, profileLoading: false, profileError: false, reloadProfile: async () => true }) },
@@ -503,13 +515,16 @@ test("root chooses the remembered auth form only after recovery and owner admiss
   }
 });
 
-test("root admits a local-only owner with no verified user and keeps editable tabs and reward listener absent", async () => {
+test("root admits a local-only owner while retaining navigation and its single global result listener", async () => {
   const ui = await rootAdmissionScreen({ ...localAuthSnapshot(), sessionError: true });
   try {
     assert.equal(ui.root().findAllByType("OfflineRecovery").length, 1);
     assert.equal(ui.root().findAllByType("Login").length, 0); assert.equal(ui.root().findAllByType("Recovery").length, 0);
-    assert.equal(ui.root().findAllByType("Stack").length, 0); assert.equal(ui.root().findAllByType("Reward").length, 0);
-    assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.questMounts, 0);
+    assert.equal(ui.root().findAllByType("Stack").length, 1); assert.equal(ui.root().findAllByType("Reward").length, 1);
+    assert.equal(ui.root().findByType("OnlineSurface").props.active, false);
+    assert.equal(ui.root().findByType("OfflineRecovery").props.active, true);
+    assert.equal(ui.root().findByType("Quests").props.online, false);
+    assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.questMounts, 1);
   } finally { await ui.cleanup(); }
 });
 test("root password-recovery states override even an otherwise eligible local owner before timer mounts", async () => {
@@ -525,12 +540,19 @@ test("same-owner local and online transitions preserve the mounted timer provide
   const ui = await rootAdmissionScreen(localAuthSnapshot());
   try {
     const identity = ui.root().findByType("Timer").props.identity;
+    const navigator = ui.root().findByType("Stack"), rewards = ui.root().findByType("Reward");
     await ui.update({ user: { id: "local-owner" }, localOwner: null, accessMode: "online" });
     assert.equal(ui.root().findAllByType("Stack").length, 1); assert.equal(ui.root().findAllByType("OfflineRecovery").length, 0);
     assert.equal(ui.root().findByType("Timer").props.identity, identity); assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.timerUnmounts, 0);
+    assert.equal(ui.root().findByType("Stack"), navigator); assert.equal(ui.root().findByType("Reward"), rewards);
+    assert.equal(ui.root().findByType("OnlineSurface").props.active, true);
+    assert.equal(ui.root().findByType("Quests").props.online, true); assert.equal(ui.counts.questMounts, 1);
     await ui.update({ user: null, localOwner: { id: "local-owner", backendId: "fixture.supabase.co" }, accessMode: "local-only" });
-    assert.equal(ui.root().findAllByType("OfflineRecovery").length, 1); assert.equal(ui.root().findAllByType("Stack").length, 0);
+    assert.equal(ui.root().findAllByType("OfflineRecovery").length, 1); assert.equal(ui.root().findAllByType("Stack").length, 1);
     assert.equal(ui.root().findByType("Timer").props.identity, identity); assert.equal(ui.counts.timerMounts, 1); assert.equal(ui.counts.timerUnmounts, 0);
+    assert.equal(ui.root().findByType("Stack"), navigator); assert.equal(ui.root().findByType("Reward"), rewards);
+    assert.equal(ui.root().findByType("OnlineSurface").props.active, false);
+    assert.equal(ui.root().findByType("Quests").props.online, false); assert.equal(ui.counts.questMounts, 1);
     assert.equal(ui.counts.userMounts, 1);
   } finally { await ui.cleanup(); }
 });

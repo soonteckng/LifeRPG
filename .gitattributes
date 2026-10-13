@@ -1,0 +1,2 @@
+# Keep Expo's local Android module fingerprint stable on Windows checkouts.
+modules/session-countdown/android/** text eol=lf

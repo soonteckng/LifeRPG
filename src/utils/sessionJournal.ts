@@ -6,6 +6,9 @@ import {
   JOURNAL_START_STOP_REASON,
   JOURNAL_START_STOP_CONFIRMED_REASON,
   JOURNAL_VERSION,
+  JOURNAL_CLIENT_TIMING_VERSION,
+  JOURNAL_CLIENT_MAX_SEGMENTS,
+  JOURNAL_CLIENT_MAX_SPAN_MS,
   JournalValidationError,
   type JournalAction,
   type JournalClock,
@@ -18,6 +21,8 @@ import {
   type JournalServerSnapshot,
   type JournalSetup,
   type JournalTimerView,
+  type ClientSessionSubmission,
+  type JournalClientTiming,
 } from "../types/sessionJournal";
 import {
   isJournalUuid,
@@ -83,7 +88,7 @@ function commandFor(envelope: JournalEnvelope, id: string): JournalCommand {
 }
 
 function assertNoUnresolved(envelope: JournalEnvelope, id?: string): void {
-  if (envelope.commands.some(command => unresolved(command) && (!id || command.clientSessionId === id))) {
+  if (envelope.commands.some(command => unresolved(command) && (id ? command.clientSessionId === id : command.kind !== "import"))) {
     fail("unresolved_command");
   }
 }
@@ -109,6 +114,8 @@ export function isJournalRecordPrunable(envelope: JournalEnvelope, record: Journ
   if (!saved || (saved.state !== "completed" && saved.state !== "cancelled")
     || envelope.commands.some(command => command.clientSessionId === saved.clientSessionId && unresolved(command))) return false;
   if (saved.sync.state === "rejected") return saved.dismissedAtMs !== null;
+  if (saved.state === "cancelled" && saved.clientTiming?.offlineOrigin && saved.sync.state === "synced"
+      && saved.serverSessionId === null && saved.sync.receipt === null) return true;
   if (saved.sync.state !== "synced" || !isJournalUuid(saved.serverSessionId)) return false;
   return saved.state === "cancelled" || (saved.sync.receipt !== null
     && saved.sync.receipt.sessionId === saved.serverSessionId
@@ -288,6 +295,67 @@ export function deriveJournalTimer(record: JournalRecord, clock: JournalClock): 
   return { remainingMs, elapsedMs: targetMs - remainingMs, expired: remainingMs === 0, clockWarning: warning };
 }
 
+/** Detached canonical submission; retries never use their wall clock or new IDs. */
+export function buildClientSessionSubmission(record: JournalRecord): ClientSessionSubmission {
+  const timing = record.clientTiming;
+  if (!timing || !["completed", "cancelled"].includes(record.state) || record.startedAtMs === null
+      || timing.segments.some(segment => segment.endedAtMs === null)
+      || (record.state === "cancelled" && timing.offlineOrigin)) fail("invalid_transition");
+  const endedAtMs = record.state === "completed" ? record.completedAtMs : record.observedAtMs;
+  if (!timestamp(endedAtMs)) fail("invalid_action");
+  return {
+    policyVersion: 1, ending: record.state as "completed" | "cancelled", clientSessionId: record.clientSessionId,
+    serverSessionId: timing.offlineOrigin ? null : record.serverSessionId,
+    expectedRevision: timing.serverRevision, setup: copySetup(record.setup),
+    startedAtMs: record.startedAtMs, endedAtMs,
+    serverConfirmedMs: timing.serverConfirmedMs, serverObservedAtMs: timing.serverObservedAtMs,
+    segments: timing.segments.map(segment => ({ startedAtMs: segment.startedAtMs, endedAtMs: segment.endedAtMs! })),
+    clockWarning: record.clockWarning,
+  };
+}
+
+function clientTimingFor(record: JournalRecord): JournalClientTiming {
+  if (!record.clientTiming || record.verification !== "client_reported") fail("invalid_transition");
+  return { ...record.clientTiming, segments: record.clientTiming.segments.map(segment => ({ ...segment })) };
+}
+
+function closeClientInterval(record: JournalRecord, clock: JournalClock): JournalRecord {
+  const timing = clientTimingFor(record);
+  const timer = deriveJournalTimer(record, clock);
+  let observedAtMs = clock.wallTimeMs;
+  if (record.state === "running") {
+    const segment = timing.segments.at(-1);
+    if (!segment || segment.endedAtMs !== null) fail("invalid_transition");
+    segment.endedAtMs = segment.startedAtMs + timer.elapsedMs - record.elapsedMs;
+    if (segment.endedAtMs - record.startedAtMs! > JOURNAL_CLIENT_MAX_SPAN_MS) fail("invalid_transition");
+    observedAtMs = segment.endedAtMs;
+    // Two taps within one clock millisecond do not constitute active effort.
+    // Omitting that empty interval also avoids an invalid server submission.
+    if (segment.endedAtMs === segment.startedAtMs) timing.segments.pop();
+  }
+  return { ...record, clientTiming: timing, elapsedMs: timer.elapsedMs, clockWarning: timer.clockWarning,
+    clockAnchor: null, endsAtMs: null, observedAtMs };
+}
+
+function finishClientRecord(envelope: JournalEnvelope, record: JournalRecord, clock: JournalClock,
+  operationId: string, ending: "completed" | "cancelled"): JournalEnvelope {
+  const timer = deriveJournalTimer(record, clock);
+  if (ending === "completed" && !timer.expired) fail("not_expired");
+  const closed = closeClientInterval(record, clock);
+  if (ending === "cancelled") {
+    if (clock.wallTimeMs < (closed.observedAtMs ?? record.startedAtMs!)) fail("invalid_transition");
+    closed.observedAtMs = clock.wallTimeMs;
+  }
+  const finished: JournalRecord = { ...closed, revision: record.revision + 1, state: ending,
+    completedAtMs: ending === "completed" ? closed.observedAtMs : null,
+    endsAtMs: ending === "completed" ? closed.observedAtMs : null,
+    sync: { ...record.sync, state: "pending", nextAttemptAtMs: null, reasonCode: null } };
+  const request = buildClientSessionSubmission(finished) as unknown as JournalCommand["request"];
+  const command = makeCommand(operationId, record.clientSessionId, "import", clock.wallTimeMs, request);
+  if (replayPrepared(envelope, command)) return detach(envelope);
+  return advance(envelope, finished, command);
+}
+
 /** Slice A: durable online intents and recovery, with no local timing transitions. */
 export function applyJournalAction(envelope: JournalEnvelope, action: JournalAction): JournalEnvelope {
   validateJournalEnvelope(envelope, envelope.scope);
@@ -306,6 +374,150 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
   if (!envelope.admission.active) fail("inactive_admission");
 
   switch (action.type) {
+    case "local_start": {
+      validateJournalSetup(action.setup); validateJournalClock(action.clock);
+      if (!isJournalUuid(action.clientSessionId)) fail("invalid_action");
+      assertNoUnresolved(envelope);
+      if (envelope.records.some(record => ["not_started", "running", "paused"].includes(record.state)
+          || record.clientSessionId === action.clientSessionId)) fail("session_conflict");
+      const record: JournalRecord = {
+        clientSessionId: action.clientSessionId, serverSessionId: null, revision: 1, state: "running",
+        setup: copySetup(action.setup), startedAtMs: action.clock.wallTimeMs, elapsedMs: 0,
+        clockAnchor: copyClock(action.clock), endsAtMs: action.clock.wallTimeMs + action.setup.targetSeconds * 1000,
+        completedAtMs: null, observedAtMs: action.clock.wallTimeMs, dismissedAtMs: null,
+        verification: "client_reported", clockWarning: false,
+        clientTiming: { policyVersion: 1, offlineOrigin: true, segments: [{ startedAtMs: action.clock.wallTimeMs, endedAtMs: null }],
+          serverRevision: null, serverObservedAtMs: null, serverConfirmedMs: 0 },
+        sync: { state: "idle", attempts: 0, nextAttemptAtMs: null, reasonCode: null, receipt: null },
+      };
+      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION }, record);
+    }
+    case "remember_server_checkpoint": {
+      assertVerifiedScope(envelope, action.verifiedScope);
+      const record = recordFor(envelope, action.clientSessionId), checkpoint = action.serverCheckpoint;
+      if (record.clientTiming || !record.serverSessionId || !["running", "paused"].includes(record.state)
+          || !checkpoint || !integer(checkpoint.revision) || !timestamp(checkpoint.observedAtMs)
+          || !integer(checkpoint.confirmedMs) || checkpoint.confirmedMs !== record.elapsedMs
+          || checkpoint.clientSessionId !== record.clientSessionId
+          || checkpoint.observedAtMs < record.startedAtMs!) fail("snapshot_conflict");
+      assertNoUnresolved(envelope, record.clientSessionId);
+      if (record.serverCheckpoint && checkpoint.revision < record.serverCheckpoint.revision) fail("snapshot_conflict");
+      if (journalJsonEqual(record.serverCheckpoint ?? null, checkpoint)) return detach(envelope);
+      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION },
+        { ...record, revision: record.revision + 1, serverCheckpoint: { ...checkpoint } });
+    }
+    case "enter_client_timing": {
+      const record = recordFor(envelope, action.clientSessionId), checkpoint = record.serverCheckpoint;
+      validateJournalClock(action.clock);
+      if (record.clientTiming) return detach(envelope);
+      assertNoUnresolved(envelope, record.clientSessionId);
+      if (!record.serverSessionId || !["running", "paused"].includes(record.state) || !checkpoint
+          || action.serverRevision !== checkpoint.revision || action.serverObservedAtMs !== checkpoint.observedAtMs
+          || (action.serverConfirmedMs !== undefined && action.serverConfirmedMs !== checkpoint.confirmedMs)
+          || action.clock.wallTimeMs !== checkpoint.observedAtMs
+          || checkpoint.confirmedMs !== record.elapsedMs) fail("snapshot_conflict");
+      const running = record.state === "running";
+      return advance(envelope, { ...record, revision: record.revision + 1, verification: "client_reported",
+        clockAnchor: running ? copyClock(action.clock) : null,
+        endsAtMs: running ? checkpoint.observedAtMs + record.setup.targetSeconds * 1000 - checkpoint.confirmedMs : null,
+        clientTiming: { policyVersion: 1, offlineOrigin: false, serverRevision: checkpoint.revision,
+          serverObservedAtMs: checkpoint.observedAtMs, serverConfirmedMs: checkpoint.confirmedMs,
+          segments: running ? [{ startedAtMs: checkpoint.observedAtMs, endedAtMs: null }] : [] } });
+    }
+    case "local_pause": {
+      const record = recordFor(envelope, action.clientSessionId);
+      if (record.state !== "running") fail("invalid_transition");
+      assertNoUnresolved(envelope, record.clientSessionId);
+      if (deriveJournalTimer(record, action.clock).expired) fail("not_expired");
+      return advance(envelope, { ...closeClientInterval(record, action.clock), revision: record.revision + 1, state: "paused" });
+    }
+    case "local_resume": {
+      const record = recordFor(envelope, action.clientSessionId), timing = clientTimingFor(record);
+      validateJournalClock(action.clock);
+      assertNoUnresolved(envelope, record.clientSessionId);
+      const lastEnd = timing.segments.at(-1)?.endedAtMs ?? timing.serverObservedAtMs ?? record.startedAtMs!;
+      if (record.state !== "paused" || record.elapsedMs >= record.setup.targetSeconds * 1000
+          || action.clock.wallTimeMs < lastEnd || action.clock.wallTimeMs - record.startedAtMs! > JOURNAL_CLIENT_MAX_SPAN_MS
+          || timing.segments.length >= JOURNAL_CLIENT_MAX_SEGMENTS) fail("invalid_transition");
+      timing.segments.push({ startedAtMs: action.clock.wallTimeMs, endedAtMs: null });
+      return advance(envelope, { ...record, revision: record.revision + 1, state: "running", clientTiming: timing,
+        clockAnchor: copyClock(action.clock), endsAtMs: action.clock.wallTimeMs + record.setup.targetSeconds * 1000 - record.elapsedMs,
+        observedAtMs: action.clock.wallTimeMs });
+    }
+    case "local_cancel": {
+      const record = recordFor(envelope, action.clientSessionId);
+      clientTimingFor(record); validateJournalClock(action.clock);
+      if (!["running", "paused"].includes(record.state)) fail("invalid_transition");
+      assertNoUnresolved(envelope, record.clientSessionId);
+      const timer = deriveJournalTimer(record, action.clock);
+      if (timer.expired) {
+        if (!isJournalUuid(action.operationId)) fail("invalid_action");
+        return finishClientRecord(envelope, record, action.clock, action.operationId, "completed");
+      }
+      if (!record.clientTiming!.offlineOrigin) {
+        if (!isJournalUuid(action.operationId)) fail("invalid_action");
+        return finishClientRecord(envelope, record, action.clock, action.operationId, "cancelled");
+      }
+      return advance(envelope, { ...closeClientInterval(record, action.clock), revision: record.revision + 1,
+        state: "cancelled", sync: { ...record.sync, state: "synced", nextAttemptAtMs: null, reasonCode: null } });
+    }
+    case "local_expire": {
+      const record = recordFor(envelope, action.clientSessionId);
+      clientTimingFor(record); validateJournalClock(action.clock);
+      if (record.state === "completed") {
+        const existing = commandFor(envelope, action.operationId);
+        if (existing.kind !== "import" || existing.clientSessionId !== record.clientSessionId) fail("operation_conflict");
+        return detach(envelope);
+      }
+      if (!["running", "paused"].includes(record.state)) fail("invalid_transition");
+      assertNoUnresolved(envelope, record.clientSessionId);
+      return finishClientRecord(envelope, record, action.clock, action.operationId, "completed");
+    }
+    case "acknowledge_import": {
+      assertVerifiedScope(envelope, action.verifiedScope);
+      const record = recordFor(envelope, action.clientSessionId);
+      clientTimingFor(record);
+      const command = envelope.commands.find(item => item.clientSessionId === record.clientSessionId && item.kind === "import");
+      if (!command || !["completed", "cancelled"].includes(record.state)) fail("invalid_transition");
+      if (record.state === "cancelled") {
+        if (action.receipt !== null || record.clientTiming!.offlineOrigin) fail("receipt_conflict");
+        if (action.remoteCompletedReceipt) {
+          validateJournalReceipt(action.remoteCompletedReceipt);
+          if (action.remoteCompletedReceipt.sessionId !== record.serverSessionId
+            || action.remoteCompletedReceipt.durationSeconds !== record.setup.targetSeconds) fail("receipt_conflict");
+        }
+      } else {
+        if (action.remoteCompletedReceipt) fail("receipt_conflict");
+        validateJournalReceipt(action.receipt);
+        if (action.receipt.durationSeconds !== record.setup.targetSeconds
+            || (record.serverSessionId !== null && action.receipt.sessionId !== record.serverSessionId)) fail("receipt_conflict");
+      }
+      if (record.sync.state === "synced") {
+        if (command.status !== "acknowledged" || (record.sync.receipt === null ? action.receipt !== null
+          : action.receipt === null || !sameReceipt(record.sync.receipt, action.receipt))) fail("receipt_conflict");
+        return detach(envelope);
+      }
+      if (!unresolved(command)) fail("operation_settled");
+      return advance(envelope, { ...record, revision: record.revision + 1,
+        serverSessionId: action.receipt?.sessionId ?? record.serverSessionId,
+        sync: { ...record.sync, state: "synced", reasonCode: action.remoteCompletedReceipt ? "server_completed_before_end" : null, nextAttemptAtMs: null, receipt: action.receipt } },
+      { ...command, status: "acknowledged" });
+    }
+    case "reject_import": {
+      const record = recordFor(envelope, action.clientSessionId);
+      clientTimingFor(record);
+      if (typeof action.reasonCode !== "string" || !action.reasonCode.length || action.reasonCode.length > 128) fail("invalid_action");
+      const command = envelope.commands.find(item => item.clientSessionId === record.clientSessionId && item.kind === "import");
+      if (!command || !["completed", "cancelled"].includes(record.state)) fail("invalid_transition");
+      if (command.status === "rejected") {
+        if (record.sync.reasonCode !== action.reasonCode) fail("operation_conflict");
+        return detach(envelope);
+      }
+      if (!unresolved(command)) fail("operation_settled");
+      return advance(envelope, { ...record, revision: record.revision + 1,
+        sync: { ...record.sync, state: "rejected", nextAttemptAtMs: null, reasonCode: action.reasonCode } },
+      { ...command, status: "rejected" });
+    }
     case "prepare_start": {
       validateJournalSetup(action.setup);
       validateJournalClock(action.clock);
@@ -392,7 +604,8 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
           || (action.clockWarning !== undefined && typeof action.clockWarning !== "boolean")) fail("invalid_action");
       assertNoUnresolved(envelope);
       if (envelope.records.some(item => ["not_started", "running", "paused"].includes(item.state)
-          || item.clientSessionId === action.clientSessionId || item.serverSessionId === action.snapshot.serverSessionId)) fail("session_conflict");
+          || item.clientSessionId === action.clientSessionId || item.serverSessionId === action.snapshot.serverSessionId
+            && !(item.clientTiming && item.sync.state === "rejected" && item.dismissedAtMs !== null))) fail("session_conflict");
       const seed: JournalRecord = {
         clientSessionId: action.clientSessionId, serverSessionId: action.snapshot.serverSessionId,
         revision: 0, state: "not_started", setup: copySetup(action.setup), startedAtMs: null,
@@ -406,6 +619,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       assertVerifiedScope(envelope, action.verifiedScope);
       validateJournalClock(action.clock);
       const record = recordFor(envelope, action.clientSessionId);
+      if (record.clientTiming) fail("invalid_transition");
       assertRemoteSetup(record, action.setup);
       if (!record.serverSessionId || (action.clockWarning !== undefined && typeof action.clockWarning !== "boolean")
           || (!!action.snapshot === !!action.receipt)) fail("invalid_action");
@@ -419,7 +633,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
         if (record.state === "completed") {
           // A remote cancellation cannot rewrite a locally finished deadline.
           if (snapshot.state !== "cancelled") return detach(envelope);
-          if (record.sync.receipt || record.dismissedAtMs !== null) fail("invalid_transition");
+          if (record.sync.receipt) fail("invalid_transition");
           if (!pending || pending.kind !== "complete") fail("invalid_transition");
           pending.status = "rejected";
           return advanceRemote(envelope, { ...record, revision: record.revision + 1,
@@ -449,7 +663,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
           || !timestamp(action.startedAtMs) || !timestamp(action.completedAtMs)
           || action.completedAtMs < action.startedAtMs
           || (record.startedAtMs !== null && record.startedAtMs !== action.startedAtMs)
-          || record.state === "cancelled" || record.dismissedAtMs !== null) fail("receipt_conflict");
+          || record.state === "cancelled" || record.dismissedAtMs !== null && record.state !== "completed") fail("receipt_conflict");
       if (record.sync.receipt !== null) {
         if (!sameReceipt(record.sync.receipt, receipt)) fail("receipt_conflict");
         return detach(envelope);
@@ -481,6 +695,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
     case "prepare_transition": {
       if (!["pause", "resume", "cancel"].includes(action.kind)) fail("invalid_action");
       const record = recordFor(envelope, action.clientSessionId);
+      if (record.clientTiming) fail("invalid_transition");
       if (record.sync.reasonCode === JOURNAL_START_STOP_REASON && action.kind !== "cancel") fail("invalid_transition");
       validateJournalClock(action.clock);
       const command = makeCommand(action.operationId, action.clientSessionId, action.kind, action.clock.wallTimeMs,
@@ -531,6 +746,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
     case "reject_command": {
       if (typeof action.reasonCode !== "string" || !action.reasonCode.length) fail("invalid_action");
       const command = commandFor(envelope, action.operationId);
+      if (command.kind === "import") fail("invalid_transition");
       const record = recordFor(envelope, command.clientSessionId);
       if (command.status === "rejected") {
         if (record.sync.reasonCode !== action.reasonCode) fail("operation_conflict");
@@ -547,6 +763,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
     }
     case "expire": {
       const record = recordFor(envelope, action.clientSessionId);
+      if (record.clientTiming) fail("invalid_transition");
       if (record.sync.reasonCode === JOURNAL_START_STOP_REASON) fail("invalid_transition");
       validateJournalClock(action.clock);
       const completedAtMs = record.state === "completed" ? record.completedAtMs
@@ -596,9 +813,9 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
         || !timestamp(action.nowMs + action.delayMs) || typeof action.waitingAuth !== "boolean"
         || typeof action.reasonCode !== "string" || !action.reasonCode.length) fail("invalid_action");
       const record = recordFor(envelope, action.clientSessionId);
-      if (record.state !== "completed" || record.sync.receipt !== null
+      if ((record.state !== "completed" && !(record.state === "cancelled" && record.clientTiming)) || record.sync.receipt !== null
         || !envelope.commands.some(command => command.clientSessionId === record.clientSessionId
-          && command.kind === "complete" && unresolved(command))) fail("invalid_transition");
+          && (command.kind === "complete" || command.kind === "import") && unresolved(command))) fail("invalid_transition");
       return advance(envelope, {
         ...record, revision: record.revision + 1,
         sync: { ...record.sync, state: action.waitingAuth ? "waiting_auth" : "pending",
@@ -608,12 +825,17 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
     case "dismiss": {
       if (!timestamp(action.dismissedAtMs)) fail("invalid_action");
       const record = recordFor(envelope, action.clientSessionId);
-      if ((record.state !== "completed" && record.state !== "cancelled") || record.sync.state !== "rejected") {
+      if ((record.state !== "completed" && record.state !== "cancelled")
+          || (record.state === "cancelled" && !record.clientTiming && !["synced", "rejected"].includes(record.sync.state))) {
         fail("invalid_transition");
       }
-      assertNoUnresolved(envelope, record.clientSessionId);
+      if (envelope.commands.some(command => command.clientSessionId === record.clientSessionId && unresolved(command)
+          && !(record.clientTiming && command.kind === "import")
+          && !(record.state === "completed" && command.kind === "complete"))) fail("unresolved_command");
       if (record.dismissedAtMs !== null) return detach(envelope);
-      return advance(envelope, {
+      // v2 allows closing a terminal result's presentation while its original
+      // completion command remains durable and independently retryable.
+      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION }, {
         ...record, revision: record.revision + 1, dismissedAtMs: action.dismissedAtMs,
       });
     }
@@ -638,4 +860,16 @@ export function pendingServerCompletions(envelope: JournalEnvelope, verifiedScop
         ...record, setup: copySetup(record.setup), clockAnchor: record.clockAnchor ? copyClock(record.clockAnchor) : null,
         sync: { ...record.sync },
       }));
+}
+
+/** Owner-bound local queue. A reconnect hint alone is never upload authority. */
+export function queuedClientCompletions(envelope: JournalEnvelope, verifiedScope: JournalScope): JournalRecord[] {
+  validateJournalEnvelope(envelope, verifiedScope);
+  if (!envelope.admission.active) return [];
+  return envelope.records.filter(record => record.clientTiming && ["completed", "cancelled"].includes(record.state)
+    && record.sync.receipt === null && ["pending", "waiting_auth"].includes(record.sync.state)
+    && envelope.commands.some(command => command.clientSessionId === record.clientSessionId
+      && command.kind === "import" && unresolved(command)))
+    .sort((left, right) => (left.completedAtMs ?? left.observedAtMs ?? 0) - (right.completedAtMs ?? right.observedAtMs ?? 0))
+    .map(record => JSON.parse(JSON.stringify(record)) as JournalRecord);
 }

@@ -162,6 +162,7 @@ async function pickerSetup(rows){
     'expo-router/react-navigation':{usePreventRemove(){}},
     'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({top:0,bottom:24})},
     '../context/TimerContext':{useTimer:()=>timer},
+    '../context/AuthContext':{useAuth:()=>({accessMode:'online'})},
     '../context/QuestContext':{useQuests:()=>({tasks:rows,subjects,loading:false,error:false,refresh:async fresh=>calls.push(['refresh',!!fresh])})},
     '../hooks/useReducedMotion':{useReducedMotion:()=>true},'./AppText':{Text:host('Text')},'./MotionPressable':host('Button'),
     './AppHeader':host('Header'),'./AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children):null,

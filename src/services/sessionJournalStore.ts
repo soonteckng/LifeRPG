@@ -85,6 +85,14 @@ export function sessionJournalKey(scope: JournalScope): string {
   return `liferpg:session-journal:v1:${encodeURIComponent(scope.backendId)}:${encodeURIComponent(scope.ownerId)}`;
 }
 
+function isClientPresentationDismissal(before: JournalEnvelope, next: JournalEnvelope,
+  record: JournalRecord, candidate: JournalRecord): boolean {
+  return next.schemaVersion === 2 && (record.state === "completed" || !!record.clientTiming && record.state === "cancelled")
+    && equal({ ...record, revision: record.revision + 1, dismissedAtMs: candidate.dismissedAtMs }, candidate)
+    && equal(before.commands.filter(command => command.clientSessionId === record.clientSessionId),
+      next.commands.filter(command => command.clientSessionId === record.clientSessionId));
+}
+
 /**
  * Storage foundation only. It has no auth, timer provider or network side effects.
  * A transform must be synchronous and pure; its input and returned result are detached.
@@ -169,6 +177,7 @@ export function createSessionJournalStore(storage: SessionJournalStorage, reques
       catch (error) { throw new JournalStorageError("invalid_update", validationReason(error)); }
       if (equal(before, next)) return clone(before);
       if (next.revision !== before.revision + 1) throw new JournalStorageError("revision_mismatch");
+      if (next.schemaVersion < before.schemaVersion) throw new JournalStorageError("invalid_update", "unsupported_version");
       // Count/size retention policy belongs to the trusted pure reducer. Storage
       // independently protects unsettled work and requires a whole safe record
       // and all its commands to be removed in the same durable replacement.
@@ -188,8 +197,37 @@ export function createSessionJournalStore(storage: SessionJournalStorage, reques
             (record.startedAtMs !== null && record.startedAtMs !== candidate.startedAtMs)) {
           throw new JournalStorageError("invalid_update", "invalid_record");
         }
+        if (record.clientTiming) {
+          const prior = record.clientTiming, proposedTiming = candidate.clientTiming;
+          // Closing a just-opened interval in the same millisecond contributes
+          // no effort. Only that empty final interval may be omitted; every
+          // earlier closed interval remains immutable.
+          const emptyFinalRemoved = proposedTiming && prior.segments.length === proposedTiming.segments.length + 1
+            && prior.segments.at(-1)?.endedAtMs === null
+            && candidate.observedAtMs === prior.segments.at(-1)?.startedAtMs
+            && candidate.elapsedMs === record.elapsedMs && record.state === "running"
+            && ["paused", "cancelled"].includes(candidate.state);
+          if (!proposedTiming || proposedTiming.policyVersion !== prior.policyVersion
+              || proposedTiming.offlineOrigin !== prior.offlineOrigin
+              || proposedTiming.serverRevision !== prior.serverRevision
+              || proposedTiming.serverObservedAtMs !== prior.serverObservedAtMs
+              || proposedTiming.serverConfirmedMs !== prior.serverConfirmedMs
+              || proposedTiming.segments.length < prior.segments.length && !emptyFinalRemoved
+              || prior.segments.some((segment, index) => {
+                if (emptyFinalRemoved && index === prior.segments.length - 1) return false;
+                const updated = proposedTiming.segments[index];
+                return updated.startedAtMs !== segment.startedAtMs
+                  || (segment.endedAtMs !== null && updated.endedAtMs !== segment.endedAtMs);
+              }) || candidate.verification !== record.verification
+              || !equal(record.serverCheckpoint, candidate.serverCheckpoint)) {
+            throw new JournalStorageError("invalid_update", "invalid_record");
+          }
+        } else if (candidate.clientTiming && ["completed", "cancelled", "not_started"].includes(record.state)) {
+          throw new JournalStorageError("invalid_update", "invalid_record");
+        }
+        if (record.serverCheckpoint && !candidate.serverCheckpoint) throw new JournalStorageError("invalid_update", "invalid_record");
         if (["completed", "cancelled"].includes(record.state)) {
-          const terminalFields = ["state", "elapsedMs", "endsAtMs", "completedAtMs", "observedAtMs", "clockAnchor", "clockWarning"] as const;
+          const terminalFields = ["state", "elapsedMs", "endsAtMs", "completedAtMs", "observedAtMs", "clockAnchor", "clockWarning", "clientTiming", "serverCheckpoint"] as const;
           if (terminalFields.some(field => !equal(record[field], candidate[field]))) {
             throw new JournalStorageError("invalid_update", "invalid_record");
           }
@@ -205,7 +243,8 @@ export function createSessionJournalStore(storage: SessionJournalStorage, reques
           // settling an unknown command and dismissing it cannot be one shortcut.
           const dismissed = { ...record, dismissedAtMs: candidate.dismissedAtMs };
           const dismissal = { ...before, records: before.records.map(item => item.clientSessionId === record.clientSessionId ? dismissed : item) };
-          if (!isJournalRecordPrunable(dismissal, dismissed) && !isConfirmedStartStop(before, next, record, candidate)) {
+          if (!isJournalRecordPrunable(dismissal, dismissed) && !isConfirmedStartStop(before, next, record, candidate)
+              && !isClientPresentationDismissal(before, next, record, candidate)) {
             throw new JournalStorageError("invalid_update", "invalid_record");
           }
         }
@@ -223,6 +262,20 @@ export function createSessionJournalStore(storage: SessionJournalStorage, reques
       let encoded: string;
       try { encoded = serializeJournalEnvelope(next); }
       catch (error) { throw new JournalStorageError("invalid_update", validationReason(error)); }
+      if (before.schemaVersion === 1 && next.schemaVersion === 2) {
+        // Preserve the exact old bytes before changing the only authority's
+        // format. A failed or unverifiable archive leaves v1 untouched.
+        const original = await read(key);
+        if (original !== null) {
+          try { if (!equal(parseJournalEnvelope(original, scope), before)) throw new Error(); }
+          catch { throw new JournalStorageError("source_changed"); }
+          const backupKey = `${key}:backup:v1:${before.revision}`;
+          const backup = await read(backupKey);
+          if (backup !== null && backup !== original) throw new JournalStorageError("source_changed");
+          if (backup === null) await write(backupKey, original, "write_failed");
+          if (await read(backupKey) !== original) throw new JournalStorageError("write_failed");
+        }
+      }
       await write(key, encoded, "write_failed");
       return clone(next);
     }),

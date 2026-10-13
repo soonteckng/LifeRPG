@@ -254,6 +254,24 @@ test('quest prefill uses accepted completed duration and makes extra seconds exp
  await ui.cleanup();
 });
 
+test('a held completion keeps its original quest draft after live timer fields clear during dismissal',async()=>{
+ const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ let timer={targetAttributeId:8,sessionSummary:null};
+ const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+  '@react-native-async-storage/async-storage':storage().api,
+  '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
+  '../context/TimerContext':{useTimer:()=>timer},'./QuestSheet':host('QuestEditor'),
+ })).default;
+ const completion={ownerId:'owner',sessionId:'original-result',suggestion:focus,durationSeconds:60,targetAttributeId:null};
+ const ui=await render(Save,{inSheet:true,completion});
+ try {
+  timer={targetAttributeId:9,duration:1800,sessionSummary:null};await ui.update({inSheet:true,completion});
+  await ui.press('Save as quest');const editor=ui.tree.root.findByType('QuestEditor');
+  assert.equal(editor.props.initialDraft.minutes,'1');assert.equal(editor.props.initialDraft.subjectId,null);
+  assert.equal(editor.props.initialDraft.title,focus.title);assert.equal(editor.props.expectedOwnerId,'owner');
+ }finally{await ui.cleanup();}
+});
+
 test('a late created callback cannot mark another owner or session as saved',async()=>{
  const db=storage(),focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
  let owner='first',sessionId='old';

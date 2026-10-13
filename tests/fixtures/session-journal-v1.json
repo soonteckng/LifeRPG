@@ -1872,7 +1872,7 @@
     },
     {
       "name": "unknown wire version",
-      "raw": "{\"schemaVersion\":2}",
+      "raw": "{\"schemaVersion\":3}",
       "expectedErrorCode": "unsupported_version"
     },
     {

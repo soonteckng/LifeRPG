@@ -1,5 +1,6 @@
 import {
   JOURNAL_MAX_BYTES, JOURNAL_MAX_COMMANDS, JOURNAL_MAX_RECORDS, JOURNAL_VERSION,
+  JOURNAL_CLIENT_TIMING_VERSION, JOURNAL_CLIENT_MAX_SEGMENTS, JOURNAL_CLIENT_MAX_SPAN_MS,
   JournalValidationError,
   type JournalClock, type JournalEnvelope, type JournalJson, type JournalReceipt,
   type JournalScope, type JournalSetup,
@@ -28,8 +29,8 @@ function integer(value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): value 
 function text(value: unknown, max = 1024): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= max;
 }
-function timestamp(value: unknown): boolean { return integer(value, 0, 8_640_000_000_000_000); }
-function nullableTime(value: unknown): boolean { return value === null || timestamp(value); }
+function timestamp(value: unknown): value is number { return integer(value, 0, 8_640_000_000_000_000); }
+function nullableTime(value: unknown): value is number | null { return value === null || timestamp(value); }
 function json(value: unknown, depth = 0): void {
   if (depth > 16) invalid();
   if (value === null || typeof value === "boolean") return;
@@ -87,10 +88,62 @@ export function validateJournalReceipt(value: unknown): asserts value is Journal
     if (Object.hasOwn(result, flag) && typeof result[flag] !== "boolean") invalid();
 }
 
-function validateRecord(value: unknown): JsonObject {
+function validateClientTiming(item: JsonObject): void {
+  const timing = object(item.clientTiming);
+  keys(timing, ["policyVersion", "offlineOrigin", "segments", "serverRevision", "serverObservedAtMs", "serverConfirmedMs"]);
+  const targetMs = (item.setup as JournalSetup).targetSeconds * 1000;
+  if (timing.policyVersion !== 1 || typeof timing.offlineOrigin !== "boolean"
+      || !integer(timing.serverConfirmedMs, 0, targetMs)
+      || !(timing.serverRevision === null || integer(timing.serverRevision))
+      || !nullableTime(timing.serverObservedAtMs) || !Array.isArray(timing.segments)
+      || timing.segments.length > JOURNAL_CLIENT_MAX_SEGMENTS || !timestamp(item.startedAtMs)
+      || item.verification !== "client_reported" || item.state === "not_started") invalid();
+  if (timing.offlineOrigin) {
+    if (timing.serverRevision !== null || timing.serverObservedAtMs !== null || timing.serverConfirmedMs !== 0
+        || (item.serverSessionId !== null && (object(item.sync).state !== "synced" || item.state !== "completed"))) invalid();
+  } else if (!item.serverCheckpoint || !isJournalUuid(item.serverSessionId) || !integer(timing.serverRevision)
+      || !timestamp(timing.serverObservedAtMs) || timing.serverObservedAtMs < (item.startedAtMs as number)) invalid();
+  let elapsed = timing.serverConfirmedMs as number;
+  let previousEnd = (timing.serverObservedAtMs ?? item.startedAtMs) as number;
+  let open = 0;
+  for (let index = 0; index < timing.segments.length; index++) {
+    const segment = object(timing.segments[index]); keys(segment, ["startedAtMs", "endedAtMs"]);
+    if (!timestamp(segment.startedAtMs) || !nullableTime(segment.endedAtMs)
+        || segment.startedAtMs < previousEnd || segment.startedAtMs - (item.startedAtMs as number) > JOURNAL_CLIENT_MAX_SPAN_MS) invalid();
+    if (segment.endedAtMs === null) {
+      open++;
+      if (index !== timing.segments.length - 1 || item.state !== "running"
+          || object(item.clockAnchor).wallTimeMs !== segment.startedAtMs) invalid();
+    } else {
+      if ((segment.endedAtMs as number) < segment.startedAtMs
+          || (segment.endedAtMs as number) - (item.startedAtMs as number) > JOURNAL_CLIENT_MAX_SPAN_MS) invalid();
+      elapsed += (segment.endedAtMs as number) - segment.startedAtMs;
+      previousEnd = segment.endedAtMs as number;
+    }
+  }
+  if ((item.state === "running" ? open !== 1 : open !== 0) || elapsed !== item.elapsedMs) invalid();
+  const sync = object(item.sync);
+  if ((item.state === "running" || item.state === "paused") && sync.state !== "idle") invalid();
+  if (item.state === "completed") {
+    const last = timing.segments.at(-1) as JsonObject | undefined;
+    if (elapsed !== targetMs || !last || last.endedAtMs !== item.completedAtMs
+        || item.endsAtMs !== item.completedAtMs || !timestamp(item.observedAtMs)
+        || sync.state === "idle" || (sync.state === "synced" && sync.receipt === null)) invalid();
+  }
+  if (item.state === "cancelled") {
+    if (item.endsAtMs !== null || item.completedAtMs !== null || !timestamp(item.observedAtMs) || sync.receipt !== null
+        || (timing.offlineOrigin ? sync.state !== "synced" : !["pending", "waiting_auth", "synced", "rejected"].includes(sync.state as string))) invalid();
+  }
+}
+
+function validateRecord(value: unknown, version: number): JsonObject {
   const item = object(value);
+  const hasTiming = Object.hasOwn(item, "clientTiming");
+  const hasCheckpoint = Object.hasOwn(item, "serverCheckpoint");
+  if ((hasTiming || hasCheckpoint) && version !== JOURNAL_CLIENT_TIMING_VERSION) invalid();
   keys(item, ["clientSessionId", "serverSessionId", "revision", "state", "setup", "startedAtMs", "elapsedMs",
-    "clockAnchor", "endsAtMs", "completedAtMs", "observedAtMs", "dismissedAtMs", "verification", "clockWarning", "sync"]);
+    "clockAnchor", "endsAtMs", "completedAtMs", "observedAtMs", "dismissedAtMs", "verification", "clockWarning", "sync",
+    ...(hasTiming ? ["clientTiming"] : []), ...(hasCheckpoint ? ["serverCheckpoint"] : [])]);
   if (!isJournalUuid(item.clientSessionId) || !(item.serverSessionId === null || isJournalUuid(item.serverSessionId))
       || !integer(item.revision) || typeof item.state !== "string"
       || !["not_started", "running", "paused", "completed", "cancelled"].includes(item.state)
@@ -101,6 +154,19 @@ function validateRecord(value: unknown): JsonObject {
   if (!integer(item.elapsedMs, 0, targetMs)
       || ![item.startedAtMs, item.endsAtMs, item.completedAtMs, item.observedAtMs, item.dismissedAtMs].every(nullableTime)) invalid();
   if (item.clockAnchor !== null) validateJournalClock(item.clockAnchor as JournalClock);
+  if (hasCheckpoint) {
+    const checkpoint = object(item.serverCheckpoint);
+    keys(checkpoint, ["revision", "observedAtMs", "confirmedMs", "clientSessionId"]);
+    if (!integer(checkpoint.revision) || !timestamp(checkpoint.observedAtMs)
+        || !integer(checkpoint.confirmedMs, 0, targetMs) || checkpoint.clientSessionId !== item.clientSessionId
+        || !isJournalUuid(item.serverSessionId) || !timestamp(item.startedAtMs)
+        || checkpoint.observedAtMs < item.startedAtMs) invalid();
+    if (hasTiming) {
+      const timing = object(item.clientTiming);
+      if (timing.offlineOrigin || timing.serverRevision !== checkpoint.revision
+          || timing.serverObservedAtMs !== checkpoint.observedAtMs || timing.serverConfirmedMs !== checkpoint.confirmedMs) invalid();
+    }
+  }
   const sync = object(item.sync);
   keys(sync, ["state", "attempts", "nextAttemptAtMs", "reasonCode", "receipt"]);
   if (typeof sync.state !== "string" || !["idle", "pending", "waiting_auth", "synced", "rejected"].includes(sync.state)
@@ -112,8 +178,12 @@ function validateRecord(value: unknown): JsonObject {
     if (item.state !== "completed" || sync.state !== "synced") invalid();
   }
   if (item.dismissedAtMs !== null
-      && (sync.state !== "rejected" || !["completed", "cancelled"].includes(item.state as string))) invalid();
-  if (item.state === "not_started") {
+      && ((!hasTiming && sync.state !== "rejected" && !(version === JOURNAL_CLIENT_TIMING_VERSION
+        && (item.state === "completed" || item.state === "cancelled" && sync.state === "synced")))
+        || !["completed", "cancelled"].includes(item.state as string))) invalid();
+  if (hasTiming) {
+    validateClientTiming(item);
+  } else if (item.state === "not_started") {
     // A returned server ID is saved before reading its timing row. Until that
     // snapshot arrives, this remains a pending intent with no invented clock.
     if (item.startedAtMs !== null || item.elapsedMs !== 0 || item.clockAnchor !== null
@@ -133,7 +203,7 @@ function validateRecord(value: unknown): JsonObject {
     if (item.elapsedMs !== targetMs || item.completedAtMs === null || item.observedAtMs === null || sync.state === "idle"
         || (sync.state === "synced" && sync.receipt === null)) invalid();
   } else if (item.completedAtMs !== null || sync.receipt !== null) invalid();
-  if (item.state === "cancelled" && (item.endsAtMs !== null
+  if (!hasTiming && item.state === "cancelled" && (item.endsAtMs !== null
       || (item.serverSessionId !== null && sync.state !== "synced"))) invalid();
   return item;
 }
@@ -141,7 +211,8 @@ function validateRecord(value: unknown): JsonObject {
 export function validateJournalEnvelope(value: unknown, scope: JournalScope): JournalEnvelope {
   validateJournalScope(scope);
   const envelope = object(value);
-  if (envelope.schemaVersion !== JOURNAL_VERSION) throw new JournalValidationError("unsupported_version");
+  if (envelope.schemaVersion !== JOURNAL_VERSION && envelope.schemaVersion !== JOURNAL_CLIENT_TIMING_VERSION)
+    throw new JournalValidationError("unsupported_version");
   keys(envelope, ["schemaVersion", "scope", "revision", "admission", "records", "commands"]);
   validateJournalScope(envelope.scope as JournalScope);
   const savedScope = envelope.scope as JournalScope;
@@ -154,17 +225,21 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
   if (!Array.isArray(envelope.records) || !Array.isArray(envelope.commands)) invalid();
   if (envelope.records.length > JOURNAL_MAX_RECORDS || envelope.commands.length > JOURNAL_MAX_COMMANDS)
     throw new JournalValidationError("too_large");
-  const identities = new Set<string>(), serverIds = new Set<string>(), operations = new Set<string>();
+  const identities = new Set<string>(), operations = new Set<string>();
+  const serverRecords = new Map<string, JsonObject[]>();
   let open = 0;
   for (const value of envelope.records) {
-    const record = validateRecord(value);
+    const record = validateRecord(value, envelope.schemaVersion as number);
     const clientId = record.clientSessionId as string;
     if (identities.has(clientId)) invalid();
     identities.add(clientId);
     if (record.serverSessionId !== null) {
       const serverId = record.serverSessionId as string;
-      if (serverIds.has(serverId)) invalid();
-      serverIds.add(serverId);
+      const sameServer = serverRecords.get(serverId) ?? [];
+      sameServer.push(record); serverRecords.set(serverId, sameServer);
+      // An acknowledged conflict stays as immutable history while a fresh
+      // server-timed view restores the newer row. Only one may be actionable.
+      if (sameServer.filter(item => !(item.clientTiming && (item.sync as JsonObject).state === "rejected" && item.dismissedAtMs !== null)).length > 1) invalid();
     }
     if (["not_started", "running", "paused"].includes(record.state as string)) open++;
   }
@@ -175,7 +250,7 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
     keys(command, ["operationId", "clientSessionId", "kind", "status", "createdAtMs", "request"]);
     if (!isJournalUuid(command.operationId) || !isJournalUuid(command.clientSessionId)
         || operations.has(command.operationId) || !identities.has(command.clientSessionId)
-        || typeof command.kind !== "string" || !["start", "pause", "resume", "cancel", "complete"].includes(command.kind)
+        || typeof command.kind !== "string" || !["start", "pause", "resume", "cancel", "complete", "import"].includes(command.kind)
         || typeof command.status !== "string" || !["prepared", "unknown", "acknowledged", "rejected", "superseded"].includes(command.status)
         || !timestamp(command.createdAtMs)) invalid();
     operations.add(command.operationId);
@@ -193,6 +268,21 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
       validateJournalClock(request.clock as JournalClock);
       if (!journalJsonEqual(request.setup, record.setup)
           || (request.clock as JournalClock).wallTimeMs !== command.createdAtMs) invalid();
+    } else if (command.kind === "import") {
+      if (envelope.schemaVersion !== JOURNAL_CLIENT_TIMING_VERSION || !record.clientTiming
+          || !["completed", "cancelled"].includes(record.state as string)) invalid();
+      const timing = object(record.clientTiming);
+      keys(request, ["policyVersion", "ending", "clientSessionId", "serverSessionId", "expectedRevision", "setup",
+        "startedAtMs", "endedAtMs", "serverConfirmedMs", "serverObservedAtMs", "segments", "clockWarning"]);
+      const expected = {
+        policyVersion: 1, ending: record.state, clientSessionId: record.clientSessionId,
+        serverSessionId: timing.offlineOrigin ? null : record.serverSessionId,
+        expectedRevision: timing.serverRevision, setup: record.setup, startedAtMs: record.startedAtMs,
+        endedAtMs: record.state === "completed" ? record.completedAtMs : record.observedAtMs,
+        serverConfirmedMs: timing.serverConfirmedMs, serverObservedAtMs: timing.serverObservedAtMs,
+        segments: timing.segments, clockWarning: record.clockWarning,
+      };
+      if (!journalJsonEqual(request, expected) || (record.state === "cancelled" && timing.offlineOrigin)) invalid();
     } else if (command.kind === "complete") {
       keys(request, ["serverSessionId", "completedAtMs", "targetSeconds"]);
       if (request.serverSessionId !== record.serverSessionId || !isJournalUuid(request.serverSessionId)
@@ -211,22 +301,40 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
           || (command.kind === "resume" && record.state !== "paused")
           || (command.kind === "cancel" && record.state !== "running" && record.state !== "paused")
           || (command.kind === "complete" && (record.state !== "completed"
+            || !["pending", "waiting_auth"].includes((record.sync as JsonObject).state as string)))
+          || (command.kind === "import" && (!["completed", "cancelled"].includes(record.state as string)
             || !["pending", "waiting_auth"].includes((record.sync as JsonObject).state as string)))) invalid();
     }
   }
-  if (unresolvedCount > 1) invalid();
+  // Finished local imports queue independently; uncertain legacy commands still
+  // allow only one outstanding operation and block unsafe online mutations.
+  const unresolvedLegacy = (envelope.commands as JsonObject[])
+    .filter(command => ["prepared", "unknown"].includes(command.status as string) && command.kind !== "import");
+  if (unresolvedLegacy.length > 1 || (envelope.schemaVersion === JOURNAL_VERSION && unresolvedCount > 1)) invalid();
   for (const record of envelope.records as JsonObject[]) {
     const commands = (envelope.commands as JsonObject[]).filter(item => item.clientSessionId === record.clientSessionId);
     const isUnresolved = (item: JsonObject) => item.status === "prepared" || item.status === "unknown";
-    if (record.dismissedAtMs !== null && commands.some(isUnresolved)) invalid();
+    if (record.clientTiming && (record.state === "completed"
+        || (record.state === "cancelled" && !object(record.clientTiming).offlineOrigin))) {
+      const imports = commands.filter(command => command.kind === "import");
+      if (imports.length !== 1 || ((record.sync as JsonObject).state === "synced" && imports[0].status !== "acknowledged")) invalid();
+    }
+    if (record.dismissedAtMs !== null && commands.some(item => isUnresolved(item)
+      && !(record.clientTiming && item.kind === "import")
+      && !(envelope.schemaVersion === JOURNAL_CLIENT_TIMING_VERSION && record.state === "completed" && item.kind === "complete"))) invalid();
     if (record.state === "not_started" && !commands.some(item => item.kind === "start" && isUnresolved(item))) invalid();
     if (record.state === "not_started" && record.serverSessionId !== null
         && !commands.some(item => item.kind === "start" && item.status === "unknown")) invalid();
-    if (record.state === "completed" && ["pending", "waiting_auth"].includes((record.sync as JsonObject).state as string)
+    if (["completed", "cancelled"].includes(record.state as string) && record.clientTiming) {
+      if (["pending", "waiting_auth"].includes((record.sync as JsonObject).state as string)
+          && !commands.some(item => item.kind === "import" && isUnresolved(item))) invalid();
+      if ((record.sync as JsonObject).state === "rejected"
+          && !commands.some(item => item.kind === "import" && item.status === "rejected")) invalid();
+    } else if (record.state === "completed" && ["pending", "waiting_auth"].includes((record.sync as JsonObject).state as string)
         && !commands.some(item => item.kind === "complete" && isUnresolved(item))) invalid();
     if (record.state === "completed" && (record.sync as JsonObject).state === "rejected"
-        && !commands.some(item => item.kind === "complete" && item.status === "rejected")) invalid();
-    if (record.state === "cancelled" && record.serverSessionId === null
+        && !record.clientTiming && !commands.some(item => item.kind === "complete" && item.status === "rejected")) invalid();
+    if (record.state === "cancelled" && record.serverSessionId === null && !record.clientTiming
         && !commands.some(item => item.kind === "start" && item.status === "rejected")) invalid();
   }
   // Check the whole object for unexpected credential fields even inside receipts.

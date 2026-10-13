@@ -1,11 +1,13 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { uuid } from "expo-modules-core";
 import { readSuggestedFocus, encodeSuggestedFocus, suggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { createJournalSessionTransport } from "../services/sessionService";
 import { createAsyncStorageSessionJournalStore } from "../services/sessionJournalAsyncStorage";
 import { createSessionOwnerVerification } from "../services/sessionOwnerVerification";
+import { createOfflineCapabilityCache, createOfflineSessionTransport } from "../services/offlineSessionService";
 import { createSessionTimerController, type SessionTimerController, type SessionTimerControllerSnapshot } from "../services/sessionTimerController";
 import { createSessionNotificationLifecycle } from "../services/sessionNotificationService";
 import { createNativeSessionCountdownLifecycle } from "../services/nativeSessionCountdown";
@@ -35,20 +37,24 @@ interface SessionSummary {
   dailyCompletedSeconds?: number; dailyGoalMinutes?: number; goalReachedNow?: boolean; creditedDate?: string;
 }
 interface TimerContextType {
+  offlineAvailable: boolean;
+  clientReported: boolean;
+  offlineControlsAvailable: boolean;
+  cloudSaveVersion: number;
   sessionId: string | null; recoveredSession: boolean;
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
-  syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; unsyncedSessionCount: number;
+  syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; sessionEnded: boolean; unsyncedSessionCount: number;
   interactionKind: "start" | "pause" | "resume" | null;
   resolveQuestTitle: (id: number, title: string) => void; activityType: string; targetAttributeId: number | null;
   linkedTaskId: number | null; notes: string; sessionSummary: SessionSummary | null; summaryViewed: boolean;
-  acknowledgeSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
+  acknowledgeSummary: () => void; reviewSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
   setTargetAttributeId: (id: number | null) => void; setLinkedTaskId: (id: number | null) => void;
   startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
   startFreeTimer: (totalSeconds: number, subjectId: number | null) => Promise<boolean>;
   startSuggestedTimer: (focus: SuggestedFocus, subjectId: number | null) => Promise<boolean>;
-  pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<void>;
+  pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<boolean>;
   setDurationInMinutes: (minutes: number) => void; setDurationInSeconds: (seconds: number) => void;
   completedLevelUp: { leveledUp: boolean; newLevel: number } | null; clearCompletionModal: () => void;
   consumeNotificationAction: (nonce: string) => Promise<"end" | null>;
@@ -57,7 +63,7 @@ const TimerContext = createContext<TimerContextType | undefined>(undefined);
 const initialRuntime: SessionTimerControllerSnapshot = {
   record: null, timeLeft: 0, restoring: true, busy: false, error: null, restoreError: false,
   syncStatus: "idle", receipt: null, rewardsVisible: false,
-  ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false,
+  ending: false, unsyncedSessionCount: 0, interaction: null, displayTimeLeft: null, recovered: false, offlineAvailable: false, cloudSaveVersion: 0,
 };
 const getClock = (): JournalClock => ({ wallTimeMs: Date.now(), monotonicTimeMs: null, bootId: null });
 const numberOr = (value: unknown, fallback = 0) => typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -113,9 +119,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const verification = createSessionOwnerVerification({ scope, currentScope, currentEpoch, verify: verifyOwner });
     const verify = verification.verify;
     const store = createAsyncStorageSessionJournalStore(scope);
+    const transportOptions = { ensureVerifiedScope: verify, currentScope, currentEpoch, getClock };
+    const capability = createOfflineCapabilityCache(scope, { ...transportOptions, storage: AsyncStorage });
+    const offlineTransport = createOfflineSessionTransport(scope, transportOptions);
     const controller = createSessionTimerController({ scope,
       store,
-      server: createJournalSessionTransport(scope, { ensureVerifiedScope: verify, currentScope, currentEpoch, getClock }),
+      server: createJournalSessionTransport(scope, transportOptions),
+      offline: { load: capability.load, refresh: capability.refresh, readFreshGrant: capability.readFreshGrant,
+        isLocalOnly: () => authRef.current.accessMode === "local-only", readSnapshot: offlineTransport.readSnapshot, submit: offlineTransport.submit },
       authority: { currentScope, currentEpoch, verify, beginOperation: verification.beginOperation, endOperation: verification.endOperation }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
     });
     controllerRef.current = controller;
@@ -143,6 +154,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
       && current.displayTimeLeft === next.displayTimeLeft
       && current.recovered === next.recovered
+      && current.offlineAvailable === next.offlineAvailable
+      && current.cloudSaveVersion === next.cloudSaveVersion
       && current.rewardsVisible === next.rewardsVisible ? current : next);
     });
     void controller.initialize();
@@ -191,7 +204,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const open = !runtime.ending && (interactionKind === "start" || !!record && ["running", "paused", "not_started"].includes(record.state));
   const isCompleted = record?.state === "completed";
   const awaitingStart = !runtime.ending && (interactionKind === "start" || record?.state === "not_started");
-  const setup = record && (open || isCompleted || runtime.ending) ? record.setup : null;
+  const sessionEnded = record?.state === "cancelled";
+  const setup = record && (open || isCompleted || runtime.ending || sessionEnded) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
   const timeLeft = runtime.displayTimeLeft ?? runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);
   const notes = setup?.notes ?? draft.notes;
@@ -202,7 +216,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     ?? readSuggestedFocus(notes)?.title ?? (linkedTaskId === null ? "Free session" : "Quest session");
   const receipt = record?.sync.receipt;
   const result = receipt?.result;
-  const summaryId = record?.clientSessionId ?? null;
+  const summaryId = record ? `${record.clientSessionId}:${receipt ? "confirmed" : "pending"}` : null;
   // Controller publications copy their record objects. Memoize the normalized
   // receipt content instead, so dismissing or checking the same saved result
   // cannot restart consumers' profile-refresh effects. Scope is part of the
@@ -236,6 +250,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   }, [record, receipt, result, resolvedTitle, runtime.rewardsVisible, runtime.recovered, hapticsEnabled, reloadProfile, auth.accessMode]);
 
   const notificationId = record?.clientSessionId;
+  const refreshedCloudSave = useRef<string | null>(null);
+  useEffect(() => {
+    if (!controllerScopeKey || runtimeScopeKey !== controllerScopeKey || runtime.cloudSaveVersion === 0 || auth.accessMode !== "online") return;
+    const version = `${controllerScopeKey}:${runtime.cloudSaveVersion}`;
+    if (refreshedCloudSave.current === version) return;
+    refreshedCloudSave.current = version;
+    void reloadProfile().catch(() => false);
+  }, [controllerScopeKey, runtimeScopeKey, runtime.cloudSaveVersion, auth.accessMode, reloadProfile]);
   const notificationState = record?.state;
   const deadline = record?.endsAtMs;
   useLayoutEffect(() => {
@@ -274,7 +296,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     });
   };
   const start = async (seconds: number, title?: string, explicit?: { subjectId: number | null; suggestion?: SuggestedFocus }): Promise<boolean> => {
-    if (locked() || !validSessionSeconds(seconds) || !controllerRef.current || auth.accessMode !== "online") return false;
+    if (locked() || !validSessionSeconds(seconds) || !controllerRef.current
+      || auth.accessMode !== "online" && !(auth.accessMode === "local-only" && runtime.offlineAvailable)) return false;
     // Lock before changing the draft, including two taps before React renders.
     startInFlight.current = true;
     const controller = controllerRef.current;
@@ -292,9 +315,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     return start(focus.seconds, validated.title, { subjectId, suggestion: { ...validated, seconds: focus.seconds } });
   };
   const resetTimer = async () => {
-    if (!controllerRef.current || runtime.restoring || runtime.restoreError) return;
-    const saved = await controllerRef.current.end();
-    if (saved) { setHiddenSavedId(null); setViewedSummaryId(null); setQuestTitle(null); }
+    if (!controllerRef.current || runtime.restoring || runtime.restoreError) return false;
+    const controller = controllerRef.current;
+    const saved = await controller.end();
+    // Done can close a durably saved stop while its HTTP confirmation waits.
+    // A late reply must not reset that acknowledgement or another account's UI.
+    if (saved && controllerRef.current === controller) { setHiddenSavedId(null); setQuestTitle(null); }
+    return saved;
   };
   const completedLevelUp = result?.leveled_up === true
     ? { leveledUp: true, newLevel: numberOr(result.level, 1) } : null;
@@ -302,11 +329,15 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId, setViewedSummaryId]);
   const consumeNotificationAction = useCallback((nonce: string) => countdownRef.current?.action(nonce) ?? Promise.resolve(null), []);
   return <TimerContext.Provider value={{
-    sessionId: record?.serverSessionId ?? null, recoveredSession: runtime.recovered,
+    offlineAvailable: runtime.offlineAvailable,
+    clientReported: !!record?.clientTiming,
+    offlineControlsAvailable: !!record?.clientTiming || runtime.offlineAvailable && !!record?.serverCheckpoint,
+    cloudSaveVersion: runtime.cloudSaveVersion,
+    sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
-    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
+    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
     retryCompletion: retry, retryAction: retry,
     resolveQuestTitle: (id, title) => { if (id === linkedTaskId) setQuestTitle(current => current?.id === id && current.title === title ? current : { id, title }); },
     activityType, targetAttributeId, linkedTaskId, notes,
@@ -319,6 +350,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     startFreeTimer: (seconds, subjectId) => start(seconds, undefined, { subjectId }), startSuggestedTimer,
     pauseTimer: async () => { await controllerRef.current?.pause(); }, resumeTimer: async () => { await controllerRef.current?.resume(); }, resetTimer,
     sessionSummary: receipt?.sessionId === sessionSummary?.sessionId ? sessionSummary : null, summaryViewed: summaryId !== null && viewedSummaryId === summaryId, acknowledgeSummary,
+    reviewSummary: () => { if (runtime.ending || sessionEnded || isCompleted) setViewedSummaryId(null); },
     completedLevelUp, clearCompletionModal: () => controllerRef.current?.dismissSummary(),
     consumeNotificationAction,
   }}>{children}</TimerContext.Provider>;
