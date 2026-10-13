@@ -182,58 +182,74 @@ test("daily celebration animates once, cancels in background and respects Reduce
   assert.equal(events.filter(event=>event[0]==="start").length,0);await act(async()=>renderer.unmount());
 });
 
-test("confirmed first-day encouragement stays inside the existing result with a single Done action", async () => {
-  const saved=storage(), realNow=Date.now; Date.now=()=>NOW;
-  const host=type=>function CelebrationHost(props){return React.createElement(type,props,props.children);};
-  class Value {constructor(value){this.value=value;}setValue(value){this.value=value;}interpolate(value){return value;}}
-  const Modal=load("src/components/LevelUpModal.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),Platform:{OS:"android"},StyleSheet:{create:value=>value,hairlineWidth:1},useWindowDimensions:()=>({height:844,width:390,fontScale:1}),AppState:{currentState:"active"},Animated:{Value,View:host("Animated")}},
+const content=node=>typeof node==="string"?node:(node.children??[]).map(content).join("");
+async function resultHarness(overrides={}) {
+  const queue=load("src/services/dailyAchievementQueue.ts").createDailyAchievementQueue();
+  const profile={id:"owner-a",level:1,current_xp:1}; let closes=0,dismissals=0;
+  const host=type=>function ResultHost(props){return React.createElement(type,props,props.children);};
+  const Component=load("src/components/LevelUpModal.tsx",{
+    "react-native":{View:host("View"),Text:host("Text"),StyleSheet:{create:value=>value,hairlineWidth:1},useWindowDimensions:()=>({height:640,width:360,fontScale:1.6})},
     "react-native-safe-area-context":{useSafeAreaInsets:()=>({top:24,bottom:34})},
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},"@expo/vector-icons":{Ionicons:host("Icon")},
+    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
+    "@expo/vector-icons":{Ionicons:host("Icon")},
     "./AppSheet":props=>React.createElement("Sheet",props,props.header,props.children),
     "./MotionPressable":host("Button"),"./ProgressRing":host("Ring"),"./SaveSuggestedQuest":()=>null,
-    "../context/UserContext":{useUser:()=>({hapticsEnabled:false,profile:{id:"owner-a",level:1,current_xp:1}})},
-    "../hooks/useReducedMotion":{useReducedMotion:()=>true},"expo-haptics":{},"@react-native-async-storage/async-storage":saved,
+    "../context/UserContext":{useUser:()=>({hapticsEnabled:false,profile})},"expo-haptics":{},
+    "../services/dailyAchievementQueue":{dailyAchievementQueue:queue},
   }).default;
-  const input={visible:true,pending:false,recovered:false,sessionId:"confirmed",creditVersion:1,creditedDate:"2026-10-12",dailyCompletedSeconds:60,durationSeconds:60,onClose(){}};
-  const content=node=>typeof node==="string"?node:(node.children??[]).map(content).join("");
-  let renderer;
+  let props={visible:true,pending:false,recovered:false,sessionId:"confirmed",creditVersion:1,creditedDate:"2026-10-12",dailyCompletedSeconds:60,durationSeconds:60,
+    onClose(){closes++;props={...props,visible:false};},onDismiss(){dismissals++;},...overrides};
+  let renderer; await act(async()=>{renderer=create(React.createElement(Component,props));});
+  return {queue,profile,renderer,get closes(){return closes;},get dismissals(){return dismissals;},
+    async update(changes){props={...props,...changes};await act(async()=>renderer.update(React.createElement(Component,props)));},
+    async done(twice=false){const button=renderer.root.findAllByType("Button").find(node=>content(node)==="Done");await act(async()=>{button.props.onPress();if(twice)button.props.onPress();renderer.update(React.createElement(Component,props));});},
+    async closeWithoutDone(){await act(async()=>{renderer.root.findByType("Sheet").props.onRequestClose();renderer.update(React.createElement(Component,props));});},
+    async dismiss(){await act(async()=>renderer.root.findByType("Sheet").props.onDismiss());},
+    async cleanup(){await act(async()=>renderer.unmount());},
+  };
+}
+
+test("Done captures confirmed evidence but releases it only after the result is physically dismissed", async () => {
+  const realNow=Date.now;Date.now=()=>NOW;let ui;
   try {
-    await act(async()=>{renderer=create(React.createElement(Modal,input));});
-    assert.match(content(renderer.root),/Nice work!.*Your first session today/);
-    assert.ok(renderer.root.findByProps({testID:"first-daily-effort"}),"a legacy missing profile timezone uses the database's default local timezone");
-    assert.equal(renderer.root.findAllByType("Sheet").length,1);
-    assert.deepEqual(renderer.root.findAllByType("Button").map(content),["Done"]);
-    await act(async()=>renderer.update(React.createElement(Modal,{...input,visible:false})));
-    await act(async()=>renderer.update(React.createElement(Modal,input)));
-    assert.doesNotMatch(content(renderer.root),/Your first session today/);
-  }finally{if(renderer)await act(async()=>renderer.unmount());Date.now=realNow;}
+    ui=await resultHarness({recovered:true,durationSeconds:1800,dailyCompletedSeconds:1800,dailyGoalMinutes:30,goalReachedNow:false});
+    assert.doesNotMatch(content(ui.renderer.root),/A good start|DAILY GOAL COMPLETE/);
+    assert.equal(ui.queue.snapshot(),null);
+    assert.equal(ui.renderer.root.findByType("Scroll").findAllByType("Button").length,0);
+    assert.deepEqual(ui.renderer.root.findAllByType("Button").map(content),["Done"]);
+    await ui.done(true);assert.equal(ui.closes,1);assert.equal(ui.queue.snapshot(),null);
+    await ui.update({sessionId:undefined,durationSeconds:undefined,dailyCompletedSeconds:undefined,creditedDate:undefined});
+    await ui.dismiss();
+    const request=ui.queue.snapshot();assert.ok(request);
+    assert.equal(request.evidence.durationSeconds,1800);assert.equal(request.evidence.sessionId,"confirmed");
+    assert.equal(request.evidence.timeZone,"Asia/Kuala_Lumpur","legacy missing profile timezone uses the database default");
+    assert.equal(service.firstDailyEffortEvidence(request.evidence,NOW),true);assert.equal(service.dailyGoalEvidence(request.evidence,NOW),true);
+    await ui.dismiss();assert.equal(ui.queue.snapshot().id,request.id);assert.equal(ui.dismissals,1);
+  }finally{if(ui)await ui.cleanup();Date.now=realNow;}
 });
 
-test("same-day recovered goal achievement is prominent in the ordinary sheet and Done stays outside scrolling", async () => {
-  const saved=storage(), realNow=Date.now; Date.now=()=>NOW;
-  const host=type=>function CelebrationHost(props){return React.createElement(type,props,props.children);};
-  class Value {constructor(value){this.value=value;}setValue(value){this.value=value;}interpolate(value){return value;}}
-  const Modal=load("src/components/LevelUpModal.tsx",{
-    "react-native":{View:host("View"),Text:host("Text"),Platform:{OS:"android"},StyleSheet:{create:value=>value,hairlineWidth:1},useWindowDimensions:()=>({height:640,width:360,fontScale:1.6}),AppState:{currentState:"active"},Animated:{Value,View:host("Animated")}},
-    "react-native-safe-area-context":{useSafeAreaInsets:()=>({top:24,bottom:34})},
-    "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},"@expo/vector-icons":{Ionicons:host("Icon")},
-    "./AppSheet":props=>React.createElement("Sheet",props,props.header,props.children),
-    "./MotionPressable":host("Button"),"./ProgressRing":host("Ring"),"./SaveSuggestedQuest":()=>null,
-    "../context/UserContext":{useUser:()=>({hapticsEnabled:false,profile:{id:"owner-a",timezone:"Asia/Kuala_Lumpur",level:1,current_xp:30}})},
-    "../hooks/useReducedMotion":{useReducedMotion:()=>true},"expo-haptics":{},"@react-native-async-storage/async-storage":saved,
-  }).default;
-  const content=node=>typeof node==="string"?node:(node.children??[]).map(content).join("");
-  let renderer;
+test("dismissing by gesture does not claim a celebration; a later explicit Done still can", async () => {
+  const realNow=Date.now;Date.now=()=>NOW;let ui;
   try {
-    await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,pending:false,recovered:true,sessionId:"recovered-crossing",creditVersion:1,creditedDate:"2026-10-12",dailyCompletedSeconds:1800,dailyGoalMinutes:30,durationSeconds:1800,goalReachedNow:false,onClose(){}}));});
-    const scroll=renderer.root.findByType("Scroll"), banner=renderer.root.findByProps({testID:"daily-achievement-celebration"});
-    assert.match(content(banner),/Nice work!.*Your first session today.*Daily goal complete/);
-    assert.equal(banner.props.accessibilityLiveRegion,"polite");
-    assert.match(banner.props.accessibilityLabel,/first session.*daily goal/);
-    assert.equal(scroll.children[0].findByProps({testID:"daily-achievement-celebration"}),banner,"encouragement is first in the result content");
-    assert.equal(scroll.findAllByType("Button").length,0);
-    assert.deepEqual(renderer.root.findAllByType("Button").map(content),["Done"]);
-    assert.equal(renderer.root.findAllByType("Sheet").length,1);
-  }finally{if(renderer)await act(async()=>renderer.unmount());Date.now=realNow;}
+    ui=await resultHarness();await ui.closeWithoutDone();await ui.dismiss();assert.equal(ui.queue.snapshot(),null);
+    await ui.update({visible:true});await ui.done();await ui.dismiss();assert.ok(ui.queue.snapshot());
+  }finally{if(ui)await ui.cleanup();Date.now=realNow;}
+});
+
+test("pending or old results dismiss normally without claiming a daily achievement", async () => {
+  const realNow=Date.now;Date.now=()=>NOW;
+  try {
+    for(const overrides of [{pending:true},{creditedDate:"2026-10-11"},{creditVersion:undefined}]) {
+      const ui=await resultHarness(overrides);
+      try{await ui.done();await ui.dismiss();assert.equal(ui.closes,1);assert.equal(ui.dismissals,1);assert.equal(ui.queue.snapshot(),null);}finally{await ui.cleanup();}
+    }
+  }finally{Date.now=realNow;}
+});
+
+test("account changes and local midnight between Done and dismissal discard the outgoing celebration", async () => {
+  const realNow=Date.now;Date.now=()=>NOW;let ui;
+  try {
+    ui=await resultHarness();await ui.done();ui.profile.id="owner-b";await ui.update({});await ui.dismiss();assert.equal(ui.queue.snapshot(),null);await ui.cleanup();ui=null;
+    ui=await resultHarness();await ui.done();Date.now=()=>NOW+24*60*60*1000;await ui.dismiss();assert.equal(ui.queue.snapshot(),null);
+  }finally{if(ui)await ui.cleanup();Date.now=realNow;}
 });

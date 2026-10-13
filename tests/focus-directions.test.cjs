@@ -92,7 +92,7 @@ test('the six-category chooser shows only the selected starting points and retai
   const ui = await render(Harness);
   try {
     const labels = () => ui.tree.root.findAllByType('Button').map(button => button.props.accessibilityLabel);
-    assert.deepEqual(labels().slice(0, 6), ['Learning', 'Work & projects', 'Creativity', 'Everyday life', 'Free focus', 'Wellbeing']);
+    assert.deepEqual(labels().slice(0, 6), ['Learning', 'Work & projects', 'Creativity', 'Everyday life', 'Wellbeing', 'Free focus']);
     assert.equal(labels().includes('Help me choose a focus'), false);
     assert.equal(labels().includes('Just let me focus'), false);
     assert.match(text(ui.tree.root), /Review and remember/);
@@ -107,7 +107,10 @@ test('the six-category chooser shows only the selected starting points and retai
     assert.equal(current.areaId, null);
     assert.equal(current.templateId, 'work-priority');
     assert.match(text(ui.tree.root), /Your starting point/);
-    assert.match(text(ui.tree.root), /One thing at a time/);
+    assert.match(text(ui.tree.root), /Make this time your own/);
+    assert.match(text(ui.tree.root), /Choose your time on Home and begin at your own pace/);
+    assert.match(text(ui.tree.root), /Everyday focus to start/);
+    assert.doesNotMatch(text(ui.tree.root), /Choose a small step to begin with/);
     assert.doesNotMatch(text(ui.tree.root), /Make room for a priority/);
     assert.equal(ui.tree.root.findAllByType('Button').length, 6);
     assert.deepEqual(ui.tree.root.findAllByType('Button').filter(button => button.props.accessibilityState.checked).map(button => button.props.accessibilityLabel), ['Free focus']);

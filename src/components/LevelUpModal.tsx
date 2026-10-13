@@ -13,8 +13,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import * as Haptics from "expo-haptics";
-import DailyEffortCelebration from "./DailyEffortCelebration";
-import { useDailyEffortCelebration } from "../hooks/useDailyEffortCelebration";
+import { dailyAchievementQueue } from "../services/dailyAchievementQueue";
+import type { DailyEffortEvidence } from "../services/dailyEffortCelebrationService";
 
 
 interface RewardModalProps {
@@ -56,9 +56,28 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   sessionId, completedAtMs, recovered = false, creditedDate, dailyCompletedSeconds, dailyGoalMinutes,
 }: RewardModalProps) {
   const { hapticsEnabled, profile } = useUser();
-  const achievements = useDailyEffortCelebration({visible, pending, recovered, sessionId,
-    ownerId:profile?.id, timeZone:profile?.timezone || DEFAULT_TIMEZONE, creditedDate, dailyCompletedSeconds,
-    dailyGoalMinutes, goalReachedNow, durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion});
+  const celebration = useRef<DailyEffortEvidence | null>(null);
+  const doneRequested = useRef(false);
+  const dismissedOnce = useRef(false);
+  const currentOwner = useRef(profile?.id);
+  useLayoutEffect(() => { currentOwner.current = profile?.id; }, [profile?.id]);
+  useLayoutEffect(() => { if (visible) { doneRequested.current = false; dismissedOnce.current = false; celebration.current = null; } }, [visible, sessionId]);
+  const done = () => {
+    if (doneRequested.current) return;
+    doneRequested.current = true;
+    celebration.current = visible && !pending ? {visible:true, pending:false, recovered, sessionId,
+      ownerId:profile?.id, timeZone:profile?.timezone || DEFAULT_TIMEZONE, creditedDate, dailyCompletedSeconds,
+      dailyGoalMinutes, goalReachedNow, durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion} : null;
+    onClose();
+  };
+  const dismissed = () => {
+    if (dismissedOnce.current) return;
+    dismissedOnce.current = true;
+    const evidence = celebration.current;
+    celebration.current = null;
+    if (!visible && evidence?.ownerId === currentOwner.current && evidence) dailyAchievementQueue.enqueue(evidence);
+    onDismiss?.();
+  };
   const insets = useSafeAreaInsets();
   const screen = useWindowDimensions();
   const windowHeight = screen.height || 844;
@@ -99,12 +118,11 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
   useEffect(() => {
     if (visible && !pending && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, pending, hapticsEnabled]);
-  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={onDismiss}
+  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed}
     label="session completion" expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
     header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}>
     <View style={s.layout} testID="session-result-layout">
     <BottomSheetScrollView ref={scroll} onLayout={resetScroll} onContentSizeChange={(_width, height) => measure("body", height)} style={s.scroll} contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-      {(achievements.firstSession || achievements.dailyGoal) && <DailyEffortCelebration {...achievements} />}
       {recovered && !pending && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
       {!!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
@@ -119,7 +137,7 @@ export default function LevelUpModal({ visible, xpEarned = 0, goldEarned = 0,
         Actions stay visible without floating over rewards or enlarged text. */}
     <View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={[s.actions, {paddingBottom:Math.max(insets.bottom, 12)}]} testID="session-result-actions">
       {!pending && <SaveSuggestedQuest inSheet compact />}
-      <TouchableOpacity accessibilityRole="button" style={s.done} onPress={onClose}><Text style={s.doneText}>Done</Text></TouchableOpacity>
+      <TouchableOpacity accessibilityRole="button" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
     </View>
     </View>
   </AppSheet>;

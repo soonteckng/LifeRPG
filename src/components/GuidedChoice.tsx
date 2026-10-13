@@ -23,7 +23,7 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
     onChange(direction ? preferenceForFocusDirection(value, direction) : preferenceForFocusMode(value, false));
   };
   const selectedDirection = (id: string) => (!includeFreeFocus || value.enabled) && current.id === id;
-  const directions = includeFreeFocus ? [...FOCUS_DIRECTIONS.slice(0, 4), null, ...FOCUS_DIRECTIONS.slice(4)] : FOCUS_DIRECTIONS;
+  const directions = includeFreeFocus ? [...FOCUS_DIRECTIONS, null] : FOCUS_DIRECTIONS;
   if (!compact) return <View style={s.directions}>
     <View style={s.directionGrid}>{directions.map(direction => {
       const selected = direction ? selectedDirection(direction.id) : !value.enabled;
@@ -50,9 +50,16 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
 export default function GuidedChoice({ value, onChange, disabled = false, onSelection }: ChoiceProps) {
   return <View style={s.group}>
     <View style={s.section}><Text style={s.heading}>Choose a direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} includeFreeFocus onSelection={onSelection} /></View>
-    <View style={s.startingPoint}>
-      <View style={s.startingPointHeader}><Text style={s.startingPointTitle}>Your starting point</Text><Text style={s.body}>{value.enabled ? "Choose a small step to begin with." : "Make room for your own idea."}</Text></View>
-      {!value.enabled ? <View style={s.freePoint}><View style={s.freeSymbol}><Ionicons name="sparkles-outline" size={24} color={colors.accent} /></View><View style={s.detail}><Text style={s.title}>One thing at a time.</Text><Text style={s.body}>Set your time and get started. Free focus uses Everyday focus; you can choose another area on Home.</Text></View></View> : focusOptions(value.need).map(task => {
+    <View style={[s.startingPoint, !value.enabled && s.freeStartingPoint]}>
+      <View style={s.startingPointHeader}><Text style={s.startingPointTitle}>Your starting point</Text>{value.enabled && <Text style={s.body}>Choose a small step to begin with.</Text>}</View>
+      {!value.enabled ? <>
+        <View style={s.freePoint}>
+          <View style={s.freeSymbol}><Ionicons name="sparkles-outline" size={26} color={colors.accent} /></View>
+          <Text style={s.freeTitle}>Make this time your own.</Text>
+          <Text style={s.freeBody}>Bring one thing you want to do. Choose your time on Home and begin at your own pace.</Text>
+        </View>
+        <View style={s.freeAreaHint}><View style={s.freeAreaDot} /><Text style={s.freeAreaCopy}>Everyday focus to start. Change the area on Home anytime.</Text></View>
+      </> : focusOptions(value.need).map(task => {
         const studyNeed = STUDY_NEEDS.find(need => need.id === task.need);
         const title = studyNeed?.title ?? task.title;
         const hint = studyNeed?.hint ?? startingPointHints[task.id];
@@ -81,7 +88,10 @@ const s = StyleSheet.create({
   row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 },
   startingPoint: { gap: 8, padding: 12, borderRadius: 20, backgroundColor: colors.surfaceRaised }, startingPointHeader: { paddingHorizontal: 2, paddingTop: 2, paddingBottom: 4, gap: 4 }, startingPointTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" },
   promptRow: { minHeight: 72, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line, gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface }, selectedPrompt: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
-  freePoint: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 2, paddingVertical: 6 }, freeSymbol: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 14, backgroundColor: colors.accentSoft },
+  freeStartingPoint: { padding: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, gap: 16 },
+  freePoint: { alignItems: "center", gap: 12, paddingHorizontal: 6, paddingVertical: 8 }, freeSymbol: { width: 56, height: 56, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: colors.accentSoft },
+  freeTitle: { color: colors.text, fontSize: 21, lineHeight: 28, fontWeight: "500", textAlign: "center" }, freeBody: { color: colors.secondary, fontSize: 14, lineHeight: 21, textAlign: "center", maxWidth: 300 },
+  freeAreaHint: { paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: "row", alignItems: "center", gap: 8 }, freeAreaDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: FOCUS_AREAS[0].color }, freeAreaCopy: { flex: 1, color: colors.secondary, fontSize: 12, lineHeight: 18 },
   selected: { backgroundColor: colors.accentSoft }, detail: { flex: 1, minWidth: 0, gap: 3 },
   title: { fontSize: 17, lineHeight: 23, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 });

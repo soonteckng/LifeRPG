@@ -2,6 +2,7 @@ import { requiredCharacterXP } from "../utils/levelTiers";
 import { useEffect } from "react";
 import { usePathname } from "expo-router";
 import LevelUpModal from "./LevelUpModal";
+import PostSessionCelebration from "./PostSessionCelebration";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
 import { useQuests } from "../context/QuestContext";
@@ -36,7 +37,7 @@ export default function GlobalRewardListener() {
   const requiredXP = requiredCharacterXP(currentLevel);
 
   return (
-    <LevelUpModal
+    <><LevelUpModal
       visible={rewardsVisible && !insideSession}
       sessionId={sessionSummary?.sessionId} completedAtMs={sessionSummary?.completedAtMs} recovered={sessionSummary?.recovered}
       xpEarned={sessionSummary?.xpEarned || 0}
@@ -59,7 +60,7 @@ export default function GlobalRewardListener() {
       currentXP={currentXP}
       requiredXP={requiredXP}
       onClose={() => { clearCompletionModal(); acknowledgeSummary(); }}
-    />
+    /><PostSessionCelebration insideSession={insideSession} /></>
   );
 }
 

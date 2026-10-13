@@ -1447,12 +1447,14 @@ test('Session owns its animated completion popup; the global listener keeps comp
     const Listener=load('src/components/GlobalRewardListener.tsx',{
       'expo-router':{usePathname:()=>pathname},
       './LevelUpModal':host('Rewards'),
+      './PostSessionCelebration':host('CelebrationGate'),
       '../context/TimerContext':{useTimer:()=>({...timer,clearCompletionModal:clear})},
       '../context/UserContext':{useUser:()=>({profile:{level:2,current_xp:1},reloadProfile:()=>{reloads++;}})},
       '../context/QuestContext':{useQuests:()=>({tasks:[],subjects:[{id:1,title:'Knowledge',color_code:null}]})},
     }).default;
     let tree;await act(async()=>{tree=create(React.createElement(Listener));});
     const inside=pathname==='/session'||pathname==='/timer';
+    assert.equal(tree.root.findByType('CelebrationGate').props.insideSession,inside);
     assert.equal(tree.root.findByType('Rewards').props.visible,!inside);
     assert.equal(clearCalls,0);
     assert.equal(timer.sessionSummary,saved);
