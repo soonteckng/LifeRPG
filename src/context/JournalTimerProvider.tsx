@@ -16,6 +16,7 @@ import { getSessionNotifications } from "../utils/sessionNotifications";
 import { validSessionSeconds } from "../utils/sessionSetup";
 import { createCountdownTicker } from "../utils/countdownTicker";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { encodeRoutineSession, readRoutineSession } from "../utils/routineSession";
 import type { JournalClock, JournalScope, JournalSetup } from "../types/sessionJournal";
 import { useAuth } from "./AuthContext";
 import { useUser } from "./UserContext";
@@ -52,7 +53,7 @@ interface TimerContextType {
   acknowledgeSummary: () => void; reviewSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
   setTargetAttributeId: (id: number | null) => void; setLinkedTaskId: (id: number | null) => void;
   startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
-  startFreeTimer: (totalSeconds: number, subjectId: number | null) => Promise<boolean>;
+  startFreeTimer: (totalSeconds: number, subjectId: number | null, title?: string) => Promise<boolean>;
   startSuggestedTimer: (focus: SuggestedFocus, subjectId: number | null) => Promise<boolean>;
   pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<boolean>;
   setDurationInMinutes: (minutes: number) => void; setDurationInSeconds: (seconds: number) => void;
@@ -213,7 +214,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const targetAttributeId = setup ? setup.subjectId : draft.subjectId;
   const activityType = setup?.activityType ?? draft.activityType;
   const resolvedTitle = record?.setup.title ?? (linkedTaskId !== null && questTitle?.id === linkedTaskId ? questTitle.title : null)
-    ?? readSuggestedFocus(notes)?.title ?? (linkedTaskId === null ? "Free session" : "Quest session");
+    ?? readSuggestedFocus(notes)?.title ?? readRoutineSession(notes) ?? (linkedTaskId === null ? "Free session" : "Quest session");
   const receipt = record?.sync.receipt;
   const result = receipt?.result;
   const summaryId = record ? `${record.clientSessionId}:${receipt ? "confirmed" : "pending"}` : null;
@@ -295,14 +296,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       return { ...current, seconds, notes: suggestion ? encodeSuggestedFocus({ ...suggestion, seconds }) : current.notes };
     });
   };
-  const start = async (seconds: number, title?: string, explicit?: { subjectId: number | null; suggestion?: SuggestedFocus }): Promise<boolean> => {
+  const start = async (seconds: number, title?: string, explicit?: { subjectId: number | null; suggestion?: SuggestedFocus; routineNotes?: string }): Promise<boolean> => {
     if (locked() || !validSessionSeconds(seconds) || !controllerRef.current
       || auth.accessMode !== "online" && !(auth.accessMode === "local-only" && runtime.offlineAvailable)) return false;
     // Lock before changing the draft, including two taps before React renders.
     startInFlight.current = true;
     const controller = controllerRef.current;
     const next = explicit ? { seconds, activityType: "other", taskId: null, subjectId: explicit.subjectId,
-      notes: explicit.suggestion ? encodeSuggestedFocus(explicit.suggestion) : "" } : { ...draft, seconds };
+      notes: explicit.suggestion ? encodeSuggestedFocus(explicit.suggestion) : explicit.routineNotes ?? "" } : { ...draft, seconds };
     setDraft(next); setHiddenSavedId(record?.state === "completed" ? record.clientSessionId : null); setViewedSummaryId(null);
     const startSetup: JournalSetup = { targetSeconds: seconds, activityType: next.activityType,
       taskId: next.taskId, subjectId: next.subjectId, notes: next.notes, title: title ?? readSuggestedFocus(next.notes)?.title ?? null };
@@ -347,7 +348,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setLinkedTaskId: value => { if (!locked()) { prepareDraft(); setDraft(current => ({ ...current, taskId: value })); } },
     setDurationInMinutes: minutes => { if (Number.isInteger(minutes)) setDurationInSeconds(minutes * 60); }, setDurationInSeconds,
     startTimer: async (seconds, title) => { await start(seconds, title); },
-    startFreeTimer: (seconds, subjectId) => start(seconds, undefined, { subjectId }), startSuggestedTimer,
+    startFreeTimer: (seconds, subjectId, title) => {
+      const routineNotes = title === undefined ? undefined : encodeRoutineSession(title);
+      return routineNotes === null ? Promise.resolve(false) : start(seconds, title, { subjectId, routineNotes });
+    }, startSuggestedTimer,
     pauseTimer: async () => { await controllerRef.current?.pause(); }, resumeTimer: async () => { await controllerRef.current?.resume(); }, resetTimer,
     sessionSummary: receipt?.sessionId === sessionSummary?.sessionId ? sessionSummary : null, summaryViewed: summaryId !== null && viewedSummaryId === summaryId, acknowledgeSummary,
     reviewSummary: () => { if (runtime.ending || sessionEnded || isCompleted) setViewedSummaryId(null); },

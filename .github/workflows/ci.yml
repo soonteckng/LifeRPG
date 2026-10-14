@@ -2,9 +2,9 @@ name: LifeRPG CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, feature/offline-sessions]
   push:
-    branches: [main, progression-foundation]
+    branches: [main, progression-foundation, feature/routines-widget]
   workflow_dispatch:
 
 permissions:
@@ -37,7 +37,11 @@ jobs:
         run: npm run typecheck
 
       - name: Run tests
-        run: npm test
+        env:
+          SESSION_SQL_PGLITE_ROOT: ${{ runner.temp }}/liferpg-sql/node_modules/@electric-sql/pglite
+        run: |
+          npm install --prefix "$RUNNER_TEMP/liferpg-sql" --no-save --ignore-scripts @electric-sql/pglite@0.5.8
+          node --test --test-concurrency=4 tests/*.test.cjs
 
       - name: Lint the full repository
         run: npm run lint
@@ -107,3 +111,36 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - name: Rehearse offline imports and reconciliation races in a fresh local database
         run: node tests/sql/session-offline-sync-concurrency.cjs
+
+  routine-sql:
+    name: Routine SQL and concurrent changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: liferpg_test
+          POSTGRES_PASSWORD: disposable_ci_only
+          POSTGRES_DB: liferpg_routine_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U liferpg_test -d liferpg_routine_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      SESSION_SQL_DISPOSABLE_DATABASE: "1"
+      SESSION_SQL_POSTGRES_URL: postgresql://liferpg_test:disposable_ci_only@localhost:5432/liferpg_routine_test
+    steps:
+      - name: Download repository code
+        uses: actions/checkout@v7
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Validate simultaneous routine changes and account binding in a fresh local database
+        run: node tests/sql/saved-routines-concurrency.cjs

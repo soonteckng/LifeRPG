@@ -370,7 +370,7 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
 
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
-async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows } = {}) {
+async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false } = {}) {
   const today = dateKey(new Date(), TZ),
     stamp = new Date(Date.now() - 1000).toISOString();
   let refreshes = 0,
@@ -421,7 +421,7 @@ async function screenHarness({ empty = false, historyFailure = false, sessionRow
     "../../context/UserContext": {
       useUser: () => ({
         profile: { timezone: TZ, level: 2 },
-        hapticsEnabled: false,
+        hapticsEnabled,
       }),
     },
     "../../context/TimerContext": {
@@ -504,6 +504,7 @@ test("selected-period session details retain the period and do not mutate reward
   const ui = await screenHarness();
   try {
     assert.equal(ui.historyCalls(), 0);
+    await ui.press("Sessions for selected week");
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0);
     const row = ui.renderer.root
@@ -527,6 +528,7 @@ test("empty Progress explains how to begin and keeps its selected-period list em
   try {
     assert.match(ui.text(), /Every completed session counts/);
     assert.match(ui.text(), /Room to grow/);
+    await ui.press("Sessions for selected week");
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0);
   } finally {
@@ -537,6 +539,7 @@ test("empty Progress explains how to begin and keeps its selected-period list em
 test("an empty period and an empty day have independent drilldowns", async () => {
   const ui = await screenHarness({ empty: true, historyFailure: true });
   try {
+    await ui.press("Sessions for selected week");
     await ui.press("View sessions in selected period");
     assert.match(ui.text(), /No completed sessions/);
     await act(async () => {
@@ -549,6 +552,11 @@ test("an empty period and an empty day have independent drilldowns", async () =>
       .findAllByType("Button")
       .find((b) => b.props.accessibilityLabel?.includes("no sessions"));
     await act(async () => day.props.onPress());
+    if (!ui.renderer.root.findByType("Sheet").props.visible) {
+      const selectedDay = ui.renderer.root.findAllByType("Button").find((button) =>
+        button.props.testID === day.props.testID);
+      await act(async () => selectedDay.props.onPress());
+    }
     assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
     assert.match(ui.text(), /No completed sessions/);
   } finally {
@@ -602,6 +610,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
     assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BFF2", 60], ["#F4AA88", 60]]);
+    await ui.press("Sessions for selected week");
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
     const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
@@ -611,6 +620,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
 test("empty selected period has no all-history escape or unbounded query", async () => {
   const ui = await screenHarness({ empty: true });
   try {
+    await ui.press("Sessions for selected week");
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0);
     assert.equal(ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session")).length, 0);
@@ -627,9 +637,9 @@ test("week and month session lists exclude comparison dates and unrelated histor
  const ui=await screenHarness({sessionRows:rows});
  const labels=()=>ui.renderer.root.findByType('Sheet').findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session')).map(b=>b.props.accessibilityLabel);
  try{
-  await ui.press('View sessions in selected period');assert.equal(labels().length,1);assert.match(labels()[0],/1m,/);assert.doesNotMatch(ui.text(),/View all history/);
+  await ui.press('Sessions for selected week');await ui.press('View sessions in selected period');assert.equal(labels().length,1);assert.match(labels()[0],/1m,/);assert.doesNotMatch(ui.text(),/View all history/);
   await act(async()=>ui.renderer.root.findByType('Sheet').props.onRequestClose());await act(async()=>ui.renderer.root.findByType('Sheet').props.onDismiss());
-  await ui.press('Month view');await ui.press('View sessions in selected period');
+  await ui.press('Month view');await ui.press('Sessions for selected month');await ui.press('View sessions in selected period');
   assert.equal(labels().length,previousWeek>=month.start?2:1);assert.ok(labels().every(label=>!label.includes('3m,')));assert.equal(ui.historyCalls(),0);
  }finally{await ui.cleanup();}
 });
@@ -763,7 +773,10 @@ test("Progress separates today's effort from the period total and keeps a tapped
       button.props.accessibilityLabel?.includes(calendarLabelForTest(previousDay)) && button.props.accessibilityLabel?.includes("30m,"));
     assert.ok(day);
     await act(async () => day.props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false, "first tap selects the day without a popup");
     assert.match(text(hero()), /recorded effort30m1 session finished/);
+    await act(async () => day.props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true, "tapping the current day opens its sessions");
     await act(async () => ui.renderer.root.findByType("Sheet").props.onRequestClose());
     await act(async () => ui.renderer.root.findByType("Sheet").props.onDismiss());
     assert.match(text(hero()), /recorded effort30m/);
@@ -771,6 +784,89 @@ test("Progress separates today's effort from the period total and keeps a tapped
 });
 
 function calendarLabelForTest(key) { return analytics.calendarLabel(key); }
+
+test("the session list follows the selected day; its week toggle never changes the day or queries history", async () => {
+  const today = dateKey(new Date(), TZ);
+  const week = periodFor("week", today, TZ);
+  const monday = shiftDay(week.start, -7), friday = shiftDay(monday, 4);
+  const ui = await screenHarness({ sessionRows: [
+    session("monday", 60, `${monday}T04:00:00Z`),
+    session("friday", 120, `${friday}T04:00:00Z`),
+    session("outside", 900, `${shiftDay(monday, -1)}T04:00:00Z`),
+  ] });
+  const listRows = () => ui.renderer.root.findByProps({ testID: "progress-session-list" })
+    .findAllByType("Button").filter(button => button.props.accessibilityLabel?.endsWith("View session"));
+  const heroText = () => {
+    const text = node => typeof node === "string" ? node : (node.children ?? []).map(text).join("");
+    return text(ui.renderer.root.findByProps({ testID: "progress-day-hero" }));
+  };
+  try {
+    await ui.press("Previous week");
+    assert.equal(listRows().length, 1, "the most recent recorded day is the default in a historical week");
+    assert.match(listRows()[0].props.accessibilityLabel, /2m,/);
+    const selectedHero = heroText();
+    await ui.press("Sessions for selected week");
+    assert.equal(listRows().length, 2);
+    assert.equal(heroText(), selectedHero, "the week list does not turn the hero into a week total");
+    assert.ok(listRows().every(row => !row.props.accessibilityLabel.includes("15m,")), "comparison dates stay out of the week list");
+    const mondayBar = () => ui.renderer.root.findAllByType("Button").find(button => button.props.testID === `progress-day-${monday}`);
+    await act(async () => mondayBar().props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
+    assert.match(heroText(), /recorded effort1m/);
+    assert.equal(listRows().length, 1, "selecting a different bar returns the list to that day");
+    assert.match(listRows()[0].props.accessibilityLabel, /1m,/);
+    await ui.press("Sessions for selected week");
+    assert.equal(listRows().length, 2);
+    await ui.press("Sessions for selected day");
+    assert.equal(listRows().length, 1);
+    assert.equal(ui.historyCalls(), 0, "both scopes reuse the bounded period data");
+  } finally { await ui.cleanup(); }
+});
+
+test("bar taps select once and open only on a repeated selection, with one haptic for each tap", async () => {
+  const today = dateKey(new Date(), TZ), week = periodFor("week", today, TZ);
+  const monday = shiftDay(week.start, -7), friday = shiftDay(monday, 4);
+  const ui = await screenHarness({ hapticsEnabled: true, sessionRows: [
+    session("monday", 60, `${monday}T04:00:00Z`),
+    session("friday", 120, `${friday}T04:00:00Z`),
+  ] });
+  const bar = key => ui.renderer.root.findAllByType("Button").find(button => button.props.testID === `progress-day-${key}`);
+  try {
+    await ui.press("Previous week");
+    const before = ui.haptics();
+    await act(async () => bar(monday).props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
+    assert.equal(bar(monday).props.accessibilityState.selected, true);
+    assert.equal(bar(friday).props.accessibilityState.selected, false);
+    assert.equal(ui.haptics(), before + 1);
+    await act(async () => bar(monday).props.onPress());
+    const sheet = ui.renderer.root.findByType("Sheet");
+    assert.equal(sheet.props.visible, true);
+    assert.equal(ui.haptics(), before + 2, "opening a selected day does not double the haptic");
+    const rows = sheet.findAllByType("Button").filter(button => button.props.accessibilityLabel?.endsWith("View session"));
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].props.accessibilityLabel, /1m,/);
+    assert.equal(ui.historyCalls(), 0);
+  } finally { await ui.cleanup(); }
+});
+
+test("an inline session opens its saved detail and returns to the same day list", async () => {
+  const ui = await screenHarness();
+  try {
+    const list = ui.renderer.root.findByProps({ testID: "progress-session-list" });
+    const row = list.findAllByType("Button").find(button => button.props.accessibilityLabel?.endsWith("View session"));
+    assert.ok(row);
+    await act(async () => row.props.onPress());
+    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+    assert.match(ui.text(), /already saved/);
+    await ui.press("Back to sessions");
+    const sheetRows = ui.renderer.root.findByType("Sheet").findAllByType("Button")
+      .filter(button => button.props.accessibilityLabel?.endsWith("View session"));
+    assert.equal(sheetRows.length, 1);
+    assert.equal(ui.renderer.root.findAllByType("Button").find(button => button.props.accessibilityLabel === "Sessions for selected day").props.accessibilityState.selected, true);
+    assert.equal(ui.historyCalls(), 0);
+  } finally { await ui.cleanup(); }
+});
 
 test("historical periods show an actual labeled day rather than calling a period total today's effort", () => {
   const clock = new Date("2026-10-12T02:00:00Z");

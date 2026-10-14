@@ -119,6 +119,30 @@ test('early End and rejected records use the one shared portal without a complet
   }
 });
 
+test('End keeps its Done action after the cancellation reply clears the controller selection, then never reopens',async()=>{
+  const ui=await setup({sessionEnded:true,endingSession:true,syncStatus:'waiting',actionBusy:true});
+  try {
+    const result=ui.result();assert.equal(result.props.visible,true);assert.equal(result.props.ending,true);
+    await ui.update({sessionEnded:false,endingSession:false,sessionId:null,notes:'',duration:1800,
+      syncStatus:'idle',actionBusy:false});
+    assert.equal(ui.result(),result);assert.equal(result.props.visible,true,'receipt cannot dismiss an unacknowledged notice');
+    assert.equal(result.props.ending,true);assert.equal(result.props.pending,false);assert.equal(result.props.syncBusy,false);
+    assert.equal(result.props.sessionId,'local');assert.equal(result.props.durationSeconds,90);
+    await ui.done();assert.equal(result.props.visible,false);assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+    await ui.dismiss();await ui.update();assert.equal(result.props.visible,false);
+  }finally{await ui.cleanup();}
+});
+
+test('a settled End notice cannot cover a new open session or another owner',async()=>{
+  for(const changes of [{hasOpenSession:true,sessionId:'new-running'},{sessionId:null}]) {
+    const ui=await setup({sessionEnded:true});
+    try {
+      await ui.update({sessionEnded:false,...changes},'online','/',changes.hasOpenSession?'owner-a':'owner-b');
+      assert.equal(ui.result().props.visible,false);
+    }finally{await ui.cleanup();}
+  }
+});
+
 test('a late Done from a previous account cannot dismiss the current account result',async()=>{
   const ui=await setup({isCompleted:true,sessionSummary:summary});
   try{

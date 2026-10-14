@@ -8,6 +8,7 @@ import Pressable from "./MotionPressable";
 import ContentReveal from "./ContentReveal";
 import ProgressRing from "./ProgressRing";
 import FocusLengthControl from "./FocusLengthControl";
+import FocusDurationSheet from "./FocusDurationSheet";
 import GuidedPreferenceSheet from "./GuidedPreferenceSheet";
 import SheetConfirmation from "./SheetConfirmation";
 import { colors } from "../constants/theme";
@@ -20,7 +21,9 @@ import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { useFocusDurationPreference } from "../hooks/useFocusDurationPreference";
 import { focusAreaChoices, focusAreaKind, focusAreaTitle, FOCUS_AREAS } from "../utils/focusAreas";
 import { sessionTime } from "../utils/sessionSetup";
+import { readRoutineSession } from "../utils/routineSession";
 import { readOfflineFocusAreas, type OfflineFocusArea } from "../services/offlineFocusCatalog";
+import SavedRoutinesCard from "./SavedRoutinesCard";
 
 /** Results belong to the stable global sheet; this surface owns offline controls. */
 export default function OfflineSessionWorkspace({ active: surfaceActive = true }: { active?: boolean }) {
@@ -33,11 +36,12 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
   const duration = useFocusDurationPreference(ownerId ?? "");
   const preference = useGuidedPreference(ownerId ?? "");
   const [directionOpen, setDirectionOpen] = useState(false);
+  const [durationOpen, setDurationOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const [previousActive, setPreviousActive] = useState(surfaceActive);
   if (surfaceActive !== previousActive) {
     setPreviousActive(surfaceActive);
-    if (!surfaceActive) { setDirectionOpen(false); setConfirmEnd(false); }
+    if (!surfaceActive) { setDirectionOpen(false); setDurationOpen(false); setConfirmEnd(false); }
   }
   if (confirmEnd && (!timer.hasOpenSession || timer.endingSession || timer.sessionEnded || timer.isCompleted)) setConfirmEnd(false);
   const [catalog, setCatalog] = useState<{ scope: string; areas: OfflineFocusArea[] } | null>(null);
@@ -96,6 +100,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
             <Text style={s.caption}>{timer.isRunning ? "Time remaining" : "Paused"}</Text>
           </ProgressRing>
           {!!currentFocus && <Text style={s.cardTitle}>{currentFocus.title}</Text>}
+          {!currentFocus && !!readRoutineSession(timer.notes) && <Text style={s.cardTitle}>{readRoutineSession(timer.notes)}</Text>}
           {!!currentFocus && <Text style={s.body}>{currentFocus.instruction}</Text>}
           <View style={s.controls}>
             <Pressable disabled={busy || uncertain} accessibilityRole="button" accessibilityState={{ disabled: busy || uncertain }} accessibilityLabel={timer.isRunning ? "Pause session" : "Resume session"}
@@ -119,8 +124,8 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
             <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel="Choose focus area" onPress={() => { feedback(); setDirectionOpen(true); }} style={s.areaRow}>
               <Text style={s.label}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: tint }]} /><Text style={s.areaTitle}>{areaTitle}</Text><Ionicons name="chevron-forward" size={18} color={colors.accent} /></View>
             </Pressable>
-            {surfaceActive && <FocusLengthControl seconds={duration.selectedSeconds} customSeconds={duration.value.customSeconds} disabled={busy}
-              onChange={seconds => { void duration.choose(seconds); }} onCustomSave={seconds => { void duration.choose(seconds, true); }} />}
+            <FocusLengthControl seconds={duration.selectedSeconds} customSeconds={duration.value.customSeconds} disabled={busy || !surfaceActive}
+              onChange={seconds => { void duration.choose(seconds); }} onCustom={() => setDurationOpen(true)} />
             <Pressable disabled={busy || !duration.ready || !preference.ready || !catalogReady || !timer.offlineAvailable} accessibilityRole="button" accessibilityLabel="Start session" onPress={() => void start()} style={[s.button, (busy || !timer.offlineAvailable) && s.disabled]}>
               <Ionicons name="play-outline" size={22} color={colors.primaryText} /><Text style={s.buttonText}>Start focusing</Text>
             </Pressable>
@@ -129,6 +134,8 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
           <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel="Find your next step" onPress={() => { feedback(); setDirectionOpen(true); }} style={s.directionCard}>
             <View style={s.grow}><Text style={s.link}>Find your next step</Text><Text style={s.caption}>Change your focus suggestions</Text></View><Ionicons name="chevron-forward" size={20} color={colors.accent} />
           </Pressable>
+          <SavedRoutinesCard subjects={catalogReady ? catalog.areas : []}
+            initialSeconds={duration.selectedSeconds} initialAreaId={area?.id ?? null} active={surfaceActive && catalogReady} />
         </>}
         {timer.unsyncedSessionCount > 0 && <Text style={s.caption} accessibilityLiveRegion="polite">{timer.unsyncedSessionCount} {timer.unsyncedSessionCount === 1 ? "session waiting" : "sessions waiting"} to sync. Your records stay on this phone.</Text>}
         {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
@@ -138,6 +145,9 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
       </View>
     </ScrollView>
     <GuidedPreferenceSheet owner={ownerId ?? ""} visible={surfaceActive && directionOpen && !active && !terminal} onClose={() => setDirectionOpen(false)} />
+    <FocusDurationSheet seconds={duration.value.customSeconds ?? duration.selectedSeconds}
+      visible={surfaceActive && durationOpen && !active && !terminal} disabled={busy || !surfaceActive}
+      onClose={() => setDurationOpen(false)} onSave={seconds => { void duration.choose(seconds, true); }} />
     {surfaceActive && active && confirmEnd && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded."
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setConfirmEnd(false)} onConfirm={() => void end()} />}
   </SafeAreaView>;

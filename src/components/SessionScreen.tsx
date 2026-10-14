@@ -6,7 +6,7 @@ import { timerLayout } from "../utils/timerLayout";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
-import { Stack, useFocusEffect, useNavigation, useLocalSearchParams } from "expo-router";
+import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
@@ -72,32 +72,6 @@ export default function SessionScreen() {
   const [picker, setPicker] = useState<Picker>(null);
   const [confirmEnd, setConfirmEnd] = useState(false);
   if (!onlineSurfaces && (picker !== null || confirmEnd)) { setPicker(null); setConfirmEnd(false); }
-  const params = useLocalSearchParams?.<{ countdownAction?: string }>() ?? {};
-  const { consumeNotificationAction, isRestoring: notificationRestoring, actionBusy: notificationBusy } = liveTimer;
-  const handledNotification = useRef<string | null>(null);
-  const notificationView = useRef({ mounted: false, sessionId: liveTimer.sessionId, ending: liveTimer.endingSession,
-    open: liveTimer.hasOpenSession, completed: liveTimer.isCompleted });
-  useLayoutEffect(() => {
-    notificationView.current.sessionId = liveTimer.sessionId;
-    notificationView.current.ending = liveTimer.endingSession;
-    notificationView.current.open = liveTimer.hasOpenSession;
-    notificationView.current.completed = liveTimer.isCompleted;
-  }, [liveTimer.sessionId, liveTimer.endingSession, liveTimer.hasOpenSession, liveTimer.isCompleted]);
-  useEffect(() => {
-    const view = notificationView.current;
-    view.mounted = true;
-    return () => { view.mounted = false; };
-  }, []);
-  useEffect(() => {
-    const nonce = params.countdownAction;
-    if (typeof nonce !== "string" || handledNotification.current === nonce || notificationRestoring || notificationBusy) return;
-    handledNotification.current = nonce;
-    const sessionId = notificationView.current.sessionId;
-    void consumeNotificationAction?.(nonce).then(action => {
-      const view = notificationView.current;
-      if (view.mounted && view.sessionId === sessionId && view.open && !view.completed && !view.ending && action === "end") setConfirmEnd(true);
-    }).catch(() => {});
-  }, [params.countdownAction, consumeNotificationAction, notificationRestoring, notificationBusy]);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const timerBounds = useRef({ top: 0, bottom: 0 });
   const timerView = useRef<View>(null);

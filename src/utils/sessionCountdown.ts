@@ -72,6 +72,32 @@ function parseToken(value: unknown): SessionCountdownActionToken | null {
   return value as unknown as SessionCountdownActionToken;
 }
 
+/** A recovered End tap may ask for confirmation, never authorize a mutation.
+ * Cold recovery advances admission/revisions, so the original exact command
+ * proof stays stale. Its same-session intent can still open the current UI.
+ */
+export function decideSessionCountdownEndPrompt(input: SessionCountdownActionInput):
+  { accepted: true; operationId: string } | { accepted: false } {
+  const token = parseToken(input.token);
+  if (!token || token.kind !== "end") return { accepted: false };
+  const record = currentRecord(input);
+  if (!record || !input.currentScope || !sameScope(token.identity.scope, input.currentScope)
+    || !sameScope(token.identity.scope, input.journal.scope)
+    || token.identity.clientSessionId !== record.clientSessionId) return { accepted: false };
+  // A local session may receive its server id during recovery. An old non-null
+  // id may never be substituted for a different server session or removed id.
+  if (token.identity.serverSessionId !== record.serverSessionId && token.identity.serverSessionId !== null)
+    return { accepted: false };
+  if (token.identity.admissionEpoch > input.journal.admission.epoch
+    || token.identity.journalRevision > input.journal.revision || token.identity.recordRevision > record.revision
+    || input.consumedOperationIds.includes(token.operationId)
+    || input.journal.commands.some(command => command.operationId === token.operationId)) return { accepted: false };
+  const command = pending(input, record);
+  if (ending(record, command) || record.state !== "running" && record.state !== "paused"
+    || command && command.kind !== "pause" && command.kind !== "resume") return { accepted: false };
+  return { accepted: true, operationId: token.operationId };
+}
+
 /** Decision only. Native actions must open the app; no background timing mutation is approved here. */
 export function decideSessionCountdownAction(input: SessionCountdownActionInput): SessionCountdownActionDecision {
   const token = parseToken(input.token);

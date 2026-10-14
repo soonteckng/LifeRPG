@@ -22,6 +22,7 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith("/RoutineLifecycle") || name.endsWith("/RoutineWidgetLifecycle")) return () => null;
       if (name.endsWith("/OfflineSessionRecovery")) return props => React.createElement("OfflineRecovery", props);
       if (name.endsWith("/FeatureTour")) return { FeatureTourProvider: props => props.children };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));

@@ -519,7 +519,7 @@ test("opening Custom keeps the timer display and applied duration stable",async(
   await ui.cleanup();
 });
 
-test('accepted notification End confirmation survives an unrelated busy rerender', async () => {
+test('the retained Session screen cannot consume notification End behind the global offline surface', async () => {
   const pending = deferred(); let consumed = 0;
   const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
     notificationNonce: '90000000-0000-4000-8000-000000000001',
@@ -527,8 +527,8 @@ test('accepted notification End confirmation survives an unrelated busy rerender
   try {
     await ui.update({ actionBusy: true });
     await act(async () => { pending.resolve('end'); });
-    assert.equal(consumed, 1);
-    assert.equal(ui.root().findByType('Confirm').props.title, 'End this session?');
+    assert.equal(consumed, 0,'the stable connection coordinator owns notification actions');
+    assert.equal(ui.root().findAllByType('Confirm').length,0);
     assert.equal(ui.calls.some(c => c[0] === 'reset'), false);
   } finally { await ui.cleanup(); }
 });
@@ -1677,6 +1677,29 @@ test("guided Start owns its exact free draft, blocks duplicates and retains meta
   await ui.run(s => { s.clearCompletionModal(); s.acknowledgeSummary(); });
   assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
   await ui.cleanup();
+});
+
+test("routine Start carries its durable display name through the real provider without linking or duplicating a quest reward", async () => {
+  const ui=await providerSetup();
+  const metadata=load("src/utils/routineSession.ts",{});
+  try {
+    await ui.run(s=>{s.setLinkedTaskId(88);s.setTargetAttributeId(44);s.setNotes("stale quest notes");});
+    await ui.run(async s=>{assert.equal(await s.startFreeTimer(91,2,"Review thermodynamics"),true);
+      assert.equal(await s.startFreeTimer(91,2,"Review thermodynamics"),false);});
+    const starts=ui.calls.filter(([kind])=>kind==="start");
+    assert.equal(starts.length,1);assert.equal(starts[0][1].taskId,null);assert.equal(starts[0][1].subjectId,2);
+    assert.equal(starts[0][1].targetDurationSeconds,91);
+    assert.equal(metadata.readRoutineSession(starts[0][1].notes),"Review thermodynamics");
+    assert.equal(ui.state().notes,starts[0][1].notes);assert.equal(ui.state().linkedTaskId,null);
+    await ui.foreground();assert.equal(metadata.readRoutineSession(ui.state().notes),"Review thermodynamics");
+    await ui.advance(92);
+    assert.equal(ui.state().sessionSummary.questTitle,"Review thermodynamics");
+    assert.equal(ui.state().sessionSummary.durationSeconds,91);
+    assert.equal(ui.state().sessionSummary.suggestion,undefined,'a routine is not a suggested quest');
+    await ui.advance(10);await ui.foreground();
+    assert.equal(ui.calls.filter(([kind])=>kind==="complete").length,1);
+    assert.deepEqual([...new Set(ui.calls.map(([kind])=>kind))],["start","complete"]);
+  } finally {await ui.cleanup();}
 });
 
 test("restored guided sessions retain their instruction and completion title", async () => {

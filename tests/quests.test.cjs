@@ -21,6 +21,8 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name.endsWith("/SavedRoutinesCard")) return props => React.createElement("SavedRoutinesBoundary", props);
+    if (name.endsWith("/AuthContext")) return { useAuth: () => ({accessMode:"online"}) };
     if (name === "expo-haptics") return {selectionAsync:async()=>{}};
     if (name.endsWith("/UserContext")) return mocks["../../context/UserContext"] ?? {useUser:()=>({hapticsEnabled:false})};
     if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);

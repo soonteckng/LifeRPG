@@ -12,6 +12,8 @@ import RecoveryScreen from "../components/RecoveryScreen";
 import LaunchIntro from "../components/LaunchIntro";
 import GlobalRewardListener from "../components/GlobalRewardListener";
 import SessionConnectionContent from "../components/SessionConnectionContent";
+import RoutineLifecycle from "../components/RoutineLifecycle";
+import RoutineWidgetLifecycle from "../components/RoutineWidgetLifecycle";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
@@ -112,6 +114,8 @@ function AppContent() {
     <TimerProvider>
       <QuestProvider online={accessMode === "online"}>
         <FeatureTourProvider>
+        <RoutineLifecycle />
+        <RoutineWidgetLifecycle />
         <GlobalBackHandler />
         <SessionConnectionContent>
         <Stack
@@ -167,6 +171,7 @@ function AppContent() {
               dangerouslySingular
               options={sessionNativeOptions()}
             />
+            <Stack.Screen name="routine-start" options={{ headerShown: false, animation: reducedMotion ? "none" : "fade" }} />
             <Stack.Screen
               name="quests"
               options={{

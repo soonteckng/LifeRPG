@@ -1,5 +1,6 @@
 import { requiredCharacterXP } from "../utils/levelTiers";
 import { readSuggestedFocus } from "../constants/guidedQuests";
+import { readRoutineSession } from "../utils/routineSession";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { usePathname } from "expo-router";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
@@ -54,7 +55,7 @@ export default function GlobalRewardListener() {
   const area = subjects.find(item => item.id === timer.targetAttributeId);
   const suggestion = summary?.suggestion ?? (timer.linkedTaskId == null ? readSuggestedFocus(timer.notes) ?? undefined : undefined);
   const title = summary?.questTitle && summary.questTitle !== "Quest session" ? summary.questTitle
-    : timer.linkedTaskId != null ? quest?.title ?? "Quest" : suggestion?.title ?? "Free session";
+    : timer.linkedTaskId != null ? quest?.title ?? "Quest" : suggestion?.title ?? readRoutineSession(timer.notes) ?? "Free session";
   const level = timer.completedLevelUp?.newLevel ?? profile?.level ?? 1;
   const candidate: PresentedResult | null = available && ownerId ? {
     ownerId,
@@ -90,10 +91,16 @@ export default function GlobalRewardListener() {
   const heldSerialized = held ? JSON.stringify(held) : null;
   if (serialized && serialized !== heldSerialized) setHeld(candidate);
   const restoringHeld = !closing && timer.isRestoring && !timer.hasOpenSession && held?.ownerId === ownerId;
-  const visible = !!candidate && !closing || restoringHeld;
+  // A cancellation reply removes the selected journal record. Its notice is
+  // still a user-visible result until Done, even though there is no active row.
+  const settledEndHeld = !closing && !terminal && !timer.hasOpenSession && !timer.summaryViewed
+    && held?.ownerId === ownerId && held?.props.ending;
+  const visible = !!candidate && !closing || restoringHeld || !!settledEndHeld;
   // The journal can clear synchronously on Done. Preserve this result's exact
   // identity, duration and actions while the sheet finishes its timed exit.
-  const displayed = visible && candidate ? candidate : held?.ownerId === ownerId ? held : null;
+  const displayed = visible && candidate ? candidate : held?.ownerId === ownerId
+    ? settledEndHeld && !timer.actionBusy && !timer.isRestoring
+      ? { ...held, props: { ...held.props, pending: false, syncBusy: false, syncError: null } } : held : null;
   const closingOwner = displayed?.ownerId;
   const done = () => {
     if (!closingOwner || closingOwner !== currentOwner.current || closeRequested.current) return;

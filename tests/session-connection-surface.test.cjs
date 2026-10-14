@@ -110,19 +110,39 @@ test('reduced motion uses zero-duration fades while preserving the same navigati
   } finally { await ui.cleanup(); }
 });
 
+test('the outgoing layout leaves before the incoming layout fades into view in both directions', async () => {
+  const ui = await surface();
+  try {
+    await ui.motion.finish(); await ui.update({localOnly:true});
+    let [online,offline] = ui.motion.transitions.at(-1).animations;
+    assert.equal(online.config.toValue,0); assert.equal(online.config.delay,0);
+    assert.equal(offline.config.toValue,1); assert.equal(offline.config.delay,online.config.duration);
+    await ui.motion.finish(); await ui.update({localOnly:false});
+    [online,offline] = ui.motion.transitions.at(-1).animations;
+    assert.equal(offline.config.toValue,0); assert.equal(offline.config.delay,0);
+    assert.equal(online.config.toValue,1); assert.equal(online.config.delay,offline.config.duration);
+    assert.equal(ui.root().findByType('Offline').props.active,false);
+    await ui.motion.finish(); assert.equal(ui.root().findAllByType('Offline').length,0);
+  } finally { await ui.cleanup(); }
+});
+
 async function connection(options = {}) {
   const calls = [], motion = motionHarness();
   let accessMode = options.accessMode ?? 'local-only', pathname = options.pathname ?? '/session';
+  let ownerId = options.ownerId ?? 'owner-a', nonce = options.nonce;
   let timer = { hasOpenSession: false, isCompleted: false, endingSession: false, sessionEnded: false,
-    awaitingStart: false, linkedTaskId: null, isRestoring: false, ...options.timer };
+    awaitingStart: false, linkedTaskId: null, isRestoring: false, actionBusy: false, sessionId: 'session-a',
+    consumeNotificationAction: async value => { calls.push(['consume', value]); return options.action ?? 'end'; },
+    resetTimer: async () => { calls.push(['end']); return true; }, ...options.timer };
   const router = { replace: route => calls.push(route) };
   const Content = load('src/components/SessionConnectionContent.tsx', {
     'react-native': { View: host('View'), Animated: motion.Animated, StyleSheet: { create: value => value } },
-    'expo-router': { usePathname: () => pathname, useRouter: () => router },
+    'expo-router': { usePathname: () => pathname, useRouter: () => router, useGlobalSearchParams: () => ({countdownAction:nonce}) },
     '../hooks/useReducedMotion': { useReducedMotion: () => false },
-    '../context/AuthContext': { useAuth: () => ({ accessMode }) },
+    '../context/AuthContext': { useAuth: () => ({ accessMode, user: accessMode === 'online' ? {id:ownerId} : null, localOwner:{id:ownerId} }) },
     '../context/TimerContext': { useTimer: () => timer },
     './OfflineSessionRecovery': host('Recovery'),
+    './SheetConfirmation': host('Confirmation'),
   }).default;
   const render = () => React.createElement(Content, null, React.createElement('Navigation'));
   let tree; await act(async () => { tree = create(render()); });
@@ -130,6 +150,8 @@ async function connection(options = {}) {
     update: async next => {
       if (next.accessMode !== undefined) accessMode = next.accessMode;
       if (next.pathname !== undefined) pathname = next.pathname;
+      if (next.ownerId !== undefined) ownerId = next.ownerId;
+      if (next.nonce !== undefined) nonce = next.nonce;
       if (next.timer) timer = { ...timer, ...next.timer };
       await act(async () => tree.update(render()));
     },
@@ -198,6 +220,94 @@ test('a normal online setup and non-session destinations do not redirect merely 
       assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
     } finally { await ui.cleanup(); }
   }
+});
+
+test('notification End opens the stable confirmation offline and only confirmed End stops the timer', async () => {
+  const ui = await connection({nonce:'nonce-a',timer:{hasOpenSession:true,isRunning:true}});
+  try {
+    assert.equal(ui.root().findAllByType('Confirmation').length,1);
+    assert.deepEqual(ui.calls,[['consume','nonce-a']]);
+    await ui.update({accessMode:'online'});
+    assert.equal(ui.root().findAllByType('Confirmation').length,1,'confirmation survives reconnecting above the two surfaces');
+    await ui.update({accessMode:'local-only'});
+    await act(async () => ui.root().findByType('Confirmation').props.onCancel());
+    await ui.update({timer:{actionBusy:true}}); await ui.update({timer:{actionBusy:false}});
+    assert.equal(ui.root().findAllByType('Confirmation').length,0,'cancelling never reconsumes the same durable nonce');
+    assert.deepEqual(ui.calls,[['consume','nonce-a']]);
+    await ui.update({nonce:'nonce-b'});
+    await act(async () => ui.root().findByType('Confirmation').props.onConfirm());
+    assert.deepEqual(ui.calls,[['consume','nonce-a'],['consume','nonce-b'],['end']]);
+    assert.equal(ui.root().findAllByType('Confirmation').length,0);
+  } finally { await ui.cleanup(); }
+});
+
+test('accepted notification End survives a busy rerender while a delayed response is in flight', async () => {
+  let resolve; const pending = new Promise(done => { resolve=done; });
+  const ui = await connection({nonce:'nonce-a',timer:{hasOpenSession:true,consumeNotificationAction:() => pending}});
+  try {
+    await ui.update({timer:{actionBusy:true}});
+    await act(async () => resolve('end'));
+    assert.equal(ui.root().findByType('Confirmation').props.title,'End this session?');
+    await act(async () => ui.root().findByType('Confirmation').props.onConfirm());
+    assert.deepEqual(ui.calls,[],'busy controls cannot submit a second action');
+    await ui.update({timer:{actionBusy:false}});
+    await act(async () => ui.root().findByType('Confirmation').props.onConfirm());
+    assert.deepEqual(ui.calls,[['end']]);
+  } finally { await ui.cleanup(); }
+});
+
+test('late native End responses cannot prompt over a replaced session, another account or an expired timer', async () => {
+  for (const replacement of [{timer:{sessionId:'session-b'}},{ownerId:'owner-b'},
+    {timer:{hasOpenSession:false,isCompleted:true}}]) {
+    let resolve; const pending = new Promise(done => { resolve=done; });
+    const ui = await connection({nonce:'nonce-a',timer:{hasOpenSession:true,consumeNotificationAction:() => pending}});
+    try {
+      await ui.update(replacement); await act(async () => resolve('end'));
+      assert.equal(ui.root().findAllByType('Confirmation').length,0);
+      assert.deepEqual(ui.calls,[]);
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test('notification End waits for restoration before consuming and ignores non-End actions', async () => {
+  const ui = await connection({nonce:'nonce-a',action:'pause',timer:{hasOpenSession:true,isRestoring:true}});
+  try {
+    assert.deepEqual(ui.calls,[]); await ui.update({timer:{isRestoring:false}});
+    assert.deepEqual(ui.calls,[['consume','nonce-a']]);
+    assert.equal(ui.root().findAllByType('Confirmation').length,0);
+  } finally { await ui.cleanup(); }
+});
+
+test('a cold offline native End proof reaches the global confirmation after real journal re-admission without stopping automatically', async () => {
+  const modules=new Map(),domain=load('src/utils/sessionJournal.ts',{},modules);
+  const countdown=load('src/utils/sessionCountdown.ts',{},modules);
+  const {createSessionCountdownCoordinator}=load('src/services/sessionCountdownCoordinator.ts',{},modules);
+  const vectors=JSON.parse(fs.readFileSync(path.join(__dirname,'fixtures/session-journal-v1.json'),'utf8'));
+  const clock=vectors.clock,scope=vectors.scope,clientId=vectors.runningRecord.clientSessionId,serverId=vectors.runningRecord.serverSessionId;
+  const apply=(journal,action)=>domain.applyJournalAction(journal,{epoch:journal.admission.epoch,expectedRevision:journal.revision,...action});
+  let journal=apply(domain.createJournal(scope),{type:'admit',epoch:1});
+  journal=apply(journal,{type:'prepare_start',operationId:'10000000-0000-4000-8000-000000000001',clientSessionId:clientId,setup:vectors.setup,clock});
+  journal=apply(journal,{type:'acknowledge_start',operationId:'10000000-0000-4000-8000-000000000001',
+    snapshot:{serverSessionId:serverId,state:'running',startedAtMs:clock.wallTimeMs,elapsedMs:0,observedClock:clock}});
+  const nonce='10000000-0000-4000-8000-000000000005';
+  const token={version:1,kind:'end',operationId:nonce,identity:countdown.projectSessionCountdown({journal,currentScope:scope,
+    currentAdmissionEpoch:journal.admission.epoch,currentClientSessionId:clientId,clock}).identity};
+  journal=apply(apply(journal,{type:'revoke'}),{type:'admit',epoch:3});
+  let consumes=0;const mutations=[];
+  const coordinator=createSessionCountdownCoordinator({scope,store:{load:async()=>({kind:'ready',journal})},
+    native:{consumeAction:async()=>{consumes++;return token;}},currentScope:()=>scope,currentEpoch:()=>9,
+    currentRecordId:()=>clientId,busy:()=>false,clock:()=>clock,
+    controller:{pause:async()=>mutations.push('pause'),resume:async()=>mutations.push('resume'),tick:async()=>mutations.push('tick')}});
+  const ui=await connection({nonce,ownerId:scope.ownerId,timer:{sessionId:serverId,hasOpenSession:true,isRestoring:true,
+    consumeNotificationAction:value=>coordinator.action(value)}});
+  try {
+    assert.equal(consumes,0);await ui.update({timer:{isRestoring:false}});
+    assert.equal(consumes,1);assert.equal(ui.root().findByType('Confirmation').props.title,'End this session?');
+    assert.deepEqual(mutations,[]);assert.deepEqual(ui.calls,[],'issuing the prompt never ends the timer');
+    await ui.update({accessMode:'online'});assert.equal(ui.root().findAllByType('Confirmation').length,1);
+    await act(async()=>ui.root().findByType('Confirmation').props.onConfirm());assert.deepEqual(ui.calls,[['end']]);
+    assert.equal(await coordinator.action(nonce),null,'the recovered proof cannot prompt twice');assert.deepEqual(mutations,[]);
+  } finally {await ui.cleanup();}
 });
 
 async function questProvider(options = {}) {

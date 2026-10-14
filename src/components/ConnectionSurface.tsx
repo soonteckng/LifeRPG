@@ -16,9 +16,14 @@ export default function ConnectionSurface({ localOnly, onlineReady = true, child
   const [offlineOpacity] = useState(() => new Animated.Value(localOnly || !onlineReady ? 1 : 0));
   useLayoutEffect(() => {
     let live = true;
+    const toOffline = localOnly || !onlineReady;
+    // Let the outgoing page leave before the incoming page becomes readable.
+    // Cross-fading two complete layouts made overlapping text look like a jump.
+    const leave = reducedMotion ? 0 : 120;
+    const enter = reducedMotion ? 0 : 180;
     const animation = Animated.parallel([
-      Animated.timing(onlineOpacity, { toValue: localOnly || !onlineReady ? 0 : 1, duration: reducedMotion ? 0 : 180, useNativeDriver: true }),
-      Animated.timing(offlineOpacity, { toValue: localOnly || !onlineReady ? 1 : 0, duration: reducedMotion ? 0 : 180, useNativeDriver: true }),
+      Animated.timing(onlineOpacity, { toValue: toOffline ? 0 : 1, duration: toOffline ? leave : enter, delay: toOffline ? 0 : leave, useNativeDriver: true }),
+      Animated.timing(offlineOpacity, { toValue: toOffline ? 1 : 0, duration: toOffline ? enter : leave, delay: toOffline ? leave : 0, useNativeDriver: true }),
     ]);
     animation.start(({ finished }) => {
       if (finished && live && !localOnly && onlineReady) {

@@ -14,6 +14,8 @@ function load(file, mocks = {}, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true} }).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name.endsWith('/SavedRoutinesCard'))return host('SavedRoutinesCard');
+    if(name.endsWith('/AuthContext'))return {useAuth:()=>({accessMode:'online'})};
     if(name.endsWith("/LevelTierSheet"))return props=>React.createElement("TierSheet",props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);

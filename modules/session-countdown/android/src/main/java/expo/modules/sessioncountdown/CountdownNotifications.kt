@@ -154,9 +154,9 @@ internal class CountdownNotifications(private val context: Context) {
     if (!notificationsGranted()) return
     ensureChannels(state.preferences)
     val public = NotificationCompat.Builder(context, channelId(state.preferences)).setSmallIcon(icon())
-      .setContentTitle("Session finished").setContentText("Open LifeRPG to view your progress").build()
+      .setContentTitle("Time well spent").setContentText("Your session is finished. Open LifeRPG to see your progress.").build()
     val builder = NotificationCompat.Builder(context, channelId(state.preferences)).setSmallIcon(icon())
-      .setContentTitle("Session finished").setContentText("Your timer reached zero. Open LifeRPG to save or view your progress.")
+      .setContentTitle("Time well spent").setContentText("Your session is finished. Open LifeRPG to see your progress.")
       .setColor(0xFFAAB3FF.toInt()).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE)
       .setPublicVersion(public).setCategory(Notification.CATEGORY_REMINDER).setPriority(NotificationCompat.PRIORITY_HIGH)
     openIntent()?.let { builder.setContentIntent(it) }

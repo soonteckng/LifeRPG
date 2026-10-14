@@ -28,6 +28,8 @@ import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import QuestSheet from "../../components/QuestSheet";
+import SavedRoutinesCard from "../../components/SavedRoutinesCard";
+import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
 import { colors } from "../../constants/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
@@ -44,6 +46,7 @@ import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
 
 export default function HomeScreen() {
+  const { accessMode } = useAuth();
   const router = useRouter();
   const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -240,6 +243,7 @@ export default function HomeScreen() {
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.accent} />
           </TouchableOpacity></TourAnchor>
+          <SavedRoutinesCard subjects={subjects} initialSeconds={quickSeconds} initialAreaId={quickAreaId} active={accessMode === "online"} />
           <TourAnchor id="home-quests"><View style={styles.questCard} testID="home-quest-card">
             <View style={styles.questHeading}>
               <View style={styles.questHeadingText}>

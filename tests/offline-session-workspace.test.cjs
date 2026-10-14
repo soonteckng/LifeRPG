@@ -35,7 +35,8 @@ async function screen(options = {}) {
     'expo-haptics': { selectionAsync: async () => calls.push(['haptic']) },
     '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), TouchableOpacity: host('Button') },
     './AppText': { Text: host('Text') }, './ProgressRing': host('Ring'), './FocusLengthControl': host('DurationControl'),
-    './MotionPressable': host('Button'), './ContentReveal': host('Reveal'), './PersonalUI': { p: {} },
+    './MotionPressable': host('Button'), './ContentReveal': host('Reveal'), './PersonalUI': { p: {} }, './FocusDurationSheet':host('DurationSheet'),
+    './SavedRoutinesCard':host('SavedRoutinesBoundary'),
     './AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.footer) : null,
     './SheetConfirmation': host('Confirmation'),
     '../context/TimerContext': { useTimer: () => timer }, '../context/AuthContext': { useAuth: () => ({ localOwner: { id: '11111111-1111-4111-8111-111111111111', backendId: 'workspace' }, retrySessionVerification: async () => calls.push(['verify']) }) },
@@ -166,11 +167,38 @@ test('hidden offline overlay cannot present direction, duration or confirmation 
   const ui = await screen();
   try {
     await ui.press('Choose focus area'); assert.equal(ui.root().findAllByType('Sheet').length,1);
-    await ui.setActive(false); assert.equal(ui.root().findAllByType('Sheet').length,0); assert.equal(ui.root().findAllByType('DurationControl').length,0);
+    const duration = ui.root().findByType('DurationControl'), editor = ui.root().findByType('DurationSheet');
+    await ui.setActive(false); assert.equal(ui.root().findAllByType('Sheet').length,0); assert.equal(ui.root().findByType('DurationControl'),duration);
+    assert.equal(duration.props.disabled,true); assert.equal(editor.props.visible,false);
     await ui.setActive(true); assert.equal(ui.root().findAllByType('Sheet').length,0); await ui.setActive(false);
     await ui.update({isCompleted:true}); assert.equal(ui.root().findAllByType('Sheet').length,0);
     await ui.update({isCompleted:false,hasOpenSession:true,isRunning:true}); await ui.setActive(true); await ui.press('End session');
     assert.equal(ui.root().findAllByType('Confirmation').length,1); await ui.setActive(false); assert.equal(ui.root().findAllByType('Confirmation').length,0);
     await ui.setActive(true); assert.equal(ui.root().findAllByType('Confirmation').length,0);
+  } finally { await ui.cleanup(); }
+});
+
+test('offline direction and starting-point taps obey the saved haptic preference independently of opening the chooser', async () => {
+  for(const haptics of [true,false]) {
+    const ui=await screen({haptics});
+    try {
+      await ui.press('Choose focus area'); const before=ui.calls.filter(call=>call[0]==='haptic').length;
+      await ui.press('Work & projects');
+      assert.equal(ui.calls.filter(call=>call[0]==='haptic').length-before,haptics?1:0);
+      await ui.press('Make room for a priority');
+      assert.equal(ui.calls.filter(call=>call[0]==='haptic').length-before,haptics?2:0);
+      await ui.saveDirection();assert.equal(ui.preference().templateId,'work-priority');
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test('the offline custom-duration editor remains mounted and closes during the connection fade', async () => {
+  const ui=await screen();
+  try {
+    const editor=ui.root().findByType('DurationSheet');
+    await act(async () => ui.root().findByType('DurationControl').props.onCustom());
+    assert.equal(editor.props.visible,true); assert.equal(editor.props.seconds,75);
+    await ui.setActive(false);assert.equal(ui.root().findByType('DurationSheet'),editor);assert.equal(editor.props.visible,false);
+    await ui.setActive(true);assert.equal(editor.props.visible,false,'reopening offline does not reopen an old editor');
   } finally { await ui.cleanup(); }
 });

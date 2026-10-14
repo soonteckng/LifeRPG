@@ -109,6 +109,39 @@ test('warm End opens confirmation only; duplicate nonce never cancels or complet
   assert.equal(await h.co.action(ACTION), 'end'); assert.equal(await h.co.action(ACTION), null);
   assert.deepEqual(h.calls.map(c => c[0]), ['consume', 'consume']);
 });
+
+test('cold offline End survives a real re-admission only as a one-use confirmation prompt', async () => {
+  const h=harness(),previous=h.state.journal;
+  h.state.token=h.token('end');
+  h.state.journal=act(act(previous,{type:'revoke'}),{type:'admit',epoch:3});
+  const before=JSON.stringify(h.state.journal);
+  assert.equal(await h.co.action(ACTION),'end');assert.equal(await h.co.action(ACTION),null);
+  assert.deepEqual(h.calls.map(call=>call[0]),['consume','consume']);
+  assert.equal(JSON.stringify(h.state.journal),before);
+});
+
+test('cold Pause/Resume remain stale, while an older End revision may only prompt even at zero', async () => {
+  for(const kind of ['pause','resume','end']) {
+    const h=harness();h.state.token=h.token(kind);
+    h.state.journal=act(h.state.journal,{type:'admit',epoch:2});h.state.clock=clock(30000);
+    assert.equal(await h.co.action(ACTION),kind==='end'?'end':null);
+    assert.deepEqual(h.calls.map(call=>call[0]),['consume'],'fallback never ticks or mutates timing');
+  }
+});
+
+test('an older warm End revision prompts once but an owner switch, replacement or ending state rejects it', async () => {
+  for(const change of [h=>{},h=>{h.state.scope={...SCOPE,ownerId:'22222222-2222-4222-8222-222222222222'};},
+    h=>{h.state.record='dddddddd-dddd-4ddd-8ddd-dddddddddddd';},
+    h=>{h.state.journal=act(h.state.journal,{type:'prepare_transition',operationId:'10000000-0000-4000-8000-000000000006',clientSessionId:CLIENT,kind:'cancel',clock:clock(6000)});}]) {
+    const h=harness();h.state.token=h.token('end');
+    h.state.journal=act(h.state.journal,{type:'compact',clock:clock(5001)});
+    change(h);
+    const expected=h.state.scope?.ownerId===SCOPE.ownerId && h.state.record===CLIENT
+      && !h.state.journal.commands.some(command=>command.kind==='cancel')?'end':null;
+    assert.equal(await h.co.action(ACTION),expected);
+    assert.equal(h.calls.some(call=>['pause','resume','tick'].includes(call[0])),false);
+  }
+});
 test('valid Pause dispatches through the existing controller once', async () => {
   const h = harness(); h.state.token = h.token('pause');
   await h.co.action(ACTION); await h.co.action(ACTION);
