@@ -120,7 +120,10 @@ internal class CountdownRepository(context: Context) {
       // End tombstones persist before retiring the original exact cache action.
       // A crash between these files cannot recapture an already returned End.
       if (token.kind == "end") writeEndPrompts(CountdownEndPromptPolicy.consumed(proof, token))
-      write(state)
+      val continued = if (token.kind == "end") CountdownEngine.rearmEndPrompt(state,
+        notifications.wallMs(), notifications.elapsedMs(), notifications.bootId()) { UUID.randomUUID().toString() } else state
+      write(continued)
+      if (token.kind == "end") render(continued)
       return@synchronized token.map()
     }
     val (remaining, prompt) = CountdownEndPromptPolicy.consume(proof, current, lease, nonce)

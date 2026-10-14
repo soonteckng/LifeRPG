@@ -20,3 +20,5 @@ Validation at that code checkpoint: 1,079 integrated Node tests passed, none ski
 One Android preview APK is necessary for the new widget API and persisted cold-End prompt handover. Native runtime compatibility must be recalculated rather than reusing APK7's fingerprint. The focused installed-phone flow is `routines-widget-phone-check.md`. Do not clear app data when updating.
 
 PR16 remains draft for Claude's independent offline review and the remaining release acceptance cases. PR17 also remains draft pending installed widget/notification acceptance. No production-store submission is part of this rollout.
+
+Final notification regression: consuming End retires its nonce and creates a fresh End confirmation shortcut without changing the timer anchor, remaining time, journal or cloud state. This keeps End available after Keep session. Four further native regressions pass, making 66 JVM tests in the final native source. The unfinished build at the earlier checkpoint was cancelled before delivery so this correction is included in the downloadable APK.
