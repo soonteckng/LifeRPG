@@ -4,7 +4,7 @@ This milestone extends the existing Quick Start: a user can save, edit, remove a
 
 Routine settings use durable account/backend-scoped local storage and a revisioned, duplicate-safe cloud queue. Concurrent edits produce an explicit choice; deletion uses a tombstone. The cloud functions require the expected account ID as well as the current authenticated identity, so an account switch between verification and sending cannot write under the new account. Limits are 32 active routines, 64 queued operations and eight retained conflicts. Notification permission stays on each device.
 
-The proposal `docs/saved-routines.sql` changes only routine storage and RPCs. It does not replace session, reward, quest, profile or daily-goal functions. It remains unapplied until the user explicitly approves live installation. Final reviewed SHA256: `147BB660F5034ED5BEA730497F92AC262F8F0C1466C866D80DB03B429B49E4BF`.
+The proposal `docs/saved-routines.sql` changes only routine storage and RPCs. It does not replace session, reward, quest, profile or daily-goal functions. The user approved it on 14 October 2026 and it is installed; see `routines-widget-rollout.md`. Final reviewed SHA256: `147BB660F5034ED5BEA730497F92AC262F8F0C1466C866D80DB03B429B49E4BF`.
 
 The Android widget extends the already approved `session-countdown` module. It adds no dependency, permission or second writer for session storage. Native code retains only a presentation catalogue and one-use launch proofs; the app resolves the current routine and starts through the existing journal controller. Account/backend switches, deleted routines and stale launch proofs cannot start another account's routine. An older APK safely omits widget controls while retaining the JS routines feature.
 
