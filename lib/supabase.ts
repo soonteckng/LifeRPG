@@ -2,6 +2,8 @@ import "react-native-url-polyfill/auto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createClient } from "@supabase/supabase-js";
 import { Platform } from "react-native";
+import { connectivityAwareFetch } from "../src/services/cloudConnection";
+import { sessionBackendIdentity } from "../src/utils/sessionBackend";
 
 // Static web exports have no browser storage; native/browser sessions remain persistent.
 const isServerRender = Platform.OS === "web" && typeof window === "undefined";
@@ -14,6 +16,7 @@ export const supabase = createClient(
   supabaseUrl,
   supabasePublishableKey,
   {
+    global: { fetch: connectivityAwareFetch(sessionBackendIdentity(supabaseUrl)?.backendId ?? "", (input, init) => fetch(input, init)) },
     auth: {
       storage: isServerRender ? undefined : AsyncStorage,
       autoRefreshToken: !isServerRender,

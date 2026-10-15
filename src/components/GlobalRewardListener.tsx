@@ -11,9 +11,12 @@ import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useQuests } from "../context/QuestContext";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
+import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
+import { sessionBackendIdentity } from "../utils/sessionBackend";
 
 type PresentedResult = {
   ownerId: string;
+  accountKey: string;
   props: Omit<SessionResultSheetProps, "visible" | "onClose" | "onDismiss" | "onRetry" | "saveAction">;
   saveCompletion?: SuggestedQuestCompletion;
 };
@@ -27,10 +30,15 @@ export default function GlobalRewardListener() {
   const { profile, reloadProfile } = useUser();
   const { tasks, subjects } = useQuests();
   const ownerId = auth.user?.id ?? auth.localOwner?.id ?? profile?.id;
+  const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
+  const accountKey = JSON.stringify([backendId, ownerId]);
+  const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
   const currentOwner = useRef(ownerId);
+  const currentScope = useRef(presentationScope);
   const closeRequested = useRef(false);
   useLayoutEffect(() => { currentOwner.current = ownerId; }, [ownerId]);
-  useLayoutEffect(() => { closeRequested.current = false; }, [ownerId]);
+  useLayoutEffect(() => { currentScope.current = presentationScope; }, [presentationScope]);
+  useLayoutEffect(() => { closeRequested.current = false; }, [accountKey]);
   const online = auth.accessMode !== "local-only";
   const summary = timer.sessionSummary;
   const ending = timer.endingSession || timer.sessionEnded;
@@ -55,10 +63,11 @@ export default function GlobalRewardListener() {
   const area = subjects.find(item => item.id === timer.targetAttributeId);
   const suggestion = summary?.suggestion ?? (timer.linkedTaskId == null ? readSuggestedFocus(timer.notes) ?? undefined : undefined);
   const title = summary?.questTitle && summary.questTitle !== "Quest session" ? summary.questTitle
-    : timer.linkedTaskId != null ? quest?.title ?? "Quest" : suggestion?.title ?? readRoutineSession(timer.notes) ?? "Free session";
+    : timer.linkedTaskId != null ? quest?.title ?? "Routine" : suggestion?.title ?? readRoutineSession(timer.notes) ?? "Free session";
   const level = timer.completedLevelUp?.newLevel ?? profile?.level ?? 1;
   const candidate: PresentedResult | null = available && ownerId ? {
     ownerId,
+    accountKey,
     props: {
       sessionId: summary?.sessionId ?? timer.sessionId,
       completedAtMs: summary?.completedAtMs,
@@ -85,35 +94,38 @@ export default function GlobalRewardListener() {
   } : null;
   const [closing, setClosing] = useState(false);
   const [held, setHeld] = useState<PresentedResult | null>(null);
-  const [heldOwner, setHeldOwner] = useState(ownerId);
-  if (heldOwner !== ownerId) { setHeldOwner(ownerId); setClosing(false); setHeld(null); }
+  const [heldAccount, setHeldAccount] = useState(accountKey);
+  if (heldAccount !== accountKey) { setHeldAccount(accountKey); setClosing(false); setHeld(null); }
   const serialized = candidate && !closing ? JSON.stringify(candidate) : null;
   const heldSerialized = held ? JSON.stringify(held) : null;
   if (serialized && serialized !== heldSerialized) setHeld(candidate);
-  const restoringHeld = !closing && timer.isRestoring && !timer.hasOpenSession && held?.ownerId === ownerId;
+  const restoringHeld = !closing && timer.isRestoring && !timer.hasOpenSession && held?.accountKey === accountKey;
   // A cancellation reply removes the selected journal record. Its notice is
   // still a user-visible result until Done, even though there is no active row.
   const settledEndHeld = !closing && !terminal && !timer.hasOpenSession && !timer.summaryViewed
-    && held?.ownerId === ownerId && held?.props.ending;
+    && held?.accountKey === accountKey && held?.props.ending;
   const visible = !!candidate && !closing || restoringHeld || !!settledEndHeld;
   // The journal can clear synchronously on Done. Preserve this result's exact
   // identity, duration and actions while the sheet finishes its timed exit.
-  const displayed = visible && candidate ? candidate : held?.ownerId === ownerId
+  const displayed = visible && candidate ? candidate : held?.accountKey === accountKey
     ? settledEndHeld && !timer.actionBusy && !timer.isRestoring
       ? { ...held, props: { ...held.props, pending: false, syncBusy: false, syncError: null } } : held : null;
   const closingOwner = displayed?.ownerId;
   const done = () => {
-    if (!closingOwner || closingOwner !== currentOwner.current || closeRequested.current) return;
+    if (!closingOwner || closingOwner !== currentOwner.current || presentationScope !== currentScope.current || closeRequested.current) return;
     closeRequested.current = true;
     setClosing(true);
+    // The selected row can already be gone after a successful End reply.
+    // Dismiss the held presentation by its identity, never by network state.
+    globalSessionLifecycle.dismissResult({ ownerId: closingOwner, scope: presentationScope, sessionId: displayed?.props.sessionId ?? null });
     timer.acknowledgeSummary();
     timer.clearCompletionModal();
   };
   const retry = () => {
-    if (!closingOwner || closingOwner !== currentOwner.current || closeRequested.current) return;
+    if (!closingOwner || closingOwner !== currentOwner.current || presentationScope !== currentScope.current || closeRequested.current) return;
     void (async () => {
       if (!online) await auth.retrySessionVerification();
-      if (closingOwner !== currentOwner.current) return;
+      if (closingOwner !== currentOwner.current || presentationScope !== currentScope.current) return;
       if (ending) await timer.retryAction();
       else await timer.retryCompletion();
     })().catch(() => {});
@@ -124,7 +136,7 @@ export default function GlobalRewardListener() {
   return <><SessionResultSheet {...displayed?.props} visible={visible}
     saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!visible} completion={displayed.saveCompletion} />}
     onClose={done} onDismiss={() => {
-      if (closingOwner !== currentOwner.current) return;
+      if (closingOwner !== currentOwner.current || presentationScope !== currentScope.current) return;
       closeRequested.current = false; setClosing(false); if (!candidate) setHeld(null);
     }} onRetry={retry} />
     <PostSessionCelebration insideSession={insideSession || !online} /></>;

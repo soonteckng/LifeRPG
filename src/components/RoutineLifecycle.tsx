@@ -6,6 +6,7 @@ import { useUser } from "../context/UserContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { createRoutineTransport, savedRoutineStore } from "../services/savedRoutineService";
 import { createRoutineReminderCoordinator, routineReminderFingerprint, routineReminderScope, type ScheduledRoutineReminder } from "../services/routineReminderCoordinator";
+import { subscribeNotificationPermissionChanges } from "../services/notificationPermissionService";
 
 let reminderSound = true;
 const reminders = createRoutineReminderCoordinator({
@@ -53,8 +54,9 @@ export default function RoutineLifecycle() {
     reminderSound = soundEnabled;
     const reconcile = () => { void reminders.update(ready ? scope : null, routines.routines).catch(() => {}); };
     reconcile();
+    const unsubscribePermission = subscribeNotificationPermissionChanges(reconcile);
     const foreground = AppState.addEventListener("change", state => { if (state === "active") reconcile(); });
-    return () => { foreground.remove(); void reminders.update(null, []).catch(() => {}); };
+    return () => { unsubscribePermission(); foreground.remove(); void reminders.update(null, []).catch(() => {}); };
   }, [ready, scope, routines.routines, soundEnabled]);
   return null;
 }

@@ -7,6 +7,8 @@ import { supabase } from "../../lib/supabase";
 import { isExpoGoLanRecoveryRedirect, parseRecoveryLink, recoveryLinkError, recoveryStorageKey, validEmail, type RecoveryState } from "../utils/passwordRecovery";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { authEntryPreference, authEntryStorageKey, type AuthEntryMode } from "../services/authEntryPreference";
+import { setCloudConnectionScope, subscribeCloudConnectionFailure } from "../services/cloudConnection";
+import { readNativeConnectivity, subscribeNativeConnectivity } from "../services/nativeFocusProtection";
 import { createLocalAccountCache, readPersistedCredentialOwner, localRecoveryOwner, isTemporaryAuthFailure, isExpiredAuthFailure,
   type LocalAccountOwner, type LocalAccountCache, type CachedVerifiedProfile } from "../services/localAccountCache";
 interface AuthContextType {
@@ -73,6 +75,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verificationGeneration = useRef(0);
   const sessionVerification = useRef<SessionVerificationFlight | null>(null);
   const ownerVerification = useRef<OwnerVerificationFlight | null>(null);
+  const deviceReachable = useRef<boolean | null>(null);
+  const connectionDowngrade = useRef<Promise<LocalAccountOwner | null> | null>(null);
+  const connectionDowngradeGeneration = useRef(-1);
   const admissionClosed = useRef(false);
   const cacheRef = useRef<LocalAccountCache | null>(null);
   const [cachedProfile, setCachedProfile] = useState<CachedVerifiedProfile | null>(null);
@@ -92,6 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       admissionRevision.current++; setAdmissionEpoch(admissionRevision.current);
     }
     admission.current = { mode, owner };
+    setCloudConnectionScope(mode === "online" && owner ? { backendId: owner.backendId, ownerId: owner.id, admissionEpoch: admissionRevision.current } : null);
     setAccessMode(mode); setLocalOwner(mode === "local-only" ? owner : null);
   };
   const clearAccountCache = async () => {
@@ -121,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ? "" : Linking.createURL("auth/recovery");
   const verifySession = (current: Session | null, force = false, restorationError: unknown = null): Promise<LocalAccountOwner | null> => {
     if (admissionClosed.current && recoveryRef.current === "none") return Promise.resolve(null);
+    if (deviceReachable.current === false && recoveryRef.current === "none") restorationError ??= new AuthVerificationTimeout();
     current = snapshotCredentials(current);
     const existing = sessionVerification.current;
     if (!restorationError && existing && existing.generation === verificationGeneration.current
@@ -160,6 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error) throw error;
       if (!data.user || data.user.id !== current.user.id) throw { code: "owner_mismatch" };
       if (!fresh() || sessionRef.current?.user.id !== current.user.id) return null;
+      if (deviceReachable.current === false && recoveryRef.current === "none") throw new AuthVerificationTimeout();
       verified.current = data.user; verifiedCredentials.current = current; setVerifiedUser(data.user);
       // Recovery may display a network-verified identity but never admits Home
       // or stores a local recovery marker for that recovery session.
@@ -181,8 +189,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return fresh() ? owner : null;
     } catch (error) {
       if (!fresh()) return null;
-      verified.current = null; verifiedCredentials.current = null; setVerifiedUser(null);
-      if (recoveryRef.current !== "none") return null;
+      if (recoveryRef.current !== "none") {
+        verified.current = null; verifiedCredentials.current = null; setVerifiedUser(null);
+        return null;
+      }
       const credential = backend ? await readPersistedCredentialOwner(AsyncStorage, backend) : { kind: "missing" as const };
       if (!fresh()) return null;
       let cache = cacheRef.current;
@@ -190,6 +200,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!fresh()) return null;
       const owner = (isTemporaryAuthFailure(error) || (isExpiredAuthFailure(error) && credential.kind === "present" && credential.expired))
         ? localRecoveryOwner(cache, credential) : null;
+      // Commit the new account surface together. Clearing user before these
+      // storage reads briefly rendered a signed-out screen during an outage.
+      verified.current = null; verifiedCredentials.current = null; setVerifiedUser(null);
       if (owner && (!current || current.user.id === owner.id)) {
         cacheRef.current = cache; setCachedProfile(cache!.profile); changeAdmission("local-only", owner); setSessionError(false);
       } else {
@@ -221,6 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const verifyCurrentOwner = (): Promise<LocalAccountOwner | null> => {
     const ownerId = admission.current.owner?.id ?? sessionRef.current?.user.id;
     if (!ownerId || recoveryRef.current !== "none" || admissionClosed.current) return Promise.resolve(null);
+    if (deviceReachable.current === false) return connectionDowngrade.current ?? Promise.resolve(null);
     const epoch = admissionRevision.current;
     const current = snapshotCredentials(sessionRef.current);
     const existing = ownerVerification.current;
@@ -437,6 +451,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   const reconnectVerification = useRef(verifyCurrentOwner);
   useEffect(() => { reconnectVerification.current = verifyCurrentOwner; });
+  const enterLocalConnection = useRef<() => Promise<LocalAccountOwner | null>>(() => Promise.resolve(null));
+  useEffect(() => { enterLocalConnection.current = () => {
+    if (admission.current.mode !== "online" || !admission.current.owner || admissionClosed.current || recoveryRef.current !== "none") return Promise.resolve(null);
+    if (connectionDowngrade.current && connectionDowngradeGeneration.current === verificationGeneration.current) return connectionDowngrade.current;
+    if (ownerVerification.current) ownerVerification.current.cancelled = true;
+    ownerVerification.current = null;
+    // Reuse the independent persisted-owner/cache checks. Native network state
+    // and failed HTTP calls can remove cloud access, never grant account access.
+    const request = verifySession(sessionRef.current, true, new AuthVerificationTimeout()).finally(() => {
+      if (connectionDowngrade.current === request) connectionDowngrade.current = null;
+    });
+    connectionDowngrade.current = request;
+    connectionDowngradeGeneration.current = verificationGeneration.current;
+    return request;
+  }; });
+  useEffect(() => {
+    let live = true;
+    let active = !AppState?.currentState || AppState.currentState === "active";
+    let sequence = -1;
+    let nativeSubscription: { remove(): void } | null = null;
+    let validationTimer: ReturnType<typeof setTimeout> | null = null;
+    const checkAgain = () => {
+      if (!live || !active || deviceReachable.current === false || admission.current.mode !== "local-only"
+        || admissionClosed.current || recoveryRef.current !== "none") return;
+      void reconnectVerification.current().catch(() => null);
+    };
+    const acceptNetwork = (state: { connected: boolean; validated: boolean; sequence: number } | null) => {
+      if (!live || !state || state.sequence <= sequence) return;
+      sequence = state.sequence;
+      if (validationTimer) { clearTimeout(validationTimer); validationTimer = null; }
+      const reachable = state.connected && state.validated;
+      const apply = () => {
+        if (!live || sequence !== state.sequence) return;
+        deviceReachable.current = reachable;
+        if (!reachable) void enterLocalConnection.current().then(checkAgain).catch(() => null);
+        else if (connectionDowngrade.current) void connectionDowngrade.current.then(checkAgain).catch(() => null);
+        else checkAgain();
+      };
+      // New Wi-Fi may take a moment to validate while cellular hands over.
+      // Ignore that short gap; a complete network loss is immediate.
+      if (state.connected && !state.validated) validationTimer = setTimeout(apply, 800);
+      else apply();
+    };
+    const unsubscribeFailures = subscribeCloudConnectionFailure(scope => {
+      if (!live || scope.ownerId !== admission.current.owner?.id || scope.backendId !== admission.current.owner?.backendId
+        || scope.admissionEpoch !== admissionRevision.current) return;
+      void enterLocalConnection.current().catch(() => null);
+    });
+    // Subscribe before reading. The native sequence rejects a stale initial
+    // snapshot that arrives after a more recent connection event.
+    void subscribeNativeConnectivity(acceptNetwork).then(subscription => {
+      if (!live) { subscription?.remove(); return; }
+      nativeSubscription = subscription;
+      void readNativeConnectivity().then(acceptNetwork).catch(() => null);
+    }).catch(() => null);
+    const listener = AppState?.addEventListener("change", state => {
+      active = state === "active";
+      if (active) { void readNativeConnectivity().then(acceptNetwork).catch(() => null); checkAgain(); }
+    });
+    return () => {
+      live = false; unsubscribeFailures(); nativeSubscription?.remove(); listener?.remove();
+      if (validationTimer) clearTimeout(validationTimer);
+      setCloudConnectionScope(null);
+    };
+  }, []);
   useEffect(() => {
     if (accessMode !== "local-only" || !localOwner || recovery !== "none") return;
     let live = true, checking = false;

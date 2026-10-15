@@ -4,8 +4,8 @@ const host=type=>props=>React.createElement(type,props,props.children);
 function load(file,mocks,cache=new Map()) {const filename=path.resolve(__dirname,'..',file);if(cache.has(filename))return cache.get(filename).exports;const mod={exports:{}};cache.set(filename,mod);const source=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;new Function('require','module','exports',source)(name=>{if(Object.hasOwn(mocks,name))return mocks[name];if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),suffix=['','.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+suffix),mocks,cache);},mod,mod.exports);return mod.exports;}
 const scope={backendId:'fixture',ownerId:'11111111-1111-4111-8111-111111111111'},routine={id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',revision:1,name:'Review notes',durationSeconds:75,focusAreaId:2,reminder:{enabled:false,hour:18,minute:0},deletedAt:null};
 const subjects=[{id:1,title:'General',color_code:null},{id:2,title:'Learning',color_code:null}];
-const rn={View:host('View'),StyleSheet:{create:value=>value,hairlineWidth:1},Platform:{OS:'android'},Keyboard:{dismiss:()=>{}},Switch:host('Switch')};
-function base(){return{'react-native':rn,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Press')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'./AppText':{Text:host('Text')},'./AppSheet':props=>React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay),'./MotionPressable':host('Press'),'./FocusLengthControl':host('Duration'),'./SheetConfirmation':host('Confirm')};}
+const rn={View:host('View'),StyleSheet:{create:value=>value,hairlineWidth:1},Platform:{OS:'android'},Keyboard:{dismiss:()=>{}},Switch:host('Switch'),AppState:{addEventListener:()=>({remove(){}})}};
+function base(){return{'react-native':rn,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Press')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'./AppText':{Text:host('Text')},'./AppSheet':props=>React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay),'./MotionPressable':host('Press'),'./FocusLengthControl':host('Duration'),'./SheetConfirmation':host('Confirm'),'./QuestSheet':host('LegacyEditor'),'../services/notificationPermissionService':{readNotificationPermission:async()=>({label:'Not allowed',action:'enable',supported:true,granted:false}),enableNotifications:async()=>({label:'Allowed',action:'settings',supported:true,granted:true}),openNotificationSettings:async()=>{}}};}
 test('saved routine starts with exact name, area and seconds; offline stays in its workspace',async()=>{
  for(const online of [true,false]){const calls=[],state={ready:true,scope,online,routines:[routine],pendingCount:0,conflicts:[]};const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>calls.push('haptic')},'expo-router':{useRouter:()=>({push:path=>calls.push(['route',path])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:true})},'../context/TimerContext':{useTimer:()=>({startFreeTimer:async(...args)=>{calls.push(['start',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});try{await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Start routine Review notes').props.onPress());assert.deepEqual(calls.find(x=>Array.isArray(x)&&x[0]==='start'),['start',75,2,'Review notes']);assert.equal(calls.some(x=>Array.isArray(x)&&x[0]==='route'),online);assert.ok(calls.includes('haptic'));}finally{await act(async()=>ui.unmount());}}
 });
@@ -34,5 +34,58 @@ test('a routine started from Manage waits only for the sheet dismissal, not its 
  const h=await heldStartCard();try{await act(async()=>h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Manage your routines').props.onPress());const sheet=h.ui.root.findByType('Sheet');assert.equal(sheet.props.visible,true);await act(async()=>sheet.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Start Review notes')).props.onPress());assert.equal(sheet.props.visible,false);assert.deepEqual(h.calls,[['start',75,2,'Review notes']]);await act(async()=>sheet.props.onDismiss());assert.deepEqual(h.calls,[['start',75,2,'Review notes'],['route','/session']]);await act(async()=>sheet.props.onDismiss());assert.equal(h.calls.filter(x=>x[0]==='route').length,1);await h.release();assert.equal(h.calls.filter(x=>x[0]==='route').length,1);}finally{await h.cleanup();}
 });
 test('a deferred manager navigation is dropped when the account or backend changes before dismissal',async()=>{
- const h=await heldStartCard();try{await act(async()=>h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Manage your routines').props.onPress());const sheet=h.ui.root.findByType('Sheet');await act(async()=>sheet.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Start Review notes')).props.onPress());await h.updateScope({...scope,backendId:'different-backend'});await act(async()=>sheet.props.onDismiss());await h.release();assert.equal(h.calls.filter(x=>x[0]==='route').length,0);}finally{await h.cleanup();}
+ const h=await heldStartCard();try{await act(async()=>h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Manage your routines').props.onPress());const sheet=h.ui.root.findByType('Sheet');await act(async()=>sheet.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Start Review notes')).props.onPress());const lateDismiss=sheet.props.onDismiss;await h.updateScope({...scope,backendId:'different-backend'});await act(async()=>lateDismiss());await h.release();assert.equal(h.calls.filter(x=>x[0]==='route').length,0);}finally{await h.cleanup();}
+});
+
+async function mergedRoutineCard() {
+ const calls=[],legacy={id:42,title:'Same name',target_minutes:3,subject_id:2,is_completed_today:false,is_completed:false,is_recurring:true,repeat_rule:'Mon,Wed',is_due_today:true};
+ let tasks=[legacy],state={ready:true,scope,online:true,routines:[{...routine,name:'Same name'}],pendingCount:0,conflicts:[]};
+ const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{id:scope.ownerId}})},'../context/TimerContext':{useTimer:()=>({startFreeTimer:async(...args)=>{calls.push(['free',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+ const props=()=>({subjects,legacyTasks:tasks,onStartLegacy:item=>calls.push(['linked',item])});let ui;
+ await act(async()=>{ui=create(React.createElement(Component,props()));});
+ return {ui,calls,legacy,updateTasks:async next=>{tasks=next;await act(async()=>ui.update(React.createElement(Component,props())));},cleanup:async()=>act(async()=>ui.unmount())};
+}
+test('merged routines retain linked task starts alongside separately stored saved routines',async()=>{
+ const h=await mergedRoutineCard();try {
+  const card=h.ui.root.findAllByType('View').find(item=>item.props.testID==='saved-routines-card');
+  const buttons=card.findAllByType('Press').filter(item=>item.props.accessibilityLabel==='Start routine Same name');
+  assert.equal(buttons.length,2,'same name does not hide an existing record');
+  await act(async()=>buttons[0].props.onPress());
+  assert.deepEqual(h.calls,[['linked',h.legacy]],'original task identity reaches Home, never a free timer conversion');
+ }finally{await h.cleanup();}
+});
+test('legacy routine editing opens the existing record editor only after manager dismissal',async()=>{
+ const h=await mergedRoutineCard();try {
+  await act(async()=>h.ui.root.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Manage your routines').props.onPress());
+  const sheet=h.ui.root.findByType('Sheet');
+  await act(async()=>sheet.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Edit routine Same name').props.onPress());
+  assert.equal(sheet.props.visible,false);
+  assert.equal(h.ui.root.findAllByType('LegacyEditor').length,0);
+  await act(async()=>sheet.props.onDismiss());
+  const editor=h.ui.root.findByType('LegacyEditor');
+  assert.equal(editor.props.initialTask,h.legacy);
+  assert.equal(editor.props.editorOnly,true);
+  assert.equal(editor.props.routineLanguage,true);
+  assert.equal(editor.props.expectedOwnerId,scope.ownerId);
+ }finally{await h.cleanup();}
+});
+test('pending linked routine navigation checks fresh completion data before opening a session',async()=>{
+ const h=await mergedRoutineCard();try {
+  await act(async()=>h.ui.root.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Manage your routines').props.onPress());
+  const sheet=h.ui.root.findByType('Sheet');
+  await act(async()=>sheet.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Start Same name, 3 minutes').props.onPress());
+  await h.updateTasks([{...h.legacy,is_completed_today:true}]);
+  await act(async()=>sheet.props.onDismiss());
+  assert.deepEqual(h.calls,[]);
+ }finally{await h.cleanup();}
+});
+test('an upcoming scheduled legacy routine stays editable but cannot start outside its due day',async()=>{
+ const h=await mergedRoutineCard();try {
+  await h.updateTasks([{...h.legacy,is_due_today:false}]);
+  const card=h.ui.root.findAllByType('View').find(item=>item.props.testID==='saved-routines-card');
+  const button=card.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Start routine Same name');
+  assert.equal(button.props.disabled,true);
+  await act(async()=>button.props.onPress());
+  assert.deepEqual(h.calls,[]);
+ }finally{await h.cleanup();}
 });

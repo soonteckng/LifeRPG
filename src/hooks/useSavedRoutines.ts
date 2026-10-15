@@ -13,7 +13,7 @@ export function useSavedRoutines() {
   const snapshot = useCallback(() => savedRoutineStore.snapshot(scope), [scope]);
   const state = useSyncExternalStore(subscribe, snapshot, snapshot);
   useEffect(() => { if (scope) void savedRoutineStore.load(scope); }, [scope]);
-  return { ...state, scope, online: auth.accessMode === "online",
+  return { ...state, scope, online: auth.accessMode === "online", admissionEpoch: auth.admissionEpoch,
     save: (draft: RoutineDraft, id?: string) => scope ? savedRoutineStore.save(scope, draft, id) : Promise.resolve(false),
     remove: (id: string) => scope ? savedRoutineStore.remove(scope, id) : Promise.resolve(false),
     retry: () => scope ? savedRoutineStore.load(scope) : Promise.resolve(),

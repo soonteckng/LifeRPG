@@ -43,6 +43,7 @@ interface TimerContextType {
   offlineControlsAvailable: boolean;
   cloudSaveVersion: number;
   sessionId: string | null; recoveredSession: boolean;
+  protectionSessionId: string | null;
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
@@ -334,7 +335,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     clientReported: !!record?.clientTiming,
     offlineControlsAvailable: !!record?.clientTiming || runtime.offlineAvailable && !!record?.serverCheckpoint,
     cloudSaveVersion: runtime.cloudSaveVersion,
-    sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
+    sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, protectionSessionId: record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,

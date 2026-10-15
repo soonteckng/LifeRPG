@@ -1,0 +1,18 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+group = 'expo.modules.focusprotection'
+version = '0.1.0'
+android {
+  namespace 'expo.modules.focusprotection'
+  buildFeatures { buildConfig true }
+  defaultConfig {
+    versionCode 1; versionName '0.1.0'
+    buildConfigField('boolean', 'PREVIEW_ENABLED', (System.getenv('EXPO_PUBLIC_PROTECTION_PREVIEW') == '1').toString())
+  }
+}
+dependencies {
+  testImplementation 'junit:junit:4.13.2'
+  testImplementation 'org.json:json:20240303'
+}

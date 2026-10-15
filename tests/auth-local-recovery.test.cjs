@@ -35,7 +35,8 @@ function existing(store, current = session(A, true), cache = marker()) {
   if (cache) store.values.set(utils.localAccountCacheKey(backend.backendId), JSON.stringify(cache));
 }
 async function mount(options = {}) {
-  const store = options.store ?? memory(); let value, authListener, renderer, fetches = 0, userValue;
+  const store = options.store ?? memory(); let value, authListener, renderer, fetches = 0, userValue, connectionListener;
+  const renders = [];
   const appListeners = new Set();
   const appState = { currentState: options.appState ?? "active", addEventListener: (_, fn) => {
     appListeners.add(fn); return { remove: () => appListeners.delete(fn) };
@@ -51,13 +52,20 @@ async function mount(options = {}) {
   const mocks = {
     "../../lib/supabase": { supabase: { auth, from: options.from ?? (() => { throw Error("Unexpected cloud profile read"); }) } }, "react-native": { Platform: { OS: "android" }, AppState: appState }, "@react-native-async-storage/async-storage": store,
     "expo-linking": { createURL: () => "liferpg://auth/recovery", getInitialURL: async () => options.url ?? null, addEventListener: () => ({ remove() {} }) },
+    "../services/nativeFocusProtection": {
+      readNativeConnectivity: options.readConnectivity ?? (async () => null),
+      subscribeNativeConnectivity: async fn => { connectionListener = fn; return { remove: () => { connectionListener = null; } }; },
+    },
   };
   const module = load("src/context/AuthContext.tsx", mocks, modules);
   const userModule = options.withProfile ? load("src/context/UserContext.tsx", mocks, modules) : null;
-  function Consumer() { value = module.useAuth(); if (userModule) userValue = userModule.useUser(); return null; }
+  function Consumer() { value = module.useAuth(); renders.push({ mode: value.accessMode, owner: value.user?.id ?? value.localOwner?.id ?? null }); if (userModule) userValue = userModule.useUser(); return null; }
   const child = () => userModule ? React.createElement(userModule.UserProvider, null, React.createElement(Consumer)) : React.createElement(Consumer);
   await act(async () => { renderer = create(React.createElement(module.AuthProvider, null, child())); });
-  return { store, value: () => value, user: () => userValue, fetches: () => fetches,
+  const connection = load("src/services/cloudConnection.ts", mocks, modules);
+  return { store, value: () => value, user: () => userValue, fetches: () => fetches, renders,
+    cloudFetch: fn => connection.connectivityAwareFetch(backend.backendId, fn),
+    connection: state => act(async () => connectionListener?.(state)),
     appState: state => act(async () => { appState.currentState = state; for (const listener of [...appListeners]) listener(state); }),
     event: (event, current) => act(async () => { if (current?.access_token) store.values.set(backend.authStorageKey, JSON.stringify(current)); authListener(event, current); }),
     run: fn => act(async () => fn(value)), cleanup: () => act(async () => renderer.unmount()) };
@@ -593,4 +601,142 @@ test("explicit signout cancels automatic reconnect and an old proof cannot reviv
     await act(async () => t.mock.timers.tick(20_000));
     assert.equal(reads, 2); assert.equal(ui.value().accessMode, "signed-out"); assert.equal(ui.value().user, null);
   } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("foreground network loss enters the saved workspace immediately without signing out or polling a disconnected phone", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const store = memory(); existing(store, session()); let sessionReads = 0, userReads = 0;
+  const ui = await mount({ store, auth: {
+    getSession: async () => { sessionReads++; return { data: { session: session() }, error: null }; },
+    getUser: async () => { userReads++; return { data: { user: { id: A } }, error: null }; },
+  } });
+  try {
+    assert.equal(ui.value().accessMode, "online"); const epoch = ui.value().admissionEpoch;
+    const previousRenders = ui.renders.length;
+    await ui.connection({ connected: false, validated: false, sequence: 1 });
+    assert.equal(ui.value().accessMode, "local-only"); assert.equal(ui.value().localOwner.id, A);
+    assert.equal(ui.value().cachedProfile.username, "Soon Teck"); assert.equal(ui.value().admissionEpoch, epoch);
+    assert.ok(ui.renders.slice(previousRenders).every(render => render.mode !== "signed-out" && render.owner === A));
+    await act(async () => t.mock.timers.tick(20_000));
+    await ui.run(value => value.retrySessionVerification());
+    assert.equal(sessionReads, 1); assert.equal(userReads, 1);
+    await ui.connection({ connected: true, validated: true, sequence: 2 });
+    assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, A);
+    assert.equal(sessionReads, 2); assert.equal(userReads, 2); assert.equal(ui.value().admissionEpoch, epoch);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("a failed Home HTTP request triggers local admission on older installed builds with no connectivity bridge", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session() });
+  try {
+    const request = ui.cloudFetch(async () => { throw new TypeError("Network request failed"); });
+    await ui.run(async () => { await assert.rejects(request("https://fixture-project.supabase.co/rest/v1/profiles"), TypeError); });
+    assert.equal(ui.value().accessMode, "local-only"); assert.equal(ui.value().localOwner.id, A);
+    await act(async () => t.mock.timers.tick(4000));
+    assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, A);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("a late initial native network snapshot cannot reverse a newer loss event", async () => {
+  const initial = deferred(), store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session(), readConnectivity: () => initial.promise });
+  try {
+    await ui.connection({ connected: false, validated: false, sequence: 2 });
+    assert.equal(ui.value().accessMode, "local-only");
+    await act(async () => initial.resolve({ connected: true, validated: true, sequence: 1 }));
+    assert.equal(ui.value().accessMode, "local-only");
+    await ui.connection({ connected: true, validated: true, sequence: 3 });
+    assert.equal(ui.value().accessMode, "online");
+  } finally { await ui.cleanup(); }
+});
+
+test("a brief Wi-Fi validation handoff keeps the current surface, while persistent unvalidated connectivity goes local", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  const store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session() });
+  try {
+    await ui.connection({ connected: true, validated: false, sequence: 1 });
+    await act(async () => t.mock.timers.tick(700)); assert.equal(ui.value().accessMode, "online");
+    await ui.connection({ connected: true, validated: true, sequence: 2 });
+    await act(async () => t.mock.timers.tick(500)); assert.equal(ui.value().accessMode, "online");
+    await ui.connection({ connected: true, validated: false, sequence: 3 });
+    await act(async () => t.mock.timers.tick(800)); assert.equal(ui.value().accessMode, "local-only");
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test("network loss invalidates an in-flight successful account proof; return requires a new proof", async () => {
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false, proofs = 0;
+  const ui = await mount({ store, current: session(), auth: { getUser: async () => {
+    proofs++; return hold ? wait.promise : { data: { user: { id: A } }, error: null };
+  } } });
+  try {
+    hold = true; let proof;
+    await act(async () => { proof = ui.value().verifyCurrentOwner(); });
+    await ui.connection({ connected: false, validated: false, sequence: 1 });
+    assert.equal(ui.value().accessMode, "local-only");
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.equal(await proof, null); assert.equal(ui.value().accessMode, "local-only");
+    hold = false; await ui.connection({ connected: true, validated: true, sequence: 2 });
+    assert.equal(ui.value().accessMode, "online"); assert.equal(proofs, 3);
+  } finally { await ui.cleanup(); }
+});
+
+test("cold account proof finishing after native loss never admits a disconnected account online", async () => {
+  const wait = deferred(), store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session(), auth: { getUser: () => wait.promise } });
+  try {
+    assert.equal(ui.value().accessMode, "local-only");
+    await ui.connection({ connected: false, validated: false, sequence: 1 });
+    await act(async () => wait.resolve({ data: { user: { id: A } }, error: null }));
+    assert.equal(ui.value().accessMode, "local-only"); assert.equal(ui.value().user, null);
+  } finally { await ui.cleanup(); }
+});
+
+test("a previous account's delayed HTTP failure cannot downgrade the newly verified owner", async () => {
+  const wait = deferred(), store = memory(); existing(store, session());
+  const ui = await mount({ store, current: session(), auth: {
+    getUser: async token => ({ data: { user: { id: token === session(B).access_token ? B : A } }, error: null }),
+  } });
+  try {
+    const request = ui.cloudFetch(async () => { await wait.promise; throw new TypeError("Network request failed"); });
+    const pending = request("https://fixture-project.supabase.co/rest/v1/profiles").catch(() => null);
+    await ui.event("SIGNED_IN", session(B)); await ui.run(value => value.cacheVerifiedProfile(profile(B)));
+    await act(async () => wait.resolve()); await pending;
+    assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, B);
+  } finally { await ui.cleanup(); }
+});
+
+test("native connectivity return cannot undo explicit signout or grant local access from an incomplete profile", async () => {
+  for (const signOut of [true, false]) {
+    const store = memory(); existing(store, session(), marker(A, signOut ? profile(A) : { ...profile(A), onboarding_completed: false }));
+    const ui = await mount({ store, current: session() });
+    try {
+      if (signOut) await ui.run(value => value.signOut());
+      await ui.connection({ connected: false, validated: false, sequence: 1 });
+      assert.equal(ui.value().localOwner, null); assert.equal(ui.value().accessMode, "signed-out");
+      await ui.connection({ connected: true, validated: true, sequence: 2 });
+      assert.equal(ui.value().accessMode, "signed-out"); assert.equal(ui.value().localOwner, null);
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test("a quick reconnect during the persisted-owner read waits for local admission then verifies once", async () => {
+  const wait = deferred(), store = memory(); existing(store, session()); let hold = false, proofs = 0;
+  const read = store.getItem;
+  store.getItem = async key => { if (hold && key === backend.authStorageKey) await wait.promise; return read(key); };
+  const ui = await mount({ store, current: session(), auth: { getUser: async () => {
+    proofs++; return { data: { user: { id: A } }, error: null };
+  } } });
+  try {
+    hold = true;
+    const start = ui.renders.length;
+    await ui.connection({ connected: false, validated: false, sequence: 1 });
+    await ui.connection({ connected: true, validated: true, sequence: 2 });
+    assert.equal(proofs, 1);
+    hold = false; await act(async () => wait.resolve());
+    assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, A); assert.equal(proofs, 2);
+    assert.ok(ui.renders.slice(start).every(render => render.mode !== "signed-out" && render.owner === A));
+  } finally { await ui.cleanup(); }
 });

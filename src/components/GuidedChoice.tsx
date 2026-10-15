@@ -58,7 +58,7 @@ export default function GuidedChoice({ value, onChange, disabled = false, onSele
           <Text style={s.freeTitle}>Make this time your own.</Text>
           <Text style={s.freeBody}>Bring one thing you want to do. Choose your time on Home and begin at your own pace.</Text>
         </View>
-        <View style={s.freeAreaHint}><View style={s.freeAreaDot} /><Text style={s.freeAreaCopy}>Everyday focus to start. Change the area on Home anytime.</Text></View>
+        <View style={s.freeAreaHint}><View style={s.freeAreaDot} /><Text style={s.freeAreaCopy}>Everyday focus · A simple category for any activity.</Text></View>
       </> : focusOptions(value.need).map(task => {
         const studyNeed = STUDY_NEEDS.find(need => need.id === task.need);
         const title = studyNeed?.title ?? task.title;

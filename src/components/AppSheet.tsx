@@ -65,6 +65,7 @@ const DismissContext = createContext({
   guarded: false,
   requestClose: () => {},
   header: null as React.ReactNode,
+  footer: null as React.ReactNode,
   label: "sheet",
 });
 
@@ -87,6 +88,14 @@ function SheetHandle() {
       {header}
     </View>
   );
+}
+
+// Do not create a new footer component whenever its contents or measurements
+// change. A stable native footer keeps its measured height and animated anchor
+// while pending results settle or an editor updates its actions.
+function SheetFooter(props: BottomSheetFooterProps) {
+  const { footer } = useContext(DismissContext);
+  return <BottomSheetFooter {...props} bottomInset={0}>{footer}</BottomSheetFooter>;
 }
 
 // Retain the library's native scroll/pan coordination even when dismissal needs
@@ -251,17 +260,6 @@ export default function AppSheet({
     [onRequestClose, label],
   );
 
-  const renderFooter = useCallback(
-    // Safe-area padding belongs inside the measured footer; shifting it again
-    // would overlap the scroll space reserved for that measured height.
-    (props: BottomSheetFooterProps) => (
-      <BottomSheetFooter {...props} bottomInset={0}>
-        {footer}
-      </BottomSheetFooter>
-    ),
-    [footer],
-  );
-
   return (
     <Modal
       transparent
@@ -290,6 +288,7 @@ export default function AppSheet({
               guarded: guardDismiss,
               requestClose: onRequestClose,
               header,
+              footer,
               label,
             }}
           >
@@ -321,7 +320,7 @@ export default function AppSheet({
               backgroundStyle={styles.surface}
               backdropComponent={backdrop}
               onClose={finishClose}
-              footerComponent={footer ? renderFooter : undefined}
+              footerComponent={footer ? SheetFooter : undefined}
               handleComponent={SheetHandle}
             >
               {children}

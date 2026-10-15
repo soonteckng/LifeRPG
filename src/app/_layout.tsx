@@ -14,6 +14,7 @@ import GlobalRewardListener from "../components/GlobalRewardListener";
 import SessionConnectionContent from "../components/SessionConnectionContent";
 import RoutineLifecycle from "../components/RoutineLifecycle";
 import RoutineWidgetLifecycle from "../components/RoutineWidgetLifecycle";
+import { SessionProtectionProvider } from "../context/SessionProtectionContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
 import { TimerProvider } from "../context/TimerContext";
 import { UserProvider, useUser } from "../context/UserContext";
@@ -113,6 +114,7 @@ function AppContent() {
   return (
     <TimerProvider>
       <QuestProvider online={accessMode === "online"}>
+        <SessionProtectionProvider>
         <FeatureTourProvider>
         <RoutineLifecycle />
         <RoutineWidgetLifecycle />
@@ -189,6 +191,8 @@ function AppContent() {
               options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}
             />
             <Stack.Screen name="guide" options={secondaryNativeOptions(reducedMotion)} />
+            <Stack.Screen name="protection" options={secondaryNativeOptions(reducedMotion)} />
+            <Stack.Screen name="protection-preview" options={secondaryNativeOptions(reducedMotion)} />
           </Stack.Protected>
           <Stack.Protected guard={!profile.onboarding_completed}>
           <Stack.Screen
@@ -214,6 +218,7 @@ function AppContent() {
         </SessionConnectionContent>
         <GlobalRewardListener />
         </FeatureTourProvider>
+        </SessionProtectionProvider>
       </QuestProvider>
     </TimerProvider>
   );

@@ -118,8 +118,8 @@ export default function ProfileScreen() {
       action={<View ref={settingsIcon} collapsable={false}><Pressable accessibilityRole="button" accessibilityLabel="Open Settings" onPress={openSettings} style={p.back}><Ionicons name="settings-outline" size={23} color={colors.accent} /></Pressable></View>}>
       <ContentReveal><View style={s.stack}>
         <View style={s.hero} testID="profile-companion-card">
-          <CharacterPortrait avatar={profile.avatar} size={170} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen} greetOnFocus />
-          <View style={s.identity}><Text style={s.username} numberOfLines={2}>{profile.username}</Text><Text style={p.caption}>{savedLook.title} · Your companion</Text></View>
+          <View style={s.heroHead}><CharacterPortrait avatar={profile.avatar} size={112} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen} greetOnFocus />
+          <View style={s.identity}><Text style={s.companionLabel}>YOUR COMPANION</Text><Text style={s.username} numberOfLines={2}>{profile.username}</Text><Text style={p.caption}>{savedLook.title}</Text></View></View>
           <View style={s.levelBlock}><View style={s.levelRow}><Pressable style={s.levelPill} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={s.levelText}>Level {profile.level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></Pressable><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} /><Text style={s.growthHint}>Your next level grows with the effort you record.</Text></View>
           <PersonalButton title="Personalise" accessibilityLabel="Personalise profile" secondary onPress={open} />
         </View>
@@ -161,10 +161,10 @@ export default function ProfileScreen() {
   );
 }
 const s = StyleSheet.create({
-  stack: { gap: 18 }, hero: { padding: 18, gap: 14, borderRadius: 26, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  identity: { alignItems: "center", gap: 5 }, username: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "500", letterSpacing: -0.4, textAlign: "center" },
+  stack: { gap: 24 }, hero: { padding: 18, gap: 16, borderRadius: 24, backgroundColor: colors.focusSurface },
+  heroHead: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 18 }, identity: { flex: 1, minWidth: 120, gap: 5 }, companionLabel: { color: colors.accent, fontSize: 13, lineHeight: 19, fontWeight: "500", letterSpacing: 1 }, username: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.4 },
   levelBlock: { gap: 8 }, levelRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }, levelPill: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 9, borderRadius: 10, backgroundColor: colors.accentSoft }, levelText: { color: colors.accent, fontSize: 13, lineHeight: 18, fontWeight: "500" }, growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 19 },
-  milestones: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 22, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 19 },
-  areasCard: { padding: 18, gap: 12, backgroundColor: colors.surface, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, areaHeading: { gap: 5, paddingBottom: 4 }, sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" }, areaRow: { minHeight: 50, paddingVertical: 5, gap: 7 }, areaLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  milestones: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 19 },
+  areasCard: { gap: 12, paddingHorizontal: 2 }, areaHeading: { gap: 5, paddingBottom: 4 }, sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "600" }, areaRow: { minHeight: 54, paddingVertical: 8, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }, areaLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   preview: { flexDirection: "row", alignItems: "center", minHeight: 132, gap: 14, paddingVertical: 4 },
 });

@@ -8,6 +8,7 @@ function load(file,mocks={},cache=new Map()){
  const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
   if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name==='@expo/vector-icons')return {Ionicons:props=>React.createElement('Icon',props)};
   if(name.endsWith('/MotionPressable'))return host('Button');
   if(name.endsWith('/AppText'))return {Text:host('Text')};
   if(name.endsWith('/SlidingSelection'))return ()=>null;
@@ -77,13 +78,13 @@ test('quest scope switches give haptics and custom minutes are revealed after ke
  }finally{await act(async()=>tree.unmount());}
 });
 
-test('focus-card preview keeps the same layout from tour step one through four',async()=>{
+test('focus-card preview keeps the same layout from the three Home tour steps',async()=>{
  let previewFocus=true,targetId='home-identity';
  const Card=load('src/components/FocusCard.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'./ContentReveal':host('Reveal'),'./FocusLengthControl':()=>null,'./FocusAreaSheet':()=>null,'./FeatureTour':{useFeatureTour:()=>({previewFocus,targetId,previewLines:2})}}).default;
  const props={cardID:'card',title:'A suggestion',instruction:'A longer suggestion description',label:'Suggested focus',contentKey:'same',area:'Learning',seconds:1800};
  let tree;await act(async()=>{tree=create(React.createElement(Card,props));});
  try{const layout=()=>tree.root.findByProps({testID:'card'}).props.style;const first=layout();
-  for(const id of ['home-focus','home-next-step','home-quests']){targetId=id;await act(async()=>tree.update(React.createElement(Card,props)));assert.deepEqual(layout(),first);const instruction=tree.root.findAllByType('Text').find(node=>content(node)===props.instruction);assert.equal(instruction.props.numberOfLines,2);}
+  for(const id of ['home-focus','home-quests']){targetId=id;await act(async()=>tree.update(React.createElement(Card,props)));assert.deepEqual(layout(),first);assert.equal(tree.root.findAllByType('Text').some(node=>content(node)===props.instruction),false,'idle card keeps only a compact activity line');assert.equal(tree.root.findByProps({testID:'focus-card-prompt'}).props.style.minHeight,0);}
   previewFocus=false;await act(async()=>tree.update(React.createElement(Card,props)));assert.equal(layout()[1],false,'normal full card returns underneath the return cover');
  }finally{await act(async()=>tree.unmount());}
 });

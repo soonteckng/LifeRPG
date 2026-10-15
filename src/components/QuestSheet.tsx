@@ -23,6 +23,7 @@ interface Props {
   visible: boolean; onClose: () => void; onDismiss?: (navigating: boolean) => void;
   onStartSession?: () => void; initialScope?: "today" | "all";
   editorOnly?: boolean; initialDraft?: QuestDraft; expectedOwnerId?: string;
+  initialTask?: Task; routineLanguage?: boolean;
   onCreated?: (task: Task) => void; durationHint?: string;
 }
 interface Editor { task: Task | null; initial: QuestDraft; draft: QuestDraft }
@@ -33,6 +34,7 @@ function newEditor(draft: QuestDraft): Editor {
 
 export default function QuestSheet({ visible, onClose, onDismiss, onStartSession, initialScope = "today",
   editorOnly = false, initialDraft, expectedOwnerId, onCreated, durationHint,
+  initialTask, routineLanguage = false,
 }: Props) {
   const { tasks, subjects, loading, refreshing, error, refresh, upsert, remove } = useQuests();
   const { hapticsEnabled, profile } = useUser();
@@ -41,12 +43,14 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const insets = useSafeAreaInsets();
   const [scope, setScope] = useState(initialScope);
   const [showDone, setShowDone] = useState(false);
-  const [editor, setEditor] = useState<Editor | null>(() => editorOnly && initialDraft ? newEditor(initialDraft) : null);
-  const [editorVisible, setEditorVisible] = useState(editorOnly && visible && !!initialDraft);
+  const openingDraft = initialTask ? makeQuestDraft(initialTask) : initialDraft;
+  const [editor, setEditor] = useState<Editor | null>(() => editorOnly && openingDraft ? { ...newEditor(openingDraft), task: initialTask ?? null } : null);
+  const [editorVisible, setEditorVisible] = useState(editorOnly && visible && !!openingDraft);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [customDuration, setCustomDuration] = useState(editorOnly && !!initialDraft && !DURATIONS.includes(Number(initialDraft.minutes)));
+  const [customDuration, setCustomDuration] = useState(editorOnly && !!openingDraft && !DURATIONS.includes(Number(openingDraft.minutes)));
+  const noun = routineLanguage ? "routine" : "quest";
   const mutationLock = useRef(false);
   const mutationEpoch = useRef(0);
   const alive = useRef(true);
@@ -85,11 +89,11 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     if (mutationLock.current || confirmation) return;
     if (!dirty) { action(); return; }
     Keyboard.dismiss();
-    setConfirmation({ title: "Discard changes?", message: "Your changes to this quest haven't been saved.",
+    setConfirmation({ title: "Discard changes?", message: `Your changes to this ${noun} haven't been saved.`,
       cancelLabel: "Keep editing", confirmLabel: "Discard changes",
       onConfirm: () => { setConfirmation(null); action(); },
     });
-  }, [dirty, confirmation]);
+  }, [dirty, confirmation, noun]);
   const requestClose = useCallback(() => {
     if (mutationLock.current) return;
     if (confirmation) { setConfirmation(null); return; }
@@ -127,39 +131,43 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     } catch (error) {
       if (!current()) return;
       const detail = error && typeof error === "object" && "message" in error ? String(error.message) : "Check your connection and try again.";
-      setFormError(editorOnly ? "Couldn't confirm this quest. Check your quests before creating it again."
-        : `Couldn't update this quest. ${detail}`);
+      setFormError(editorOnly && !initialTask ? routineLanguage ? "Couldn't confirm this routine. Check your routines before creating it again." : "Couldn't confirm this quest. Check your quests before creating it again."
+        : `Couldn't update this ${noun}. ${detail}`);
     } finally { mutationLock.current = false; if (current()) setBusy(false); }
   };
   const save = () => {
     if (!editor) return;
     if (expectedOwnerId !== undefined && profile?.id !== expectedOwnerId) {
-      setFormError("Your account changed. Reopen this session before creating a quest.");
+      setFormError(`Your account changed. Reopen this ${noun} before saving.`);
       return;
     }
     const validation = validateQuestDraft(editor.draft);
-    if (validation) { setFormError(validation); if (!editor.draft.title.trim()) titleRef.current?.focus(); return; }
+    if (validation) { setFormError(routineLanguage ? validation.replace(/\bquest\b/g, "routine").replace(/\bQuest\b/g, "Routine") : validation); if (!editor.draft.title.trim()) titleRef.current?.focus(); return; }
     void mutate(async (current) => {
       const params = questParams(editor.draft, subjects, editor.task);
       const saved = editor.task ? await updateTask(editor.task.id, params) : await createTask(params, { expectedOwnerId });
       if (!current()) return;
       upsert(saved);
-      setMessage(saved.is_due_today ? "Quest saved." : "Quest saved. You'll find it in All quests until it's due.");
+      setMessage(routineLanguage ? "Routine saved." : saved.is_due_today ? "Quest saved." : "Quest saved. You'll find it in All quests until it's due.");
       if (!editor.task) onCreated?.(saved);
     });
   };
   const activeQuest = !!editor?.task && timer.hasOpenSession && timer.linkedTaskId === editor.task.id;
   const requestDelete = (task: Task) => {
     if (mutationLock.current) return;
-    Keyboard.dismiss();
-    if (timer.hasOpenSession && timer.linkedTaskId === task.id) {
-      setConfirmation({ title: "This quest has an open session", message: "Finish or cancel its session before deleting the quest.",
-        cancelLabel: "Keep quest", confirmLabel: "Continue session", onConfirm: () => { setConfirmation(null); start(); } });
+    if (expectedOwnerId !== undefined && profile?.id !== expectedOwnerId) {
+      setFormError(`Your account changed. Reopen this ${noun} before removing it.`);
       return;
     }
-    setConfirmation({ title: "Delete quest?", message: `“${task.title}” will be removed${task.is_recurring ? ", including future repeats" : ""}. This cannot be undone.`,
-      cancelLabel: "Keep quest", confirmLabel: "Delete quest", onConfirm: () => { setConfirmation(null); void mutate(async (current) => {
-        await deleteTask(task.id); if (!current()) return; remove(task.id); setMessage("Quest deleted.");
+    Keyboard.dismiss();
+    if (timer.hasOpenSession && timer.linkedTaskId === task.id) {
+      setConfirmation({ title: `This ${noun} has an open session`, message: `Finish or cancel its session before deleting the ${noun}.`,
+        cancelLabel: `Keep ${noun}`, confirmLabel: "Continue session", onConfirm: () => { setConfirmation(null); start(); } });
+      return;
+    }
+    setConfirmation({ title: routineLanguage ? "Remove routine?" : "Delete quest?", message: `“${task.title}” will be removed${task.is_recurring ? ", including future repeats" : ""}. Your recorded sessions and progress stay saved.`,
+      cancelLabel: `Keep ${noun}`, confirmLabel: routineLanguage ? "Remove routine" : "Delete quest", onConfirm: () => { setConfirmation(null); void mutate(async (current) => {
+        await deleteTask(task.id); if (!current()) return; remove(task.id); setMessage(routineLanguage ? "Routine removed." : "Quest deleted.");
       }); },
     });
   };
@@ -183,14 +191,14 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
 
   const editorHeader = editor ? (
     <View>
-      <Text style={styles.editorTitle} accessibilityRole="header" maxFontSizeMultiplier={1.3}>{editor.task ? "Edit quest" : "New quest"}</Text>
+      <Text style={styles.editorTitle} accessibilityRole="header" maxFontSizeMultiplier={1.3}>{editor.task ? `Edit ${noun}` : `New ${noun}`}</Text>
     <View style={styles.editorHeader}>
       <Pressable onPress={requestClose} disabled={busy} style={styles.headerAction} accessibilityRole="button">
         <Text style={[styles.link, busy && styles.disabled]} maxFontSizeMultiplier={1.5}>Cancel</Text>
       </Pressable>
 
-      <Pressable onPress={save} disabled={busy} style={styles.save} accessibilityRole="button" accessibilityLabel={editor.task ? "Save changes" : "Create quest"} accessibilityState={{ busy, disabled: busy }}>
-        {busy ? <ActivityIndicator color={colors.background} size="small" /> : <Text style={styles.saveText} maxFontSizeMultiplier={1.5}>{editor.task ? "Save changes" : "Create quest"}</Text>}
+      <Pressable onPress={save} disabled={busy} style={styles.save} accessibilityRole="button" accessibilityLabel={editor.task ? "Save changes" : `Create ${noun}`} accessibilityState={{ busy, disabled: busy }}>
+        {busy ? <ActivityIndicator color={colors.background} size="small" /> : <Text style={styles.saveText} maxFontSizeMultiplier={1.5}>{editor.task ? "Save changes" : `Create ${noun}`}</Text>}
       </Pressable>
     </View>
     {formError && <Text style={styles.headerError} accessibilityRole="alert" accessibilityLiveRegion="polite">{formError}</Text>}
@@ -228,19 +236,20 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
   const confirmationOverlay = confirmation ? <SheetConfirmation {...confirmation} onCancel={() => setConfirmation(null)} /> : null;
   const editorSheet = editor ? <AppSheet visible={editorVisible && (!editorOnly || visible)} onRequestClose={requestClose}
           onDismiss={() => { setEditor(null); setFormError(null); focusedField.current = null;
-            if (editorOnly) { onClose(); onDismiss?.(false); }
+            if (editorOnly) { const next = afterDismiss.current; afterDismiss.current = null; onClose(); onDismiss?.(!!next); next?.(); }
             else if (closeAfterEditor.current) { closeAfterEditor.current = false; onClose(); } }}
-          guardDismiss={dirty || busy || !!confirmation} expanded motionMode="timed" keyboardBehavior="fillParent" label="quest editor" header={editorHeader} overlay={confirmationOverlay}>
+          guardDismiss={dirty || busy || !!confirmation} expanded motionMode="timed" keyboardBehavior="fillParent" label="quest editor" header={editorHeader} overlay={confirmationOverlay}
+          footer={editorOnly && initialTask ? <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 12) }]}><Pressable disabled={busy} onPress={() => requestDelete(initialTask)} accessibilityRole="button" accessibilityLabel={routineLanguage ? "Remove routine" : "Delete quest"} style={styles.actionRow}><Ionicons name="trash-outline" size={20} color={colors.danger} /><Text style={styles.deleteText}>{routineLanguage ? "Remove routine" : "Delete quest"}</Text></Pressable></View> : undefined}>
           <BottomSheetScrollView ref={scrollRef} onLayout={revealFocusedField} onContentSizeChange={revealFocusedField}
             keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag"
-            contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
+            enableFooterMarginAdjustment contentContainerStyle={[styles.body, { paddingBottom: Math.max(insets.bottom, 16) + 12 }]}>
           <View pointerEvents={busy ? "none" : "auto"} style={styles.form}>
             <View style={styles.field}>
-              <Text style={styles.label}>Quest name</Text>
+              <Text style={styles.label}>{routineLanguage ? "Routine name" : "Quest name"}</Text>
               <BottomSheetTextInput ref={titleRef} value={editor.draft.title} onChangeText={(title) => updateDraft({ title })}
                 placeholder="What would you like to do?" placeholderTextColor={colors.muted} style={styles.input}
                 onFocus={() => { focusedField.current = "title"; revealFocusedField(); }} onBlur={() => { focusedField.current = null; }}
-                maxLength={120} multiline accessibilityLabel="Quest name" editable={!busy} />
+                maxLength={120} multiline accessibilityLabel={routineLanguage ? "Routine name" : "Quest name"} editable={!busy} />
             </View>
             <View style={styles.field} onLayout={(event) => { durationY.current = event.nativeEvent.layout.y; revealFocusedField(); }}>
               <Text style={styles.label}>Duration <Text style={styles.subtitle}>· minutes</Text></Text>
@@ -286,7 +295,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
                   selected={editor.draft.subjectId === subject.id} onPress={() => updateDraft({ subjectId: subject.id })} />)}
               </View>
             </View>
-            {activeQuest && <Text style={styles.helper}>This quest has an open session. Edits apply to future sessions. Finish or cancel the current session before completing or deleting this quest.</Text>}
+            {activeQuest && <Text style={styles.helper}>This {noun} has an open session. Edits apply to future sessions. Finish or cancel the current session before completing or deleting this {noun}.</Text>}
 
           </View>
           </BottomSheetScrollView>

@@ -21,6 +21,8 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
+    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if (name.endsWith("/SavedRoutinesCard")) return props => React.createElement("SavedRoutinesBoundary", props);
     if (name.endsWith("/AuthContext")) return { useAuth: () => ({accessMode:"online"}) };
     if (name === "expo-haptics") return {selectionAsync:async()=>{}};
@@ -62,6 +64,42 @@ const Input = React.forwardRef((props, ref) => {
 const native = { View: host("View"), Text: host("Text"), Pressable: host("Pressable"), ActivityIndicator: host("Spinner"),
   StyleSheet: { create: (styles) => styles, hairlineWidth: 1, absoluteFill: {} },
   Keyboard: { dismiss() {}, isVisible: () => false, addListener: () => ({ remove() {} }) } };
+
+test("legacy record can be edited as a routine while retaining its task ID, repeat rule and reward history", async () => {
+  const legacy = task({ id: 42, title: "Old quest", repeat_rule: "Mon,Wed", is_recurring: true, difficulty: "hard", xp_awarded: 30 });
+  const ui = await setup([legacy], false, { props: { editorOnly: true, initialTask: legacy, expectedOwnerId: "owner", routineLanguage: true } });
+  try {
+    assert.ok(ui.output().includes("Edit routine"));
+    assert.equal(ui.input("Routine name"), "Old quest");
+    await ui.type("Routine name", "Renamed routine");
+    await ui.press("Save changes");
+    assert.equal(ui.calls.filter(call => call[0] === "create").length, 0);
+    const update = ui.calls.find(call => call[0] === "update");
+    assert.equal(update[1], 42);
+    assert.equal(update[2].repeatRule, "Mon,Wed");
+    assert.equal(update[2].difficulty, "hard");
+    assert.equal(ui.tasks()[0].id, 42);
+    assert.equal(ui.tasks()[0].title, "Renamed routine");
+  } finally { await ui.cleanup(); }
+});
+
+test("legacy routine removal remains confirmed, keeps the numeric task identity and refuses an outgoing owner", async () => {
+  const legacy = task({ id: 42 });
+  const ui = await setup([legacy], false, { props: { editorOnly: true, initialTask: legacy, expectedOwnerId: "owner", routineLanguage: true } });
+  try {
+    await ui.press("Remove routine");
+    assert.equal(ui.calls.length, 0, "nothing is removed before confirmation");
+    await ui.press("Remove routine");
+    assert.deepEqual(ui.calls, [["delete", 42]]);
+    assert.equal(ui.tasks().length, 0);
+  } finally { await ui.cleanup(); }
+  const outgoing = await setup([legacy], false, { ownerId: "someone-else", props: { editorOnly: true, initialTask: legacy, expectedOwnerId: "owner", routineLanguage: true } });
+  try {
+    await outgoing.press("Remove routine");
+    assert.equal(outgoing.calls.length, 0);
+    assert.ok(outgoing.output().includes("Your account changed."));
+  } finally { await outgoing.cleanup(); }
+});
 
 async function setup(initialTasks = [], hasOpenSession = false, options = {}) {
   const calls = [], alerts = [];
@@ -599,35 +637,32 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   const retry = () => renderer.root.findAllByType("Pressable").find((node) => node.props.accessibilityLabel === "Retry loading Home");
   homeTasks = [task({id: 12, title: "Completed earlier", is_completed: true}), task({id: 13, title: "Tomorrow", is_due_today: false}), task({id: 14, title: "Finished today", is_completed_today: true}), task({id: 15, title: "Read now"}), task({id: 16, title: "Repeat today", is_recurring: true, is_completed: true}), task({id: 17, title: "Third quest"}), task({id: 18, title: "Fourth quest"})];
   await act(async () => renderer.update(React.createElement(Home)));
-  const previewRows = () => renderer.root.findAllByType("Pressable").filter(node => node.props.testID?.startsWith("home-quest-"));
-  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-15", "home-quest-16"]);
-  assert.equal(renderer.root.findByProps({testID: "home-quest-card"}).props.style.marginBottom,undefined);
-  const openQuests = renderer.root.findAllByType("Pressable").find(node => node.props.accessibilityLabel === "Today's quests, 4 pending");
-  assert.ok(openQuests);
-  await act(async () => openQuests.props.onPress());
-  assert.equal(renderer.root.findByType("QuestPreviewSheet").props.visible, true);
-  await act(async () => previewRows()[0].props.onPress());
+  const routines = () => renderer.root.findByType("SavedRoutinesBoundary");
+  const record = id => routines().props.legacyTasks.find(item => item.id === id);
+  assert.deepEqual(routines().props.legacyTasks,homeTasks,'one routines boundary receives every preserved legacy row');
+  assert.equal(renderer.root.findAllByProps({testID:"home-quest-card"}).length,0);
+  assert.equal(renderer.root.findAllByType("QuestPreviewSheet").length,0);
+  await act(async()=>routines().props.onStartLegacy(record(15)));
   assert.deepEqual(sessionCalls, [["task",15],["duration",30],["area",2],["navigate","/session"]]);
-  assert.equal(renderer.root.findByType("QuestPreviewSheet").props.visible, false);
   sessionCalls.length = 0;
 
   homeTasks = homeTasks.map(item => item.id === 15 ? {...item, is_completed_today: true} : item);
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.deepEqual(previewRows().map(node => node.props.testID), ["home-quest-16", "home-quest-17"]);
+  assert.equal(record(15).is_completed_today,true);
   const viewportMargin = () => renderer.root.findByProps({testID: "home-viewport"}).props.contentContainerStyle[1].paddingBottom;
   const initialMargin = viewportMargin();
   openSession = true;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin + 56);
-  await act(async () => previewRows()[0].props.onPress());
+  await act(async () => routines().props.onStartLegacy(record(16)));
   assert.deepEqual(sessionCalls, [["navigate","/session"]]);
   sessionCalls.length = 0;
 
   const layout = renderer.root.findByProps({testID: "home-layout"}).props.style;
-  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 12);assert.equal(layout.minHeight,undefined);
+  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 24);assert.equal(layout.minHeight,undefined);
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
-  assert.ok(identity.findByProps({testID:"home-compact-goal"}));
+  assert.equal(identity.findAllByProps({testID:"home-compact-goal"}).length,0);assert.ok(focus.findByProps({testID:"home-compact-goal"}));
   assert.ok(focus.findByProps({testID:"home-quick-start"}));assert.ok(focus.findByProps({testID:"home-start-focus"}));
   assert.equal(focus.props.style?.flexGrow,undefined);assert.equal(focus.findByProps({testID:"home-quick-start"}).props.style.flexGrow,undefined);
   assert.equal(identity.findAllByProps({testID:"home-quick-start"}).length,0);
@@ -645,17 +680,17 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     homeTasks=Array.from({length:count},(_,i)=>task({id:200+i,title:`Focus ${i}`}));
     await act(async()=>renderer.update(React.createElement(Home)));
     const fitted=renderer.root.findByProps({testID:"home-layout"}).props.style;
-    assert.equal(fitted.gap,12);assert.equal(fitted.minHeight,undefined);
+    assert.equal(fitted.gap,24);assert.equal(fitted.minHeight,undefined);
     assert.deepEqual(renderer.root.findByProps({testID:"home-quick-start"}).props.style,stableFocusStyle,'adding quests must not stretch or resize the focus card');
-    assert.ok(renderer.root.findByProps({testID:"focus-card-duration"}));
+    assert.ok(renderer.root.findByProps({testID:"focus-duration-chip"}));
     assert.equal(viewportMargin(),initialMargin);
-    assert.equal(previewRows().length,count);
+    assert.equal(routines().props.legacyTasks.length,count);
   }
   homeTasks=previousTasks;await act(async()=>renderer.update(React.createElement(Home)));
   for (const flags of [{isRestoring:true},{restoreError:true},{actionBusy:true},{isCompleted:true}]) {
     homeFlags = flags;
     await act(async () => renderer.update(React.createElement(Home)));
-    await act(async () => previewRows()[0].props.onPress());
+    await act(async () => routines().props.onStartLegacy(record(16)));
     assert.deepEqual(sessionCalls, [["navigate","/session"]]);
     sessionCalls.length = 0;
   }
@@ -1068,7 +1103,7 @@ test("Home explicitly reopens an acknowledged pending End before navigating to i
   }finally{await ui.cleanup();}
 });
 
-test("Home failure stays actionable and the area sheet cannot navigate or change duration", async()=>{
+test("Home failure stays actionable and its sole Change entry cannot navigate or change duration", async()=>{
   let succeeded=false; const ui=await quickHomeSetup(null,async()=>succeeded);
   try {
     assert.match(ui.output(),/Soon Teck/);assert.match(ui.output(),/30 min/);
@@ -1079,10 +1114,9 @@ test("Home failure stays actionable and the area sheet cannot navigate or change
     await act(async()=>ui.button("home-start-focus").props.onPress());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);
     ui.calls.length=0;
-    await act(async()=>ui.button("home-change-focus").props.onPress());
+    await act(async()=>ui.button("focus-card-preferences").props.onPress());
     assert.deepEqual(ui.calls,[]);
-    const areaSheet=ui.renderer.root.findAllByType("Sheet").find(node=>node.props.label==="focus area");
-    assert.equal(areaSheet.props.visible,true);
+    assert.equal(ui.renderer.root.findAllByType("Sheet").some(node=>node.props.label==="focus area"),false);const preferences=ui.renderer.root.findAllByType("GuidedBoundary").find(node=>node.props.visible);assert.ok(preferences);
   }finally{await ui.cleanup();}
 });
 test("Home continues active or paused sessions and protects restoration/completion before starting",async()=>{
@@ -1119,9 +1153,11 @@ test("free focus presets and custom seconds start the selected time and cannot l
  const ui=await quickHomeSetup();
  try{
   const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
-  await act(async()=>control('Use 60 minutes').props.onPress());
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
+  await act(async()=>control('Set duration to 60 minutes').props.onPress());
+  await act(async()=>control('Use this duration').props.onPress());
   await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start'),[['start',3600,1]]);
-  await act(async()=>control('Set a custom focus duration').props.onPress());
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
   const inputs=()=>ui.renderer.root.findAllByType('Input');
   await act(async()=>{inputs().find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');inputs().find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
   await act(async()=>control('Use this duration').props.onPress());
@@ -1131,15 +1167,17 @@ test("free focus presets and custom seconds start the selected time and cannot l
  }finally{await ui.cleanup();}
 });
 
-test('Home cold restart keeps the preset and uses only the explicitly saved Custom editor default',async()=>{
+test('Home cold restart keeps its preset and its duration chip edits the currently displayed time',async()=>{
  const values=new Map(),db={getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}};
  let ui=await quickHomeSetup({task_id:null,duration_seconds:480},async()=>true,db);
  const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
  const input=label=>ui.renderer.root.findAllByType('Input').find(n=>n.props.accessibilityLabel===label);
  try{
   assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
-  await act(async()=>control('Use 60 minutes').props.onPress());
-  await act(async()=>control('Set a custom focus duration').props.onPress());
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
+  await act(async()=>control('Set duration to 60 minutes').props.onPress());
+  await act(async()=>control('Use this duration').props.onPress());
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
   assert.equal(input('Focus minutes').props.value,'60','the first Custom editor uses the selected preset');
   await act(async()=>{input('Focus minutes').props.onChangeText('2');input('Focus seconds').props.onChangeText('15');});
   await act(async()=>control('Use this duration').props.onPress());
@@ -1147,12 +1185,12 @@ test('Home cold restart keeps the preset and uses only the explicitly saved Cust
   await ui.cleanup();
   ui=await quickHomeSetup({task_id:null,duration_seconds:480},async()=>true,db);
   assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 60 min, Everyday focus');
-  await act(async()=>control('Set a custom focus duration').props.onPress());
-  assert.equal(input('Focus minutes').props.value,'2');assert.equal(input('Focus seconds').props.value,'15');
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
+  assert.equal(input('Focus minutes').props.value,'60');assert.equal(input('Focus seconds').props.value,'0');
   await act(async()=>ui.renderer.root.findAllByType('Sheet').find(n=>n.props.label==='focus duration').props.onRequestClose());
   await ui.update({},'another-account',null);
   assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
-  await act(async()=>control('Set a custom focus duration').props.onPress());
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
   assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'0');
  }finally{await ui.cleanup();}
 });

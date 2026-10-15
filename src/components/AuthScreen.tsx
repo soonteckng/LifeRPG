@@ -10,6 +10,7 @@ import PasswordInput from "./PasswordInput";
 import RecoveryScreen from "./RecoveryScreen";
 import AuthFormFrame from "./AuthFormFrame";
 import type { AuthEntryMode } from "../services/authEntryPreference";
+import { validEmail } from "../utils/passwordRecovery";
 
 export default function AuthScreen({ initialMode = "sign-in" }: { initialMode?: AuthEntryMode }) {
   const { signIn, signUp } = useAuth();
@@ -25,6 +26,10 @@ export default function AuthScreen({ initialMode = "sign-in" }: { initialMode?: 
     if (!email.trim() || !password) {
       const field = !email.trim() ? "email" : "password";
       focus(field); setFieldError(field); setError("Enter your email and password.");
+      return;
+    }
+    if (!validEmail(email)) {
+      focus("email"); setFieldError("email"); setError("Check your email address, including the part after @.");
       return;
     }
     lock.current = true; setBusy(true);

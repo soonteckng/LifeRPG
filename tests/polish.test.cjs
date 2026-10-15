@@ -8,7 +8,7 @@ function load(file,mocks={},cache=new Map()){
  const module={exports:{}};cache.set(filename,module);const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
   if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvite');if(name==='expo-constants')return {expoConfig:{android:{package:'com.soonteck.liferpg'}}};if(name==='expo')return {isRunningInExpoGo:()=>false};if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvitation');if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
-  if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
+   if(name==='expo-haptics')return {};if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
  },module,module.exports);return module.exports;
 }
 test('entrance refresh waits for idle time and cancels both queued and stale callbacks',async()=>{
@@ -72,28 +72,32 @@ test('daily goal sheet validates the minimum and prevents duplicate schedule wri
  }finally{await act(async()=>tree.unmount());}
 });
 
-async function tourHarness({ failure, reduced = false, receipt = 'pending', actualScroll = false, invitation = null } = {}) {
+async function tourHarness({ failure, reduced = false, receipt = 'pending', actualScroll = false, invitation = null, hapticsEnabled = false, initialPath = '/', screenSize = { width: 390, height: 800, fontScale: 1 } } = {}) {
  const saved={setTimeout:global.setTimeout,clearTimeout:global.clearTimeout};
- let now=0,serial=0,tree,tour,back,changeRoute,pathname='/',owner='alice',attempts=0,targetY=700;
+  let now=0,serial=0,tree,tour,back,changeRoute,pathname=initialPath,owner='alice',attempts=0,targetY=700,motionReduced=reduced;
  const timers=new Map(),animations=[],routes=[],scrolls=[],events=[],geometry=new Map(),receipts=new Map(receipt?[['liferpg:tour:v1:alice',receipt]]:[]);
+  const loops=[],announcements=[],focuses=[],focusTargets=[],haptics=[],reveals=[];let underlyingStarts=0;
  if(invitation)receipts.set('liferpg:notification-intro:v1:alice',invitation);
  global.setTimeout=(callback,delay=0)=>{const id=++serial;timers.set(id,{callback,at:now+delay});return id;};global.clearTimeout=id=>timers.delete(id);
  const advance=async ms=>{const end=now+ms;let turns=0;while(true){const next=[...timers].filter(([,t])=>t.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];if(!next)break;if(++turns>200)throw Error('Timer loop');now=next[1].at;timers.delete(next[0]);await act(async()=>next[1].callback());}now=end;};
  class Value { constructor(value){this.value=value;}setValue(value){this.value=value;}interpolate(config){return {source:this,config};} }
  const router={navigate(route){routes.push(route);events.push({kind:'navigate',route});if(failure==='route'||failure==='return'&&route==='/'&&pathname==='/profile')return;pathname=route;changeRoute?.(route);}};
  const Scroll=React.forwardRef((props,ref)=>{React.useImperativeHandle(ref,()=>({scrollTo:position=>{scrolls.push(position);events.push({kind:'scroll',...position});targetY-=position.y;}}));return React.createElement('Scroll',props,props.children);});
- const Native={View:host('View'),ScrollView:Scroll,StyleSheet:{create:s=>s,absoluteFill:{}},useWindowDimensions:()=>({width:390,height:800}),AccessibilityInfo:{announceForAccessibility(){}},BackHandler:{addEventListener:(_,cb)=>{back=cb;return{remove(){}};}},Animated:{View:host('Animated'),Value,timing:(value,config)=>{let item;return{start:callback=>{item={value,config,callback};animations.push(item);events.push({kind:'animate',...config});},stop:()=>{if(item)item.stopped=true;}};}}};
- const api=load('src/components/FeatureTour.tsx',{'react-native':Native,'@react-native-async-storage/async-storage':{getItem:async key=>receipts.get(key)||null,setItem:async(key,value)=>receipts.set(key,value)},'expo-router':{useRouter:()=>router,usePathname:()=>{const [route,setRoute]=React.useState(pathname);changeRoute=setRoute;return route;}},'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:24})},'../context/UserContext':{useUser:()=>({profile:{id:owner,onboarding_completed:true}})},'../context/TimerContext':{useTimer:()=>({})},'../hooks/useReducedMotion':{useReducedMotion:()=>reduced}});
+  const timing=(value,config)=>{let item;return{start:callback=>{item={value,config,callback};animations.push(item);events.push({kind:'animate',...config});},stop:()=>{if(item)item.stopped=true;}};};
+  const sequence=items=>({start:()=>items.forEach(item=>item.start()),stop:()=>items.forEach(item=>item.stop())});
+  const Native={View:host('View'),Pressable:host('PausedPlane'),ScrollView:Scroll,findNodeHandle:node=>{focusTargets.push(node?.testID??null);return failure==='focus'?null:node?19:null;},StyleSheet:{create:s=>s,absoluteFill:{}},useWindowDimensions:()=>screenSize,AccessibilityInfo:{announceForAccessibility:copy=>announcements.push(copy),setAccessibilityFocus:handle=>focuses.push(handle)},BackHandler:{addEventListener:(_,cb)=>{back=cb;return{remove(){}};}},Animated:{View:host('Animated'),Value,timing,sequence,loop:animation=>{let item;return{start:()=>{item={stopped:false};loops.push(item);animation.start();},stop:()=>{if(item)item.stopped=true;animation.stop();}};}}};
+  const api=load('src/components/FeatureTour.tsx',{'react-native':Native,'expo-haptics':{ImpactFeedbackStyle:{Light:'light'},impactAsync:async kind=>haptics.push(kind)},'@react-native-async-storage/async-storage':{getItem:async key=>receipts.get(key)||null,setItem:async(key,value)=>receipts.set(key,value)},'expo-router':{useRouter:()=>router,usePathname:()=>{const [route,setRoute]=React.useState(pathname);changeRoute=setRoute;return route;}},'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:24})},'../context/UserContext':{useUser:()=>({profile:{id:owner,onboarding_completed:true},hapticsEnabled})},'../context/TimerContext':{useTimer:()=>({})},'../hooks/useReducedMotion':{useReducedMotion:()=>motionReduced}});
  const late=[];
  function Capture(){tour=api.useFeatureTour();React.useEffect(()=>{
   if(actualScroll)return;
-  const cleanup=api.TOUR_STEPS.map((step,i)=>tour.register(step.id,{measure:done=>{attempts++;late.push(done);if(failure==='target')return;if(failure==='throw')throw Error('Native unavailable');done(geometry.get(step.id)||{x:20,y:100+i*80,width:350,height:100});},reveal:()=>false}));return()=>cleanup.forEach(fn=>fn());
- },[]);return actualScroll?React.createElement(api.TourScrollView,{tourRoute:'/',tourBottomInset:90,contentContainerStyle:{paddingBottom:90}},React.createElement(api.TourAnchor,{id:'home-identity'},'Target')):null;}
- await act(async()=>{tree=create(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture)),{createNodeMock:element=>({measureInWindow:done=>{if(failure==='root')return;element.props.testID==='tour-root'?done(0,-24,390,824):done(20,targetY,350,100);}})});});
+   const cleanup=api.TOUR_STEPS.map((step,i)=>tour.register(step.id,{measure:done=>{attempts++;late.push(done);if(failure==='target')return;if(failure==='throw')throw Error('Native unavailable');done(geometry.get(step.id)||{x:20,y:100+i*80,width:350,height:100});},reveal:(_,bounds)=>{reveals.push(bounds);return false;}}));return()=>cleanup.forEach(fn=>fn());
+  },[]);return actualScroll?React.createElement(api.TourScrollView,{tourRoute:'/',tourBottomInset:90,contentContainerStyle:{paddingBottom:90}},React.createElement(api.TourAnchor,{id:'home-identity'},'Target')):React.createElement('UnderlyingButton',{onPress:()=>underlyingStarts++});}
+  await act(async()=>{tree=create(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture)),{createNodeMock:element=>({testID:element.props.testID,measureInWindow:done=>{if(failure==='root')return;element.props.testID==='tour-root'?done(0,-24,screenSize.width,screenSize.height+24):done(20,targetY,350,100);}})});});
  await act(async()=>tree.root.findByProps({testID:'tour-root'}).props.onLayout());
  const button=label=>tree.root.findAllByType('Button').find(node=>node.props.accessibilityLabel===label);
- return {api,tree,animations,routes,scrolls,events,receipts,late,advance,button,replay:async()=>act(async()=>tour.start()),layout:async(id,rect)=>act(async()=>{geometry.set(id,rect);tour.layoutChanged(id);}),reportDock:async height=>act(async()=>tour.reportDock(height)),text:()=>tree.root.findAllByType('Text').map(n=>n.children.join('')).join(' '),attempts:()=>attempts,press:async label=>act(async()=>button(label).props.onPress()),back:async()=>act(async()=>back()),owner:async value=>{owner=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
+  return {api,tree,animations,loops,announcements,focuses,focusTargets,haptics,reveals,pendingTimers:()=>[...timers.values()],underlyingStarts:()=>underlyingStarts,routes,scrolls,events,receipts,late,advance,button,replay:async()=>act(async()=>tour.start()),layout:async(id,rect)=>act(async()=>{geometry.set(id,rect);tour.layoutChanged(id);}),reportDock:async height=>act(async()=>tour.reportDock(height)),text:()=>tree.root.findAllByType('Text').map(n=>n.children.join('')).join(' '),attempts:()=>attempts,press:async label=>act(async()=>button(label).props.onPress()),pausedTap:async()=>act(async()=>tree.root.findByProps({testID:'tour-paused-controls'}).props.onPress()),back:async()=>act(async()=>back()),owner:async value=>{owner=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
   finish:async item=>act(async()=>{item.value.setValue(item.config.toValue);item.callback?.({finished:true});}),
+   reducedMotion:async value=>{motionReduced=value;await act(async()=>tree.update(React.createElement(api.FeatureTourProvider,null,React.createElement(Capture))));},
   cleanup:async()=>{await act(async()=>tree.unmount());Object.assign(global,saved);},
  };
 }
@@ -102,18 +106,168 @@ test('first-run tour waits for Home, requires every lesson, supports Back and re
  const ui=await tourHarness({reduced:true});
  try{
   assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);
+   assert.ok(ui.tree.root.findByProps({testID:'tour-preparing-overlay'}));assert.match(ui.text(),/Starting guide · taps are paused/);
+   assert.equal(ui.tree.root.findByProps({testID:'tour-app-content'}).props.importantForAccessibility,'no-hide-descendants');
+   await act(async()=>ui.tree.root.findByProps({testID:'tour-preparing-controls'}).props.onPress());await ui.back();assert.equal(ui.underlyingStarts(),0);assert.equal(ui.routes.length,1);
+   assert.ok(ui.tree.root.findByProps({testID:'tour-preparing-overlay'}),'hardware Back cannot leave Home during the armed preview');
+   assert.ok(ui.announcements.includes('Your guide is starting. Taps are paused.'));
   await ui.advance(749);assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);
   await ui.advance(121);assert.ok(ui.tree.root.findAllByProps({testID:'tour-outline'}).length>0);
-  assert.equal(ui.button('Close tour'),undefined);assert.equal(ui.button('Previous tour tip').props.disabled,true);
+   assert.equal(ui.button('Close tour'),undefined);assert.equal(ui.button('Skip tour'),undefined);assert.equal(ui.button('Previous tour tip').props.disabled,true);
+   assert.deepEqual(ui.api.TOUR_STEPS.map(step=>step.id),['home-identity','home-focus','home-quests','progress-overview','profile-areas']);
+   assert.match(ui.text(),/Guide mode · taps are paused/);assert.match(ui.text(),/Step 1 of 5/);
   await ui.back();assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'pending');
   await ui.press('Next tour tip');await ui.advance(120);
   await ui.press('Previous tour tip');await ui.advance(120);assert.match(ui.text(),/1 of/);
-  for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(140);}
-  assert.match(ui.text(),/6 of/);assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0,'page overviews have no misleading narrow outline');
+  for(let i=0;i<4;i++){await ui.press('Next tour tip');await ui.advance(140);}
+  assert.match(ui.text(),/Step 5 of 5/);assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0,'page overviews have no misleading narrow outline');
   assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'pending');assert.ok(ui.routes.includes('/progress'));assert.ok(ui.routes.includes('/profile'));
-  await ui.press('Explore LifeRPG');await ui.advance(1);
+  await ui.press('Done');await ui.advance(1);
   assert.equal(ui.routes.at(-1),'/');assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'done');assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);
   await ui.owner('bob');await ui.advance(1000);assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);assert.equal(ui.receipts.has('liferpg:tour:v1:bob'),false);
+ }finally{await ui.cleanup();}
+});
+
+test('stalled initial Home navigation exposes bounded guide recovery for required guides and replay',async()=>{
+ for(const replay of [false,true]){
+  const ui=await tourHarness({failure:'route',initialPath:'/profile',reduced:true,receipt:replay?'done':'pending',invitation:'pending-guide'});
+  try{
+   if(replay)await ui.replay();assert.ok(ui.tree.root.findByProps({testID:'tour-preparing-overlay'}));
+   await ui.back();assert.ok(ui.tree.root.findByProps({testID:'tour-preparing-overlay'}));assert.equal(ui.routes.at(-1),'/');
+   await ui.advance(1199);assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);
+   await ui.advance(1);assert.equal(ui.tree.root.findAllByProps({testID:'tour-preparing-overlay'}).length,0);assert.match(ui.text(),/Step 1 of 5/);
+   assert.ok(ui.button('Next tour tip'));assert.match(ui.text(),/Retry highlight/);assert.equal(!!ui.button('Skip tour'),replay);
+   assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),replay?'done':'pending');assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'pending-guide');
+   await ui.press('Next tour tip');await ui.advance(1);assert.match(ui.text(),/Step 2 of 5/);assert.equal(ui.tree.root.findAllByProps({testID:'tour-outline'}).length,0);
+   assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'pending-guide');
+  }finally{await ui.cleanup();}
+ }
+});
+
+test('an old armed startup deadline cannot open or finish another account guide',async()=>{
+ const ui=await tourHarness({failure:'route',initialPath:'/profile',reduced:true,invitation:'pending-guide'});
+ try{
+  const deadline=ui.pendingTimers().find(item=>item.at===1200);assert.ok(deadline);await ui.owner('bob');
+  await act(async()=>deadline.callback());await ui.advance(2000);assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);assert.equal(ui.tree.root.findAllByProps({testID:'tour-preparing-overlay'}).length,0);
+  assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'pending');assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'pending-guide');assert.equal(ui.receipts.has('liferpg:tour:v1:bob'),false);
+ }finally{await ui.cleanup();}
+});
+
+test('optional replay Skip restores input on the current page after its Home return fails',async()=>{
+ const ui=await tourHarness({failure:'route',initialPath:'/profile',reduced:true,receipt:'done',invitation:'pending-guide'});
+ try{
+  await ui.replay();await ui.advance(1200);assert.match(ui.text(),/Step 1 of 5/);assert.ok(ui.button('Skip tour'));
+  await ui.press('Skip tour');await ui.advance(1199);assert.ok(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length>0);
+  await ui.advance(1);assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);assert.equal(ui.tree.root.findAllByProps({testID:'tour-preparing-overlay'}).length,0);
+  const content=ui.tree.root.findByProps({testID:'tour-app-content'});assert.equal(content.props.accessibilityElementsHidden,false);assert.equal(content.props.importantForAccessibility,'auto');
+  await act(async()=>ui.tree.root.findByType('UnderlyingButton').props.onPress());assert.equal(ui.underlyingStarts(),1);
+  assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'done');assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'pending-guide');assert.equal(ui.tree.root.findByType('NotificationInvite').props.tourActive,false);
+ }finally{await ui.cleanup();}
+});
+
+test('paused controls give one calm message and light haptic without activating Home, and Next remains independent',async()=>{
+ const ui=await tourHarness({hapticsEnabled:true});
+ try{
+  await ui.advance(1100);await ui.press('Next tour tip');await ui.advance(500);
+  const routes=ui.routes.length,step=ui.text();await ui.pausedTap();
+  assert.equal(ui.routes.length,routes);assert.equal(ui.underlyingStarts(),0);assert.match(ui.text(),/Start works after the tour\. Tap Next to continue\./);
+  assert.deepEqual(ui.haptics,['light']);assert.ok(ui.announcements.includes('Start works after the tour. Tap Next to continue.'));
+  assert.ok(ui.animations.some(item=>item.config.duration===150&&item.config.useNativeDriver&&item.config.isInteraction===false));
+  const toast=ui.tree.root.findByProps({testID:'tour-paused-feedback'}),body=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
+  assert.equal(toast.parent,body,'feedback uses the existing bounded scroll area');assert.deepEqual(ui.scrolls.at(-1),{y:0,animated:false});
+  assert.match(step,/Step 2 of 5/);await ui.press('Next tour tip');await ui.advance(400);
+  assert.match(ui.text(),/Step 3 of 5/);assert.equal(ui.haptics.length,1);assert.equal(ui.tree.root.findAllByProps({testID:'tour-paused-feedback'}).length,0);
+  await ui.press('Previous tour tip');await ui.advance(400);assert.match(ui.text(),/Step 2 of 5/);assert.equal(ui.tree.root.findAllByProps({testID:'tour-paused-feedback'}).length,0,'Back does not revive a previous visit toast');
+  await ui.pausedTap();await ui.advance(3200);assert.equal(ui.tree.root.findAllByProps({testID:'tour-paused-feedback'}).length,0);assert.equal(ui.underlyingStarts(),0);
+ }finally{await ui.cleanup();}
+});
+
+test('changing reduced motion preserves the original paused-message expiry and stops its animation',async()=>{
+ const ui=await tourHarness();
+ try{
+  await ui.advance(1100);await ui.pausedTap();await ui.advance(1000);await ui.reducedMotion(true);
+  assert.ok(ui.tree.root.findByProps({testID:'tour-paused-feedback'}));assert.ok(ui.loops.every(item=>item.stopped));
+  assert.equal(ui.tree.root.findByProps({testID:'tour-next-ring'}).props.style[1].opacity,.6);
+  await ui.advance(2199);assert.ok(ui.tree.root.findByProps({testID:'tour-paused-feedback'}));
+  await ui.advance(1);assert.equal(ui.tree.root.findAllByProps({testID:'tour-paused-feedback'}).length,0);
+ }finally{await ui.cleanup();}
+});
+
+test('reduced motion keeps a static Next ring and respects disabled haptics during paused taps',async()=>{
+ const ui=await tourHarness({reduced:true});
+ try{
+  await ui.advance(1100);await ui.pausedTap();
+  const ring=ui.tree.root.findByProps({testID:'tour-next-ring'}).props.style[1];
+  assert.equal(ring.opacity,.6);assert.deepEqual(ring.transform,[{scale:1}]);assert.equal(ui.loops.length,0);assert.equal(ui.haptics.length,0);
+  assert.equal(ui.animations.some(item=>item.config.duration===2600||item.config.duration===150),false);
+  await ui.owner('bob');await ui.advance(4000);assert.equal(ui.tree.root.findAllByProps({testID:'tour-paused-feedback'}).length,0);
+ }finally{await ui.cleanup();}
+});
+
+test('the 2.6-second Next ring stops on steps, covered return, account change and unmount',async()=>{
+ const ui=await tourHarness({receipt:'done'});
+ try{
+  await ui.replay();await ui.advance(1100);
+  assert.equal(ui.loops.length,1);const pulse=ui.animations.filter(item=>item.config.duration===2600);assert.equal(pulse.length,1);
+  assert.ok(pulse.every(item=>item.config.useNativeDriver&&item.config.isInteraction===false));
+  const ring=ui.tree.root.findByProps({testID:'tour-next-ring'}).props.style[1];assert.deepEqual(ring.opacity.config.inputRange,[0,.5,1]);assert.deepEqual(ring.opacity.config.outputRange,[.25,.7,.25]);
+  await ui.press('Next tour tip');await ui.advance(400);assert.equal(ui.loops[0].stopped,true);assert.equal(ui.loops.at(-1).stopped,false);
+  await ui.press('Skip tour');await ui.advance(300);assert.ok(ui.loops.every(item=>item.stopped));
+  await ui.advance(900);await ui.replay();await ui.advance(1100);assert.equal(ui.loops.at(-1).stopped,false);
+  await ui.owner('bob');assert.ok(ui.loops.every(item=>item.stopped));
+  await ui.replay();await ui.advance(1100);assert.equal(ui.loops.at(-1).stopped,false);
+ }finally{await ui.cleanup();}
+ assert.ok(ui.loops.every(item=>item.stopped));
+});
+
+test('replay Skip returns Home through the cover without preparing a notification invitation or changing another owner',async()=>{
+ const ui=await tourHarness({receipt:'done',invitation:'handled'});
+ try{
+  await ui.replay();await ui.advance(1100);assert.ok(ui.button('Skip tour'));assert.ok(ui.button('Skip tour').props.style.minHeight>=44);
+  for(let i=0;i<3;i++){await ui.press('Next tour tip');await ui.advance(400);}
+  assert.equal(ui.routes.at(-1),'/progress');await ui.press('Skip tour');await ui.advance(360);
+  assert.equal(ui.routes.at(-1),'/');assert.ok(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length>0);
+  assert.ok(ui.tree.root.findByProps({testID:'tour-mode-ribbon'}),'mode remains visible throughout covered return');
+  assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'handled');
+  const fade=ui.animations.find(item=>item.config.duration===350);assert.ok(fade);await ui.finish(fade);
+  assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'handled');
+  await ui.replay();await ui.advance(1100);await ui.press('Skip tour');await ui.owner('bob');await ui.advance(2000);
+  assert.equal(ui.receipts.has('liferpg:tour:v1:bob'),false);assert.equal(ui.receipts.has('liferpg:notification-intro:v1:bob'),false);
+ }finally{await ui.cleanup();}
+});
+
+test('guide focus moves to its title once per step and missing native handles never block the guide',async()=>{
+ for(const failure of [undefined,'focus','target']){
+  const ui=await tourHarness({failure,reduced:true});
+  try{
+   await ui.advance(1400);assert.ok(ui.announcements.includes(`${ui.api.TOUR_STEPS[0].title} ${ui.api.TOUR_STEPS[0].body}`));
+   assert.equal(ui.focuses.length,failure==='focus'?0:1);assert.ok(ui.focusTargets.every(target=>target==='tour-title'));
+   assert.equal(ui.tree.root.findByProps({testID:'tour-tip'}).props.accessible,undefined,'the card does not group its actions into one accessibility element');
+   assert.equal(ui.tree.root.findByProps({testID:'tour-paused-controls'}).props.accessible,false);
+   await ui.layout('home-identity',{x:20,y:120,width:350,height:120});await ui.advance(500);assert.equal(ui.focusTargets.length,1,'remeasuring does not steal focus from the reader');
+   await ui.press('Next tour tip');await ui.advance(1400);assert.equal(ui.focusTargets.length,2);assert.match(ui.text(),/Step 2 of 5/);
+  }finally{await ui.cleanup();}
+ }
+});
+
+test('large measured ribbon and guide chrome reserve safe bounds on a short phone without shrinking the full focus anchor',async()=>{
+ const ui=await tourHarness({reduced:true,screenSize:{width:320,height:640,fontScale:2}});
+ try{
+  await ui.advance(1000);await ui.press('Next tour tip');await ui.advance(150);
+  await act(async()=>{
+   ui.tree.root.findByProps({testID:'tour-mode-ribbon'}).props.onLayout({nativeEvent:{layout:{height:88}}});
+   ui.tree.root.findByProps({testID:'tour-tip-heading'}).props.onLayout({nativeEvent:{layout:{height:112}}});
+   ui.tree.root.findByProps({testID:'tour-navigation'}).props.onLayout({nativeEvent:{layout:{height:72}}});
+   ui.tree.root.findByProps({testID:'tour-tip'}).props.onLayout({nativeEvent:{layout:{height:290}}});
+  });
+  await ui.layout('home-focus',{x:20,y:120,width:280,height:400});await ui.advance(200);
+  assert.equal(ui.reveals.at(-1).top,108,'window bounds include the complete 88-point ribbon and separation');
+  const panel=ui.tree.root.findByProps({testID:'tour-tip'}).props.style[1],outline=ui.tree.root.findByProps({testID:'tour-outline'}).props.style[1];
+  assert.ok(panel.top>=132);assert.ok(panel.top+290<=664-114-12);assert.equal(outline.height,408,'the measured full card is not replaced with a truncated target');
+  const body=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);assert.equal(body.props.style.maxHeight,48);
+  await ui.pausedTap();await act(async()=>body.props.onContentSizeChange(280,230));assert.equal(body.props.persistentScrollbar,true);assert.equal(body.props.style.maxHeight,48);
+  const copy=ui.tree.root.findAllByType('Text').find(node=>node.children.includes(ui.api.TOUR_STEPS[1].body));await act(async()=>copy.props.onLayout({nativeEvent:{layout:{height:23}}}));assert.equal(body.props.persistentScrollbar,true,'body-only measurements cannot hide feedback overflow');
+  assert.ok(ui.button('Next tour tip'));assert.ok(ui.button('Next tour tip').props.style.minHeight>=44);
  }finally{await ui.cleanup();}
 });
 
@@ -141,9 +295,9 @@ test('quest tour tip keeps its complete sentence and full stop in a natural-heig
  try{
   await ui.advance(900);
   const prior=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
-  for(let i=0;i<3;i++){await ui.press('Next tour tip');await ui.advance(140);}
-  const copy=ui.api.TOUR_STEPS[3].body;
-  assert.equal(copy,'Add a quest for something that matters. Tap a quest to set up its focus.');
+  for(let i=0;i<2;i++){await ui.press('Next tour tip');await ui.advance(140);}
+  const copy=ui.api.TOUR_STEPS[2].body;
+  assert.equal(copy,'Save something you want to return to. Your previous quests are here too, with their history kept. Tap a routine to begin, or Manage to change it.');assert.ok(copy.endsWith('.'));
   const body=ui.tree.root.findAllByType('Text').find(node=>node.children.includes(copy));
   assert.ok(body);assert.equal(body.props.numberOfLines,undefined,'guide text must not be shortened with a line limit');
   const viewport=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
@@ -217,8 +371,8 @@ test('the final native fade returns Home smoothly and only then marks the tour c
  const ui=await tourHarness();
  try{
   await ui.advance(900);
-  for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(400);}
-  assert.match(ui.text(),/6 of/);await ui.press('Explore LifeRPG');await ui.advance(360);
+  for(let i=0;i<4;i++){await ui.press('Next tour tip');await ui.advance(400);}
+  assert.match(ui.text(),/Step 5 of 5/);await ui.press('Done');await ui.advance(360);
   assert.equal(ui.routes.at(-1),'/');assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'pending');
   const fade=ui.animations.find(a=>a.config.duration===350);assert.ok(fade);assert.equal(fade.config.useNativeDriver,true);
   await ui.finish(fade);assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'done');assert.equal(ui.tree.root.findAllByProps({testID:'tour-overlay'}).length,0);
@@ -229,9 +383,9 @@ test('failed page navigation and return-to-Home keep visible mandatory controls 
  for(const failure of ['route','return']){
   const ui=await tourHarness({failure,reduced:true});
   try{
-   await ui.advance(900);for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(150);}
-   if(failure==='route'){await ui.advance(600);assert.match(ui.text(),/Retry highlight/);await ui.press('Previous tour tip');assert.match(ui.text(),/5 of/);}
-   else {await ui.press('Explore LifeRPG');await ui.advance(1250);assert.ok(ui.button('Explore LifeRPG'));await ui.press('Previous tour tip');assert.match(ui.text(),/5 of/);}
+   await ui.advance(900);for(let i=0;i<4;i++){await ui.press('Next tour tip');await ui.advance(150);}
+   if(failure==='route'){await ui.advance(600);assert.match(ui.text(),/Retry highlight/);await ui.press('Previous tour tip');assert.match(ui.text(),/Step 4 of 5/);}
+   else {await ui.press('Done');await ui.advance(1250);assert.ok(ui.button('Done'));await ui.press('Previous tour tip');assert.match(ui.text(),/Step 4 of 5/);}
    assert.equal(ui.receipts.get('liferpg:tour:v1:alice'),'pending');
   }finally{await ui.cleanup();}
  }
@@ -263,8 +417,8 @@ test('guide transition masks stop above the measured nav bar throughout route an
  try{
   await ui.advance(900);await ui.reportDock(126);
   const mask=()=>ui.tree.root.findByProps({testID:'tour-content-mask'}).props.style[1];assert.equal(mask().bottom,126);assert.equal(mask().overflow,'hidden');
-  for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(400);assert.equal(mask().bottom,126);}
-  await ui.press('Explore LifeRPG');await ui.advance(360);assert.equal(mask().bottom,126);
+  for(let i=0;i<4;i++){await ui.press('Next tour tip');await ui.advance(400);assert.equal(mask().bottom,126);}
+  await ui.press('Done');await ui.advance(360);assert.equal(mask().bottom,126);
  }finally{await ui.cleanup();}
 });
 
@@ -272,8 +426,8 @@ test('Home resets while covered before navigation and again on attachment, with 
  const ui=await tourHarness({actualScroll:true});
  try{
   await ui.advance(1000);assert.ok(ui.scrolls[0].y>0);
-  for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(650);}
-  await ui.press('Explore LifeRPG');await ui.advance(360);
+  for(let i=0;i<4;i++){await ui.press('Next tour tip');await ui.advance(650);}
+  await ui.press('Done');await ui.advance(360);
   const navigate=ui.events.findLastIndex(e=>e.kind==='navigate'&&e.route==='/'),fadeIndex=ui.events.findIndex(e=>e.kind==='animate'&&e.duration===350);
   assert.ok(ui.events.slice(0,navigate).some(e=>e.kind==='scroll'&&e.y===0));
   assert.ok(ui.events.slice(navigate,fadeIndex).some(e=>e.kind==='scroll'&&e.y===0),'attached Home is already at top when it becomes visible');
@@ -281,11 +435,11 @@ test('Home resets while covered before navigation and again on attachment, with 
  }finally{await ui.cleanup();}
 });
 
-test('Home tour steps two through four remeasure full targets when suggestion height and sibling positions change',async()=>{
+test('Home tour steps two and three remeasure full targets when suggestion height and sibling positions change',async()=>{
  const ui=await tourHarness({reduced:true});
  try{
   await ui.advance(900);
-  const cases=[['home-focus',{x:20,y:170,width:350,height:310},{x:30,y:120,width:330,height:360}],['home-next-step',{x:20,y:500,width:350,height:70},{x:20,y:540,width:350,height:85}],['home-quests',{x:20,y:600,width:350,height:140},{x:20,y:500,width:350,height:210}]];
+  const cases=[['home-focus',{x:20,y:170,width:350,height:310},{x:30,y:120,width:330,height:360}],['home-quests',{x:20,y:600,width:350,height:140},{x:20,y:500,width:350,height:210}]];
   for(const [id,initial,changed] of cases){
    await ui.press('Next tour tip');await ui.layout(id,initial);await ui.advance(120);
    const old=ui.late.at(-1);await ui.layout(id,changed);await act(async()=>old(initial));
@@ -310,9 +464,9 @@ test('only a genuinely prepared automatic new-user guide readies the notificatio
   try{
    if(manual)await ui.replay();
    await ui.advance(900);
-   for(let i=0;i<5;i++){await ui.press('Next tour tip');await ui.advance(140);}
+   for(let i=0;i<4;i++){await ui.press('Next tour tip');await ui.advance(140);}
    assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),'pending-guide');
-   await ui.press('Explore LifeRPG');await ui.advance(140);
+   await ui.press('Done');await ui.advance(140);
    assert.equal(ui.routes.at(-1),'/');
    assert.equal(ui.receipts.get('liferpg:notification-intro:v1:alice'),manual?'pending-guide':'ready');
    assert.equal(ui.tree.root.findByType('NotificationInvite').props.tourActive,false);

@@ -10,6 +10,11 @@ export interface NotificationPermission {
   supported: boolean;
   granted?: boolean;
 }
+const permissionListeners = new Set<() => void>();
+export function subscribeNotificationPermissionChanges(listener: () => void) {
+  permissionListeners.add(listener);
+  return () => { permissionListeners.delete(listener); };
+}
 export function notificationPermission(result: { granted: boolean; canAskAgain?: boolean; ios?: { status?: number } }): NotificationPermission {
   if (result.ios?.status === 3) return { label: "Allowed quietly", action: "settings", supported: true, granted: true };
   if (result.ios?.status === 4) return { label: "Allowed temporarily", action: "settings", supported: true, granted: true };
@@ -39,9 +44,13 @@ export async function enableNotifications() {
     name: "Active Session Banner", importance: api.AndroidImportance.LOW,
     sound: null, enableVibrate: false, showBadge: false,
   });
-  return notificationPermission(await api.requestPermissionsAsync({
+  const result = notificationPermission(await api.requestPermissionsAsync({
     ios: { allowAlert: true, allowBadge: false, allowSound: true },
   }));
+  // A runtime permission dialog need not background the app. Refresh opted-in
+  // reminders immediately instead of waiting for another launch/foreground.
+  for (const listener of permissionListeners) { try { listener(); } catch { /* Keep permission and other listeners independent. */ } }
+  return result;
 }
 
 export async function openAlarmSettings() {

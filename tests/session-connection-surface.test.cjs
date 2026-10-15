@@ -74,7 +74,10 @@ test('connectivity transitions preserve the navigation instance and suppress con
     assert.equal(online.props.pointerEvents, 'none');
     assert.equal(online.props.importantForAccessibility, 'no-hide-descendants');
     assert.equal(ui.root().findByType('Offline').props.active, true);
-    await ui.motion.finish(); await ui.update({ localOnly: false });
+    assert.equal(ui.root().findByProps({ testID: 'offline-connection-surface' }).props.pointerEvents, 'none', 'incoming controls wait until the fade completes');
+    await ui.motion.finish();
+    assert.equal(ui.root().findByProps({ testID: 'offline-connection-surface' }).props.pointerEvents, 'auto');
+    await ui.update({ localOnly: false });
     const outgoing = ui.root().findByProps({ testID: 'offline-connection-surface' });
     assert.equal(outgoing.props.pointerEvents, 'none'); assert.equal(outgoing.props.accessibilityElementsHidden, true);
     assert.equal(ui.root().findByType('Offline').props.active, false);
@@ -93,10 +96,11 @@ test('an obsolete fade callback cannot remove the active offline surface after a
     assert.equal(ui.motion.transitions[stale].stopped, true);
     await ui.motion.finish(stale);
     assert.equal(ui.root().findByType('Offline').props.active, true);
-    assert.equal(ui.root().findByProps({ testID: 'offline-connection-surface' }).props.pointerEvents, 'auto');
+    assert.equal(ui.root().findByProps({ testID: 'offline-connection-surface' }).props.pointerEvents, 'none');
     assert.deepEqual(ui.counters, { mounts: 1, unmounts: 0 });
     await ui.motion.finish();
     assert.equal(ui.root().findByType('Offline').props.active, true);
+    assert.equal(ui.root().findByProps({ testID: 'offline-connection-surface' }).props.pointerEvents, 'auto');
   } finally { await ui.cleanup(); }
 });
 
@@ -129,7 +133,7 @@ test('the outgoing layout leaves before the incoming layout fades into view in b
 async function connection(options = {}) {
   const calls = [], motion = motionHarness();
   let accessMode = options.accessMode ?? 'local-only', pathname = options.pathname ?? '/session';
-  let ownerId = options.ownerId ?? 'owner-a', nonce = options.nonce;
+  let ownerId = options.ownerId ?? 'owner-a', nonce = options.nonce, protectionEnd = options.protectionEnd, protectionSession = options.protectionSession;
   let timer = { hasOpenSession: false, isCompleted: false, endingSession: false, sessionEnded: false,
     awaitingStart: false, linkedTaskId: null, isRestoring: false, actionBusy: false, sessionId: 'session-a',
     consumeNotificationAction: async value => { calls.push(['consume', value]); return options.action ?? 'end'; },
@@ -137,7 +141,7 @@ async function connection(options = {}) {
   const router = { replace: route => calls.push(route) };
   const Content = load('src/components/SessionConnectionContent.tsx', {
     'react-native': { View: host('View'), Animated: motion.Animated, StyleSheet: { create: value => value } },
-    'expo-router': { usePathname: () => pathname, useRouter: () => router, useGlobalSearchParams: () => ({countdownAction:nonce}) },
+    'expo-router': { usePathname: () => pathname, useRouter: () => router, useGlobalSearchParams: () => ({countdownAction:nonce,protectionEnd,protectionSession}) },
     '../hooks/useReducedMotion': { useReducedMotion: () => false },
     '../context/AuthContext': { useAuth: () => ({ accessMode, user: accessMode === 'online' ? {id:ownerId} : null, localOwner:{id:ownerId} }) },
     '../context/TimerContext': { useTimer: () => timer },
@@ -152,6 +156,8 @@ async function connection(options = {}) {
       if (next.pathname !== undefined) pathname = next.pathname;
       if (next.ownerId !== undefined) ownerId = next.ownerId;
       if (next.nonce !== undefined) nonce = next.nonce;
+      if (next.protectionEnd !== undefined) protectionEnd=next.protectionEnd;
+      if (next.protectionSession !== undefined) protectionSession=next.protectionSession;
       if (next.timer) timer = { ...timer, ...next.timer };
       await act(async () => tree.update(render()));
     },
@@ -171,8 +177,10 @@ test('reconnecting after offline Done replaces the stale session route before re
       await ui.motion.finish();
       assert.equal(ui.root().findAllByType('Recovery').length, 1, 'retain the outgoing surface while the route is obsolete');
       await ui.update({ pathname: '/' });
+      assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'none');
+      await ui.motion.finish();
       assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
-      await ui.motion.finish(); assert.equal(ui.root().findAllByType('Recovery').length, 0);
+      assert.equal(ui.root().findAllByType('Recovery').length, 0);
       assert.equal(ui.root().findByType('Navigation'), navigation);
       assert.deepEqual(ui.calls, ['/']);
     } finally { await ui.cleanup(); }
@@ -186,8 +194,9 @@ test('valid quest setup, running timer and pending result routes survive reconne
     try {
       await ui.update({ accessMode: 'online' });
       assert.deepEqual(ui.calls, []);
+      await ui.motion.finish();
       assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
-      await ui.motion.finish(); assert.equal(ui.root().findAllByType('Recovery').length, 0);
+      assert.equal(ui.root().findAllByType('Recovery').length, 0);
     } finally { await ui.cleanup(); }
   }
 });
@@ -201,8 +210,9 @@ test('restoration holds the outgoing surface until a durable result decides whet
     await ui.motion.finish(); assert.equal(ui.root().findAllByType('Recovery').length, 1);
     await ui.update({ timer: { isRestoring: false, hasOpenSession: true } });
     assert.deepEqual(ui.calls, []);
+    await ui.motion.finish();
     assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
-    await ui.motion.finish(); assert.equal(ui.root().findAllByType('Recovery').length, 0);
+    assert.equal(ui.root().findAllByType('Recovery').length, 0);
   } finally { await ui.cleanup(); }
   const empty = await connection({ timer: { isRestoring: true } });
   try {
@@ -217,9 +227,28 @@ test('a normal online setup and non-session destinations do not redirect merely 
     const ui = await connection(options);
     try {
       await ui.update({ accessMode: 'online' }); assert.deepEqual(ui.calls, []);
+      await ui.motion.finish();
       assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
     } finally { await ui.cleanup(); }
   }
+});
+
+test('account verification keeps the outgoing offline page steady until online content is ready', async () => {
+  const ui = await surface({ localOnly: true, onlineReady: false });
+  try {
+    await ui.motion.finish();
+    const before = ui.motion.transitions.length;
+    await ui.update({ localOnly: false });
+    assert.equal(ui.motion.transitions.length, before, 'verification alone does not restart the outgoing fade');
+    assert.equal(ui.root().findAllByType('Offline').length, 1);
+    assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'none');
+    await ui.update({ onlineReady: true });
+    assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'none');
+    await ui.motion.finish();
+    assert.equal(ui.root().findAllByType('Offline').length, 0);
+    assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
+    assert.deepEqual(ui.counters, { mounts: 1, unmounts: 0 });
+  } finally { await ui.cleanup(); }
 });
 
 test('notification End opens the stable confirmation offline and only confirmed End stops the timer', async () => {
@@ -276,6 +305,31 @@ test('notification End waits for restoration before consuming and ignores non-En
     assert.deepEqual(ui.calls,[['consume','nonce-a']]);
     assert.equal(ui.root().findAllByType('Confirmation').length,0);
   } finally { await ui.cleanup(); }
+});
+
+test('the protection cover opens one confirmation offline and keeps it through server-ID reconciliation', async () => {
+  const ui = await connection({protectionEnd:'tap-1',protectionSession:'client-a',timer:{hasOpenSession:true,isRunning:true,protectionSessionId:'client-a'}});
+  try {
+    assert.equal(ui.root().findAllByType('Confirmation').length,1);assert.deepEqual(ui.calls,[]);
+    await ui.update({accessMode:'online',timer:{sessionId:'server-confirmed'}});
+    assert.equal(ui.root().findAllByType('Confirmation').length,1);
+    await act(async()=>ui.root().findByType('Confirmation').props.onCancel());
+    await ui.update({timer:{timeLeft:59}});assert.equal(ui.root().findAllByType('Confirmation').length,0);
+    await ui.update({protectionEnd:'tap-2'});await act(async()=>ui.root().findByType('Confirmation').props.onConfirm());
+    assert.deepEqual(ui.calls,[['end']]);
+  } finally {await ui.cleanup();}
+});
+
+test('a protection End link waits for restoration and cannot target a replaced or expired session', async () => {
+  const ui = await connection({protectionEnd:'tap-1',protectionSession:'client-a',timer:{hasOpenSession:true,isRestoring:true,protectionSessionId:'client-a'}});
+  try {
+    assert.equal(ui.root().findAllByType('Confirmation').length,0);
+    await ui.update({timer:{isRestoring:false}});assert.equal(ui.root().findAllByType('Confirmation').length,1);
+    await ui.update({ownerId:'owner-b',timer:{protectionSessionId:'client-b',sessionId:'server-b'}});
+    assert.equal(ui.root().findAllByType('Confirmation').length,0);assert.deepEqual(ui.calls,[]);
+    await ui.update({protectionEnd:'tap-2',protectionSession:'client-b',timer:{hasOpenSession:false,isCompleted:true}});
+    assert.equal(ui.root().findAllByType('Confirmation').length,0);assert.deepEqual(ui.calls,[]);
+  } finally {await ui.cleanup();}
 });
 
 test('a cold offline native End proof reaches the global confirmation after real journal re-admission without stopping automatically', async () => {

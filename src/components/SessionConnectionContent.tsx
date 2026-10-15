@@ -12,16 +12,25 @@ export default function SessionConnectionContent({ children }: { children: React
   const timer = useTimer();
   const ownerId = user?.id ?? localOwner?.id;
   const pathname = usePathname(), router = useRouter();
-  const params = useGlobalSearchParams<{ countdownAction?: string }>();
+  const params = useGlobalSearchParams<{ countdownAction?: string; protectionEnd?: string; protectionSession?: string }>();
   const handledNotification = useRef<string | null>(null);
+  const [handledProtectionEnd, setHandledProtectionEnd] = useState<string | null>(null);
   const notificationView = useRef({ mounted: false, ownerId, sessionId: timer.sessionId,
+    clientSessionId: timer.protectionSessionId,
     open: timer.hasOpenSession, completed: timer.isCompleted, ending: timer.endingSession });
-  const [requestedEnd, setRequestedEnd] = useState<{ ownerId: string | undefined; sessionId: string | null } | null>(null);
+  const [requestedEnd, setRequestedEnd] = useState<{ ownerId: string | undefined; sessionId: string | null; clientSessionId?: string | null } | null>(null);
   const { consumeNotificationAction, isRestoring, actionBusy } = timer;
+  const protectionNonce = params.protectionEnd;
+  if (typeof protectionNonce === "string" && protectionNonce !== handledProtectionEnd && ownerId && !isRestoring && !actionBusy
+    && typeof params.protectionSession === "string" && params.protectionSession === timer.protectionSessionId
+    && timer.hasOpenSession && !timer.isCompleted && !timer.endingSession) {
+    setHandledProtectionEnd(protectionNonce);
+    setRequestedEnd({ ownerId, sessionId: timer.sessionId, clientSessionId: timer.protectionSessionId });
+  }
   useLayoutEffect(() => {
-    notificationView.current = { ...notificationView.current, ownerId, sessionId: timer.sessionId,
+    notificationView.current = { ...notificationView.current, ownerId, sessionId: timer.sessionId, clientSessionId: timer.protectionSessionId,
       open: timer.hasOpenSession, completed: timer.isCompleted, ending: timer.endingSession };
-  }, [ownerId, timer.sessionId, timer.hasOpenSession, timer.isCompleted, timer.endingSession]);
+  }, [ownerId, timer.sessionId, timer.protectionSessionId, timer.hasOpenSession, timer.isCompleted, timer.endingSession]);
   useEffect(() => {
     notificationView.current.mounted = true;
     return () => { notificationView.current.mounted = false; };
@@ -40,7 +49,8 @@ export default function SessionConnectionContent({ children }: { children: React
         && view.open && !view.completed && !view.ending && action === "end") setRequestedEnd({ ownerId, sessionId });
     }).catch(() => {});
   }, [params.countdownAction, ownerId, consumeNotificationAction, isRestoring, actionBusy]);
-  const showEnd = requestedEnd !== null && requestedEnd.ownerId === ownerId && requestedEnd.sessionId === timer.sessionId
+  const showEnd = requestedEnd !== null && requestedEnd.ownerId === ownerId
+    && (requestedEnd.clientSessionId ? requestedEnd.clientSessionId === timer.protectionSessionId : requestedEnd.sessionId === timer.sessionId)
     && timer.hasOpenSession && !timer.isCompleted && !timer.endingSession;
   if (requestedEnd && !showEnd) setRequestedEnd(null);
   const localOnly = accessMode === "local-only";
@@ -63,7 +73,8 @@ export default function SessionConnectionContent({ children }: { children: React
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setRequestedEnd(null)}
       onConfirm={() => {
         const view = notificationView.current;
-        if (!requestedEnd || view.ownerId !== requestedEnd.ownerId || view.sessionId !== requestedEnd.sessionId
+        if (!requestedEnd || view.ownerId !== requestedEnd.ownerId
+          || (requestedEnd.clientSessionId ? view.clientSessionId !== requestedEnd.clientSessionId : view.sessionId !== requestedEnd.sessionId)
           || !view.open || view.completed || view.ending || actionBusy || isRestoring) return;
         setRequestedEnd(null); void timer.resetTimer();
       }} />}</>;
