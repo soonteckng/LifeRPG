@@ -153,11 +153,11 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   </>;
 }
 const s = StyleSheet.create({
-  card: { paddingHorizontal: 2, paddingVertical: 0, gap: 4 },
-  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }, title: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" },
-  manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 }, link: { color: colors.accent, fontSize: 14, fontWeight: "500" },
-  row: { flexDirection: "row", alignItems: "center", gap: 11, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 3, minHeight: 44, justifyContent: "center" },
-  areaDot: { width: 7, height: 7, borderRadius: 4 },
-  name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 20 }, icon: { minWidth: 44, minHeight: 44, alignItems: "center", justifyContent: "center" }, empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 15, marginTop: 5, borderRadius: 18, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  card: { paddingHorizontal: 0, paddingVertical: 0, gap: 10 },
+  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3 },
+  manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 }, link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 10, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 3, minHeight: 44, justifyContent: "center" },
+  areaDot: { width: 10, height: 10, borderRadius: 5 },
+  name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 20 }, icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }, empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   sheetHeading: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, list: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 }, add: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
 });

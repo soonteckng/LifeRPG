@@ -169,7 +169,7 @@ const s = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent }, badgeText: { ...type.caption, color: colors.accent },
   heading: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 }, body: { ...type.body, color: colors.secondary }, caption: { ...type.secondary },
   card: { padding: 16, gap: 12, borderRadius: 24, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  offlineGoal: { gap: 4, paddingBottom: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  offlineGoal: { gap: 4 }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   cardHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, alignItems: "flex-end", justifyContent: "center" },
   changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" }, suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 8 },

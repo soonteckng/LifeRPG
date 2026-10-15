@@ -189,13 +189,15 @@ export function PersonalRow({
 export function Meter({
   value,
   color = colors.accent,
+  height,
 }: {
   value: number;
   color?: string;
+  height?: number;
 }) {
   return (
     <View
-      style={p.track}
+      style={[p.track, height ? { height, borderRadius: height / 2 } : null]}
       accessible
       accessibilityRole="progressbar"
       accessibilityValue={{
@@ -207,6 +209,7 @@ export function Meter({
       <View
         style={[
           p.fill,
+          height ? { borderRadius: height / 2 } : null,
           {
             width: `${Math.max(0, Math.min(1, value)) * 100}%`,
             backgroundColor: color,

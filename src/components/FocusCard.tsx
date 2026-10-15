@@ -53,24 +53,24 @@ export default function FocusCard(props: FocusCardProps) {
     {props.active && <View style={s.duration} testID="focus-card-duration"><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining}>{durationLabel(props.seconds)}</Text></View>}
     <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.primary, locked && s.disabled]}
       accessibilityRole="button" accessibilityLabel={props.active ? "Continue session" : `Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
-      <Ionicons name="play" size={17} color={colors.primaryText} /><Text style={s.primaryText}>{props.busy ? "Starting…" : props.active ? "Continue session" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start session"}</Text>
+      <Ionicons name="play" size={18} color={colors.primaryText} /><Text style={s.primaryText}>{props.busy ? "Starting…" : props.active ? "Continue session" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start session"}</Text>
     </Pressable>
     {props.protection}
     {!!props.error && <Text style={s.error} accessibilityRole="alert">{props.error}</Text>}
   </View>;
 }
 const s = StyleSheet.create({
-  card: { width: "100%", padding: 18, borderRadius: 24, gap: 12, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
-  tourCard: { gap: 12 }, goal: { paddingBottom: 8 },
+  card: { width: "100%", padding: 20, borderRadius: 28, gap: 16, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.2)" },
+  tourCard: { gap: 12 }, goal: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   label: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500", flexShrink: 1 },
   change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 },
   changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  prompt: { minHeight: 0 }, title: { color: colors.text, fontSize: 21, lineHeight: 28, fontWeight: "600", letterSpacing: -0.3, flexShrink: 1 },
+  prompt: { minHeight: 0 }, title: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "600", letterSpacing: -0.5, flexShrink: 1 },
   suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 8 },
-  suggestion: { color: colors.secondary, fontSize: 14, lineHeight: 21, flex: 1 },
+  suggestion: { color: colors.muted, fontSize: 14, lineHeight: 21, flex: 1 },
   instruction: { color: colors.secondary, fontSize: 14, lineHeight: 21, marginTop: 8 },
-  areaValue: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8 }, dot: { width: 7, height: 7, borderRadius: 4 },
+  areaValue: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 8 }, dot: { width: 10, height: 10, borderRadius: 5 },
   areaButton: { minHeight: 44, paddingVertical: 4 },
   meta: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, duration: { gap: 8 },
   durationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
@@ -78,6 +78,6 @@ const s = StyleSheet.create({
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
   remaining: { minHeight: 50, color: colors.text, fontSize: 24, lineHeight: 32, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  primary: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "500", flexShrink: 1, textAlign: "center" },
+  primary: { minHeight: 58, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "600", flexShrink: 1, textAlign: "center" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
 });

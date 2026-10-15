@@ -215,7 +215,7 @@ export default function HomeScreen() {
         <View testID="home-layout" style={styles.layout}>
           <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
-              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={43} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
+              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={48} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
               <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
                 <Text style={styles.greeting}>{greeting},</Text>
                 <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
@@ -269,10 +269,10 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   guidedGoalSection: { flexGrow: 0, paddingTop: 0, gap: 12 },
   guidedGoal: { width: "100%", gap: 8 },
-  guidedGoalHeading: { minHeight: 36, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, rowGap: 4 },
-  goalLabel: { flexGrow: 1 }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }, goalValueText: { color: colors.secondary, fontSize: 14, lineHeight: 20, flexShrink: 1, fontVariant: ["tabular-nums"] },
-  guidedTrack: { height: 4, borderRadius: 3, backgroundColor: colors.line, overflow: "hidden" },
-  guidedFill: { height: 4, borderRadius: 3, backgroundColor: colors.accent },
+  guidedGoalHeading: { minHeight: 44, flexDirection: "row", flexWrap: "wrap", alignItems: "center", columnGap: 12, rowGap: 4 },
+  goalLabel: { flexGrow: 1, fontSize: 12, lineHeight: 16, letterSpacing: 0.9, textTransform: "uppercase", color: colors.muted }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }, goalValueText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600", flexShrink: 1, fontVariant: ["tabular-nums"] },
+  guidedTrack: { height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.07)", overflow: "hidden" },
+  guidedFill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
@@ -280,14 +280,14 @@ const styles = StyleSheet.create({
   focusContainer: { width: "100%", alignSelf: "stretch" },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
   identity: { flex: 1, minWidth: 0 },
-  headerBlock: { gap: 10, paddingTop: 0, paddingBottom: 0 },
-  greeting: { color: colors.secondary, fontSize: 13, lineHeight: 19, fontWeight: "400" },
-  name: { color: colors.text, fontSize: 21, lineHeight: 27, fontWeight: "600", letterSpacing: -0.4, marginTop: 1 },
-  avatarFrame: { width: 50, height: 50, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface },
-  levelButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 11, borderRadius: 14, backgroundColor: colors.accentSoft },
-  levelText: { color: colors.accent, fontSize: 13, fontWeight: "600" },
-  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, paddingLeft: 62 },
-  identityStat: { flexDirection: "row", alignItems: "center", gap: 5 },
+  headerBlock: { gap: 12, paddingTop: 0, paddingBottom: 0 },
+  greeting: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "400" },
+  name: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5, marginTop: 1 },
+  avatarFrame: { width: 56, height: 56, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface },
+  levelButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 22, backgroundColor: colors.accentSoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
+  levelText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
+  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, paddingLeft: 68 },
+  identityStat: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft },
   metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
   goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },

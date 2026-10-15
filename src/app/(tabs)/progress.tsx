@@ -914,6 +914,11 @@ const s = StyleSheet.create({
   },
   sectionTitle: {
     ...type.section,
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "600",
+    letterSpacing: -0.3,
     marginBottom: 0,
   },
   sectionAction: {
@@ -947,7 +952,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   bar: {
-    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 28, borderRadius: 5 },
+    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 30, borderRadius: 9 },
   dayLabel: { color: colors.secondary, fontSize: 14 },
   todayLabel: { color: colors.accent, fontWeight: "500" },
   goalDot: { width: 7, height: 7, borderRadius: 4 },
@@ -972,9 +977,11 @@ const s = StyleSheet.create({
   consistency: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line,
+    gap: 14,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line,
   },
   streakIcon: {
     width: 48,
