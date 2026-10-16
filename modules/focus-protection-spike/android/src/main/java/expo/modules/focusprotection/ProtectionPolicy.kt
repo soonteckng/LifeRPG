@@ -28,6 +28,25 @@ object ProtectionAppPolicy {
   fun catalog(launchablePackages: Collection<String>, essentials: Set<String>): ProtectionAppCatalog =
     ProtectionAppCatalog(launchablePackages.filterNot { it in essentials }.toSet(), essentials)
 }
+/** A pause is not proof that another app is visible (notably a cancelled Home
+ * or Recents gesture). Only a resumed destination replaces the app underneath.
+ * Launcher/System UI pauses return to that app even on devices which omit its
+ * second RESUMED event after cancelling the gesture. */
+class ProtectionForegroundTracker(private val transientPackages: Set<String>) {
+  private data class Activity(val pkg: String, val name: String?)
+  private var foreground: Activity? = null
+  private var application: Activity? = null
+  val packageName: String? get() = foreground?.pkg
+  fun resumed(pkg: String, name: String?) {
+    val activity = Activity(pkg, name)
+    foreground = activity
+    if (pkg !in transientPackages) application = activity
+  }
+  fun paused(pkg: String, name: String?) {
+    val current = foreground ?: return
+    if (pkg in transientPackages && current.pkg == pkg && (name == null || current.name == null || current.name == name)) foreground = application
+  }
+}
 object ProtectionPolicy {
   fun parse(raw: String, elapsed: Long): ProtectionLease {
     require(raw.length <= 24_000 && elapsed >= 0)

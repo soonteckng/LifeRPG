@@ -26,3 +26,24 @@ test('turning protection off can cancel a pending protected-choice operation',as
 test('mount and foreground permission checks leave app inventory lazy; explicit chooser refresh coalesces scans',async()=>{const f=await setup();try{assert.ok(f.calls.caps>0);assert.equal(f.calls.apps,0,'opening the app does not enumerate installed app labels');await f.foreground();assert.equal(f.calls.apps,0,'returning to the timer does not enumerate apps');const gate=deferred();f.native.apps=()=>{f.calls.apps++;return gate.promise;};let first,second;await act(async()=>{first=f.value().refresh();second=f.value().refresh();});assert.equal(f.calls.apps,1,'overlapping chooser reads share one native scan');await act(async()=>{gate.resolve([{packageName:'study.notes',label:'Notes'}]);await Promise.all([first,second]);});assert.deepEqual(f.value().apps,[{packageName:'study.notes',label:'Notes'}]);await f.foreground();assert.equal(f.calls.apps,1);assert.equal(f.value().apps.length,1,'permission-only reads keep the loaded chooser inventory');}finally{await f.cleanup();}});
 test('countdown numerals do not duplicate native polls or re-render protection consumers',async()=>{const f=await setup();try{await f.update({hasOpenSession:true,isRunning:true,sessionId:'server-1',protectionSessionId:'client-1'});const beforeCalls=f.calls.state,beforeRenders=f.renders(),beforeValue=f.value();await f.update({timeLeft:1799});await f.update({timeLeft:1798});assert.equal(f.calls.state,beforeCalls,'timer updates are not a second polling loop');assert.equal(f.renders(),beforeRenders);assert.equal(f.value(),beforeValue,'context identity survives numeral-only changes');f.setNativeState({secondsLeft:1798});await f.foreground();assert.equal(f.value(),beforeValue,'a native numeral-only response does not invalidate consumers');assert.equal(f.renders(),beforeRenders);f.setNativeState({id:null,status:'permission-lost',secondsLeft:0});await f.foreground();assert.equal(f.value().active,false);assert.equal(f.value().state.status,'permission-lost','real native interruptions remain visible immediately');assert.ok(f.renders()>beforeRenders);}finally{await f.cleanup();}});
 test('session expiry still releases protection immediately without waiting for the native poll',async()=>{const f=await setup();try{await f.update({hasOpenSession:true,isRunning:true,timeLeft:1,sessionId:'server-1',protectionSessionId:'client-1'});assert.equal(f.starts.length,1);await f.update({timeLeft:0});assert.equal(f.stops.length,1);}finally{await f.cleanup();}});
+
+test('a restored session publishes its saved app binding and cannot change modes or allowed apps mid-session',async()=>{
+ const f=await setup();try{
+  const owner=JSON.stringify(['fixture','alice']);
+  f.records.set(`liferpg:session-protection:binding:v2:${owner}`,JSON.stringify({ownerKey:owner,sessionKey:'client-1',selection:{mode:'allow-list',allowed:['study.notes']}}));
+  assert.equal(f.value().selection.mode,'essentials');
+  await f.update({hasOpenSession:true,isRunning:true,sessionId:'server-1',protectionSessionId:'client-1'});
+  assert.deepEqual(f.value().sessionSelection,{mode:'allow-list',allowed:['study.notes']});
+  assert.deepEqual(f.starts[0].allowed,['study.notes']);
+  const choiceKey=`liferpg:session-protection:choice:v2:${owner}`,before=f.records.get(choiceKey);
+  for(const [mode,apps] of [['normal',[]],['essentials',[]],['allow-list',[]],['allow-list',['study.calculator']]]){
+   await act(async()=>assert.equal(await f.value().choose(mode,apps),false));
+  }
+  assert.equal(f.records.get(choiceKey),before);assert.equal(f.stops.length,0);
+  f.setNativeState({id:null,status:'interrupted'});await f.foreground();
+  await act(async()=>assert.equal(await f.value().choose('allow-list',['study.notes']),true));
+  assert.equal(f.starts.length,2);assert.deepEqual(f.starts[1].allowed,['study.notes']);
+  await f.update({account:'bob',admission:2,isRestoring:true});
+  assert.equal(f.value().sessionSelection,null,'the outgoing account binding cannot appear under another account');
+ }finally{await f.cleanup();}
+});

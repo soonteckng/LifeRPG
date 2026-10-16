@@ -17,6 +17,12 @@ class FocusProtectionModule : Module() {
   private fun network() = connectivity ?: ConnectivityObserver(context) { sendEvent("onConnectivityChanged", it) }.also { connectivity = it }
   private fun visibleActivity() = appContext.currentActivity?.takeIf { it.hasWindowFocus() }
     ?: throw IllegalStateException("Open LifeRPG before starting protection or changing permissions.")
+  // A React Native Modal/bottom sheet can own window focus while its hosting
+  // Activity is still resumed. Permission review must work from that sheet.
+  private fun settingsActivity() = appContext.currentActivity?.takeIf {
+    !it.isFinishing && !it.isDestroyed
+  }
+    ?: throw IllegalStateException("Open LifeRPG before changing permissions.")
   override fun definition() = ModuleDefinition {
     Name("LifeRPGFocusProtectionSpike")
     Constant("formatVersion") { PROTECTION_VERSION }
@@ -30,7 +36,7 @@ class FocusProtectionModule : Module() {
     AsyncFunction("apps") { ProtectionRuntime.launchable(context) }
     AsyncFunction("state") { ProtectionRuntime.state() }
     AsyncFunction("openPermission") { kind: String ->
-      val activity = visibleActivity()
+      val activity = settingsActivity()
       require(kind == "usage" || kind == "overlay")
       val action = if (kind == "usage") Settings.ACTION_USAGE_ACCESS_SETTINGS else Settings.ACTION_MANAGE_OVERLAY_PERMISSION
       val intent = Intent(action, Uri.parse("package:${context.packageName}"))

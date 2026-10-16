@@ -1,6 +1,7 @@
 import { getSessionProtectionModule, idleProtection, type ProtectionMode, type ProtectionModule, type ProtectionState } from "./nativeFocusProtection";
 
 export interface ProtectionSelection { mode: "normal" | ProtectionMode; allowed: string[] }
+export interface ProtectionBinding { ownerKey: string; sessionKey: string; selection: ProtectionSelection }
 export const normalProtection: ProtectionSelection = { mode: "normal", allowed: [] };
 export function readProtectionSelection(raw: unknown): ProtectionSelection {
   if (!raw || typeof raw !== "object") return { ...normalProtection };
@@ -22,9 +23,9 @@ function checked(value: ProtectionState) {
   return value;
 }
 /** Serialized native projection; session/reward authority always stays in the existing journal. */
-export function createSessionProtectionController(options: { storage: Storage; newId(): string; resolve?: () => Promise<ProtectionModule | null>; publish(state: ProtectionState, error: string): void }) {
+export function createSessionProtectionController(options: { storage: Storage; newId(): string; resolve?: () => Promise<ProtectionModule | null>; publish(state: ProtectionState, error: string, binding: ProtectionBinding | null): void }) {
   let latest: ProtectionSessionProjection | null = null, disposed = false, revision = 0;
-  let bound: { ownerKey: string; sessionKey: string; selection: ProtectionSelection } | null = null;
+  let bound: ProtectionBinding | null = null;
   const breakLeases = new Set<string>();
   const returnedBreakLeases = new Set<string>();
   let suppressed = "", explicitlyEnabled = "", ownedId: string | null = null, working = false, dirty = false;
@@ -39,9 +40,10 @@ export function createSessionProtectionController(options: { storage: Storage; n
       && !current.ending && !current.restoring && current.seconds > 0;
   };
   const publish = (state: ProtectionState, error: string) => {
-    const key = JSON.stringify([state.id, state.scope, state.status, state.secondsLeft, state.covers, error]);
+    const binding = bound?.ownerKey === latest?.ownerKey && bound?.sessionKey === latest?.sessionKey ? bound : null;
+    const key = JSON.stringify([state.id, state.scope, state.status, state.secondsLeft, state.covers, error, binding]);
     if (key === lastPublication) return;
-    lastPublication = key; options.publish(state, error);
+    lastPublication = key; options.publish(state, error, binding);
   };
   const bounded = <T,>(promise: Promise<T>) => new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => reject(Error("App protection is taking longer than expected. Your timer still works.")), 5000);

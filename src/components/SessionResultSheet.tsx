@@ -88,6 +88,18 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     onDismiss?.();
   };
   const insets = useSafeAreaInsets();
+  const pendingIdentity = `${profile?.id}:${sessionId ?? "result"}:${ending}`;
+  const pendingKey = visible && pending && !offline ? pendingIdentity : null;
+  const [waiting, setWaiting] = useState({key: pendingKey, ready: false});
+  if (waiting.key !== pendingKey) setWaiting({key: pendingKey, ready: false});
+  useEffect(() => {
+    if (!pendingKey) return;
+    // Pending is also the normal first step of a successful End. Give the
+    // request time to finish before offering recovery, while keeping Done.
+    const timeout = setTimeout(() => setWaiting(current => current.key === pendingKey ? {key: pendingKey, ready: true} : current), 3000);
+    return () => clearTimeout(timeout);
+  }, [pendingKey]);
+  const needsRetry = pending && (offline || !!syncError && !syncBusy || waiting.key === pendingKey && waiting.ready);
   const screen = useWindowDimensions();
   const windowHeight = screen.height || 844;
   const fontScale = screen.fontScale || 1;
@@ -144,8 +156,8 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
         <View style={s.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
         {!!questTitle && <Text style={s.sessionTitle}>{questTitle}</Text>}
         <Text style={s.pendingText}>Your session has stopped. Ending early does not earn recorded time or XP.</Text>
-        {pending && <Text style={s.pendingText}>Your stop is saved on this phone. We’ll confirm it when you reconnect.</Text>}
-        {pending && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
+        {needsRetry && <Text style={s.pendingText}>{offline ? "Your stop is saved on this phone. We’ll confirm it when you reconnect." : "Your stop is saved on this phone. We’re waiting for confirmation."}</Text>}
+        {needsRetry && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
       </View> : <>
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
       {rejected ? <View style={s.pending}><Text style={s.pendingText} accessibilityLiveRegion="polite">Your session record stays on this phone. Your account did not accept this result, so it has not earned progress or completed a quest.</Text></View> : pending ? <View style={s.pending}>

@@ -8,16 +8,17 @@ import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
 import { getSessionProtectionModule, idleProtection, type ProtectionApp, type ProtectionCapabilities, type ProtectionState } from "../services/nativeFocusProtection";
-import { createSessionProtectionController, normalProtection, readProtectionSelection, type ProtectionSelection } from "../services/sessionProtection";
+import { createSessionProtectionController, normalProtection, readProtectionSelection, type ProtectionBinding, type ProtectionSelection } from "../services/sessionProtection";
 
 export type { ProtectionSelection } from "../services/sessionProtection";
 export interface SessionProtectionValue {
   supported: boolean; loaded: boolean; busy: boolean; selection: ProtectionSelection;
+  sessionSelection: ProtectionSelection | null;
   state: ProtectionState; active: boolean; error: string; capabilities: ProtectionCapabilities | null; apps: ProtectionApp[];
   choose(mode: ProtectionSelection["mode"], allowed?: string[]): Promise<boolean>;
   refresh(): Promise<void>; openPermission(kind: "usage" | "overlay"): Promise<void>; stop(): Promise<void>;
 }
-const fallback: SessionProtectionValue = { supported: false, loaded: true, busy: false, selection: normalProtection,
+const fallback: SessionProtectionValue = { supported: false, loaded: true, busy: false, selection: normalProtection, sessionSelection: null,
   state: idleProtection, active: false, error: "", capabilities: null, apps: [], choose: async () => false, refresh: async () => {}, openPermission: async () => {}, stop: async () => {} };
 const blockAppsSelection: ProtectionSelection = { mode: "essentials", allowed: [] };
 const sameCapabilities = (left: ProtectionCapabilities | null, right: ProtectionCapabilities | null) => left === right || !!left && !!right
@@ -37,11 +38,13 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   const viewScope = JSON.stringify([ownerKey, auth.admissionEpoch, timer.protectionSessionId ?? timer.sessionId, timer.hasOpenSession]);
   const [preferences, setPreferences] = useState<{ key: string | null; loaded: boolean; selection: ProtectionSelection }>({ key: null, loaded: false, selection: normalProtection });
   const [device, setDevice] = useState<{ caps: ProtectionCapabilities | null; apps: ProtectionApp[] }>({ caps: null, apps: [] });
-  const [result, setResult] = useState<{ ownerKey: string | null; state: ProtectionState; error: string }>({ ownerKey: null, state: idleProtection, error: "" });
+  const [result, setResult] = useState<{ ownerKey: string | null; state: ProtectionState; error: string; binding?: ProtectionBinding | null }>({ ownerKey: null, state: idleProtection, error: "" });
   const [busy, setBusy] = useState(false);
   const latest = useRef({ ownerKey, preferenceKey, viewScope, hasOpenSession: timer.hasOpenSession });
   const savedSelection = preferences.key === preferenceKey ? preferences.selection : normalProtection;
   const currentSelection = useMemo(() => timer.protectedSession && savedSelection.mode === "normal" ? blockAppsSelection : savedSelection, [timer.protectedSession, savedSelection]);
+  const sessionSelection = result.binding?.ownerKey === ownerKey && result.binding.sessionKey === (timer.protectionSessionId ?? timer.sessionId)
+    ? result.binding.selection : null;
   const loaded = preferences.key === preferenceKey && preferences.loaded;
   const controller = useRef<ReturnType<typeof createSessionProtectionController> | null>(null);
   const operation = useRef(0), read = useRef(0), choiceRevision = useRef(0), writes = useRef<Promise<unknown>>(Promise.resolve());
@@ -67,7 +70,7 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
         });
       }
       await Promise.all([permissions, apps]);
-    } catch { if (lifetime.active && request === read.current) setResult({ ownerKey: latest.current.ownerKey, state: idleProtection, error: "Could not read app protection settings. Your timer is still available." }); }
+    } catch { if (lifetime.active && request === read.current) setResult(current => ({ ...(current.ownerKey === latest.current.ownerKey ? current : { ownerKey: latest.current.ownerKey, state: idleProtection, binding: null }), error: "Could not read app protection settings. Your timer is still available." })); }
   }, []);
   const refresh = useCallback(() => readDevice(true), [readDevice]);
   useEffect(() => {
@@ -82,8 +85,9 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   }, [preferenceKey]);
   useEffect(() => {
     const instance = createSessionProtectionController({ storage: AsyncStorage, newId: () => uuid.v4().toLowerCase(),
-      publish: (state, error) => setResult(current => current.ownerKey === latest.current.ownerKey && current.error === error && sameProtectionState(current.state, state)
-        ? current : { ownerKey: latest.current.ownerKey, state, error }) });
+      publish: (state, error, binding) => setResult(current => current.ownerKey === latest.current.ownerKey && current.error === error && sameProtectionState(current.state, state)
+        && JSON.stringify(current.binding ?? null) === JSON.stringify(binding)
+        ? current : { ownerKey: latest.current.ownerKey, state, error, binding }) });
     controller.current = instance;
     return () => { if (controller.current === instance) controller.current = null; void instance.dispose(); };
   }, []);
@@ -110,14 +114,15 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
     const expected = latest.current.preferenceKey, expectedOwner = latest.current.ownerKey;
     if (!expected || latest.current.viewScope !== viewScope || busy && mode !== "normal"
       || (mode !== "normal" && !!result.state.id && result.ownerKey === expectedOwner)
-      || (mode !== "normal" && latest.current.hasOpenSession && mode !== currentSelection.mode)) return false;
+      || (latest.current.hasOpenSession && (!sessionSelection || mode === "normal" || mode !== sessionSelection.mode
+        || JSON.stringify([...new Set(allowed)].sort()) !== JSON.stringify([...sessionSelection.allowed].sort())))) return false;
     const request = ++operation.current; setBusy(true);
     const selection = readProtectionSelection({ mode, allowed });
     try {
       if (mode !== "normal") {
         const native = await getSessionProtectionModule(), caps = native ? await native.capabilities() : null;
         if (latest.current.preferenceKey !== expected || latest.current.viewScope !== viewScope || operation.current !== request) return false;
-        if (!caps?.supported || !caps.usage || !caps.overlay || !caps.notifications) { setResult({ ownerKey: expectedOwner, state: result.state, error: "Allow the protection permissions below before starting a new session." }); return false; }
+        if (!caps?.supported || !caps.usage || !caps.overlay || !caps.notifications) { setResult(current => ({ ...current, ownerKey: expectedOwner, error: "Allow the protection permissions below before starting a new session." })); return false; }
       }
       if (latest.current.preferenceKey !== expected || latest.current.viewScope !== viewScope || operation.current !== request) return false;
       choiceRevision.current++;
@@ -128,18 +133,18 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
       if (selection.mode === "normal") await controller.current?.stop();
       else if (latest.current.hasOpenSession) await controller.current?.enable(selection);
       return true;
-    } catch { if (latest.current.preferenceKey === expected) setResult({ ownerKey: expectedOwner, state: result.state, error: "Could not save that choice. Your timer is unchanged." }); return false; }
+    } catch { if (latest.current.preferenceKey === expected) setResult(current => ({ ...current, ownerKey: expectedOwner, error: "Could not save that choice. Your timer is unchanged." })); return false; }
     finally { if (operation.current === request) setBusy(false); }
-  }, [busy, currentSelection.mode, result.ownerKey, result.state, viewScope]);
+  }, [busy, sessionSelection, result.ownerKey, result.state, viewScope]);
   const openPermission = useCallback(async (kind: "usage" | "overlay") => {
     try { const native = await getSessionProtectionModule(); if (native) await native.openPermission(kind); }
-    catch { setResult({ ownerKey, state: result.state, error: "You can change this permission in Android Settings." }); }
-  }, [ownerKey, result.state]);
+    catch { setResult(current => current.ownerKey === ownerKey ? { ...current, error: "Couldn’t open Android Settings. Open LifeRPG’s app info to review this permission." } : current); }
+  }, [ownerKey]);
   const stop = useCallback(async () => { await choose("normal"); }, [choose]);
   const state = result.ownerKey === ownerKey ? result.state : idleProtection;
   const error = result.ownerKey === ownerKey ? result.error : "";
-  const value = useMemo<SessionProtectionValue>(() => ({ supported: !!device.caps?.supported, loaded, busy, selection: currentSelection,
+  const value = useMemo<SessionProtectionValue>(() => ({ supported: !!device.caps?.supported, loaded, busy, selection: currentSelection, sessionSelection,
     state, active: !!state.id && ["starting", "active"].includes(state.status), error,
-    capabilities: device.caps, apps: device.apps, choose, refresh, openPermission, stop }), [device, loaded, busy, currentSelection, state, error, choose, refresh, openPermission, stop]);
+    capabilities: device.caps, apps: device.apps, choose, refresh, openPermission, stop }), [device, loaded, busy, currentSelection, sessionSelection, state, error, choose, refresh, openPermission, stop]);
   return <ProtectionContext.Provider value={value}>{children}</ProtectionContext.Provider>;
 }

@@ -32,7 +32,7 @@ function load(file, mocks, cache = new Map()) {
 // Exercise our real result/AppSheet with the INSTALLED library's actual footer
 // placement and scroll-padding hooks. Native platform primitives and the sheet
 // host are substituted; footer geometry is not reimplemented by the test.
-async function setup({height=844,fontScale=1,bottom=34}={}) {
+async function setup({height=844,fontScale=1,bottom=34,initialProps={}}={}) {
   const layout = {containerHeight:height,handleHeight:70,footerHeight:0};
   const keyboard = {status:0,heightWithinContainer:0};
   let sheetHeight=500, closes=0, unmountedFooters=0;
@@ -83,7 +83,7 @@ async function setup({height=844,fontScale=1,bottom=34}={}) {
     '../utils/sheetActivity':{registerSheetActivity:()=>()=>{}}};
   const Result=load('src/components/SessionResultSheet.tsx',mocks).default;
   let props={sessionId:'end-a',visible:true,ending:true,pending:true,localSaved:true,offline:true,
-    questTitle:'Read a chapter',onClose:()=>closes++};
+    questTitle:'Read a chapter',onClose:()=>closes++,...initialProps};
   let tree;await act(async()=>{tree=create(React.createElement(Result,props));});
   const render=async()=>act(async()=>tree.update(React.createElement(Result,props)));
   return {tree,get closes(){return closes;},get unmountedFooters(){return unmountedFooters;},
@@ -145,5 +145,39 @@ test('large text, capped sheets and late save actions retain visible native acti
     assert.deepEqual(ui.tree.root.findByType('NativeFooter').findAllByType('Button').map(text),['Save as routine','Done']);
     assert.equal(ui.tree.root.findByType('NativeScroll').findAllByType('Button').length,0);
     assert.equal(ui.unmountedFooters,0);
+  }finally{await ui.cleanup();}
+});
+
+test('normal online End never flashes Retry connection before its confirmation or after it',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const ui=await setup({initialProps:{offline:false,syncBusy:true,onRetry(){}}});
+  try{
+    const buttons=()=>ui.tree.root.findAllByType('Button').map(text);
+    const done=ui.tree.root.findAllByType('Button').find(n=>text(n)==='Done');
+    assert.deepEqual(buttons(),['Done']);
+    await act(async()=>t.mock.timers.tick(600));
+    assert.deepEqual(buttons(),['Done']);
+    await ui.update({pending:false,syncBusy:false});
+    await act(async()=>t.mock.timers.tick(4000));
+    assert.deepEqual(buttons(),['Done']);
+    assert.equal(ui.tree.root.findAllByType('Button').find(n=>text(n)==='Done'),done);
+    await act(async()=>done.props.onPress());assert.equal(ui.closes,1);
+  }finally{await ui.cleanup();}
+});
+
+test('End offers retry for a real failure, offline stop or prolonged confirmation, retaining Done throughout',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const ui=await setup({initialProps:{offline:false,syncBusy:true,onRetry(){}}});
+  try{
+    const buttons=()=>ui.tree.root.findAllByType('Button');
+    await act(async()=>t.mock.timers.tick(2999));assert.deepEqual(buttons().map(text),['Done']);
+    await act(async()=>t.mock.timers.tick(1));assert.deepEqual(buttons().map(text),['Retry connection','Done']);
+    assert.equal(buttons()[0].props.disabled,true);
+    await ui.update({pending:false,syncBusy:false});assert.deepEqual(buttons().map(text),['Done']);
+    await ui.update({sessionId:'failed-end',pending:true,syncError:'Connection lost'});
+    assert.deepEqual(buttons().map(text),['Retry connection','Done']);assert.equal(buttons()[0].props.disabled,false);
+    await ui.update({sessionId:'offline-end',syncError:null,offline:true});
+    assert.deepEqual(buttons().map(text),['Retry connection','Done']);
+    assert.match(text(ui.tree.root),/confirm it when you reconnect/);
   }finally{await ui.cleanup();}
 });

@@ -4,6 +4,14 @@ const host=name=>function Host(props){return React.createElement(name,props,prop
 function load(file,mocks={}){const filename=path.resolve(__dirname,'..',file),mod={exports:{}};const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText;new Function('require','module','exports',code)(name=>{if(Object.hasOwn(mocks,name))return mocks[name];if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name);return load(path.relative(path.resolve(__dirname,'..'),target+'.ts'),mocks);},mod,mod.exports);return mod.exports;}
 test('email syntax catches malformed addresses while preserving common aliases and international domains',()=>{const{validEmail}=load('src/utils/passwordRecovery.ts');for(const email of ['  hero+study@example.invalid  ',"a.b'c@sub.school.edu",'学生@学校.cn','name@xn--bcher-kva.de'])assert.equal(validEmail(email),true,email);for(const email of ['', 'name', 'a@@gmail.com','a..b@gmail.com','.name@gmail.com','name.@gmail.com','a@-gmail.com','a@gmail-.com','a@gmail..com','a@gmail.com/extra','a@gmail.com\\extra','a@g%6dail.com','a@domain','a@domain.com\nother','a'.repeat(65)+'@gmail.com'])assert.equal(validEmail(email),false,email);});
 test('email integration fixture guard refuses the production and hosted Supabase endpoints',()=>{const{assertLocalAuthTestTarget}=require('./helpers/auth-email-test-guard.cjs');assert.equal(assertLocalAuthTestTarget('http://127.0.0.1:54321/auth/v1'),'http://127.0.0.1:54321');for(const url of ['https://msuelivxpsfizkddjjfg.supabase.co','https://staging.supabase.co','http://localhost.attacker.invalid','https://user:password@localhost'])assert.throws(()=>assertLocalAuthTestTarget(url),/Refusing/);});
+
+test('the test runner blocks external fetch and socket connections before they can send an email',async()=>{
+ const {assertLocalHost}=require('./helpers/no-external-network.cjs');
+ for(const host of ['localhost','127.0.0.1','::1','[::1]']) assert.doesNotThrow(()=>assertLocalHost(host));
+ for(const host of ['msuelivxpsfizkddjjfg.supabase.co','staging.supabase.co','localhost.attacker.invalid','127.0.0.2']) assert.throws(()=>assertLocalHost(host),/refuse external/);
+ await assert.rejects(fetch('https://msuelivxpsfizkddjjfg.supabase.co/auth/v1/signup'),/refuse external/);
+ assert.throws(()=>require('node:net').connect({host:'msuelivxpsfizkddjjfg.supabase.co',port:443}),/refuse external/);
+});
 test('invalid signup and sign-in never contact authentication, and duplicate valid submissions stay single-flight',async()=>{
  for(const mode of ['sign-up','sign-in']){
   const calls=[],focuses=[];let finish;const pending=new Promise(resolve=>finish=resolve);

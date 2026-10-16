@@ -69,4 +69,8 @@ object ProtectionRuntime {
     return ProtectionAppPolicy.essentials(context.packageName,
       intents.flatMap { pm.queryIntentActivities(it, 0).map { item -> item.activityInfo.packageName } })
   }
+  fun transientSurfaces(context: Context): Set<String> {
+    val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+    return context.packageManager.queryIntentActivities(home, 0).map { it.activityInfo.packageName }.toSet() + "com.android.systemui"
+  }
 }
