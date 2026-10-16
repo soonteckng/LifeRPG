@@ -345,9 +345,12 @@ function closeClientInterval(record: JournalRecord, clock: JournalClock): Journa
 
 function finishClientRecord(envelope: JournalEnvelope, record: JournalRecord, clock: JournalClock,
   operationId: string, ending: "completed" | "cancelled"): JournalEnvelope {
+  const actualClock = clock;
+  if (ending === "cancelled" && record.protection) clock = { ...clock, wallTimeMs: Math.max(clock.wallTimeMs, record.observedAtMs ?? record.startedAtMs ?? 0) };
   const timer = deriveJournalTimer(record, clock);
   if (ending === "completed" && !timer.expired) fail("not_expired");
   const closed = closeClientInterval(record, clock);
+  closed.clockWarning = closed.clockWarning || clock.wallTimeMs !== actualClock.wallTimeMs;
   if (ending === "cancelled") {
     if (clock.wallTimeMs < (closed.observedAtMs ?? record.startedAtMs!)) fail("invalid_transition");
     closed.observedAtMs = clock.wallTimeMs;

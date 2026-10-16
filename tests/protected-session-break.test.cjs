@@ -101,3 +101,7 @@ test('owner change fences the saved protected break and cannot import another ac
 test('full expiry still wins over End in a protected session',async()=>{
  const h=harness();h.online=false;const c=h.create();await c.initialize();await c.start(setup,true);h.advance(3000);await c.end();assert.equal(h.persisted().records[0].state,'completed');await c.dispose();
 });
+
+test('End remains reachable when the phone clock moves backward during a break',async()=>{
+ const h=harness();h.online=false;const c=h.create();await c.initialize();await c.start({...setup,targetSeconds:60},true);h.advance(10000);await c.pause();h.advance(-120000);assert.equal(await c.end(),true);assert.equal(h.persisted().records[0].state,'cancelled');assert.equal(h.persisted().records[0].clockWarning,true);assert.equal(h.credits,0);await c.dispose();
+});
