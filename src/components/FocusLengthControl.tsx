@@ -20,7 +20,7 @@ export default function FocusLengthControl({ seconds, customSeconds, disabled = 
   const open = () => { if (disabled) return; feedback(); if (onCustom) onCustom(); else setCustom(true); };
   return <View style={s.group} testID="focus-length-control">
     {showLabel && <Text style={s.label}>Focus length</Text>}
-    {compact ? <Pressable testID="focus-duration-chip" disabled={disabled} onPress={open} style={s.chip} accessibilityRole="button" accessibilityLabel={`Change session duration, ${durationLabel(seconds)}`} accessibilityValue={{ text: durationLabel(seconds) }} accessibilityState={{ disabled }}><Ionicons name="time-outline" size={15} color={colors.accent} /><Text style={s.chipText}>{durationLabel(seconds)}</Text><Ionicons name="chevron-down" size={12} color={colors.secondary} /></Pressable> : <View style={s.presets}>
+    {compact ? <Pressable testID="focus-duration-chip" disabled={disabled} onPress={open} style={s.chip} accessibilityRole="button" accessibilityLabel={`Change session duration, ${durationLabel(seconds)}`} accessibilityValue={{ text: durationLabel(seconds) }} accessibilityState={{ disabled }}><View style={s.rowIcon}><Ionicons name="time-outline" size={17} color={colors.accent} /></View><Text style={s.rowLabel}>Length</Text><Text style={s.chipText}>{durationLabel(seconds)}</Text><Ionicons name="chevron-forward" size={16} color={colors.muted} /></Pressable> : <View style={s.presets}>
       {[1800, 3600].map(value => <Pressable key={value} onPress={() => { if (disabled || seconds === value) return; feedback(); onChange(value); }} disabled={disabled}
         accessibilityRole="button" accessibilityLabel={`Use ${value / 60} minutes`} accessibilityState={{ selected: seconds === value, disabled }}
         style={[s.option, seconds === value && s.selected]}><Text style={[s.text, seconds === value && s.selectedText]}>{value / 60} min</Text></Pressable>)}
@@ -40,6 +40,8 @@ const s = StyleSheet.create({
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, text: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
-  chip: { minHeight: 44, flexShrink: 0, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 12, borderRadius: 18, backgroundColor: "rgba(170,179,255,0.12)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.22)" },
-  chipText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  chip: { minHeight: 44, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
+  chipText: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 15, lineHeight: 21, fontVariant: ["tabular-nums"] },
+  rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
+  rowLabel: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" },
 });
