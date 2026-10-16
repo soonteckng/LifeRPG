@@ -339,8 +339,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceRaised,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    borderTopLeftRadius: 26,
-    borderTopRightRadius: 26,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
   },
   handleTarget: { height: 28, alignItems: "center", justifyContent: "center" },
   handle: {

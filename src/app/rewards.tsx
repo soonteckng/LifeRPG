@@ -334,14 +334,14 @@ function MilestoneCollection() {
 }
 
 const styles = StyleSheet.create({
-  nextCard: { marginTop: 8, backgroundColor: colors.surfaceRaised },
-  section: { gap: 12, marginTop: 20 },
+  nextCard: { marginTop: 8, backgroundColor: colors.surfaceRaised, borderColor: colors.focusBorder },
+  section: { gap: 12, marginTop: 24 },
   collection: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  earnedTile: { flexBasis: 140, flexGrow: 1, minWidth: 0, padding: 16, gap: 10, backgroundColor: colors.surface, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  earnedTile: { flexBasis: 140, flexGrow: 1, minWidth: 0, minHeight: 108, padding: 16, gap: 10, backgroundColor: colors.surface, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   earnedCaption: { color: colors.secondary },
   collectionToggle: { minHeight: 44, minWidth: 64, paddingHorizontal: 10, justifyContent: "center", alignItems: "center" },
   toggleText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
-  track: { gap: 4, padding: 16, backgroundColor: colors.surface, borderRadius: 20 },
+  track: { gap: 6, padding: 18, backgroundColor: colors.surface, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   milestoneRow: { paddingVertical: 10, gap: 8, minHeight: 56 },
   dailyCard: { marginBottom: 8 },
   goalPlaceholder: { minHeight: 44, justifyContent: "center" },

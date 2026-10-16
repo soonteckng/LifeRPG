@@ -32,13 +32,12 @@ export default function FocusCard(props: FocusCardProps) {
   const suggested = !props.active && props.suggested;
   const openPreferences = () => { if (!preferencesLocked) props.onPreferences?.(); };
   return <View style={[s.card, touring && s.tourCard]} testID={props.cardID}>
-    <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" style={[s.glow, { backgroundColor: props.tint }]} />
     {props.goal && <View style={s.goal}>{props.goal}</View>}
     {props.active && <View style={s.heading}>
       <Text style={s.label}>{props.awaitingStart ? "Checking session start" : props.active ? props.running ? "In progress" : "Paused" : "Your focus"}</Text>
     </View>}
     <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
-      <View style={s.heading}>
+      <View style={[s.heading, s.fieldsRow]}>
       {!props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaValue, s.areaButton, preferencesLocked && s.disabled]}
         accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose your focus area and a suggested activity, or free focus." accessibilityState={{ disabled: preferencesLocked }}>
         <View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.title}>{areaLabel}</Text><Ionicons name="chevron-down" size={13} color={colors.accent} />
@@ -61,18 +60,18 @@ export default function FocusCard(props: FocusCardProps) {
   </View>;
 }
 const s = StyleSheet.create({
-  card: { width: "100%", padding: 20, borderRadius: 28, gap: 16, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.2)", overflow: "hidden" }, glow: { position: "absolute", top: -96, right: -72, width: 230, height: 230, borderRadius: 115, opacity: 0.13 },
-  tourCard: { gap: 12 }, goal: { paddingBottom: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  card: { width: "100%", padding: 20, borderRadius: 28, gap: 16, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.2)" }, fieldsRow: { flexWrap: "nowrap", alignItems: "stretch" },
+  tourCard: { gap: 12 }, goal: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   label: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500", flexShrink: 1 },
   change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 },
   changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  prompt: { minHeight: 0 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3, flexShrink: 1 },
+  prompt: { minHeight: 0 }, title: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "600", letterSpacing: -0.3, flexShrink: 1 },
   suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 8 },
   suggestion: { color: colors.muted, fontSize: 14, lineHeight: 21, flex: 1 },
   instruction: { color: colors.secondary, fontSize: 14, lineHeight: 21, marginTop: 8 },
   areaValue: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 }, dot: { width: 10, height: 10, borderRadius: 5 },
-  areaButton: { flexBasis: 200, minWidth: 200, minHeight: 44, paddingVertical: 4, paddingHorizontal: 14, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.05)" },
+  areaButton: { minHeight: 44, paddingVertical: 8, paddingHorizontal: 14, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.05)" },
   meta: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, duration: { gap: 8 },
   durationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },

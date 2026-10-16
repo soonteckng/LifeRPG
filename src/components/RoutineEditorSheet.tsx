@@ -122,10 +122,10 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
 }
 const s = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500" },
-  caption: { color: colors.secondary, fontSize: 13, lineHeight: 20 }, label: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" },
-  body: { paddingHorizontal: 20, paddingBottom: 24, gap: 12 }, input: { minHeight: 50, paddingHorizontal: 14, paddingVertical: 12, color: colors.text, fontSize: 16, borderRadius: 14, borderWidth: 1, borderColor: colors.line },
-  choices: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, choice: { borderRadius: 12, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: colors.surface }, selected: { backgroundColor: colors.selection }, choiceText: { color: colors.text, fontSize: 14 },
-  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12 }, footer: { paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surfaceRaised },
+  caption: { color: colors.secondary, fontSize: 13, lineHeight: 20 }, label: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  body: { paddingHorizontal: 20, paddingBottom: 24, gap: 14 }, input: { minHeight: 54, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.surface },
+  choices: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, choice: { minHeight: 44, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11, justifyContent: "center", backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, selected: { backgroundColor: colors.accentSoft, borderColor: colors.accent }, choiceText: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 18, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, footer: { paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surfaceRaised },
   permission: { padding: 14, borderRadius: 14, backgroundColor: colors.accentSoft, gap: 8 }, permissionAction: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.selection }, permissionActionText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   primary: { minHeight: 52, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 16 }, primaryText: { color: colors.primaryText, fontSize: 16, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 21 }, remove: { minHeight: 44, alignItems: "center", justifyContent: "center" },
 });
