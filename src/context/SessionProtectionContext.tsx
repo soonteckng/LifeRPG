@@ -20,6 +20,12 @@ export interface SessionProtectionValue {
 const fallback: SessionProtectionValue = { supported: false, loaded: true, busy: false, selection: normalProtection,
   state: idleProtection, active: false, error: "", capabilities: null, apps: [], choose: async () => false, refresh: async () => {}, openPermission: async () => {}, stop: async () => {} };
 const blockAppsSelection: ProtectionSelection = { mode: "essentials", allowed: [] };
+const sameCapabilities = (left: ProtectionCapabilities | null, right: ProtectionCapabilities | null) => left === right || !!left && !!right
+  && left.supported === right.supported && left.usage === right.usage && left.overlay === right.overlay && left.notifications === right.notifications;
+// The timer owns its countdown. Protection consumers only display lease identity,
+// status and errors, so native seconds must not invalidate the entire UI each tick.
+const sameProtectionState = (left: ProtectionState, right: ProtectionState) => left.id === right.id && left.scope === right.scope
+  && left.status === right.status && left.covers === right.covers;
 const ProtectionContext = createContext<SessionProtectionValue>(fallback);
 export function useSessionProtection() { return useContext(ProtectionContext); }
 export function SessionProtectionProvider({ children }: { children: ReactNode }) {
@@ -40,17 +46,30 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   const controller = useRef<ReturnType<typeof createSessionProtectionController> | null>(null);
   const operation = useRef(0), read = useRef(0), choiceRevision = useRef(0), writes = useRef<Promise<unknown>>(Promise.resolve());
   const deviceLifetime = useRef({ active: true });
+  const appScan = useRef<Promise<ProtectionApp[]> | null>(null);
   useLayoutEffect(() => { latest.current = { ownerKey, preferenceKey, viewScope, hasOpenSession: timer.hasOpenSession }; }, [ownerKey, preferenceKey, viewScope, timer.hasOpenSession]);
-  const refresh = useCallback(async () => {
+  const readDevice = useCallback(async (includeApps: boolean) => {
     const request = ++read.current;
     const lifetime = deviceLifetime.current;
     const native = await getSessionProtectionModule();
-    if (!native) { if (lifetime.active && request === read.current) setDevice({ caps: null, apps: [] }); return; }
+    if (!native) { if (lifetime.active && request === read.current) setDevice(current => current.caps === null && !current.apps.length ? current : { caps: null, apps: [] }); return; }
     try {
-      const [caps, apps] = await Promise.all([native.capabilities(), native.apps()]);
-      if (lifetime.active && request === read.current) setDevice({ caps, apps });
+      // App inventory can be expensive on phones with many apps. Only the
+      // explicit chooser refresh needs labels; foreground checks need permissions.
+      const permissions = native.capabilities().then(caps => {
+        if (lifetime.active && request === read.current) setDevice(current => sameCapabilities(current.caps, caps) ? current : { ...current, caps });
+      });
+      let apps: Promise<void> | undefined;
+      if (includeApps) {
+        if (!appScan.current) appScan.current = native.apps().finally(() => { appScan.current = null; });
+        apps = appScan.current.then(items => {
+          if (lifetime.active) setDevice(current => current.apps === items ? current : { ...current, apps: items });
+        });
+      }
+      await Promise.all([permissions, apps]);
     } catch { if (lifetime.active && request === read.current) setResult({ ownerKey: latest.current.ownerKey, state: idleProtection, error: "Could not read app protection settings. Your timer is still available." }); }
   }, []);
+  const refresh = useCallback(() => readDevice(true), [readDevice]);
   useEffect(() => {
     let live = true;
     const revision = choiceRevision.current;
@@ -63,7 +82,8 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   }, [preferenceKey]);
   useEffect(() => {
     const instance = createSessionProtectionController({ storage: AsyncStorage, newId: () => uuid.v4().toLowerCase(),
-      publish: (state, error) => setResult({ ownerKey: latest.current.ownerKey, state, error }) });
+      publish: (state, error) => setResult(current => current.ownerKey === latest.current.ownerKey && current.error === error && sameProtectionState(current.state, state)
+        ? current : { ownerKey: latest.current.ownerKey, state, error }) });
     controller.current = instance;
     return () => { if (controller.current === instance) controller.current = null; void instance.dispose(); };
   }, []);
@@ -75,15 +95,18 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
       running: timer.isRunning, breakEndsAtMs: timer.breakEndsAtMs, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
       title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: timer.protectedSession && currentSelection.mode === "normal" ? { mode: "essentials" as const, allowed: [] } : currentSelection };
   });
-  useEffect(() => { void controller.current?.update(projection.current); }, [ownerKey, loaded, currentSelection, timer.protectionSessionId, timer.sessionId, timer.isRestoring, timer.isRunning, timer.endingSession, timer.isCompleted, timer.sessionEnded, timer.timeLeft, timer.breakEndsAtMs, timer.protectedSession]);
+  const expired = timer.timeLeft <= 0;
+  // Immediate session transitions drive commands. The single poll below reads
+  // native interruption status; timer numerals do not also trigger bridge reads.
+  useEffect(() => { void controller.current?.update(projection.current); }, [ownerKey, loaded, currentSelection, timer.protectionSessionId, timer.sessionId, timer.isRestoring, timer.isRunning, timer.endingSession, timer.isCompleted, timer.sessionEnded, expired, timer.breakEndsAtMs, timer.protectedSession]);
   useEffect(() => {
     const lifetime = { active: true }; deviceLifetime.current = lifetime;
-    const initialRead = setTimeout(() => void refresh(), 0);
-    const foreground = AppState.addEventListener("change", state => { if (state === "active") { void refresh(); void controller.current?.update(projection.current); } });
-    const poll = setInterval(() => { if (AppState.currentState === "active") void controller.current?.update(projection.current); }, 1000);
+    const initialRead = setTimeout(() => void readDevice(false), 0);
+    const foreground = AppState.addEventListener("change", state => { if (state === "active") { void readDevice(false); void controller.current?.update(projection.current); } });
+    const poll = setInterval(() => { if (AppState.currentState === "active" && projection.current.sessionKey) void controller.current?.update(projection.current); }, 1000);
     return () => { lifetime.active = false; clearTimeout(initialRead); foreground.remove(); clearInterval(poll); };
-  }, [refresh]);
-  const choose = async (mode: ProtectionSelection["mode"], allowed: string[] = []) => {
+  }, [readDevice]);
+  const choose = useCallback(async (mode: ProtectionSelection["mode"], allowed: string[] = []) => {
     const expected = latest.current.preferenceKey, expectedOwner = latest.current.ownerKey;
     if (!expected || latest.current.viewScope !== viewScope || busy && mode !== "normal"
       || (mode !== "normal" && !!result.state.id && result.ownerKey === expectedOwner)
@@ -94,7 +117,7 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
       if (mode !== "normal") {
         const native = await getSessionProtectionModule(), caps = native ? await native.capabilities() : null;
         if (latest.current.preferenceKey !== expected || latest.current.viewScope !== viewScope || operation.current !== request) return false;
-        if (!caps?.supported || !caps.usage || !caps.overlay || !caps.notifications) { setResult({ ownerKey: expectedOwner, state: result.state, error: "Allow the optional permissions below, or choose Normal to use the timer." }); return false; }
+        if (!caps?.supported || !caps.usage || !caps.overlay || !caps.notifications) { setResult({ ownerKey: expectedOwner, state: result.state, error: "Allow the protection permissions below before starting a new session." }); return false; }
       }
       if (latest.current.preferenceKey !== expected || latest.current.viewScope !== viewScope || operation.current !== request) return false;
       choiceRevision.current++;
@@ -107,13 +130,16 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
       return true;
     } catch { if (latest.current.preferenceKey === expected) setResult({ ownerKey: expectedOwner, state: result.state, error: "Could not save that choice. Your timer is unchanged." }); return false; }
     finally { if (operation.current === request) setBusy(false); }
-  };
-  const openPermission = async (kind: "usage" | "overlay") => {
+  }, [busy, currentSelection.mode, result.ownerKey, result.state, viewScope]);
+  const openPermission = useCallback(async (kind: "usage" | "overlay") => {
     try { const native = await getSessionProtectionModule(); if (native) await native.openPermission(kind); }
     catch { setResult({ ownerKey, state: result.state, error: "You can change this permission in Android Settings." }); }
-  };
+  }, [ownerKey, result.state]);
+  const stop = useCallback(async () => { await choose("normal"); }, [choose]);
   const state = result.ownerKey === ownerKey ? result.state : idleProtection;
-  return <ProtectionContext.Provider value={{ supported: !!device.caps?.supported, loaded, busy, selection: currentSelection,
-    state, active: !!state.id && ["starting", "active"].includes(state.status), error: result.ownerKey === ownerKey ? result.error : "",
-    capabilities: device.caps, apps: device.apps, choose, refresh, openPermission, stop: async () => { await choose("normal"); } }}>{children}</ProtectionContext.Provider>;
+  const error = result.ownerKey === ownerKey ? result.error : "";
+  const value = useMemo<SessionProtectionValue>(() => ({ supported: !!device.caps?.supported, loaded, busy, selection: currentSelection,
+    state, active: !!state.id && ["starting", "active"].includes(state.status), error,
+    capabilities: device.caps, apps: device.apps, choose, refresh, openPermission, stop }), [device, loaded, busy, currentSelection, state, error, choose, refresh, openPermission, stop]);
+  return <ProtectionContext.Provider value={value}>{children}</ProtectionContext.Provider>;
 }

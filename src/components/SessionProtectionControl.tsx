@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
@@ -41,12 +41,14 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   const protection = useSessionProtection(), timer = useTimer(), { hapticsEnabled } = useUser(), insets = useSafeAreaInsets();
   const { profile } = useUser();
   const [view, setView] = useState({ visible, ownerId: profile?.id });
-  const [mode, setMode] = useState<Mode>(protection.selection.mode);
+  const [mode, setMode] = useState<Mode>(protection.selection.mode === "normal" ? "essentials" : protection.selection.mode);
   const [allowed, setAllowed] = useState<string[]>(protection.selection.allowed);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const currentView = useRef(view);
   useLayoutEffect(() => { currentView.current = view; return () => { currentView.current = { visible: false, ownerId: "" }; }; }, [view]);
+  const refresh = protection.refresh;
+  useEffect(() => { if (visible && mode === "allow-list") void refresh(); }, [visible, mode, refresh]);
   if (visible !== view.visible || profile?.id !== view.ownerId) {
     setView({ visible, ownerId: profile?.id });
     if (visible) { setMode(protection.selection.mode === "normal" ? "essentials" : protection.selection.mode); setAllowed(protection.selection.allowed); setMessage(""); setSaving(false); }
@@ -76,10 +78,10 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
     <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
       {locked && <Text style={s.body}>Your session’s app choices stay fixed until it ends. End session remains available at any time. Turning protection off is reported as interrupted protection.</Text>}
       {([
-        { value: "normal", title: "Normal", detail: "Timer only. Use your phone as usual.", icon: "time-outline" },
+        { value: "normal", title: "Turn off protection", detail: "Your session continues with protection interrupted.", icon: "shield-half-outline" },
         { value: "allow-list", title: "Allow list", detail: "Keep your chosen tools available. Cover other apps.", icon: "shield-checkmark-outline" },
         { value: "essentials", title: "Block apps", detail: "Cover other apps while keeping essential system apps available.", icon: "shield-outline" },
-      ] as const).map(item => <SheetButton key={item.value} disabled={saving || locked && item.value !== "normal" && item.value !== protection.selection.mode} onPress={() => { if (!isCurrent()) return; feedback(); setMode(item.value); setMessage(""); if (item.value !== "normal") void protection.refresh(); }} accessibilityRole="radio" accessibilityState={{ selected: mode === item.value, disabled: saving || locked && item.value !== "normal" && item.value !== protection.selection.mode }} accessibilityLabel={`${item.title}. ${item.detail}`} style={[s.mode, mode === item.value && s.modeSelected]}>
+      ] as const).filter(item => item.value !== "normal" || locked).map(item => <SheetButton key={item.value} disabled={saving || locked && item.value !== "normal" && item.value !== protection.selection.mode} onPress={() => { if (!isCurrent()) return; feedback(); setMode(item.value); setMessage(""); }} accessibilityRole="radio" accessibilityState={{ selected: mode === item.value, disabled: saving || locked && item.value !== "normal" && item.value !== protection.selection.mode }} accessibilityLabel={`${item.title}. ${item.detail}`} style={[s.mode, mode === item.value && s.modeSelected]}>
         <Ionicons name={item.icon} size={21} color={mode === item.value ? colors.protection : colors.secondary} /><View style={s.detail}><Text style={s.modeTitle}>{item.title}</Text><Text style={s.caption}>{item.detail}</Text></View><Ionicons name={mode === item.value ? "radio-button-on" : "radio-button-off"} size={20} color={mode === item.value ? colors.protection : colors.muted} />
       </SheetButton>)}
       <View style={s.safety}><Ionicons name="call-outline" size={16} color={colors.protection} /><Text style={[s.caption, { flex: 1 }]}>Calls, emergency access, Settings and LifeRPG stay available. End session is always reachable.</Text></View>

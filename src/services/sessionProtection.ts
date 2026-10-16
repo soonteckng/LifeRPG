@@ -26,38 +26,71 @@ export function createSessionProtectionController(options: { storage: Storage; n
   let latest: ProtectionSessionProjection | null = null, disposed = false, revision = 0;
   let bound: { ownerKey: string; sessionKey: string; selection: ProtectionSelection } | null = null;
   const breakLeases = new Set<string>();
+  const returnedBreakLeases = new Set<string>();
   let suppressed = "", explicitlyEnabled = "", ownedId: string | null = null, working = false, dirty = false;
+  let lastPublication = "";
   const native = options.resolve ?? getSessionProtectionModule;
   const same = (value: ProtectionSessionProjection) => !disposed && latest?.ownerKey === value.ownerKey && latest?.sessionKey === value.sessionKey;
-  const canRun = (value: ProtectionSessionProjection) => same(value) && (!!latest?.running || !!latest?.breakEndsAtMs && latest.breakEndsAtMs > Date.now()) && !latest.ending && !latest.restoring && latest.seconds > 0;
+  // Protected break records remain running in the journal. At the deadline the
+  // React isRunning flag can lag one display tick behind the native clock.
+  const canRun = (value: ProtectionSessionProjection) => {
+    const current = latest;
+    return !!current && same(value) && (current.running || current.breakEndsAtMs != null)
+      && !current.ending && !current.restoring && current.seconds > 0;
+  };
+  const publish = (state: ProtectionState, error: string) => {
+    const key = JSON.stringify([state.id, state.scope, state.status, state.secondsLeft, state.covers, error]);
+    if (key === lastPublication) return;
+    lastPublication = key; options.publish(state, error);
+  };
   const bounded = <T,>(promise: Promise<T>) => new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => reject(Error("App protection is taking longer than expected. Your timer still works.")), 5000);
     promise.then(value => { clearTimeout(timeout); resolve(value); }, error => { clearTimeout(timeout); reject(error); });
   });
   const release = async (module: ProtectionModule, id: string, paused = false) => {
     breakLeases.delete(id);
+    returnedBreakLeases.delete(id);
     if (ownedId === id) ownedId = null;
     return bounded(paused && module.pause ? module.pause(id) : module.stop(id));
   };
+  const projectBreak = async (module: ProtectionModule, state: ProtectionState, input: ProtectionSessionProjection) => {
+    const id = state.id;
+    if (!id || !canRun(input)) return state;
+    // Use the current journal projection after each native reply. Starting a
+    // break, or returning early, does not revoke the same session's lease.
+    const deadline = latest!.breakEndsAtMs;
+    if (deadline && deadline > Date.now() && !breakLeases.has(id) && module.takeBreak) {
+      state = checked(await bounded(module.takeBreak(id, Math.max(1, Math.min(300000, deadline - Date.now())))));
+      breakLeases.add(id);
+    }
+    const currentDeadline = latest?.breakEndsAtMs;
+    if (canRun(input) && currentDeadline != null && currentDeadline <= Date.now()
+      && !returnedBreakLeases.has(id) && module.endBreak) {
+      state = checked(await bounded(module.endBreak(id)));
+      returnedBreakLeases.add(id);
+    }
+    return state;
+  };
   const pass = async () => {
-    const input = latest; if (!input || disposed) return;
+    let input = latest; if (!input || disposed) return;
     const nativeModule = await native(); if (!nativeModule || !same(input)) return;
     let state = checked(await bounded(nativeModule.state()));
     if (!same(input)) return;
+    input = latest!;
     ownedId = state.id;
     // Wait for the existing journal to restore before judging its saved native lease.
     if (input.restoring && input.ownerKey) {
       let savedOwner: unknown;
       try { savedOwner = state.scope ? JSON.parse(state.scope)[0] : null; } catch { savedOwner = null; }
       if (state.id && savedOwner !== input.ownerKey) state = checked(await release(nativeModule, state.id));
-      if (same(input)) options.publish(state, ""); return;
+      if (same(input)) publish(state, ""); return;
     }
     const scope = input.ownerKey && input.sessionKey ? JSON.stringify([input.ownerKey, input.sessionKey]) : null;
     if (state.id && (state.scope !== scope || !input.running && !input.breakEndsAtMs || input.ending || input.seconds <= 0)) {
       state = checked(await release(nativeModule, state.id, state.scope === scope && !input.ending && input.seconds > 0));
       if (!same(input)) return;
     }
-    if (!scope || !input.ownerKey || !input.sessionKey || input.ending || input.seconds <= 0) { bound = null; options.publish(state, ""); return; }
+    if (!scope || !input.ownerKey || !input.sessionKey || input.ending || input.seconds <= 0) { bound = null; publish(state, ""); return; }
     if (bound?.ownerKey !== input.ownerKey || bound.sessionKey !== input.sessionKey) {
       let saved: typeof bound = null;
       try { const raw = await options.storage.getItem(bindingKey(input.ownerKey)); saved = raw ? JSON.parse(raw) : null; } catch { /* A malformed local preference must never block normal sessions. */ }
@@ -69,17 +102,17 @@ export function createSessionProtectionController(options: { storage: Storage; n
     }
     if (state.scope === scope && explicitlyEnabled !== scope && ["stopped", "interrupted", "permission-lost"].includes(state.status)) suppressed = scope;
     if ((!input.running && !input.breakEndsAtMs) || suppressed === scope || bound.selection.mode === "normal") {
-      options.publish(state, suppressed === scope ? state.status === "permission-lost" ? "App protection stopped because a permission changed. Your timer is still available." : "App protection is off for this session. You can enable it again when you return." : ""); return;
+      publish(state, suppressed === scope ? state.status === "permission-lost" ? "App protection stopped because a permission changed. Your timer is still available." : "App protection is off for this session. You can enable it again when you return." : ""); return;
     }
     if (state.id && state.scope === scope) {
-      if (input.breakEndsAtMs && input.breakEndsAtMs > Date.now() && nativeModule.takeBreak && !breakLeases.has(state.id)) { await bounded(nativeModule.takeBreak(state.id, Math.max(1, Math.min(300000, input.breakEndsAtMs - Date.now())))); breakLeases.add(state.id); }
-      else if ((!input.breakEndsAtMs || input.breakEndsAtMs <= Date.now()) && nativeModule.endBreak) await bounded(nativeModule.endBreak(state.id));
-      options.publish(state, ""); return;
+      const request = revision;
+      state = await projectBreak(nativeModule, state, input);
+      if (canRun(input) && request === revision) publish(state, ""); return;
     }
     const request = revision, caps = await bounded(nativeModule.capabilities());
     if (!canRun(input) || request !== revision) return;
     if (!caps.supported || !caps.usage || !caps.overlay || !caps.notifications) {
-      suppressed = scope; options.publish({ ...idleProtection, scope, status: "permission-lost" }, "Allow the optional protection permissions to protect this session."); return;
+      suppressed = scope; publish({ ...idleProtection, scope, status: "permission-lost" }, "Allow the optional protection permissions to protect this session."); return;
     }
     const id = options.newId(); ownedId = id;
     const seconds = Math.max(1, Math.min(28800, Math.floor(latest!.seconds)));
@@ -87,19 +120,35 @@ export function createSessionProtectionController(options: { storage: Storage; n
       state = checked(await bounded(nativeModule.start(JSON.stringify({ version: 2, id, scope, title: input.title.slice(0, 120) || "Your session", seconds, mode: bound.selection.mode, allowed: [...bound.selection.allowed] }))));
       if (!canRun(input) || request !== revision) { await release(nativeModule, id); return; }
       if (state.id !== id || state.scope !== scope || !["starting", "active"].includes(state.status)) throw Error("App protection could not start. Your timer is still running.");
-      if (input.breakEndsAtMs && input.breakEndsAtMs > Date.now() && nativeModule.takeBreak) { await bounded(nativeModule.takeBreak(id, Math.max(1, Math.min(300000, input.breakEndsAtMs - Date.now())))); breakLeases.add(id); }
-      explicitlyEnabled = ""; options.publish(state, "");
-    } catch (error) { await release(nativeModule, id).catch(() => {}); if (same(input)) { suppressed = scope; options.publish({ ...idleProtection, scope, status: "interrupted" }, error instanceof Error ? error.message : "App protection could not start."); } }
+      state = await projectBreak(nativeModule, state, input);
+      if (!canRun(input) || request !== revision) { await release(nativeModule, id); return; }
+      explicitlyEnabled = ""; publish(state, "");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "App protection could not start.";
+      // These native checks run before installing a lease. A short navigation
+      // focus gap can retry on the next projection without inventing a Stop.
+      const focusPending = message.includes("Open LifeRPG before starting protection")
+        || message.includes("previous protection session is stopping");
+      if (focusPending) {
+        if (ownedId === id) ownedId = null;
+        if (same(input) && request === revision) publish({ ...idleProtection, scope }, "Waiting for LifeRPG to finish opening before protecting apps.");
+        return;
+      }
+      await release(nativeModule, id).catch(() => {});
+      if (same(input)) { suppressed = scope; publish({ ...idleProtection, scope, status: "interrupted" }, message); }
+    }
   };
   const flush = async () => {
     if (working || disposed) return;
     working = true;
-    try { while (dirty && !disposed) { dirty = false; try { await pass(); } catch (error) { if (!disposed) options.publish(idleProtection, error instanceof Error ? error.message : "Could not check app protection."); } } }
+    try { while (dirty && !disposed) { dirty = false; try { await pass(); } catch (error) { if (!disposed) publish(idleProtection, error instanceof Error ? error.message : "Could not check app protection."); } } }
     finally { working = false; }
   };
   return {
     update(input: ProtectionSessionProjection) {
-      if (latest?.ownerKey !== input.ownerKey || latest.sessionKey !== input.sessionKey || latest.running !== input.running || latest.ending !== input.ending) revision++;
+      const hasBreak = input.breakEndsAtMs != null;
+      if (latest?.ownerKey !== input.ownerKey || latest.sessionKey !== input.sessionKey || latest.ending !== input.ending
+        || latest.running !== input.running && !input.running && !hasBreak) revision++;
       latest = { ...input, selection: readProtectionSelection(input.selection) }; dirty = true; return flush();
     },
     async enable(selection: ProtectionSelection) {
@@ -113,7 +162,7 @@ export function createSessionProtectionController(options: { storage: Storage; n
     async stop() {
       revision++; explicitlyEnabled = "";
       if (latest?.ownerKey && latest.sessionKey) suppressed = JSON.stringify([latest.ownerKey, latest.sessionKey]);
-      const id = ownedId, module = await native(); if (id && module) { const state = checked(await release(module, id)); if (!disposed) options.publish(state, "App protection is off. Your timer continues."); }
+      const id = ownedId, module = await native(); if (id && module) { const state = checked(await release(module, id)); if (!disposed) publish(state, "App protection is off. Your timer continues."); }
     },
     async dispose() { disposed = true; revision++; const id = ownedId, module = await native(); if (id && module) await release(module, id).catch(() => {}); },
   };

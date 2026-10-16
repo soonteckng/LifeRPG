@@ -16,6 +16,18 @@ data class ProtectionLease(val id: String, val scope: String, val title: String,
     return if (worked >= seconds * 1000L) 0 else seconds - (worked / 1000).toInt()
   }
 }
+data class ProtectionAppCatalog(val apps: Set<String>, val essentials: Set<String>)
+/** Safety is a package/role decision, never a blanket exemption for bundled apps. */
+object ProtectionAppPolicy {
+  private val safetyPackages = setOf("android", "com.android.settings", "com.android.systemui", "com.android.phone",
+    "com.android.emergency", "com.android.server.telecom", "com.android.telecom", "com.samsung.android.incallui",
+    "com.google.android.dialer", "com.android.permissioncontroller", "com.google.android.permissioncontroller",
+    "com.android.packageinstaller", "com.google.android.packageinstaller", "com.samsung.android.packageinstaller",
+    "com.sec.android.emergencymode.service", "com.sec.android.app.safetyassurance", "com.samsung.android.app.sos")
+  fun essentials(ownPackage: String, resolvedSafetyApps: Collection<String>): Set<String> = safetyPackages + ownPackage + resolvedSafetyApps
+  fun catalog(launchablePackages: Collection<String>, essentials: Set<String>): ProtectionAppCatalog =
+    ProtectionAppCatalog(launchablePackages.filterNot { it in essentials }.toSet(), essentials)
+}
 object ProtectionPolicy {
   fun parse(raw: String, elapsed: Long): ProtectionLease {
     require(raw.length <= 24_000 && elapsed >= 0)

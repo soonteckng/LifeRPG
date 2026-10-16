@@ -22,6 +22,34 @@ class ProtectionPolicyTest {
     assertTrue(ProtectionPolicy.shouldCover(item, "social.app", setOf("phone.app"), setOf("social.app", "phone.app"), 0))
     assertFalse(ProtectionPolicy.shouldCover(item, "phone.app", setOf("phone.app"), setOf("phone.app"), 0))
   }
+  @Test fun bundledDistractionAppsBelongToTheBlockableCatalog() {
+    // PackageManager reports these launchable packages whether preinstalled,
+    // updated-system or user-installed. Flags must not exempt distractions.
+    val safety = ProtectionAppPolicy.essentials("com.soonteck.liferpg", listOf("oem.home", "oem.dialer"))
+    val catalog = ProtectionAppPolicy.catalog(listOf("com.google.android.youtube", "com.android.chrome", "social.app", "oem.home", "oem.dialer"), safety)
+    val item = lease().copy(mode = "essentials", allowed = emptySet())
+    for (pkg in listOf("com.google.android.youtube", "com.android.chrome", "social.app")) {
+      assertTrue(catalog.apps.contains(pkg)); assertTrue(ProtectionPolicy.shouldCover(item, pkg, catalog.essentials, catalog.apps, 2000))
+    }
+    assertFalse(catalog.apps.contains("oem.home")); assertFalse(catalog.apps.contains("oem.dialer"))
+  }
+  @Test fun essentialSystemSurfacesCannotBeBlockedEvenIfLaunchable() {
+    val safety = ProtectionAppPolicy.essentials("com.soonteck.liferpg", listOf("oem.home", "oem.dialer"))
+    val packages = safety + "com.google.android.youtube"
+    val catalog = ProtectionAppPolicy.catalog(packages.toList(), safety)
+    val item = lease().copy(mode = "essentials", allowed = emptySet())
+    for (pkg in listOf("com.soonteck.liferpg", "com.android.settings", "com.android.systemui", "com.android.emergency", "com.android.phone",
+      "com.google.android.permissioncontroller", "com.android.permissioncontroller", "com.android.packageinstaller", "com.samsung.android.incallui", "oem.dialer", "oem.home")) {
+      assertFalse(catalog.apps.contains(pkg)); assertFalse(ProtectionPolicy.shouldCover(item, pkg, catalog.essentials, packages, 2000))
+    }
+  }
+  @Test fun anAllowedBundledAppRemainsUsableWhileOtherBundledAppsAreCovered() {
+    val safety = ProtectionAppPolicy.essentials("com.soonteck.liferpg", emptyList())
+    val catalog = ProtectionAppPolicy.catalog(listOf("com.android.chrome", "com.google.android.youtube"), safety)
+    val item = lease().copy(allowed = setOf("com.android.chrome"))
+    assertFalse(ProtectionPolicy.shouldCover(item, "com.android.chrome", catalog.essentials, catalog.apps, 2000))
+    assertTrue(ProtectionPolicy.shouldCover(item, "com.google.android.youtube", catalog.essentials, catalog.apps, 2000))
+  }
   @Test fun oneBreakAutomaticallyRestoresCoverWithoutJavaScript() {
     val gate = ProtectionLeaseGate(); val item = lease(); assertTrue(gate.install(item));
     assertTrue(gate.takeBreak(item.id, 11000, 300000)); val resting = gate.current!!;

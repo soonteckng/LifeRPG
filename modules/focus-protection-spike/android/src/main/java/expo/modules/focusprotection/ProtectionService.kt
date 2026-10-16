@@ -42,6 +42,7 @@ class ProtectionService : Service() {
   private var foregroundPackage: String? = null
   private var wasOnBreak = false
   private var lastQuery = 0L
+  private var initialQuery = true
   private var userApps: Set<String> = emptySet()
   private var essentials: Set<String> = emptySet()
   private val wm by lazy { getSystemService(Context.WINDOW_SERVICE) as WindowManager }
@@ -72,11 +73,23 @@ class ProtectionService : Service() {
         .addAction(Notification.Action.Builder(null, "Stop protection", stop).build()).build()
       // The declared specialUse type is selected from the manifest on Android 14+.
       startForeground(NOTIFICATION, notification)
-      userApps = ProtectionRuntime.launchable(this).mapNotNull { it["packageName"] }.toSet()
-      essentials = ProtectionRuntime.essentials(this)
-      lastQuery = System.currentTimeMillis() - 1000
-      ProtectionRuntime.active(lease.id)
-      monitor.removeCallbacks(tick); monitor.post(tick)
+      // Package-manager scans may be slow. Keep them off Android's UI thread and
+      // never load app labels for monitoring. End can retire this lease meanwhile.
+      val queryFrom = System.currentTimeMillis() - 1000
+      monitor.removeCallbacks(tick)
+      monitor.post {
+        if (leaseId != lease.id || !ProtectionPolicy.sameLease(ProtectionRuntime.current, lease.id)) return@post
+        try {
+          val catalog = ProtectionRuntime.appCatalog(this)
+          if (leaseId != lease.id || !ProtectionPolicy.sameLease(ProtectionRuntime.current, lease.id)) return@post
+          userApps = catalog.apps; essentials = catalog.essentials
+          // Include app changes made while the inventory was loading, rather
+          // than leaving an already-open distraction undetected until a switch.
+          foregroundPackage = null; lastQuery = queryFrom; initialQuery = true
+          ProtectionRuntime.active(lease.id)
+          tick.run()
+        } catch (_: Exception) { finish(lease.id, "interrupted") }
+      }
     } catch (_: Exception) { finish(lease.id, "interrupted") }
     return START_NOT_STICKY
   }
@@ -115,7 +128,8 @@ class ProtectionService : Service() {
           if (!ProtectionPolicy.sameLease(ProtectionRuntime.current, lease.id) || lease.remaining(SystemClock.elapsedRealtime()) <= 0) return@post
           try {
             if (shouldCover && ProtectionRuntime.current?.breakRemaining(SystemClock.elapsedRealtime()) == 0L && SystemClock.elapsedRealtime() >= ignoreCoverUntil) showOverlay(lease) else hideOverlay()
-            remainingText?.text = "${lease.remaining(elapsed) / 60}:${(lease.remaining(elapsed) % 60).toString().padStart(2, '0')} remaining"
+            val copy = "${lease.remaining(elapsed) / 60}:${(lease.remaining(elapsed) % 60).toString().padStart(2, '0')} remaining"
+            remainingText?.let { if (it.text.toString() != copy) it.text = copy }
           } catch (_: Exception) { finish(lease.id, "interrupted") }
         }
         monitor.postDelayed(this, 400)
@@ -124,7 +138,7 @@ class ProtectionService : Service() {
   }
   private fun queryForeground() {
     val now = System.currentTimeMillis()
-    if (now < lastQuery || now - lastQuery > 2000) { foregroundPackage = null; lastQuery = now - 1000 }
+    if (now < lastQuery || now - lastQuery > (if (initialQuery) 30000 else 2000)) { foregroundPackage = null; lastQuery = now - (if (initialQuery) 30000 else 1000) }
     val events = (getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager).queryEvents(lastQuery, now)
     val event = UsageEvents.Event()
     while (events.hasNextEvent()) {
@@ -132,7 +146,7 @@ class ProtectionService : Service() {
       if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) foregroundPackage = event.packageName
       else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND && event.packageName == foregroundPackage) foregroundPackage = null
     }
-    lastQuery = now
+    lastQuery = now; initialQuery = false
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
   private fun text(copy: String, size: Float, color: String = "#F5F6FA") = TextView(this).apply {
@@ -158,7 +172,7 @@ class ProtectionService : Service() {
       }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
     }
     button(column, "Back to my session", true) { try { startActivity(appIntent()); ignoreCoverUntil = SystemClock.elapsedRealtime() + 1000; hideOverlay() } catch (_: Exception) { finish(lease.id, "interrupted") } }
-    column.addView(text("Calls, Settings and system apps stay available. Ending your session is available in LifeRPG.", 14f, "#ADB2C0"))
+    column.addView(text("Calls, emergency access, Settings and LifeRPG stay available. Ending your session is always available in LifeRPG.", 14f, "#ADB2C0"))
     scroll.addView(column, FrameLayout.LayoutParams(-1, -1))
     root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
     // Exit and dialler controls remain outside scrolling copy, including large text.

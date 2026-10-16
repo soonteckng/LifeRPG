@@ -88,6 +88,14 @@ export default function SessionScreen() {
   const [confirmEnd, setConfirmEnd] = useState(false);
   if (!onlineSurfaces && (picker !== null || confirmEnd)) { setPicker(null); setConfirmEnd(false); }
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [slowControl, setSlowControl] = useState(false);
+  useEffect(() => {
+    if (!liveTimer.actionBusy || !liveTimer.hasOpenSession) return;
+    // Keep immediate local feedback quiet, but never leave a slow confirmed
+    // command looking like a tappable button that silently ignores presses.
+    const pending = setTimeout(() => setSlowControl(true), 400);
+    return () => { clearTimeout(pending); setSlowControl(false); };
+  }, [liveTimer.actionBusy, liveTimer.hasOpenSession]);
   const timerBounds = useRef({ top: 0, bottom: 0 });
   const timerView = useRef<View>(null);
   const detailsOffset = useRef(0);
@@ -353,6 +361,7 @@ export default function SessionScreen() {
   const breakSpent = timer.protectedSession && timer.breakUsed && !breakActive;
   const disabled = breakSpent || cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
   const immediateControl = timer.hasOpenSession || timer.awaitingStart || endRequested;
+  const controlPending = timer.actionBusy && (slowControl || !timer.interactionKind);
   const checkingStart = timer.awaitingStart && !timer.interactionKind;
   const actionLabel = breakActive ? "End break early" : timer.protectedSession && timer.hasOpenSession ? breakSpent ? "Break used" : "5-min break" : phase === "ended" ? "Stopped" : checkingStart ? "Checking start" : timer.awaitingStart ? "Pause" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
   const needsRecovery = !cancellationSaved && !timer.endingSession && !timer.isCompleted
@@ -447,10 +456,10 @@ export default function SessionScreen() {
           </View>}
           {!timer.isCompleted && <>
             <View style={styles.actionRow}>
-            <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && !immediateControl && styles.disabled]} disabled={disabled}
+            <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
               onPress={timer.hasOpenSession ? () => void (breakActive ? timer.resumeTimer() : timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
-              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <><Ionicons name={timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} /><Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
+              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.background} /> : <Ionicons name={timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
             {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy || timer.endingSession} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
             </View>

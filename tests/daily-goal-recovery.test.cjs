@@ -9,6 +9,7 @@ function load(file, mocks={}, cache=new Map()) {
   const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name.endsWith('/AppBuildInfo'))return()=>null;
     if(name.endsWith('/AppText'))return {Text:host('Text')};
     if(!name.startsWith('.'))return require(name);
     const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));

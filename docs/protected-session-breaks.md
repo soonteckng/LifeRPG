@@ -23,7 +23,7 @@ After Home is final: remeasure guide anchors, update the permission and break ex
 ## Combined installed-phone checks
 
 1. Fresh protection setup: deny an access, try Start, then grant all required access and start once.
-2. Allow list and Block apps: chosen tools and system/emergency apps stay reachable; other launchable user apps are covered.
+2. Allow list and Block apps: chosen tools, phone/emergency, Settings and the launcher stay reachable; other launchable apps are covered, including preinstalled browsers and video apps.
 3. Take the break, remove LifeRPG from Recents, and wait: apps unlock, then protection returns after five minutes. Recorded effort excludes the break.
 4. End the break early; attempt another break. No second break is available, including after restarting the app.
 5. End during the break: confirmation and Done stay reachable, no XP or recorded time awarded.
@@ -32,3 +32,15 @@ After Home is final: remeasure guide anchors, update the permission and break ex
 8. Compare notification and app deadlines before, during and after a break; the finish alert must not fire at break end.
 
 Automated results and the build identifier are recorded in the delivery note for the specific commit. Phone checks remain required before release.
+
+## APK12 regression repair
+
+The repair removes duplicate per-second bridge updates and repeated End break commands. Permission refresh no longer scans app labels on every foreground. The native service builds its package-only catalog on its worker thread. Preinstalled apps are no longer all exempt: safety is decided by explicit essential packages and resolved phone/launcher handlers.
+
+A native Start that finishes during a same-session break is adopted into that break rather than stopped and suppressed. Brief window-focus or previous-service shutdown delays can retry; explicit Stop, permission loss and force-stop interruption still require an explicit Restore. Native break commands are projected once per lease, including recovery after JavaScript reload.
+
+Active controls show busy feedback while a durable change is pending; slow legacy network confirmations show a spinner after 400 ms while keeping their label. The protection chooser no longer offers Normal for a new session. Turning protection off remains available during a running session. Settings shows the installed runtime release and currently running update locally, without sending diagnostic or account data.
+
+Regression coverage now runs production readiness through the real timer provider, journal persistence, server reconciliation and rendered session control. A fresh ready Android Start must show 5-min break; missing permissions must create no session. A fresh session showing Pause/Resume on the phone still requires checking its installed build/update identity; automated source tests cannot establish which bundle a phone executed.
+
+This repair changes no live schema, auth workflow or personal reward rules. It requires one native Android build for worker-thread startup and preinstalled-app coverage. Claude's Home/guide layout and the routines-widget branch stay unchanged.

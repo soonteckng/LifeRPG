@@ -57,12 +57,12 @@ const fixtureServerId = (value) => {
 };
 const definitiveServerRejection = () => Object.assign(Error("Server rejected the request"), { failureKind: "definitive", requestSent: true });
 
-async function providerSetup(overrides = {}, notifications = null, nativeLifecycle = null) {
+async function providerSetup(overrides = {}, notifications = null, nativeLifecycle = null, protectionNative = null) {
   let state, show = true, tick, foreground;
   const summarySnapshots = [];
   const calls = [];
   const realInterval = global.setInterval, realClear = global.clearInterval, realNow = Date.now;
-  let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false;
+  let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false, sessionReads = 0;
   const serverRows = new Map(), values = new Map();
   const storage = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); } };
   global.setInterval = (fn) => { tick = fn; return 1; };
@@ -129,7 +129,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
       row.completed_at = new Date(now).toISOString(); row.credit_result = saved;
       return { sessionId: id, durationSeconds: saved.duration_seconds, result: saved };
     },
-    async readSession(id) { await initialRows(); return serverRows.has(id) ? mapper(serverRows.get(id), scope, observe()) : null; },
+    async readSession(id) { sessionReads++; await initialRows(); return serverRows.has(id) ? mapper(serverRows.get(id), scope, observe()) : null; },
     async readOpenSessions() {
       await initialRows();
       return { complete: true, sessions: [...serverRows.values()].filter(row => ["active", "paused"].includes(row.status)).map(row => mapper(row, scope, observe())) };
@@ -140,6 +140,15 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   const auth = { user: { id: PROVIDER_SCOPE.ownerId }, localOwner: { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId },
     accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async () => { verifications++; return { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }; } };
   const flush = () => new Promise(resolve => setImmediate(resolve));
+  // Legacy fixture sessions keep their original controls. Protection cases use
+  // the production readiness function, replacing only the device boundary.
+  const prepareProtectedSession = protectionNative
+    ? load("src/services/protectedSessionStart.ts", {
+      "react-native": { Platform: { OS: "android" } },
+      "@react-native-async-storage/async-storage": storage,
+      "./nativeFocusProtection": { getSessionProtectionModule: async () => protectionNative },
+    }).prepareProtectedSession
+    : async () => false;
   const { TimerProvider, useTimer } = load("src/context/TimerContext.tsx", {
     "react-native": { Platform: { OS: "android" }, AppState: { addEventListener: (_, fn) => { foreground=fn; return { remove() {} }; } } },
     "expo": { isRunningInExpoGo: () => false },
@@ -147,7 +156,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "@react-native-async-storage/async-storage": storage,
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
-    "../services/protectedSessionStart": { prepareProtectedSession: async () => false }, // Legacy session fixtures; protected readiness has its own tests.
+    "../services/protectedSessionStart": { prepareProtectedSession },
     "../services/sessionService": service,
     "../services/offlineSessionService": {
       createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, readFreshGrant: () => null }),
@@ -167,7 +176,8 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, calls, verifications: () => verifications, summarySnapshots,
+    state: () => state, calls, verifications: () => verifications, summarySnapshots, sessionReads: () => sessionReads,
+    persistedJournal: () => JSON.parse([...values].find(([key]) => key.startsWith("liferpg:session-journal:v1:"))?.[1] ?? "null"),
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
     backgroundTime: (seconds) => { now += seconds*1000; },
@@ -518,6 +528,62 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     cleanup:async()=>{await act(async()=>renderer.unmount());},
   };
 }
+
+test("a fresh ready Android Start persists protection and renders the break control after reconciliation", async () => {
+  let readinessChecks = 0;
+  const native = { formatVersion: 3, capabilities: async () => {
+    readinessChecks++;
+    return { supported: true, usage: true, overlay: true, notifications: true };
+  } };
+  const provider = await providerSetup({}, null, null, native);
+  let screen;
+  try {
+    await provider.run(timer => timer.startTimer(120, "Fresh protected session"));
+    assert.equal(readinessChecks, 1, "Start checks the production native readiness boundary");
+    assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
+    assert.equal(provider.state().protectedSession, true);
+    assert.equal(provider.state().hasOpenSession, true);
+    assert.equal(provider.state().actionError, null);
+    const started = provider.persistedJournal();
+    assert.equal(started.schemaVersion, 3);
+    assert.deepEqual(started.records[0].protection, { breakStartedAtMs: null, breakEndsAtMs: null });
+    screen = await screenSetup(provider.state());
+    assert.ok(screen.button("5-min break"), "a new protected session exposes its one break");
+    assert.equal(screen.button("5-min break").props.disabled, false);
+    assert.equal(screen.button("Pause"), undefined);
+    assert.equal(screen.button("Resume"), undefined);
+
+    const readsBeforeForeground = provider.sessionReads();
+    await provider.background();
+    provider.backgroundTime(2);
+    await provider.foreground();
+    assert.ok(provider.sessionReads() > readsBeforeForeground, "foreground actually reconciles the server session");
+    assert.equal(provider.state().protectedSession, true);
+    assert.deepEqual(provider.persistedJournal().records[0].protection, started.records[0].protection);
+    await screen.update(provider.state());
+    assert.ok(screen.button("5-min break"), "server reconciliation cannot turn the break into legacy Pause");
+    assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
+  } finally {
+    await screen?.cleanup();
+    await provider.cleanup();
+  }
+});
+
+test("Android Start with missing protection access cannot create an ordinary timer or server session", async () => {
+  for (const missing of ["supported", "usage", "overlay", "notifications", "updated-build"]) {
+    const native = { formatVersion: missing === "updated-build" ? 2 : 3,
+      capabilities: async () => ({ supported: true, usage: true, overlay: true, notifications: true, [missing]: false }) };
+    const provider = await providerSetup({}, null, null, native);
+    try {
+      await provider.run(timer => timer.startTimer(120, "Must not start"));
+      assert.equal(provider.calls.filter(([name]) => name === "start").length, 0, missing);
+      assert.equal(provider.state().hasOpenSession, false, missing);
+      assert.equal(provider.state().protectionSetupRequired, true, missing);
+      assert.match(provider.state().actionError, missing === "updated-build" ? /updated Android build/ : /Set up session protection/, missing);
+      assert.equal(provider.persistedJournal().records.length, 0, missing);
+    } finally { await provider.cleanup(); }
+  }
+});
 
 test("opening Custom keeps the timer display and applied duration stable",async()=>{
   const ui=await screenSetup();
@@ -1588,6 +1654,33 @@ test("repeated terminal-clear publications only dismiss the anchored session rou
     assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
   }finally{await ui.cleanup();}
 });
+test("a pending protected control keeps its label and shows busy feedback after the first tap", async () => {
+  const ui = await screenSetup({hasOpenSession:true,isRunning:true,protectedSession:true,breakUsed:false,breakSecondsLeft:0,actionBusy:true});
+  try {
+    const control = ui.button('5-min break');
+    assert.ok(control);
+    assert.equal(control.props.disabled,true);
+    assert.equal(control.props.accessibilityState.busy,true);
+    assert.equal(ui.root().findAllByType('Spinner').length,1);
+    await ui.update({actionBusy:false});
+    assert.equal(ui.button('5-min break').props.disabled,false);
+    assert.equal(ui.root().findAllByType('Spinner').length,0);
+  } finally { await ui.cleanup(); }
+});
+
+test("slow legacy control confirmation becomes visibly busy and clears on completion", async () => {
+  const ui = await screenSetup({hasOpenSession:true,isRunning:false,actionBusy:true,interactionKind:'pause',syncStatus:'waiting'});
+  try {
+    assert.equal(ui.root().findAllByType('Spinner').length,0);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve,450)); });
+    assert.equal(ui.root().findAllByType('Spinner').length,1);
+    assert.equal(ui.button('Resume').props.disabled,true);
+    await ui.update({actionBusy:false,interactionKind:null,syncStatus:'idle'});
+    assert.equal(ui.root().findAllByType('Spinner').length,0);
+    assert.equal(ui.button('Resume').props.disabled,false);
+  } finally { await ui.cleanup(); }
+});
+
 test("Pause and Resume feedback keeps controls readable without a spinner, confirmation flash or phase fade",async()=>{
   const ui=await screenSetup({hasOpenSession:true,isRunning:false,actionBusy:true,interactionKind:"pause",syncStatus:"waiting"});
   try {
