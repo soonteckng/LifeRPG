@@ -48,3 +48,6 @@ example
 .env.*
 
 .native-protection-jvm/
+
+# Native build caches
+**/.gradle/

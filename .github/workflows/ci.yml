@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [main, feature/offline-sessions]
   push:
-    branches: [main, progression-foundation, feature/routines-widget]
+    branches: [main, progression-foundation, feature/routines-widget, feature/protected-breaks]
   workflow_dispatch:
 
 permissions:
