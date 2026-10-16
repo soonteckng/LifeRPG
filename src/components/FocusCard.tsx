@@ -10,7 +10,8 @@ import { PinnedAction } from "./PinnedAction";
 import { useFeatureTour } from "./FeatureTour";
 import type { Subject } from "../services/taskService";
 import { colors } from "../constants/theme";
-import { durationLabel } from "../utils/sessionSetup";
+import { durationLabel, sessionTime } from "../utils/sessionSetup";
+import { sessionDockState } from "../utils/sessionReporting";
 
 export interface FocusCardProps {
   cardID: string; startID: string; areaActionID?: string; preferencesID?: string;
@@ -32,10 +33,7 @@ export default function FocusCard(props: FocusCardProps) {
   const preferencesLocked = props.busy || (props.setupDisabled ?? editLocked);
   const suggested = !props.active && props.suggested;
   const openPreferences = () => { if (!preferencesLocked) props.onPreferences?.(); };
-  const sessionClock = (total: number) => {
-    const value = Math.max(0, Math.round(total)), hours = Math.floor(value / 3600), minutes = Math.floor((value % 3600) / 60), seconds = value % 60;
-    return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `${minutes}:${String(seconds).padStart(2, "0")}`;
-  };
+  const dock = sessionDockState({ isCompleted: false, isRunning: props.running, actionError: null, sessionSummary: null, timeLeft: props.seconds, awaitingStart: props.awaitingStart });
   const prompt = <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
     <View style={[s.heading, props.active ? s.fieldsRow : s.group]}>
     {!props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
@@ -58,18 +56,23 @@ export default function FocusCard(props: FocusCardProps) {
         <Text style={s.label}>{props.awaitingStart ? "Checking session start" : props.running ? "In progress" : "Paused"}</Text>
       </View>
       {prompt}
-      <View style={s.duration} testID="focus-card-duration"><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining}>{durationLabel(props.seconds)}</Text></View>
+      <View style={s.duration} testID="focus-card-duration"><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining} accessibilityLabel={durationLabel(props.seconds)}>{sessionTime(props.seconds)}</Text></View>
     </View> : prompt}
     {props.active && !!props.protection && <View style={s.group}>{props.protection}</View>}
     <PinnedAction>
-      <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.startTile, locked && s.disabled]}
-        accessibilityRole="button" accessibilityLabel={props.active ? "Continue session" : `Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
+      {props.active ? <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.dockBar, locked && s.disabled]}
+        accessibilityRole="button" accessibilityLabel="Continue session" accessibilityState={{ disabled: locked, busy: props.busy }}>
+        <Ionicons name={dock.icon} size={20} color={colors.accent} />
+        <Text style={s.dockTitle} numberOfLines={1}>{dock.label}</Text>
+        <Text style={s.dockTime}>{dock.detail}</Text>
+        <Ionicons name="chevron-up" size={18} color={colors.secondary} />
+      </Pressable> : <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.startTile, locked && s.disabled]}
+        accessibilityRole="button" accessibilityLabel={`Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
         <View style={s.playCircle}><Ionicons name="play" size={20} color={colors.primary} /></View>
         <View style={s.startCopy}>
-          <Text style={s.startText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{props.busy ? "Starting…" : props.active ? "Continue session" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start session"}</Text>
-          {props.active && !props.awaitingStart && <Text style={s.startDetail} numberOfLines={1}>{areaLabel} · {sessionClock(props.seconds)} left</Text>}
+          <Text style={s.startText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{props.busy ? "Starting…" : props.failed ? "Retry start" : props.restoring ? "Restoring session…" : "Start session"}</Text>
         </View>
-      </Pressable>
+      </Pressable>}
     </PinnedAction>
     {!!props.error && <Text style={s.error} accessibilityRole="alert">{props.error}</Text>}
   </View>;
@@ -92,7 +95,7 @@ const s = StyleSheet.create({
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
-  remaining: { color: colors.text, fontSize: 34, lineHeight: 42, fontWeight: "600", letterSpacing: -0.8, fontVariant: ["tabular-nums"] },
+  remaining: { color: colors.text, fontSize: 40, lineHeight: 48, fontWeight: "600", letterSpacing: -1, fontVariant: ["tabular-nums"] },
   primary: { minHeight: 58, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "600", flexShrink: 1, textAlign: "center" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   cardIdle: { width: "100%", gap: 12 },
@@ -107,5 +110,7 @@ const s = StyleSheet.create({
   playCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   sessionCard: { padding: 16, gap: 10, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   startCopy: { flex: 1, minWidth: 0 },
-  startDetail: { color: colors.primaryText, opacity: 0.7, fontSize: 13, lineHeight: 18, fontVariant: ["tabular-nums"] },
+  dockBar: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  dockTitle: { flex: 1, color: colors.text, fontSize: 14, fontWeight: "500" },
+  dockTime: { color: colors.accent, fontSize: 16, fontWeight: "500", flexShrink: 1, fontVariant: ["tabular-nums"] },
 });

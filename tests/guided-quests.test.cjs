@@ -225,7 +225,7 @@ test('creating a personal quest keeps the suggestion and its Start; the quest re
  await act(async()=>routines.props.onStartLegacy(quest));assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.equal(starts,0);assert.deepEqual(routes,['/session']);routes.length=0;
  await act(async()=>{void ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start').props.onPress();});
  assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,['/session']);
- await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.match(text(ui.tree.root),/Continue session/);await ui.cleanup();
+ await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.ok(ui.tree.root.findAll(node=>node.props.accessibilityLabel==='Continue session'&&typeof node.props.onPress==='function').length>0);assert.match(text(ui.tree.root),/Session running/);await ui.cleanup();
 });
 
 test('an older matching record or old quest receipt cannot mark a newly completed suggestion as a saved routine',async()=>{

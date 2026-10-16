@@ -41,8 +41,8 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   </View>;
 }
 const styles = StyleSheet.create({
-  dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 18, paddingTop: 8, gap: 8 },
-  banner: { minHeight: 48, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 8, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  title: { flex: 1, color: colors.text, fontSize: 13, fontWeight: "500" },
+  dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 8, gap: 8 },
+  banner: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, flexDirection: "row", alignItems: "center", gap: 10, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  title: { flex: 1, color: colors.text, fontSize: 14, fontWeight: "500" },
   time: { color: colors.accent, fontSize: 16, fontWeight: "500", flexShrink: 1, fontVariant: ["tabular-nums"] },
 });

@@ -132,7 +132,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
           <View style={s.controls}>
             <Pressable disabled={busy || uncertain || breakSpent} accessibilityRole="button" accessibilityState={{ disabled: busy || uncertain || breakSpent }} accessibilityLabel={breakActive ? "End break early" : timer.protectedSession ? breakSpent ? "Break used" : "Take a five-minute break" : timer.isRunning ? "Pause session" : "Resume session"}
               onPress={() => void action(timer.isRunning ? timer.pauseTimer : timer.resumeTimer)} style={[s.button, s.grow, (busy || uncertain) && s.disabled]}>
-              <Ionicons name={timer.isRunning ? "pause-outline" : "play-outline"} size={22} color={colors.primaryText} />
+              <Ionicons name={timer.isRunning ? "pause-outline" : "play-outline"} size={22} color={colors.text} />
               <Text style={s.buttonText}>{breakActive ? "End break early" : timer.protectedSession ? breakSpent ? "Break used" : "5-min break" : timer.isRunning ? "Pause" : "Resume"}</Text>
             </Pressable>
             <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel="End session" onPress={() => { feedback(); setConfirmEnd(true); }} style={s.secondary}>
@@ -153,9 +153,9 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
           <SavedRoutinesCard subjects={catalogReady ? catalog.areas : []}
             initialSeconds={duration.selectedSeconds} initialAreaId={area?.id ?? null} active={surfaceActive && catalogReady} />
         </>}
-        {timer.unsyncedSessionCount > 0 && <Text style={s.caption} accessibilityLiveRegion="polite">{timer.unsyncedSessionCount} {timer.unsyncedSessionCount === 1 ? "session waiting" : "sessions waiting"} to sync. Your records stay on this phone.</Text>}
+        {timer.unsyncedSessionCount > 0 && <Text style={s.localCaption} accessibilityLiveRegion="polite">{timer.unsyncedSessionCount} {timer.unsyncedSessionCount === 1 ? "session waiting" : "sessions waiting"} to sync. Your records stay on this phone.</Text>}
         {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
-        {!!timer.actionError && <Text style={s.caption} accessibilityLiveRegion="polite">{timer.actionError}</Text>}
+        {!!timer.actionError && <Text style={s.localCaption} accessibilityLiveRegion="polite">{timer.actionError}</Text>}
         <Pressable disabled={localBusy || timer.isRestoring} accessibilityRole="button" accessibilityLabel="Retry connection"
           onPress={() => void action(async () => { await auth.retrySessionVerification(); })} style={s.retry}><Text style={s.link}>Retry connection</Text></Pressable>
       </View>
@@ -184,7 +184,7 @@ const s = StyleSheet.create({
   areaValue: { flexDirection: "row", alignItems: "center", gap: 8 },
   timer: { alignItems: "center", gap: 24 }, time: { color: colors.text, fontSize: 54, lineHeight: 68, fontWeight: "600", fontVariant: ["tabular-nums"] },
   controls: { width: "100%", flexDirection: "row", gap: 10 }, grow: { flex: 1 }, disabled: { opacity: 0.5 },
-  button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
-  buttonText: { ...type.body, fontWeight: "600", color: colors.primaryText }, secondary: { minHeight: 48, padding: 12, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  button: { minHeight: 56, padding: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  buttonText: { ...type.body, fontWeight: "600", color: colors.text }, secondary: { minHeight: 56, minWidth: 64, padding: 12, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   link: { ...type.body, fontWeight: "600", color: colors.accent }, error: { ...type.body, color: colors.danger },
 });
