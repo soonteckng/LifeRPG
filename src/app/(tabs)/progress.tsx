@@ -390,7 +390,7 @@ export default function ProgressScreen() {
               <View style={s.hero} testID="progress-day-hero">
                 <Text style={s.caption}>{dayLabel}</Text>
                 <Text
-                  style={s.focusValue}
+                  style={[s.focusValue, !heroDay?.seconds && s.focusValueEmpty]}
                   adjustsFontSizeToFit
                   minimumFontScale={0.6}
                   numberOfLines={1}
@@ -551,11 +551,13 @@ export default function ProgressScreen() {
                 </View>}
                 {analytics.areas.length ? (
                   <View style={s.areaSummary}>
-                    {analytics.areas.map((area) => <Pressable key={area.key}
+                    {analytics.areas.map((area, index) => <Pressable key={area.key}
                       onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
-                      accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.areaSummaryItem}>
+                      accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={[s.areaSummaryItem, index > 0 && s.areaRowDivider]}>
                       <View style={[s.areaDot, { backgroundColor: area.color }]} />
-                      <Text style={s.caption}>{area.title} {durationLabel(area.seconds)}</Text>
+                      <Text style={s.areaRowTitle} numberOfLines={1}>{area.title}</Text>
+                      <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
+                      <Ionicons name="chevron-forward" size={16} color={colors.muted} />
                     </Pressable>)}
                   </View>
                 ) : (
@@ -584,6 +586,7 @@ export default function ProgressScreen() {
                   </Text>
                 </Pressable>)}
               </View>
+              <View style={s.sessionsCard}>
               <View testID="progress-session-list">
                 {listedSessions.map(session => <SessionRow key={session.id} session={session}
                   areas={data.areas} timeZone={timeZone} onPress={() => openListedSession(session)} />)}
@@ -599,6 +602,7 @@ export default function ProgressScreen() {
                 <Text style={s.link}>{sessionScope === "period" ? `View this ${mode}’s sessions` : "View this day’s sessions"}</Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.accent} />
               </Pressable>
+              </View>
               <Section
                 title="Consistency"
                 action="How it works"
@@ -825,9 +829,9 @@ export default function ProgressScreen() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   periodToolbar: { flexDirection: "column", alignItems: "stretch" },
-  areaSummary: { flexDirection: "row", flexWrap: "wrap", columnGap: 12, rowGap: 0 },
-  areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 44 },
-  historyEntrance: { flexDirection: "row", alignItems: "center", gap: 8, minHeight: 48, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  areaSummary: { flexDirection: "column", gap: 0 },
+  areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 46 },
+  historyEntrance: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 50 },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },
   header: { marginBottom: 8 },
@@ -902,7 +906,7 @@ const s = StyleSheet.create({
     lineHeight: 17,
     marginTop: 4,
   },
-  periodSummary: { paddingTop: 16, gap: 3 },
+  periodSummary: { marginTop: 12, paddingVertical: 14, paddingHorizontal: 16, gap: 3, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   periodSummaryHeading: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 },
   periodSummaryValue: { color: colors.text, fontSize: 19, lineHeight: 26, fontWeight: "500", fontVariant: ["tabular-nums"] },
   sectionHeading: {
@@ -1038,7 +1042,7 @@ const s = StyleSheet.create({
     position: "absolute",
     bottom: 4,
   },
-  areaDot: { height: 8, width: 8, borderRadius: 4 },
+  areaDot: { height: 10, width: 10, borderRadius: 5 },
   rowTitle: {
     color: colors.text,
     fontSize: 14,
@@ -1172,4 +1176,9 @@ const s = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: colors.accentSoft,
   },
+  focusValueEmpty: { fontSize: 30, letterSpacing: -0.8, marginTop: 2 },
+  areaRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21 },
+  areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontVariant: ["tabular-nums"] },
+  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
 });
