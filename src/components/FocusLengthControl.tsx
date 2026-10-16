@@ -40,6 +40,6 @@ const s = StyleSheet.create({
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, text: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
-  chip: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 14, borderRadius: 22, backgroundColor: "rgba(170,179,255,0.12)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.22)" },
+  chip: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 14, borderRadius: 18, backgroundColor: "rgba(170,179,255,0.12)", borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.22)" },
   chipText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600", fontVariant: ["tabular-nums"] },
 });

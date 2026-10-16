@@ -16,6 +16,7 @@ import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { validSessionSeconds } from "../../utils/sessionSetup";
 import CharacterMark from "../../components/CharacterMark";
+import ProgressRing from "../../components/ProgressRing";
 import ContentReveal from "../../components/ContentReveal";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
@@ -201,7 +202,7 @@ export default function HomeScreen() {
       <Text style={[styles.focusHeading, styles.goalLabel]}>{isGoalComplete ? "Daily goal reached" : "Today"}</Text>
       <View style={styles.goalValue}><Text style={styles.goalValueText}>{dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}</Text><Ionicons name={isGoalComplete ? "checkmark-circle-outline" : "options-outline"} size={17} color={isGoalComplete ? colors.success : colors.accent} /></View>
     </TouchableOpacity>
-    <View style={styles.guidedTrack} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}><View style={[styles.guidedFill, { width: `${Math.min(100, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60) * 100)}%` }]} /></View>
+
   </View>;
 
   return (
@@ -214,16 +215,19 @@ export default function HomeScreen() {
         <ContentReveal>
         <View testID="home-layout" style={styles.layout}>
           <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
-            <View style={styles.identityRow}>
-              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={48} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
-              <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
-                <Text style={styles.greeting}>{greeting},</Text>
-                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
+            <View style={styles.heroRing} testID="home-goal-ring">
+              <View style={StyleSheet.absoluteFill} accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
+                <ProgressRing size={152} stroke={8} progress={safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60)} color={isGoalComplete ? colors.success : colors.accent} />
               </View>
-              <TouchableOpacity style={styles.levelButton} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={styles.levelText}>Lv {level}</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={104} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
             </View>
-            <View style={styles.identityMeta}>
+            <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
+              <Text style={styles.greeting}>{greeting},</Text>
+              <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
+            </View>
+            <View style={styles.chipRow}>
               <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
+              <TouchableOpacity style={styles.levelButton} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={styles.levelText}>Lv {level}</Text></TouchableOpacity>
             </View>
           </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -275,19 +279,19 @@ const styles = StyleSheet.create({
   guidedFill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
-  content: { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
+  content: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 24 },
   focusContainer: { width: "100%", alignSelf: "stretch" },
   identityRow: { flexDirection: "row", gap: 12, alignItems: "center" },
-  identity: { flex: 1, minWidth: 0 },
-  headerBlock: { gap: 12, paddingTop: 0, paddingBottom: 0 },
-  greeting: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "400" },
-  name: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5, marginTop: 1 },
-  avatarFrame: { width: 56, height: 56, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface },
+  identity: { minWidth: 0, maxWidth: "100%", alignItems: "center" },
+  headerBlock: { alignItems: "center", gap: 14, paddingTop: 0, paddingBottom: 0 },
+  greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "400", textAlign: "center" },
+  name: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: "600", letterSpacing: -0.7, marginTop: 1, textAlign: "center" },
+  avatarFrame: { width: 124, height: 124, borderRadius: 62, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface },
   levelButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 22, backgroundColor: colors.accentSoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
   levelText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, paddingLeft: 68 },
-  identityStat: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft },
+  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, paddingLeft: 0 },
+  identityStat: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 7, paddingHorizontal: 14, borderRadius: 22, backgroundColor: "rgba(255,255,255,0.05)" }, heroRing: { width: 152, height: 152, alignItems: "center", justifyContent: "center" }, chipRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 10 },
   metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
   goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },

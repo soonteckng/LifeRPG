@@ -1046,7 +1046,7 @@ async function quickHomeSetup(history = null, start = async () => true, duration
     "@expo/vector-icons":{Ionicons:host("Icon")}, "expo-haptics":{},
     "expo-router":{useRouter:()=>({navigate:route=>calls.push(["navigate",route])})},
     "react-native-safe-area-context":{SafeAreaView:host("View"),useSafeAreaInsets:()=>({top:24,bottom:24})},
-    "../../components/GoalRing":host("GoalRing"), "../../components/CharacterMark":host("CharacterMark"),
+    "../../components/GoalRing":host("GoalRing"), '../../components/ProgressRing':host('ProgressRing'), "../../components/CharacterMark":host("CharacterMark"),
     "../../components/ContentReveal":({children})=>children, "../../components/QuestSheet":host("QuestSheet"),
     "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})},
     "../../context/UserContext":{useUser:()=>({profile:{id:owner,username:"Soon Teck",daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},

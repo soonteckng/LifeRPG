@@ -208,7 +208,7 @@ test('creating a personal quest keeps the suggestion and its Start; the quest re
   '../../components/AppText':{Text:host('Text')},
   'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:route=>routes.push(route)})},
   'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
-  '../../components/GoalRing':host('GoalRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
+  '../../components/GoalRing':host('GoalRing'), '../../components/ProgressRing':host('ProgressRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon',level:1,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
   '../../context/TimerContext':{useTimer:()=>React.useContext(Context)},'../context/TimerContext':{useTimer:()=>React.useContext(Context)},
   '../../context/QuestContext':{useQuests:()=>({tasks:homeTasks,subjects:[{id:2,title:'Knowledge'}],loading:false,refresh:async()=>{}})},
@@ -403,7 +403,7 @@ test('Home keeps the compact layout across accounts, free/study choices, and pre
   'react-native':{...Native,useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
   '../../components/AppText':{Text:host('Text')},'expo-haptics':{},'expo-router':{useRouter:()=>({navigate(){}})},
   'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
-  '../../components/GoalRing':host('OldRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
+  '../../components/GoalRing':host('OldRing'), '../../components/ProgressRing':host('ProgressRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
   '../../components/GuidedFocusCard':props=>React.createElement('GuidedCard',props,props.goal,React.createElement('Button',{accessibilityLabel:'Change focus direction',onPress:props.onPreferences},'Change')),
   '../../components/GuidedPreferenceSheet':props=>props.visible?React.createElement('Preferences',props):null,
   '../../hooks/useGuidedPreference':{useGuidedPreference:()=>({...state,retry(){},save:async()=>true})},
@@ -501,7 +501,7 @@ test('switching focus modes changes the prompt while retaining the chosen timer 
  const Home=load('src/app/(tabs)/index.tsx',mocks({
   'react-native':{...Native,useWindowDimensions:()=>({height:844,width:390,fontScale:1})},
   'expo-haptics':{},'expo-router':{useRouter:()=>({navigate(){}})},'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
-  '../../components/AppText':{Text:host('Text')},'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':p=>p.children,'../../components/QuestSheet':host('Quests'),'../../components/GuidedPreferenceSheet':()=>null,
+  '../../components/AppText':{Text:host('Text')},'../../components/CharacterMark':host('Mark'),'../../components/ProgressRing':host('ProgressRing'),'../../components/ContentReveal':p=>p.children,'../../components/QuestSheet':host('Quests'),'../../components/GuidedPreferenceSheet':()=>null,
   '../../hooks/useGuidedPreference':{useGuidedPreference:usePreference},'../hooks/useGuidedPreference':{useGuidedPreference:usePreference},
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon Teck',daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
   '../../context/TimerContext':{useTimer:()=>timer},'../context/TimerContext':{useTimer:()=>timer},
@@ -539,7 +539,7 @@ test('the single Home chooser saves direction and free focus without losing exac
  const timer={hasOpenSession:false,startFreeTimer:async(seconds,id)=>{starts.push([seconds,id]);return true;}};
  const Home=load('src/app/(tabs)/index.tsx',mocks({
   'react-native':{...Native,useWindowDimensions:()=>({height:844,width:390,fontScale:1})},'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)})},'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
-  '../../components/AppText':{Text:host('Text')},'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':p=>p.children,'../../components/QuestSheet':()=>null,
+  '../../components/AppText':{Text:host('Text')},'../../components/CharacterMark':host('Mark'),'../../components/ProgressRing':host('ProgressRing'),'../../components/ContentReveal':p=>p.children,'../../components/QuestSheet':()=>null,
   '../../hooks/useGuidedPreference':{useGuidedPreference:usePreference},'../hooks/useGuidedPreference':{useGuidedPreference:usePreference},
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon Teck',daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
   '../../context/TimerContext':{useTimer:()=>timer},'../context/TimerContext':{useTimer:()=>timer},

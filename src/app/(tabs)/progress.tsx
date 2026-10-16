@@ -546,7 +546,7 @@ export default function ProgressScreen() {
 
               />
               <View style={s.card}>
-                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 9, borderRadius: 5, overflow: "hidden", marginBottom: 8 }}>
+                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 12, borderRadius: 6, overflow: "hidden", marginTop: 8, marginBottom: 8 }}>
                   {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}
                 </View>}
                 {analytics.areas.length ? (
@@ -930,8 +930,11 @@ const s = StyleSheet.create({
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   card: {
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
   chartHeader: {
     flexDirection: "row",
@@ -984,9 +987,9 @@ const s = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line,
   },
   streakIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.accentSoft,
     justifyContent: "center",
     alignItems: "center",
