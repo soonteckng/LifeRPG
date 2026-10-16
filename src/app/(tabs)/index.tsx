@@ -246,7 +246,7 @@ export default function HomeScreen() {
           </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onStarted={openSession} onPreferences={openFocusPreferences} selectedSeconds={quickSeconds}
             onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)} /> : <FreeFocusCard key={owner}
-            seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
+            seconds={hasOpenSession ? timer.timeLeft : quickSeconds} duration={hasOpenSession ? timer.duration : undefined}
             area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
             active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} starting={quickStarting}
