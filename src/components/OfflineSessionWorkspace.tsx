@@ -25,6 +25,8 @@ import { homeWelcome } from "../utils/homeWelcome";
 import { readRoutineSession } from "../utils/routineSession";
 import { readOfflineFocusAreas, type OfflineFocusArea } from "../services/offlineFocusCatalog";
 import SavedRoutinesCard from "./SavedRoutinesCard";
+import { PinnedActionHost, PinnedActionProvider } from "./PinnedAction";
+import { lifeAreaColor } from "../utils/lifeAreaColor";
 
 /** Results belong to the stable global sheet; this surface owns offline controls. */
 export default function OfflineSessionWorkspace({ active: surfaceActive = true }: { active?: boolean }) {
@@ -68,7 +70,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
   const area = (preference.value.areaId !== undefined ? areas.find(item => item.id === preference.value.areaId) : undefined)
     ?? areas.find(item => focusAreaKind(item.title) === kind);
   const areaTitle = focusAreaTitle(area?.title ?? FOCUS_AREAS.find(item => item.kind === kind)?.title);
-  const tint = area?.color_code ?? FOCUS_AREAS.find(item => item.kind === kind)!.color;
+  const tint = area ? lifeAreaColor(area.id, area.color_code) : FOCUS_AREAS.find(item => item.kind === kind)!.color;
   const breakActive = timer.breakSecondsLeft > 0;
   const breakSpent = timer.protectedSession && timer.breakUsed && !breakActive;
   const resultEnding = !timer.isCompleted && (timer.endingSession || timer.sessionEnded);
@@ -110,7 +112,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
     await action(timer.resetTimer);
   };
   const ringSize = Math.max(180, Math.min(width - 80, 310));
-  return <SafeAreaView style={s.page} edges={["top", "bottom"]} testID="offline-session-workspace">
+  return <SafeAreaView style={s.page} edges={["top", "bottom"]} testID="offline-session-workspace"><PinnedActionProvider>
     <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
       <View style={s.content}>
         <View style={s.identityRow}>
@@ -146,7 +148,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
             active={false} running={false} busy={busy} disabled={startDisabled} editDisabled={busy || !surfaceActive}
             setupDisabled={directionLocked} onPreferences={openDirection} onStart={() => void start()}
             customSeconds={duration.value.customSeconds} onDuration={seconds => { void duration.choose(seconds); }} onCustomDuration={seconds => { void duration.choose(seconds, true); }}
-            goal={<View style={s.offlineGoal}><Text style={s.caption}>{cached ? `Daily target · ${cached.daily_goal_minutes} min` : "Your session stays on this phone"}</Text><Text style={s.localCaption}>Progress syncs when you reconnect.</Text></View>}
+            goal={<View style={s.offlineGoal}><Ionicons name="cloud-offline-outline" size={20} color={colors.secondary} /><View style={s.offlineGoalCopy}><Text style={s.goalText}>{cached ? `${cached.daily_goal_minutes} min goal today` : "Your session stays on this phone"}</Text><Text style={s.localCaption}>Progress syncs when you reconnect.</Text></View></View>}
             protection={<SessionProtectionControl activeSurface={surfaceActive} />} error={!timer.offlineAvailable ? "Reconnect before starting another session. Your saved work stays on this phone." : undefined} />
           <SavedRoutinesCard subjects={catalogReady ? catalog.areas : []}
             initialSeconds={duration.selectedSeconds} initialAreaId={area?.id ?? null} active={surfaceActive && catalogReady} />
@@ -155,13 +157,14 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
         {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
         {!!timer.actionError && <Text style={s.caption} accessibilityLiveRegion="polite">{timer.actionError}</Text>}
         <Pressable disabled={localBusy || timer.isRestoring} accessibilityRole="button" accessibilityLabel="Retry connection"
-          onPress={() => void action(async () => { await auth.retrySessionVerification(); })} style={s.secondary}><Text style={s.link}>Retry connection</Text></Pressable>
+          onPress={() => void action(async () => { await auth.retrySessionVerification(); })} style={s.retry}><Text style={s.link}>Retry connection</Text></Pressable>
       </View>
     </ScrollView>
+    <PinnedActionHost style={s.pinned} />
     <GuidedPreferenceSheet owner={ownerId ?? ""} visible={surfaceActive && directionOpen && !active && !terminal} onClose={() => setDirectionOpen(false)} />
     {surfaceActive && active && confirmEnd && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded."
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setConfirmEnd(false)} onConfirm={() => void end()} />}
-  </SafeAreaView>;
+  </PinnedActionProvider></SafeAreaView>;
 }
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background }, scroll: { flexGrow: 1, padding: 20 },
@@ -171,7 +174,8 @@ const s = StyleSheet.create({
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent }, badgeText: { ...type.caption, color: colors.accent },
   heading: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 }, body: { ...type.body, color: colors.secondary }, caption: { ...type.secondary },
   card: { padding: 16, gap: 12, borderRadius: 24, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  offlineGoal: { gap: 4 }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  offlineGoal: { flexDirection: "row", alignItems: "center", gap: 12 }, offlineGoalCopy: { flex: 1, minWidth: 0, gap: 2 }, goalText: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" },
+  pinned: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, width: "100%", maxWidth: 600, alignSelf: "center" }, retry: { minHeight: 48, padding: 12, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
   cardHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, alignItems: "flex-end", justifyContent: "center" },
   changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" }, suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 8 },

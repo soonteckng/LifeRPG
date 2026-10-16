@@ -37,9 +37,16 @@ export default function SessionProtectionControl({ statusOnly = false, activeSur
   const label = timer.breakSecondsLeft > 0 ? "On break · protection returns automatically" : protectedNow ? "Protected" : interrupted ? "Protection interrupted" : protection.selection.mode === "normal" ? "Set up protection" : `${modeName(protection.selection.mode)}${timer.hasOpenSession ? " · not covering apps" : ""}`;
   return <>
     <Pressable testID="session-protection-control" disabled={!activeSurface} style={[s.control, statusOnly && s.status]} onPress={() => { if (activeSurface) setOpen(true); }} accessibilityRole="button" accessibilityLabel={`${label}. ${timer.hasOpenSession ? "Session protection details" : "Session protection settings"}`}>
-      <Ionicons name={protectedNow ? "shield-checkmark-outline" : interrupted ? "shield-half-outline" : "shield-outline"} size={16} color={protectedNow ? colors.protection : colors.secondary} />
-      <Text style={[s.controlText, protectedNow && { color: colors.protection }]}>{label}</Text>
-      <Text style={s.link}>{statusOnly || timer.hasOpenSession ? "Details" : "Change"}</Text>
+      {statusOnly ? <Ionicons name={protectedNow ? "shield-checkmark-outline" : interrupted ? "shield-half-outline" : "shield-outline"} size={16} color={protectedNow ? colors.protection : colors.secondary} />
+        : <View style={s.iconTile}><Ionicons name={protectedNow ? "shield-checkmark-outline" : interrupted ? "shield-half-outline" : "shield-outline"} size={17} color={interrupted ? colors.secondary : colors.protection} /></View>}
+      {statusOnly || timer.hasOpenSession ? <>
+        <Text style={[s.controlText, !statusOnly && s.rowText, protectedNow && { color: colors.protection }]}>{label}</Text>
+        <Text style={s.link}>Details</Text>
+      </> : <>
+        <Text style={s.rowLabel}>Protection</Text>
+        <Text style={s.rowValue} numberOfLines={1}>{label}</Text>
+        <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+      </>}
     </Pressable>
     <ProtectionSettingsSheet visible={open && activeSurface} onClose={() => setOpen(false)} />
   </>;
@@ -125,7 +132,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  control:{minHeight:48,flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:14,borderRadius:16,backgroundColor:"rgba(255,255,255,0.04)"}, status:{alignSelf:"center",width:"100%",maxWidth:340,paddingHorizontal:14,borderRadius:16,backgroundColor:colors.surface},controlText:{flex:1,color:colors.secondary,fontSize:13,lineHeight:19},link:{color:colors.accent,fontSize:14,fontWeight:"500"},
+  control:{minHeight:44,paddingVertical:12,flexDirection:"row",alignItems:"center",gap:12,paddingHorizontal:14}, status:{minHeight:48,paddingVertical:0,gap:8,alignSelf:"center",width:"100%",maxWidth:340,paddingHorizontal:14,borderRadius:16,backgroundColor:colors.surface}, iconTile:{width:30,height:30,borderRadius:9,alignItems:"center",justifyContent:"center",backgroundColor:"rgba(56,209,181,0.14)"}, rowLabel:{color:colors.text,fontSize:15,lineHeight:21,fontWeight:"500"}, rowValue:{flex:1,textAlign:"right",color:colors.secondary,fontSize:15,lineHeight:21}, rowText:{fontSize:15,lineHeight:21,fontWeight:"500"},controlText:{flex:1,color:colors.secondary,fontSize:13,lineHeight:19},link:{color:colors.accent,fontSize:14,fontWeight:"500"},
   sheetHeading:{paddingHorizontal:20,paddingBottom:12,gap:6},sheetTitle:{fontSize:23,lineHeight:29,fontWeight:"600",color:colors.text,letterSpacing:-0.4},body:{fontSize:15,lineHeight:22,color:colors.secondary},caption:{fontSize:13,lineHeight:19,color:colors.secondary},sheetBody:{paddingHorizontal:20,paddingBottom:20,gap:12},
   mode:{flexDirection:"row",alignItems:"center",gap:12,padding:15,minHeight:78,borderRadius:18,backgroundColor:colors.surface,borderWidth:1,borderColor:"transparent"},modeSelected:{backgroundColor:"rgba(56,209,181,0.08)",borderColor:colors.protection},modeTitle:{fontSize:16,lineHeight:22,fontWeight:"600",color:colors.text},detail:{flex:1,minWidth:0,gap:3},safety:{flexDirection:"row",gap:8,paddingVertical:6,paddingRight:20},permissions:{gap:8,paddingTop:8},permissionRow:{flexDirection:"row",alignItems:"center",gap:10,minHeight:52,paddingVertical:8,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:colors.line},permissionAction:{minHeight:44,minWidth:52,alignItems:"center",justifyContent:"center"},
   footer:{gap:10,paddingHorizontal:20,paddingTop:12,backgroundColor:colors.surfaceRaised},primary:{minHeight:52,padding:14,borderRadius:16,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center"},primaryText:{color:colors.primaryText,fontSize:17,lineHeight:23,fontWeight:"600"},disabled:{opacity:0.45},error:{fontSize:14,lineHeight:21,color:colors.danger},

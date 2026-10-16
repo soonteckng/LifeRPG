@@ -40,7 +40,7 @@ const s = StyleSheet.create({
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, text: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
-  chip: { minHeight: 44, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
+  chip: { minHeight: 44, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   chipText: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 15, lineHeight: 21, fontVariant: ["tabular-nums"] },
   rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
   rowLabel: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" },

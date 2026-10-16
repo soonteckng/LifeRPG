@@ -18,8 +18,8 @@ export function FloatingDockProvider({ children }: { children: ReactNode }) {
 
 // Measurements are specific to banner visibility, device width and text scale.
 // A new configuration uses the estimate until native layout has reported its size.
-export function floatingDockKey(bannerVisible: boolean, safeBottom: number, width: number, fontScale: number) {
-  return `${bannerVisible}:${safeBottom}:${width}:${fontScale}`;
+export function floatingDockKey(bannerVisible: boolean, safeBottom: number, width: number, fontScale: number, pinned = false) {
+  return `${bannerVisible}:${safeBottom}:${width}:${fontScale}${pinned ? ":pinned" : ""}`;
 }
 export function useFloatingDockHeight(key: string, fallback: number) {
   const context = useContext(FloatingDockContext);

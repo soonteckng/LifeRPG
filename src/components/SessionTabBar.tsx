@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
 import { sessionDockState } from "../utils/sessionReporting";
+import { PinnedActionHost, usePinnedActionPresent } from "./PinnedAction";
 
 // Float only the pill and session banner over tab content, beneath the root modal.
 // It cannot draw over Session while Session is entering or leaving.
@@ -22,9 +23,14 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const tour = useFeatureTour();
   const { width, fontScale } = useWindowDimensions();
   const bannerVisible = !!(hasOpenSession || (sessionSummary && !timer.summaryViewed));
-  const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale);
+  const onHome = props.state?.routes?.[props.state.index]?.name === "index";
+  const pinned = usePinnedActionPresent() && onHome;
+  // On Home the pinned Continue button already shows the running session.
+  const showBanner = bannerVisible && !(pinned && hasOpenSession);
+  const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale, pinned);
   return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-    {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => router.navigate("/session")}
+    {pinned && <PinnedActionHost />}
+    {showBanner && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
       <Ionicons name={dock.icon} size={20} color={colors.accent} />
       <Text style={styles.title}>{dock.label}</Text>

@@ -10,6 +10,7 @@ import { useFocusDurationPreference } from "../../hooks/useFocusDurationPreferen
 import { preferenceForFocusArea } from "../../utils/focusPreference";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
+import { usePinnedActionPresent } from "../../components/PinnedAction";
 import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
@@ -52,7 +53,8 @@ export default function HomeScreen() {
   const timer = useTimer();
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
-  const dockKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale);
+  const pinned = usePinnedActionPresent();
+  const dockKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale, pinned);
   const dockHeight = useFloatingDockHeight(dockKey, dockEstimate);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
