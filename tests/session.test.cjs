@@ -977,7 +977,7 @@ test("viewed completion hides its dock without hiding a running session",async()
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);
-  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#1E1E21");
+  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#DDE1FF");
   assert.equal(renderer.root.findByType("Button").props.activeOpacity,1);
   timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
   assert.equal(renderer.root.findAllByType("Button").length,0);

@@ -62,15 +62,14 @@ export default function FocusCard(props: FocusCardProps) {
     <PinnedAction>
       {props.active ? <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.banner, locked && s.disabled]}
         accessibilityRole="button" accessibilityLabel="Continue session" accessibilityState={{ disabled: locked, busy: props.busy }}>
-        <View pointerEvents="none" style={s.bannerTint} />
         {!props.awaitingStart && !!props.duration && props.duration > 0 && <View pointerEvents="none" style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.max(0, Math.min(1, 1 - props.seconds / props.duration)) * 100}%` }]} />
         </View>}
         <View style={s.bannerCopy}>
-          <View style={s.bannerLabel}><Ionicons name={dock.icon} size={16} color={colors.accent} /><Text style={s.barTitle} numberOfLines={1}>{dock.label}</Text></View>
-          {!!dock.detail && <Text style={s.barTime} numberOfLines={1}>{dock.detail}</Text>}
+          <View style={s.bannerLabel}><Ionicons name={dock.icon} size={16} color={colors.primaryText} /><Text style={s.barTitle} numberOfLines={1}>{dock.label}</Text></View>
+          {!!dock.detail && <Text style={s.barTime} numberOfLines={1}>{props.awaitingStart ? dock.detail : `${dock.detail} left`}</Text>}
         </View>
-        <View style={s.bannerCircle}><Ionicons name="chevron-up" size={20} color={colors.accent} /></View>
+        <View style={s.bannerCircle}><Ionicons name="chevron-up" size={20} color={colors.primary} /></View>
       </Pressable> : <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.startTile, locked && s.disabled]}
         accessibilityRole="button" accessibilityLabel={`Start ${durationLabel(props.seconds)}, ${areaLabel}`} accessibilityState={{ disabled: locked, busy: props.busy }}>
         <View style={s.playCircle}><Ionicons name="play" size={20} color={colors.primary} /></View>
@@ -115,13 +114,12 @@ const s = StyleSheet.create({
   playCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   sessionCard: { padding: 16, gap: 10, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   startCopy: { flex: 1, minWidth: 0 },
-  banner: { minHeight: 60, paddingLeft: 20, paddingRight: 10, paddingVertical: 8, borderRadius: 22, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.3)" },
-  bannerTint: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(170,179,255,0.14)" },
+  banner: { minHeight: 60, paddingLeft: 20, paddingRight: 10, paddingVertical: 8, borderRadius: 22, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },
   bannerLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
-  barTitle: { flexShrink: 1, color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
-  barTime: { color: colors.accent, fontSize: 14, lineHeight: 19, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(170,179,255,0.2)" },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 3, backgroundColor: "rgba(170,179,255,0.12)" },
-  progressFill: { height: 3, backgroundColor: colors.accent },
+  barTitle: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
+  barTime: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 19, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 3, backgroundColor: "rgba(17,19,27,0.10)" },
+  progressFill: { height: 3, backgroundColor: "rgba(17,19,27,0.45)" },
 });
