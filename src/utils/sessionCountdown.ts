@@ -42,15 +42,16 @@ export function projectSessionCountdown(input: SessionCountdownInput): SessionCo
     : command ? "checking" : timer.expired ? "finished" : record.state;
   const active = phase === "running" || phase === "paused";
   const running = phase === "running";
+  const resumeAtMs = running && record.protection?.breakEndsAtMs && record.protection.breakEndsAtMs > input.clock.wallTimeMs ? record.protection.breakEndsAtMs : null;
   return { version: SESSION_COUNTDOWN_VERSION, identity: identity(input, record), phase,
     title: record.setup.title ?? (record.setup.taskId === null ? "Free session" : "Quest session"),
     targetMs: record.setup.targetSeconds * 1000, remainingMs: timer.remainingMs, elapsedMs: timer.elapsedMs,
-    observedClock: { ...input.clock }, deadlineMs: running ? input.clock.wallTimeMs + timer.remainingMs : null,
+    observedClock: { ...input.clock }, ...(resumeAtMs ? { resumeAtMs } : {}), deadlineMs: running ? (resumeAtMs ?? input.clock.wallTimeMs) + timer.remainingMs : null,
     clockWarning: timer.clockWarning, showOngoing: active,
     // A warning is carried separately. An alert grants no reward, and the
     // shared clock derivation still supplies the bounded remaining duration.
     scheduleFinishAlert: running,
-    foregroundActions: active ? [running ? "pause" : "resume", "end"] : phase === "checking" ? ["end"] : [],
+    foregroundActions: active && record.protection ? resumeAtMs ? ["resume", "end"] : record.protection.breakStartedAtMs !== null ? ["end"] : ["pause", "end"] : active ? [running ? "pause" : "resume", "end"] : phase === "checking" ? ["end"] : [],
   };
 }
 
@@ -123,6 +124,11 @@ export function decideSessionCountdownAction(input: SessionCountdownActionInput)
   // Match the controller: true full expiry wins only without earlier uncertainty.
   if (!command && deriveJournalTimer(record, input.clock).expired)
     return { accepted: true, operationId: token.operationId, foregroundAction: "complete" };
+  if (record.protection && token.kind !== "end") {
+    const onBreak = !!record.protection.breakEndsAtMs && input.clock.wallTimeMs < record.protection.breakEndsAtMs;
+    if (token.kind === "pause" && record.protection.breakStartedAtMs !== null || token.kind === "resume" && !onBreak) return { accepted: false, reason: "invalid_state" };
+    return { accepted: true, operationId: token.operationId, foregroundAction: token.kind };
+  }
   if ((token.kind === "pause" && record.state !== "running") || (token.kind === "resume" && record.state !== "paused"))
     return { accepted: false, reason: "invalid_state" };
   return { accepted: true, operationId: token.operationId, foregroundAction: token.kind };

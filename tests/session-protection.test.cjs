@@ -93,3 +93,16 @@ test('a missing native v2 engine keeps the normal app available', async () => {
   const f = setup(), c = api.createSessionProtectionController({ storage: f.storage, newId: () => 'never', resolve: async () => null, publish() {} });
   await c.update(base); await c.dispose(); assert.equal(f.starts.length, 0);
 });
+
+test('a protected break retains its native lease and schedules its unlock exactly once', async()=>{
+ const f=setup(),breaks=[],returns=[];f.native.takeBreak=async(id,ms)=>{breaks.push([id,ms]);return f.state();};f.native.endBreak=async id=>{returns.push(id);return f.state();};
+ await f.controller.update(base);const id=f.state().id;const deadline=Date.now()+300000;
+ await f.controller.update({...base,running:false,breakEndsAtMs:deadline});await f.controller.update({...base,running:false,breakEndsAtMs:deadline});
+ assert.equal(f.state().id,id);assert.equal(f.pauses.length,0);assert.equal(breaks.length,1);assert.ok(breaks[0][1]>298000&&breaks[0][1]<=300000);
+ await f.controller.update({...base,breakEndsAtMs:Date.now()-1});assert.ok(returns.includes(id));await f.controller.dispose();
+});
+test('changing accounts during a break releases the outgoing lease',async()=>{
+ const f=setup();f.native.takeBreak=async()=>f.state();await f.controller.update(base);
+ await f.controller.update({...base,running:false,breakEndsAtMs:Date.now()+300000});
+ await f.controller.update({...base,ownerKey:'backend/other',sessionKey:null,running:false,restoring:true});assert.equal(f.state().id,null);await f.controller.dispose();
+});

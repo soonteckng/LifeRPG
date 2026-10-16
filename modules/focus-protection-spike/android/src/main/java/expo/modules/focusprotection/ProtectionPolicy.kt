@@ -2,19 +2,26 @@ package expo.modules.focusprotection
 
 import org.json.JSONObject
 
-const val PROTECTION_VERSION = 2
+const val PROTECTION_VERSION = 3
 const val MAX_TEST_SECONDS = 600
 const val MAX_SESSION_SECONDS = 480 * 60
 data class ProtectionLease(val id: String, val scope: String, val title: String, val seconds: Int,
-  val mode: String, val allowed: Set<String>, val startedElapsed: Long) {
-  fun remaining(now: Long): Int = if (now < startedElapsed || now - startedElapsed >= seconds * 1000L) 0 else seconds - ((now - startedElapsed) / 1000).toInt()
+  val mode: String, val allowed: Set<String>, val startedElapsed: Long,
+  val breakStarted: Long? = null, val breakEnds: Long? = null) {
+  fun breakRemaining(now: Long): Long = if (breakEnds != null && breakStarted != null && now >= breakStarted) (breakEnds - now).coerceAtLeast(0) else 0
+  fun remaining(now: Long): Int {
+    if (now < startedElapsed) return 0
+    val pause = if (breakStarted != null && breakEnds != null && now >= breakStarted) minOf(now, breakEnds) - breakStarted else 0
+    val worked = (now - startedElapsed - pause).coerceAtLeast(0)
+    return if (worked >= seconds * 1000L) 0 else seconds - (worked / 1000).toInt()
+  }
 }
 object ProtectionPolicy {
   fun parse(raw: String, elapsed: Long): ProtectionLease {
     require(raw.length <= 24_000 && elapsed >= 0)
     val json = JSONObject(raw)
     val keys = setOf("version", "id", "scope", "title", "seconds", "mode", "allowed")
-    require(json.keys().asSequence().toSet() == keys && json.get("version") in listOf(1, PROTECTION_VERSION))
+    require(json.keys().asSequence().toSet() == keys && json.get("version") in listOf(1, 2, PROTECTION_VERSION))
     require(listOf("id", "scope", "title", "mode").all { json.get(it) is String })
     val id = json.getString("id"); val scope = json.getString("scope"); val title = json.getString("title")
     require(id.matches(Regex("[a-zA-Z0-9-]{16,80}")) && scope.length in 1..512 && title.length in 1..120)
@@ -29,7 +36,7 @@ object ProtectionPolicy {
     return ProtectionLease(id, scope, title, seconds, mode, allowed, elapsed)
   }
   fun shouldCover(lease: ProtectionLease, pkg: String?, essentials: Set<String>, userApps: Set<String>, elapsed: Long): Boolean {
-    if (lease.remaining(elapsed) <= 0 || pkg == null || pkg !in userApps || pkg in essentials) return false
+    if (lease.breakRemaining(elapsed) > 0 || lease.remaining(elapsed) <= 0 || pkg == null || pkg !in userApps || pkg in essentials) return false
     return lease.mode == "essentials" || pkg !in lease.allowed
   }
   fun sameLease(current: ProtectionLease?, id: String) = current != null && current.id == id
@@ -48,6 +55,17 @@ class ProtectionLeaseGate {
     if (lease.id in retired) return false
     if (current != null) return current == lease
     current = lease; lastScope = lease.scope; status = "starting"; covers = 0; return true
+  }
+  @Synchronized fun takeBreak(id: String, now: Long, duration: Long): Boolean {
+    val lease = current ?: return false
+    if (lease.id != id || duration !in 1..300000 || lease.remaining(now) <= 0) return false
+    if (lease.breakStarted != null) return lease.breakRemaining(now) > 0
+    current = lease.copy(breakStarted = now, breakEnds = now + duration); status = "active"; return true
+  }
+  @Synchronized fun endBreak(id: String, now: Long): Boolean {
+    val lease = current ?: return false
+    if (lease.id != id || lease.breakRemaining(now) <= 0) return false
+    current = lease.copy(breakEnds = now); return true
   }
   @Synchronized fun active(id: String) { if (ProtectionPolicy.sameLease(current, id)) status = "active" }
   @Synchronized fun covered(id: String) { if (ProtectionPolicy.sameLease(current, id)) covers++ }

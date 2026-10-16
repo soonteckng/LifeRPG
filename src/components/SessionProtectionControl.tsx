@@ -21,9 +21,12 @@ export default function SessionProtectionControl({ statusOnly = false, activeSur
   const timer = useTimer();
   const [open, setOpen] = useState(false);
   if (!activeSurface && open) setOpen(false);
+  const [setupPromptSeen, setSetupPromptSeen] = useState(false);
+  if (timer.protectionSetupRequired && activeSurface && !setupPromptSeen) { setSetupPromptSeen(true); setOpen(true); }
+  if (!timer.protectionSetupRequired && setupPromptSeen) setSetupPromptSeen(false);
   const protectedNow = protection.active;
   const interrupted = ["interrupted", "permission-lost"].includes(protection.state.status);
-  const label = protectedNow ? "Protected" : interrupted ? "Protection interrupted" : protection.selection.mode === "normal" ? "Normal · timer only" : `${modeName(protection.selection.mode)}${timer.hasOpenSession ? " · not covering apps" : ""}`;
+  const label = timer.breakSecondsLeft > 0 ? "On break · protection returns automatically" : protectedNow ? "Protected" : interrupted ? "Protection interrupted" : protection.selection.mode === "normal" ? "Set up protection" : `${modeName(protection.selection.mode)}${timer.hasOpenSession ? " · not covering apps" : ""}`;
   return <>
     <Pressable testID="session-protection-control" disabled={!activeSurface} style={[s.control, statusOnly && s.status]} onPress={() => { if (activeSurface) setOpen(true); }} accessibilityRole="button" accessibilityLabel={`${label}. Session protection settings`}>
       <Ionicons name={protectedNow ? "shield-checkmark-outline" : interrupted ? "shield-half-outline" : "shield-outline"} size={16} color={protectedNow ? colors.protection : colors.secondary} />
@@ -46,7 +49,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   useLayoutEffect(() => { currentView.current = view; return () => { currentView.current = { visible: false, ownerId: "" }; }; }, [view]);
   if (visible !== view.visible || profile?.id !== view.ownerId) {
     setView({ visible, ownerId: profile?.id });
-    if (visible) { setMode(protection.selection.mode); setAllowed(protection.selection.allowed); setMessage(""); setSaving(false); }
+    if (visible) { setMode(protection.selection.mode === "normal" ? "essentials" : protection.selection.mode); setAllowed(protection.selection.allowed); setMessage(""); setSaving(false); }
   }
   const isCurrent = () => currentView.current === view && view.visible;
   const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
@@ -68,10 +71,10 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
     finally { if (currentView.current === expectedView && currentView.current.visible && currentView.current.ownerId === expectedOwner) setSaving(false); }
   };
   return <AppSheet visible={visible} onRequestClose={() => { if (!saving) onClose(); }} guardDismiss={saving} compact maxHeightRatio={0.88} label="session protection" motionMode="timed"
-    header={<View style={s.sheetHeading}><Text style={s.sheetTitle}>A little space to focus</Text><Text style={s.body}>Choose what can open during your session.</Text></View>}
+    header={<View style={s.sheetHeading}><Text style={s.sheetTitle}>A little space to focus</Text><Text style={s.body}>Choose which apps stay available. Protected sessions include one break of up to five minutes.</Text></View>}
     footer={<View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}><SheetButton disabled={applyDisabled} onPress={() => void apply()} accessibilityRole="button" style={[s.primary, applyDisabled && s.disabled]}><Text style={s.primaryText}>{saving ? "Saving…" : locked && mode === "normal" ? "Turn off protection" : canRestore ? "Restore protection" : locked ? "Session in progress" : "Use this mode"}</Text></SheetButton></View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
-      {locked && <Text style={s.body}>Your session’s app choices stay fixed until it ends. You can turn protection off at any time.</Text>}
+      {locked && <Text style={s.body}>Your session’s app choices stay fixed until it ends. End session remains available at any time. Turning protection off is reported as interrupted protection.</Text>}
       {([
         { value: "normal", title: "Normal", detail: "Timer only. Use your phone as usual.", icon: "time-outline" },
         { value: "allow-list", title: "Allow list", detail: "Keep your chosen tools available. Cover other apps.", icon: "shield-checkmark-outline" },
@@ -80,7 +83,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
         <Ionicons name={item.icon} size={21} color={mode === item.value ? colors.protection : colors.secondary} /><View style={s.detail}><Text style={s.modeTitle}>{item.title}</Text><Text style={s.caption}>{item.detail}</Text></View><Ionicons name={mode === item.value ? "radio-button-on" : "radio-button-off"} size={20} color={mode === item.value ? colors.protection : colors.muted} />
       </SheetButton>)}
       <View style={s.safety}><Ionicons name="call-outline" size={16} color={colors.protection} /><Text style={[s.caption, { flex: 1 }]}>Calls, emergency access, Settings and LifeRPG stay available. End session is always reachable.</Text></View>
-      {protectedChoice && !protection.supported && <Text style={s.body}>App protection needs the updated Android app. Normal sessions work on this device.</Text>}
+      {protectedChoice && !protection.supported && <Text style={s.body}>Install the updated Android build to use protected sessions.</Text>}
       {protectedChoice && protection.supported && <View style={s.permissions}>
         <Text style={s.modeTitle}>Allow protection on this phone</Text><Text style={s.caption}>Usage Access detects which app is open. Display over other apps lets LifeRPG cover a blocked app. These choices stay on your phone.</Text>
         {([{kind:"usage", label:"Usage Access", granted:protection.capabilities?.usage}, {kind:"overlay", label:"Display over other apps", granted:protection.capabilities?.overlay}] as const).map(item => <View style={s.permissionRow} key={item.kind}><View style={s.detail}><Text style={s.body}>{item.label}</Text><Text style={s.caption}>{item.granted ? "Allowed" : "Needed for protected sessions"}</Text></View><SheetButton accessibilityRole="button" accessibilityLabel={`${item.granted ? "Review" : "Allow"} ${item.label}`} onPress={() => void protection.openPermission(item.kind)} style={s.permissionAction}><Text style={s.link}>{item.granted ? "Review" : "Allow"}</Text></SheetButton></View>)}

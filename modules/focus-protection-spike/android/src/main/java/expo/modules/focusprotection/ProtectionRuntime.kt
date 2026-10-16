@@ -23,6 +23,8 @@ object ProtectionRuntime {
     }
     return true
   }
+  fun takeBreak(id: String, duration: Long): Boolean = gate.takeBreak(id, SystemClock.elapsedRealtime(), duration)
+  fun endBreak(id: String): Boolean = gate.endBreak(id, SystemClock.elapsedRealtime())
   fun active(id: String) = gate.active(id)
   fun covered(id: String) = gate.covered(id)
   fun finish(id: String, reason: String) {

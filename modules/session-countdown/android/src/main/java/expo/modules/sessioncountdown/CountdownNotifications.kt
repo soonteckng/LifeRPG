@@ -116,8 +116,9 @@ internal class CountdownNotifications(private val context: Context) {
     } else alarms.cancel(alarmIntent(null))
     if (!notificationsGranted()) return
     val title = projection.title.replace(Regex("[\\s\\p{Cntrl}]+"), " ").trim().take(100).ifEmpty { "Your session" }
+    val breakMs = CountdownEngine.breakRemaining(state, wallMs(), elapsedMs(), bootId())
     val paused = projection.phase == "paused"
-    val content = if (paused) "Paused · ${formatRemaining(remaining)} remaining" else "Session in progress"
+    val content = if (breakMs > 0) "Break · protection returns automatically" else if (paused) "Paused · ${formatRemaining(remaining)} remaining" else "Session in progress"
     val public = NotificationCompat.Builder(context, ONGOING_CHANNEL).setSmallIcon(icon())
       .setContentTitle("LifeRPG session").setContentText(if (paused) "Paused" else "Session in progress")
       .setSilent(true).setOngoing(true).setOnlyAlertOnce(true)
@@ -128,11 +129,12 @@ internal class CountdownNotifications(private val context: Context) {
     if (!paused) {
       // setWhen is converted by Android to its system chronometer base. The OS
       // updates seconds without running JavaScript or posting each second.
-      val displayDeadline = CountdownEngine.chronometerWhen(wallMs(), remaining)
+      val displayDeadline = CountdownEngine.chronometerWhen(wallMs(), if (breakMs > 0) breakMs else remaining)
       builder.setWhen(displayDeadline).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
       public.setWhen(displayDeadline).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
       if (Build.VERSION.SDK_INT >= 26) {
-        builder.setTimeoutAfter(remaining.coerceAtLeast(1)); public.setTimeoutAfter(remaining.coerceAtLeast(1))
+        val lifetime = remaining + breakMs
+        builder.setTimeoutAfter(lifetime.coerceAtLeast(1)); public.setTimeoutAfter(lifetime.coerceAtLeast(1))
       }
     } else {
       builder.setUsesChronometer(false).setShowWhen(false)
@@ -140,9 +142,9 @@ internal class CountdownNotifications(private val context: Context) {
       public.setUsesChronometer(false).setShowWhen(false)
     }
     builder.setPublicVersion(public.build())
-    state.actions.forEach { action ->
+    state.actions.filter { it.kind != "resume" || projection.resumeAtMs == null || breakMs > 0 }.forEach { action ->
       openIntent(action.operationId)?.let { pending ->
-        val label = when (action.kind) { "pause" -> "Pause in app"; "resume" -> "Resume in app"; else -> "End in app" }
+        val label = when (action.kind) { "pause" -> "Break in app"; "resume" -> if (breakMs > 0) "End break in app" else "Resume in app"; else -> "End in app" }
         builder.addAction(NotificationCompat.Action.Builder(0, label, pending).build())
       }
     }

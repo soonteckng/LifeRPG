@@ -349,10 +349,12 @@ export default function SessionScreen() {
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.timeLeft;
-  const disabled = cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
+  const breakActive = timer.breakSecondsLeft > 0;
+  const breakSpent = timer.protectedSession && timer.breakUsed && !breakActive;
+  const disabled = breakSpent || cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
   const immediateControl = timer.hasOpenSession || timer.awaitingStart || endRequested;
   const checkingStart = timer.awaitingStart && !timer.interactionKind;
-  const actionLabel = phase === "ended" ? "Stopped" : checkingStart ? "Checking start" : timer.awaitingStart ? "Pause" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
+  const actionLabel = breakActive ? "End break early" : timer.protectedSession && timer.hasOpenSession ? breakSpent ? "Break used" : "5-min break" : phase === "ended" ? "Stopped" : checkingStart ? "Checking start" : timer.awaitingStart ? "Pause" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
   const needsRecovery = !cancellationSaved && !timer.endingSession && !timer.isCompleted
     && (timer.restoreError || timer.actionError || timer.syncStatus === "waiting" && !timer.interactionKind);
   const recoveryMessage = timer.awaitingStart ? "Checking the session saved on this phone. You can end it while we confirm its start."
@@ -376,12 +378,12 @@ export default function SessionScreen() {
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
             {(phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
-              progress={phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              color={phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
+              progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
+              color={breakActive ? "#F5B84B" : phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }]}>
-            <SessionCountdown seconds={displayedSeconds}
-              compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`} />
+            <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds}
+              compact caption={breakActive ? "break left · time is not recorded" : phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`} />
           </View>
           <Text style={[styles.status, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
@@ -390,6 +392,7 @@ export default function SessionScreen() {
         </View>
         <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
+          {breakActive && <Text style={styles.activeTitle} accessibilityRole="timer">Break · {sessionTime(timer.breakSecondsLeft)} left. Apps unlock now and protection returns automatically.</Text>}
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.awaitingStart ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
             {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setup}>
@@ -440,12 +443,12 @@ export default function SessionScreen() {
         <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}]}>
           {needsRecovery && <View testID="session-recovery-actions">
             <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
-            <Action label="Retry" disabled={timer.actionBusy || timer.isRestoring} onPress={retry} />
+            <Action label="Retry" disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
           {!timer.isCompleted && <>
             <View style={styles.actionRow}>
             <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && !immediateControl && styles.disabled]} disabled={disabled}
-              onPress={timer.hasOpenSession ? () => void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
+              onPress={timer.hasOpenSession ? () => void (breakActive ? timer.resumeTimer() : timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <><Ionicons name={timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} /><Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>

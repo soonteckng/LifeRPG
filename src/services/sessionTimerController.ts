@@ -81,6 +81,7 @@ export interface SessionTimerControllerSnapshot {
   interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
   displayTimeLeft: number | null;
   recovered: boolean;
+  breakSecondsLeft?: number;
   offlineAvailable: boolean;
   cloudSaveVersion: number;
 }
@@ -130,6 +131,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let discoverAfterConflictDismissal = false;
   let lastAction: "start" | "pause" | "resume" | "cancel" | "complete" | null = null;
   let lastSetup: JournalSetup | null = null;
+  let lastStartProtected = false;
   let remoteRetryAtMs = 0, remoteRetryAttempts = 0;
   let interaction: { kind: "start" | "pause" | "resume"; remainingMs: number; atMs: number } | null = null;
   // Keep one presentation clock through successful replies. Server snapshots
@@ -223,6 +225,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       busy: localDuringRemote && (record?.clientTiming || offlineAvailable() && !legacyPending()
         && !journal?.records.some(item => ["running", "paused", "not_started"].includes(item.state))) ? localLocked : patch.busy ?? state.busy,
       timeLeft: timer ? Math.ceil(timer.remainingMs / 1000) : 0,
+      breakSecondsLeft: record?.state === "running" && record.protection?.breakEndsAtMs && clock ? Math.max(0, Math.ceil((record.protection.breakEndsAtMs - clock.wallTimeMs) / 1000)) : 0,
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
       ending: !!record && (pending(record)?.kind === "cancel" || record.state === "cancelled" && pending(record)?.kind === "import" || startStopRequested(record)), unsyncedSessionCount, interaction: feedback, displayTimeLeft,
@@ -797,10 +800,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     }
   }
 
-  async function startInternal(setup: JournalSetup, forceLocal = false): Promise<boolean> {
+  async function startInternal(setup: JournalSetup, forceLocal = false, protectedSession = false): Promise<boolean> {
     validateJournalSetup(setup);
     if (legacyPending() || journal!.records.some(record => ["not_started", "running", "paused"].includes(record.state))) return false;
-    lastSetup = copy(setup); lastAction = "start";
+    lastStartProtected = protectedSession; lastSetup = copy(setup); lastAction = "start";
     interaction = { kind: "start", remainingMs: setup.targetSeconds * 1000, atMs: now().wallTimeMs };
     displayClock = { clientSessionId: null, running: true, remainingMs: interaction.remainingMs, atMs: interaction.atMs };
     publish();
@@ -808,7 +811,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     // cannot create an unsent legacy start that would be unsafe to retry.
     const localStart = async () => {
       const clientSessionId = uuid();
-      await write({ type: "local_start", clientSessionId, setup, clock: now() });
+      await write({ type: "local_start", protectedSession, clientSessionId, setup, clock: now() });
       selectedId = clientSessionId; hiddenId = null; rewardId = null;
       displayClock = null; interaction = null;
       publish({ error: null, restoreError: false });
@@ -826,7 +829,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     // The v1-compatible identity convention distinguishes new v2 Starts from
     // stored legacy intents, whose operation and client UUIDs were different.
     const clientSessionId = uuid(), operationId = clientSessionId;
-    await write({ type: "prepare_start", operationId, clientSessionId, setup, clock: now() });
+    await write({ type: "prepare_start", protectedSession, operationId, clientSessionId, setup, clock: now() });
     selectedId = clientSessionId; hiddenId = null; rewardId = null;
     if (displayClock) displayClock.clientSessionId = clientSessionId;
     let rpcAttempted = false, mutationReplyReceived = false;
@@ -855,6 +858,19 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   async function controlInternal(kind: "pause" | "resume" | "cancel"): Promise<boolean> {
     const record = selected();
     if (!record) return false;
+    if (record.protection && kind !== "cancel") {
+      if (pending(record) || record.state !== "running") return false;
+      if (deriveJournalTimer(record, now()).expired) { await expireLocal(); return false; }
+      if (kind === "pause" && record.protection.breakStartedAtMs !== null) { publish({ error: "You have used this session’s break. End session is still available." }); return false; }
+      if (kind === "resume" && (!record.protection.breakEndsAtMs || now().wallTimeMs >= record.protection.breakEndsAtMs)) return false;
+      if (!record.clientTiming && !await enterLocalTiming(record)) {
+        if (!options.offline?.isLocalOnly()) await rememberCheckpoint(record);
+        if (!await enterLocalTiming(selected()!)) { publish({ error: "Reconnect once before taking your break." }); return false; }
+      }
+      displayClock = null; interaction = null;
+      await write({ type: kind === "pause" ? "begin_protected_break" : "end_protected_break", clientSessionId: record.clientSessionId, clock: now() });
+      publish({ error: null }); return true;
+    }
     const startCommand = pending(record);
     if (kind === "cancel" && record.state === "not_started" && startCommand?.kind === "start") {
       lastAction = "cancel";
@@ -1023,8 +1039,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
         : Math.min(delay, Math.max(1, Math.ceil(value % 1000 || 1000) + 4)), 200);
     },
     initialize,
-    start: (setup: JournalSetup) => locked && localDuringRemote && offlineAvailable()
-      ? runLocal(() => startInternal(setup, true)) : run(() => startInternal(setup)),
+    start: (setup: JournalSetup, protectedSession = false) => locked && localDuringRemote && offlineAvailable()
+      ? runLocal(() => startInternal(setup, true, protectedSession)) : run(() => startInternal(setup, false, protectedSession)),
     pause: () => locked && selected()?.clientTiming ? runLocal(() => controlInternal("pause")) : run(() => controlInternal("pause")),
     resume: () => locked && selected()?.clientTiming ? runLocal(() => controlInternal("resume")) : run(() => controlInternal("resume")),
     end: () => locked && selected()?.clientTiming ? runLocal(() => controlInternal("cancel")) : run(() => controlInternal("cancel")),
@@ -1067,7 +1083,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       if (pending()) return false;
       if (failed === "start" && !confirmingUnknownStart && lastSetup
           && !journal!.records.some(record => ["running", "paused", "not_started"].includes(record.state))) {
-        return startInternal(lastSetup);
+        return startInternal(lastSetup, false, lastStartProtected);
       }
       if (failed === "cancel" && !selected()) return true;
       if (failed === "pause" || failed === "resume" || failed === "cancel") return controlInternal(failed);

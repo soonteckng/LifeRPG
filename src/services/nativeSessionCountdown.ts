@@ -71,7 +71,7 @@ function validIdentity(value: unknown, scope: JournalScope): boolean {
 }
 function validProjection(value: SessionCountdownProjection, scope: JournalScope): boolean {
   if (!strictObject(value, ["version", "identity", "phase", "title", "targetMs", "remainingMs", "elapsedMs", "observedClock",
-    "deadlineMs", "clockWarning", "showOngoing", "scheduleFinishAlert", "foregroundActions"])
+    "deadlineMs", "clockWarning", "showOngoing", "scheduleFinishAlert", "foregroundActions", ...(Object.hasOwn(value ?? {}, "resumeAtMs") ? ["resumeAtMs"] : [])])
     || value.version !== SESSION_COUNTDOWN_VERSION || !validIdentity(value.identity, scope)
     || typeof value.title !== "string" || value.title.length > 256
     || !["running", "paused", "checking", "unconfirmed", "ending", "finished", "settled"].includes(value.phase)
@@ -85,7 +85,8 @@ function validProjection(value: SessionCountdownProjection, scope: JournalScope)
   const running = value.phase === "running", paused = value.phase === "paused";
   return value.showOngoing === (running || paused) && value.scheduleFinishAlert === running
     && (running ? value.remainingMs > 0 && Number.isSafeInteger(value.deadlineMs)
-      && value.deadlineMs === value.observedClock.wallTimeMs + value.remainingMs : value.deadlineMs === null);
+      && value.deadlineMs === (value.resumeAtMs ?? value.observedClock.wallTimeMs) + value.remainingMs
+      && (value.resumeAtMs === undefined || Number.isSafeInteger(value.resumeAtMs) && value.resumeAtMs > value.observedClock.wallTimeMs && value.resumeAtMs <= value.observedClock.wallTimeMs + 300000) : value.deadlineMs === null);
 }
 function validPreferences(value: SessionCountdownPreferences): boolean {
   return strictObject(value, ["sound", "haptics"]) && typeof value.sound === "boolean" && typeof value.haptics === "boolean";
@@ -179,7 +180,7 @@ export function createNativeSessionCountdownLifecycle(options: NativeSessionCoun
       // Countdown rendering belongs to Android. Elapsed clock samples alone do
       // not generate per-second bridge calls or replacement notifications.
       const key = JSON.stringify([detached.identity, detached.phase, detached.title, detached.targetMs,
-        detached.deadlineMs, detached.clockWarning, detached.showOngoing, detached.scheduleFinishAlert,
+        detached.deadlineMs, detached.resumeAtMs, detached.clockWarning, detached.showOngoing, detached.scheduleFinishAlert,
         detached.foregroundActions, savedPreferences]);
       const identityKey = JSON.stringify(detached.identity);
       return ordered(async () => {

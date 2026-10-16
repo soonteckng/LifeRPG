@@ -147,6 +147,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "@react-native-async-storage/async-storage": storage,
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
+    "../services/protectedSessionStart": { prepareProtectedSession: async () => false }, // Legacy session fixtures; protected readiness has its own tests.
     "../services/sessionService": service,
     "../services/offlineSessionService": {
       createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, readFreshGrant: () => null }),

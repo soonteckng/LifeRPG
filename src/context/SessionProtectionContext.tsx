@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { uuid } from "expo-modules-core";
@@ -19,6 +19,7 @@ export interface SessionProtectionValue {
 }
 const fallback: SessionProtectionValue = { supported: false, loaded: true, busy: false, selection: normalProtection,
   state: idleProtection, active: false, error: "", capabilities: null, apps: [], choose: async () => false, refresh: async () => {}, openPermission: async () => {}, stop: async () => {} };
+const blockAppsSelection: ProtectionSelection = { mode: "essentials", allowed: [] };
 const ProtectionContext = createContext<SessionProtectionValue>(fallback);
 export function useSessionProtection() { return useContext(ProtectionContext); }
 export function SessionProtectionProvider({ children }: { children: ReactNode }) {
@@ -33,7 +34,8 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   const [result, setResult] = useState<{ ownerKey: string | null; state: ProtectionState; error: string }>({ ownerKey: null, state: idleProtection, error: "" });
   const [busy, setBusy] = useState(false);
   const latest = useRef({ ownerKey, preferenceKey, viewScope, hasOpenSession: timer.hasOpenSession });
-  const currentSelection = preferences.key === preferenceKey ? preferences.selection : normalProtection;
+  const savedSelection = preferences.key === preferenceKey ? preferences.selection : normalProtection;
+  const currentSelection = useMemo(() => timer.protectedSession && savedSelection.mode === "normal" ? blockAppsSelection : savedSelection, [timer.protectedSession, savedSelection]);
   const loaded = preferences.key === preferenceKey && preferences.loaded;
   const controller = useRef<ReturnType<typeof createSessionProtectionController> | null>(null);
   const operation = useRef(0), read = useRef(0), choiceRevision = useRef(0), writes = useRef<Promise<unknown>>(Promise.resolve());
@@ -53,8 +55,8 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
     let live = true;
     const revision = choiceRevision.current;
     void (async () => {
-      let selection = normalProtection;
-      try { const raw = preferenceKey ? await AsyncStorage.getItem(preferenceKey) : null; selection = readProtectionSelection(raw ? JSON.parse(raw) : null); } catch { /* Default to normal when the optional preference is unreadable. */ }
+      let selection: ProtectionSelection = { mode: "essentials", allowed: [] };
+      try { const raw = preferenceKey ? await AsyncStorage.getItem(preferenceKey) : null; selection = raw ? readProtectionSelection(JSON.parse(raw)) : selection; } catch { /* Default to normal when the optional preference is unreadable. */ }
       if (live && revision === choiceRevision.current) setPreferences({ key: preferenceKey, loaded: true, selection });
     })();
     return () => { live = false; };
@@ -66,14 +68,14 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
     return () => { if (controller.current === instance) controller.current = null; void instance.dispose(); };
   }, []);
   const projection = useRef({ ownerKey, sessionKey: timer.protectionSessionId ?? timer.sessionId, restoring: timer.isRestoring || !loaded,
-    running: timer.isRunning, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
+    running: timer.isRunning, breakEndsAtMs: timer.breakEndsAtMs, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
     title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: currentSelection });
   useLayoutEffect(() => {
     projection.current = { ownerKey, sessionKey: timer.protectionSessionId ?? timer.sessionId, restoring: timer.isRestoring || !loaded,
-      running: timer.isRunning, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
-      title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: currentSelection };
+      running: timer.isRunning, breakEndsAtMs: timer.breakEndsAtMs, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
+      title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: timer.protectedSession && currentSelection.mode === "normal" ? { mode: "essentials" as const, allowed: [] } : currentSelection };
   });
-  useEffect(() => { void controller.current?.update(projection.current); }, [ownerKey, loaded, currentSelection, timer.protectionSessionId, timer.sessionId, timer.isRestoring, timer.isRunning, timer.endingSession, timer.isCompleted, timer.sessionEnded, timer.timeLeft]);
+  useEffect(() => { void controller.current?.update(projection.current); }, [ownerKey, loaded, currentSelection, timer.protectionSessionId, timer.sessionId, timer.isRestoring, timer.isRunning, timer.endingSession, timer.isCompleted, timer.sessionEnded, timer.timeLeft, timer.breakEndsAtMs, timer.protectedSession]);
   useEffect(() => {
     const lifetime = { active: true }; deviceLifetime.current = lifetime;
     const initialRead = setTimeout(() => void refresh(), 0);

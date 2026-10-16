@@ -5,7 +5,7 @@ import {
   JOURNAL_RETAIN_SETTLED_RECORDS,
   JOURNAL_START_STOP_REASON,
   JOURNAL_START_STOP_CONFIRMED_REASON,
-  JOURNAL_VERSION,
+  JOURNAL_PROTECTED_VERSION, JOURNAL_VERSION,
   JOURNAL_CLIENT_TIMING_VERSION,
   JOURNAL_CLIENT_MAX_SEGMENTS,
   JOURNAL_CLIENT_MAX_SPAN_MS,
@@ -278,6 +278,10 @@ export function deriveJournalTimer(record: JournalRecord, clock: JournalClock): 
   if (!record.clockAnchor || !timestamp(record.endsAtMs)) fail("invalid_action");
   validateJournalClock(record.clockAnchor);
   const anchor = record.clockAnchor;
+  if (record.protection?.breakEndsAtMs === anchor.wallTimeMs && clock.wallTimeMs < anchor.wallTimeMs) {
+    return { remainingMs: targetMs - record.elapsedMs, elapsedMs: record.elapsedMs, expired: false,
+      clockWarning: record.clockWarning || clock.wallTimeMs < record.protection.breakStartedAtMs! - JOURNAL_CLOCK_WARNING_MS };
+  }
   const wallDelta = clock.wallTimeMs - anchor.wallTimeMs;
   const sameBoot = anchor.bootId !== null && clock.bootId === anchor.bootId
     && anchor.monotonicTimeMs !== null && clock.monotonicTimeMs !== null;
@@ -323,7 +327,9 @@ function closeClientInterval(record: JournalRecord, clock: JournalClock): Journa
   const timing = clientTimingFor(record);
   const timer = deriveJournalTimer(record, clock);
   let observedAtMs = clock.wallTimeMs;
-  if (record.state === "running") {
+  if (record.state === "running" && record.protection?.breakEndsAtMs && clock.wallTimeMs < record.protection.breakEndsAtMs) {
+    timing.segments.pop();
+  } else if (record.state === "running") {
     const segment = timing.segments.at(-1);
     if (!segment || segment.endedAtMs !== null) fail("invalid_transition");
     segment.endedAtMs = segment.startedAtMs + timer.elapsedMs - record.elapsedMs;
@@ -374,6 +380,36 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
   if (!envelope.admission.active) fail("inactive_admission");
 
   switch (action.type) {
+    case "protect_session": {
+      const record = recordFor(envelope, action.clientSessionId);
+      if (record.protection) return detach(envelope);
+      if (!["not_started", "running", "paused"].includes(record.state)) fail("invalid_transition");
+      return advance({ ...envelope, schemaVersion: JOURNAL_PROTECTED_VERSION }, { ...record,
+        revision: record.revision + 1, protection: { breakStartedAtMs: null, breakEndsAtMs: null } });
+    }
+    case "begin_protected_break": {
+      const record = recordFor(envelope, action.clientSessionId);
+      if (!record.protection || record.protection.breakStartedAtMs !== null || record.state !== "running") fail("invalid_transition");
+      assertNoUnresolved(envelope, record.clientSessionId); validateJournalClock(action.clock);
+      if (deriveJournalTimer(record, action.clock).expired) fail("not_expired");
+      const closed = closeClientInterval(record, action.clock), end = action.clock.wallTimeMs + 300000;
+      closed.clientTiming!.segments.push({ startedAtMs: end, endedAtMs: null });
+      return advance(envelope, { ...closed, state: "running", revision: record.revision + 1,
+        protection: { breakStartedAtMs: action.clock.wallTimeMs, breakEndsAtMs: end },
+        clockAnchor: { wallTimeMs: end, monotonicTimeMs: null, bootId: null },
+        endsAtMs: end + record.setup.targetSeconds * 1000 - closed.elapsedMs });
+    }
+    case "end_protected_break": {
+      const record = recordFor(envelope, action.clientSessionId), timing = clientTimingFor(record);
+      validateJournalClock(action.clock); assertNoUnresolved(envelope, record.clientSessionId);
+      if (!record.protection?.breakStartedAtMs || !record.protection.breakEndsAtMs || record.state !== "running"
+        || action.clock.wallTimeMs < record.protection.breakStartedAtMs || action.clock.wallTimeMs >= record.protection.breakEndsAtMs) fail("invalid_transition");
+      const segment = timing.segments.at(-1); if (!segment || segment.endedAtMs !== null) fail("invalid_transition");
+      segment.startedAtMs = action.clock.wallTimeMs;
+      return advance(envelope, { ...record, revision: record.revision + 1, clientTiming: timing,
+        protection: { ...record.protection, breakEndsAtMs: action.clock.wallTimeMs }, clockAnchor: copyClock(action.clock),
+        endsAtMs: action.clock.wallTimeMs + record.setup.targetSeconds * 1000 - record.elapsedMs });
+    }
     case "local_start": {
       validateJournalSetup(action.setup); validateJournalClock(action.clock);
       if (!isJournalUuid(action.clientSessionId)) fail("invalid_action");
@@ -382,6 +418,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
           || record.clientSessionId === action.clientSessionId)) fail("session_conflict");
       const record: JournalRecord = {
         clientSessionId: action.clientSessionId, serverSessionId: null, revision: 1, state: "running",
+        ...(action.protectedSession ? { protection: { breakStartedAtMs: null, breakEndsAtMs: null } } : {}),
         setup: copySetup(action.setup), startedAtMs: action.clock.wallTimeMs, elapsedMs: 0,
         clockAnchor: copyClock(action.clock), endsAtMs: action.clock.wallTimeMs + action.setup.targetSeconds * 1000,
         completedAtMs: null, observedAtMs: action.clock.wallTimeMs, dismissedAtMs: null,
@@ -390,7 +427,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
           serverRevision: null, serverObservedAtMs: null, serverConfirmedMs: 0 },
         sync: { state: "idle", attempts: 0, nextAttemptAtMs: null, reasonCode: null, receipt: null },
       };
-      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION }, record);
+      return advance({ ...envelope, schemaVersion: action.protectedSession || envelope.schemaVersion === JOURNAL_PROTECTED_VERSION ? JOURNAL_PROTECTED_VERSION : JOURNAL_CLIENT_TIMING_VERSION }, record);
     }
     case "remember_server_checkpoint": {
       assertVerifiedScope(envelope, action.verifiedScope);
@@ -403,7 +440,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       assertNoUnresolved(envelope, record.clientSessionId);
       if (record.serverCheckpoint && checkpoint.revision < record.serverCheckpoint.revision) fail("snapshot_conflict");
       if (journalJsonEqual(record.serverCheckpoint ?? null, checkpoint)) return detach(envelope);
-      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION },
+      return advance({ ...envelope, schemaVersion: envelope.schemaVersion === JOURNAL_PROTECTED_VERSION ? JOURNAL_PROTECTED_VERSION : JOURNAL_CLIENT_TIMING_VERSION },
         { ...record, revision: record.revision + 1, serverCheckpoint: { ...checkpoint } });
     }
     case "enter_client_timing": {
@@ -529,12 +566,13 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       if (envelope.records.some(record => record.clientSessionId === action.clientSessionId)) fail("session_conflict");
       const record: JournalRecord = {
         clientSessionId: action.clientSessionId, serverSessionId: null, revision: 1, state: "not_started",
+        ...(action.protectedSession ? { protection: { breakStartedAtMs: null, breakEndsAtMs: null } } : {}),
         setup: copySetup(action.setup), startedAtMs: null, elapsedMs: 0, clockAnchor: null,
         endsAtMs: null, completedAtMs: null, observedAtMs: null, dismissedAtMs: null,
         verification: "server_timed", clockWarning: false,
         sync: { state: "idle", attempts: 0, nextAttemptAtMs: null, reasonCode: null, receipt: null },
       };
-      return advance(envelope, record, command);
+      return advance(action.protectedSession ? { ...envelope, schemaVersion: JOURNAL_PROTECTED_VERSION } : envelope, record, command);
     }
     case "acknowledge_start": {
       const command = commandFor(envelope, action.operationId);
@@ -835,7 +873,7 @@ export function applyJournalAction(envelope: JournalEnvelope, action: JournalAct
       if (record.dismissedAtMs !== null) return detach(envelope);
       // v2 allows closing a terminal result's presentation while its original
       // completion command remains durable and independently retryable.
-      return advance({ ...envelope, schemaVersion: JOURNAL_CLIENT_TIMING_VERSION }, {
+      return advance({ ...envelope, schemaVersion: envelope.schemaVersion === JOURNAL_PROTECTED_VERSION ? JOURNAL_PROTECTED_VERSION : JOURNAL_CLIENT_TIMING_VERSION }, {
         ...record, revision: record.revision + 1, dismissedAtMs: action.dismissedAtMs,
       });
     }

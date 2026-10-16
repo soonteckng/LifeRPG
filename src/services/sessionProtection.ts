@@ -11,7 +11,7 @@ export function readProtectionSelection(raw: unknown): ProtectionSelection {
 }
 export interface ProtectionSessionProjection {
   ownerKey: string | null; sessionKey: string | null; restoring: boolean; running: boolean;
-  ending: boolean; seconds: number; title: string; selection: ProtectionSelection;
+  breakEndsAtMs?: number | null; ending: boolean; seconds: number; title: string; selection: ProtectionSelection;
 }
 interface Storage { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void> }
 const bindingKey = (owner: string) => `liferpg:session-protection:binding:v2:${owner}`;
@@ -25,15 +25,17 @@ function checked(value: ProtectionState) {
 export function createSessionProtectionController(options: { storage: Storage; newId(): string; resolve?: () => Promise<ProtectionModule | null>; publish(state: ProtectionState, error: string): void }) {
   let latest: ProtectionSessionProjection | null = null, disposed = false, revision = 0;
   let bound: { ownerKey: string; sessionKey: string; selection: ProtectionSelection } | null = null;
+  const breakLeases = new Set<string>();
   let suppressed = "", explicitlyEnabled = "", ownedId: string | null = null, working = false, dirty = false;
   const native = options.resolve ?? getSessionProtectionModule;
   const same = (value: ProtectionSessionProjection) => !disposed && latest?.ownerKey === value.ownerKey && latest?.sessionKey === value.sessionKey;
-  const canRun = (value: ProtectionSessionProjection) => same(value) && !!latest?.running && !latest.ending && !latest.restoring && latest.seconds > 0;
+  const canRun = (value: ProtectionSessionProjection) => same(value) && (!!latest?.running || !!latest?.breakEndsAtMs && latest.breakEndsAtMs > Date.now()) && !latest.ending && !latest.restoring && latest.seconds > 0;
   const bounded = <T,>(promise: Promise<T>) => new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => reject(Error("App protection is taking longer than expected. Your timer still works.")), 5000);
     promise.then(value => { clearTimeout(timeout); resolve(value); }, error => { clearTimeout(timeout); reject(error); });
   });
   const release = async (module: ProtectionModule, id: string, paused = false) => {
+    breakLeases.delete(id);
     if (ownedId === id) ownedId = null;
     return bounded(paused && module.pause ? module.pause(id) : module.stop(id));
   };
@@ -51,7 +53,7 @@ export function createSessionProtectionController(options: { storage: Storage; n
       if (same(input)) options.publish(state, ""); return;
     }
     const scope = input.ownerKey && input.sessionKey ? JSON.stringify([input.ownerKey, input.sessionKey]) : null;
-    if (state.id && (state.scope !== scope || !input.running || input.ending || input.seconds <= 0)) {
+    if (state.id && (state.scope !== scope || !input.running && !input.breakEndsAtMs || input.ending || input.seconds <= 0)) {
       state = checked(await release(nativeModule, state.id, state.scope === scope && !input.ending && input.seconds > 0));
       if (!same(input)) return;
     }
@@ -66,10 +68,14 @@ export function createSessionProtectionController(options: { storage: Storage; n
       if (!same(input)) return;
     }
     if (state.scope === scope && explicitlyEnabled !== scope && ["stopped", "interrupted", "permission-lost"].includes(state.status)) suppressed = scope;
-    if (!input.running || suppressed === scope || bound.selection.mode === "normal") {
+    if ((!input.running && !input.breakEndsAtMs) || suppressed === scope || bound.selection.mode === "normal") {
       options.publish(state, suppressed === scope ? state.status === "permission-lost" ? "App protection stopped because a permission changed. Your timer is still available." : "App protection is off for this session. You can enable it again when you return." : ""); return;
     }
-    if (state.id && state.scope === scope) { options.publish(state, ""); return; }
+    if (state.id && state.scope === scope) {
+      if (input.breakEndsAtMs && input.breakEndsAtMs > Date.now() && nativeModule.takeBreak && !breakLeases.has(state.id)) { await bounded(nativeModule.takeBreak(state.id, Math.max(1, Math.min(300000, input.breakEndsAtMs - Date.now())))); breakLeases.add(state.id); }
+      else if ((!input.breakEndsAtMs || input.breakEndsAtMs <= Date.now()) && nativeModule.endBreak) await bounded(nativeModule.endBreak(state.id));
+      options.publish(state, ""); return;
+    }
     const request = revision, caps = await bounded(nativeModule.capabilities());
     if (!canRun(input) || request !== revision) return;
     if (!caps.supported || !caps.usage || !caps.overlay || !caps.notifications) {
@@ -81,6 +87,7 @@ export function createSessionProtectionController(options: { storage: Storage; n
       state = checked(await bounded(nativeModule.start(JSON.stringify({ version: 2, id, scope, title: input.title.slice(0, 120) || "Your session", seconds, mode: bound.selection.mode, allowed: [...bound.selection.allowed] }))));
       if (!canRun(input) || request !== revision) { await release(nativeModule, id); return; }
       if (state.id !== id || state.scope !== scope || !["starting", "active"].includes(state.status)) throw Error("App protection could not start. Your timer is still running.");
+      if (input.breakEndsAtMs && input.breakEndsAtMs > Date.now() && nativeModule.takeBreak) { await bounded(nativeModule.takeBreak(id, Math.max(1, Math.min(300000, input.breakEndsAtMs - Date.now())))); breakLeases.add(id); }
       explicitlyEnabled = ""; options.publish(state, "");
     } catch (error) { await release(nativeModule, id).catch(() => {}); if (same(input)) { suppressed = scope; options.publish({ ...idleProtection, scope, status: "interrupted" }, error instanceof Error ? error.message : "App protection could not start."); } }
   };

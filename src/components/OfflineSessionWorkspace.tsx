@@ -69,6 +69,8 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
     ?? areas.find(item => focusAreaKind(item.title) === kind);
   const areaTitle = focusAreaTitle(area?.title ?? FOCUS_AREAS.find(item => item.kind === kind)?.title);
   const tint = area?.color_code ?? FOCUS_AREAS.find(item => item.kind === kind)!.color;
+  const breakActive = timer.breakSecondsLeft > 0;
+  const breakSpent = timer.protectedSession && timer.breakUsed && !breakActive;
   const resultEnding = !timer.isCompleted && (timer.endingSession || timer.sessionEnded);
   const terminal = timer.isCompleted || resultEnding || timer.syncStatus === "rejected";
   const active = timer.hasOpenSession && !timer.endingSession;
@@ -119,17 +121,17 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
         {active ? <ContentReveal key="active"><View style={s.timer}>
           <ProgressRing size={ringSize} progress={1 - timer.timeLeft / Math.max(1, timer.duration)}>
             <Text allowFontScaling={false} style={s.time} accessibilityLabel={`Time remaining ${sessionTime(timer.timeLeft)}`}>{sessionTime(timer.timeLeft)}</Text>
-            <Text style={s.caption}>{timer.isRunning ? "Time remaining" : "Paused"}</Text>
+            <Text style={s.caption}>{breakActive ? `Break · ${sessionTime(timer.breakSecondsLeft)} left` : timer.isRunning ? "Time remaining" : "Paused"}</Text>
           </ProgressRing>
           <SessionProtectionControl statusOnly activeSurface={surfaceActive} />
           {!!currentFocus && <Text style={s.cardTitle}>{currentFocus.title}</Text>}
           {!currentFocus && !!readRoutineSession(timer.notes) && <Text style={s.cardTitle}>{readRoutineSession(timer.notes)}</Text>}
           {!!currentFocus && <Text style={s.body}>{currentFocus.instruction}</Text>}
           <View style={s.controls}>
-            <Pressable disabled={busy || uncertain} accessibilityRole="button" accessibilityState={{ disabled: busy || uncertain }} accessibilityLabel={timer.isRunning ? "Pause session" : "Resume session"}
+            <Pressable disabled={busy || uncertain || breakSpent} accessibilityRole="button" accessibilityState={{ disabled: busy || uncertain || breakSpent }} accessibilityLabel={breakActive ? "End break early" : timer.protectedSession ? breakSpent ? "Break used" : "Take a five-minute break" : timer.isRunning ? "Pause session" : "Resume session"}
               onPress={() => void action(timer.isRunning ? timer.pauseTimer : timer.resumeTimer)} style={[s.button, s.grow, (busy || uncertain) && s.disabled]}>
               <Ionicons name={timer.isRunning ? "pause-outline" : "play-outline"} size={22} color={colors.primaryText} />
-              <Text style={s.buttonText}>{timer.isRunning ? "Pause" : "Resume"}</Text>
+              <Text style={s.buttonText}>{breakActive ? "End break early" : timer.protectedSession ? breakSpent ? "Break used" : "5-min break" : timer.isRunning ? "Pause" : "Resume"}</Text>
             </Pressable>
             <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel="End session" onPress={() => { feedback(); setConfirmEnd(true); }} style={s.secondary}>
               <Text style={s.link}>End</Text>

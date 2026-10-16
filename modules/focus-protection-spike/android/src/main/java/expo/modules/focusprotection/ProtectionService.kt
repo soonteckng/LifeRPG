@@ -40,6 +40,7 @@ class ProtectionService : Service() {
   private var overlay: LinearLayout? = null
   private var remainingText: TextView? = null
   private var foregroundPackage: String? = null
+  private var wasOnBreak = false
   private var lastQuery = 0L
   private var userApps: Set<String> = emptySet()
   private var essentials: Set<String> = emptySet()
@@ -87,6 +88,19 @@ class ProtectionService : Service() {
         val elapsed = SystemClock.elapsedRealtime()
         if (lease.remaining(elapsed) <= 0) { finish(lease.id, "finished"); return }
         if (!ProtectionRuntime.ready(this@ProtectionService)) { finish(lease.id, "permission-lost"); return }
+        val onBreak = lease.breakRemaining(elapsed) > 0
+        if (wasOnBreak != onBreak) handler.post {
+          if (ProtectionRuntime.current?.id == lease.id) {
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.activeNotifications.firstOrNull { it.id == NOTIFICATION }?.notification?.let { existing ->
+              manager.notify(NOTIFICATION, Notification.Builder.recoverBuilder(this@ProtectionService, existing)
+                .setContentTitle(if (onBreak) "Take a little breather" else "Your session is protected")
+                .setContentText(if (onBreak) "App protection returns automatically when your break ends." else "Return to your intention · tap to open LifeRPG").build())
+            }
+          }
+        }
+        if (wasOnBreak && !onBreak) sendBroadcast(Intent("liferpg.PROTECTED_BREAK_END").setPackage(packageName))
+        wasOnBreak = onBreak
         val interactive = (getSystemService(Context.POWER_SERVICE) as PowerManager).isInteractive
         val locked = (getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager).isKeyguardLocked
         var cover = false
@@ -100,7 +114,7 @@ class ProtectionService : Service() {
           // A queued detection must not re-cover apps after Stop or expiry.
           if (!ProtectionPolicy.sameLease(ProtectionRuntime.current, lease.id) || lease.remaining(SystemClock.elapsedRealtime()) <= 0) return@post
           try {
-            if (shouldCover && SystemClock.elapsedRealtime() >= ignoreCoverUntil) showOverlay(lease) else hideOverlay()
+            if (shouldCover && ProtectionRuntime.current?.breakRemaining(SystemClock.elapsedRealtime()) == 0L && SystemClock.elapsedRealtime() >= ignoreCoverUntil) showOverlay(lease) else hideOverlay()
             remainingText?.text = "${lease.remaining(elapsed) / 60}:${(lease.remaining(elapsed) % 60).toString().padStart(2, '0')} remaining"
           } catch (_: Exception) { finish(lease.id, "interrupted") }
         }

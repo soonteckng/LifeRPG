@@ -32,16 +32,16 @@ internal data class CountdownProjection(
   val identity: CountdownIdentity, val phase: String, val title: String,
   val targetMs: Long, val remainingMs: Long, val elapsedMs: Long,
   val observedClock: CountdownClock, val deadlineMs: Long?, val clockWarning: Boolean,
-  val showOngoing: Boolean, val scheduleFinishAlert: Boolean, val actions: List<String>
+  val showOngoing: Boolean, val scheduleFinishAlert: Boolean, val actions: List<String>, val resumeAtMs: Long? = null
 ) {
   fun json() = JSONObject().put("version", FORMAT_VERSION).put("identity", identity.json()).put("phase", phase)
     .put("title", title).put("targetMs", targetMs).put("remainingMs", remainingMs).put("elapsedMs", elapsedMs)
     .put("observedClock", observedClock.json()).put("deadlineMs", deadlineMs ?: JSONObject.NULL)
     .put("clockWarning", clockWarning).put("showOngoing", showOngoing).put("scheduleFinishAlert", scheduleFinishAlert)
-    .put("foregroundActions", JSONArray(actions))
+    .put("foregroundActions", JSONArray(actions)).apply { if (resumeAtMs != null) put("resumeAtMs", resumeAtMs) }
   fun renderKey(): String = listOf(identity.json().toString(), phase, title, targetMs,
     if (phase == "running") deadlineMs else remainingMs, clockWarning, showOngoing,
-    scheduleFinishAlert, actions.joinToString(",")).joinToString("|")
+    scheduleFinishAlert, resumeAtMs, actions.joinToString(",")).joinToString("|")
 }
 internal data class CountdownPreferences(val sound: Boolean = true, val haptics: Boolean = true) {
   fun json() = JSONObject().put("sound", sound).put("haptics", haptics)
@@ -123,7 +123,7 @@ internal object CountdownParser {
   fun projection(text: String) = projection(objectText(text))
   fun projection(item: JSONObject): CountdownProjection {
     keys(item, "version", "identity", "phase", "title", "targetMs", "remainingMs", "elapsedMs", "observedClock",
-      "deadlineMs", "clockWarning", "showOngoing", "scheduleFinishAlert", "foregroundActions")
+      "deadlineMs", "clockWarning", "showOngoing", "scheduleFinishAlert", "foregroundActions", *if (item.has("resumeAtMs")) arrayOf("resumeAtMs") else emptyArray())
     require(number(item, "version") == FORMAT_VERSION.toLong())
     val clock = item.getJSONObject("observedClock"); keys(clock, "wallTimeMs", "monotonicTimeMs", "bootId")
     val observed = CountdownClock(number(clock, "wallTimeMs"), nullableNumber(clock, "monotonicTimeMs"), nullableText(clock, "bootId", 128))
@@ -139,13 +139,14 @@ internal object CountdownParser {
       text(item, "title", 256, true, true), number(item, "targetMs", MAX_DURATION_MS, 1000),
       number(item, "remainingMs", MAX_DURATION_MS), number(item, "elapsedMs", MAX_DURATION_MS), observed,
       nullableNumber(item, "deadlineMs"), bool(item, "clockWarning"), bool(item, "showOngoing"),
-      bool(item, "scheduleFinishAlert"), kinds)
+      bool(item, "scheduleFinishAlert"), kinds, if (item.has("resumeAtMs")) number(item, "resumeAtMs") else null)
     require(result.phase in phases && result.remainingMs <= result.targetMs && result.elapsedMs <= result.targetMs)
     require(result.remainingMs + result.elapsedMs == result.targetMs)
     require(result.showOngoing == (result.phase == "running" || result.phase == "paused"))
     require(result.scheduleFinishAlert == (result.phase == "running"))
     require((result.deadlineMs != null) == (result.phase == "running"))
-    if (result.phase == "running") require(result.remainingMs > 0 && result.deadlineMs == observed.wallMs + result.remainingMs && "resume" !in kinds)
+    if (result.phase == "running") require(result.remainingMs > 0 && result.deadlineMs == (result.resumeAtMs ?: observed.wallMs) + result.remainingMs && ("resume" !in kinds || result.resumeAtMs != null))
+    if (result.resumeAtMs != null) require(result.phase == "running" && result.resumeAtMs > observed.wallMs && result.resumeAtMs - observed.wallMs <= 300000)
     if (result.phase == "paused") require("pause" !in kinds)
     if (result.phase !in setOf("running", "paused", "checking")) require(kinds.isEmpty())
     if (result.phase == "checking") require(kinds.all { it == "end" })

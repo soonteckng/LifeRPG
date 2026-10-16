@@ -9,7 +9,7 @@ import java.util.concurrent.Executors
 class CountdownReceiver : BroadcastReceiver() {
   companion object { private val worker = Executors.newSingleThreadExecutor() }
   override fun onReceive(context: Context, intent: Intent) {
-    val allowed = setOf(CountdownNotifications.ALARM_ACTION, Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_USER_UNLOCKED,
+    val allowed = setOf("liferpg.PROTECTED_BREAK_END", CountdownNotifications.ALARM_ACTION, Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_USER_UNLOCKED,
       Intent.ACTION_MY_PACKAGE_REPLACED, Intent.ACTION_TIME_CHANGED, Intent.ACTION_TIMEZONE_CHANGED,
       "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED")
     if (intent.action !in allowed) return

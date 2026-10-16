@@ -47,6 +47,12 @@ class FocusProtectionModule : Module() {
       catch (error: Exception) { ProtectionRuntime.finish(lease.id, "interrupted"); throw error }
       ProtectionRuntime.state()
     }.runOnQueue(Queues.MAIN)
+    AsyncFunction("takeBreak") { id: String, duration: Double ->
+      require(duration.isFinite() && duration % 1.0 == 0.0 && duration in 1.0..300000.0)
+      check(ProtectionRuntime.takeBreak(id, duration.toLong())) { "This break is no longer available." }
+      ProtectionRuntime.state()
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("endBreak") { id: String -> ProtectionRuntime.endBreak(id); ProtectionRuntime.state() }.runOnQueue(Queues.MAIN)
     AsyncFunction("stop") { id: String -> ProtectionService.stop(context, id, "stopped"); ProtectionRuntime.state() }.runOnQueue(Queues.MAIN)
     AsyncFunction("pause") { id: String -> ProtectionService.stop(context, id, "paused"); ProtectionRuntime.state() }.runOnQueue(Queues.MAIN)
     // React reload/recents removal must not cancel a still-running native session lease.
