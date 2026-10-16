@@ -58,7 +58,7 @@ export default function GuidedChoice({ value, onChange, disabled = false, onSele
           <Text style={s.freeTitle}>Make this time your own.</Text>
           <Text style={s.freeBody}>Bring one thing you want to do. Choose your time on Home and begin at your own pace.</Text>
         </View>
-        <View style={s.freeAreaHint}><View style={s.freeAreaDot} /><Text style={s.freeAreaCopy}>Everyday focus to start. Change the area on Home anytime.</Text></View>
+        <View style={s.freeAreaHint}><View style={s.freeAreaDot} /><Text style={s.freeAreaCopy}>Everyday focus · A simple category for any activity.</Text></View>
       </> : focusOptions(value.need).map(task => {
         const studyNeed = STUDY_NEEDS.find(need => need.id === task.need);
         const title = studyNeed?.title ?? task.title;
@@ -83,15 +83,15 @@ const startingPointHints: Record<string, string> = {
   "quiet-screen-free": "Read, journal, move gently or take time to recharge.",
 };
 const s = StyleSheet.create({
-  group: { gap: 20 }, directions: { gap: 6 }, section: { gap: 8 }, heading: { color: colors.secondary, fontSize: 15, lineHeight: 21 },
-  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 6 }, directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 98, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: colors.surfaceRaised, flexDirection: "row", alignItems: "center", gap: 8 }, tileCopy: { flex: 1, minWidth: 0, gap: 4 }, tileHint: { color: colors.secondary, fontSize: 12, lineHeight: 17 }, tileTitle: { minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" }, selectedTitle: { color: colors.accent }, directionHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
+  group: { gap: 20 }, directions: { gap: 6 }, section: { gap: 10 }, heading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 118, padding: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, flexDirection: "column", alignItems: "flex-start", gap: 10 }, tileCopy: { alignSelf: "stretch", minWidth: 0, gap: 4 }, tileHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, tileTitle: { minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" }, selectedTitle: { color: colors.accent }, directionHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
   row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 },
-  startingPoint: { gap: 8, padding: 12, borderRadius: 20, backgroundColor: colors.surfaceRaised }, startingPointHeader: { paddingHorizontal: 2, paddingTop: 2, paddingBottom: 4, gap: 4 }, startingPointTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" },
-  promptRow: { minHeight: 72, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, borderWidth: 1, borderColor: colors.line, gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface }, selectedPrompt: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  startingPoint: { gap: 10, padding: 14, borderRadius: 24, backgroundColor: colors.surfaceRaised }, startingPointHeader: { paddingHorizontal: 2, paddingTop: 2, paddingBottom: 4, gap: 4 }, startingPointTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" },
+  promptRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.line, gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.surface }, selectedPrompt: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   freeStartingPoint: { padding: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, gap: 16 },
   freePoint: { alignItems: "center", gap: 12, paddingHorizontal: 6, paddingVertical: 8 }, freeSymbol: { width: 56, height: 56, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: colors.accentSoft },
   freeTitle: { color: colors.text, fontSize: 21, lineHeight: 28, fontWeight: "500", textAlign: "center" }, freeBody: { color: colors.secondary, fontSize: 14, lineHeight: 21, textAlign: "center", maxWidth: 300 },
   freeAreaHint: { paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: "row", alignItems: "center", gap: 8 }, freeAreaDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: FOCUS_AREAS[0].color }, freeAreaCopy: { flex: 1, color: colors.secondary, fontSize: 12, lineHeight: 18 },
-  selected: { backgroundColor: colors.accentSoft }, detail: { flex: 1, minWidth: 0, gap: 3 },
+  selected: { backgroundColor: colors.accentSoft, borderColor: colors.accent }, detail: { flex: 1, minWidth: 0, gap: 3 },
   title: { fontSize: 17, lineHeight: 23, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 });

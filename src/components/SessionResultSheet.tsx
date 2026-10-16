@@ -129,9 +129,15 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
   }, [visible, pending, ending, rejected, hapticsEnabled]);
   return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed}
     label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
-    header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}>
-    <View style={s.layout} testID="session-result-layout">
-    <BottomSheetScrollView ref={scroll} onLayout={resetScroll} onContentSizeChange={(_width, height) => measure("body", height)} style={s.scroll} contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+    header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
+    footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={[s.actions, {paddingBottom:Math.max(insets.bottom, 12)}]} testID="session-result-actions">
+      {!pending && !ending && !rejected && saveAction}
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Done" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
+    </View>}>
+    <BottomSheetScrollView ref={scroll} onLayout={resetScroll} style={s.scroll} enableFooterMarginAdjustment showsVerticalScrollIndicator={false}>
+      {/* Measure the natural body separately: the scroll container includes
+          native footer padding, which must never be counted a second time. */}
+      <View style={s.body} testID="session-result-body" onLayout={event => measure("body", event.nativeEvent.layout.height)}>
       {recovered && !pending && !ending && !rejected && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
       {!!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
       {ending ? <View style={s.pending}>
@@ -149,19 +155,12 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
       <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, goldEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} compact />
       </>}
       </>}
+      </View>
     </BottomSheetScrollView>
-    {/* A normal-flow sibling reserves its actual height below the scroll view.
-        Actions stay visible without floating over rewards or enlarged text. */}
-    <View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={[s.actions, {paddingBottom:Math.max(insets.bottom, 12)}]} testID="session-result-actions">
-      {!pending && !ending && !rejected && saveAction}
-      <TouchableOpacity accessibilityRole="button" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
-    </View>
-    </View>
   </AppSheet>;
 }
 const s = StyleSheet.create({
   title: { color: colors.text, fontSize: 24, lineHeight:30, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 12 },
-  layout: {flex:1},
   scroll: {flex:1},
   body: { paddingHorizontal: 20, paddingTop:4, paddingBottom: 16, gap: 16 },
   actions: {flexShrink:0, paddingHorizontal:20, paddingTop:4, gap:10, backgroundColor:colors.surfaceRaised},

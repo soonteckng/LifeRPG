@@ -941,7 +941,7 @@ test('Profile level opens the shared tier path with the saved XP balance',async(
 test("Profile opts only its hero into entrance greetings and pauses it behind profile sheets", async () => {
   const ui = await profileScreen();
   try {
-    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 170);
+    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 112);
     assert.equal(hero().props.greetOnFocus, true);
     assert.equal(hero().props.animate, true);
     assert.equal(ui.renderer.root.findAllByType("Portrait").find(node => node.props.interactive === false).props.greetOnFocus, undefined);

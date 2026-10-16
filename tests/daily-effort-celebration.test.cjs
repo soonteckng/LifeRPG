@@ -192,7 +192,7 @@ async function resultHarness(overrides={}) {
     "react-native-safe-area-context":{useSafeAreaInsets:()=>({top:24,bottom:34})},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
     "@expo/vector-icons":{Ionicons:host("Icon")},
-    "./AppSheet":props=>React.createElement("Sheet",props,props.header,props.children),
+    "./AppSheet":props=>React.createElement("Sheet",props,props.header,props.children,props.footer),
     "./MotionPressable":host("Button"),"./ProgressRing":host("Ring"),"./SaveSuggestedQuest":()=>null,
     "../context/UserContext":{useUser:()=>({hapticsEnabled:false,profile})},"expo-haptics":{},
     "../services/dailyAchievementQueue":{dailyAchievementQueue:queue},

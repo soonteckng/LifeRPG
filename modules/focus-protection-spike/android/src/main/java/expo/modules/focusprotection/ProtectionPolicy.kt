@@ -1,0 +1,64 @@
+package expo.modules.focusprotection
+
+import org.json.JSONObject
+
+const val PROTECTION_VERSION = 2
+const val MAX_TEST_SECONDS = 600
+const val MAX_SESSION_SECONDS = 480 * 60
+data class ProtectionLease(val id: String, val scope: String, val title: String, val seconds: Int,
+  val mode: String, val allowed: Set<String>, val startedElapsed: Long) {
+  fun remaining(now: Long): Int = if (now < startedElapsed || now - startedElapsed >= seconds * 1000L) 0 else seconds - ((now - startedElapsed) / 1000).toInt()
+}
+object ProtectionPolicy {
+  fun parse(raw: String, elapsed: Long): ProtectionLease {
+    require(raw.length <= 24_000 && elapsed >= 0)
+    val json = JSONObject(raw)
+    val keys = setOf("version", "id", "scope", "title", "seconds", "mode", "allowed")
+    require(json.keys().asSequence().toSet() == keys && json.get("version") in listOf(1, PROTECTION_VERSION))
+    require(listOf("id", "scope", "title", "mode").all { json.get(it) is String })
+    val id = json.getString("id"); val scope = json.getString("scope"); val title = json.getString("title")
+    require(id.matches(Regex("[a-zA-Z0-9-]{16,80}")) && scope.length in 1..512 && title.length in 1..120)
+    val seconds = json.getInt("seconds")
+    val maximum = if (json.getInt("version") == 1) MAX_TEST_SECONDS else MAX_SESSION_SECONDS
+    require(json.get("seconds") is Int && seconds in 1..maximum)
+    val mode = json.getString("mode"); require(mode == "allow-list" || mode == "essentials")
+    val items = json.getJSONArray("allowed"); require(items.length() <= 64)
+    val allowed = (0 until items.length()).map { require(items.get(it) is String); items.getString(it) }.toSet()
+    require(allowed.all { it.matches(Regex("[a-zA-Z_][a-zA-Z0-9_]*(\\.[a-zA-Z_][a-zA-Z0-9_]*)+")) })
+    require(mode != "essentials" || allowed.isEmpty())
+    return ProtectionLease(id, scope, title, seconds, mode, allowed, elapsed)
+  }
+  fun shouldCover(lease: ProtectionLease, pkg: String?, essentials: Set<String>, userApps: Set<String>, elapsed: Long): Boolean {
+    if (lease.remaining(elapsed) <= 0 || pkg == null || pkg !in userApps || pkg in essentials) return false
+    return lease.mode == "essentials" || pkg !in lease.allowed
+  }
+  fun sameLease(current: ProtectionLease?, id: String) = current != null && current.id == id
+}
+class ProtectionLeaseGate {
+  @Volatile var current: ProtectionLease? = null
+    private set
+  @Volatile var status = "idle"
+    private set
+  @Volatile var covers = 0
+    private set
+  @Volatile var lastScope: String? = null
+    private set
+  private val retired = linkedSetOf<String>()
+  @Synchronized fun install(lease: ProtectionLease): Boolean {
+    if (lease.id in retired) return false
+    if (current != null) return current == lease
+    current = lease; lastScope = lease.scope; status = "starting"; covers = 0; return true
+  }
+  @Synchronized fun active(id: String) { if (ProtectionPolicy.sameLease(current, id)) status = "active" }
+  @Synchronized fun covered(id: String) { if (ProtectionPolicy.sameLease(current, id)) covers++ }
+  @Synchronized fun finish(id: String, reason: String) {
+    // End also retires a start whose main-thread delivery has not arrived yet.
+    retired.add(id); while (retired.size > 64) retired.remove(retired.first())
+    if (ProtectionPolicy.sameLease(current, id)) { current = null; status = reason; covers = 0 }
+  }
+  @Synchronized fun snapshot(elapsed: Long): Map<String, Any?> {
+    val lease = current
+    return mapOf("id" to lease?.id, "scope" to (lease?.scope ?: lastScope), "status" to status,
+      "secondsLeft" to (lease?.remaining(elapsed) ?: 0), "covers" to covers)
+  }
+}

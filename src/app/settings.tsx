@@ -151,6 +151,7 @@ export default function SettingsScreen() {
         <PersonalRow icon="notifications-outline" title="Notifications" subtitle={permission?.label ?? "Checking permission..."} onPress={() => open("notifications")} />
         <View style={p.divider} />
         <PersonalRow icon="information-circle-outline" title="How LifeRPG works" subtitle="Sessions, growth, goals and consistency" onPress={() => router.navigate("./guide")} />
+        {Platform.OS === "android" && <PersonalRow icon="shield-checkmark-outline" title="Session protection" subtitle="Choose which apps stay available during a session" onPress={() => router.navigate("./protection")} />}
       </View>
 
       <View style={sectionStyle}>
@@ -167,7 +168,7 @@ export default function SettingsScreen() {
           {sheet === "signout" ? <>
             <Text style={p.body}>{sessionBlocksLogout
               ? "Finish or end your current session before signing out. If restoration failed, return to Session and retry first."
-              : "Your character, quests and saved sessions remain with your account. Sign in again to continue."}</Text>
+              : "Your character, routines and saved sessions remain with your account. Sign in again to continue."}</Text>
             {unsyncedSessionCount > 0 && <Text style={p.body} accessibilityRole="alert">
               {unsyncedSessionCount === 1 ? "1 session is not confirmed yet." : `${unsyncedSessionCount} sessions are not confirmed yet.`} Unconfirmed sessions stay on this phone for this account. To confirm them, reconnect while signed in to this same account. If you sign out, sign back into this account first.
             </Text>}
@@ -188,13 +189,14 @@ export default function SettingsScreen() {
             {!!goalError && <PersonalButton secondary title="Retry goal check" disabled={busy} onPress={() => void loadGoal()} />}
           </> : <>
             <Text style={p.body} accessibilityRole="alert">{permission?.label ?? "Checking permission..."}</Text>
+            <Text style={p.body}>Routine reminders use notification permission only. Usage Access and Display over other apps are separate, optional permissions for app protection.</Text>
             {alarmAccess && <Text style={p.body}>{alarmAccess === "allowed"
               ? "Precise timer alerts are allowed on this device."
-              : "Precise timer alerts are off. Your timer still works; finish alerts may arrive later. Enable Alarms & reminders for more precise alerts."}</Text>}
+              : "Precise timer alerts are off. Your timer still works; finish alerts may arrive later. Alarms & reminders is optional for more precise alerts."}</Text>}
             {Platform.OS === "android" && Number(Platform.Version) >= 31 && <>
-              <Text style={p.body}>Notifications and Alarms & reminders are separate permissions. Open LifeRPG’s Alarms & reminders page and allow its switch. Battery restrictions can delay alerts.</Text>
+              <Text style={p.body}>Alarms & reminders improves the timing of session alerts. Routine reminders still work without this extra access, though Android may deliver them later.</Text>
               <PersonalButton title="Alarms & reminders" accessibilityLabel="Open Alarms & reminders" onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
-              <Text style={p.body}>{permission?.supported ? "These buttons open LifeRPG’s own permission pages. Turn on the Alarms & reminders switch, then return here to check notification access. Your phone controls how its Settings screens look." : "Check both switches for Expo Go in this preview. Test background alerts with an installed LifeRPG build; this preview cannot verify the alarm switch."}</Text>
+              <Text style={p.body}>{permission?.supported ? "These buttons open LifeRPG’s own permission pages. Return here after changing a setting. Your phone controls how its Settings screens look." : "Test background alerts with an installed LifeRPG build; Expo Go cannot verify this app’s alarm access."}</Text>
             </>}
             {permission?.supported && <Text style={p.body}>Phone permissions control whether session alerts can appear. Permission being allowed does not guarantee delivery; phone settings and battery restrictions can affect alerts.</Text>}
             {permission?.action && <PersonalButton title={busy ? "Please wait..." : permission.action === "enable" ? "Enable notifications" : permission.action === "settings" ? "Open phone settings" : "Retry permission check"}

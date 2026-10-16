@@ -1,6 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AccessibilityInfo, Animated, BackHandler, ScrollView, StyleSheet, View, useWindowDimensions, type ScrollViewProps, type StyleProp, type ViewStyle } from "react-native";
+import { AccessibilityInfo, Animated, BackHandler, findNodeHandle, Pressable as NativePressable, ScrollView, StyleSheet, View, useWindowDimensions, type ScrollViewProps, type StyleProp, type Text as NativeText, type ViewStyle } from "react-native";
+import * as Haptics from "expo-haptics";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useUser } from "../context/UserContext";
@@ -9,15 +10,14 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { overlayRect, spotlightRect, tourTipPosition, tourScrollDelta, type TourRect } from "../utils/tourGeometry";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
-import { colors } from "../constants/theme";
+import { colors, guideColors } from "../constants/theme";
 import { notificationOnboardingStore } from "../services/notificationOnboardingStore";
 import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
 
 export const TOUR_STEPS = [
-  { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Home brings together your streak, level and daily goal. Change your goal once every seven days; the new target starts tomorrow. Completed task sessions add to today’s progress. Tap your level to see the tier path." },
-  { id: "home-focus", route: "/", title: "Your focus block.", body: "Choose your focus area and time, then start. Suggestions follow the area you choose." },
-  { id: "home-next-step", route: "/", title: "Find a starting point.", body: "Suggestions use the same areas as your focus card. Free focus starts with Everyday focus; you can choose another area on Home. Your quests and progress stay yours." },
-  { id: "home-quests", route: "/", title: "Make room for what matters.", body: "Add a quest for something that matters. Tap a quest to set up its focus." },
+  { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Your companion, streak and level grow with the effort you record. Tap your level to see the tier path." },
+  { id: "home-focus", route: "/", title: "Your focus block.", body: "Today’s goal and your next session live in one card. Tap the category to choose an area and suggestion, or free focus. Tap the time to set your session length, then start. Goal changes are available once every seven days and start tomorrow." },
+  { id: "home-quests", route: "/", title: "Your routines, together.", body: "Save something you want to return to. Your previous quests are here too, with their history kept. Tap a routine to begin, or Manage to change it." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "See the effort you recorded each day, with Week or Month totals alongside it. Explore your task sessions, areas and current and longest streaks." },
   { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Personalise your companion here. This page also holds your focus areas and milestone collection. Growth reflects the effort you’ve recorded." },
 ] as const;
@@ -77,28 +77,36 @@ export function TourAnchor({ id, children, style }: { id: string; children: Reac
 }
 export function useFeatureTour() { return useContext(TourContext); }
 export function FeatureTourProvider({ children }: { children: ReactNode }) {
-  const { profile } = useUser(), timer = useTimer(), router = useRouter(), pathname = usePathname();
+  const { profile, hapticsEnabled } = useUser(), timer = useTimer(), router = useRouter(), pathname = usePathname();
   const owner = profile.id ?? "", eligible = profile.onboarding_completed && !timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !timer.rewardsVisible && !(timer.isCompleted && !timer.sessionSummary);
   const [step, setStep] = useState<number | null>(null), [rect, setRect] = useState<TourRect | null>(null), [retry, setRetry] = useState(0), [waitingExpired, setWaitingExpired] = useState(false);
   const [armed, setArmed] = useState(false), [returning, setReturning] = useState(false);
   const [invitationRevision, setInvitationRevision] = useState(0);
+  const [mandatoryGuide, setMandatoryGuide] = useState(false);
+  const [pausedFeedback, setPausedFeedback] = useState<{ owner: string; id: string; message: string } | null>(null);
+  const feedbackDeadline = useRef<ReturnType<typeof setTimeout> | null>(null), feedbackAnimation = useRef<Animated.CompositeAnimation | null>(null);
+  const guideTitle = useRef<NativeText>(null);
+  const bodyScroll = useRef<ScrollView>(null);
   const newUserTour = useRef(false);
   const [scope, setScope] = useState(() => ({ owner, eligible }));
-  if (scope.owner !== owner || scope.eligible !== eligible) { setScope({ owner, eligible }); setStep(null); setRect(null); setWaitingExpired(false); setArmed(false); setReturning(false); }
+  if (scope.owner !== owner || scope.eligible !== eligible) { setScope({ owner, eligible }); setStep(null); setRect(null); setWaitingExpired(false); setArmed(false); setReturning(false); setMandatoryGuide(false); setPausedFeedback(null); }
   const targets = useRef(new Map<string, Target>()), advancing = useRef(false), leaving = useRef(false), announced = useRef(""), alive = useRef(true), root = useRef<View>(null), epoch = useRef(0);
   const scrollTargets = useRef(new Map<string, () => void>());
   const [geometryRevision, setGeometryRevision] = useState(0);
   const [frame, setFrame] = useState<TourRect | null>(null), [panelHeight, setPanelHeight] = useState(260);
   const [bodySize, setBodySize] = useState({ id: "", height: 96 }), [titleHeight, setTitleHeight] = useState(28);
+  const [ribbonHeight, setRibbonHeight] = useState(36), [navigationHeight, setNavigationHeight] = useState(44);
   const [opacity] = useState(() => new Animated.Value(1)), [highlightOpacity] = useState(() => new Animated.Value(0)), [sceneOpacity] = useState(() => new Animated.Value(0));
+  const [nextPulse] = useState(() => new Animated.Value(0)), [nextNudge] = useState(() => new Animated.Value(0));
   const incomingDeadline = useRef<ReturnType<typeof setTimeout> | null>(null), incomingAnimation = useRef<Animated.CompositeAnimation | null>(null);
   const screen = useWindowDimensions(), insets = useSafeAreaInsets(), reduced = useReducedMotion();
+  const guideTop = insets.top + 12 + ribbonHeight + 8;
   const [dockHeight, setDockHeight] = useState(90 + insets.bottom);
   const reportDock = useCallback((height: number) => { if (Number.isFinite(height) && height > 0) setDockHeight(height); }, []);
   const invalidate = useCallback(() => { epoch.current++; }, []);
   useEffect(() => { alive.current = true; return () => { alive.current = false; invalidate(); }; }, [invalidate]);
   useLayoutEffect(() => { epoch.current++; }, [owner, eligible]);
-  const start = useCallback((newAccount = false) => { if (owner && eligible) { epoch.current++; newUserTour.current = newAccount; advancing.current = false; leaving.current = false; announced.current = ""; opacity.setValue(0); sceneOpacity.setValue(0); highlightOpacity.setValue(0); setWaitingExpired(false); setRect(null); setReturning(false); setArmed(true); router.navigate("/"); } }, [owner, eligible, router, opacity, highlightOpacity, sceneOpacity]);
+  const start = useCallback((newAccount = false) => { if (owner && eligible) { epoch.current++; newUserTour.current = newAccount; setMandatoryGuide(newAccount); setPausedFeedback(null); advancing.current = false; leaving.current = false; announced.current = ""; opacity.setValue(0); sceneOpacity.setValue(0); highlightOpacity.setValue(0); setWaitingExpired(false); setRect(null); setReturning(false); setArmed(true); router.navigate("/"); } }, [owner, eligible, router, opacity, highlightOpacity, sceneOpacity]);
   const register = useCallback((id: string, target: Target) => { targets.current.set(id, target); return () => { if (targets.current.get(id) === target) targets.current.delete(id); }; }, []);
   const registerScroll = useCallback((route: string, reset: () => void) => { scrollTargets.current.set(route, reset); return () => { if (scrollTargets.current.get(route) === reset) scrollTargets.current.delete(route); }; }, []);
   const layoutChanged = useCallback((id: string) => { if (step !== null && TOUR_STEPS[step].id === id && !leaving.current && !returning) { setRect(null); setGeometryRevision(value => value + 1); } }, [step, returning]);
@@ -110,9 +118,14 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const previewLines = screen.fontScale > 1.2 || screen.height < 700 ? 1 : 2;
   const value = useMemo(() => ({ register, registerScroll, layoutChanged, start, active, targetId, previewFocus, previewLines, reportDock }), [register, registerScroll, layoutChanged, start, active, targetId, previewFocus, previewLines, reportDock]);
   useEffect(() => {
-    if (!armed || pathname !== "/") return;
-    const timeout = setTimeout(() => { setArmed(false); setStep(0); }, 750);
-    return () => clearTimeout(timeout);
+    if (!armed) return;
+    let live = true; const generation = epoch.current, homeMissing = pathname !== "/";
+    // A stalled Home route must expose the same usable guide recovery controls.
+    const timeout = setTimeout(() => {
+      if (!live || !alive.current || generation !== epoch.current) return;
+      setArmed(false); setWaitingExpired(homeMissing); setStep(0);
+    }, homeMissing ? 1200 : 750);
+    return () => { live = false; clearTimeout(timeout); };
   }, [armed, pathname]);
   const measureRoot = useCallback(() => {
     root.current?.measureInWindow((x, y, width, height) => {
@@ -128,8 +141,52 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     return () => { live = false; };
   }, [owner, eligible, start]);
   const current = step === null ? null : TOUR_STEPS[step];
+  const pausedMessage = pausedFeedback?.owner === owner && pausedFeedback.id === current?.id && !returning ? pausedFeedback.message : "";
   const overviewReady = !!current && current.route !== "/" && pathname === current.route;
-  useEffect(() => { if (overviewReady && current) AccessibilityInfo.announceForAccessibility(`${current.title} ${current.body}`); }, [overviewReady, current]);
+  useEffect(() => {
+    if (!current || returning || (!rect && !overviewReady && !waitingExpired)) return;
+    const generation = epoch.current, announcement = `${owner}:${current.id}`;
+    const timeout = setTimeout(() => {
+      if (!alive.current || generation !== epoch.current || leaving.current || announced.current === announcement) return;
+      announced.current = announcement;
+      // A missing native handle must not interfere with guide navigation.
+      try { const handle = findNodeHandle(guideTitle.current); if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle); } catch { /* The spoken copy remains available below. */ }
+      AccessibilityInfo.announceForAccessibility(`${current.title} ${current.body}`);
+    }, reduced ? 0 : 220);
+    return () => clearTimeout(timeout);
+  }, [current, owner, rect, overviewReady, waitingExpired, returning, reduced]);
+  useEffect(() => {
+    nextPulse.setValue(0);
+    if (!current || returning || reduced) return;
+    // One timing lets Animated own the whole loop on the native driver.
+    const animation = Animated.loop(Animated.timing(nextPulse, { toValue: 1, duration: 2600, useNativeDriver: true, isInteraction: false }));
+    animation.start();
+    return () => animation.stop();
+  }, [current, returning, reduced, nextPulse]);
+  useEffect(() => {
+    nextNudge.setValue(0);
+    feedbackAnimation.current?.stop();
+    return () => feedbackAnimation.current?.stop();
+  }, [current, owner, returning, reduced, nextNudge]);
+  useEffect(() => () => { if (feedbackDeadline.current) clearTimeout(feedbackDeadline.current); }, [current, owner, returning]);
+  const pausedTap = () => {
+    if (!current || returning || leaving.current) return;
+    const action = step === TOUR_STEPS.length - 1 ? "Tap Done to finish." : "Tap Next to continue.";
+    const message = `${current.id === "home-focus" ? "Start works" : "Controls work"} after the tour. ${action}`;
+    setPausedFeedback({ owner, id: current.id, message }); bodyScroll.current?.scrollTo({ y: 0, animated: false }); AccessibilityInfo.announceForAccessibility(message);
+    if (feedbackDeadline.current) clearTimeout(feedbackDeadline.current);
+    const generation = epoch.current;
+    feedbackDeadline.current = setTimeout(() => { if (alive.current && generation === epoch.current) setPausedFeedback(null); }, 3200);
+    if (hapticsEnabled) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    feedbackAnimation.current?.stop(); nextNudge.setValue(reduced ? 1 : 0);
+    if (!reduced) {
+      const animation = Animated.sequence([
+        Animated.timing(nextNudge, { toValue: 1, duration: 150, useNativeDriver: true, isInteraction: false }),
+        Animated.timing(nextNudge, { toValue: 0, duration: 220, useNativeDriver: true, isInteraction: false }),
+      ]);
+      feedbackAnimation.current = animation; animation.start();
+    }
+  };
   // This deadline is independent of frame/route/measurement callbacks. Controls
   // stay visible even if native never delivers any measurement at all.
   useEffect(() => {
@@ -141,7 +198,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     if (!current || !frame || returning) return;
     if (pathname !== current.route) { router.navigate(current.route); return; }
     // Progress and Profile are page overviews, not tiny toolbar/heading targets.
-    // Keep the visible page bright and leave a compact message below it.
+    // Keep the whole page visible beneath a light overview scrim.
     if (current.route !== "/") {
       return;
     }
@@ -161,7 +218,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           if (![next.x, next.y, next.width, next.height].every(Number.isFinite) || next.width <= 0 || next.height <= 0) { again(); return; }
           if (!revealed) {
             revealed = true;
-            if (target.reveal(next, { top: frame.y + insets.top + 12, bottom: frame.y + frame.height - 12, panelHeight: panelHeight + 8 })) { moving = !reduced; again(); return; }
+            if (target.reveal(next, { top: frame.y + guideTop, bottom: frame.y + frame.height - 12, panelHeight: panelHeight + 8 })) { moving = !reduced; again(); return; }
           }
           if (moving) settlingSamples++;
           if (!last || Math.abs(last.x - next.x) > 1 || Math.abs(last.y - next.y) > 1 || Math.abs(last.height - next.height) > 1 || Math.abs(last.width - next.width) > 1) { last = next; stableSamples = 0; again(); return; }
@@ -172,14 +229,12 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           const highlight = spotlightRect(local, frame.width, frame.height);
           if (highlight.width <= 0 || highlight.height <= 0) { again(); return; }
           setRect(previous => previous && previous.x === highlight.x && previous.y === highlight.y && previous.width === highlight.width && previous.height === highlight.height ? previous : highlight);
-          const announcement = `${owner}:${current.id}`;
-          if (announced.current !== announcement) { announced.current = announcement; AccessibilityInfo.announceForAccessibility(`${current.title} ${current.body}`); }
         });
       } catch { clearTimeout(callbackDeadline); again(); }
     };
     timeout = setTimeout(measure, pathname === "/" ? 60 : 180);
     return () => { live = false; request++; clearTimeout(timeout); clearTimeout(callbackDeadline); };
-  }, [current, pathname, router, frame, insets.top, insets.bottom, retry, panelHeight, owner, returning, geometryRevision, reduced]);
+  }, [current, pathname, router, frame, guideTop, insets.bottom, retry, panelHeight, owner, returning, geometryRevision, reduced]);
   useLayoutEffect(() => { advancing.current = false; leaving.current = false; }, [current]);
   useLayoutEffect(() => {
     if (!current || returning || leaving.current) return;
@@ -197,7 +252,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   }, [rect, reduced, highlightOpacity]);
   const close = useCallback(() => {
     epoch.current++; leaving.current = false; advancing.current = false; opacity.setValue(1); setStep(null); setRect(null);
-    setReturning(false);
+    setReturning(false); setMandatoryGuide(false); setPausedFeedback(null);
     pendingOwners.delete(owner);
     void AsyncStorage.setItem(receiptKey(owner), "done").catch(() => {});
     if (newUserTour.current) {
@@ -212,10 +267,16 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!returning) return;
     if (pathname !== "/") {
+      let live = true; const generation = epoch.current;
       scrollTargets.current.get("/")?.();
       router.navigate("/");
-      const deadline = setTimeout(() => { advancing.current = false; leaving.current = false; sceneOpacity.setValue(0); opacity.setValue(1); setWaitingExpired(true); setReturning(false); }, 1200);
-      return () => clearTimeout(deadline);
+      const deadline = setTimeout(() => {
+        if (!live || !alive.current || generation !== epoch.current) return;
+        // Replaying is optional even when the requested Home route is unavailable.
+        if (!newUserTour.current) { close(); return; }
+        advancing.current = false; leaving.current = false; sceneOpacity.setValue(0); opacity.setValue(1); setWaitingExpired(true); setReturning(false);
+      }, 1200);
+      return () => { live = false; clearTimeout(deadline); };
     }
     // Reset again once Home is attached, while the content cover is opaque.
     // Frozen native screens may defer a command sent before navigation.
@@ -227,12 +288,13 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     const settle = setTimeout(() => animation.start(({ finished }) => { if (finished) finish(); }), reduced ? 0 : 120);
     return () => { live = false; clearTimeout(deadline); clearTimeout(settle); animation.stop(); };
   }, [returning, pathname, router, reduced, sceneOpacity, opacity, close]);
-  const move = (direction: -1 | 1) => {
+  const move = (direction: -1 | 1, finish = false) => {
     if (advancing.current || step === null || (direction === -1 && step === 0)) return;
     if (incomingDeadline.current) clearTimeout(incomingDeadline.current);
     incomingAnimation.current?.stop();
+    setPausedFeedback(null);
     advancing.current = true; leaving.current = true; const generation = epoch.current; let finished = false;
-    const destination = step + direction;
+    const destination = finish ? TOUR_STEPS.length : step + direction;
     const changesPage = destination === TOUR_STEPS.length || TOUR_STEPS[destination].route !== current?.route;
     const advance = () => {
       if (finished || !alive.current || generation !== epoch.current) return;
@@ -248,39 +310,58 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
       Animated.timing(opacity, { toValue: 0, duration: changesPage ? 180 : 140, useNativeDriver: true, isInteraction: false }).start(() => advance());
     }
   };
-  useEffect(() => { if (step === null) return; const back = BackHandler.addEventListener("hardwareBackPress", () => { if (!returning) move(-1); return true; }); return () => back.remove(); });
+  useEffect(() => { if (!armed && step === null) return; const back = BackHandler.addEventListener("hardwareBackPress", () => { if (!armed && !returning) move(-1); return true; }); return () => back.remove(); });
   const viewport = { width: frame?.width ?? screen.width, height: frame?.height ?? screen.height };
   const panelWidth = Math.min(480, viewport.width - 40), bodyHeight = bodySize.id === current?.id ? bodySize.height : 96;
-  const availableHeight = viewport.height - dockHeight - 12 - (insets.top + 12);
-  const bodyCap = Math.max(48, Math.min(viewport.height * 0.3, availableHeight - 28 - 18 - titleHeight - 44 - (rect ? rect.height + 14 : 0) - (waitingExpired && !rect && !overviewReady ? 58 : 0)));
+  const availableHeight = viewport.height - dockHeight - 12 - guideTop;
+  const bodyCap = Math.max(48, Math.min(viewport.height * 0.3, availableHeight - 28 - 18 - titleHeight - navigationHeight - (rect ? rect.height + 14 : 0) - (waitingExpired && !rect && !overviewReady ? 58 : 0)));
   const overview = current?.route !== "/";
-  const tipTop = tourTipPosition(overview ? null : rect, panelHeight, insets.top + 12, viewport.height - dockHeight - 12);
+  const tipTop = tourTipPosition(overview ? null : rect, panelHeight, guideTop, viewport.height - dockHeight - 12);
+  const guideActive = armed || active || returning;
   return <TourContext.Provider value={value}><View ref={root} testID="tour-root" collapsable={false} onLayout={measureRoot} style={s.root}>
-    <View style={s.root} accessibilityElementsHidden={step !== null} importantForAccessibility={step !== null ? "no-hide-descendants" : "auto"}>{children}</View>
+    <View testID="tour-app-content" style={s.root} accessibilityElementsHidden={guideActive} importantForAccessibility={guideActive ? "no-hide-descendants" : "auto"}>{children}</View>
     <NotificationOnboardingPrompt tourActive={armed || active || returning} revision={invitationRevision} />
+    {armed && <View testID="tour-preparing-overlay" style={s.overlay} accessibilityViewIsModal>
+      <NativePressable testID="tour-preparing-controls" accessible={false} importantForAccessibility="no" style={StyleSheet.absoluteFill} onPress={() => AccessibilityInfo.announceForAccessibility("Your guide is starting. Taps are paused.")} />
+      <View testID="tour-preparing-ribbon" pointerEvents="none" onLayout={event => { const height = event.nativeEvent.layout.height; if (Number.isFinite(height) && height > 0) setRibbonHeight(height); }} style={[s.ribbon, { top: insets.top + 12 }]}><Text style={s.ribbonText}>Starting guide · taps are paused</Text></View>
+    </View>}
     {current && <View testID="tour-overlay" style={s.overlay} accessibilityViewIsModal>
+      <NativePressable testID="tour-paused-controls" onPress={pausedTap} accessible={false} importantForAccessibility="no" style={StyleSheet.absoluteFill} />
       <View testID="tour-content-mask" pointerEvents="none" style={[StyleSheet.absoluteFill, { bottom: dockHeight, overflow: "hidden" }]}>
-        {overview ? <View style={[StyleSheet.absoluteFill, { backgroundColor: "rgba(3,6,12,0.12)" }]} /> : rect ? <><View style={[s.dim, { top: 0, left: 0, right: 0, height: rect.y }]} /><View style={[s.dim, { top: rect.y, left: 0, width: rect.x, height: rect.height }]} /><View style={[s.dim, { top: rect.y, left: rect.x + rect.width, right: 0, height: rect.height }]} /><View style={[s.dim, { top: rect.y + rect.height, bottom: 0, left: 0, right: 0 }]} /><Animated.View style={[s.dim, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: reduced ? 0 : highlightOpacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} /><Animated.View testID="tour-outline" style={[s.outline, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: highlightOpacity }]} /></> : <View style={[StyleSheet.absoluteFill, s.dim]} />}
+        {overview ? <View testID="tour-overview-scrim" style={[StyleSheet.absoluteFill, { backgroundColor: guideColors.overviewScrim }]} /> : rect ? <><View style={[s.dim, { top: 0, left: 0, right: 0, height: rect.y }]} /><View style={[s.dim, { top: rect.y, left: 0, width: rect.x, height: rect.height }]} /><View style={[s.dim, { top: rect.y, left: rect.x + rect.width, right: 0, height: rect.height }]} /><View style={[s.dim, { top: rect.y + rect.height, bottom: 0, left: 0, right: 0 }]} /><Animated.View style={[s.dim, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: reduced ? 0 : highlightOpacity.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]} /><Animated.View testID="tour-outline" style={[s.outline, { top: rect.y, left: rect.x, width: rect.width, height: rect.height, opacity: highlightOpacity }]} /></> : <View style={[StyleSheet.absoluteFill, s.dim]} />}
         <Animated.View testID="tour-scene-fade" style={[StyleSheet.absoluteFill, { backgroundColor: colors.background, opacity: sceneOpacity }]} />
       </View>
+      <View testID="tour-mode-ribbon" pointerEvents="none" onLayout={event => { const height = event.nativeEvent.layout.height; if (Number.isFinite(height) && height > 0) setRibbonHeight(height); }} style={[s.ribbon, { top: insets.top + 12 }]}><Text style={s.ribbonText}>Guide mode · taps are paused</Text></View>
       {!returning && <Animated.View testID="tour-tip" onLayout={event => setPanelHeight(event.nativeEvent.layout.height)} style={[s.tip, { width: panelWidth, left: (viewport.width - panelWidth) / 2, top: tipTop, opacity, transform: [{ scale: reduced ? 1 : opacity.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) }] }]}>
-        <View style={{ gap: 10 }}><View style={s.tipHeading}><Text style={[s.title, s.headingTitle]} accessibilityRole="header" onLayout={event => setTitleHeight(event.nativeEvent.layout.height)}>{current.title}</Text><Text style={s.counter}>{(step ?? 0) + 1} of {TOUR_STEPS.length}</Text></View>
+        <View style={{ gap: 10 }}><View testID="tour-tip-heading" style={s.tipHeading} onLayout={event => setTitleHeight(event.nativeEvent.layout.height)}>
+          <View style={s.tipMeta}><Text style={s.counter}>Step {(step ?? 0) + 1} of {TOUR_STEPS.length}</Text>{!mandatoryGuide && <Pressable testID="tour-skip" onPress={() => { if (!newUserTour.current) move(1, true); }} accessibilityRole="button" accessibilityLabel="Skip tour" style={s.skip}><Text style={s.actionText}>Skip tour</Text></Pressable>}</View>
+          <Text ref={guideTitle} testID="tour-title" style={s.title} accessibilityRole="header">{current.title}</Text>
+        </View>
           {/* Let short tips size to their text. A fixed measured height can clip
               the last native line while switching tips or scaling fonts. */}
-          <ScrollView key={current.id} style={{ maxHeight: bodyCap, flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap} persistentScrollbar={bodyHeight > bodyCap}>
-            <Text style={s.body} onLayout={event => { const height = Math.ceil(event.nativeEvent.layout.height); if (height > 0) setBodySize(previous => previous.id === current.id && previous.height === height ? previous : { id: current.id, height }); }}>{current.body}</Text>
+          <ScrollView ref={bodyScroll} key={current.id} style={{ maxHeight: bodyCap, flexGrow: 0 }} showsVerticalScrollIndicator={bodyHeight > bodyCap} persistentScrollbar={bodyHeight > bodyCap} onContentSizeChange={(_, height) => { if (height > 0) setBodySize(previous => previous.id === current.id && previous.height === Math.ceil(height) ? previous : { id: current.id, height: Math.ceil(height) }); }}>
+            {!!pausedMessage && <Text testID="tour-paused-feedback" style={s.feedback} accessibilityRole="alert">{pausedMessage}</Text>}
+            <Text style={s.body} onLayout={event => { const height = Math.ceil(event.nativeEvent.layout.height); if (!pausedMessage && height > 0) setBodySize(previous => previous.id === current.id && previous.height === height ? previous : { id: current.id, height }); }}>{current.body}</Text>
           </ScrollView>
         </View>
         {waitingExpired && !rect && !overviewReady && <Pressable onPress={() => { setWaitingExpired(false); setRetry(value => value + 1); measureRoot(); }} accessibilityRole="button" style={s.action}><Text style={s.actionText}>Retry highlight</Text></Pressable>}
-        <View style={s.navigation}><Pressable onPress={() => move(-1)} disabled={step === 0} accessibilityRole="button" accessibilityLabel="Previous tour tip" accessibilityState={{ disabled: step === 0 }} style={[s.previous, step === 0 && { opacity: 0.4 }]}><Text style={s.actionText}>Back</Text></Pressable><Pressable onPress={() => move(1)} accessibilityRole="button" accessibilityLabel={step === TOUR_STEPS.length - 1 ? "Explore LifeRPG" : "Next tour tip"} style={[s.action, s.next]}><Text style={s.actionText}>{step === TOUR_STEPS.length - 1 ? "Explore LifeRPG" : "Next"}</Text></Pressable></View>
+        <View testID="tour-navigation" style={s.navigation} onLayout={event => setNavigationHeight(event.nativeEvent.layout.height)}><Pressable onPress={() => move(-1)} disabled={step === 0} accessibilityRole="button" accessibilityLabel="Previous tour tip" accessibilityState={{ disabled: step === 0 }} style={[s.previous, step === 0 && { opacity: 0.4 }]}><Text style={s.actionText}>Back</Text></Pressable>
+          <View style={s.next}>
+            <Animated.View testID="tour-next-ring" pointerEvents="none" style={[s.nextRing, { opacity: reduced ? 0.6 : nextPulse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.25, 0.7, 0.25] }), transform: [{ scale: reduced ? 1 : nextPulse.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.05, 1] }) }] }]} />
+            <Animated.View testID="tour-next-nudge" pointerEvents="none" style={[s.nextRing, { opacity: nextNudge, transform: [{ scale: reduced ? 1 : nextNudge.interpolate({ inputRange: [0, 1], outputRange: [1, 1.09] }) }] }]} />
+            <Pressable testID="tour-next" onPress={() => move(1)} accessibilityRole="button" accessibilityLabel={step === TOUR_STEPS.length - 1 ? "Done" : "Next tour tip"} style={s.action}><Text style={[s.actionText, s.nextText]}>{step === TOUR_STEPS.length - 1 ? "Done" : "Next"}</Text></Pressable>
+          </View>
+        </View>
       </Animated.View>}
     </View>}
   </View></TourContext.Provider>;
 }
 const s = StyleSheet.create({
-  tipHeading: { flexDirection: "row", alignItems: "center", gap: 12 }, headingTitle: { flex: 1 },
-  navigation: { flexDirection: "row", gap: 12 }, previous: { minHeight: 44, minWidth: 72, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: colors.line }, next: { flex: 1 },
-  root: { flex: 1 }, overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 }, anchor: { width: "100%", alignSelf: "stretch" }, dim: { position: "absolute", backgroundColor: "rgba(0,0,0,0.72)" }, outline: { position: "absolute", borderWidth: 1.5, borderColor: colors.accent, borderRadius: 18 },
-  tip: { position: "absolute", padding: 14, borderRadius: 22, backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.line, gap: 8 }, counter: { color: colors.secondary, fontSize: 13, lineHeight: 18, flexShrink: 1 },
-  title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500" }, body: { color: colors.neutral, fontSize: 16, lineHeight: 23 }, action: { minHeight: 44, borderRadius: 14, backgroundColor: colors.accentSoft, padding: 10, alignItems: "center", justifyContent: "center" }, actionText: { color: colors.accent, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  tipHeading: { gap: 8 }, tipMeta: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  navigation: { flexDirection: "row", gap: 12 }, previous: { minHeight: 44, minWidth: 72, alignItems: "center", justifyContent: "center", borderRadius: 14, borderWidth: 1, borderColor: guideColors.line }, next: { flex: 1 },
+  nextRing: { position: "absolute", top: -4, bottom: -4, left: -4, right: -4, borderWidth: 2, borderRadius: 18, borderColor: guideColors.action },
+  root: { flex: 1 }, overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 }, anchor: { width: "100%", alignSelf: "stretch" }, dim: { position: "absolute", backgroundColor: guideColors.scrim }, outline: { position: "absolute", borderWidth: 1.5, borderColor: guideColors.outline, borderRadius: 18 },
+  ribbon: { position: "absolute", left: 20, right: 20, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, backgroundColor: guideColors.surface }, ribbonText: { color: guideColors.text, fontSize: 14, lineHeight: 20, fontWeight: "500", textAlign: "center" },
+  tip: { position: "absolute", padding: 14, borderRadius: 22, backgroundColor: guideColors.surface, borderWidth: 1, borderColor: guideColors.line, gap: 8 }, counter: { color: guideColors.secondary, backgroundColor: guideColors.tag, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, fontSize: 13, lineHeight: 18, flexShrink: 1 }, skip: { minHeight: 44, paddingHorizontal: 10, justifyContent: "center", alignItems: "center" },
+  title: { color: guideColors.text, fontSize: 20, lineHeight: 26, fontWeight: "500" }, body: { color: guideColors.text, fontSize: 16, lineHeight: 23 }, feedback: { color: guideColors.text, backgroundColor: guideColors.tag, padding: 10, borderRadius: 10, marginBottom: 12, fontSize: 14, lineHeight: 20 }, action: { minHeight: 44, borderRadius: 14, backgroundColor: guideColors.action, padding: 10, alignItems: "center", justifyContent: "center" }, actionText: { color: guideColors.secondary, fontSize: 16, lineHeight: 22, fontWeight: "500" }, nextText: { color: guideColors.text },
 });

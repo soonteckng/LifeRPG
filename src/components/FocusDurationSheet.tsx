@@ -34,6 +34,7 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Use this duration" disabled={disabled} onPress={save} style={p.button}><Text style={p.buttonText}>Use this duration</Text></TouchableOpacity>
     </View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={{ ...p.sheetBody, paddingBottom: 16 }}>
+      <View style={{ flexDirection: "row", gap: 10 }}>{[15, 30, 60].map(value => <View key={value} style={{ flex: 1 }}><TouchableOpacity disabled={disabled} accessibilityRole="button" accessibilityLabel={`Set duration to ${value} minutes`} onPress={() => { setMinutes(String(value)); setRemainder("0"); setError(""); }} style={{ minHeight: 48, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder }}><Text style={{ color: colors.accent, fontSize: 15, fontWeight: "600" }}>{value} min</Text></TouchableOpacity></View>)}</View>
       <View style={{ flexDirection: "row", gap: 12 }}>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><BottomSheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><BottomSheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
@@ -47,8 +48,8 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
 const p = StyleSheet.create({
  sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 }, title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500" },
  body: { color: colors.secondary, fontSize: 16, lineHeight: 23 }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
- sheetBody: { paddingHorizontal: 20, gap: 12 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22 },
- input: { minHeight: 52, padding: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.line, color: colors.text, fontSize: 20 },
+ sheetBody: { paddingHorizontal: 20, gap: 16 }, rowTitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+ input: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.surface, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
  button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
  buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
 });

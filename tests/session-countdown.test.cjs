@@ -66,6 +66,53 @@ function uncertainPause() {
     clientSessionId: CLIENT, kind: 'pause', clock: clock(4000) }), { type: 'mark_unknown', operationId: PAUSE });
 }
 
+test('cold admission keeps an old End mutation proof stale but allows a same-session confirmation prompt only', () => {
+  const previous = running(), oldToken = token(previous);
+  const journal = act(act(previous, { type:'revoke' }), {type:'admit',epoch:3});
+  const proof = {...input(journal),token:oldToken,consumedOperationIds:[]},before=clone(journal);
+  assert.deepEqual(countdown.decideSessionCountdownAction(proof),{accepted:false,reason:'stale_epoch'});
+  assert.deepEqual(countdown.decideSessionCountdownEndPrompt(proof),{accepted:true,operationId:ACTION});
+  assert.deepEqual(journal,before,'asking for confirmation never writes or awards');
+  for(const kind of ['pause','resume'])assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...proof,token:{...oldToken,kind}}),{accepted:false});
+});
+
+test('recovered End prompts reject another owner/backend/session, future identity fields and replay', () => {
+  const previous=running(),oldToken=token(previous),journal=act(previous,{type:'admit',epoch:2});
+  const proof={...input(journal),token:oldToken,consumedOperationIds:[]};
+  for(const mutate of [value=>{value.identity.scope.ownerId='22222222-2222-4222-8222-222222222222';},
+    value=>{value.identity.scope.backendId='other-backend';},
+    value=>{value.identity.clientSessionId='dddddddd-dddd-4ddd-8ddd-dddddddddddd';},
+    value=>{value.identity.serverSessionId='cccccccc-cccc-4ccc-8ccc-cccccccccccc';},
+    value=>{value.identity.admissionEpoch=journal.admission.epoch+1;},
+    value=>{value.identity.journalRevision=journal.revision+1;},
+    value=>{value.identity.recordRevision=journal.records[0].revision+1;}]) {
+    const changed=clone(oldToken);mutate(changed);
+    assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...proof,token:changed}),{accepted:false});
+  }
+  assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...proof,consumedOperationIds:[ACTION]}),{accepted:false});
+  assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...proof,currentScope:null}),{accepted:false});
+  assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...proof,currentClientSessionId:null}),{accepted:false});
+  const queued=act(journal,{type:'prepare_transition',operationId:ACTION,clientSessionId:CLIENT,kind:'pause',clock:clock(5000)});
+  assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...proof,...input(queued)}),{accepted:false});
+});
+
+test('End prompt recovery allows current paused state and nullable server-id promotion without granting the old action', () => {
+  const oldToken=token(running()),journal=act(paused(),{type:'admit',epoch:2});
+  oldToken.identity.serverSessionId=null;
+  const proof={...input(journal),token:oldToken,consumedOperationIds:[]};
+  assert.deepEqual(countdown.decideSessionCountdownEndPrompt(proof),{accepted:true,operationId:ACTION});
+  assert.deepEqual(countdown.decideSessionCountdownAction(proof),{accepted:false,reason:'stale_epoch'});
+});
+
+test('End prompt recovery never accepts stopped, unstarted, revoked or completed records', () => {
+  const oldToken=token(running());
+  for(const journal of [prepared(),act(running(),{type:'revoke'}),
+    act(running(),{type:'prepare_transition',operationId:END,clientSessionId:CLIENT,kind:'cancel',clock:clock(5000)}),
+    act(running(),{type:'expire',operationId:COMPLETE,clientSessionId:CLIENT,clock:clock(30000)})]) {
+    assert.deepEqual(countdown.decideSessionCountdownEndPrompt({...input(journal),token:oldToken,consumedOperationIds:[]}),{accepted:false});
+  }
+});
+
 for (const vector of vectors.timerVectors) {
   test(`projection uses portable clock behavior: ${vector.name}`, () => {
     const journal = running();

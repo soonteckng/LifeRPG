@@ -92,4 +92,17 @@ internal object CountdownEngine {
       return current to null
     return current.copy(actions = current.actions.filterNot { it.operationId == nonce }) to token
   }
+
+  // End is a confirmation intent. Retire its old nonce, then keep a fresh
+  // shortcut available if the user chooses Keep session in the app.
+  fun rearmEndPrompt(current: CountdownState, wallMs: Long, elapsedMs: Long, bootId: String,
+    operationId: () -> String): CountdownState {
+    val projection = current.projection ?: return current
+    if (current.cleared || !projection.showOngoing || "end" !in projection.actions
+      || projection.phase !in listOf("running", "paused") || current.actions.any { it.kind == "end" }
+      || remaining(current, wallMs, elapsedMs, bootId) <= 0) return current
+    val nonce = CountdownParser.lease(operationId())
+    require(current.actions.none { it.operationId == nonce })
+    return current.copy(actions = current.actions + CountdownAction(nonce, projection.identity, "end"))
+  }
 }

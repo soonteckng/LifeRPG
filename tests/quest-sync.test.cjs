@@ -17,6 +17,7 @@ function load(relative, mocks = {}, cache = new Map()) {
   }).outputText;
   new Function('require','module','exports',code)(name => {
     if (Object.hasOwn(mocks,name)) return mocks[name];
+    if(name.endsWith('/SessionProtectionControl'))return ()=>null;
     if (!name.startsWith('.')) return require(name);
     const target = path.resolve(path.dirname(filename),name);
     const extension = ['','.ts','.tsx'].find(ext => fs.existsSync(target+ext));
@@ -162,7 +163,8 @@ async function pickerSetup(rows){
     'expo-router/react-navigation':{usePreventRemove(){}},
     'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({top:0,bottom:24})},
     '../context/TimerContext':{useTimer:()=>timer},
-    '../context/AuthContext':{useAuth:()=>({accessMode:'online'})},
+    '../context/AuthContext':{useAuth:()=>({accessMode:'online',user:{id:'owner-a'},localOwner:{id:'owner-a',backendId:'test-backend'},admissionEpoch:1})},
+    '../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope:{ownerId:'owner-a',backendId:'test-backend'},ready:true,routines:[]})},
     '../context/QuestContext':{useQuests:()=>({tasks:rows,subjects,loading:false,error:false,refresh:async fresh=>calls.push(['refresh',!!fresh])})},
     '../hooks/useReducedMotion':{useReducedMotion:()=>true},'./AppText':{Text:host('Text')},'./MotionPressable':host('Button'),
     './AppHeader':host('Header'),'./AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children):null,
@@ -182,25 +184,25 @@ test('session quest chooser agrees with Home and quest sheet for old completions
     task({id:4,title:'Repeating today',is_recurring:true,is_completed:true}),task({id:5,title:'Upcoming',is_due_today:false,is_recurring:true})];
   const ui=await pickerSetup(rows);
   try{
-    await ui.press('Choose a quest');
+    await ui.press('Choose from routines');
     const labels=()=>ui.root().findAllByType('Button').map(node=>node.props.accessibilityLabel).filter(value=>value?.startsWith('Choose '));
-    assert.deepEqual(labels(),['Choose a quest','Choose Due now','Choose Repeating today']);
+    assert.deepEqual(labels(),['Choose from routines','Choose Due now','Choose Repeating today']);
     assert.ok(ui.calls.some(call=>Array.isArray(call)&&call[0]==='refresh'&&call[1]),'opening the chooser requests a fresh read');
     const lists=load('src/utils/questLists.ts').questLists(rows);
     assert.deepEqual(lists.today.map(row=>row.id),[1,4]);assert.ok(lists.available.some(row=>row.id===5),'All quests still includes legitimate upcoming tasks');
     await ui.press('Choose Due now');
     await ui.press('Switch to free session');
-    await ui.press('Choose a quest');
-    assert.deepEqual(labels(),['Choose a quest','Choose Due now','Choose Repeating today']);
+    await ui.press('Choose from routines');
+    assert.deepEqual(labels(),['Choose from routines','Choose Due now','Choose Repeating today']);
     await ui.update([task({id:6,title:'New saved suggestion'})]);
-    assert.deepEqual(labels(),['Choose a quest','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
+    assert.deepEqual(labels(),['Choose from routines','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
   }finally{await ui.cleanup();}
 });
 
 test('a linked quest that becomes completed before Start cannot start another session',async()=>{
   const ui=await pickerSetup([task()]);
   try{
-    await ui.press('Choose a quest');await ui.press('Choose Current quest');
+    await ui.press('Choose from routines');await ui.press('Choose Current quest');
     await ui.update([task({is_completed:true})]);
     const start=ui.root().findAllByType('Button').find(node=>node.props.accessibilityLabel==='Start');
     assert.ok(start);assert.equal(start.props.disabled,true);

@@ -1,6 +1,7 @@
 import { focusAreaTitle } from "../../utils/focusAreas";
 import { TourScrollView } from "../../components/FeatureTour";
 import { readSuggestedFocus } from "../../constants/guidedQuests";
+import { readRoutineSession } from "../../utils/routineSession";
 import SlidingSelection from "../../components/SlidingSelection";
 import Pressable from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
@@ -121,7 +122,7 @@ function SessionRow({
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(session.completed_at!));
-  const title = readSuggestedFocus(session.notes)?.title ?? sessionCategory(session, areas);
+  const title = readSuggestedFocus(session.notes)?.title ?? readRoutineSession(session.notes) ?? sessionCategory(session, areas);
   return (
     <Button
       onPress={onPress}
@@ -135,7 +136,7 @@ function SessionRow({
       <View style={s.flex}>
         <Text style={s.rowTitle}>{title}</Text>
         <Text style={s.caption}>
-          {readSuggestedFocus(session.notes) ? `${sessionCategory(session, areas)} · ` : ""}{calendarLabel(key)} · {time}
+          {readSuggestedFocus(session.notes) || readRoutineSession(session.notes) ? `${sessionCategory(session, areas)} · ` : ""}{calendarLabel(key)} · {time}
         </Text>
       </View>
       <Text style={s.rowValue}>{durationLabel(session.duration_seconds)}</Text>
@@ -174,6 +175,7 @@ export default function ProgressScreen() {
   );
   const [detail, setDetail] = useState<Detail | null>(null);
   const [selectedDayKey, setSelectedDayKey] = useState<string | null>(null);
+  const [sessionScope, setSessionScope] = useState<"day" | "period">("day");
   const [sheetVisible, setSheetVisible] = useState(false);
   const [selectedSession, setSelectedSession] =
     useState<ProgressSession | null>(null);
@@ -204,7 +206,6 @@ export default function ProgressScreen() {
     setDetail(next);
     setSheetVisible(true);
   };
-  const openHistory = () => open({ kind: "period" });
   const currentPeriod = period.end >= today;
   const range = `${calendarLabel(period.start)} – ${calendarLabel(period.end, { month: "short", day: "numeric", year: "numeric" })}`;
   const peak = Math.max(1, ...(analytics?.days.map((d) => d.seconds) ?? []));
@@ -233,6 +234,24 @@ export default function ProgressScreen() {
             })
           : (activeArea?.title ?? "Details");
   const heroDay = analytics ? progressHeroDay(analytics, period, selectedDayKey) : undefined;
+  const listedSessions = sessionScope === "period"
+    ? analytics?.sessions ?? [] : heroDay?.sessions ?? [];
+  const listDetail: Detail = sessionScope === "day" && heroDay
+    ? { kind: "day", key: heroDay.key } : { kind: "period" };
+  const selectDay = (key: string) => {
+    setSessionScope("day");
+    if (key === heroDay?.key) open({ kind: "day", key });
+    else {
+      tick();
+      setSelectedDayKey(key);
+    }
+  };
+  const openListedSession = (session: ProgressSession) => {
+    tick();
+    setDetail(listDetail);
+    setSelectedSession(session);
+    setSheetVisible(true);
+  };
   const dayLabel = heroDay?.key === today ? "Today’s effort"
     : heroDay ? `${calendarLabel(heroDay.key, { weekday: "short", month: "short", day: "numeric" })} · recorded effort` : "Recorded effort";
   const finishedSessions = heroDay?.sessions.length ?? 0;
@@ -265,6 +284,7 @@ export default function ProgressScreen() {
               onPress={() => {
                 tick();
                 setSelectedDayKey(null);
+                setSessionScope("day");
                 setMode(value);
               }}
               accessibilityRole="tab"
@@ -284,6 +304,7 @@ export default function ProgressScreen() {
             onPress={() => {
               tick();
               setSelectedDayKey(null);
+              setSessionScope("day");
               setAnchor(previousAnchor(period));
             }}
             accessibilityRole="button"
@@ -296,6 +317,7 @@ export default function ProgressScreen() {
             onPress={() => {
               tick();
               setSelectedDayKey(null);
+              setSessionScope("day");
               setAnchor(null);
             }}
             accessibilityRole="button"
@@ -312,6 +334,7 @@ export default function ProgressScreen() {
             onPress={() => {
               tick();
               setSelectedDayKey(null);
+              setSessionScope("day");
               setAnchor(nextAnchor(period));
             }}
             accessibilityRole="button"
@@ -400,8 +423,11 @@ export default function ProgressScreen() {
                   {analytics.days.map((day) => (
                     <Pressable
                       key={day.key}
-                      onPress={() => open({ kind: "day", key: day.key })}
+                      onPress={() => selectDay(day.key)}
+                      testID={`progress-day-${day.key}`}
                       accessibilityRole="button"
+                      accessibilityState={{ selected: day.key === heroDay?.key }}
+                      accessibilityHint={day.key === heroDay?.key ? "Open this day’s sessions" : "Select this day. Tap again to open its sessions"}
                       accessibilityLabel={`${calendarLabel(day.key, { weekday: "long", month: "short", day: "numeric" })}, ${day.future ? "upcoming" : `${durationLabel(day.seconds)}, ${day.sessions.length ? `${day.sessions.length} sessions` : "no sessions"}${day.goal?.goal_completed ? ", daily goal reached" : ""}`}`}
                       style={[s.chartDay, mode === "week" && s.weekDay]}
                     >
@@ -445,6 +471,7 @@ export default function ProgressScreen() {
                     <Text style={s.caption}>Check · goal reached</Text>
                   </View>
                 </View>
+                <Text style={s.chartHint}>Select a day. Tap it again to see its sessions.</Text>
 
                 {!analytics.sessions.length && (
                   <Text style={s.chartEmpty}>
@@ -486,8 +513,10 @@ export default function ProgressScreen() {
                   {analytics.days.map((day) => (
                     <Pressable
                       key={day.key}
-                      onPress={() => open({ kind: "day", key: day.key })}
+                      onPress={() => selectDay(day.key)}
                       accessibilityRole="button"
+                      accessibilityState={{ selected: day.key === heroDay?.key }}
+                      accessibilityHint={day.key === heroDay?.key ? "Open this day’s sessions" : "Select this day. Tap again to open its sessions"}
                       accessibilityLabel={`${calendarLabel(day.key)}, ${day.future ? "upcoming" : day.sessions.length ? "active day" : "no sessions"}${day.goal?.goal_completed ? ", goal reached" : ""}`}
                       style={[
                         s.calendarDay,
@@ -517,7 +546,7 @@ export default function ProgressScreen() {
 
               />
               <View style={s.card}>
-                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 9, borderRadius: 5, overflow: "hidden", marginBottom: 8 }}>
+                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 12, borderRadius: 6, overflow: "hidden", marginTop: 8, marginBottom: 8 }}>
                   {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}
                 </View>}
                 {analytics.areas.length ? (
@@ -537,10 +566,38 @@ export default function ProgressScreen() {
                   />
                 )}
               </View>
-              <Pressable onPress={openHistory} accessibilityRole="button" accessibilityLabel="View sessions in selected period" style={s.historyEntrance}>
-                <Text style={s.rowTitle}>Sessions</Text>
-                <Text style={[s.caption, s.flex, { textAlign: "right" }]}>{analytics.sessions.length} completed</Text>
-                <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+              <Section title="Sessions" subtitle={sessionScope === "period"
+                ? `${listedSessions.length} completed this ${mode}`
+                : `${heroDay ? calendarLabel(heroDay.key, { weekday: "long", month: "short", day: "numeric" }) : "Selected day"} · ${listedSessions.length} completed`} />
+              <View style={s.segment} accessibilityRole="tablist" accessibilityLabel="Session list range">
+                <View pointerEvents="none" style={s.segmentTrack}>
+                  <SlidingSelection index={sessionScope === "day" ? 0 : 1} style={s.segmentSelected} />
+                </View>
+                {(["day", "period"] as const).map(scope => <Pressable key={scope}
+                  onPress={() => { tick(); setSessionScope(scope); }}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: sessionScope === scope }}
+                  accessibilityLabel={scope === "day" ? "Sessions for selected day" : `Sessions for selected ${mode}`}
+                  style={s.segmentButton}>
+                  <Text style={[s.segmentText, sessionScope === scope && s.segmentActive]}>
+                    {scope === "day" ? "Selected day" : `Whole ${mode}`}
+                  </Text>
+                </Pressable>)}
+              </View>
+              <View testID="progress-session-list">
+                {listedSessions.map(session => <SessionRow key={session.id} session={session}
+                  areas={data.areas} timeZone={timeZone} onPress={() => openListedSession(session)} />)}
+                {!listedSessions.length && <Empty icon="time-outline" title="No completed sessions"
+                  body={sessionScope === "day" ? heroDay?.future
+                    ? "This day’s completed sessions will appear here."
+                    : "Completed sessions for this day will appear here."
+                    : `Completed sessions for this ${mode} will appear here.`} />}
+              </View>
+              <Pressable onPress={() => open(listDetail)} accessibilityRole="button"
+                accessibilityLabel={sessionScope === "period" ? "View sessions in selected period" : "View sessions for selected day"}
+                style={s.historyEntrance}>
+                <Text style={s.link}>{sessionScope === "period" ? `View this ${mode}’s sessions` : "View this day’s sessions"}</Text>
+                <Ionicons name="chevron-forward" size={18} color={colors.accent} />
               </Pressable>
               <Section
                 title="Consistency"
@@ -630,7 +687,7 @@ export default function ProgressScreen() {
                 <Text style={s.summaryValue}>
                   {durationLabel(selectedSession.duration_seconds)}
                 </Text>
-                <Text style={s.rowTitle}>{readSuggestedFocus(selectedSession.notes)?.title ?? "Time well spent"}</Text>
+                <Text style={s.rowTitle}>{readSuggestedFocus(selectedSession.notes)?.title ?? readRoutineSession(selectedSession.notes) ?? "Time well spent"}</Text>
                 <Text style={s.emptyBody}>
                   {sessionCategory(selectedSession, data?.areas ?? [])}
                 </Text>
@@ -857,6 +914,11 @@ const s = StyleSheet.create({
   },
   sectionTitle: {
     ...type.section,
+    color: colors.text,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: "600",
+    letterSpacing: -0.3,
     marginBottom: 0,
   },
   sectionAction: {
@@ -868,8 +930,11 @@ const s = StyleSheet.create({
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   card: {
     paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
+    paddingHorizontal: 14,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.line,
   },
   chartHeader: {
     flexDirection: "row",
@@ -890,7 +955,7 @@ const s = StyleSheet.create({
     marginBottom: 4,
   },
   bar: {
-    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 28, borderRadius: 5 },
+    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 30, borderRadius: 9 },
   dayLabel: { color: colors.secondary, fontSize: 14 },
   todayLabel: { color: colors.accent, fontWeight: "500" },
   goalDot: { width: 7, height: 7, borderRadius: 4 },
@@ -911,17 +976,20 @@ const s = StyleSheet.create({
     lineHeight: 19,
     marginTop: 12,
   },
+  chartHint: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 6 },
   consistency: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    paddingVertical: 8,
-    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line,
+    gap: 14,
+    padding: 14,
+    borderRadius: 22,
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line,
   },
   streakIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 15,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: colors.accentSoft,
     justifyContent: "center",
     alignItems: "center",

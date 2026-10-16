@@ -1,5 +1,6 @@
 /** Size a result around its content while leaving long details scrollable.
- * The handle is owned by AppSheet; header and actions are measured siblings.
+ * The handle is owned by AppSheet. Body measurements exclude the scrollable's
+ * footer padding; actions are anchored by the native bottom sheet footer.
  */
 export function completionSheetHeight({ windowHeight, topInset, headerHeight, bodyHeight, actionsHeight }: {
   windowHeight: number;

@@ -41,7 +41,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     './ProgressRing':host('Ring'),
     './MotionPressable':host('Button'),
     './SaveSuggestedQuest':() => saveVisible ? React.createElement('Button',{},'Save as quest') : null,
-    './AppSheet':values=>React.createElement('Sheet',values,values.header,values.children),
+    './AppSheet':values=>React.createElement('Sheet',values,values.header,values.children,React.createElement('NativeFooter',null,values.footer)),
     '../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{level:1,current_xp:1}})},
     'expo-haptics':{},
     '@react-native-async-storage/async-storage':{getItem:async()=>null,setItem:async()=>{}},
@@ -56,7 +56,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     scroll:()=>tree.root.findByType('Scroll'),
     measure:async(header,body,actions)=>act(async()=>{
       tree.root.findByProps({testID:'session-result-header'}).props.onLayout({nativeEvent:{layout:{height:header}}});
-      tree.root.findByType('Scroll').props.onContentSizeChange(390,body);
+      tree.root.findByProps({testID:'session-result-body'}).props.onLayout({nativeEvent:{layout:{height:body}}});
       tree.root.findByProps({testID:'session-result-actions'}).props.onLayout({nativeEvent:{layout:{height:actions}}});
     }),
     update:async(next)=>act(async()=>tree.update(React.createElement(Modal,{...initial,...next}))),
@@ -65,12 +65,15 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
   };
 }
 
-test('measured ordinary result removes empty screen space without moving actions into the scroll body',async()=>{
+test('measured result anchors actions in the native footer and excludes its scroll padding from body sizing',async()=>{
   const ui=await resultScreen();
   try {
     await ui.measure(42,285,166);
     assert.equal(ui.sheet().props.heightRatio*844,521);
-    assert.equal(ui.sheet().props.footer,undefined);
+    assert.ok(ui.sheet().props.footer);
+    assert.equal(ui.tree.root.findByType('NativeFooter').findByProps({testID:'session-result-actions'}),ui.actions());
+    assert.equal(ui.scroll().props.enableFooterMarginAdjustment,true);
+    assert.equal(ui.scroll().props.onContentSizeChange,undefined,'library footer padding cannot feed back into the natural body measurement');
     assert.equal(ui.scroll().findAllByType('Button').length,0);
     assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Done']);
     assert.equal(ui.actions().props.style[0].flexShrink,0);

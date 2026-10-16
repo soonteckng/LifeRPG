@@ -1,5 +1,5 @@
 import type { JournalClock, JournalScope } from "../types/sessionJournal";
-import { decideSessionCountdownAction, projectSessionCountdown } from "../utils/sessionCountdown";
+import { decideSessionCountdownAction, decideSessionCountdownEndPrompt, projectSessionCountdown } from "../utils/sessionCountdown";
 import { isJournalUuid } from "../utils/sessionJournalSchema";
 import type { SessionJournalStore } from "./sessionJournalStore";
 import type { SessionTimerController } from "./sessionTimerController";
@@ -69,10 +69,20 @@ export function createSessionCountdownCoordinator(options: CountdownCoordinatorO
       if (!token || !live() || options.busy()) return null;
       const loaded = await options.store.load().catch(() => null);
       if (!loaded || loaded.kind !== "ready" || !live() || options.busy()) return null;
-      const decision = decideSessionCountdownAction({ token, journal: loaded.journal, currentScope: options.currentScope(),
+      const input = { token, journal: loaded.journal, currentScope: options.currentScope(),
         currentAdmissionEpoch: loaded.journal.admission.epoch, currentClientSessionId: options.currentRecordId(),
-        clock: options.clock(), consumedOperationIds: [...consumed] });
-      if (!decision.accepted || !live()) return null;
+        clock: options.clock(), consumedOperationIds: [...consumed] };
+      const decision = decideSessionCountdownAction(input);
+      if (!live()) return null;
+      if (!decision.accepted) {
+        if (decision.reason !== "stale_epoch" && decision.reason !== "stale_revision") return null;
+        const prompt = decideSessionCountdownEndPrompt(input);
+        if (!prompt.accepted || !live()) return null;
+        consumed.add(prompt.operationId);
+        // Prompt-only fallback. No old token may cancel, pause, resume or tick.
+        // Confirmation uses the controller's current owner/state/expiry checks.
+        return "end";
+      }
       consumed.add(decision.operationId);
       if (decision.foregroundAction === "end") return "end";
       if (decision.foregroundAction === "pause") await options.controller.pause();

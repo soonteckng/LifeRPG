@@ -1,5 +1,5 @@
 import { suggestedArea } from "../utils/focusAreas";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import FocusCard from "./FocusCard";
 import { suggestedFocus, suggestedFocusAreaKey, readSuggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { validSessionSeconds } from "../utils/sessionSetup";
@@ -8,9 +8,11 @@ import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { preferenceForFocusArea } from "../utils/focusPreference";
 import { useTimer } from "../context/TimerContext";
 import type { Subject } from "../services/taskService";
-export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled, onStarted, selectedSeconds, customSeconds, onDuration, onCustomDuration }: {
+export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled, onStarted, selectedSeconds, customSeconds, onDuration, onCustomDuration, onPreferences, goal, protection }: {
   owner: string; subjects: Subject[]; activeTitle?: string; disabled: boolean; onStarted: () => void; selectedSeconds?: number; onDuration?: (seconds: number) => void;
   customSeconds?: number | null; onCustomDuration?: (seconds: number) => void;
+  onPreferences?: () => void;
+  goal?: ReactNode; protection?: ReactNode;
 }) {
   const preference = useGuidedPreference(owner), timer = useTimer();
   const [selection, setSelection] = useState<number | null>(null);
@@ -58,12 +60,12 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     finally { lock.current = false; if (alive.current) setAreaChanging(false); }
   };
   return <FocusCard cardID="guided-focus-card" startID="guided-start" areaActionID="guided-session-options"
-    label="Suggested focus" title={active ? activeSuggestion?.title ?? activeTitle ?? "One thing at a time." : focus.title}
+    label="Your focus" suggested title={active ? activeSuggestion?.title ?? activeTitle ?? "One thing at a time." : focus.title}
     instruction={timer.awaitingStart ? "We’re checking your session start. Open it to review or end the request." : active ? activeSuggestion?.instruction ?? (timer.isRunning ? "Your block is in progress. Return to your session whenever you’re ready." : "Your session is paused. Continue whenever you’re ready.") : focus.instruction}
     contentKey={active ? "active" : focus.templateId + String(focus.smaller)}
     seconds={active ? timer.timeLeft : focus.seconds} area={active ? activeArea?.title ?? "General" : areaTitle}
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
     active={active} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} busy={busy} disabled={locked} editDisabled={locked}
-    setupDisabled={busy || areaChanging || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : areaError ? "Couldn’t change your focus area. Your previous choice is still selected. Try again." : preference.error ? "Couldn’t load your preferences. Try Find your next step again." : undefined}
-    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} customSeconds={customSeconds} onCustomDuration={next => chooseDuration(next, true)} onArea={id => void chooseArea(id)} onStart={() => void start()} />;
+    setupDisabled={busy || areaChanging || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : areaError ? "Couldn’t change your focus area. Your previous choice is still selected. Try again." : preference.error ? "Couldn’t load your preferences. Tap Change to try again." : undefined}
+    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} customSeconds={customSeconds} onCustomDuration={next => chooseDuration(next, true)} onArea={id => void chooseArea(id)} onStart={() => void start()} onPreferences={onPreferences} goal={goal} protection={protection} />;
 }

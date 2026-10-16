@@ -10,6 +10,8 @@ function load(file,mocks,cache=new Map()){
   const source=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',source)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
+    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if(!name.startsWith('.'))return require(name);
     const target=path.resolve(path.dirname(filename),name),suffix=['','.ts','.tsx'].find(ext=>fs.existsSync(target+ext));
     return load(path.relative(path.resolve(__dirname,'..'),target+suffix),mocks,cache);
@@ -17,31 +19,112 @@ function load(file,mocks,cache=new Map()){
 }
 const host=type=>props=>React.createElement(type,props,props.children);
 const summary={sessionId:'confirmed',durationSeconds:90,xpEarned:1,goldEarned:0,recovered:true,questTitle:'Review your notes',creditVersion:1,areaXpEarned:1,completedAtMs:Date.UTC(2026,9,14,4)};
-async function setup(overrides={},mode='online',pathname='/'){
+async function setup(overrides={},mode='online',pathname='/',withScreen=false){
+  const cache=new Map();
+  const lifecycle=load('src/services/globalSessionLifecycle.ts',{},cache).globalSessionLifecycle;
   let timer={duration:90,timeLeft:0,isCompleted:false,hasOpenSession:false,endingSession:false,sessionEnded:false,
     actionBusy:false,isRestoring:false,actionError:null,syncStatus:'idle',summaryViewed:false,rewardsVisible:false,clientReported:false,
     sessionId:'local',sessionSummary:null,linkedTaskId:null,targetAttributeId:1,notes:'',recoveredSession:false,...overrides};
-  let ownerId='owner-a';const calls=[];
+  let ownerId='owner-a',backendId='test-backend',admissionEpoch=1;const calls=[];
+  const animations=[];
+  const dismissals=[];const unsubscribe=lifecycle.subscribe(result=>dismissals.push(result));
   const api={
     acknowledgeSummary(){calls.push('viewed');timer={...timer,summaryViewed:true};},
     clearCompletionModal(){calls.push('clear');timer={...timer,hasOpenSession:false,isCompleted:false,endingSession:false,sessionEnded:false,sessionSummary:null,sessionId:null,duration:1800};},
     retryCompletion:async()=>calls.push('retry-completion'),retryAction:async()=>calls.push('retry-end'),
+    resetTimer:async()=>{calls.push('end');timer={...timer,isRunning:false,hasOpenSession:false,
+      sessionEnded:true,endingSession:true,actionBusy:true,syncStatus:'waiting'};},
+    setDurationInSeconds(){},setDurationInMinutes(){},setTargetAttributeId(){},setLinkedTaskId(){},resolveQuestTitle(){},
   };
-  const Presenter=load('src/components/GlobalRewardListener.tsx',{
-    'expo-router':{usePathname:()=>pathname},
+  const mocks={
+    'expo-router':{usePathname:()=>pathname,Stack:{Screen:host('Options')},useFocusEffect:effect=>React.useEffect(effect,[effect]),
+      useNavigation:()=>navigation},
+    'expo-router/react-navigation':{usePreventRemove(){}},
     './SessionResultSheet':host('Result'), './SaveSuggestedQuest':host('SaveQuest'), './PostSessionCelebration':host('Celebration'),
-    '../context/AuthContext':{useAuth:()=>({accessMode:mode,user:mode==='online'?{id:ownerId}:null,localOwner:{id:ownerId},retrySessionVerification:async()=>calls.push('verify')})},
-    '../context/TimerContext':{useTimer:()=>({...timer,...api})},
+    '../context/AuthContext':{useAuth:()=>({accessMode:mode,user:mode==='online'?{id:ownerId}:null,localOwner:{id:ownerId,backendId},admissionEpoch,retrySessionVerification:async()=>calls.push('verify')})},
+    '../context/TimerContext':{useTimer:()=>Object.assign(timer,api)},
     '../context/UserContext':{useUser:()=>({profile:{id:ownerId,level:1,current_xp:1},reloadProfile:async()=>calls.push('profile')})},
     '../context/QuestContext':{useQuests:()=>({tasks:[{id:7,title:'An existing quest'}],subjects:[{id:1,title:'Learning',color_code:'#60A5FA'}]})},
-  }).default;
-  let renderer;await act(async()=>{renderer=create(React.createElement(Presenter));});
-  return{calls,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
-    update:async(changes={},nextMode=mode,nextPath=pathname,nextOwner=ownerId)=>{timer={...timer,...changes};mode=nextMode;pathname=nextPath;ownerId=nextOwner;await act(async()=>renderer.update(React.createElement(Presenter)));},
-    done:async()=>act(async()=>{renderer.root.findByType('Result').props.onClose();renderer.update(React.createElement(Presenter));}),
+    '../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope:{ownerId,backendId},ready:true,routines:[]})},
+    'react-native':{View:host('View'),ScrollView:host('Scroll'),KeyboardAvoidingView:host('KeyboardView'),ActivityIndicator:host('Spinner'),
+      StyleSheet:{create:styles=>styles,hairlineWidth:1},Platform:{OS:'android'},useWindowDimensions:()=>({width:390,height:844,fontScale:1}),
+      Keyboard:{isVisible:()=>false,dismiss(){},addListener:()=>({remove(){}})},BackHandler:{addEventListener:()=>({remove(){}})},
+      PanResponder:{create:handlers=>({panHandlers:handlers})},
+      Animated:{View:host('Motion'),Value:class{constructor(value){this.value=value;}setValue(value){this.value=value;}stopAnimation(){}interpolate(){return this;}},
+        timing:(value,config)=>({start(callback){animations.push(config);value.setValue(config.toValue);callback?.({finished:true});},stop(){}})}},
+    'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({top:24,bottom:20})},
+    '@gorhom/bottom-sheet':{BottomSheetScrollView:host('SheetScroll'),TouchableOpacity:host('Button')},
+    '@expo/vector-icons':{Ionicons:host('Icon')},
+    './MotionPressable':host('Button'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),
+    './AppHeader':host('Header'),'./AppSheet':host('Sheet'),'./SheetConfirmation':host('Confirm'),
+    './SessionCountdown':host('Countdown'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
+    '../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/afterTransition':{afterTransition:()=>()=>{}},
+    '../utils/sessionTransition':{traceSession(){}},
+  };
+  const navigation={canGoBack:()=>true,getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),
+    addListener:()=>()=>{},goBack:()=>calls.push('route-close')};
+  const Presenter=load('src/components/GlobalRewardListener.tsx',mocks,cache).default;
+  const Screen=withScreen?load('src/components/SessionScreen.tsx',mocks,cache).default:null;
+  const Tree=()=>React.createElement(React.Fragment,null,Screen&&React.createElement(Screen),React.createElement(Presenter));
+  let renderer;await act(async()=>{renderer=create(React.createElement(Tree));});
+  return{calls,dismissals,animations,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
+    update:async(changes={},nextMode=mode,nextPath=pathname,nextOwner=ownerId,nextBackend=backendId,nextEpoch=admissionEpoch)=>{timer={...timer,...changes};mode=nextMode;pathname=nextPath;ownerId=nextOwner;backendId=nextBackend;admissionEpoch=nextEpoch;await act(async()=>renderer.update(React.createElement(Tree)));},
+    done:async()=>act(async()=>{renderer.root.findByType('Result').props.onClose();renderer.update(React.createElement(Tree));}),
     dismiss:async()=>act(async()=>renderer.root.findByType('Result').props.onDismiss()),
-    cleanup:async()=>act(async()=>renderer.unmount())};
+    cleanup:async()=>{unsubscribe();await act(async()=>renderer.unmount());}};
 }
+
+test('the real timer route and global End sheet stay together through delayed cancellation, then Done closes both once',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:31},'online','/session',true);
+  try {
+    const end=ui.root().findAllByType('Button').find(node=>node.props.accessibilityLabel==='End session');
+    await act(async()=>end.props.onPress());
+    await act(async()=>ui.root().findByType('Confirm').props.onConfirm());await ui.update();
+    const result=ui.result();assert.equal(result.props.visible,true);assert.equal(result.props.ending,true);
+    await ui.update({sessionId:null,sessionEnded:false,endingSession:false,actionBusy:false,duration:1800,
+      timeLeft:1800,syncStatus:'idle',notes:'',summaryViewed:false});
+    assert.equal(ui.result(),result);assert.equal(result.props.visible,true);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,0,'server End confirmation cannot close the route under its modal');
+    assert.equal(ui.animations.some(animation=>animation.toValue===-0.12),false);
+    await ui.done();assert.equal(result.props.visible,false);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,1);
+    assert.equal(ui.calls.filter(call=>call==='end').length,1);
+    assert.equal(ui.calls.filter(call=>call==='clear').length,1);
+    await ui.dismiss();await ui.update();assert.equal(result.props.visible,false);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,1);
+  }finally{await ui.cleanup();}
+});
+
+test('a presentation listener failure cannot prevent Done acknowledgement or other subscribers',async()=>{
+  const ui=await setup({sessionEnded:true});let notified=0;
+  const failing=ui.subscribe(()=>{throw new Error('Navigation is unavailable');});
+  const succeeding=ui.subscribe(()=>notified++);
+  try {
+    await ui.done();assert.equal(notified,1);
+    assert.equal(ui.calls.filter(call=>call==='viewed').length,1);
+    assert.equal(ui.calls.filter(call=>call==='clear').length,1);
+    assert.equal(ui.result().props.visible,false);
+  }finally{failing();succeeding();await ui.cleanup();}
+});
+
+test('dismissing the shared End sheet while offline releases its timer route without waiting for connection',async()=>{
+  const ui=await setup({sessionEnded:true,endingSession:true,syncStatus:'waiting',actionBusy:true,
+    clientReported:true,duration:60,timeLeft:19},'local-only','/session',true);
+  try {
+    assert.equal(ui.result().props.visible,true);assert.equal(ui.result().props.offline,true);
+    // The shared sheet's hardware Back and dismiss gesture use this same
+    // onClose callback as Done; the route must not rely on a server reply.
+    const requestClose=ui.result().props.onClose;
+    await act(async()=>requestClose());await ui.update();
+    assert.equal(ui.result().props.visible,false);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,1);
+    assert.equal(ui.calls.filter(call=>call==='clear').length,1);
+    assert.equal(ui.calls.includes('verify'),false);assert.equal(ui.calls.includes('end'),false);
+    await ui.dismiss();await ui.update({sessionId:null,sessionEnded:false,endingSession:false,actionBusy:false},'online');
+    assert.equal(ui.result().props.visible,false);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,1);
+  }finally{await ui.cleanup();}
+});
 
 test('the same recovered result portal survives session, offline and Home transitions even when rewardsVisible is false',async()=>{
   const ui=await setup({isCompleted:true,sessionSummary:summary},'online','/session');
@@ -115,6 +198,46 @@ test('early End and rejected records use the one shared portal without a complet
       assert.equal(result.props.ending,!!overrides.sessionEnded);assert.equal(result.props.rejected,overrides.syncStatus==='rejected');
       await ui.done();assert.equal(ui.calls.filter(c=>c==='clear').length,1);
       assert.equal(ui.calls.filter(c=>c==='retry-completion'||c==='retry-end').length,0);
+    }finally{await ui.cleanup();}
+  }
+});
+
+test('End keeps its Done action after the cancellation reply clears the controller selection, then never reopens',async()=>{
+  const ui=await setup({sessionEnded:true,endingSession:true,syncStatus:'waiting',actionBusy:true});
+  try {
+    const result=ui.result();assert.equal(result.props.visible,true);assert.equal(result.props.ending,true);
+    await ui.update({sessionEnded:false,endingSession:false,sessionId:null,notes:'',duration:1800,
+      syncStatus:'idle',actionBusy:false});
+    assert.equal(ui.result(),result);assert.equal(result.props.visible,true,'receipt cannot dismiss an unacknowledged notice');
+    assert.equal(result.props.ending,true);assert.equal(result.props.pending,false);assert.equal(result.props.syncBusy,false);
+    assert.equal(result.props.sessionId,'local');assert.equal(result.props.durationSeconds,90);
+    await ui.done();assert.equal(result.props.visible,false);assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+    assert.deepEqual(ui.dismissals,[{ownerId:'owner-a',scope:JSON.stringify(['test-backend','owner-a',1]),sessionId:'local'}]);
+    await ui.dismiss();await ui.update();assert.equal(result.props.visible,false);
+  }finally{await ui.cleanup();}
+});
+
+test('a late Done from a previous admission or backend cannot clear the current result',async()=>{
+  for(const scope of [['test-backend',2],['another-backend',1]]) {
+    const ui=await setup({isCompleted:true,sessionSummary:summary});
+    try {
+      const oldDone=ui.result().props.onClose;
+      await ui.update({},'online','/','owner-a',...scope);
+      await act(async()=>oldDone());
+      assert.equal(ui.calls.filter(c=>c==='clear').length,0);assert.equal(ui.dismissals.length,0);
+      assert.equal(ui.result().props.visible,true);
+      await ui.done();assert.equal(ui.dismissals.length,1);
+      assert.equal(ui.dismissals[0].scope,JSON.stringify([scope[0],'owner-a',scope[1]]));
+    }finally{await ui.cleanup();}
+  }
+});
+
+test('a settled End notice cannot cover a new open session or another owner',async()=>{
+  for(const changes of [{hasOpenSession:true,sessionId:'new-running'},{sessionId:null}]) {
+    const ui=await setup({sessionEnded:true});
+    try {
+      await ui.update({sessionEnded:false,...changes},'online','/',changes.hasOpenSession?'owner-a':'owner-b');
+      assert.equal(ui.result().props.visible,false);
     }finally{await ui.cleanup();}
   }
 });

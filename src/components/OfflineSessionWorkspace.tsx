@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,7 +7,8 @@ import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import ContentReveal from "./ContentReveal";
 import ProgressRing from "./ProgressRing";
-import FocusLengthControl from "./FocusLengthControl";
+import FocusCard from "./FocusCard";
+import SessionProtectionControl from "./SessionProtectionControl";
 import GuidedPreferenceSheet from "./GuidedPreferenceSheet";
 import SheetConfirmation from "./SheetConfirmation";
 import { colors } from "../constants/theme";
@@ -20,29 +21,39 @@ import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { useFocusDurationPreference } from "../hooks/useFocusDurationPreference";
 import { focusAreaChoices, focusAreaKind, focusAreaTitle, FOCUS_AREAS } from "../utils/focusAreas";
 import { sessionTime } from "../utils/sessionSetup";
+import { homeWelcome } from "../utils/homeWelcome";
+import { readRoutineSession } from "../utils/routineSession";
 import { readOfflineFocusAreas, type OfflineFocusArea } from "../services/offlineFocusCatalog";
+import SavedRoutinesCard from "./SavedRoutinesCard";
 
 /** Results belong to the stable global sheet; this surface owns offline controls. */
 export default function OfflineSessionWorkspace({ active: surfaceActive = true }: { active?: boolean }) {
   const timer = useTimer(), auth = useAuth();
-  const { hapticsEnabled = true } = useUser();
+  const { hapticsEnabled = true, profile } = useUser();
   const { width } = useWindowDimensions();
   const owner = auth.localOwner;
   const ownerId = owner?.id, backendId = owner?.backendId;
+  const cached = auth.cachedProfile?.id === ownerId ? auth.cachedProfile : profile?.id === ownerId ? profile : null;
+  const name = cached?.username?.trim() || "Hero";
+  const hour = new Date().getHours();
   const scopeKey = JSON.stringify([backendId, ownerId]);
   const duration = useFocusDurationPreference(ownerId ?? "");
   const preference = useGuidedPreference(ownerId ?? "");
   const [directionOpen, setDirectionOpen] = useState(false);
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const [previousActive, setPreviousActive] = useState(surfaceActive);
-  if (surfaceActive !== previousActive) {
-    setPreviousActive(surfaceActive);
-    if (!surfaceActive) { setDirectionOpen(false); setConfirmEnd(false); }
+  const [previousSurface, setPreviousSurface] = useState({ active: surfaceActive, scope: scopeKey });
+  if (surfaceActive !== previousSurface.active || scopeKey !== previousSurface.scope) {
+    setPreviousSurface({ active: surfaceActive, scope: scopeKey });
+    if (!surfaceActive || scopeKey !== previousSurface.scope) { setDirectionOpen(false); setConfirmEnd(false); }
   }
   if (confirmEnd && (!timer.hasOpenSession || timer.endingSession || timer.sessionEnded || timer.isCompleted)) setConfirmEnd(false);
   const [catalog, setCatalog] = useState<{ scope: string; areas: OfflineFocusArea[] } | null>(null);
-  const [localBusy, setLocalBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [localOperation, setLocalOperation] = useState({ scope: "", busy: false });
+  const actionLock = useRef<{ scope: string; token: object } | null>(null);
+  const [localError, setLocalError] = useState({ scope: "", message: "" });
+  const localBusy = localOperation.scope === scopeKey && localOperation.busy;
+  const error = localError.scope === scopeKey ? localError.message : "";
+  const setError = (message: string) => setLocalError({ scope: scopeKey, message });
   useEffect(() => {
     let live = true;
     if (ownerId && backendId) void readOfflineFocusAreas({ backendId, ownerId }).then(areas => {
@@ -62,22 +73,36 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
   const terminal = timer.isCompleted || resultEnding || timer.syncStatus === "rejected";
   const active = timer.hasOpenSession && !timer.endingSession;
   const busy = timer.isRestoring || timer.actionBusy || localBusy;
+  const directionLocked = busy || !surfaceActive || preference.busy || !ownerId;
+  const startDisabled = busy || !surfaceActive || preference.busy || !duration.ready || !preference.ready || !catalogReady || !timer.offlineAvailable;
   const uncertain = !timer.clientReported && (timer.syncStatus === "waiting" || !timer.offlineControlsAvailable);
   const currentFocus = readSuggestedFocus(timer.notes);
   const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const openDirection = () => {
+    if (directionLocked || active || terminal || actionLock.current?.scope === scopeKey) return;
+    feedback(); setDirectionOpen(true);
+  };
   const action = async (work: () => Promise<unknown>) => {
-    if (busy) return false;
-    feedback(); setLocalBusy(true); setError("");
+    if (busy || !surfaceActive || actionLock.current?.scope === scopeKey) return false;
+    const token = {};
+    actionLock.current = { scope: scopeKey, token };
+    feedback(); setLocalOperation({ scope: scopeKey, busy: true }); setError("");
     try { await work(); return true; }
     catch { setError("Couldn’t save that change. Your session is still on this phone."); return false; }
-    finally { setLocalBusy(false); }
+    finally {
+      if (actionLock.current?.token === token) actionLock.current = null;
+      setLocalOperation(previous => previous.scope === scopeKey ? { scope: scopeKey, busy: false } : previous);
+    }
   };
-  const start = () => action(async () => {
+  const start = () => {
+    if (startDisabled || active || terminal) return Promise.resolve(false);
+    return action(async () => {
     const started = focus
       ? await timer.startSuggestedTimer({ ...focus, seconds: duration.selectedSeconds }, area?.id ?? null)
       : await timer.startFreeTimer(duration.selectedSeconds, area?.id ?? null);
     if (!started) setError("Couldn’t start yet. Try again; your saved sessions stay here.");
-  });
+    });
+  };
   const end = async () => {
     setConfirmEnd(false);
     await action(timer.resetTimer);
@@ -86,16 +111,19 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
   return <SafeAreaView style={s.page} edges={["top", "bottom"]} testID="offline-session-workspace">
     <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
       <View style={s.content}>
-        <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>Offline</Text></View>
-        <Text style={s.heading}>{active ? timer.isRunning ? "Keep going." : "Take a moment." : terminal ? timer.isCompleted ? "Time well spent." : "Session stopped." : "Make room for what matters."}</Text>
-        <Text style={s.body}>{active ? "Your timer and controls work on this phone." : terminal
-          ? "Your session is kept on this phone." : "Choose something to work on. We’ll save your session here and sync it when you reconnect."}</Text>
+        <View style={s.identityRow}>
+          <View style={s.identity}><Text style={s.greeting}>{homeWelcome(hour < 5 ? 18 : hour, name).split(",")[0]}</Text><Text style={s.heading} numberOfLines={1}>{name}</Text></View>
+          <View style={s.badge}><View style={s.dot} /><Text style={s.badgeText}>Offline</Text></View>
+        </View>
+        {terminal && <Text style={s.caption}>{timer.isCompleted ? "Session complete. Your record stays on this phone." : "Session stopped. Your saved request stays on this phone."}</Text>}
         {active ? <ContentReveal key="active"><View style={s.timer}>
           <ProgressRing size={ringSize} progress={1 - timer.timeLeft / Math.max(1, timer.duration)}>
             <Text allowFontScaling={false} style={s.time} accessibilityLabel={`Time remaining ${sessionTime(timer.timeLeft)}`}>{sessionTime(timer.timeLeft)}</Text>
             <Text style={s.caption}>{timer.isRunning ? "Time remaining" : "Paused"}</Text>
           </ProgressRing>
+          <SessionProtectionControl statusOnly activeSurface={surfaceActive} />
           {!!currentFocus && <Text style={s.cardTitle}>{currentFocus.title}</Text>}
+          {!currentFocus && !!readRoutineSession(timer.notes) && <Text style={s.cardTitle}>{readRoutineSession(timer.notes)}</Text>}
           {!!currentFocus && <Text style={s.body}>{currentFocus.instruction}</Text>}
           <View style={s.controls}>
             <Pressable disabled={busy || uncertain} accessibilityRole="button" accessibilityState={{ disabled: busy || uncertain }} accessibilityLabel={timer.isRunning ? "Pause session" : "Resume session"}
@@ -110,25 +138,16 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
           {uncertain && <Text style={s.caption}>Reconnect to confirm the previous state before pausing or resuming. You can still End this session.</Text>}
           <Text style={s.caption}>Ending early doesn’t earn progress.</Text>
         </View></ContentReveal> : terminal ? null : <>
-          <View style={s.card}>
-            <Text style={s.label}>{focus ? "Suggested focus" : "Free focus"}</Text>
-            <ContentReveal key={focus?.templateId ?? "free"}>
-              <Text style={s.cardTitle}>{focus?.title ?? "One thing at a time."}</Text>
-              <Text style={[s.body, s.instruction]}>{focus?.instruction ?? "Choose one thing you’d like to work on. Set a time that feels manageable, settle in, and give it your attention for this block."}</Text>
-            </ContentReveal>
-            <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel="Choose focus area" onPress={() => { feedback(); setDirectionOpen(true); }} style={s.areaRow}>
-              <Text style={s.label}>Focus area</Text><View style={s.areaValue}><View style={[s.dot, { backgroundColor: tint }]} /><Text style={s.areaTitle}>{areaTitle}</Text><Ionicons name="chevron-forward" size={18} color={colors.accent} /></View>
-            </Pressable>
-            {surfaceActive && <FocusLengthControl seconds={duration.selectedSeconds} customSeconds={duration.value.customSeconds} disabled={busy}
-              onChange={seconds => { void duration.choose(seconds); }} onCustomSave={seconds => { void duration.choose(seconds, true); }} />}
-            <Pressable disabled={busy || !duration.ready || !preference.ready || !catalogReady || !timer.offlineAvailable} accessibilityRole="button" accessibilityLabel="Start session" onPress={() => void start()} style={[s.button, (busy || !timer.offlineAvailable) && s.disabled]}>
-              <Ionicons name="play-outline" size={22} color={colors.primaryText} /><Text style={s.buttonText}>Start focusing</Text>
-            </Pressable>
-            {!timer.offlineAvailable && <Text style={s.caption}>Reconnect before starting another session. Your saved work stays on this phone.</Text>}
-          </View>
-          <Pressable disabled={busy} accessibilityRole="button" accessibilityLabel="Find your next step" onPress={() => { feedback(); setDirectionOpen(true); }} style={s.directionCard}>
-            <View style={s.grow}><Text style={s.link}>Find your next step</Text><Text style={s.caption}>Change your focus suggestions</Text></View><Ionicons name="chevron-forward" size={20} color={colors.accent} />
-          </Pressable>
+          <FocusCard cardID="offline-focus-card" startID="offline-start-session" preferencesID="offline-focus-preferences"
+            label="Your focus" title={focus?.title ?? "One thing at a time."} instruction={focus?.instruction ?? "Choose your own activity."}
+            contentKey={focus?.templateId ?? "free"} suggested={!!focus} seconds={duration.selectedSeconds} area={areaTitle} tint={tint}
+            active={false} running={false} busy={busy} disabled={startDisabled} editDisabled={busy || !surfaceActive}
+            setupDisabled={directionLocked} onPreferences={openDirection} onStart={() => void start()}
+            customSeconds={duration.value.customSeconds} onDuration={seconds => { void duration.choose(seconds); }} onCustomDuration={seconds => { void duration.choose(seconds, true); }}
+            goal={<View style={s.offlineGoal}><Text style={s.caption}>{cached ? `Daily target · ${cached.daily_goal_minutes} min` : "Your session stays on this phone"}</Text><Text style={s.localCaption}>Progress syncs when you reconnect.</Text></View>}
+            protection={<SessionProtectionControl activeSurface={surfaceActive} />} error={!timer.offlineAvailable ? "Reconnect before starting another session. Your saved work stays on this phone." : undefined} />
+          <SavedRoutinesCard subjects={catalogReady ? catalog.areas : []}
+            initialSeconds={duration.selectedSeconds} initialAreaId={area?.id ?? null} active={surfaceActive && catalogReady} />
         </>}
         {timer.unsyncedSessionCount > 0 && <Text style={s.caption} accessibilityLiveRegion="polite">{timer.unsyncedSessionCount} {timer.unsyncedSessionCount === 1 ? "session waiting" : "sessions waiting"} to sync. Your records stay on this phone.</Text>}
         {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
@@ -144,15 +163,19 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
 }
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background }, scroll: { flexGrow: 1, padding: 20 },
-  content: { width: "100%", maxWidth: 560, alignSelf: "center", gap: 20 },
-  badge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 16, backgroundColor: colors.accentSoft },
+  content: { width: "100%", maxWidth: 560, alignSelf: "center", gap: 24 },
+  identityRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingBottom: 4 }, identity: { flex: 1, minWidth: 0 }, greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21 },
+  badge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: colors.accentSoft },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent }, badgeText: { ...type.caption, color: colors.accent },
-  heading: { ...type.pageTitle, fontSize: 30, lineHeight: 38 }, body: { ...type.body, color: colors.secondary }, caption: { ...type.secondary },
-  card: { padding: 18, gap: 16, borderRadius: 24, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  cardTitle: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.5 }, label: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, instruction: { marginTop: 8 },
-  areaRow: { minHeight: 44, paddingTop: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  areaValue: { flexDirection: "row", alignItems: "center", flexShrink: 1, gap: 7 }, areaTitle: { color: colors.text, fontSize: 15, lineHeight: 21, flexShrink: 1 },
-  directionCard: { minHeight: 80, borderRadius: 24, padding: 18, backgroundColor: colors.surfaceRaised, flexDirection: "row", alignItems: "center", gap: 12 },
+  heading: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 }, body: { ...type.body, color: colors.secondary }, caption: { ...type.secondary },
+  card: { padding: 16, gap: 12, borderRadius: 24, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  offlineGoal: { gap: 4 }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  cardHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
+  change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, alignItems: "flex-end", justifyContent: "center" },
+  changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" }, suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 8 },
+  suggestion: { color: colors.secondary, fontSize: 14, lineHeight: 21, flex: 1 },
+  cardTitle: { color: colors.text, fontSize: 21, lineHeight: 28, fontWeight: "600", letterSpacing: -0.3, flexShrink: 1 }, label: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  areaValue: { flexDirection: "row", alignItems: "center", gap: 8 },
   timer: { alignItems: "center", gap: 24 }, time: { color: colors.text, fontSize: 54, lineHeight: 68, fontWeight: "600", fontVariant: ["tabular-nums"] },
   controls: { width: "100%", flexDirection: "row", gap: 10 }, grow: { flex: 1 }, disabled: { opacity: 0.5 },
   button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },

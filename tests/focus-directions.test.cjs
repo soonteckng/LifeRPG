@@ -109,7 +109,7 @@ test('the six-category chooser shows only the selected starting points and retai
     assert.match(text(ui.tree.root), /Your starting point/);
     assert.match(text(ui.tree.root), /Make this time your own/);
     assert.match(text(ui.tree.root), /Choose your time on Home and begin at your own pace/);
-    assert.match(text(ui.tree.root), /Everyday focus to start/);
+    assert.match(text(ui.tree.root), /Everyday focus · A simple category for any activity/);
     assert.doesNotMatch(text(ui.tree.root), /Choose a small step to begin with/);
     assert.doesNotMatch(text(ui.tree.root), /Make room for a priority/);
     assert.equal(ui.tree.root.findAllByType('Button').length, 6);
@@ -215,4 +215,54 @@ test('compact onboarding directions keep an existing learning prompt until a dif
     assert.equal(current.templateId, 'quiet-screen-free');
     assert.equal(current.need, 'restore');
   } finally { await ui.cleanup(); }
+});
+
+test('active guided focus retains its saved wording and continue action without idle suggestion controls', async () => {
+  const catalog = load('src/constants/guidedQuests.ts');
+  const original = { ...catalog.suggestedFocus('review-topic'), title: 'My original focus', instruction: 'Keep the instruction saved when this session began.', seconds: 1859 };
+  const preference = { version: 1, enabled: true, invited: true, need: 'work', templateId: 'project-next-step', smaller: false };
+  let running = true, opened = 0, preferencesOpened = 0, starts = 0;
+  const Card = load('src/components/GuidedFocusCard.tsx', {
+    ...mocks, './ContentReveal': props => props.children, './FocusLengthControl': host('Length'), './FocusAreaSheet': () => null,
+    './FeatureTour': { useFeatureTour: () => null },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ value: preference, busy: false, ready: true, error: false }) },
+    '../context/TimerContext': { useTimer: () => ({ hasOpenSession: true, isRunning: running, timeLeft: 97, notes: catalog.encodeSuggestedFocus(original), targetAttributeId: 2, startSuggestedTimer() { starts++; } }) },
+  }).default;
+  function Harness() { return React.createElement(Card, { owner: 'person', subjects: [{ id: 2, title: 'Learning' }], disabled: false, onStarted: () => opened++, onPreferences: () => preferencesOpened++ }); }
+  const ui = await render(Harness);
+  try {
+    for (const next of [true, false]) {
+      running = next; await act(async () => ui.tree.update(React.createElement(Harness)));
+      assert.match(text(ui.tree.root), /My original focus/); assert.match(text(ui.tree.root), /Keep the instruction saved when this session began/);
+      assert.match(text(ui.tree.root), next ? /In progress/ : /Paused/);
+      assert.doesNotMatch(text(ui.tree.root), /Suggested:|Move a project forward/);
+      assert.equal(ui.tree.root.findAllByType('Length').length, 0);
+      assert.equal(ui.tree.root.findAllByType('Button').some(button => ['focus-card-preferences', 'focus-card-suggestion'].includes(button.props.testID)), false);
+      await ui.press('Continue session');
+    }
+    assert.equal(opened, 2); assert.equal(preferencesOpened, 0); assert.equal(starts, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test('in-card preferences actions ignore taps while either mode is handling session setup', async () => {
+  const preference = { version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false };
+  const shared = {
+    ...mocks, './ContentReveal': props => props.children, './FocusLengthControl': host('Length'), './FocusAreaSheet': () => null,
+    './FeatureTour': { useFeatureTour: () => null },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ value: preference, busy: false, ready: true, error: false }) },
+    '../context/TimerContext': { useTimer: () => ({ actionBusy: true }) },
+  };
+  const Free = load('src/components/FreeFocusCard.tsx', shared).default, Guided = load('src/components/GuidedFocusCard.tsx', shared).default;
+  let opened = 0;
+  function FreeHarness() { return React.createElement(Free, { seconds: 1859, area: 'Learning', tint: '#fff', active: false, running: false, starting: true, disabled: false, changeDisabled: false, restoring: false, failed: false, onChange() {}, onStart() {}, onDuration() {}, onPreferences: () => opened++ }); }
+  function GuidedHarness() { return React.createElement(Guided, { owner: 'person', subjects: [], disabled: false, onStarted() {}, onPreferences: () => opened++ }); }
+  const free = await render(FreeHarness), guided = await render(GuidedHarness);
+  try {
+    for (const ui of [free, guided]) {
+      const actions = ui.tree.root.findAllByType('Button').filter(button => ['focus-card-preferences', 'focus-card-suggestion'].includes(button.props.testID));
+      assert.ok(actions.length > 0);
+      for (const action of actions) { assert.equal(action.props.disabled, true); assert.equal(action.props.accessibilityState.disabled, true); await act(async () => action.props.onPress()); }
+    }
+    assert.equal(opened, 0);
+  } finally { await free.cleanup(); await guided.cleanup(); }
 });

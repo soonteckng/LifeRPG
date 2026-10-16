@@ -155,6 +155,11 @@ internal object CountdownParser {
   private fun preferences(item: JSONObject): CountdownPreferences {
     keys(item, "sound", "haptics"); return CountdownPreferences(bool(item, "sound"), bool(item, "haptics"))
   }
+  fun action(item: JSONObject): CountdownAction {
+    keys(item, "version", "identity", "operationId", "kind"); require(number(item, "version") == FORMAT_VERSION.toLong())
+    val kind = text(item, "kind", 6); require(kind in setOf("pause", "resume", "end"))
+    return CountdownAction(lease(text(item, "operationId", 36)), identity(item.getJSONObject("identity")), kind)
+  }
   fun state(text: String): CountdownState {
     val item = objectText(text, 32 * 1024)
     keys(item, "formatVersion", "leaseId", "scope", "cleared", "retiredLeases", "projection", "preferences", "anchor", "delivered", "actions")
@@ -174,11 +179,7 @@ internal object CountdownParser {
       CountdownAnchor(number(it, "wallMs"), number(it, "elapsedMs"), text(it, "bootId", 128), number(it, "deadlineElapsedMs"))
     }
     val issued = item.getJSONArray("actions"); require(issued.length() <= 2)
-    val tokens = (0 until issued.length()).map { index -> val token = issued.getJSONObject(index)
-      keys(token, "version", "identity", "operationId", "kind"); require(number(token, "version") == FORMAT_VERSION.toLong())
-      val kind = text(token, "kind", 6); require(kind in setOf("pause", "resume", "end"))
-      CountdownAction(lease(text(token, "operationId", 36)), identity(token.getJSONObject("identity")), kind)
-    }
+    val tokens = (0 until issued.length()).map { index -> action(issued.getJSONObject(index)) }
     require(tokens.all { it.identity == current?.identity && it.kind in (current?.actions ?: emptyList()) })
     val retired = strings("retiredLeases", 32, 36).map { lease(it) }
     val result = CountdownState(currentLease, owner, bool(item, "cleared"), retired, current,

@@ -10,6 +10,12 @@ class SessionCountdownModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("LifeRPGSessionCountdown")
     Constant("formatVersion") { FORMAT_VERSION }
+    Constant("routineWidgetVersion") { ROUTINE_WIDGET_VERSION }
+    AsyncFunction("activateRoutineWidgets") { leaseId: String, scopeJson: String -> RoutineWidgetRepository(context).activate(leaseId, scopeJson) }
+    AsyncFunction("publishRoutineWidgets") { leaseId: String, routinesJson: String -> RoutineWidgetRepository(context).publish(leaseId, routinesJson) }
+    AsyncFunction("clearRoutineWidgets") { leaseId: String -> RoutineWidgetRepository(context).clear(leaseId) }
+    AsyncFunction("pinRoutineWidget") { leaseId: String, routineId: String -> RoutineWidgetRepository(context).pin(leaseId, routineId) }
+    AsyncFunction("consumeRoutineWidgetLaunch") { scopeJson: String, nonce: String -> RoutineWidgetRepository(context).consume(scopeJson, nonce) }
     AsyncFunction("activate") { leaseId: String, scopeJson: String -> CountdownRepository(context).activate(leaseId, scopeJson) }
     AsyncFunction("publish") { leaseId: String, projectionJson: String, preferencesJson: String ->
       CountdownRepository(context).publish(leaseId, projectionJson, preferencesJson)

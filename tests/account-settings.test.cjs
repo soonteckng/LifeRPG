@@ -358,7 +358,7 @@ test("fully saved sessions keep the ordinary signout confirmation without a pend
     isCompleted: true, syncStatus: "saved", unsyncedSessionCount: 0 } });
   try {
     await ui.press("Sign outYour saved progress stays with your account");
-    assert.match(ui.text(), /Your character, quests and saved sessions remain with your account\. Sign in again to continue\./);
+    assert.match(ui.text(), /Your character, routines and saved sessions remain with your account\. Sign in again to continue\./);
     assert.doesNotMatch(ui.text(), /not confirmed yet|Unconfirmed sessions|sign back into this account first/);
     await ui.press("Keep me signed in");
     assert.equal(ui.calls().signOutCalls, 0);

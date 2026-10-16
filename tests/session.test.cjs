@@ -22,6 +22,8 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
+    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if (name === "expo-haptics") return {selectionAsync:async()=>{}};
     if (name.endsWith("/UserContext")) return mocks["../../context/UserContext"] ?? {useUser:()=>({hapticsEnabled:false})};
     if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
@@ -442,6 +444,8 @@ test("duration parser rejects ambiguous input rather than silently substituting"
 
 async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android") {
   const calls = [], keyboardListeners = {}, animations = [];
+  const cache = new Map();
+  const lifecycle = load("src/services/globalSessionLifecycle.ts", {}, cache).globalSessionLifecycle;
   let exitCallback;
   let keyboard = false, back;
   let state = {
@@ -455,12 +459,13 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     retryRestore:()=>{calls.push(["restore"]);}, retryCompletion:async()=>{calls.push(["complete"]);},
     setLinkedTaskId:(value)=>{calls.push(["task",value]);},setTargetAttributeId:(value)=>{calls.push(["area",value]);},
     setActivityType:(value)=>{calls.push(["activity",value]);},setDurationInMinutes:(value)=>{calls.push(["duration",value]);},setDurationInSeconds:(value)=>{calls.push(["seconds",value]);},
-    setNotes:()=>{},resolveQuestTitle:()=>{},clearCompletionModal:()=>{},acknowledgeSummary:()=>calls.push(["summary-viewed"]),
+    setNotes:value=>calls.push(["notes",value]),resolveQuestTitle:()=>{},clearCompletionModal:()=>{},acknowledgeSummary:()=>calls.push(["summary-viewed"]),
     ...initial,
   };
   const router = {canGoBack:()=>true,goBack:()=>calls.push(["dismiss"]),getState:()=>({routes:[{},{}]}),addListener:()=>()=>{}};
   const quests = {tasks:[{id:7,title:"A long quest title worth finishing",target_minutes:30,subject_id:1,is_due_today:true,is_completed_today:false}],
     subjects:[{id:1,title:"General"}],loading:false,error:false,refresh:async()=>{},...questOverrides};
+  let savedRoutines={scope:{ownerId:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},ready:true,routines:[],...questOverrides.savedRoutines};
   const Screen=load("src/components/SessionScreen.tsx",{
     "react-native-svg":{__esModule:true,default:host("Svg"),Circle:host("Circle")},
     "react-native":{
@@ -490,9 +495,11 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
     "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
-    "../context/AuthContext":{useAuth:()=>({accessMode:state.accessMode ?? 'online'})},
+    "../context/AuthContext":{useAuth:()=>({accessMode:state.accessMode ?? 'online',user:{id:state.ownerId ?? 'owner-a'},
+      localOwner:{id:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},admissionEpoch:state.admissionEpoch ?? 1})},
+    "../hooks/useSavedRoutines":{useSavedRoutines:()=>savedRoutines},
     "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
-  }).default;
+  }, cache).default;
   let renderer;
   await act(async()=>{renderer=create(React.createElement(Screen));});
   const text=(node)=>typeof node==="string"?node:(node.children??[]).map(text).join("");
@@ -501,6 +508,9 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     calls,animations,button,root:()=>renderer.root,output:()=>text(renderer.root),
     press:async(label)=>{const node=button(label);assert.ok(node,label);await act(async()=>node.props.onPress());},
     update:async(changes)=>{state={...state,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
+    updateRoutines:async(changes)=>{savedRoutines={...savedRoutines,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
+    dismissResult:async(sessionId=state.sessionId ?? null, overrides={})=>{await act(async()=>lifecycle.dismissResult({
+      ownerId:state.ownerId ?? 'owner-a',scope:JSON.stringify([state.backendId ?? 'test-backend',state.ownerId ?? 'owner-a',state.admissionEpoch ?? 1]),sessionId,...overrides}));},
     keyboard:async()=>{keyboard=true;await act(async()=>keyboardListeners.keyboardDidShow());},
     back:async()=>{await act(async()=>back());},
     finishExit:async(finished=true)=>{await act(async()=>exitCallback?.({finished}));},
@@ -519,7 +529,7 @@ test("opening Custom keeps the timer display and applied duration stable",async(
   await ui.cleanup();
 });
 
-test('accepted notification End confirmation survives an unrelated busy rerender', async () => {
+test('the retained Session screen cannot consume notification End behind the global offline surface', async () => {
   const pending = deferred(); let consumed = 0;
   const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
     notificationNonce: '90000000-0000-4000-8000-000000000001',
@@ -527,8 +537,8 @@ test('accepted notification End confirmation survives an unrelated busy rerender
   try {
     await ui.update({ actionBusy: true });
     await act(async () => { pending.resolve('end'); });
-    assert.equal(consumed, 1);
-    assert.equal(ui.root().findByType('Confirm').props.title, 'End this session?');
+    assert.equal(consumed, 0,'the stable connection coordinator owns notification actions');
+    assert.equal(ui.root().findAllByType('Confirm').length,0);
     assert.equal(ui.calls.some(c => c[0] === 'reset'), false);
   } finally { await ui.cleanup(); }
 });
@@ -676,7 +686,7 @@ test("quest setup is compact, keeps its association during loading, and never st
   assert.match(ui.output(),/A long quest title/);
   assert.equal(ui.button("Choose focus area"),undefined);
   assert.equal(ui.button("15 minutes"),undefined);
-  assert.ok(ui.button("Change quest"));
+  assert.ok(ui.button("Change routine"));
   assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
   assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
   assert.equal(ui.root().findByProps({testID:"session-timer-anchor"}).props.style[1].flex,1);
@@ -685,7 +695,7 @@ test("quest setup is compact, keeps its association during loading, and never st
   assert.deepEqual(ui.calls.at(-1),["start",2700,"A long quest title worth finishing"]);
   await ui.cleanup();
   const missing=await screenSetup({linkedTaskId:7},{tasks:[],loading:true});
-  assert.match(missing.output(),/Loading quest/);
+  assert.match(missing.output(),/Loading routine/);
   assert.equal(missing.button("Start").props.disabled,true);
   assert.equal(missing.calls.length,0);
   await missing.cleanup();
@@ -714,7 +724,7 @@ test("custom picker changes setup only on confirm; Retry uses exact seconds",asy
 
 test("back dismisses keyboard, then picker, then the screen without resetting",async()=>{
   const ui=await screenSetup();
-  await ui.press("Choose a quest");
+  await ui.press("Choose from routines");
   await ui.keyboard();
   await ui.back();
   assert.equal(ui.root().findAllByType("Sheet").length,1);
@@ -804,12 +814,12 @@ test("dock distinguishes running, paused, saving, failed and completed without c
 
 test("free setup has one Life area category and a discoverable optional quest row",async()=>{
   const ui=await screenSetup();
-  assert.ok(ui.button("Choose a quest"));
+  assert.ok(ui.button("Choose from routines"));
   assert.ok(ui.button("Select Everyday focus"));
   assert.equal(ui.button("Choose focus area"),undefined);
   assert.equal(ui.button("Choose activity"),undefined);
   assert.match(ui.output(),/Optional/);
-  await ui.press("Choose a quest");
+  await ui.press("Choose from routines");
   assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
 });
@@ -1382,8 +1392,9 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.ok(sheet.props.heightRatio < 0.85, 'ordinary results open around their content instead of filling most of the screen');
     assert.equal(sheet.props.motionMode,'timed');
     assert.equal(sheet.props.maxHeightRatio,0.85);
-    assert.equal(sheet.props.footer,undefined, 'actions reserve normal-flow height instead of overlaying result content');
+    assert.ok(sheet.props.footer, 'actions are anchored by the native footer after the sheet measures and resizes');
     const scroll=renderer.root.findByType('Scroll');
+    assert.equal(scroll.props.enableFooterMarginAdjustment,true, 'scrollable details reserve the native footer height');
     const actions=renderer.root.findByProps({testID:'session-result-actions'});
     assert.equal(actions.props.style[0].flexShrink,0);
     assert.equal(scroll.props.style.flex,1);
@@ -1602,6 +1613,51 @@ test("a durable End retains the route while unconfirmed and fades out when globa
   }finally{await ui.cleanup();}
 });
 
+test("a cancellation acknowledgement cannot dismiss the End route, and Done still fades out after its selected row is gone",async()=>{
+  const sessionId='ended-session';
+  const ui=await screenSetup({sessionId,hasOpenSession:true,isRunning:true,duration:60,timeLeft:27},{},true);
+  try {
+    await ui.press('End session');await act(async()=>ui.root().findByType('Confirm').props.onConfirm());
+    await ui.update({hasOpenSession:false,isRunning:false,endingSession:true,sessionEnded:true,actionBusy:true,syncStatus:'waiting'});
+    await ui.update({sessionId:null,endingSession:false,sessionEnded:false,actionBusy:false,syncStatus:'idle',
+      summaryViewed:false,duration:1800,timeLeft:1800,notes:''});
+    assert.equal(ui.animations.some(animation=>animation.toValue===-0.12),false,'a server reply is not user dismissal');
+    assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,0);
+    assert.equal(ui.root().findByType('DurationControl').props.seconds,27);
+    assert.match(ui.output(),/Session ended/);
+    await ui.dismissResult(sessionId);
+    assert.equal(ui.animations.filter(animation=>animation.toValue===-0.12).length,1);
+    await ui.finishExit();assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
+    assert.equal(ui.calls.filter(c=>c[0]==='reset').length,1,'Done must not send another End');
+  }finally{await ui.cleanup();}
+});
+
+test("result dismissal fences a different owner, admission, backend and replacement session",async()=>{
+  const sessionId='selected-end';
+  const ui=await screenSetup({sessionId,duration:60,timeLeft:21,sessionEnded:true},{},true);
+  try {
+    for(const wrong of [
+      {ownerId:'owner-b'},
+      {scope:JSON.stringify(['test-backend','owner-a',0])},
+      {scope:JSON.stringify(['another-backend','owner-a',1])},
+      {sessionId:'another-session'},
+    ]) await ui.dismissResult(sessionId,wrong);
+    assert.equal(ui.animations.some(animation=>animation.toValue===-0.12),false);
+    await ui.dismissResult(sessionId);await ui.finishExit();
+    assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
+  }finally{await ui.cleanup();}
+});
+
+test("Done on an exact-zero completed result dismisses its held identity without another End",async()=>{
+  const ui=await screenSetup({sessionId:'local-complete',isCompleted:true,timeLeft:0,
+    sessionSummary:{sessionId:'saved-complete',durationSeconds:60,xpEarned:1,goldEarned:0}},{},true);
+  try {
+    await ui.dismissResult('saved-complete');await ui.finishExit();
+    assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
+    assert.equal(ui.calls.filter(c=>['reset','complete','start'].includes(c[0])).length,0);
+  }finally{await ui.cleanup();}
+});
+
 test("global Done closes an unconfirmed legacy End route without waiting for its held server reply",async()=>{
   const ui=await screenSetup({duration:60,timeLeft:16,hasOpenSession:false,endingSession:true,
     actionBusy:true,isRestoring:true,syncStatus:'waiting',summaryViewed:false},{},true);
@@ -1648,13 +1704,82 @@ test("global End dismissal retains the running or paused countdown until the rou
 test("Themed quest picker selects the existing quest settings, closes, and never starts automatically",async()=>{
   const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
   try {
-    await ui.press("Choose a quest");
+    await ui.press("Choose from routines");
     assert.match(ui.output(),/45 min · Learning/);
     assert.equal(ui.button("Choose Tomorrow"),undefined);
     await ui.press("Choose Read and reflect");
-    assert.deepEqual(ui.calls,[["task",9],["area",2],["duration",45]]);
+    assert.deepEqual(ui.calls,[["notes",""],["task",9],["area",2],["duration",45]]);
     assert.equal(ui.root().findAllByType("Sheet").length,0);
     assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
+  }finally{await ui.cleanup();}
+});
+
+test("routine chooser combines saved presets and eligible linked routines while preserving exact setup and display name",async()=>{
+  const routine={id:'saved-routine',revision:1,deletedAt:null,name:'Review thermodynamics',durationSeconds:91,
+    focusAreaId:2,reminder:{enabled:false,hour:9,minute:0}};
+  const metadata=load('src/utils/routineSession.ts',{});
+  const ui=await screenSetup({notes:'old suggested content'},{
+    tasks:[{id:9,title:'Read and reflect',target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false}],
+    subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],savedRoutines:{routines:[routine]}});
+  try {
+    await ui.press('Choose from routines');assert.ok(ui.button('Choose Read and reflect'));assert.ok(ui.button('Choose Review thermodynamics'));
+    await ui.press('Choose Review thermodynamics');
+    assert.deepEqual(ui.calls.map(call=>call[0]),['task','area','notes','seconds']);
+    assert.deepEqual(ui.calls[0],['task',null]);assert.deepEqual(ui.calls[1],['area',2]);assert.deepEqual(ui.calls[3],['seconds',91]);
+    const notes=ui.calls.find(call=>call[0]==='notes')[1];assert.equal(metadata.readRoutineSession(notes),routine.name);
+    assert.equal(ui.calls.filter(call=>call[0]==='start').length,0,'choosing is setup only');
+    await ui.update({notes,linkedTaskId:null,targetAttributeId:2,duration:91,timeLeft:91});
+    assert.match(ui.output(),/Review thermodynamics/);assert.ok(ui.button('Change routine'));
+    await ui.press('Start');assert.deepEqual(ui.calls.at(-1),['start',91,routine.name]);
+    await ui.update({hasOpenSession:true,isRunning:true,timeLeft:90});
+    assert.match(ui.output(),/Review thermodynamics/);assert.equal(ui.calls.filter(call=>call[0]==='start').length,1);
+  }finally{await ui.cleanup();}
+});
+
+test("choosing a legacy routine clears saved metadata but keeps its numeric task completion link",async()=>{
+  const metadata=load('src/utils/routineSession.ts',{});
+  const ui=await screenSetup({notes:metadata.encodeRoutineSession('Old preset')},{tasks:[
+    {id:42,title:'Linked homework',target_minutes:1,subject_id:1,is_due_today:true,is_completed_today:false}]});
+  try {
+    await ui.press('Change routine');await ui.press('Choose Linked homework');
+    assert.deepEqual(ui.calls,[['notes',''],['task',42],['area',1],['duration',1]]);
+    assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
+  }finally{await ui.cleanup();}
+});
+
+test("free session clears both routine metadata and the legacy link",async()=>{
+  const metadata=load('src/utils/routineSession.ts',{});
+  for(const initial of [{linkedTaskId:7,notes:'legacy notes'},
+    {linkedTaskId:null,notes:metadata.encodeRoutineSession('Saved preset')}]) {
+    const ui=await screenSetup({...initial,duration:91});
+    try {
+      await ui.press('Switch to free session');
+      assert.deepEqual(ui.calls,[['task',null],['notes',''],['area',1],['seconds',1800]]);
+      assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
+    }finally{await ui.cleanup();}
+  }
+});
+
+test("a saved routine with no focus area keeps null instead of silently claiming the general area",async()=>{
+  const metadata=load('src/utils/routineSession.ts',{});
+  const ui=await screenSetup({notes:metadata.encodeRoutineSession('Quiet reading'),targetAttributeId:null,duration:61});
+  try {assert.equal(ui.calls.filter(call=>call[0]==='area').length,0);await ui.press('Start');
+    assert.deepEqual(ui.calls.at(-1),['start',61,'Quiet reading']);
+  }finally{await ui.cleanup();}
+});
+
+test("routine picker ignores an old account's rows and stale selection callback",async()=>{
+  const routine={id:'old-routine',revision:1,deletedAt:null,name:'Private old preset',durationSeconds:91,
+    focusAreaId:1,reminder:{enabled:false,hour:9,minute:0}};
+  const ui=await screenSetup({},{tasks:[],savedRoutines:{routines:[routine]}});
+  try {
+    await ui.press('Choose from routines');const oldSelect=ui.button('Choose Private old preset').props.onPress;
+    await ui.update({ownerId:'owner-b',admissionEpoch:2});
+    await act(async()=>oldSelect());assert.equal(ui.calls.length,0);
+    await ui.press('Choose from routines');assert.equal(ui.button('Choose Private old preset'),undefined);
+    await ui.updateRoutines({scope:{ownerId:'owner-b',backendId:'test-backend'},routines:[{...routine,id:'new-routine',name:'New account preset'}]});
+    assert.ok(ui.button('Choose New account preset'));await ui.press('Choose New account preset');
+    assert.deepEqual(ui.calls[0],['task',null]);assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
   }finally{await ui.cleanup();}
 });
 
@@ -1677,6 +1802,29 @@ test("guided Start owns its exact free draft, blocks duplicates and retains meta
   await ui.run(s => { s.clearCompletionModal(); s.acknowledgeSummary(); });
   assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
   await ui.cleanup();
+});
+
+test("routine Start carries its durable display name through the real provider without linking or duplicating a quest reward", async () => {
+  const ui=await providerSetup();
+  const metadata=load("src/utils/routineSession.ts",{});
+  try {
+    await ui.run(s=>{s.setLinkedTaskId(88);s.setTargetAttributeId(44);s.setNotes("stale quest notes");});
+    await ui.run(async s=>{assert.equal(await s.startFreeTimer(91,2,"Review thermodynamics"),true);
+      assert.equal(await s.startFreeTimer(91,2,"Review thermodynamics"),false);});
+    const starts=ui.calls.filter(([kind])=>kind==="start");
+    assert.equal(starts.length,1);assert.equal(starts[0][1].taskId,null);assert.equal(starts[0][1].subjectId,2);
+    assert.equal(starts[0][1].targetDurationSeconds,91);
+    assert.equal(metadata.readRoutineSession(starts[0][1].notes),"Review thermodynamics");
+    assert.equal(ui.state().notes,starts[0][1].notes);assert.equal(ui.state().linkedTaskId,null);
+    await ui.foreground();assert.equal(metadata.readRoutineSession(ui.state().notes),"Review thermodynamics");
+    await ui.advance(92);
+    assert.equal(ui.state().sessionSummary.questTitle,"Review thermodynamics");
+    assert.equal(ui.state().sessionSummary.durationSeconds,91);
+    assert.equal(ui.state().sessionSummary.suggestion,undefined,'a routine is not a suggested quest');
+    await ui.advance(10);await ui.foreground();
+    assert.equal(ui.calls.filter(([kind])=>kind==="complete").length,1);
+    assert.deepEqual([...new Set(ui.calls.map(([kind])=>kind))],["start","complete"]);
+  } finally {await ui.cleanup();}
 });
 
 test("restored guided sessions retain their instruction and completion title", async () => {

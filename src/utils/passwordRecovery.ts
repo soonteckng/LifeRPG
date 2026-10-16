@@ -11,7 +11,19 @@ export function isExpoGoLanRecoveryRedirect(redirectTo: string) {
   } catch { return false; }
 }
 export function validEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const value = email.trim();
+  if (value.length > 254 || /[\s\u0000-\u001F\u007F]/.test(value)) return false;
+  const parts = value.split("@");
+  if (parts.length !== 2) return false;
+  const [local, domain] = parts;
+  if (!local || local.length > 64 || local.startsWith(".") || local.endsWith(".") || local.includes("..") || /[()<>,;:\"\[\]\\]/.test(local)
+    || !/^[\p{L}\p{N}.-]+$/u.test(domain)) return false;
+  try {
+    const host = new URL(`https://${domain}`).hostname;
+    // Validate syntax only. A correctly formatted address may still not exist.
+    return !domain.includes("/") && !domain.includes(":") && !domain.includes("?") && !domain.includes("#") && host.includes(".")
+      && host.split(".").every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label));
+  } catch { return false; }
 }
 export function passwordValidation(password: string, confirmation: string) {
   if (password.length < 8) return "Use at least 8 characters for your new password.";

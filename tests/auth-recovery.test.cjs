@@ -22,6 +22,9 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+    if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
+    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
+      if (name.endsWith("/RoutineLifecycle") || name.endsWith("/RoutineWidgetLifecycle")) return () => null;
       if (name.endsWith("/OfflineSessionRecovery")) return props => React.createElement("OfflineRecovery", props);
       if (name.endsWith("/FeatureTour")) return { FeatureTourProvider: props => props.children };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
@@ -88,6 +91,7 @@ async function provider(options = {}) {
   };
   const module = load("src/context/AuthContext.tsx", {
     "../../lib/supabase": { supabase: { auth } },
+    "../services/nativeFocusProtection": { readNativeConnectivity: async () => null, subscribeNativeConnectivity: async () => null },
     "react-native": { Platform: { OS: "android" } },
     "expo-linking": {
       createURL: () => options.callback ?? callback, getInitialURL: async () => options.url ?? null,
@@ -425,6 +429,7 @@ test("root gate renders recovery before mounting account or onboarding providers
       "../components/LaunchIntro": props => props.children,
       "../components/GlobalRewardListener": host("Reward"),
       "../components/SessionConnectionContent": props => props.children,
+      "../context/ProtectionPreviewContext": { ProtectionPreviewProvider: props => props.children },
       "../context/AuthContext": {
         AuthProvider: props => props.children,
         useAuth: () => ({ user: recovery === "none" ? null : session.user, loading: false, recovery }),
@@ -483,6 +488,7 @@ async function rootAdmissionScreen(initial) {
     "../components/AuthScreen": host("Login"), "../components/RecoveryScreen": host("Recovery"),
     "../components/OfflineSessionRecovery": host("OfflineRecovery"),
     "../components/SessionConnectionContent": SessionConnectionContent,
+    "../context/ProtectionPreviewContext": { ProtectionPreviewProvider: props => props.children },
     "../components/LaunchIntro": function Intro({ children }) { return children; }, "../components/GlobalRewardListener": host("Reward"),
     "../context/AuthContext": { AuthProvider: function Auth({ children }) { return children; }, useAuth: () => auth },
     "../context/UserContext": { UserProvider, useUser: () => ({ profile: { id: auth.user?.id ?? auth.localOwner?.id ?? "", onboarding_completed: true }, profileLoading: false, profileError: false, reloadProfile: async () => true }) },

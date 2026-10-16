@@ -63,7 +63,7 @@ $jsonPath = Find-CachedJar -Group 'org.json' -Artifact 'json'
 $hamcrestPath = Find-CachedJar -Group 'org.hamcrest' -Artifact 'hamcrest-core'
 $compileClasspath = @($stdlib.FullName, $annotations.FullName, $junitPath, $jsonPath, $hamcrestPath) -join [System.IO.Path]::PathSeparator
 
-$sourceNames = @('CountdownModel.kt', 'CountdownEngine.kt', 'CountdownLaunchPolicy.kt')
+$sourceNames = @('CountdownModel.kt', 'CountdownEngine.kt', 'CountdownLaunchPolicy.kt', 'CountdownEndPromptPolicy.kt', 'RoutineWidgetModel.kt', 'RoutineWidgetPolicy.kt')
 $sourceFiles = @($sourceNames | ForEach-Object { Join-Path $sourceRoot "main\java\expo\modules\sessioncountdown\$_" })
 $testRoot = Join-Path $sourceRoot 'test\java\expo\modules\sessioncountdown'
 foreach ($sourceFile in $sourceFiles) {

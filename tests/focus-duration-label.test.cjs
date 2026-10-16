@@ -22,6 +22,7 @@ function load(file, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   new Function('require', 'module', 'exports', code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if(name==='@expo/vector-icons')return {Ionicons:props=>React.createElement('Icon',props)};
     if (!name.startsWith('.')) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const extension = ['.ts', '.tsx'].find(value => fs.existsSync(target + value));

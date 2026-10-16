@@ -11,6 +11,9 @@ function load(file, mocks, modules = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function('require', 'module', 'exports', code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if(name.endsWith('/FeatureTour')) return {useFeatureTour:()=>null};
+    if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
+    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if (!name.startsWith('.')) return require(name);
     const target = path.resolve(path.dirname(filename), name), ext = ['', '.ts', '.tsx'].find(ext => fs.existsSync(target + ext));
     return load(path.relative(path.resolve(__dirname, '..'), target + ext), mocks, modules);
@@ -34,8 +37,9 @@ async function screen(options = {}) {
     'react-native-safe-area-context': { SafeAreaView: host('SafeArea'), useSafeAreaInsets: () => ({ bottom: 16 }) }, '@expo/vector-icons': { Ionicons: host('Icon') },
     'expo-haptics': { selectionAsync: async () => calls.push(['haptic']) },
     '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), TouchableOpacity: host('Button') },
-    './AppText': { Text: host('Text') }, './ProgressRing': host('Ring'), './FocusLengthControl': host('DurationControl'),
-    './MotionPressable': host('Button'), './ContentReveal': host('Reveal'), './PersonalUI': { p: {} },
+    './AppText': { Text: host('Text') }, './ProgressRing': host('Ring'),
+    './MotionPressable': host('Button'), './ContentReveal': host('Reveal'), './PersonalUI': { p: {} }, './FocusDurationSheet':host('DurationSheet'),
+    './SavedRoutinesCard':host('SavedRoutinesBoundary'),
     './AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.footer) : null,
     './SheetConfirmation': host('Confirmation'),
     '../context/TimerContext': { useTimer: () => timer }, '../context/AuthContext': { useAuth: () => ({ localOwner: { id: '11111111-1111-4111-8111-111111111111', backendId: 'workspace' }, retrySessionVerification: async () => calls.push(['verify']) }) },
@@ -48,8 +52,8 @@ async function screen(options = {}) {
   let tree; const element = () => React.createElement(module.default, {active});
   await act(async () => { tree = create(element()); });
   return { root: () => tree.root, calls, preference: () => preference,
-    button: label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label),
-    press: async label => { await act(async () => { const button = tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label); assert.ok(button, `Missing ${label}`); assert.notEqual(button.props.disabled, true); await button.props.onPress(); }); },
+    button: label => tree.root.findAllByType('Button').find(node => (node.props.accessibilityLabel === label || label === 'Start session' && node.props.testID === 'offline-start-session')),
+    press: async label => { await act(async () => { const button = tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label || label === 'Start session' && node.props.testID === 'offline-start-session'); assert.ok(button, `Missing ${label}`); assert.notEqual(button.props.disabled, true); await button.props.onPress(); }); },
     saveDirection: async () => act(async () => { await tree.root.findAllByType('Button').find(node => node.props.testID === 'save-guided-preferences').props.onPress(); }),
     confirm: async () => act(async () => { await tree.root.findByType('Confirmation').props.onConfirm(); }),
     cancelEnd: async () => act(async () => { tree.root.findByType('Confirmation').props.onCancel(); }),
@@ -72,12 +76,12 @@ test('all six offline directions use the same chooser and actual cached IDs, wit
   try {
     const cases = [['Learning','review-topic',22], ['Work & projects','project-next-step',23], ['Creativity','creative-first-draft',24], ['Everyday life','life-small-task',25], ['Wellbeing','quiet-screen-free',26], ['Free focus',null,21]];
     for (const [label, template, id] of cases) {
-      await ui.press('Choose focus area');
+      await ui.press('Change focus direction');
       assert.deepEqual(ui.root().findAllByType('Button').filter(node => node.props.accessibilityRole === 'radio').slice(0,6).map(node => node.props.accessibilityLabel), cases.map(item => item[0]));
       await ui.press(label); await ui.saveDirection(); await ui.press('Start session');
       assert.deepEqual(ui.calls.filter(call => call[0].startsWith('start-')).at(-1), template ? ['start-suggested',template,1800,id] : ['start-free',1800,id]);
     }
-    await ui.press('Find your next step'); await ui.press('Work & projects'); await ui.press('Make room for a priority'); await ui.saveDirection();
+    await ui.press('Change focus direction'); await ui.press('Work & projects'); await ui.press('Make room for a priority'); await ui.saveDirection();
     assert.equal(ui.preference().templateId, 'work-priority'); assert.match(text(ui.root()), /Make room for a priority/);
     await ui.press('Start session'); assert.deepEqual(ui.calls.filter(call => call[0].startsWith('start-')).at(-1), ['start-suggested','work-priority',1800,23]);
     assert.ok(ui.calls.some(call => call[0] === 'haptic'));
@@ -165,12 +169,47 @@ test('uncertain server controls are visibly disabled while End can persist the s
 test('hidden offline overlay cannot present direction, duration or confirmation portals', async () => {
   const ui = await screen();
   try {
-    await ui.press('Choose focus area'); assert.equal(ui.root().findAllByType('Sheet').length,1);
-    await ui.setActive(false); assert.equal(ui.root().findAllByType('Sheet').length,0); assert.equal(ui.root().findAllByType('DurationControl').length,0);
+    await ui.press('Change focus direction'); assert.equal(ui.root().findAllByType('Sheet').length,1);
+    const duration = ui.root().findAll(node=>typeof node.type==='function' && node.type.name==='FocusLengthControl')[0], editor = ui.root().findByType('DurationSheet');
+    await ui.setActive(false); assert.equal(ui.root().findAllByType('Sheet').length,0); assert.equal(ui.root().findAll(node=>typeof node.type==='function' && node.type.name==='FocusLengthControl')[0],duration);
+    assert.equal(duration.props.disabled,true); assert.equal(editor.props.visible,false);
     await ui.setActive(true); assert.equal(ui.root().findAllByType('Sheet').length,0); await ui.setActive(false);
     await ui.update({isCompleted:true}); assert.equal(ui.root().findAllByType('Sheet').length,0);
     await ui.update({isCompleted:false,hasOpenSession:true,isRunning:true}); await ui.setActive(true); await ui.press('End session');
     assert.equal(ui.root().findAllByType('Confirmation').length,1); await ui.setActive(false); assert.equal(ui.root().findAllByType('Confirmation').length,0);
     await ui.setActive(true); assert.equal(ui.root().findAllByType('Confirmation').length,0);
   } finally { await ui.cleanup(); }
+});
+
+test('offline direction and starting-point taps obey the saved haptic preference independently of opening the chooser', async () => {
+  for(const haptics of [true,false]) {
+    const ui=await screen({haptics});
+    try {
+      await ui.press('Change focus direction'); const before=ui.calls.filter(call=>call[0]==='haptic').length;
+      await ui.press('Work & projects');
+      assert.equal(ui.calls.filter(call=>call[0]==='haptic').length-before,haptics?1:0);
+      await ui.press('Make room for a priority');
+      assert.equal(ui.calls.filter(call=>call[0]==='haptic').length-before,haptics?2:0);
+      await ui.saveDirection();assert.equal(ui.preference().templateId,'work-priority');
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test('the offline custom-duration editor remains mounted and closes during the connection fade', async () => {
+  const ui=await screen();
+  try {
+    const editor=ui.root().findByType('DurationSheet');
+    await act(async () => ui.root().findAllByType('Button').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
+    assert.equal(editor.props.visible,true); assert.equal(editor.props.seconds,1800);
+    await ui.setActive(false);assert.equal(ui.root().findByType('DurationSheet'),editor);assert.equal(editor.props.visible,false);
+    await ui.setActive(true);assert.equal(editor.props.visible,false,'reopening offline does not reopen an old editor');
+  } finally { await ui.cleanup(); }
+});
+
+test('offline matches the one in-card direction entry while preserving routines and exact start setup',async()=>{
+ const ui=await screen();try{assert.equal(ui.button('Find your next step'),undefined);assert.ok(ui.button('Change focus direction'));assert.ok(ui.root().findByType('SavedRoutinesBoundary'));await ui.press('Change focus direction');await ui.press('Free focus');await ui.saveDirection();assert.doesNotMatch(text(ui.root()),/Suggested:/);await ui.press('Start session');assert.deepEqual(ui.calls.find(call=>call[0]==='start-free'),['start-free',1800,2]);}finally{await ui.cleanup();}
+});
+test('rapid offline Starts remain single-flight and active cards keep End instead of direction editing',async()=>{
+ let release;const pending=new Promise(resolve=>release=resolve);const calls=[];
+ const ui=await screen({timer:{startSuggestedTimer:async()=>{calls.push('start');return pending;}}});try{await act(async()=>{const button=ui.button('Start session');button.props.onPress();button.props.onPress();});assert.deepEqual(calls,['start']);await act(async()=>release(true));await ui.update({hasOpenSession:true,isRunning:true});assert.equal(ui.button('Change focus direction'),undefined);await ui.press('End session');assert.equal(ui.root().findAllByType('Confirmation').length,1);}finally{await ui.cleanup();}
 });
