@@ -22,7 +22,7 @@ export default function TabsLayout() {
         transitionSpec: { animation: "timing", config: { duration: reducedMotion ? 0 : 180 } },
         sceneStyle: { backgroundColor: colors.background },
         tabBarStyle: styles.tabBar,
-        tabBarBackground: () => <GlassSurface radius={24} />,
+        tabBarBackground: () => <GlassSurface radius={33} />,
         tabBarItemStyle: styles.tabItem,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
@@ -81,7 +81,7 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     height: 66,
-    borderRadius: 24,
+    borderRadius: 33,
     backgroundColor: "transparent",
     borderTopWidth: 0,
     borderWidth: 0,

@@ -12,6 +12,7 @@ import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -52,7 +53,7 @@ type Detail =
   | { kind: "period" }
   | { kind: "consistency" };
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
-const green = "#8FD8B6";
+const green = colors.success;
 
 function Section({
   title,
@@ -149,6 +150,7 @@ export default function ProgressScreen() {
   const timer = useTimer();
   const { profile, hapticsEnabled } = useUser();
   const { sessionSummary } = timer;
+  const router = useRouter();
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const insets = useSafeAreaInsets();
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -260,6 +262,9 @@ export default function ProgressScreen() {
     ? `${finishedSessions} ${finishedSessions === 1 ? "session" : "sessions"} finished${heroDay?.goal?.goal_completed ? " · daily goal reached" : ""}.`
     : heroDay?.future ? "Time ahead for what matters." : "Complete a session to record your effort here.";
   const comparisonLabel = analytics ? progressPeriodMessage(analytics, period) : "";
+  // A current period with nothing yet gets one welcoming card, not a page of empty sections.
+  const freshPeriod = !!analytics && currentPeriod && !analytics.sessions.length;
+  const leadArea = analytics && analytics.areas.length > 1 ? analytics.areas[0] : undefined;
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
@@ -388,30 +393,21 @@ export default function ProgressScreen() {
         ) : (
           analytics && (
             <ContentReveal>
-              <View style={s.hero} testID="progress-day-hero">
-                <Text style={s.caption}>{dayLabel}</Text>
-                <Text
-                  style={[s.focusValue, !heroDay?.seconds && s.focusValueEmpty]}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.6}
-                  numberOfLines={1}
-                >
-                  {durationLabel(heroDay?.seconds ?? 0)}
-                </Text>
-                <Text style={s.heroDescription}>
-                  {dayMessage}
-                </Text>
-              </View>
               <View style={s.card}>
-                <View style={s.chartHeader}>
-                  <Text style={s.caption}>
-                    {analytics.seconds
-                      ? `Peak day · ${durationLabel(peak)}`
-                      : "A little time makes a difference"}
-                  </Text>
-                  {mode === "month" && (
-                    <Text style={s.caption}>Swipe for more →</Text>
-                  )}
+                {/* The period's story leads; the chart and the chosen day follow in one card. */}
+                <View style={s.story} testID="progress-period-summary">
+                  <Text style={s.storyLabel}>{mode === "week" ? "Week total" : "Month total"}</Text>
+                  {freshPeriod ? <>
+                    <Text style={s.storyTitle}>{mode === "week" ? "A fresh week" : "A fresh month"}</Text>
+                    <Text style={s.storyLine}>Your first session starts this {mode}’s story. Even 15 minutes counts.</Text>
+                    <Pressable onPress={() => router.navigate("/")} accessibilityRole="button" accessibilityLabel="Start a session from Home" style={s.storyAction}>
+                      <Ionicons name="play" size={14} color={colors.primaryText} /><Text style={s.storyActionText}>Start a session</Text>
+                    </Pressable>
+                    {analytics.previousSeconds > 0 && <Text style={s.caption}>Last {mode}: {durationLabel(analytics.previousSeconds)}</Text>}
+                  </> : <>
+                    <Text style={s.storyValue} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>{durationLabel(analytics.seconds)}</Text>
+                    <Text style={s.storyLine}>{comparisonLabel}{leadArea ? <Text style={s.storyAside}> {focusAreaTitle(leadArea.title)} led the way.</Text> : null}</Text>
+                  </>}
                 </View>
                 <ScrollView
                   horizontal
@@ -471,22 +467,16 @@ export default function ProgressScreen() {
                     <View style={[s.legendDot, { backgroundColor: green }]} />
                     <Text style={s.caption}>Check · goal reached</Text>
                   </View>
+                  {mode === "month" && <Text style={s.caption}>Swipe for more →</Text>}
                 </View>
-                <Text style={s.chartHint}>Select a day. Tap it again to see its sessions.</Text>
-
-                {!analytics.sessions.length && (
-                  <Text style={s.chartEmpty}>
-                    No sessions in this {mode} yet. Every completed session
-                    counts.
-                  </Text>
-                )}
-              </View>
-              <View style={s.periodSummary} testID="progress-period-summary">
-                <View style={s.periodSummaryHeading}>
-                  <Text style={s.rowTitle}>{mode === "week" ? "Week total" : "Month total"}</Text>
-                  <Text style={s.periodSummaryValue}>{durationLabel(analytics.seconds)}</Text>
+                <View style={s.dayDetail} testID="progress-day-hero">
+                  <View style={s.dayDetailHeading}>
+                    <Text style={s.dayDetailTitle}>{dayLabel}</Text>
+                    <Text style={s.dayDetailValue}>{durationLabel(heroDay?.seconds ?? 0)}</Text>
+                  </View>
+                  <Text style={s.caption}>{dayMessage}</Text>
+                  <Text style={s.chartHint}>Tap a day to see it here. Tap it again for its sessions.</Text>
                 </View>
-                <Text style={s.comparisonNote}>{comparisonLabel}</Text>
               </View>
               {mode === "month" && <View style={[s.card, s.calendarCard]}>
                 <View style={s.calendarWeekdays}>
@@ -542,12 +532,10 @@ export default function ProgressScreen() {
                   <Text style={s.caption}>Green dot · goal reached</Text>
                 </View>
               </View>}
-              <Section
-                title="Where it went"
-
-              />
+              {!freshPeriod && <>
+              <Section title="By focus area" />
               <View style={s.card}>
-                {analytics.areas.length > 0 && <View style={{ flexDirection: "row", height: 12, borderRadius: 6, overflow: "hidden", marginTop: 8, marginBottom: 8 }}>
+                {analytics.areas.length > 0 && <View style={s.areaShare}>
                   {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}
                 </View>}
                 {analytics.areas.length ? (
@@ -604,6 +592,7 @@ export default function ProgressScreen() {
                 <Ionicons name="chevron-forward" size={18} color={colors.accent} />
               </Pressable>
               </View>
+              </>}
               <Section
                 title="Consistency"
                 action="How it works"
@@ -884,32 +873,6 @@ const s = StyleSheet.create({
   },
   periodTitle: { color: colors.secondary, fontWeight: "500", fontSize: 15 },
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  hero: {
-    paddingTop: 4, paddingBottom: 6,
-  },
-  focusValue: {
-    color: colors.text,
-    fontSize: 48,
-    fontWeight: "600",
-    letterSpacing: -1.4,
-    marginTop: 6,
-    fontVariant: ["tabular-nums"],
-  },
-  heroDescription: {
-    color: colors.secondary,
-    fontSize: 15,
-    lineHeight: 20,
-    marginTop: 2,
-  },
-  comparisonNote: {
-    color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 4,
-  },
-  periodSummary: { marginTop: 12, paddingVertical: 14, paddingHorizontal: 16, gap: 3, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  periodSummaryHeading: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  periodSummaryValue: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", fontVariant: ["tabular-nums"] },
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",
@@ -934,19 +897,10 @@ const s = StyleSheet.create({
   },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   card: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     borderRadius: radius.card,
     backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
-  },
-  chartHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: 8,
-    marginBottom: 6,
   },
   chart: { flexDirection: "row", gap: 4, paddingTop: 8 },
   weekChart: { flexGrow: 1 },
@@ -975,13 +929,20 @@ const s = StyleSheet.create({
   },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   legendDot: { width: 6, height: 6, borderRadius: 3 },
-  chartEmpty: {
-    color: colors.secondary,
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: 12,
-  },
-  chartHint: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 6 },
+  chartHint: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 2 },
+  story: { paddingTop: 8, paddingBottom: 4, gap: 2 },
+  storyLabel: { ...type.label },
+  storyValue: { color: colors.text, fontSize: 40, lineHeight: 46, fontWeight: "700", letterSpacing: -1, fontVariant: ["tabular-nums"] },
+  storyTitle: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "700", letterSpacing: -0.6, marginTop: 2 },
+  storyLine: { color: colors.text, fontSize: 15, lineHeight: 20 },
+  storyAside: { color: colors.secondary },
+  storyAction: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.primary, marginTop: 12, marginBottom: 6 },
+  storyActionText: { color: colors.primaryText, fontSize: 15, fontWeight: "600" },
+  dayDetail: { marginTop: 10, paddingTop: 12, paddingBottom: 6, gap: 2, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  dayDetailHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
+  dayDetailTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", flexShrink: 1 },
+  dayDetailValue: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  areaShare: { flexDirection: "row", height: 10, borderRadius: 5, overflow: "hidden", marginTop: 10, marginBottom: 6 },
   consistency: {
     flexDirection: "row",
     alignItems: "center",
@@ -1069,7 +1030,7 @@ const s = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 11,
-    backgroundColor: "rgba(143,216,182,0.10)",
+    backgroundColor: "rgba(48,209,88,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1179,7 +1140,6 @@ const s = StyleSheet.create({
     borderRadius: 14,
     backgroundColor: colors.accentSoft,
   },
-  focusValueEmpty: { fontSize: 30, letterSpacing: -0.8, marginTop: 2 },
   areaRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20 },
   areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },

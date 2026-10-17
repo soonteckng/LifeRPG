@@ -121,7 +121,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
         </View>
         {terminal && <Text style={s.caption}>{timer.isCompleted ? "Session complete. Your record stays on this phone." : "Session stopped. Your saved request stays on this phone."}</Text>}
         {active ? <ContentReveal key="active"><View style={s.timer}>
-          <ProgressRing size={ringSize} progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : 1 - timer.timeLeft / Math.max(1, timer.duration)} color={breakActive ? "#F5B84B" : undefined}>
+          <ProgressRing size={ringSize} progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : 1 - timer.timeLeft / Math.max(1, timer.duration)} color={breakActive ? colors.streak : undefined}>
             <Text allowFontScaling={false} style={s.time} accessibilityLabel={breakActive ? `Break time left ${sessionTime(timer.breakSecondsLeft)}` : `Time remaining ${sessionTime(timer.timeLeft)}`}>{sessionTime(breakActive ? timer.breakSecondsLeft : timer.timeLeft)}</Text>
             <Text style={s.caption}>{breakActive ? `Break left · ${sessionTime(timer.timeLeft)} of focus remains` : timer.isRunning ? "Time remaining" : "Paused"}</Text>
           </ProgressRing>

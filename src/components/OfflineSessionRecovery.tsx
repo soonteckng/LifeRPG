@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
   number: { fontSize: 48, lineHeight: 58, fontWeight: "600", fontVariant: ["tabular-nums"], color: colors.text },
   unitLabel: { ...type.body, color: colors.secondary },
   actions: { gap: 12 },
-  button: { minHeight: 52, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.primary },
+  button: { minHeight: 52, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center", justifyContent: "center", borderRadius: 26, backgroundColor: colors.primary },
   buttonText: { ...type.body, fontWeight: "600", color: colors.primaryText, textAlign: "center" },
   error: { ...type.body, color: colors.danger },
 });

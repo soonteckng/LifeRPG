@@ -331,14 +331,12 @@ export const p = StyleSheet.create({
   button: {
     minHeight: 50,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 25,
     backgroundColor: colors.primary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 16, lineHeight: 22, fontWeight: "500", color: colors.primaryText, textAlign: "center" },
+  buttonText: { fontSize: 16, lineHeight: 22, fontWeight: "600", color: colors.primaryText, textAlign: "center" },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,

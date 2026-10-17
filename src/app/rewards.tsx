@@ -122,7 +122,7 @@ function MilestoneCollection() {
         <View
           style={[
             p.icon,
-            milestone.unlocked && { backgroundColor: "rgba(112,216,174,0.10)" },
+            milestone.unlocked && { backgroundColor: "rgba(48,209,88,0.12)" },
           ]}
         >
           <Ionicons

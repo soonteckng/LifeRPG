@@ -12,6 +12,7 @@ import { enableNotifications, openNotificationSettings } from "../services/notif
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
+import SheetHeader from "./SheetHeader";
 
 type Mode = "normal" | "allow-list" | "essentials";
 const modeName = (mode: Mode) => mode === "normal" ? "Normal" : mode === "allow-list" ? "Allow list" : "Block apps";
@@ -46,7 +47,7 @@ export default function SessionProtectionControl({ statusOnly = false, activeSur
       </> : <>
         <Text style={s.rowLabel}>Protection</Text>
         <Text style={s.rowValue} numberOfLines={1}>{label}</Text>
-        <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+        <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
       </>}
     </Pressable>
     <ProtectionSettingsSheet visible={open && activeSurface} onClose={() => setOpen(false)} />
@@ -99,7 +100,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
     } catch { if (currentView.current === expectedView && isCurrent()) setMessage("Open LifeRPG’s notification settings to allow its protection notification."); }
   };
   return <AppSheet visible={visible} onRequestClose={() => { if (locked || !saving) onClose(); }} guardDismiss={!locked && saving} compact maxHeightRatio={0.88} label={locked ? "session protection details" : "session protection"} motionMode="timed"
-    header={<View style={s.sheetHeading}><Text style={s.sheetTitle}>{locked ? "Your session protection" : "A little space to focus"}</Text><Text style={s.body}>{locked ? "Your mode and app choices stay fixed until this session ends. End session remains available at any time." : "Choose which apps stay available. Protected sessions include one break of up to five minutes."}</Text></View>}
+    header={<SheetHeader title={locked ? "Your session protection" : "A little space to focus"} subtitle={locked ? "Your mode and app choices stay fixed until this session ends. End session remains available at any time." : "Choose which apps stay available. Protected sessions include one break of up to five minutes."} onClose={() => { if (locked || !saving) onClose(); }} />}
     footer={<View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
       {(!locked || canRestore) && <SheetButton disabled={applyDisabled} onPress={() => void apply()} accessibilityRole="button" style={[s.primary, applyDisabled && s.disabled]}><Text style={s.primaryText}>{saving ? "Saving…" : canRestore ? "Restore protection" : "Use this mode"}</Text></SheetButton>}
       {locked && <SheetButton onPress={onClose} accessibilityRole="button" style={s.primary}><Text style={s.primaryText}>Done</Text></SheetButton>}
@@ -133,8 +134,8 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  control:{minHeight:44,paddingVertical:12,flexDirection:"row",alignItems:"center",gap:12,paddingHorizontal:14}, status:{minHeight:48,paddingVertical:0,gap:8,alignSelf:"center",width:"100%",maxWidth:340,paddingHorizontal:14,borderRadius:16,backgroundColor:colors.surface}, iconTile:{width:30,height:30,borderRadius:9,alignItems:"center",justifyContent:"center",backgroundColor:"rgba(56,209,181,0.14)"}, rowLabel:{color:colors.text,fontSize: 15, lineHeight: 20,fontWeight:"500"}, rowValue:{flex:1,textAlign:"right",color:colors.secondary,fontSize: 15, lineHeight: 20}, rowText:{fontSize: 15, lineHeight: 20,fontWeight:"500"},controlText:{flex:1,color:colors.secondary,fontSize: 13, lineHeight: 18},link:{color:colors.accent,fontSize:14,fontWeight:"500"},
+  control:{minHeight:52,paddingVertical:11,flexDirection:"row",alignItems:"center",gap:12,paddingHorizontal:16}, status:{minHeight:48,paddingVertical:0,gap:8,alignSelf:"center",width:"100%",maxWidth:340,paddingHorizontal:14,borderRadius:16,backgroundColor:colors.surface}, iconTile:{width:30,height:30,borderRadius:9,alignItems:"center",justifyContent:"center",backgroundColor:"rgba(99,230,190,0.14)"}, rowLabel:{color:colors.text,fontSize: 16, lineHeight: 22,fontWeight:"500"}, rowValue:{flex:1,textAlign:"right",color:colors.secondary,fontSize: 16, lineHeight: 22}, rowText:{fontSize: 16, lineHeight: 22,fontWeight:"500"},controlText:{flex:1,color:colors.secondary,fontSize: 13, lineHeight: 18},link:{color:colors.accent,fontSize:14,fontWeight:"500"},
   sheetHeading:{paddingHorizontal:20,paddingBottom:12,gap:6},sheetTitle:{fontSize: 24, lineHeight: 30,fontWeight:"600",color:colors.text,letterSpacing:-0.5},body:{fontSize: 15, lineHeight: 20,color:colors.secondary},caption:{fontSize: 13, lineHeight: 18,color:colors.secondary},sheetBody:{paddingHorizontal:20,paddingBottom:20,gap:12},
-  mode:{flexDirection:"row",alignItems:"center",gap:12,padding:15,minHeight:78,borderRadius:18,backgroundColor:colors.sheetCard,borderWidth:1,borderColor:"transparent"},modeSelected:{backgroundColor:"rgba(56,209,181,0.08)",borderColor:colors.protection},modeTitle:{fontSize: 16, lineHeight: 22,fontWeight:"600",color:colors.text},detail:{flex:1,minWidth:0,gap:3},safety:{flexDirection:"row",gap:8,paddingVertical:6,paddingRight:20},permissions:{gap:8,paddingTop:8},permissionRow:{flexDirection:"row",alignItems:"center",gap:10,minHeight:52,paddingVertical:8,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:colors.line},permissionAction:{minHeight:44,minWidth:52,alignItems:"center",justifyContent:"center"},
-  footer:{gap:10,paddingHorizontal:20,paddingTop:12,backgroundColor:colors.surfaceRaised},primary:{minHeight:52,padding:14,borderRadius:16,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center"},primaryText:{color:colors.primaryText,fontSize: 17, lineHeight: 22,fontWeight:"600"},disabled:{opacity:0.45},error:{fontSize: 14, lineHeight: 20,color:colors.danger},
+  mode:{flexDirection:"row",alignItems:"center",gap:12,padding:15,minHeight:78,borderRadius:18,backgroundColor:colors.sheetCard,borderWidth:1,borderColor:"transparent"},modeSelected:{backgroundColor:"rgba(99,230,190,0.08)",borderColor:colors.protection},modeTitle:{fontSize: 16, lineHeight: 22,fontWeight:"600",color:colors.text},detail:{flex:1,minWidth:0,gap:3},safety:{flexDirection:"row",gap:8,paddingVertical:6,paddingRight:20},permissions:{gap:8,paddingTop:8},permissionRow:{flexDirection:"row",alignItems:"center",gap:10,minHeight:52,paddingVertical:8,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:colors.line},permissionAction:{minHeight:44,minWidth:52,alignItems:"center",justifyContent:"center"},
+  footer:{gap:10,paddingHorizontal:20,paddingTop:12,backgroundColor:colors.surfaceRaised},primary:{minHeight:54,padding:14,borderRadius:27,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center"},primaryText:{color:colors.primaryText,fontSize: 17, lineHeight: 22,fontWeight:"600"},disabled:{opacity:0.45},error:{fontSize: 14, lineHeight: 20,color:colors.danger},
 });

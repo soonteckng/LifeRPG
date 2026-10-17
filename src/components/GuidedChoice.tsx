@@ -4,7 +4,9 @@ import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import { FOCUS_AREAS } from "../utils/focusAreas";
 import { colors } from "../constants/theme";
-import { FOCUS_DIRECTIONS, STUDY_NEEDS, focusDirection, focusOptions } from "../constants/guidedQuests";
+import { type } from "../constants/typography";
+import { areaTint } from "../utils/lifeAreaColor";
+import { FOCUS_DIRECTIONS, focusDirection, focusOptions } from "../constants/guidedQuests";
 import type { GuidedPreference } from "../services/guidedPreferenceService";
 import { preferenceForFocusDirection, preferenceForFocusMode } from "../utils/focusPreference";
 
@@ -28,13 +30,13 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
     <View style={s.directionGrid}>{directions.map(direction => {
       const selected = direction ? selectedDirection(direction.id) : !value.enabled;
       const visual = direction ? directionVisuals[direction.id] : { icon: "sparkles-outline" as const };
-      const tint = FOCUS_AREAS.find(area => area.title === direction?.title)?.color ?? FOCUS_AREAS[0].color;
+      const tint = FOCUS_AREAS.find(area => area.title === direction?.title)?.color ?? colors.accent;
       const title = direction?.title ?? "Free focus";
       const hint = direction?.hint ?? "Your own idea, at your own pace.";
       // Compact tiles leave the next section in view, so the sheet reads as scrollable.
       return <Pressable key={direction?.id ?? "free-focus"} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: selected, disabled }}
-        onPress={() => choose(direction)} style={[s.directionTile, selected && s.selected]}>
-        <View style={[s.tileIcon, { backgroundColor: tint + "1F" }]}><Ionicons name={visual.icon} size={18} color={tint} /></View>
+        onPress={() => choose(direction)} style={[s.directionTile, selected && { backgroundColor: areaTint(tint, 0.14), borderColor: tint }]}>
+        <View style={[s.tileIcon, { backgroundColor: areaTint(tint, selected ? 0.22 : 0.14) }]}><Ionicons name={visual.icon} size={16} color={tint} /></View>
         <Text style={[s.tileTitle, selected && s.selectedTitle]} numberOfLines={2}>{title}</Text>
       </Pressable>;
     })}</View>
@@ -53,46 +55,63 @@ export default function GuidedChoice({ value, onChange, disabled = false, onSele
   return <View style={s.group}>
     <View style={s.section}><Text style={s.heading}>Direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} includeFreeFocus onSelection={onSelection} /></View>
     <View style={s.section}>
-      <View style={s.startingPointHeader}><Text style={s.heading}>Suggested first step</Text>
-        <Text style={s.body}>{value.enabled ? `${direction.hint} Your choice shows on Home as the suggestion.` : "No suggestion. Bring your own idea and choose your time on Home."}</Text></View>
-      {!value.enabled ? <View style={s.freeRow}>
-        <View style={[s.tileIcon, { backgroundColor: colors.accentSoft }]}><Ionicons name="sparkles-outline" size={18} color={colors.accent} /></View>
-        <Text style={[s.body, s.flexText]}>Sessions count toward Everyday focus, a simple category for any activity.</Text>
-      </View> : focusOptions(value.need).map(task => {
-        const studyNeed = STUDY_NEEDS.find(need => need.id === task.need);
-        const title = studyNeed?.title ?? task.title;
-        const hint = studyNeed?.hint ?? startingPointHints[task.id];
+      <Text style={s.heading}>{value.enabled ? `First step · ${direction.title}` : "First step"}</Text>
+      {!value.enabled ? <View style={[s.list, s.freeRow]}>
+        <View style={[s.tileIcon, { backgroundColor: colors.accentSoft }]}><Ionicons name="sparkles-outline" size={16} color={colors.accent} /></View>
+        <Text style={[s.body, s.flexText]}>Bring your own idea. Sessions count toward Everyday focus.</Text>
+      </View> : <View style={s.list}>{focusOptions(value.need).map((task, index) => {
+        const hint = startingPointHints[task.id];
         const selected = value.templateId === task.id;
-        return <Pressable key={task.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: selected, disabled }}
-          onPress={() => { if (disabled) return; onSelection?.(); onChange({ ...value, areaId: undefined, need: task.need, templateId: task.id, smaller: false }); }} style={[s.promptRow, selected && s.selectedPrompt]}>
-          <View style={s.detail}><Text style={[s.promptTitle, selected && s.selectedTitle]}>{title}</Text><Text style={s.body}>{hint}</Text></View>
-          <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={22} color={selected ? colors.accent : colors.muted} />
+        // A grouped list with a single checkmark, as in iOS Settings.
+        return <Pressable key={task.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={task.title} accessibilityHint={hint} accessibilityState={{ checked: selected, disabled }}
+          onPress={() => { if (disabled) return; onSelection?.(); onChange({ ...value, areaId: undefined, need: task.need, templateId: task.id, smaller: false }); }} style={[s.promptRow, index > 0 && s.promptDivider]}>
+          <View style={s.detail}><Text style={[s.promptTitle, selected && s.promptChosen]}>{task.title}</Text>{!!hint && <Text style={s.body}>{hint}</Text>}</View>
+          {selected ? <Ionicons name="checkmark" size={20} color={colors.accent} /> : <View style={s.checkSpace} />}
         </Pressable>;
-      })}
+      })}</View>}
+      {value.enabled && <Text style={s.footnote}>Your first step shows on Home as the suggestion.</Text>}
     </View>
   </View>;
 }
+// Short, concrete lines: what to do, not why it is good for you.
 const startingPointHints: Record<string, string> = {
-  "project-next-step": "Pick the next unfinished part of your project.",
-  "work-priority": "Give one useful task your attention.",
-  "creative-first-draft": "Write, sketch or build a rough first idea.",
-  "creative-practice": "Spend a little time practising a skill you enjoy.",
-  "life-small-task": "Take care of a form, plan or small everyday task.",
-  "life-reset-space": "Put one part of your space back in order.",
-  "quiet-screen-free": "Read, journal, move gently or take time to recharge.",
+  "review-topic": "Go over one topic until it makes sense.",
+  "next-deadline": "Pick up the next unfinished part.",
+  "practice-question": "Past papers, problem sets or flashcards.",
+  "read-chapter": "Read closely, then note what stuck.",
+  "project-next-step": "Open it up and do the next part.",
+  "work-priority": "Close the other tabs. Just this one thing.",
+  "work-plan-week": "Put the important things on your calendar.",
+  "work-inbox": "Reply, file or archive, oldest first.",
+  "creative-first-draft": "Messy is fine. Just get it down.",
+  "creative-practice": "Scales, sketches, drills — whatever you practise.",
+  "creative-learn-technique": "Follow a tutorial, then try it yourself.",
+  "creative-finish-piece": "Wrap up something that’s nearly done.",
+  "life-small-task": "A form, a booking or a reply you’ve put off.",
+  "life-reset-space": "One drawer, desk or folder at a time.",
+  "life-money": "Check spending, pay a bill, update the budget.",
+  "life-plan-meals": "Decide the meals, write the list.",
+  "quiet-screen-free": "Unplug and do something restful.",
+  "wellbeing-read": "A book, not a feed.",
+  "wellbeing-journal": "A few honest lines about today.",
+  "wellbeing-move": "A walk, a stretch or a short workout.",
 };
 const s = StyleSheet.create({
-  group: { gap: 24 }, directions: { gap: 6 }, section: { gap: 10 },
-  heading: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
+  group: { gap: 22 }, directions: { gap: 6 }, section: { gap: 8 },
+  heading: { ...type.label, paddingHorizontal: 4 },
   directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 60, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1, borderColor: "transparent", flexDirection: "row", alignItems: "center", gap: 10 },
-  tileIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  tileTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" }, selectedTitle: { color: colors.accent },
+  directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: "transparent", flexDirection: "row", alignItems: "center", gap: 10 },
+  tileIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  tileTitle: { flex: 1, minWidth: 0, color: colors.neutral, fontSize: 15, lineHeight: 20, fontWeight: "500" }, selectedTitle: { color: colors.text, fontWeight: "600" },
   row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 },
-  startingPointHeader: { gap: 4 },
-  promptRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: "transparent", gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.sheetCard }, selectedPrompt: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
-  freeRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.sheetCard },
+  list: { borderRadius: 16, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  promptRow: { minHeight: 60, paddingHorizontal: 16, paddingVertical: 10, gap: 12, flexDirection: "row", alignItems: "center" },
+  promptDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, promptChosen: { fontWeight: "600" },
+  checkSpace: { width: 20 },
+  freeRow: { minHeight: 60, paddingHorizontal: 14, paddingVertical: 12, gap: 12, flexDirection: "row", alignItems: "center" },
+  footnote: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
   flexText: { flex: 1 },
-  selected: { backgroundColor: colors.accentSoft, borderColor: colors.accent }, detail: { flex: 1, minWidth: 0, gap: 3 },
+  selected: { backgroundColor: colors.accentSoft, borderColor: colors.accent }, detail: { flex: 1, minWidth: 0, gap: 2 },
   title: { fontSize: 17, lineHeight: 22, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 });

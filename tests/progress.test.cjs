@@ -160,7 +160,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#F4AA88",
+    "#FF9F0A",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -185,7 +185,7 @@ test("legacy Wellbeing aliases form one 16-minute group with both original sessi
     const group = result.areas[0];
     assert.equal(group.title, "Wellbeing");
     assert.equal(group.seconds, 960);
-    assert.equal(group.color, "#F4AA88");
+    assert.equal(group.color, "#FF9F0A");
     assert.equal(group.sessions.length, 16);
     assert.equal(new Set(group.sessions.map(row => row.id)).size, 16);
     assert.equal(group.sessions.filter(row => row.subject_id === 2).length, 1);
@@ -200,7 +200,7 @@ test("alias daily segments use the same stable colour and identity as the combin
   const areaRows = [
     { id: 2, title: "Grooming & Vitality", color_code: "#EC4899" },
     { id: 3, title: "Fitness & Health", color_code: "#EF4444" },
-    { id: 8, title: "Wellbeing", color_code: "#F4AA88" },
+    { id: 8, title: "Wellbeing", color_code: "#FF9F0A" },
   ];
   const rows = [session("grooming", 60, "2026-10-17T07:00:00Z", 2),
     session("fitness", 900, "2026-10-16T07:00:00Z", 3), session("canonical", 120, "2026-10-17T06:00:00Z", 8)];
@@ -221,8 +221,8 @@ test("distinct custom IDs and legacy activities remain separate while single-are
   const clock = new Date("2026-10-17T08:00:00Z");
   const areaRows = [
     { id: 1, title: "Learning", color_code: "#A5B4FC" },
-    { id: 6, title: "My ceramics", color_code: "#79BFF2" },
-    { id: 7, title: "My ceramics", color_code: "#E98ABC" },
+    { id: 6, title: "My ceramics", color_code: "#64D2FF" },
+    { id: 7, title: "My ceramics", color_code: "#FF6482" },
     { id: 1, title: "Learning", color_code: "#A5B4FC" },
   ];
   const rows = [session("learning", 60, "2026-10-17T07:00:00Z", 1),
@@ -233,7 +233,7 @@ test("distinct custom IDs and legacy activities remain separate while single-are
   assert.equal(result.areas.length, 4);
   assert.equal(result.areas.filter(area => area.title === "My ceramics").length, 2);
   assert.equal(new Set(result.areas.map(area => area.key)).size, 4);
-  assert.equal(result.areas.find(area => area.title === "Learning").color, "#79BFF2");
+  assert.equal(result.areas.find(area => area.title === "Learning").color, "#64D2FF");
   assert.equal(analytics.sessionAreaSegments(rows, areaRows).length, 4);
 });
 
@@ -594,31 +594,22 @@ test("selected-period session details retain the period and do not mutate reward
     await ui.cleanup();
   }
 });
-test("empty Progress explains how to begin and keeps its selected-period list empty", async () => {
+test("empty Progress welcomes a fresh week instead of a page of empty sections", async () => {
   const ui = await screenHarness({ empty: true });
   try {
-    assert.match(ui.text(), /Every completed session counts/);
-    assert.match(ui.text(), /Room to grow/);
-    await ui.press("Sessions for selected week");
-    await ui.press("View sessions in selected period");
+    assert.match(ui.text(), /A fresh week/);
+    assert.match(ui.text(), /Even 15 minutes counts/);
+    assert.ok(ui.renderer.root.findAllByType("Button").some(b => b.props.accessibilityLabel === "Start a session from Home"));
+    assert.doesNotMatch(ui.text(), /Room to grow|No completed sessions|By focus area/);
     assert.equal(ui.historyCalls(), 0);
   } finally {
     await ui.cleanup();
   }
 });
 
-test("an empty period and an empty day have independent drilldowns", async () => {
+test("an empty day still opens its own drilldown", async () => {
   const ui = await screenHarness({ empty: true, historyFailure: true });
   try {
-    await ui.press("Sessions for selected week");
-    await ui.press("View sessions in selected period");
-    assert.match(ui.text(), /No completed sessions/);
-    await act(async () => {
-      ui.renderer.root.findByType("Sheet").props.onRequestClose();
-    });
-    await act(async () => {
-      ui.renderer.root.findByType("Sheet").props.onDismiss();
-    });
     const day = ui.renderer.root
       .findAllByType("Button")
       .find((b) => b.props.accessibilityLabel?.includes("no sessions"));
@@ -641,8 +632,8 @@ test("compact Progress keeps the chart before allocation and opens area drilldow
   try {
     const text=ui.text();
     assert.ok(text.indexOf("30s") < text.indexOf("Dot · active day"));
-    assert.ok(text.indexOf("Dot · active day") < text.indexOf("Where it went"));
-    assert.ok(text.indexOf("Where it went") < text.indexOf("Sessions"));
+    assert.ok(text.indexOf("Dot · active day") < text.indexOf("By focus area"));
+    assert.ok(text.indexOf("By focus area") < text.indexOf("Sessions"));
     const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
     assert.ok(area);
     await act(async()=>area.props.onPress());
@@ -659,11 +650,9 @@ test("Progress chart uses a compact first-screen layout budget", async()=>{
     // Structural budget for default text, not a native layout/animation measurement.
     // Includes two comparison lines on a narrow phone.
     const aboveChart = s.page.paddingTop + Math.ceil(s.title.fontSize * 1.3) + s.header.marginBottom
-      + s.segmentButton.minHeight + s.hero.paddingTop + Math.ceil(s.focusValue.fontSize * 1.3)
-      + s.focusValue.marginTop + s.heroDescription.marginTop + s.heroDescription.lineHeight * 2
-      + s.hero.paddingBottom + s.caption.lineHeight;
-    const chart = s.card.paddingVertical * 2 + s.caption.lineHeight + s.chartHeader.marginBottom
-      + s.chart.paddingTop + s.barTrack.height + s.barTrack.marginBottom + Math.ceil(s.dayLabel.fontSize * 1.3)
+      + s.segmentButton.minHeight + s.card.paddingVertical + s.story.paddingTop + s.storyLabel.lineHeight
+      + s.storyValue.lineHeight + s.storyLine.lineHeight * 2 + s.story.paddingBottom;
+    const chart = s.chart.paddingTop + s.barTrack.height + s.barTrack.marginBottom + Math.ceil(s.dayLabel.fontSize * 1.3)
       + s.dayStatus.height + s.dayStatus.marginTop + s.legend.marginTop + s.caption.lineHeight;
     assert.ok(aboveChart + chart < 440, `chart budget ${aboveChart + chart}px`);
     assert.equal(s.periodNav.paddingVertical, undefined);
@@ -680,7 +669,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
   try {
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
-    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#79BFF2", 60], ["#F4AA88", 60]]);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#64D2FF", 60], ["#FF9F0A", 60]]);
     await ui.press("Sessions for selected week");
     await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
@@ -688,7 +677,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
     assert.equal(rows.length, 2);
   } finally { await ui.cleanup(); }
 });
-test("Month Where it went opens both legacy Wellbeing sessions from one combined row", async () => {
+test("Month By focus area opens both legacy Wellbeing sessions from one combined row", async () => {
   const stamp = new Date(Date.now() - 1000).toISOString();
   const ui = await screenHarness({
     sessionRows: [session("grooming", 60, stamp, 2), session("fitness", 900, stamp, 3)],
@@ -711,13 +700,9 @@ test("Month Where it went opens both legacy Wellbeing sessions from one combined
 test("empty selected period has no all-history escape or unbounded query", async () => {
   const ui = await screenHarness({ empty: true });
   try {
-    await ui.press("Sessions for selected week");
-    await ui.press("View sessions in selected period");
-    assert.equal(ui.historyCalls(), 0);
-    assert.equal(ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session")).length, 0);
-    assert.equal(ui.historyCalls(), 0);
-    assert.match(ui.text(), /Sessions · Week/);
+    assert.equal(ui.renderer.root.findAllByType("Button").some(b=>b.props.accessibilityLabel==="View sessions in selected period"),false);
     assert.equal(ui.renderer.root.findAllByType("Button").some(b=>b.props.accessibilityLabel==="View all session history"),false);
+    assert.equal(ui.historyCalls(), 0);
   } finally { await ui.cleanup(); }
 });
 
@@ -968,4 +953,12 @@ test("historical periods show an actual labeled day rather than calling a period
   assert.equal(analytics.progressHeroDay(result, period, null).seconds, 600);
   assert.equal(analytics.progressHeroDay(result, period, "2026-10-05").seconds, 120);
   assert.equal(analytics.progressHeroDay(result, period, "2026-09-29").key, "2026-10-09", "a day outside this period is never reused");
+});
+
+test("colours saved by the previous palette keep their place in the new one", () => {
+  const { lifeAreaColor, areaTint } = load("src/utils/lifeAreaColor.ts");
+  const pairs = [["#6DD4B5", "#30D158"], ["#F4AA88", "#FF9F0A"], ["#79BFF2", "#64D2FF"], ["#AAB3FF", "#5E5CE6"], ["#E98ABC", "#FF6482"], ["#C1A8FA", "#BF5AF2"]];
+  for (const [previous, next] of pairs) { assert.equal(lifeAreaColor(1, previous), next); assert.equal(lifeAreaColor(1, next.toLowerCase()), next); }
+  assert.equal(areaTint("#64D2FF", 0.2), "rgba(100,210,255,0.2)");
+  assert.equal(areaTint("not a colour"), "rgba(255,255,255,0.16)");
 });

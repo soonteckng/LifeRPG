@@ -7,6 +7,7 @@ import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import FocusDurationSheet from "./FocusDurationSheet";
 import { colors } from "../constants/theme";
+import { type } from "../constants/typography";
 import { durationLabel } from "../utils/sessionSetup";
 
 export default function FocusLengthControl({ seconds, customSeconds, disabled = false, showLabel = true, compact = false, onChange, onCustomSave, onCustom }: {
@@ -19,8 +20,8 @@ export default function FocusLengthControl({ seconds, customSeconds, disabled = 
   const customSelected = seconds !== 1800 && seconds !== 3600;
   const open = () => { if (disabled) return; feedback(); if (onCustom) onCustom(); else setCustom(true); };
   return <View style={s.group} testID="focus-length-control">
-    {showLabel && <Text style={s.label}>Focus length</Text>}
-    {compact ? <Pressable testID="focus-duration-chip" disabled={disabled} onPress={open} style={s.chip} accessibilityRole="button" accessibilityLabel={`Change session duration, ${durationLabel(seconds)}`} accessibilityValue={{ text: durationLabel(seconds) }} accessibilityState={{ disabled }}><View style={s.rowIcon}><Ionicons name="time-outline" size={17} color={colors.accent} /></View><Text style={s.rowLabel}>Length</Text><Text style={s.chipText}>{durationLabel(seconds)}</Text><Ionicons name="chevron-forward" size={16} color={colors.muted} /></Pressable> : <View style={s.presets}>
+    {showLabel && <Text style={s.label}>Length</Text>}
+    {compact ? <Pressable testID="focus-duration-chip" disabled={disabled} onPress={open} style={s.chip} accessibilityRole="button" accessibilityLabel={`Change session duration, ${durationLabel(seconds)}`} accessibilityValue={{ text: durationLabel(seconds) }} accessibilityState={{ disabled }}><View style={s.rowIcon}><Ionicons name="time-outline" size={17} color={colors.secondary} /></View><Text style={s.rowLabel}>Length</Text><Text style={s.chipText}>{durationLabel(seconds)}</Text><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable> : <View style={s.presets}>
       {[1800, 3600].map(value => <Pressable key={value} onPress={() => { if (disabled || seconds === value) return; feedback(); onChange(value); }} disabled={disabled}
         accessibilityRole="button" accessibilityLabel={`Use ${value / 60} minutes`} accessibilityState={{ selected: seconds === value, disabled }}
         style={[s.option, seconds === value && s.selected]}><Text style={[s.text, seconds === value && s.selectedText]}>{value / 60} min</Text></Pressable>)}
@@ -36,12 +37,12 @@ export default function FocusLengthControl({ seconds, customSeconds, disabled = 
   </View>;
 }
 const s = StyleSheet.create({
-  group: { gap: 8 }, label: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
+  group: { gap: 8 }, label: { ...type.label, paddingHorizontal: 4 },
+  presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: colors.sheetCard },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, text: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
-  chip: { minHeight: 44, paddingVertical: 12, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  chipText: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
-  rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
-  rowLabel: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" },
+  chip: { minHeight: 52, paddingVertical: 11, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  chipText: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 16, lineHeight: 22, fontVariant: ["tabular-nums"] },
+  rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  rowLabel: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
 });

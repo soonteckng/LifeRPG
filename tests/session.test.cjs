@@ -514,10 +514,17 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   let renderer;
   await act(async()=>{renderer=create(React.createElement(Screen));});
   const text=(node)=>typeof node==="string"?node:(node.children??[]).map(text).join("");
-  const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label);
+  // Setup mirrors Home: Length is one row whose sheet holds presets and custom time.
+  const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label||label==="Set a custom focus duration"&&node.props.testID==="focus-duration-chip");
   return {
     calls,animations,button,root:()=>renderer.root,output:()=>text(renderer.root),
-    press:async(label)=>{const node=button(label);assert.ok(node,label);await act(async()=>node.props.onPress());},
+    press:async(label)=>{
+      const preset=/^Use (\d+) minutes$/.exec(label);
+      if(preset&&!button(label)){
+        await act(async()=>button("Set a custom focus duration").props.onPress());
+        await act(async()=>renderer.root.findByType("DurationSheet").props.onConfirm(Number(preset[1])*60));return;
+      }
+      const node=button(label);assert.ok(node,label);await act(async()=>node.props.onPress());},
     update:async(changes)=>{state={...state,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
     updateRoutines:async(changes)=>{savedRoutines={...savedRoutines,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
     dismissResult:async(sessionId=state.sessionId ?? null, overrides={})=>{await act(async()=>lifecycle.dismissResult({
@@ -879,13 +886,13 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   assert.equal(completed.detail,"Review session");
 });
 
-test("free setup has one Life area category and a discoverable optional quest row",async()=>{
+test("free setup lists the same rows as Home with an optional routine",async()=>{
   const ui=await screenSetup();
   assert.ok(ui.button("Choose from routines"));
-  assert.ok(ui.button("Select Everyday focus"));
-  assert.equal(ui.button("Choose focus area"),undefined);
+  assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Everyday focus");
+  assert.ok(ui.button("Set a custom focus duration"));
   assert.equal(ui.button("Choose activity"),undefined);
-  assert.match(ui.output(),/Optional/);
+  assert.match(ui.output(),/RoutineNone/);
   await ui.press("Choose from routines");
   assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
@@ -977,7 +984,7 @@ test("viewed completion hides its dock without hiding a running session",async()
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);
-  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#DDE1FF");
+  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#63E6BE");
   assert.equal(renderer.root.findByType("Button").props.activeOpacity,1);
   timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
   assert.equal(renderer.root.findAllByType("Button").length,0);
@@ -1381,12 +1388,13 @@ test("saved completion carries independent XP banks and server goal credit witho
   } finally { await ui.cleanup(); }
 });
 
-test("compact Session chips select the saved Life area without touching quest or duration", async()=>{
+test("the focus area row selects the saved Life area without touching quest or duration", async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
-  await ui.press("Select Learning");
+  await ui.press("Choose focus area");
+  await ui.press("Learning");
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
-  assert.equal(ui.button("Select Learning").props.accessibilityState.selected,true);
+  assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Learning");
   await ui.press("Use 60 minutes");
   assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
   await ui.update({duration:3600,timeLeft:3600});
@@ -1395,13 +1403,15 @@ test("compact Session chips select the saved Life area without touching quest or
   await ui.cleanup();
 });
 
-test("Session category chips share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
+test("Session area choices share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
   const ui=await screenSetup({targetAttributeId:3}, {subjects:[{id:1,title:"General"},{id:2,title:"Fitness & Health"},{id:3,title:"Grooming & Vitality"},{id:4,title:"Work"},{id:5,title:"Creative practice"}]});
   try {
-    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Select Wellbeing");
-    assert.equal(choices.length,1);assert.equal(ui.button("Select Wellbeing").props.accessibilityState.selected,true);
-    await ui.press("Select Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
-    assert.ok(ui.button("Select Work & projects"));assert.ok(ui.button("Select Creativity"));
+    await ui.press("Choose focus area");
+    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Wellbeing");
+    assert.equal(choices.length,1);assert.equal(choices[0].props.accessibilityState.checked,true);
+    await ui.press("Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
+    await ui.press("Choose focus area");
+    assert.ok(ui.button("Work & projects"));assert.ok(ui.button("Creativity"));
   } finally {await ui.cleanup();}
 });
 
@@ -1410,12 +1420,12 @@ test("the completed route does not render an additional area reward below the sh
   try{assert.doesNotMatch(ui.output(),/Character XP|Focus area XP|Everyday focus\+1 XP/);assert.equal(ui.button("New session"),undefined);}
   finally{await ui.cleanup();}
 });
-test("five visible Life areas need no More sheet; additional areas remain selectable",async()=>{
+test("every Life area is reachable from one focus area sheet",async()=>{
   const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
   const ui=await screenSetup({}, {subjects});
-  for(const area of subjects) assert.ok(ui.button(`Select ${area.title === "General" ? "Everyday focus" : area.title}`));
-  assert.equal(ui.button("Choose focus area"),undefined);
-  await ui.press("Select Area 5");
+  await ui.press("Choose focus area");
+  for(const area of subjects) assert.ok(ui.button(area.title === "General" ? "Everyday focus" : area.title));
+  await ui.press("Area 5");
   assert.deepEqual(ui.calls.at(-1),["area",5]);
   await ui.cleanup();
   const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
@@ -1424,11 +1434,6 @@ test("five visible Life areas need no More sheet; additional areas remain select
   assert.deepEqual(extra.calls.at(-1),["area",7]);
   await extra.cleanup();
 });
-
-
-
-
-
 
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
@@ -1463,13 +1468,13 @@ test("completion message shows saved exact duration and awards; Done only closes
     const scroll=renderer.root.findByType('Scroll');
     assert.equal(scroll.props.enableFooterMarginAdjustment,true, 'scrollable details reserve the native footer height');
     const actions=renderer.root.findByProps({testID:'session-result-actions'});
-    assert.equal(actions.props.style[0].flexShrink,0);
+    assert.equal([].concat(actions.props.style)[0].flexShrink,0);
     assert.equal(scroll.props.style.flex,1);
     assert.equal(scroll.findAllByType('Button').length,0,'Done and Save as quest must not require scrolling through result details');
     assert.equal(actions.findByType('Button').props.accessibilityRole,'button');
     assert.equal(text(actions.findByType('Button')),'Done');
     assert.equal(actions.findByType('GuidedBoundary').props.compact,true);
-    assert.equal(renderer.root.findByType('Ring').props.size,60);
+    assert.ok(renderer.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===56)),'the compact hero shows its badge');
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
@@ -1488,7 +1493,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     fontScale=1.6;
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
-    assert.equal(renderer.root.findByType('Ring').props.size,48,'large text gets a smaller decorative ring instead of reducing text or hiding actions');
+    assert.ok(renderer.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'large text gets a smaller decorative badge instead of reducing text or hiding actions');
     assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
     assert.equal(scrollResets.length,2);
     await act(async()=>renderer.root.findByType("Button").props.onPress());
@@ -1609,20 +1614,19 @@ test("Quick Start cannot discard failed completion or restoration and rejects in
   } finally {await ui.cleanup();}
 });
 
-test("Session presets include the 30-minute default and match typed duration", async()=>{
+test("Session length row shows the 30-minute default and applies sheet presets", async()=>{
   const ui=await screenSetup();
   try {
-    assert.equal(ui.button("Use 30 minutes").props.accessibilityState.selected,true);
-    assert.equal(ui.button("25 minutes"),undefined);
-    for(const minutes of [30,60]) assert.ok(ui.button(`Use ${minutes} minutes`));
-    assert.ok(ui.button("Set a custom focus duration"));
+    assert.equal(ui.button("Set a custom focus duration").props.accessibilityValue.text,"30 min");
     await ui.press("Use 60 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
     await ui.update({duration:3600,timeLeft:3600});
+    assert.equal(ui.button("Set a custom focus duration").props.accessibilityValue.text,"60 min");
     await ui.press("Use 30 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",1800]);
   } finally {await ui.cleanup();}
 });
+
 test("global Done closes the session route once with its existing fade while retaining no duplicate summary",async()=>{
   const ui=await screenSetup({isCompleted:true,sessionSummary:{durationSeconds:90,xpEarned:1,goldEarned:0}}, {}, true);
   try{

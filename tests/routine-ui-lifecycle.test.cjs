@@ -32,6 +32,8 @@ function base() {
       Keyboard: { dismiss() {} }, Switch: host('Switch'), AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     '@expo/vector-icons': { Ionicons: host('Icon') },
     '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
+    // Swipe actions are a gesture layer over the same rows; render the row itself.
+    'react-native-gesture-handler/ReanimatedSwipeable': { __esModule: true, default: props => props.children },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     'expo-haptics': { selectionAsync: async () => {} },
     './AppText': { Text: host('Text') }, './MotionPressable': host('Press'),

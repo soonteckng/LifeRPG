@@ -95,20 +95,21 @@ test('the six-category chooser shows only the selected starting points and retai
     assert.deepEqual(labels().slice(0, 6), ['Learning', 'Work & projects', 'Creativity', 'Everyday life', 'Wellbeing', 'Free focus']);
     assert.equal(labels().includes('Help me choose a focus'), false);
     assert.equal(labels().includes('Just let me focus'), false);
-    assert.match(text(ui.tree.root), /Review and remember/);
+    assert.match(text(ui.tree.root), /Review your notes/);
+    assert.match(text(ui.tree.root), /Read a chapter/, 'every direction offers four first steps');
     assert.doesNotMatch(text(ui.tree.root), /Make a first draft/);
     await ui.press('Work & projects');
     assert.equal(current.templateId, 'project-next-step');
-    assert.doesNotMatch(text(ui.tree.root), /Review and remember|Practise what you’re learning/);
+    assert.doesNotMatch(text(ui.tree.root), /Review your notes|Practise questions/);
+    assert.match(text(ui.tree.root), /Plan the week ahead/);
     await ui.press('Make room for a priority');
     assert.equal(current.templateId, 'work-priority');
     await ui.press('Free focus');
     assert.equal(current.enabled, false);
     assert.equal(current.areaId, null);
     assert.equal(current.templateId, 'work-priority');
-    assert.match(text(ui.tree.root), /Suggested first step/);
-    assert.match(text(ui.tree.root), /No suggestion. Bring your own idea and choose your time on Home/);
-    assert.match(text(ui.tree.root), /Sessions count toward Everyday focus, a simple category for any activity/);
+    assert.match(text(ui.tree.root), /First step/);
+    assert.match(text(ui.tree.root), /Bring your own idea. Sessions count toward Everyday focus/);
     assert.doesNotMatch(text(ui.tree.root), /shows on Home as the suggestion/);
     assert.doesNotMatch(text(ui.tree.root), /Make room for a priority/);
     assert.equal(ui.tree.root.findAllByType('Button').length, 6);
@@ -156,7 +157,7 @@ test('category and starting-point choices give one haptic per enabled tap, respe
     hapticsEnabled = false;
     await act(async () => ui.tree.update(React.createElement(Harness)));
     await ui.press('Learning');
-    await ui.press('Move an assignment forward');
+    await ui.press('Work on an assignment');
     assert.equal(haptics, 4);
     const checkedLabels = () => ui.tree.root.findAllByType('Button').filter(button => button.props.accessibilityState?.checked).map(button => button.props.accessibilityLabel);
     const before = checkedLabels();
@@ -264,4 +265,18 @@ test('in-card preferences actions ignore taps while either mode is handling sess
     }
     assert.equal(opened, 0);
   } finally { await free.cleanup(); await guided.cleanup(); }
+});
+
+test('every direction offers four distinct first steps, each with a short hint', () => {
+  const api = load('src/constants/guidedQuests.ts');
+  const source = fs.readFileSync(path.resolve(__dirname, '..', 'src/components/GuidedChoice.tsx'), 'utf8');
+  for (const direction of api.FOCUS_DIRECTIONS) {
+    const options = api.focusOptions(direction.defaultNeed);
+    assert.equal(options.length, 4, direction.title);
+    assert.equal(new Set(options.map(item => item.title)).size, 4);
+    for (const item of options) {
+      assert.ok(source.includes(`"${item.id}":`), `hint for ${item.id}`);
+      assert.equal(api.suggestedFocus(item.id, true).seconds, 600);
+    }
+  }
 });

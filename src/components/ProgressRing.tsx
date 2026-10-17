@@ -5,8 +5,8 @@ import { colors } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-export default function ProgressRing({size, progress, color = colors.accent, children, stroke = 10}: {
-  size: number; progress: number; color?: string; children?: ReactNode; stroke?: number;
+export default function ProgressRing({size, progress, color = colors.accent, track = colors.line, children, stroke = 10}: {
+  size: number; progress: number; color?: string; track?: string; children?: ReactNode; stroke?: number;
 }) {
   const fraction = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;
   const reduced = useReducedMotion();
@@ -26,7 +26,7 @@ export default function ProgressRing({size, progress, color = colors.accent, chi
     <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants"
       style={{position:"absolute",width:size,height:size}}>
       <Svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <Circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={colors.line} strokeWidth={stroke} />
+        <Circle cx={size/2} cy={size/2} r={radius} fill="none" stroke={track} strokeWidth={stroke} />
         <AnimatedCircle cx={size/2} cy={size/2} r={radius} fill="none" stroke={color}
           strokeWidth={stroke} strokeLinecap="round" rotation={-90} origin={`${size/2},${size/2}`}
           strokeDasharray={`${circumference} ${circumference}`}

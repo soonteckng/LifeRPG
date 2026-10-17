@@ -114,10 +114,11 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     });
   }, [measurementKey]);
   const measured: typeof measurements = measurements.key === measurementKey ? measurements : {key: measurementKey};
-  const resultHeight = completionSheetHeight({windowHeight, topInset: insets.top,
+  // The card floats above the bottom edge, so its tallest size leaves that gap too.
+  const resultHeight = completionSheetHeight({windowHeight, topInset: insets.top + Math.max(insets.bottom, 8) + 8,
     headerHeight: measured.header ?? 48 * fontScale,
     bodyHeight: measured.body ?? 300 * fontScale,
-    actionsHeight: measured.actions ?? 126 * fontScale + Math.max(insets.bottom, 12),
+    actionsHeight: measured.actions ?? 126 * fontScale + 16,
   });
   const level = newLevel ?? profile?.level;
   const xp = currentXP ?? profile?.current_xp;
@@ -140,9 +141,9 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     if (visible && !pending && !ending && !rejected && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, pending, ending, rejected, hapticsEnabled]);
   return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed}
-    label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
+    label={ending ? "session ended" : "session completion"} floating expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
     header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
-    footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={[s.actions, {paddingBottom:Math.max(insets.bottom, 12)}]} testID="session-result-actions">
+    footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={s.actions} testID="session-result-actions">
       {!pending && !ending && !rejected && saveAction}
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Done" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
     </View>}>
@@ -172,10 +173,10 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 12 },
+  title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4, paddingHorizontal: 20, paddingBottom: 8 },
   scroll: {flex:1},
-  body: { paddingHorizontal: 20, paddingTop:4, paddingBottom: 16, gap: 16 },
-  actions: {flexShrink:0, paddingHorizontal:20, paddingTop:4, gap:10, backgroundColor:colors.surfaceRaised},
+  body: { paddingHorizontal: 16, paddingTop:4, paddingBottom: 16, gap: 16 },
+  actions: {flexShrink:0, paddingHorizontal:16, paddingTop:4, paddingBottom:16, gap:10, backgroundColor:colors.surfaceRaised},
   finished: {color:colors.secondary, fontSize: 13, lineHeight: 18},
   pending: {gap:12, paddingVertical:12},
   pendingText: {color:colors.secondary, fontSize: 16, lineHeight: 22, textAlign:"center"},
@@ -183,6 +184,6 @@ const s = StyleSheet.create({
   endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center", alignSelf:"center"},
   retry: {minHeight:48, justifyContent:"center", alignItems:"center"},
   retryText: {color:colors.accent, fontSize:17},
-  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.primary },
-  doneText: { color: colors.background, fontSize: 18, fontWeight: "500" },
+  done: { minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 27, backgroundColor: colors.primary },
+  doneText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
 });

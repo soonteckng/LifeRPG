@@ -19,12 +19,12 @@ const aliases: Record<FocusAreaKind, string[]> = {
   personal: ["life admin", "personal life", "everyday life"], general: ["general", "everyday focus"],
 };
 export const FOCUS_AREAS = [
-  { kind: "general", title: "Everyday focus", hint: "Anything you want to give your attention to.", color: "#AAB3FF" },
-  { kind: "learning", title: "Learning", hint: "Reading, studying and building knowledge.", color: "#79BFF2" },
-  { kind: "work", title: "Work & projects", hint: "Work tasks and projects you want to move forward.", color: "#C1A8FA" },
-  { kind: "creative", title: "Creativity", hint: "Writing, art, music and practising your craft.", color: "#E98ABC" },
-  { kind: "personal", title: "Everyday life", hint: "Planning, organising and taking care of life tasks.", color: "#6DD4B5" },
-  { kind: "wellbeing", title: "Wellbeing", hint: "Reading for pleasure, journaling, movement and time to recharge.", color: "#F4AA88" },
+  { kind: "general", title: "Everyday focus", hint: "Anything you want to give your attention to.", color: "#5E5CE6" },
+  { kind: "learning", title: "Learning", hint: "Reading, studying and building knowledge.", color: "#64D2FF" },
+  { kind: "work", title: "Work & projects", hint: "Work tasks and projects you want to move forward.", color: "#BF5AF2" },
+  { kind: "creative", title: "Creativity", hint: "Writing, art, music and practising your craft.", color: "#FF6482" },
+  { kind: "personal", title: "Everyday life", hint: "Planning, organising and taking care of life tasks.", color: "#30D158" },
+  { kind: "wellbeing", title: "Wellbeing", hint: "Reading for pleasure, journaling, movement and time to recharge.", color: "#FF9F0A" },
 ] as const;
 export function missingFocusAreas(areas: { title: string }[]) {
   const available = new Set(areas.map(area => focusAreaKind(area.title)));

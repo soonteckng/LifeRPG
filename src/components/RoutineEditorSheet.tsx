@@ -6,8 +6,12 @@ import * as Haptics from "expo-haptics";
 import AppSheet from "./AppSheet";
 import SheetConfirmation from "./SheetConfirmation";
 import FocusLengthControl from "./FocusLengthControl";
+import FocusAreaPicker from "./FocusAreaPicker";
+import SheetHeader from "./SheetHeader";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
+import { type } from "../constants/typography";
 import { useUser } from "../context/UserContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { focusAreaChoices, focusAreaKind, focusAreaTitle } from "../utils/focusAreas";
@@ -93,39 +97,40 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     try { const removed = await routines.remove(routine.id); if (epoch === generation.current) { setConfirm(null); if (removed) onClose(); else setError("Couldn't remove this routine. Try again."); } }
     finally { lock.current = false; if (epoch === generation.current) setBusy(false); }
   };
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} expanded heightRatio={0.78} guardDismiss={dirty || busy} label="routine editor"
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} expanded heightRatio={0.86} guardDismiss={dirty || busy} label="routine editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
-    header={<View style={s.header}><Text style={s.title}>{routine ? "Edit routine" : "Make it a routine"}</Text><Text style={s.caption}>A saved starting point for something that matters.</Text></View>}
+    header={<SheetHeader title={routine ? "Edit routine" : "New routine"} subtitle="A saved starting point for something that matters." onClose={close} closeLabel="Close routine editor" />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? "Remove this routine?" : "Discard your changes?"} message={confirm === "remove" ? "Your recorded sessions and progress stay saved." : "Your previous routine stays saved."} confirmLabel={confirm === "remove" ? "Remove routine" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)} onConfirm={() => { if (confirm === "remove") void remove(); else { setConfirm(null); onClose(); } }} />}
-    footer={<View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}><TouchableOpacity accessibilityRole="button" disabled={busy || !routines.ready} onPress={() => void save()} style={s.primary}><Text style={s.primaryText}>{busy ? "Saving…" : "Save routine"}</Text></TouchableOpacity></View>}>
+    footer={<View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+      {routine && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Remove routine" onPress={() => setConfirm("remove")} style={s.remove}><Ionicons name="trash-outline" size={21} color={colors.danger} /></TouchableOpacity>}
+      <View style={s.saveCell}><TouchableOpacity accessibilityRole="button" disabled={busy || !routines.ready} onPress={() => void save()} style={s.primary}><Text style={s.primaryText}>{busy ? "Saving…" : "Save routine"}</Text></TouchableOpacity></View>
+    </View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
       <Text style={s.label}>Routine name</Text>
       <BottomSheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={s.input} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
-      <Text style={s.label}>Focus area</Text><View style={s.choices}>
-        <TouchableOpacity disabled={busy} accessibilityRole="radio" accessibilityState={{ checked: generalSelected }} onPress={() => { feedback(); setDraft(previous => ({ ...previous, focusAreaId: general?.id ?? null })); }} style={[s.choice, generalSelected && s.selected]}><Text style={s.choiceText}>Everyday focus</Text></TouchableOpacity>
-        {focusAreaChoices(subjects, draft.focusAreaId).filter(item => focusAreaTitle(item.title) !== "Everyday focus").map(item => <TouchableOpacity key={item.id} disabled={busy} accessibilityRole="radio" accessibilityState={{ checked: item.id === draft.focusAreaId }} onPress={() => { feedback(); setDraft(previous => ({ ...previous, focusAreaId: item.id })); }} style={[s.choice, item.id === draft.focusAreaId && s.selected]}><Text style={s.choiceText}>{focusAreaTitle(item.title)}</Text></TouchableOpacity>)}
-      </View>
+      <Text style={s.label}>Focus area</Text>
+      <FocusAreaPicker disabled={busy} selectedId={generalSelected ? general?.id ?? null : draft.focusAreaId}
+        areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...focusAreaChoices(subjects, draft.focusAreaId).filter(item => focusAreaTitle(item.title) !== "Everyday focus")]}
+        onSelect={focusAreaId => { feedback(); setDraft(previous => ({ ...previous, focusAreaId })); }} />
       <FocusLengthControl seconds={draft.durationSeconds} disabled={busy} onChange={durationSeconds => setDraft(previous => ({ ...previous, durationSeconds }))} />
-      <View style={s.reminder}><View style={{ flex: 1 }}><Text style={s.label}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ true: colors.accent }} /></View>
+      <View style={s.reminder}><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ true: colors.accent }} /></View>
       {draft.reminder.enabled && <><View style={s.time}><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Hour (0–23)</Text><BottomSheetTextInput accessibilityLabel="Reminder hour" value={hour} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setHour} style={s.input} /></View><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Minute (0–59)</Text><BottomSheetTextInput accessibilityLabel="Reminder minute" value={minute} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setMinute} style={s.input} /></View></View>
-        <View style={s.permission}><Text accessibilityLiveRegion="polite" style={s.label}>{permission?.label ?? "Checking notifications…"}</Text>
+        <View style={s.permission}><Text accessibilityLiveRegion="polite" style={s.rowTitle}>{permission?.label ?? "Checking notifications…"}</Text>
           <Text style={s.caption}>Routine reminders use ordinary notification permission. They do not need Usage Access or Display over other apps.</Text>
           {!permission?.granted && permission?.action && <TouchableOpacity accessibilityRole="button" disabled={permissionBusy || busy} onPress={() => void allowReminderNotifications()} style={s.permissionAction}><Text style={s.permissionActionText}>{permissionBusy ? "Please wait…" : permission.action === "enable" ? "Allow notifications" : permission.action === "settings" ? "Open phone settings" : "Check notifications again"}</Text></TouchableOpacity>}
           {!permission?.granted && <Text style={s.caption}>You can save this reminder now. It can notify you after notifications are allowed.</Text>}
           <Text style={s.caption}>Your phone may delay reminders to save battery.</Text>
         </View></>}
-      <Text style={s.caption}>Name, focus area, duration and reminder preferences sync to your account. Device permissions stay on each phone.</Text>
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-      {routine && <TouchableOpacity disabled={busy} accessibilityRole="button" onPress={() => setConfirm("remove")} style={s.remove}><Text style={s.error}>Remove routine</Text></TouchableOpacity>}
     </BottomSheetScrollView>
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 },
-  caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, label: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  body: { paddingHorizontal: 20, paddingBottom: 24, gap: 14 }, input: { minHeight: 54, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.sheetCard },
-  choices: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, choice: { minHeight: 44, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 11, justifyContent: "center", backgroundColor: colors.sheetCard, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, selected: { backgroundColor: colors.accentSoft, borderColor: colors.accent }, choiceText: { color: colors.text, fontSize: 15, fontWeight: "500" },
-  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 18, backgroundColor: colors.sheetCard, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, footer: { paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surfaceRaised },
+  caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, label: { ...type.label, paddingHorizontal: 4, marginTop: 4 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  body: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, input: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
+
+  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footer: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.surfaceRaised }, saveCell: { flex: 1 },
   permission: { padding: 14, borderRadius: 14, backgroundColor: colors.accentSoft, gap: 8 }, permissionAction: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.selection }, permissionActionText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
-  primary: { minHeight: 52, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 16 }, primaryText: { color: colors.primaryText, fontSize: 16, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 }, remove: { minHeight: 44, alignItems: "center", justifyContent: "center" },
+  primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 }, primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
+  remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
 });

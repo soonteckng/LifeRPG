@@ -60,7 +60,8 @@ function mocks(extra={}) {return {
 };}
 async function render(Component,props={}) {let tree;await act(async()=>{tree=create(React.createElement(Component,props));});return{
  tree,press:async label=>{
- const find=value=>tree.root.findAllByType('Button').find(node=>text(node)===value||node.props.accessibilityLabel===value);
+ // Start reads “Start 30 min · Area”; tests address it by its role.
+ const find=value=>tree.root.findAllByType('Button').find(node=>text(node)===value||node.props.accessibilityLabel===value||value==='Start session'&&/^Start .+ · /.test(text(node)));
  const chip=()=>tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-duration-chip');
  if(/^Use (30|60) minutes$/.test(label)&&!find(label)){
   await act(async()=>chip().props.onPress());
@@ -363,7 +364,7 @@ test('preference Save remains in a safe-area footer outside the scrolling choice
  assert.equal(scroll.findAllByType('Button').some(button=>text(button)==='Save preferences'),false);
  const footer=ui.tree.root.findByType('Footer');assert.equal(footer.findAllByType('Button').filter(button=>button.props.testID==='save-guided-preferences').length,1);
  assert.equal(footer.findByType('View').props.style.paddingBottom,36);
- await ui.press('Practise what you’re learning');await ui.press('Save preferences');assert.equal(saved.need,'practice');assert.equal(saved.templateId,'practice-question');assert.equal(closed,1);await ui.cleanup();
+ await ui.press('Practise questions');await ui.press('Save preferences');assert.equal(saved.need,'practice');assert.equal(saved.templateId,'practice-question');assert.equal(closed,1);await ui.cleanup();
 });
 
 test('preference save failure keeps the draft and footer available for retry',async()=>{
@@ -372,7 +373,7 @@ test('preference save failure keeps the draft and footer available for retry',as
   './AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children,React.createElement('Footer',null,props.footer)):null,
   '../hooks/useGuidedPreference':{useGuidedPreference:()=>{const[error,setError]=React.useState(false);return{value:initial,ready:true,error,busy:false,save:async next=>{assert.equal(next.need,'assignments');if(++attempts===1){setError(true);return false;}return true;}};}},
  })).default;
- const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});await ui.press('Move an assignment forward');await ui.press('Save preferences');assert.equal(closed,0);assert.match(text(ui.tree.root),/Couldn’t save or load/);await ui.press('Save preferences');assert.equal(closed,1);assert.equal(attempts,2);await ui.cleanup();
+ const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});await ui.press('Work on an assignment');await ui.press('Save preferences');assert.equal(closed,0);assert.match(text(ui.tree.root),/Couldn’t save or load/);await ui.press('Save preferences');assert.equal(closed,1);assert.equal(attempts,2);await ui.cleanup();
 });
 
 
@@ -441,7 +442,7 @@ test('both idle focus modes open preferences in the card without starting or cha
  try {
   for(const ui of [free,guided]){
    const change=ui.tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-card-preferences');
-   assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,44);
+   assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,52);
    await ui.press('Change focus direction');assert.equal(selectedCustomDuration(ui),'45 min 17 sec');
   }
   const suggestion=guided.tree.root.findAllByType('View').find(node=>node.props.testID==='focus-card-suggestion');

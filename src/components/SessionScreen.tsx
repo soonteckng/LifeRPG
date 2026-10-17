@@ -13,12 +13,14 @@ import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingVie
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import ProgressRing from "./ProgressRing";
-import { lifeAreaColor } from "../utils/lifeAreaColor";
+import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
-import { colors } from "../constants/theme";
+import { colors, radius } from "../constants/theme";
 import SessionCountdown from "./SessionCountdown";
 import FocusLengthControl from "./FocusLengthControl";
+import FocusAreaPicker from "./FocusAreaPicker";
+import SheetHeader from "./SheetHeader";
 import FocusDurationSheet from "./FocusDurationSheet";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
@@ -153,6 +155,8 @@ export default function SessionScreen() {
   const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && (!task || !locked && !selectableQuests.some(item => item.id === timer.linkedTaskId));
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
+  const compactSetup = phase === "setup" && !isQuest;
+  const areaColor = lifeAreaColor(timer.targetAttributeId, area?.color_code);
   const pickerState = useRef({ scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general });
   useLayoutEffect(() => { pickerState.current = { scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general }; },
     [presentationScope, locked, selectableRoutines, timer, subjects, general]);
@@ -381,18 +385,19 @@ export default function SessionScreen() {
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? isRoutine ? "Routine session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
-      {!timer.isCompleted && phase !== "ended" && <View style={{ paddingHorizontal: 20 }}><SessionProtectionControl statusOnly activeSurface={onlineSurfaces} /></View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
           importantForAccessibility={timer.isCompleted ? "no-hide-descendants" : "auto"}
           testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor,
-            { minHeight: timerStageHeight }, timer.isCompleted && {opacity:0}]}>
-          <Animated.View testID="session-timer-stage" onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
-            style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
+            compactSetup ? { height: rowHeight + 24, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, timer.isCompleted && {opacity:0}]}>
+          {/* While setting up, only the digits row shows; the full stage sits above
+            it unseen, so starting glides the same digits into the ring. */}
+          <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
+            style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }, compactSetup && { marginTop: -(labelHeight + rowHeight) }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
             {(phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
               progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              color={breakActive ? "#F5B84B" : phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
+              color={breakActive ? colors.streak : phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.accent} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }]}>
             <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds}
@@ -407,51 +412,30 @@ export default function SessionScreen() {
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
           {breakActive && <Text style={styles.activeTitle} accessibilityRole="timer">Break · {sessionTime(timer.breakSecondsLeft)} left. Apps unlock now and protection returns automatically.</Text>}
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.awaitingStart ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
+            {phase !== "setup" && !timer.isCompleted && phase !== "ended" && <View style={styles.protectionStatus}><SessionProtectionControl statusOnly activeSurface={onlineSurfaces} /></View>}
             {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
-            {phase === "setup" && <View style={styles.setup}>
+            {phase === "setup" && <View style={styles.setupStack}>
               {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
                 <Text style={styles.secondary}>{missingQuest ? task ? "This routine is already done or isn’t scheduled for today. Choose another routine or switch to a free session." : "Your routine is still linked. Reload its details before starting, or switch to a free session." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
               </View>}
-              {!isQuest && <FocusLengthControl seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
-              {!isQuest && <>
-                <View style={styles.areaSection}>
-                  <Text style={styles.secondary}>Focus area</Text>
-                  <View style={styles.areaGrid}>
-                    {selectableAreas.slice(0, 6).map(item => {
-                      const selected = item.id === timer.targetAttributeId, tint = lifeAreaColor(item.id, item.color_code);
-                      return <TouchableOpacity key={item.id} disabled={locked}
-                        onPress={() => timer.setTargetAttributeId(item.id)} accessibilityRole="button"
-                        accessibilityLabel={`Select ${focusAreaTitle(item.title)}`} accessibilityState={{ selected }}
-                        style={[styles.areaTile, selected && { backgroundColor: tint + "1F", borderColor: tint + "66" }]}>
-                        <Ionicons name={focusAreaIcon(item.title)} size={17} color={tint} />
-                        <Text style={[styles.areaTileText, selected && styles.areaTileSelected]} numberOfLines={1}>{focusAreaTitle(item.title)}</Text>
-                      </TouchableOpacity>;
-                    })}
-                  </View>
-                  {selectableAreas.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose focus area" disabled={locked} onPress={() => setPicker("area")} style={styles.moreAreas}><Text style={styles.link}>See all areas</Text></TouchableOpacity>}
-                </View>
-              </>}
-              {isRoutine ? <>
-                <TouchableOpacity disabled={locked} style={styles.selectedQuestCard} onPress={() => setPicker("quest")}
-                  accessibilityRole="button" accessibilityLabel="Change routine" accessibilityHint={`Selected routine: ${title}`}>
-                  <View style={[styles.selectedQuestIcon, { backgroundColor: lifeAreaColor(timer.targetAttributeId, area?.color_code) + "18" }]}>
-                    <Ionicons name="flag-outline" size={23} color={lifeAreaColor(timer.targetAttributeId, area?.color_code)} />
-                  </View>
-                  <View style={styles.selectedQuestContent}>
-                    <Text style={styles.selectedQuestTitle}>{title}</Text>
-                    <Text style={[styles.selectedQuestArea, {color: lifeAreaColor(timer.targetAttributeId, area?.color_code)}]}>{focusAreaTitle(area?.title)}</Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
+              {/* The same rows as Home, in the same order, so a block is set up one way everywhere. */}
+              <View style={styles.setup}>
+                {!isQuest && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose focus area" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
+                  <View style={[styles.rowIcon, { backgroundColor: areaTint(areaColor) }]}><Ionicons name={focusAreaIcon(area?.title ?? "")} size={16} color={areaColor} /></View>
+                  <Text style={styles.rowLabel}>Focus area</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
+                  <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+                </TouchableOpacity>}
+                {!isQuest && <FocusLengthControl compact showLabel={false} seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
+                <SessionProtectionControl activeSurface={onlineSurfaces} />
+                <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose from routines"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : undefined} style={[styles.setupRow, styles.lastRow]}>
+                  <View style={styles.rowIcon}><Ionicons name="repeat" size={16} color={colors.secondary} /></View>
+                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine && styles.rowValueChosen]} numberOfLines={1}>{isRoutine ? title : "None"}</Text>
+                  <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>
-                <Action disabled={locked} label="Switch to free session" onPress={switchToFree} />
-              </> : <TouchableOpacity disabled={locked} style={styles.questRow} onPress={() => setPicker("quest")}
-                accessibilityRole="button" accessibilityLabel="Choose from routines">
-                <Text style={styles.secondary}>Routine<Text style={styles.helper}> · Optional</Text></Text>
-                <Text style={styles.choiceValue}>None</Text>
-                <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
-              </TouchableOpacity>}
+              </View>
+              {isRoutine && <Action disabled={locked} label="Switch to free session" onPress={switchToFree} />}
             </View>}
 
           </Animated.View>
@@ -474,11 +458,11 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
-        header={<Text style={styles.pickerTitle}>{picker === "quest" ? "Choose from routines" : "Focus area"}</Text>}>
-        <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody, {paddingBottom: Math.max(insets.bottom, 16) + 12}]} showsVerticalScrollIndicator={false}>
-          {picker === "area" && <SheetChoice label={focusAreaTitle()} onPress={() => { timer.setTargetAttributeId(general?.id ?? null); setPicker(null); }} />}
-          {picker === "area" && selectableAreas.filter((item) => item.id !== general?.id).map((item) => <SheetChoice key={item.id} label={focusAreaTitle(item.title)} onPress={() => { timer.setTargetAttributeId(item.id); setPicker(null); }} />)}
+      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact floating maxHeightRatio={0.82}
+        header={<SheetHeader title={picker === "quest" ? "Choose a routine" : "Focus area"} subtitle={picker === "quest" ? undefined : "Where should this block count?"} onClose={() => setPicker(null)} />}>
+        <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody]} showsVerticalScrollIndicator={false}>
+          {picker === "area" && <FocusAreaPicker selectedId={timer.targetAttributeId} disabled={locked} areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...selectableAreas.filter(item => item.id !== general?.id)]}
+            onSelect={id => { timer.setTargetAttributeId(id); setPicker(null); }} />}
           {picker === "quest" && selectableRoutines.map((item) => {
             const questArea = subjects.find(subject => subject.id === item.areaId);
             const tint = lifeAreaColor(item.areaId, questArea?.color_code);
@@ -487,7 +471,7 @@ export default function SessionScreen() {
               accessibilityRole="button" accessibilityLabel={`Choose ${item.name}`} accessibilityState={{selected}}
               disabled={locked || item.kind === "saved" && item.areaId !== null && !subjects.some(area => area.id === item.areaId)}
               onPress={() => selectRoutine(item)}>
-              <View style={[styles.questPickerIcon, {backgroundColor: `${tint}18`}]}><Ionicons name="flag-outline" size={21} color={tint} /></View>
+              <View style={[styles.questPickerIcon, {backgroundColor: areaTint(tint)}]}><Ionicons name="repeat" size={19} color={tint} /></View>
               <View style={styles.selectedQuestContent}>
                 <Text style={styles.questPickerTitle}>{item.name}</Text>
                 <Text style={styles.questPickerMeta}>{routineDuration(item.seconds)} · {focusAreaTitle(questArea?.title)}</Text>
@@ -525,60 +509,41 @@ const styles = StyleSheet.create({
   activeDetails: { flexGrow: 0, maxHeight: 260 },
   timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },
   activeTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3, textAlign: "center", marginTop: 6 },
-  areaSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
-  // Two even columns read as one tidy set instead of ragged wrapped chips.
-  areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  areaTile: { flexBasis: "47%", flexGrow: 1, minHeight: 48, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "transparent" },
-  areaTileText: { flexShrink: 1, color: colors.neutral, fontSize: 15, lineHeight: 20, fontWeight: "500" },
-  areaTileSelected: { color: colors.text, fontWeight: "600" },
-  moreAreas: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
-  presetSurface: { position: "absolute", left: 0, right: 0, top: 2, bottom: 2, borderRadius: 14, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  areaDot: { width: 8, height: 8, borderRadius: 4 },
-  summaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   actionRow: { flexDirection: "row", gap: 10 },
-  activePrimary: { backgroundColor: colors.surface, borderColor: colors.line },
-  endControl: { width: 56, minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  activePrimary: { backgroundColor: colors.surface },
+  endControl: { width: 56, minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: colors.surface },
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
   activeTimerAnchor: { flex: 1 },
   timerAnchor: { paddingHorizontal: 20, paddingBottom: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  compactAnchor: { paddingTop: 0, paddingBottom: 4 },
   timerControl: { width: 286, maxWidth: "100%", paddingTop: 8 },
   status: { color:colors.secondary, fontSize: 16, lineHeight: 22, textAlign:"center", marginTop:8 },
   hiddenStatus: { position:"absolute", width:1, height:1, overflow:"hidden", color:colors.background },
   body: { paddingHorizontal: 20, paddingBottom: 20 },
   secondary: { color: colors.secondary, fontSize: 16, lineHeight: 22 },
-  setup: { gap: 12, marginTop: 0, padding: 16, borderRadius: 22, backgroundColor: colors.focusSurface },
+  setupStack: { gap: 8 },
+  setup: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  setupRow: { minHeight: 52, paddingVertical: 11, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
+  lastRow: { borderBottomWidth: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  rowLabel: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  rowValue: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 16, lineHeight: 22 },
+  rowValueChosen: { color: colors.text },
+  protectionStatus: { marginTop: 10, alignItems: "center" },
   label: { color: colors.text, fontSize: 17, flexShrink: 1 },
-
   link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  helper: { color: colors.muted, fontSize: 12, lineHeight: 16 },
-  choiceValue: { color: colors.secondary, flex: 1, textAlign: "right", fontSize: 16 },
-  presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
-  preset: { flex: 1, maxWidth: 76, minWidth: 52, minHeight: 48, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 14 },
-  presetLarge: { minWidth: 80, maxWidth: 110, minHeight: 58 },
-  presetSelected: { backgroundColor: colors.primary, borderColor: colors.border, borderWidth: 1 },
-  presetText: { color: colors.neutral, fontSize: 17, lineHeight: 22, fontWeight: "500", fontVariant: ["tabular-nums"] },
-  presetTextSelected: { color: colors.primaryText, fontWeight: "600" },
-  questPickerBody: { gap: 10 },
-  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 14, borderRadius: 18, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  questPickerSelected: { borderColor: colors.accent, backgroundColor: colors.surfaceRaised },
-  questPickerIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
+  questPickerBody: { gap: 8 },
+  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, padding: 12, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: "transparent" },
+  questPickerSelected: { borderColor: colors.accent },
+  questPickerIcon: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "500" },
   questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   questPickerEmpty: { alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 28 },
-  selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
-  selectedQuestIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },
-  selectedQuestTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", letterSpacing: -0.3 },
-  selectedQuestArea: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  questRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, minHeight: 48, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   actions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 4 },
-  primary: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.18)", minHeight: 56, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
-  primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
+  primary: { minHeight: 56, padding: 14, borderRadius: 28, backgroundColor: colors.primary, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
+  primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 18 },
-  summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },
-  pickerTitle: { color: colors.text, fontSize: 21, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 16 },
-  pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },
+  pickerBody: { paddingHorizontal: 16, paddingBottom: 16 },
   pickerRow: { minHeight: 52, paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line, gap: 4 },
 });

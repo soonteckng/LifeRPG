@@ -62,15 +62,17 @@ test('notification actions share fixed typography and preserve descriptive acces
 test('daily goal sheet validates the minimum and prevents duplicate schedule writes',async()=>{
  let saves=0,resolveSave,refreshed=0,tree;
  const settings={today_goal_minutes:60,next_goal_minutes:60,next_effective_date:'2026-10-08',pending:false,scheduling_available:true,weekly_limit_available:true,can_change_goal:true};
- const api=load('src/components/DailyGoalSheet.tsx',{'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':host('Sheet'),'./PersonalUI':{p:{}},'../context/UserContext':{useUser:()=>({profile:{daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},'../services/dailyGoalService':{getDailyGoalSettings:async()=>settings,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{saves++;return new Promise(resolve=>{resolveSave=resolve;});}}});
+ const api=load('src/components/DailyGoalSheet.tsx',{'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':host('Sheet'),'./PersonalUI':{p:{}},'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':host('Header'),'../context/UserContext':{useUser:()=>({profile:{daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},'../services/dailyGoalService':{getDailyGoalSettings:async()=>settings,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{saves++;return new Promise(resolve=>{resolveSave=resolve;});}}});
  await act(async()=>{tree=create(React.createElement(api.default,{visible:true,onClose(){},onSaved(){refreshed++;}}));});
  try{
-  assert.equal(tree.root.findByType('Sheet').props.expanded,true);assert.equal(tree.root.findByType('Sheet').props.heightRatio,.62);assert.equal(tree.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
+  // Short content floats as a fitted card; Save sits right under the rules.
+  const sheet=()=>tree.root.findByType('Sheet'),save=()=>tree.root.findAllByType('Button').find(node=>node.props.accessibilityState?.busy!==undefined);
+  assert.equal(sheet().props.floating,true);assert.equal(sheet().props.compact,true);assert.equal(sheet().props.footer,undefined);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('29'));
-  await act(async()=>tree.root.findByType('Sheet').props.footer.props.children.props.onPress());assert.equal(saves,0);
+  await act(async()=>save().props.onPress());assert.equal(saves,0);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('90'));
-  await act(async()=>{const save=tree.root.findByType('Sheet').props.footer.props.children.props.onPress;save();save();});assert.equal(saves,1);assert.equal(tree.root.findByType('Sheet').props.guardDismiss,true);
-  await act(async()=>resolveSave({...settings,next_goal_minutes:90,pending:true,can_change_goal:false}));assert.equal(refreshed,1);assert.equal(tree.root.findByType('Sheet').props.footer.props.children.props.disabled,true);
+  await act(async()=>{const press=save().props.onPress;press();press();});assert.equal(saves,1);assert.equal(sheet().props.guardDismiss,true);
+  await act(async()=>resolveSave({...settings,next_goal_minutes:90,pending:true,can_change_goal:false}));assert.equal(refreshed,1);assert.equal(save().props.disabled,true);
  }finally{await act(async()=>tree.unmount());}
 });
 

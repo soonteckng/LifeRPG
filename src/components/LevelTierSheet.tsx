@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
+import SheetHeader from "./SheetHeader";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
 import { LEVEL_TIERS, levelTierProgress } from "../utils/levelTiers";
@@ -34,12 +35,11 @@ export function LevelTierPath({ level, currentXP }: ProgressProps) {
 export default function LevelTierSheet({ visible, onClose, ...progress }: ProgressProps & { visible: boolean; onClose: () => void }) {
   const insets = useSafeAreaInsets();
   return <AppSheet visible={visible} onRequestClose={onClose} expanded motionMode="timed" label="level tiers"
-    header={<View style={s.header}><Text style={s.title}>Your growth, one tier at a time.</Text></View>}>
+    header={<SheetHeader title="Level tiers" subtitle="Your growth, one tier at a time." onClose={onClose} />}>
     <BottomSheetScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[s.content, { paddingBottom: Math.max(insets.bottom, 16) + 16 }]}><LevelTierPath {...progress} /></BottomSheetScrollView>
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 16 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 },
   content: { paddingHorizontal: 20 }, stack: { gap: 12 }, summary: { padding: 16, gap: 10, borderRadius: 18, backgroundColor: colors.sheetCard, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   eyebrow: { color: colors.secondary, fontSize: 11, lineHeight: 14, letterSpacing: 1.1, fontWeight: "500" }, summaryTitle: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }, currentTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500" }, level: { color: colors.accent, fontSize: 13, lineHeight: 18 },
   body: { color: colors.secondary, fontSize: 15, lineHeight: 20 }, hint: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, sectionTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "500", marginTop: 4 },

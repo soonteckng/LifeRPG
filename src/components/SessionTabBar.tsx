@@ -32,14 +32,14 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
     {/* Content fades into the background behind the bars, as on iOS, rather
       than showing through the gaps between them. */}
-    <Svg pointerEvents="none" style={styles.scrim} width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 1 1">
-      <Defs><LinearGradient id="dockScrim" x1="0" y1="0" x2="0" y2="1">
+    <Svg pointerEvents="none" style={styles.fade} width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 1 1">
+      <Defs><LinearGradient id="dockFade" x1="0" y1="0" x2="0" y2="1">
         <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
-        <Stop offset="0.3" stopColor={colors.background} stopOpacity={0.88} />
-        <Stop offset="1" stopColor={colors.background} stopOpacity={0.96} />
+        <Stop offset="1" stopColor={colors.background} stopOpacity={0.9} />
       </LinearGradient></Defs>
-      <Rect width="1" height="1" fill="url(#dockScrim)" />
+      <Rect width="1" height="1" fill="url(#dockFade)" />
     </Svg>
+    <View pointerEvents="none" style={styles.scrim} />
     {pinned && <PinnedActionHost />}
     {showBanner && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => router.navigate("/session")}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
@@ -55,15 +55,18 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     <BottomTabBar {...props} />
   </View>;
 }
+const FADE = 48;
 const styles = StyleSheet.create({
   dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 8, gap: 6 },
-  scrim: { position: "absolute", top: -28, left: 0, right: 0, bottom: 0 },
-  banner: { minHeight: 60, paddingLeft: 20, paddingRight: 10, paddingVertical: 8, borderRadius: 22, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
+  // A fixed-height fade reads the same on every tab, whatever sits in the dock.
+  fade: { position: "absolute", top: -FADE, left: 0, right: 0, height: FADE },
+  scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.9)" },
+  banner: { minHeight: 60, paddingLeft: 22, paddingRight: 9, paddingVertical: 8, borderRadius: 30, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   title: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   time: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 20, fontWeight: "500", fontVariant: ["tabular-nums"] },
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },
   bannerLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(17,19,27,0.12)" },
-  progressFill: { height: 4, backgroundColor: "rgba(17,19,27,0.78)" },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(0,20,13,0.12)" },
+  progressFill: { height: 4, backgroundColor: "rgba(0,20,13,0.7)" },
 });
