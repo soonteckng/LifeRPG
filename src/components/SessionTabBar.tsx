@@ -60,7 +60,7 @@ const styles = StyleSheet.create({
   scrim: { position: "absolute", top: -28, left: 0, right: 0, bottom: 0 },
   banner: { minHeight: 60, paddingLeft: 20, paddingRight: 10, paddingVertical: 8, borderRadius: 22, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   title: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
-  time: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 19, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  time: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 20, fontWeight: "500", fontVariant: ["tabular-nums"] },
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },
   bannerLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },

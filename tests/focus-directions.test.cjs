@@ -106,11 +106,10 @@ test('the six-category chooser shows only the selected starting points and retai
     assert.equal(current.enabled, false);
     assert.equal(current.areaId, null);
     assert.equal(current.templateId, 'work-priority');
-    assert.match(text(ui.tree.root), /Your starting point/);
-    assert.match(text(ui.tree.root), /Make this time your own/);
-    assert.match(text(ui.tree.root), /Choose your time on Home and begin at your own pace/);
-    assert.match(text(ui.tree.root), /Everyday focus · A simple category for any activity/);
-    assert.doesNotMatch(text(ui.tree.root), /Choose a small step to begin with/);
+    assert.match(text(ui.tree.root), /Suggested first step/);
+    assert.match(text(ui.tree.root), /No suggestion. Bring your own idea and choose your time on Home/);
+    assert.match(text(ui.tree.root), /Sessions count toward Everyday focus, a simple category for any activity/);
+    assert.doesNotMatch(text(ui.tree.root), /shows on Home as the suggestion/);
     assert.doesNotMatch(text(ui.tree.root), /Make room for a priority/);
     assert.equal(ui.tree.root.findAllByType('Button').length, 6);
     assert.deepEqual(ui.tree.root.findAllByType('Button').filter(button => button.props.accessibilityState.checked).map(button => button.props.accessibilityLabel), ['Free focus']);

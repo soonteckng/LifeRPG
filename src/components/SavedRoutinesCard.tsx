@@ -15,7 +15,7 @@ import { routineDuration } from "../utils/savedRoutine";
 import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
 import type { SavedRoutine } from "../types/savedRoutine";
 import type { Subject, Task } from "../services/taskService";
-import { colors } from "../constants/theme";
+import { colors, radius } from "../constants/theme";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
@@ -172,14 +172,14 @@ const s = StyleSheet.create({
   card: { paddingHorizontal: 0, paddingVertical: 0, gap: 10 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3 },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 }, link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 10, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 3, minHeight: 44, justifyContent: "center" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 10, borderRadius: radius.tile, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 3, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
-  name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 20 }, icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }, empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }, empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   sheetHeading: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, list: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 }, add: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
   confirmTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "600", letterSpacing: -0.4 }, confirmMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   confirmBody: { paddingHorizontal: 20, paddingTop: 4, paddingBottom: 28, gap: 6 },
   confirmStart: { minHeight: 60, paddingLeft: 20, paddingRight: 10, borderRadius: 22, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.primary },
-  confirmStartText: { color: colors.primaryText, fontSize: 18, lineHeight: 24, fontWeight: "600", letterSpacing: -0.3 },
+  confirmStartText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   confirmPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   confirmCancel: { minHeight: 48, alignItems: "center", justifyContent: "center" }, confirmDisabled: { opacity: 0.5 },
   sheetRow: { backgroundColor: colors.sheetCard, borderColor: "transparent" },

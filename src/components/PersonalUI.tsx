@@ -338,7 +338,7 @@ export const p = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 16, lineHeight: 24, fontWeight: "500", color: colors.primaryText, textAlign: "center" },
+  buttonText: { fontSize: 16, lineHeight: 22, fontWeight: "500", color: colors.primaryText, textAlign: "center" },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,
@@ -350,7 +350,7 @@ export const p = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
   },
-  error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
+  error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 },
   sheetBody: { paddingHorizontal: 20, paddingBottom: 30, gap: 16 },
   divider: { height: 1, backgroundColor: colors.line },

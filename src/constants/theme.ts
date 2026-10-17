@@ -38,3 +38,6 @@ export const guideColors = {
   overviewScrim: "rgba(3,6,12,0.12)",
   outline: "rgba(255,255,255,0.38)",
 } as const;
+
+// One corner per level, so cards, tiles and rows read as one family.
+export const radius = { card: 24, tile: 20, row: 16 } as const;

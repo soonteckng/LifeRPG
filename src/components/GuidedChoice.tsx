@@ -31,10 +31,11 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
       const tint = FOCUS_AREAS.find(area => area.title === direction?.title)?.color ?? FOCUS_AREAS[0].color;
       const title = direction?.title ?? "Free focus";
       const hint = direction?.hint ?? "Your own idea, at your own pace.";
+      // Compact tiles leave the next section in view, so the sheet reads as scrollable.
       return <Pressable key={direction?.id ?? "free-focus"} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: selected, disabled }}
         onPress={() => choose(direction)} style={[s.directionTile, selected && s.selected]}>
-        <Ionicons name={visual.icon} size={20} color={tint} />
-        <View style={s.tileCopy}><Text style={[s.tileTitle, selected && s.selectedTitle]}>{title}</Text><Text style={s.tileHint}>{hint}</Text></View>
+        <View style={[s.tileIcon, { backgroundColor: tint + "1F" }]}><Ionicons name={visual.icon} size={18} color={tint} /></View>
+        <Text style={[s.tileTitle, selected && s.selectedTitle]} numberOfLines={2}>{title}</Text>
       </Pressable>;
     })}</View>
   </View>;
@@ -48,18 +49,16 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
 }
 
 export default function GuidedChoice({ value, onChange, disabled = false, onSelection }: ChoiceProps) {
+  const direction = focusDirection(value.need);
   return <View style={s.group}>
-    <View style={s.section}><Text style={s.heading}>Choose a direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} includeFreeFocus onSelection={onSelection} /></View>
-    <View style={[s.startingPoint, !value.enabled && s.freeStartingPoint]}>
-      <View style={s.startingPointHeader}><Text style={s.startingPointTitle}>Your starting point</Text>{value.enabled && <Text style={s.body}>Choose a small step to begin with.</Text>}</View>
-      {!value.enabled ? <>
-        <View style={s.freePoint}>
-          <View style={s.freeSymbol}><Ionicons name="sparkles-outline" size={26} color={colors.accent} /></View>
-          <Text style={s.freeTitle}>Make this time your own.</Text>
-          <Text style={s.freeBody}>Bring one thing you want to do. Choose your time on Home and begin at your own pace.</Text>
-        </View>
-        <View style={s.freeAreaHint}><View style={s.freeAreaDot} /><Text style={s.freeAreaCopy}>Everyday focus · A simple category for any activity.</Text></View>
-      </> : focusOptions(value.need).map(task => {
+    <View style={s.section}><Text style={s.heading}>Direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} includeFreeFocus onSelection={onSelection} /></View>
+    <View style={s.section}>
+      <View style={s.startingPointHeader}><Text style={s.heading}>Suggested first step</Text>
+        <Text style={s.body}>{value.enabled ? `${direction.hint} Your choice shows on Home as the suggestion.` : "No suggestion. Bring your own idea and choose your time on Home."}</Text></View>
+      {!value.enabled ? <View style={s.freeRow}>
+        <View style={[s.tileIcon, { backgroundColor: colors.accentSoft }]}><Ionicons name="sparkles-outline" size={18} color={colors.accent} /></View>
+        <Text style={[s.body, s.flexText]}>Sessions count toward Everyday focus, a simple category for any activity.</Text>
+      </View> : focusOptions(value.need).map(task => {
         const studyNeed = STUDY_NEEDS.find(need => need.id === task.need);
         const title = studyNeed?.title ?? task.title;
         const hint = studyNeed?.hint ?? startingPointHints[task.id];
@@ -67,7 +66,7 @@ export default function GuidedChoice({ value, onChange, disabled = false, onSele
         return <Pressable key={task.id} disabled={disabled} accessibilityRole="radio" accessibilityLabel={title} accessibilityHint={hint} accessibilityState={{ checked: selected, disabled }}
           onPress={() => { if (disabled) return; onSelection?.(); onChange({ ...value, areaId: undefined, need: task.need, templateId: task.id, smaller: false }); }} style={[s.promptRow, selected && s.selectedPrompt]}>
           <View style={s.detail}><Text style={[s.promptTitle, selected && s.selectedTitle]}>{title}</Text><Text style={s.body}>{hint}</Text></View>
-          <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={23} color={selected ? colors.accent : colors.muted} />
+          <Ionicons name={selected ? "checkmark-circle" : "ellipse-outline"} size={22} color={selected ? colors.accent : colors.muted} />
         </Pressable>;
       })}
     </View>
@@ -83,15 +82,17 @@ const startingPointHints: Record<string, string> = {
   "quiet-screen-free": "Read, journal, move gently or take time to recharge.",
 };
 const s = StyleSheet.create({
-  group: { gap: 20 }, directions: { gap: 6 }, section: { gap: 10 }, heading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 }, directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 118, padding: 14, borderRadius: 20, backgroundColor: colors.sheetCard, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, flexDirection: "column", alignItems: "flex-start", gap: 10 }, tileCopy: { alignSelf: "stretch", minWidth: 0, gap: 4 }, tileHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, tileTitle: { minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" }, selectedTitle: { color: colors.accent }, directionHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 2 },
+  group: { gap: 24 }, directions: { gap: 6 }, section: { gap: 10 },
+  heading: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
+  directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 60, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1, borderColor: "transparent", flexDirection: "row", alignItems: "center", gap: 10 },
+  tileIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  tileTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" }, selectedTitle: { color: colors.accent },
   row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 },
-  startingPoint: { gap: 10, padding: 14, borderRadius: 24, backgroundColor: colors.surfaceRaised }, startingPointHeader: { paddingHorizontal: 2, paddingTop: 2, paddingBottom: 4, gap: 4 }, startingPointTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "500" },
-  promptRow: { minHeight: 72, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 18, borderWidth: 1, borderColor: colors.line, gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.sheetCard }, selectedPrompt: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
-  freeStartingPoint: { padding: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.sheetCard, gap: 16 },
-  freePoint: { alignItems: "center", gap: 12, paddingHorizontal: 6, paddingVertical: 8 }, freeSymbol: { width: 56, height: 56, alignItems: "center", justifyContent: "center", borderRadius: 20, backgroundColor: colors.accentSoft },
-  freeTitle: { color: colors.text, fontSize: 21, lineHeight: 28, fontWeight: "500", textAlign: "center" }, freeBody: { color: colors.secondary, fontSize: 14, lineHeight: 21, textAlign: "center", maxWidth: 300 },
-  freeAreaHint: { paddingTop: 14, borderTopWidth: 1, borderTopColor: colors.line, flexDirection: "row", alignItems: "center", gap: 8 }, freeAreaDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: FOCUS_AREAS[0].color }, freeAreaCopy: { flex: 1, color: colors.secondary, fontSize: 12, lineHeight: 18 },
+  startingPointHeader: { gap: 4 },
+  promptRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: "transparent", gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.sheetCard }, selectedPrompt: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  freeRow: { minHeight: 64, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, gap: 12, flexDirection: "row", alignItems: "center", backgroundColor: colors.sheetCard },
+  flexText: { flex: 1 },
   selected: { backgroundColor: colors.accentSoft, borderColor: colors.accent }, detail: { flex: 1, minWidth: 0, gap: 3 },
-  title: { fontSize: 17, lineHeight: 23, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  title: { fontSize: 17, lineHeight: 22, fontWeight: "500", color: colors.text }, body: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 });

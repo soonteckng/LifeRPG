@@ -31,7 +31,7 @@ import SavedRoutinesCard from "../../components/SavedRoutinesCard";
 import SessionProtectionControl from "../../components/SessionProtectionControl";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
-import { colors } from "../../constants/theme";
+import { colors, radius } from "../../constants/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useWindowDimensions, StyleSheet, View } from "react-native";
 import {
@@ -299,7 +299,7 @@ const styles = StyleSheet.create({
   identityRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   identity: { flex: 1, minWidth: 0 },
   headerBlock: { gap: 4 },
-  greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "400" },
+  greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "400" },
   name: { color: colors.text, fontSize: 32, lineHeight: 38, fontWeight: "600", letterSpacing: -0.8 },
   avatarFrame: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
   levelButton: { minHeight: 32, paddingHorizontal: 12, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.accentSoft },
@@ -310,7 +310,7 @@ const styles = StyleSheet.create({
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
   goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },
   goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  focusCard: { width: "100%", borderRadius: 22, backgroundColor: colors.surfaceRaised, padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  focusCard: { width: "100%", borderRadius: radius.card, backgroundColor: colors.surfaceRaised, padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: colors.primary, width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },

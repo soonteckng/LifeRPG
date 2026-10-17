@@ -96,7 +96,7 @@ export default function AuthScreen({ initialMode = "sign-in" }: { initialMode?: 
         onPress={() => {
           Keyboard.dismiss(); setRegister(current => !current); setError(""); setMessage(""); setFieldError(null);
         }}>
-        <Text style={{ color: colors.secondary, fontSize: 15, lineHeight: 23, textAlign: "center" }}>
+        <Text style={{ color: colors.secondary, fontSize: 15, lineHeight: 20, textAlign: "center" }}>
           {register ? "Already have an account? " : "New here? "}
           <Text style={{ color: colors.accent, fontSize: 15, fontWeight: "500" }}>{register ? "Sign in" : "Create an account"}</Text>
         </Text>

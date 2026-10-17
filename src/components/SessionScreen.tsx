@@ -1,4 +1,4 @@
-import { focusAreaTitle, focusAreaChoices, generalArea } from "../utils/focusAreas";
+import { focusAreaTitle, focusAreaChoices, focusAreaIcon, generalArea } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import TouchableOpacity from "./MotionPressable";
@@ -418,16 +418,19 @@ export default function SessionScreen() {
               {!isQuest && <>
                 <View style={styles.areaSection}>
                   <Text style={styles.secondary}>Focus area</Text>
-                  <View style={styles.areaChips}>
-                    {selectableAreas.slice(0, 6).map(item => <TouchableOpacity key={item.id} disabled={locked}
-                      onPress={() => timer.setTargetAttributeId(item.id)} accessibilityRole="button"
-                      accessibilityLabel={`Select ${focusAreaTitle(item.title)}`} accessibilityState={{ selected: item.id === timer.targetAttributeId }}
-                      style={styles.areaChip}>
-                      <View pointerEvents="none" style={[styles.chipSurface, item.id === timer.targetAttributeId && { backgroundColor: lifeAreaColor(item.id, item.color_code) + "1A" }]} />
-                      <Text style={[styles.chipText, item.id === timer.targetAttributeId && { color: lifeAreaColor(item.id, item.color_code) }]}>{focusAreaTitle(item.title)}</Text>
-                    </TouchableOpacity>)}
-                    {selectableAreas.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose focus area" disabled={locked} onPress={() => setPicker("area")} style={styles.areaChip}><View pointerEvents="none" style={styles.chipSurface} /><Text style={styles.chipText}>See all areas</Text></TouchableOpacity>}
+                  <View style={styles.areaGrid}>
+                    {selectableAreas.slice(0, 6).map(item => {
+                      const selected = item.id === timer.targetAttributeId, tint = lifeAreaColor(item.id, item.color_code);
+                      return <TouchableOpacity key={item.id} disabled={locked}
+                        onPress={() => timer.setTargetAttributeId(item.id)} accessibilityRole="button"
+                        accessibilityLabel={`Select ${focusAreaTitle(item.title)}`} accessibilityState={{ selected }}
+                        style={[styles.areaTile, selected && { backgroundColor: tint + "1F", borderColor: tint + "66" }]}>
+                        <Ionicons name={focusAreaIcon(item.title)} size={17} color={tint} />
+                        <Text style={[styles.areaTileText, selected && styles.areaTileSelected]} numberOfLines={1}>{focusAreaTitle(item.title)}</Text>
+                      </TouchableOpacity>;
+                    })}
                   </View>
+                  {selectableAreas.length > 6 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Choose focus area" disabled={locked} onPress={() => setPicker("area")} style={styles.moreAreas}><Text style={styles.link}>See all areas</Text></TouchableOpacity>}
                 </View>
               </>}
               {isRoutine ? <>
@@ -521,11 +524,14 @@ const styles = StyleSheet.create({
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },
   timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },
-  activeTitle: { color: colors.text, fontSize: 19, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3, textAlign: "center", marginTop: 6 },
+  activeTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3, textAlign: "center", marginTop: 6 },
   areaSection: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14, gap: 6 },
-  areaChips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-  areaChip: { minHeight: 44, paddingHorizontal: 13, alignItems: "center", justifyContent: "center", borderRadius: 20 },
-  chipSurface: { position: "absolute", left: 0, right: 0, top: 4, bottom: 4, borderRadius: 20, backgroundColor: colors.surface },
+  // Two even columns read as one tidy set instead of ragged wrapped chips.
+  areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  areaTile: { flexBasis: "47%", flexGrow: 1, minHeight: 48, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", borderWidth: 1, borderColor: "transparent" },
+  areaTileText: { flexShrink: 1, color: colors.neutral, fontSize: 15, lineHeight: 20, fontWeight: "500" },
+  areaTileSelected: { color: colors.text, fontWeight: "600" },
+  moreAreas: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
   presetSurface: { position: "absolute", left: 0, right: 0, top: 2, bottom: 2, borderRadius: 14, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   areaDot: { width: 8, height: 8, borderRadius: 4 },
   summaryRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
@@ -537,40 +543,40 @@ const styles = StyleSheet.create({
   timerAnchor: { paddingHorizontal: 20, paddingBottom: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   compactAnchor: { paddingTop: 0, paddingBottom: 4 },
   timerControl: { width: 286, maxWidth: "100%", paddingTop: 8 },
-  status: { color:colors.secondary, fontSize:16, lineHeight:23, textAlign:"center", marginTop:8 },
+  status: { color:colors.secondary, fontSize: 16, lineHeight: 22, textAlign:"center", marginTop:8 },
   hiddenStatus: { position:"absolute", width:1, height:1, overflow:"hidden", color:colors.background },
   body: { paddingHorizontal: 20, paddingBottom: 20 },
-  secondary: { color: colors.secondary, fontSize: 16, lineHeight: 23 },
+  secondary: { color: colors.secondary, fontSize: 16, lineHeight: 22 },
   setup: { gap: 12, marginTop: 0, padding: 16, borderRadius: 22, backgroundColor: colors.focusSurface },
   label: { color: colors.text, fontSize: 17, flexShrink: 1 },
-  chipText: { color: colors.neutral, fontSize: 16, fontWeight: "500" },
+
   link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  helper: { color: colors.muted, fontSize: 12, lineHeight: 18 },
+  helper: { color: colors.muted, fontSize: 12, lineHeight: 16 },
   choiceValue: { color: colors.secondary, flex: 1, textAlign: "right", fontSize: 16 },
   presets: { flexDirection: "row", justifyContent: "center", flexWrap: "wrap", gap: 12, paddingBottom: 6 },
   preset: { flex: 1, maxWidth: 76, minWidth: 52, minHeight: 48, paddingHorizontal: 12, justifyContent: "center", alignItems: "center", borderRadius: 14 },
   presetLarge: { minWidth: 80, maxWidth: 110, minHeight: 58 },
   presetSelected: { backgroundColor: colors.primary, borderColor: colors.border, borderWidth: 1 },
-  presetText: { color: colors.neutral, fontSize: 17, lineHeight: 23, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  presetText: { color: colors.neutral, fontSize: 17, lineHeight: 22, fontWeight: "500", fontVariant: ["tabular-nums"] },
   presetTextSelected: { color: colors.primaryText, fontWeight: "600" },
   questPickerBody: { gap: 10 },
   questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 82, padding: 14, borderRadius: 18, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   questPickerSelected: { borderColor: colors.accent, backgroundColor: colors.surfaceRaised },
   questPickerIcon: { width: 42, height: 42, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500" },
+  questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "500" },
   questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   questPickerEmpty: { alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 28 },
   selectedQuestCard: { minHeight: 84, flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
   selectedQuestIcon: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },
-  selectedQuestTitle: { color: colors.text, fontSize: 19, lineHeight: 25, fontWeight: "500", letterSpacing: -0.3 },
+  selectedQuestTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", letterSpacing: -0.3 },
   selectedQuestArea: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
   questRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, minHeight: 48, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   actions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 4 },
   primary: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.18)", minHeight: 56, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },
   primaryText: { color: colors.background, fontSize: 17, fontWeight: "500" },
-  disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
+  disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 13, lineHeight: 18 },
   summary: { gap: 14, marginTop: 4, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 14 }, summaryValue: { color: colors.text, fontSize: 30, fontWeight: "500", letterSpacing: -0.7 },
   pickerTitle: { color: colors.text, fontSize: 21, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 16 },
   pickerBody: { paddingHorizontal: 20, paddingBottom: 40 },

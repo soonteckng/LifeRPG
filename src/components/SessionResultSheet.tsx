@@ -172,14 +172,14 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  title: { color: colors.text, fontSize: 24, lineHeight:30, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 12 },
+  title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 12 },
   scroll: {flex:1},
   body: { paddingHorizontal: 20, paddingTop:4, paddingBottom: 16, gap: 16 },
   actions: {flexShrink:0, paddingHorizontal:20, paddingTop:4, gap:10, backgroundColor:colors.surfaceRaised},
-  finished: {color:colors.secondary, fontSize:13, lineHeight:19},
+  finished: {color:colors.secondary, fontSize: 13, lineHeight: 18},
   pending: {gap:12, paddingVertical:12},
-  pendingText: {color:colors.secondary, fontSize:16, lineHeight:23, textAlign:"center"},
-  sessionTitle: {color:colors.text, fontSize:17, lineHeight:24, textAlign:"center"},
+  pendingText: {color:colors.secondary, fontSize: 16, lineHeight: 22, textAlign:"center"},
+  sessionTitle: {color:colors.text, fontSize: 17, lineHeight: 22, textAlign:"center"},
   endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center", alignSelf:"center"},
   retry: {minHeight:48, justifyContent:"center", alignItems:"center"},
   retryText: {color:colors.accent, fontSize:17},

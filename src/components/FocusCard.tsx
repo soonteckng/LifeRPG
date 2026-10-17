@@ -9,7 +9,7 @@ import FocusLengthControl from "./FocusLengthControl";
 import { PinnedAction } from "./PinnedAction";
 import { useFeatureTour } from "./FeatureTour";
 import type { Subject } from "../services/taskService";
-import { colors } from "../constants/theme";
+import { colors, radius } from "../constants/theme";
 import { durationLabel, sessionTime } from "../utils/sessionSetup";
 import { sessionDockState } from "../utils/sessionReporting";
 
@@ -82,43 +82,43 @@ export default function FocusCard(props: FocusCardProps) {
   </View>;
 }
 const s = StyleSheet.create({
-  card: { width: "100%", padding: 20, borderRadius: 28, gap: 16, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.2)" }, fieldsRow: { flexWrap: "nowrap", alignItems: "stretch" },
+  card: { width: "100%", padding: 20, borderRadius: radius.card, gap: 16, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(170,179,255,0.2)" }, fieldsRow: { flexWrap: "nowrap", alignItems: "stretch" },
   tourCard: { gap: 12 }, goal: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   label: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500", flexShrink: 1 },
   change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 4 },
   changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  prompt: { minHeight: 0 }, title: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "600", letterSpacing: -0.3, flexShrink: 1 },
+  prompt: { minHeight: 0 }, title: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3, flexShrink: 1 },
   suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 6, marginTop: 8, paddingHorizontal: 16 },
-  suggestion: { color: colors.secondary, fontSize: 13, lineHeight: 19, flex: 1 },
-  instruction: { color: colors.secondary, fontSize: 14, lineHeight: 21, marginTop: 8 },
+  suggestion: { color: colors.secondary, fontSize: 13, lineHeight: 18, flex: 1 },
+  instruction: { color: colors.secondary, fontSize: 14, lineHeight: 20, marginTop: 8 },
   areaValue: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 10 }, dot: { width: 10, height: 10, borderRadius: 5 },
   areaButton: { minHeight: 44, paddingVertical: 12, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   meta: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, duration: { gap: 2, marginTop: 4 },
   durationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
-  selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
+  selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
   remaining: { color: colors.text, fontSize: 40, lineHeight: 48, fontWeight: "600", letterSpacing: -1, fontVariant: ["tabular-nums"] },
-  primary: { minHeight: 58, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "600", flexShrink: 1, textAlign: "center" },
+  primary: { minHeight: 58, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", flexShrink: 1, textAlign: "center" },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   cardIdle: { width: "100%", gap: 12 },
-  goalCard: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  goalCard: { paddingHorizontal: 16, paddingVertical: 14, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   group: { flexDirection: "column", flexWrap: "nowrap", alignItems: "stretch", gap: 0, backgroundColor: colors.surface, borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
   rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
-  rowLabel: { color: colors.text, fontSize: 15, lineHeight: 21, fontWeight: "500" },
+  rowLabel: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" },
   rowValue: { flex: 1, minWidth: 0, alignItems: "flex-end" },
-  rowValueText: { color: colors.secondary, fontSize: 15, lineHeight: 21 },
+  rowValueText: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   startTile: { minHeight: 60, paddingLeft: 20, paddingRight: 10, paddingVertical: 8, borderRadius: 22, flexDirection: "row-reverse", alignItems: "center", gap: 12, backgroundColor: colors.primary },
-  startText: { color: colors.primaryText, fontSize: 18, lineHeight: 24, fontWeight: "600", letterSpacing: -0.3 },
+  startText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   playCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  sessionCard: { padding: 16, gap: 10, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  sessionCard: { padding: 16, gap: 10, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   startCopy: { flex: 1, minWidth: 0 },
   banner: { minHeight: 60, paddingLeft: 20, paddingRight: 10, paddingVertical: 8, borderRadius: 22, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },
   bannerLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
   barTitle: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
-  barTime: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 19, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  barTime: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 20, fontWeight: "500", fontVariant: ["tabular-nums"] },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(17,19,27,0.12)" },
   progressFill: { height: 4, backgroundColor: "rgba(17,19,27,0.78)" },

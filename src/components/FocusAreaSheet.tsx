@@ -25,7 +25,7 @@ export default function FocusAreaSheet({ visible, subjects, selectedId, disabled
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 }, body: { color: colors.secondary, fontSize: 15, lineHeight: 22 },
+  header: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 }, body: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   bodyContainer: { paddingHorizontal: 20, paddingBottom: 24 }, row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 68, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   detail: { flex: 1, minWidth: 0, gap: 3 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, hint: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 });

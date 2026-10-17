@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   body: { ...type.body, color: colors.secondary },
   caption: { ...type.secondary },
   card: { padding: 20, gap: 18, borderRadius: 24, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
-  statusTitle: { ...type.pageTitle, fontSize: 22, lineHeight: 30 },
+  statusTitle: { ...type.pageTitle, fontSize: 22, lineHeight: 28 },
   time: { gap: 20, paddingVertical: 12, alignItems: "flex-start" },
   unit: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 8 },
   number: { fontSize: 48, lineHeight: 58, fontWeight: "600", fontVariant: ["tabular-nums"], color: colors.text },

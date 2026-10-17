@@ -54,9 +54,9 @@ const s = StyleSheet.create({
   sparkle:{position:"absolute"}, sparkleLeft:{left:4, top:45}, sparkleRight:{right:2, bottom:45},
   dot:{position:"absolute", width:5, height:5, borderRadius:3}, dotTop:{right:40, top:18}, dotBottom:{left:35, bottom:25},
   copy:{width:"100%", maxWidth:360, alignItems:"center", gap:14},
-  eyebrow:{fontSize:12, lineHeight:18, fontWeight:"600", letterSpacing:1.6, textAlign:"center"},
+  eyebrow:{fontSize: 12, lineHeight: 16, fontWeight:"600", letterSpacing:1.6, textAlign:"center"},
   title:{fontSize:32, lineHeight:39, fontWeight:"600", letterSpacing:-0.9, color:colors.text, textAlign:"center"},
-  body:{fontSize:16, lineHeight:24, color:colors.secondary, textAlign:"center", maxWidth:320},
+  body:{fontSize: 16, lineHeight: 22, color:colors.secondary, textAlign:"center", maxWidth:320},
   firstSessionNote:{flexDirection:"row", alignItems:"center", gap:8, paddingHorizontal:14, paddingVertical:10, borderRadius:16, backgroundColor:colors.accentSoft},
-  firstSessionCopy:{color:colors.neutral, fontSize:14, lineHeight:20, flexShrink:1},
+  firstSessionCopy:{color:colors.neutral, fontSize: 14, lineHeight: 20, flexShrink:1},
 });

@@ -82,7 +82,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
 const g = {
   header: { paddingHorizontal: 20, paddingBottom: 14, gap: 4 },
   title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600" as const, letterSpacing: -0.5 },
-  subtitle: { color: colors.secondary, fontSize: 15, lineHeight: 21 },
+  subtitle: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   body: { paddingHorizontal: 20, paddingBottom: 20, gap: 16 },
   stepper: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, gap: 12, paddingVertical: 18, paddingHorizontal: 14, borderRadius: 24, backgroundColor: colors.sheetCard, borderWidth: 0.5, borderColor: colors.line },
   stepButton: { width: 48, height: 48, borderRadius: 24, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.accentSoft },
@@ -100,11 +100,11 @@ const g = {
   presetTextSelected: { color: colors.accent },
   rules: { gap: 6 },
   rule: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  caption: { color: colors.muted, fontSize: 13, lineHeight: 19 },
-  error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
+  caption: { color: colors.muted, fontSize: 13, lineHeight: 18 },
+  error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" as const, paddingVertical: 8 },
   button: { minHeight: 54, padding: 14, borderRadius: 18, backgroundColor: colors.primary, alignItems: "center" as const, justifyContent: "center" as const },
   buttonChecking: { backgroundColor: colors.sheetCard },
-  buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "600" as const },
+  buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" as const },
   buttonTextChecking: { color: colors.secondary },
 };

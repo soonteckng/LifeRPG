@@ -25,7 +25,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
-import { colors } from "../../constants/theme";
+import { colors, radius } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
@@ -883,7 +883,7 @@ const s = StyleSheet.create({
     justifyContent: "center",
   },
   periodTitle: { color: colors.secondary, fontWeight: "500", fontSize: 15 },
-  caption: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
+  caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   hero: {
     paddingTop: 4, paddingBottom: 6,
   },
@@ -904,12 +904,12 @@ const s = StyleSheet.create({
   comparisonNote: {
     color: colors.muted,
     fontSize: 14,
-    lineHeight: 17,
+    lineHeight: 20,
     marginTop: 4,
   },
-  periodSummary: { marginTop: 12, paddingVertical: 14, paddingHorizontal: 16, gap: 3, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  periodSummary: { marginTop: 12, paddingVertical: 14, paddingHorizontal: 16, gap: 3, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   periodSummaryHeading: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  periodSummaryValue: { color: colors.text, fontSize: 19, lineHeight: 26, fontWeight: "500", fontVariant: ["tabular-nums"] },
+  periodSummaryValue: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "500", fontVariant: ["tabular-nums"] },
   sectionHeading: {
     flexDirection: "row",
     alignItems: "center",
@@ -920,8 +920,8 @@ const s = StyleSheet.create({
   sectionTitle: {
     ...type.section,
     color: colors.text,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 20,
+    lineHeight: 26,
     fontWeight: "600",
     letterSpacing: -0.3,
     marginBottom: 0,
@@ -936,7 +936,7 @@ const s = StyleSheet.create({
   card: {
     paddingVertical: 8,
     paddingHorizontal: 14,
-    borderRadius: 22,
+    borderRadius: radius.card,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.line,
@@ -978,16 +978,16 @@ const s = StyleSheet.create({
   chartEmpty: {
     color: colors.secondary,
     fontSize: 14,
-    lineHeight: 19,
+    lineHeight: 20,
     marginTop: 12,
   },
-  chartHint: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 6 },
+  chartHint: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 6 },
   consistency: {
     flexDirection: "row",
     alignItems: "center",
     gap: 14,
     padding: 14,
-    borderRadius: 22,
+    borderRadius: radius.card,
     backgroundColor: colors.surface,
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line,
   },
@@ -1083,7 +1083,7 @@ const s = StyleSheet.create({
   emptyBody: {
     color: colors.secondary,
     fontSize: 15,
-    lineHeight: 21,
+    lineHeight: 20,
     textAlign: "center",
     maxWidth: 290,
   },
@@ -1096,7 +1096,7 @@ const s = StyleSheet.create({
   footnote: {
     color: colors.muted,
     fontSize: 14,
-    lineHeight: 18,
+    lineHeight: 20,
     marginTop: 18,
     textAlign: "center",
   },
@@ -1111,11 +1111,13 @@ const s = StyleSheet.create({
   },
   retry: { minHeight: 44, justifyContent: "center" },
   loading: { paddingVertical: 60, alignItems: "center", gap: 14 },
-  sheetHeader: { paddingHorizontal: 22, paddingBottom: 16 },
+  sheetHeader: { paddingHorizontal: 20, paddingBottom: 16 },
   sheetTitle: {
     color: colors.text,
-    fontSize: 22,
-    fontWeight: "500",
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: "600",
+    letterSpacing: -0.5,
     marginBottom: 5,
   },
   sheetBack: {
@@ -1124,7 +1126,7 @@ const s = StyleSheet.create({
     minHeight: 44,
     marginBottom: 4,
   },
-  sheetContent: { paddingHorizontal: 22 },
+  sheetContent: { paddingHorizontal: 20 },
   summary: { alignItems: "center", gap: 10, paddingVertical: 24 },
   summaryValue: {
     color: colors.text,
@@ -1162,7 +1164,7 @@ const s = StyleSheet.create({
     marginTop: 20,
     marginBottom: 8,
   },
-  explain: { color: colors.secondary, fontSize: 14, lineHeight: 23 },
+  explain: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   historySpinner: { marginVertical: 20 },
   errorText: {
     color: colors.secondary,
@@ -1179,7 +1181,7 @@ const s = StyleSheet.create({
   },
   focusValueEmpty: { fontSize: 30, letterSpacing: -0.8, marginTop: 2 },
   areaRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 21 },
-  areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontVariant: ["tabular-nums"] },
-  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
+  areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20 },
+  areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
 });

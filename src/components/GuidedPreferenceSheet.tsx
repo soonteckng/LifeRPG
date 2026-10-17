@@ -26,7 +26,7 @@ export default function GuidedPreferenceSheet({ owner, visible, onClose }: { own
       <SheetButton testID="save-guided-preferences" accessibilityRole="button" disabled={preference.busy || !preference.ready} onPress={() => { void preference.save({ ...choice, invited: true }).then(saved => { if (saved) onClose(); }); }} style={p.button}><Text style={p.buttonText}>{preference.busy ? "Saving…" : "Save preferences"}</Text></SheetButton>
     </View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment showsVerticalScrollIndicator contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 16, gap: 12 }}>
-      <Text style={p.body}>Choose a category and a suggested activity, or free focus. Your routines and recorded progress stay saved.</Text>
+      <Text style={p.body}>Pick a direction and a first step, or free focus. Your routines and progress stay as they are.</Text>
       <GuidedChoice value={choice} onChange={setDraft} disabled={preference.busy || !preference.ready} onSelection={feedback} />
       {preference.error && <><Text style={p.error} accessibilityRole="alert">Couldn’t save or load your suggestion preferences. Try again.</Text>{!preference.ready && <SheetButton onPress={() => void preference.retry()} accessibilityRole="button"><Text style={p.rowTitle}>Retry loading</Text></SheetButton>}</>}
 
