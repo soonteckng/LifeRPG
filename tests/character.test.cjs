@@ -25,6 +25,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
+      if (name.endsWith("/SwipeBack")) return {__esModule:true,default:props=>props.children};
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};

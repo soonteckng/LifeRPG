@@ -8,6 +8,7 @@ function load(file,mocks={},cache=new Map()){
  const module={exports:{}};cache.set(filename,module);const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
   if(name.endsWith('/AppBuildInfo'))return()=>null;
+  if(name.endsWith('/SwipeBack'))return{__esModule:true,default:props=>props.children};
   if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvite');if(name==='expo-constants')return {expoConfig:{android:{package:'com.soonteck.liferpg'}}};if(name==='expo')return {isRunningInExpoGo:()=>false};if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvitation');if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
    if(name==='expo-haptics')return {};if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
  },module,module.exports);return module.exports;

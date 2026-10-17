@@ -23,6 +23,7 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { TourScrollView } from "./FeatureTour";
 import { navigationTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
+import SwipeBack from "./SwipeBack";
 import { readSettingsOrigin, settingsTransform } from "../utils/settingsOrigin";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
@@ -95,6 +96,12 @@ export function PersonalPage({
       }
     });
   }, [controlled, navigation, router, position, width, reduced, expandFromIcon]);
+  // The swipe has already carried the page away; leave without animating again.
+  const swiped = useCallback(() => {
+    if (closing.current) return;
+    if (!navigation.canGoBack()) { router.replace("/profile"); return; }
+    closing.current = true; setExitReady(true);
+  }, [navigation, router]);
   usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
     if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }
@@ -106,7 +113,7 @@ export function PersonalPage({
       collapsable={false}
       onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
       style={{ flex: 1 }}
-    ><Animated.View
+    ><SwipeBack enabled={controlled && !exitReady} onBack={swiped}><Animated.View
       renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
@@ -149,7 +156,7 @@ export function PersonalPage({
           </View>
         </TourScrollView>
       </SafeAreaView>
-    </Animated.View></View>
+    </Animated.View></SwipeBack></View>
   );
 }
 export function PersonalRow({
