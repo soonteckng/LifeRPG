@@ -67,7 +67,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
         </View>
         {editable && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Increase daily goal by 15 minutes" disabled={busy} onPress={() => step(15)} style={g.stepButton}><Text style={g.stepText}>+</Text></TouchableOpacity>}
       </View>
-      {editable && <View style={g.presets}>{[30, 60, 90, 120].map(value => <TouchableOpacity key={value} accessibilityRole="button" accessibilityLabel={`Set daily goal to ${value} minutes`} accessibilityState={{ selected: parseDailyGoal(draft) === value }} disabled={busy} onPress={() => { setDraft(String(value)); setError(""); }} style={[g.preset, parseDailyGoal(draft) === value && g.presetSelected]}><Text style={[g.presetText, parseDailyGoal(draft) === value && g.presetTextSelected]}>{value}</Text></TouchableOpacity>)}</View>}
+      {editable && <View style={g.presets}>{[30, 60, 90, 120].map(value => <View key={value} style={g.presetCell}><TouchableOpacity accessibilityRole="button" accessibilityLabel={`Set daily goal to ${value} minutes`} accessibilityState={{ selected: parseDailyGoal(draft) === value }} disabled={busy} onPress={() => { setDraft(String(value)); setError(""); }} style={[g.preset, parseDailyGoal(draft) === value && g.presetSelected]}><Text style={[g.presetText, parseDailyGoal(draft) === value && g.presetTextSelected]}>{value}</Text></TouchableOpacity></View>)}</View>}
       <View style={g.rules}>
         <Text style={g.rule}>· Choose 30–480 minutes a day.</Text>
         <Text style={g.rule}>· A new goal starts tomorrow, so today’s target and earned progress stay intact.</Text>
@@ -92,7 +92,9 @@ const g = {
   number: { color: colors.text, fontSize: 46, lineHeight: 54, fontWeight: "600" as const, textAlign: "center" as const, fontVariant: ["tabular-nums" as const] },
   unit: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   presets: { flexDirection: "row" as const, gap: 8 },
-  preset: { flex: 1, minHeight: 44, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.sheetCard, borderWidth: 0.5, borderColor: colors.line },
+  // Sheet touchables wrap their style in an inner view on Android, so the cell takes the width.
+  presetCell: { flex: 1 },
+  preset: { minHeight: 44, borderRadius: 14, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.sheetCard, borderWidth: 0.5, borderColor: colors.line },
   presetSelected: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   presetText: { color: colors.secondary, fontSize: 15, fontWeight: "500" as const },
   presetTextSelected: { color: colors.accent },

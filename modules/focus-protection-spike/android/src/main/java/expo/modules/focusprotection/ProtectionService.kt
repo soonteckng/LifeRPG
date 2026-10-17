@@ -24,6 +24,7 @@ class ProtectionService : Service() {
     private const val CHANNEL = "liferpg_protection_preview"
     private const val NOTIFICATION = 84103
     private const val TRACE_TAG = "LifeRPGProtection"
+    private const val FADE_MS = 140L
     private var instance: ProtectionService? = null
     fun canStart() = instance == null
     fun stop(context: Context, id: String, reason: String) {
@@ -121,7 +122,7 @@ class ProtectionService : Service() {
         // Keep lifecycle state across lock screens. Unlocking need not emit a
         // new RESUMED event for the app which was already under our cover.
         queryForeground()
-        val candidate = foreground.packageForCover(elapsed, overlayShowing)
+        val candidate = foreground.packageName
         if (interactive && !locked) cover = ProtectionPolicy.shouldCover(lease, candidate, essentials, userApps, elapsed)
         val shouldCover = cover
         if (cover != overlayShowing && Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG,
@@ -135,7 +136,8 @@ class ProtectionService : Service() {
             remainingText?.let { if (it.text.toString() != copy) it.text = copy }
           } catch (_: Exception) { finish(lease.id, "interrupted") }
         }
-        monitor.postDelayed(this, 400)
+        // Check often while the screen is on so the cover follows gestures closely.
+        monitor.postDelayed(this, if (interactive) 250 else 1000)
       } catch (_: Exception) { finish(lease.id, "interrupted") }
     }
   }
@@ -152,7 +154,7 @@ class ProtectionService : Service() {
       val pkg = event.packageName ?: continue
       if (Log.isLoggable(TRACE_TAG, Log.DEBUG) && event.eventType in listOf(UsageEvents.Event.MOVE_TO_FOREGROUND, UsageEvents.Event.MOVE_TO_BACKGROUND, UsageEvents.Event.ACTIVITY_STOPPED))
         Log.d(TRACE_TAG, "event type=${event.eventType} package=$pkg class=${event.className} at=${event.timeStamp} elapsed=${SystemClock.elapsedRealtime()}")
-      if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) foreground.resumed(pkg, event.className, SystemClock.elapsedRealtime(), event.timeStamp)
+      if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) foreground.resumed(pkg, event.className, event.timeStamp)
       else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND) foreground.paused(pkg, event.className, event.timeStamp)
       else if (event.eventType == UsageEvents.Event.ACTIVITY_STOPPED) foreground.stopped(pkg, event.className, event.timeStamp)
     }
@@ -163,8 +165,22 @@ class ProtectionService : Service() {
     text = copy; textSize = size; setTextColor(Color.parseColor(color)); gravity = Gravity.CENTER
     setPadding(0, dp(10), 0, dp(10))
   }
+  private fun touchable(view: LinearLayout, enabled: Boolean) {
+    val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+    val flags = if (enabled) params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+      else params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+    if (flags != params.flags) { params.flags = flags; wm.updateViewLayout(view, params) }
+  }
   private fun showOverlay(lease: ProtectionLease) {
-    if (overlay != null) return
+    overlay?.let { view ->
+      if (overlayShowing) return
+      // Back to the app while the cover is still fading out: reverse the fade.
+      if (runCatching { touchable(view, true) }.isSuccess) {
+        view.animate().cancel(); view.animate().alpha(1f).setDuration(FADE_MS).start()
+        overlayShowing = true; ProtectionRuntime.covered(lease.id); return
+      }
+      detach(view)
+    }
     val root = object : LinearLayout(this) {
       override fun onWindowVisibilityChanged(visibility: Int) {
         super.onWindowVisibilityChanged(visibility)
@@ -205,7 +221,7 @@ class ProtectionService : Service() {
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT))
     overlay = root; overlayShowing = true; ProtectionRuntime.covered(lease.id)
     if (Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay attached")
-    if (ValueAnimator.areAnimatorsEnabled()) { root.alpha = 0f; root.animate().alpha(1f).setDuration(180).start() }
+    if (ValueAnimator.areAnimatorsEnabled()) { root.alpha = 0f; root.animate().alpha(1f).setDuration(FADE_MS).start() }
   }
   private fun openDestination(intent: Intent) {
     try {
@@ -224,10 +240,21 @@ class ProtectionService : Service() {
     }
     return Intent(Intent.ACTION_VIEW, uri.build()).setPackage(packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
   }
-  private fun hideOverlay() {
-    overlay?.let { it.animate().cancel(); runCatching { wm.removeViewImmediate(it) } }
+  private fun hideOverlay(immediate: Boolean = false) {
+    val view = overlay
     if (overlayShowing && Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay removed")
-    overlay = null; overlayShowing = false; remainingText = null
+    val wasShowing = overlayShowing; overlayShowing = false
+    if (view == null) return
+    if (immediate || !ValueAnimator.areAnimatorsEnabled()) { detach(view); return }
+    if (!wasShowing) return // already fading out
+    // Fade instead of vanishing; its buttons stop taking taps meanwhile.
+    runCatching { touchable(view, false) }.onFailure { detach(view); return }
+    view.animate().cancel()
+    view.animate().alpha(0f).setDuration(FADE_MS).withEndAction { if (overlay === view && !overlayShowing) detach(view) }.start()
+  }
+  private fun detach(view: LinearLayout) {
+    view.animate().cancel(); runCatching { wm.removeViewImmediate(view) }
+    if (overlay === view) { overlay = null; remainingText = null }
   }
   private fun finish(id: String, reason: String) {
     if (Looper.myLooper() != Looper.getMainLooper()) {
@@ -236,14 +263,14 @@ class ProtectionService : Service() {
     if (id != leaseId && !ProtectionPolicy.sameLease(ProtectionRuntime.current, id)) return
     ProtectionRuntime.finish(id, reason)
     if (id == leaseId) {
-      monitor.removeCallbacks(tick); hideOverlay(); leaseId = null
+      monitor.removeCallbacks(tick); hideOverlay(immediate = true); leaseId = null
       stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
     }
   }
   // Swiping LifeRPG from recents keeps this foreground service alive until the
   // monotonic deadline. Force-stop/OS eviction releases apps and is reported on return.
   override fun onDestroy() {
-    monitor.removeCallbacks(tick); monitorThread.quitSafely(); handler.removeCallbacksAndMessages(null); hideOverlay()
+    monitor.removeCallbacks(tick); monitorThread.quitSafely(); handler.removeCallbacksAndMessages(null); hideOverlay(immediate = true)
     leaseId?.let { ProtectionRuntime.finish(it, "interrupted") }; leaseId = null
     if (instance === this) instance = null
     super.onDestroy()
