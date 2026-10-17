@@ -371,7 +371,7 @@ function Choice({ label, selected, onPress, accessibilityLabel }: { label: strin
 
 const styles = StyleSheet.create({
   areaDot: { width: 10, height: 10, borderRadius: 5 },
-  doneFooter: { paddingHorizontal: 20, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, backgroundColor: colors.surface, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  doneFooter: { paddingHorizontal: 20, paddingTop: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, backgroundColor: colors.surfaceRaised, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   header: { paddingHorizontal: 20, paddingBottom: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   headingRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 12 },
   title: { color: colors.text, fontSize: 24, fontWeight: "500", letterSpacing: -0.6, flexGrow: 1, flexShrink: 1 },
@@ -380,8 +380,8 @@ const styles = StyleSheet.create({
   subheadingRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   subtitle: { color: colors.secondary, fontSize: 14, fontWeight: "400", flexShrink: 1 },
   scopeGroup: { position:"relative", width:176, maxWidth:"100%", minHeight:44, flexDirection:"row", alignItems:"stretch" },
-  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:colors.surface, overflow:"hidden" },
-  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:colors.selection, borderRadius:11, borderWidth:3, borderColor:colors.surface },
+  scopeTrack: { position:"absolute", left:0, right:0, top:4, bottom:4, borderRadius:12, backgroundColor:colors.sheetCard, overflow:"hidden" },
+  scopeSelection: { position:"absolute", width:"50%", top:0, bottom:0, backgroundColor:colors.selection, borderRadius:11, borderWidth:3, borderColor:colors.sheetCard },
   scopeSlot: { flex:1, minWidth:0 },
   scopeButton: { width:"100%", minHeight:44, paddingHorizontal:8, paddingVertical:8, alignItems:"center", justifyContent:"center" },
   scopeLabel: { color:colors.neutral, fontSize:15, lineHeight:20, fontWeight:"500", includeFontPadding:false, textAlign:"center", textAlignVertical:"center" },
@@ -433,7 +433,7 @@ const styles = StyleSheet.create({
   headerError: { color: colors.danger, fontSize: 15, lineHeight: 19, paddingHorizontal: 20, paddingBottom: 12 },
   errorBanner: { paddingVertical: 14, gap: 10 },
   message: { paddingTop: 14, color: colors.accent, fontSize: 14, lineHeight: 18 },
-  actions: { backgroundColor: colors.surface, paddingHorizontal: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8 },
+  actions: { backgroundColor: colors.surfaceRaised, paddingHorizontal: 20, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, paddingTop: 8 },
   actionRow: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 10 },
   deleteText: { color: colors.danger, fontSize: 15 },
   disabled: { opacity: 0.4 },

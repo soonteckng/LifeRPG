@@ -3,6 +3,8 @@ export const colors = {
   background: "#080809",
   surface: "#151517",
   surfaceRaised: "#1E1E21",
+  // Cards inside sheets sit above the raised sheet, never below it.
+  sheetCard: "#28282D",
   focusSurface: "#171B2B",
   focusBorder: "rgba(170,179,255,0.12)",
   protection: "#38D1B5",

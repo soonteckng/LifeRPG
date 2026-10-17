@@ -226,10 +226,10 @@ export default function HomeScreen() {
                 <Text style={styles.greeting}>{greeting},</Text>
                 <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
               </View>
-              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={40} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
+              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={46} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
             </View>
             <View style={styles.identityMeta}>
-              <TouchableOpacity style={styles.levelButton} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Ionicons name="sparkles-outline" size={15} color={colors.accent} /><Text style={styles.levelText}>Lv {level}</Text><Ionicons name="chevron-forward" size={13} color={colors.accent} /></TouchableOpacity>
+              <TouchableOpacity style={styles.levelButton} hitSlop={{ top: 6, bottom: 6 }} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Ionicons name="sparkles-outline" size={15} color={colors.accent} /><Text style={styles.levelText}>Lv {level}</Text><Ionicons name="chevron-forward" size={13} color={colors.accent} /></TouchableOpacity>
               <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
             </View>
           </View>
@@ -285,16 +285,16 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 24 },
   focusContainer: { width: "100%", alignSelf: "stretch" },
-  identityRow: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
+  identityRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   identity: { flex: 1, minWidth: 0 },
   headerBlock: { gap: 4 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 21, fontWeight: "400" },
   name: { color: colors.text, fontSize: 32, lineHeight: 38, fontWeight: "600", letterSpacing: -0.8 },
-  avatarFrame: { width: 48, height: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
-  levelButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 5 },
+  avatarFrame: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
+  levelButton: { minHeight: 32, paddingHorizontal: 12, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 5, backgroundColor: colors.accentSoft },
   levelText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", columnGap: 18, rowGap: 0, paddingLeft: 0 },
-  identityStat: { flexDirection: "row", alignItems: "center", gap: 6 }, heroRing: { width: 152, height: 152, alignItems: "center", justifyContent: "center" }, chipRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 10 },
+  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8, marginTop: 10, paddingLeft: 0 },
+  identityStat: { minHeight: 32, paddingHorizontal: 12, borderRadius: 16, flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.surface }, heroRing: { width: 152, height: 152, alignItems: "center", justifyContent: "center" }, chipRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 10 },
   metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
   metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
   goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },

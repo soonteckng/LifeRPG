@@ -30,7 +30,7 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
   // the native modal to resize around a device's numeric keyboard.
   return <AppSheet visible={visible} onRequestClose={onClose} compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="focus duration"
     header={<View style={p.sheetHeader}><Text style={p.title}>Make time for focus</Text><Text style={p.body}>Choose a duration for this block.</Text></View>}
-    footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surface }}>
+    footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surfaceRaised }}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Use this duration" disabled={disabled} onPress={save} style={p.button}><Text style={p.buttonText}>Use this duration</Text></TouchableOpacity>
     </View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={{ ...p.sheetBody, paddingBottom: 16 }}>
@@ -46,10 +46,10 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
 }
 
 const p = StyleSheet.create({
- sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 }, title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500" },
+ sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 },
  body: { color: colors.secondary, fontSize: 16, lineHeight: 23 }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
  sheetBody: { paddingHorizontal: 20, gap: 16 }, rowTitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
- input: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.surface, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
+ input: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.sheetCard, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
  button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
  buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
 });

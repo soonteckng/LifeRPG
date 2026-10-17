@@ -56,7 +56,12 @@ async function pendingCard() {
   let tree; await act(async () => { tree = create(React.createElement(Card, props)); });
   return { calls, pending,
     output: () => tree.root.findAllByType('Text').map(node => node.children.filter(child => typeof child === 'string').join('')).join(' '),
-    start: async () => act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start routine Review notes').props.onPress(); }),
+    // The play button asks first; the confirmation sheet owns the Start.
+    start: async () => {
+      await act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start routine Review notes').props.onPress(); });
+      await act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start Review notes now').props.onPress(); });
+    },
+    dismiss: async () => act(async () => { tree.root.findAllByType('Sheet').find(n => n.props.label === 'start routine').props.onDismiss(); }),
     update: async change => { state = { ...state, ...change.state }; props = { ...props, ...change.props }; timer = { ...timer, ...change.timer };
       await act(async () => tree.update(React.createElement(Card, props))); },
     release: async index => act(async () => { pending[index](routine); }),
@@ -89,7 +94,7 @@ test('an old routine read cannot unlock a newer pending Start or submit a duplic
     await ui.update({ props: { active: false } }); await ui.update({ props: { active: true } });
     await ui.start(); assert.equal(ui.pending.length, 2);
     await ui.release(0); await ui.start(); assert.equal(ui.pending.length, 2);
-    await ui.release(1);
+    await ui.release(1); await ui.dismiss();
     assert.deepEqual(ui.calls, [['start', 75, 2, 'Review notes'], ['route', '/session']]);
   } finally { await ui.cleanup(); }
 });

@@ -39,8 +39,8 @@ export default function LevelTierSheet({ visible, onClose, ...progress }: Progre
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  header: { paddingHorizontal: 20, paddingBottom: 16 }, title: { color: colors.text, fontSize: 23, lineHeight: 30, fontWeight: "500", letterSpacing: -0.4 },
-  content: { paddingHorizontal: 20 }, stack: { gap: 12 }, summary: { padding: 16, gap: 10, borderRadius: 18, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  header: { paddingHorizontal: 20, paddingBottom: 16 }, title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 },
+  content: { paddingHorizontal: 20 }, stack: { gap: 12 }, summary: { padding: 16, gap: 10, borderRadius: 18, backgroundColor: colors.sheetCard, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
   eyebrow: { color: colors.secondary, fontSize: 11, lineHeight: 17, letterSpacing: 1.1, fontWeight: "500" }, summaryTitle: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 }, currentTitle: { color: colors.text, fontSize: 21, lineHeight: 27, fontWeight: "500" }, level: { color: colors.accent, fontSize: 13, lineHeight: 20 },
   body: { color: colors.secondary, fontSize: 15, lineHeight: 22 }, hint: { color: colors.secondary, fontSize: 13, lineHeight: 19 }, sectionTitle: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "500", marginTop: 4 },
   track: { height: 5, backgroundColor: colors.line, borderRadius: 3, overflow: "hidden" }, fill: { height: "100%", borderRadius: 3 },
