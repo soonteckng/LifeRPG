@@ -1,8 +1,8 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import ContentReveal from "./ContentReveal";
@@ -81,7 +81,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
   const startDisabled = busy || !surfaceActive || preference.busy || !duration.ready || !preference.ready || !catalogReady || !timer.offlineAvailable;
   const uncertain = !timer.clientReported && (timer.syncStatus === "waiting" || !timer.offlineControlsAvailable);
   const currentFocus = readSuggestedFocus(timer.notes);
-  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
   const openDirection = () => {
     if (directionLocked || active || terminal || actionLock.current?.scope === scopeKey) return;
     feedback(); setDirectionOpen(true);

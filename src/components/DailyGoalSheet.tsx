@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import TouchableOpacity from "./SheetTouchable";
 import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";

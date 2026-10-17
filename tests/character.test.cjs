@@ -21,6 +21,7 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name.endsWith("/AppBuildInfo")) return () => null;
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };

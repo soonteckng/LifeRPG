@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { View } from "react-native";
-import { TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
+import SheetButton from "./SheetTouchable";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import RoutineEditorSheet from "./RoutineEditorSheet";

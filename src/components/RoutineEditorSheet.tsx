@@ -1,8 +1,9 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppState, Keyboard, StyleSheet, Switch, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import TouchableOpacity from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
 import AppSheet from "./AppSheet";
 import SheetConfirmation from "./SheetConfirmation";
 import FocusLengthControl from "./FocusLengthControl";
@@ -61,7 +62,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
   const general = subjects.find(item => focusAreaKind(item.title) === "general");
   const generalSelected = draft.focusAreaId === null || focusAreaKind(subjects.find(item => item.id === draft.focusAreaId)?.title) === "general";
   const dirty = JSON.stringify(current) !== original;
-  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
   const close = () => { if (busy) return; Keyboard.dismiss(); if (dirty) setConfirm("discard"); else onClose(); };
   const allowReminderNotifications = async () => {
     if (!visible || !draft.reminder.enabled || !permission?.action || permissionLock.current) return;

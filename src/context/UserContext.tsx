@@ -1,3 +1,4 @@
+import { setTapHapticsEnabled } from "../utils/tapHaptics";
 import { profileNameError } from "../constants/profile";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, {
@@ -86,6 +87,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const profileRef = useRef(profile);
   const [soundEnabled, applySound] = useState(true);
   const [hapticsEnabled, applyHaptics] = useState(true);
+  // Every pressable reads this one switch for its tap tick.
+  useEffect(() => { setTapHapticsEnabled(hapticsEnabled); }, [hapticsEnabled]);
   useLayoutEffect(() => {
     ownerRef.current = ownerId; modeRef.current = mode; cachedRef.current = cachedProfile; profileRef.current = profile;
   }, [ownerId, mode, cachedProfile, profile]);

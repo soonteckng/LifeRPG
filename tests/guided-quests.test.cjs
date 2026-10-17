@@ -18,7 +18,7 @@ function load(file, mocks = {}, cache = new Map()) {
     if(name.endsWith('/hooks/useCharacterData'))return{prefetchCharacterData(){}};
     if(name.endsWith('/hooks/useProgressData'))return{prefetchProgress(){}};
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
-    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
+    if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children,useSessionProtection:()=>({supported:false,selection:{mode:'normal',allowed:[]},capabilities:null,refresh:async()=>{},openPermission:async()=>{},choose:async()=>false})};
     if(name.endsWith('/SavedRoutinesCard'))return host('SavedRoutinesCard');
     if(name.endsWith('/AuthContext'))return {useAuth:()=>({accessMode:'online'})};
     if(name.endsWith("/LevelTierSheet"))return props=>React.createElement("TierSheet",props);

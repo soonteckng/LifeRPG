@@ -1,3 +1,4 @@
+import { setTapHapticsEnabled, tapHaptic } from "../utils/tapHaptics";
 import { Text } from "../components/AppText";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppState, Platform, Switch, View } from "react-native";
@@ -143,7 +144,7 @@ export default function SettingsScreen() {
         {!canEditGoal && <Text style={p.caption}>{goalError || (goalData ? goalAvailability : "Checking whether goal editing is available...")}</Text>}
         <View style={p.divider} />
         <PersonalRow icon="phone-portrait-outline" title="Haptic feedback" subtitle="Gentle feedback when you interact"
-          trailing={<Switch accessibilityLabel="Haptic feedback" value={hapticsEnabled} onValueChange={setHapticsEnabled} trackColor={{ false: colors.selection, true: colors.accentFill }} />} />
+          trailing={<Switch accessibilityLabel="Haptic feedback" value={hapticsEnabled} onValueChange={value => { setHapticsEnabled(value); setTapHapticsEnabled(value); if (value) tapHaptic(); }} trackColor={{ false: colors.selection, true: colors.accentFill }} />} />
         {preferenceError && <Text style={p.error}>{preferenceError}</Text>}
         <Text style={p.caption}>Haptic preferences are saved for your account on this device. Phone notification settings control alert sounds.</Text>
       </View>

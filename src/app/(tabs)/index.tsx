@@ -1,3 +1,4 @@
+import { tapHaptic } from "../../utils/tapHaptics";
 import { generalArea } from "../../utils/focusAreas";
 import FreeFocusCard from "../../components/FreeFocusCard";
 import GuidedFocusCard from "../../components/GuidedFocusCard";
@@ -23,7 +24,6 @@ import { requiredCharacterXP } from "../../utils/levelTiers";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
@@ -165,7 +165,7 @@ export default function HomeScreen() {
   const openSession = () => {
     timer.reviewSummary?.();
     if (hapticsEnabled) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      tapHaptic("medium");
     }
 
     router.navigate("/session");
@@ -210,7 +210,7 @@ export default function HomeScreen() {
     finally { quickLock.current = false; setQuickStarting(false); }
   };
   const openFocusPreferences = () => {
-    if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {});
+    if (hapticsEnabled) tapHaptic();
     setGuidedSettings(true);
   };
 
@@ -274,7 +274,7 @@ export default function HomeScreen() {
             seconds={hasOpenSession ? timer.finishing ? 0 : timer.timeLeft : quickSeconds} duration={hasOpenSession ? timer.duration : undefined}
             area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
-            active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={!!hasOpenSession && timer.finishing} dimmed={startUnavailable} starting={quickStarting}
+            active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={!!hasOpenSession && timer.finishing} breakSeconds={hasOpenSession ? timer.breakSecondsLeft : 0} dimmed={startUnavailable} starting={quickStarting}
             disabled={blocked || (!hasOpenSession && (areasLoading || questsError)) || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || areasLoading || questsError || guided.busy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onPreferences={openFocusPreferences} onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)}

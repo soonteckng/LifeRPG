@@ -1,6 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { BottomSheetScrollView, TouchableOpacity } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import TouchableOpacity from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import { Text } from "./AppText";

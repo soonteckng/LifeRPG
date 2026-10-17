@@ -1,10 +1,11 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { focusAreaTitle, focusAreaKind, focusAreaChoices } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import SlidingSelection from "./SlidingSelection";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
-import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity as Pressable } from "@gorhom/bottom-sheet";
-import * as Haptics from "expo-haptics";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import Pressable from "./SheetTouchable";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, StyleSheet, View } from "react-native";
@@ -109,7 +110,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     setFormError(null);
     focusedField.current = null;
     scrollRef.current?.scrollTo({ y: 0, animated: false });
-    if (hapticsEnabled) void Haptics.selectionAsync();
+    if (hapticsEnabled) tapHaptic();
   };
   const updateDraft = (changes: Partial<QuestDraft>) => {
     setEditor((current) => current ? { ...current, draft: { ...current.draft, ...changes } } : null);
@@ -126,7 +127,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
     try {
       await operation(current);
       if (!current()) return;
-      if (hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (hapticsEnabled) tapHaptic("success");
       leaveEditor();
     } catch (error) {
       if (!current()) return;
@@ -178,7 +179,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       timer.setDurationInMinutes(task.target_minutes || 30);
       timer.setTargetAttributeId(task.subject_id ?? null);
     }
-    if (hapticsEnabled) void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (hapticsEnabled) tapHaptic("medium");
     // Navigate only after the outgoing sheet has finished its dismissal animation.
     afterDismiss.current = onStartSession ?? (() => router.push("/session"));
     if (editor) { closeAfterEditor.current = true; leaveEditor(); }
@@ -217,7 +218,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           <View pointerEvents="none" style={styles.scopeTrack}><SlidingSelection index={scope === "today" ? 0 : 1} settling={scope === "all" ? "quick" : "standard"} style={styles.scopeSelection} /></View>
           {(["today", "all"] as const).map(value => <View key={value} style={styles.scopeSlot}>
             <Pressable style={styles.scopeButton}
-              onPress={() => { if (scope !== value && hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
+              onPress={() => { if (scope !== value && hapticsEnabled) tapHaptic(); setScope(value); setShowDone(false); setMessage(null); }} accessibilityRole="button" accessibilityLabel={value === "today" ? "Today" : "All quests"} accessibilityState={{ selected: scope === value }}>
               <Text style={[styles.scopeLabel, scope === value && styles.scopeLabelSelected]}>{value === "today" ? "Today" : "All"}</Text>
             </Pressable>
           </View>)}

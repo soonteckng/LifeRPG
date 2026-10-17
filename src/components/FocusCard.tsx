@@ -21,7 +21,7 @@ export interface FocusCardProps {
   busy: boolean; disabled: boolean; editDisabled: boolean; restoring?: boolean;
   failed?: boolean; error?: string; setupDisabled?: boolean; awaitingStart?: boolean; finishing?: boolean;
   // Only a real failure greys Start; a brief load keeps it solid but inert.
-  dimmed?: boolean; onDuration: (seconds: number) => void;
+  dimmed?: boolean; breakSeconds?: number; onDuration: (seconds: number) => void;
   customSeconds?: number | null; onCustomDuration?: (seconds: number) => void;
   onPreferences?: () => void;
   goal?: ReactNode;
@@ -38,7 +38,8 @@ export default function FocusCard(props: FocusCardProps) {
   const preferencesLocked = props.busy || (props.setupDisabled ?? editLocked);
   const suggested = !props.active && props.suggested;
   const openPreferences = () => { if (!preferencesLocked) props.onPreferences?.(); };
-  const dock = sessionDockState({ isCompleted: false, isRunning: props.running, actionError: null, sessionSummary: null, timeLeft: props.seconds, awaitingStart: props.awaitingStart, finishing: props.finishing });
+  const dock = sessionDockState({ isCompleted: false, isRunning: props.running, actionError: null, sessionSummary: null, timeLeft: props.seconds, awaitingStart: props.awaitingStart, finishing: props.finishing, breakSecondsLeft: props.breakSeconds });
+  const onBreak = (props.breakSeconds ?? 0) > 0;
   const prompt = <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
     <View style={[s.heading, props.active ? s.fieldsRow : s.group]}>
     {!props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
@@ -58,10 +59,10 @@ export default function FocusCard(props: FocusCardProps) {
     {props.goal && <View style={s.goalCard}>{props.goal}</View>}
     {props.active ? <View style={s.sessionCard}>
       <View style={s.heading}>
-        <Text style={s.label}>{props.awaitingStart ? "Checking session start" : props.finishing ? "Finishing up" : props.running ? "In progress" : "Paused"}</Text>
+        <Text style={[s.label, onBreak && s.breakLabel]}>{props.awaitingStart ? "Checking session start" : props.finishing ? "Finishing up" : onBreak ? "On break · protection returns by itself" : props.running ? "In progress" : "Paused"}</Text>
       </View>
       {prompt}
-      <View style={s.duration} testID="focus-card-duration"><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining} accessibilityLabel={durationLabel(props.seconds)}>{sessionTime(props.seconds)}</Text></View>
+      <View style={s.duration} testID="focus-card-duration"><Text style={s.meta}>{props.awaitingStart ? "Planned time" : onBreak ? `Break left · ${sessionTime(props.seconds)} of focus after` : "Time remaining"}</Text><Text style={[s.remaining, onBreak && s.breakTime]} accessibilityLabel={durationLabel(onBreak ? props.breakSeconds ?? 0 : props.seconds)}>{sessionTime(onBreak ? props.breakSeconds ?? 0 : props.seconds)}</Text></View>
     </View> : prompt}
     {props.active && !!props.protection && <View style={s.group}>{props.protection}</View>}
     <PinnedAction>
@@ -106,6 +107,7 @@ const s = StyleSheet.create({
   selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
   remaining: { color: colors.text, fontSize: 40, lineHeight: 48, fontWeight: "600", letterSpacing: -1, fontVariant: ["tabular-nums"] },
   primary: { minHeight: 58, padding: 14, borderRadius: 20, backgroundColor: colors.primary, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", flexShrink: 1, textAlign: "center" },
+  breakLabel: { color: colors.streak, fontWeight: "600" }, breakTime: { color: colors.streak },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   cardIdle: { width: "100%", gap: 12 },
   goalCard: { padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },

@@ -122,7 +122,7 @@ internal class RoutineWidgetRepository(context: Context) {
     val views = RemoteViews(context.packageName, R.layout.liferpg_routine_widget)
     val duration = routine?.let { duration(it.durationSeconds) } ?: "Your next step, close by"
     views.setTextViewText(R.id.liferpg_widget_area, routine?.areaTitle ?: "LIFERPG")
-    views.setTextColor(R.id.liferpg_widget_area, routine?.let { Color.parseColor(it.color) } ?: 0xFFBBB5FF.toInt())
+    views.setTextColor(R.id.liferpg_widget_area, routine?.let { Color.parseColor(it.color) } ?: 0xFF63E6BE.toInt())
     views.setTextViewText(R.id.liferpg_widget_name, routine?.name ?: "Make room for what matters")
     views.setTextViewText(R.id.liferpg_widget_duration, duration)
     views.setTextViewText(R.id.liferpg_widget_start, if (routine != null) "Start routine  ›" else "Open LifeRPG  ›")

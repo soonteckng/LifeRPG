@@ -1,9 +1,9 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import * as Haptics from "expo-haptics";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
@@ -53,7 +53,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     return () => { currentScope.current = ""; currentSurface.current = ""; };
   }, [active, scopeKey, surfaceKey]);
   useEffect(() => { let live = true; if (Platform.OS === "android") void routineWidgetsSupported().then(value => { if (live) setWidget(value); }); return () => { live = false; }; }, []);
-  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
   const blocked = !active || !routines.ready || !!(timer.hasOpenSession || timer.actionBusy || timer.endingSession || timer.isRestoring || timer.restoreError || (timer.isCompleted && !timer.summaryViewed));
   const latestLegacy = useRef({ tasks: legacyTasks, start: onStartLegacy, blocked, online: routines.online, subjects });
   useLayoutEffect(() => { latestLegacy.current = { tasks: legacyTasks, start: onStartLegacy, blocked, online: routines.online, subjects }; }, [legacyTasks, onStartLegacy, blocked, routines.online, subjects]);

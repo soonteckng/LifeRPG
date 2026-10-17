@@ -1,5 +1,5 @@
 import { StyleSheet, View } from "react-native";
-import { TouchableOpacity } from "@gorhom/bottom-sheet";
+import TouchableOpacity from "./SheetTouchable";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";

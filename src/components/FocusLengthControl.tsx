@@ -1,5 +1,5 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { useState } from "react";
-import * as Haptics from "expo-haptics";
 import { useUser } from "../context/UserContext";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,7 +16,7 @@ export default function FocusLengthControl({ seconds, customSeconds, disabled = 
   const [custom, setCustom] = useState(false);
   if (disabled && custom) setCustom(false);
   const { hapticsEnabled } = useUser();
-  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
   const customSelected = seconds !== 1800 && seconds !== 3600;
   const open = () => { if (disabled) return; feedback(); if (onCustom) onCustom(); else setCustom(true); };
   return <View style={s.group} testID="focus-length-control">

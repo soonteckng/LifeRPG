@@ -1,8 +1,8 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { colors } from "../constants/theme";
 import { Text } from "./AppText";
 import { StyleSheet, View, TouchableOpacity } from "react-native";
 import { Href, useRouter } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { useUser } from '../context/UserContext';
 
 interface HeaderProps {
@@ -28,7 +28,7 @@ export default function Header({
   const { hapticsEnabled } = useUser();
 
   const handleBack = () => {
-    if (hapticsEnabled) Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (hapticsEnabled) tapHaptic("light");
     if (backRoute) {
       router.replace(backRoute as Href);
     } else if (router.canGoBack()) {

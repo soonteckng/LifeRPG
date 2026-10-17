@@ -65,7 +65,7 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     contentKey={active ? "active" : focus.templateId + String(focus.smaller)}
     seconds={active ? timer.finishing ? 0 : timer.timeLeft : focus.seconds} duration={active ? timer.duration : undefined} area={active ? activeArea?.title ?? "General" : areaTitle}
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
-    active={active} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={active && timer.finishing} dimmed={dimmed} busy={busy} disabled={locked} editDisabled={locked}
+    active={active} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={active && timer.finishing} breakSeconds={active ? timer.breakSecondsLeft : 0} dimmed={dimmed} busy={busy} disabled={locked} editDisabled={locked}
     setupDisabled={busy || areaChanging || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : areaError ? "Couldn’t change your focus area. Your previous choice is still selected. Try again." : preference.error ? "Couldn’t load your preferences. Tap Change to try again." : undefined}
     subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} customSeconds={customSeconds} onCustomDuration={next => chooseDuration(next, true)} onArea={id => void chooseArea(id)} onStart={() => void start()} onPreferences={onPreferences} goal={goal} protection={protection} />;
 }

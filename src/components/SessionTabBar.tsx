@@ -1,3 +1,4 @@
+import { tapHaptic, tapHapticsEnabled } from "../utils/tapHaptics";
 import { floatingDockKey, useMeasureFloatingDock } from "../context/FloatingDockContext";
 import { useFeatureTour } from "./FeatureTour";
 import { Text } from "./AppText";
@@ -41,8 +42,8 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     </Svg>
     <View pointerEvents="none" style={styles.scrim} />
     {pinned && <PinnedActionHost />}
-    {showBanner && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => router.navigate("/session")}
-      accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : isRunning ? "Expand running session" : "Expand paused session"}>
+    {showBanner && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
+      accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : timer.breakSecondsLeft > 0 ? "Expand session on break" : isRunning ? "Expand running session" : "Expand paused session"}>
       {hasOpenSession && !timer.awaitingStart && timer.duration > 0 && <View pointerEvents="none" style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${timer.finishing ? 100 : Math.max(0, Math.min(1, 1 - timer.timeLeft / timer.duration)) * 100}%` }]} />
       </View>}

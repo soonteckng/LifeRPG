@@ -1,9 +1,10 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import SheetButton from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
 import { useSessionProtection } from "../context/SessionProtectionContext";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
@@ -13,16 +14,23 @@ import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
+import Segmented from "./Segmented";
 
 type Mode = "normal" | "allow-list" | "essentials";
 const modeName = (mode: Mode) => mode === "normal" ? "Normal" : mode === "allow-list" ? "Allow list" : "Block apps";
+const MODES = [
+  { value: "essentials" as const, label: "Block apps", detail: "Cover the apps listed below. Keep calls and essential screens available." },
+  { value: "allow-list" as const, label: "Allow list", detail: "Keep your chosen tools available. Cover other apps." },
+];
+// Two modes read as tabs, so the app list sits right underneath instead of
+// below two tall cards.
 function ModeChoices({ mode, saving, onSelect }: { mode: Mode; saving: boolean; onSelect(value: Mode): void }) {
-  return <>{([
-    { value: "allow-list", title: "Allow list", detail: "Keep your chosen tools available. Cover other apps.", icon: "shield-checkmark-outline" },
-    { value: "essentials", title: "Block apps", detail: "Cover the apps listed below. Keep calls and essential screens available.", icon: "shield-outline" },
-  ] as const).map(item => <SheetButton key={item.value} disabled={saving} onPress={() => onSelect(item.value)} accessibilityRole="radio" accessibilityState={{ selected: mode === item.value, disabled: saving }} accessibilityLabel={item.title + ". " + item.detail} style={[s.mode, mode === item.value && s.modeSelected]}>
-    <Ionicons name={item.icon} size={21} color={mode === item.value ? colors.protection : colors.secondary} /><View style={s.detail}><Text style={s.modeTitle}>{item.title}</Text><Text style={s.caption}>{item.detail}</Text></View><Ionicons name={mode === item.value ? "radio-button-on" : "radio-button-off"} size={20} color={mode === item.value ? colors.protection : colors.muted} />
-  </SheetButton>)}</>;
+  const current = MODES.find(item => item.value === mode) ?? MODES[0];
+  return <View style={s.modes}>
+    <Segmented Touchable={SheetButton as never} disabled={saving} value={current.value} onChange={onSelect}
+      options={MODES.map(item => ({ value: item.value, label: item.label, accessibilityLabel: `${item.label}. ${item.detail}` }))} />
+    <Text style={s.caption}>{current.detail}</Text>
+  </View>;
 }
 
 export default function SessionProtectionControl({ statusOnly = false, activeSurface = true }: { statusOnly?: boolean; activeSurface?: boolean }) {
@@ -61,6 +69,8 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   const [allowed, setAllowed] = useState<string[]>(protection.selection.allowed);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  // Once everything is allowed, permissions fold into one line so the app list comes first.
+  const [showPermissions, setShowPermissions] = useState(false);
   const currentView = useRef(view);
   useLayoutEffect(() => { currentView.current = view; return () => { currentView.current = { visible: false, ownerId: "" }; }; }, [view]);
   const refresh = protection.refresh;
@@ -68,10 +78,10 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   useEffect(() => { if (visible) void refresh(); }, [visible, refresh]);
   if (visible !== view.visible || profile?.id !== view.ownerId) {
     setView({ visible, ownerId: profile?.id });
-    if (visible) { setMode(protection.selection.mode === "normal" ? "essentials" : protection.selection.mode); setAllowed(protection.selection.allowed); setMessage(""); setSaving(false); }
+    if (visible) { setMode(protection.selection.mode === "normal" ? "essentials" : protection.selection.mode); setAllowed(protection.selection.allowed); setMessage(""); setSaving(false); setShowPermissions(false); }
   }
   const isCurrent = () => currentView.current === view && view.visible;
-  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
   const handleModeChange = (value: Mode) => { if (!isCurrent()) return; feedback(); setMode(value); setMessage(""); };
   const locked = !!timer.hasOpenSession;
   // A restored session can have a different saved binding from the preference
@@ -110,9 +120,10 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
         <Ionicons name="shield-checkmark-outline" size={21} color={colors.protection} />
         <View style={s.detail}><Text style={s.modeTitle}>{selection ? modeName(selection.mode) : "Checking this session’s app choices…"}</Text><Text style={s.caption}>{!selection ? "Reading the choices saved when this session started." : selection.mode === "normal" ? "This session started without app protection." : timer.breakSecondsLeft > 0 ? "On break. Protection returns automatically." : protection.state.status === "checking" ? "Checking protection on this phone. This does not stop the Android service. End session remains available." : protection.active ? "Active for this session" : "Protection is interrupted. Check permissions and restore it, or end your session."}</Text></View>
       </View> : <ModeChoices mode={mode} saving={saving} onSelect={handleModeChange} />}
-      <View style={s.safety}><Ionicons name="call-outline" size={16} color={colors.protection} /><View style={s.detail}><Text style={s.modeTitle}>Always available in both modes</Text><Text style={s.caption}>Calls, emergency access, Settings and LifeRPG stay available. Your Home screen, system controls, permission and app installation screens also stay available. These essential screens are excluded from the app list below. End session is always reachable.</Text></View></View>
       {!protection.supported && <Text style={s.body}>Install the updated Android build to use protected sessions.</Text>}
-      {protection.supported && <View style={s.permissions}>
+      {protection.supported && permissionsReady && !locked && !showPermissions ? <SheetButton onPress={() => { feedback(); setShowPermissions(true); }} accessibilityRole="button" accessibilityLabel="Permissions ready on this phone. Review" style={s.ready}>
+        <Ionicons name="checkmark-circle" size={18} color={colors.protection} /><Text style={[s.body, s.readyText]}>Permissions ready on this phone</Text><Text style={s.link}>Review</Text>
+      </SheetButton> : protection.supported && <View style={s.permissions}>
         <Text style={s.modeTitle}>{locked ? "Permissions on this phone" : "Allow protection on this phone"}</Text><Text style={s.caption}>Usage Access detects which app is open. Display over other apps lets LifeRPG cover a blocked app. These choices stay on your phone.</Text>
         {([{kind:"usage", label:"Usage Access", granted:protection.capabilities?.usage}, {kind:"overlay", label:"Display over other apps", granted:protection.capabilities?.overlay}] as const).map(item => <View style={s.permissionRow} key={item.kind}><View style={s.detail}><Text style={s.body}>{item.label}</Text><Text style={s.caption}>{item.granted ? "Allowed" : "Needed for protected sessions"}</Text></View><SheetButton accessibilityRole="button" accessibilityLabel={(item.granted ? "Review" : "Allow") + " " + item.label} onPress={() => { if (isCurrent()) void protection.openPermission(item.kind); }} style={s.permissionAction}><Text style={s.link}>{item.granted ? "Review" : "Allow"}</Text></SheetButton></View>)}
         <View style={s.permissionRow}><View style={s.detail}><Text style={s.body}>Notifications</Text><Text style={s.caption}>{protection.capabilities?.notifications ? "Allowed · keeps End session reachable" : "Keeps End session reachable"}</Text></View><SheetButton accessibilityRole="button" accessibilityLabel={protection.capabilities?.notifications ? "Review protection notifications" : "Allow protection notifications"} onPress={() => { if (isCurrent()) void reviewNotifications(); }} style={s.permissionAction}><Text style={s.link}>{protection.capabilities?.notifications ? "Review" : "Allow"}</Text></SheetButton></View>
@@ -129,13 +140,14 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
         })}
         {selection.mode === "allow-list" && selection.allowed.length >= 64 && <Text style={s.caption}>You can keep up to 64 apps on your allow list.</Text>}
       </View>}
+      <View style={s.safety}><Ionicons name="call-outline" size={16} color={colors.protection} /><View style={s.detail}><Text style={s.modeTitle}>Always available in both modes</Text><Text style={s.caption}>Calls, emergency access, Settings and LifeRPG stay available. Your Home screen, system controls, permission and app installation screens also stay available. These essential screens are excluded from the app list below. End session is always reachable.</Text></View></View>
       {!!(message || protection.error) && <Text accessibilityRole="alert" style={s.error}>{message || protection.error}</Text>}
     </BottomSheetScrollView>
   </AppSheet>;
 }
 const s = StyleSheet.create({
   control:{minHeight:52,paddingVertical:11,flexDirection:"row",alignItems:"center",gap:12,paddingHorizontal:16}, status:{minHeight:48,paddingVertical:0,gap:8,alignSelf:"center",width:"100%",maxWidth:340,paddingHorizontal:14,borderRadius:16,backgroundColor:colors.surface}, iconTile:{width:30,height:30,borderRadius:9,alignItems:"center",justifyContent:"center",backgroundColor:"rgba(99,230,190,0.14)"}, rowLabel:{color:colors.text,fontSize: 16, lineHeight: 22,fontWeight:"500"}, rowValue:{flex:1,textAlign:"right",color:colors.secondary,fontSize: 16, lineHeight: 22}, rowText:{fontSize: 16, lineHeight: 22,fontWeight:"500"},controlText:{flex:1,color:colors.secondary,fontSize: 13, lineHeight: 18},link:{color:colors.accent,fontSize:14,fontWeight:"500"},
-  sheetHeading:{paddingHorizontal:20,paddingBottom:12,gap:6},sheetTitle:{fontSize: 24, lineHeight: 30,fontWeight:"600",color:colors.text,letterSpacing:-0.5},body:{fontSize: 15, lineHeight: 20,color:colors.secondary},caption:{fontSize: 13, lineHeight: 18,color:colors.secondary},sheetBody:{paddingHorizontal:20,paddingBottom:20,gap:12},
+  sheetHeading:{paddingHorizontal:20,paddingBottom:12,gap:6},sheetTitle:{fontSize: 24, lineHeight: 30,fontWeight:"600",color:colors.text,letterSpacing:-0.5},body:{fontSize: 15, lineHeight: 20,color:colors.secondary},caption:{fontSize: 13, lineHeight: 18,color:colors.secondary},sheetBody:{paddingHorizontal:16,paddingBottom:20,gap:14},modes:{gap:8},ready:{flexDirection:"row",alignItems:"center",gap:10,minHeight:48,paddingHorizontal:14,borderRadius:14,backgroundColor:colors.sheetCard},readyText:{flex:1,color:colors.text},
   mode:{flexDirection:"row",alignItems:"center",gap:12,padding:15,minHeight:78,borderRadius:18,backgroundColor:colors.sheetCard,borderWidth:1,borderColor:"transparent"},modeSelected:{backgroundColor:"rgba(99,230,190,0.08)",borderColor:colors.protection},modeTitle:{fontSize: 16, lineHeight: 22,fontWeight:"600",color:colors.text},detail:{flex:1,minWidth:0,gap:3},safety:{flexDirection:"row",gap:8,paddingVertical:6,paddingRight:20},permissions:{gap:8,paddingTop:8},permissionRow:{flexDirection:"row",alignItems:"center",gap:10,minHeight:52,paddingVertical:8,borderBottomWidth:StyleSheet.hairlineWidth,borderBottomColor:colors.line},permissionAction:{minHeight:44,minWidth:52,alignItems:"center",justifyContent:"center"},
   footer:{gap:10,paddingHorizontal:20,paddingTop:12,backgroundColor:colors.surfaceRaised},primary:{minHeight:54,padding:14,borderRadius:27,backgroundColor:colors.primary,alignItems:"center",justifyContent:"center"},primaryText:{color:colors.primaryText,fontSize: 17, lineHeight: 22,fontWeight:"600"},disabled:{opacity:0.45},error:{fontSize: 14, lineHeight: 20,color:colors.danger},
 });

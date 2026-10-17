@@ -23,6 +23,7 @@ function environment(reduced = false) {
     const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
     new Function('require', 'module', 'exports', code)(name => {
       if (Object.hasOwn(extra, name)) return extra[name];
+      if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name.endsWith('/OnboardingWelcome') && file !== 'src/components/OnboardingWelcome.tsx') return require('./onboarding-mocks.cjs').finish(React);
       if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
       if (Object.hasOwn(base, name)) return base[name];
@@ -159,4 +160,33 @@ test('setup sections fade upwards in order without animating layout or the pinne
   const reveals=env.configs.filter(c=>c.duration===620);assert.deepEqual(reveals.map(c=>c.delay),[0,160,320]);assert.ok(reveals.every(c=>c.useNativeDriver&&c.isInteraction===false));
   assert.equal(tree.root.findByProps({testID:'onboarding-footer'}).findAllByType('Animated').length,0);
  }finally{await act(async()=>tree.unmount());}
+});
+
+test('Android setup asks about app protection with Allow buttons and saves the mode once permissions are ready', async () => {
+  const env = environment(true); const calls = []; let caps = { usage: false, overlay: false, notifications: false }, tree;
+  const protection = () => ({ supported: true, selection: { mode: 'normal', allowed: [] }, capabilities: caps,
+    refresh: async () => { calls.push('refresh'); }, openPermission: async kind => { calls.push(['open', kind]); }, choose: async (...args) => { calls.push(['choose', ...args]); return true; } });
+  const Journey = env.load('src/components/OnboardingJourney.tsx', {
+    'react-native': { View: props => React.createElement('View', props, props.children), StyleSheet: { create: value => value, hairlineWidth: 1 }, Keyboard: { dismiss() {} }, AppState: { addEventListener: () => ({ remove() {} }) } },
+    './OnboardingFrame': require('./onboarding-mocks.cjs').frame(React), './Segmented': props => React.createElement('Segmented', props),
+    '../context/SessionProtectionContext': { useSessionProtection: () => protection() },
+    'expo-router': { useRouter: () => ({ replace() {} }) },
+    '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Soon', onboarding_completed: false }, reloadProfile: async () => true }) },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: {}, save: async () => true }) },
+    '../services/onboardingService': { saveOnboardingProfile: async () => {}, finishOnboarding: async () => {} },
+  }).default;
+  await act(async () => { tree = create(React.createElement(Journey, { initialStep: 4 })); });
+  const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
+  try {
+    assert.equal(tree.root.findByType('Frame').props.title, 'Keep distractions aside.');
+    assert.equal(tree.root.findByType('Frame').props.total, 8);
+    assert.ok(button('Maybe later'), 'protection stays optional');
+    await act(async () => button('Allow Usage Access').props.onPress());
+    assert.deepEqual(calls.filter(call => Array.isArray(call)), [['open', 'usage']]);
+    caps = { usage: true, overlay: true, notifications: true };
+    await act(async () => tree.root.findByType('Segmented').props.onChange('allow-list'));
+    await act(async () => button('Continue').props.onPress());
+    assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list']]);
+    assert.equal(tree.root.findByType('Frame').props.step, 6);
+  } finally { await act(async () => tree.unmount()); }
 });

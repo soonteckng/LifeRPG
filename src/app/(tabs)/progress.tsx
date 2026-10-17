@@ -1,3 +1,4 @@
+import { tapHaptic } from "../../utils/tapHaptics";
 import { focusAreaTitle } from "../../utils/focusAreas";
 import { TourScrollView } from "../../components/FeatureTour";
 import { readSuggestedFocus } from "../../constants/guidedQuests";
@@ -14,11 +15,8 @@ import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import {
-  BottomSheetScrollView,
-  TouchableOpacity as SheetButton,
-} from "@gorhom/bottom-sheet";
-import * as Haptics from "expo-haptics";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import SheetButton from "../../components/SheetTouchable";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, AppState, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import {
@@ -200,7 +198,7 @@ export default function ProgressScreen() {
     sheetScroll.current?.scrollTo({ y: 0, animated: false });
   }, [detail, selectedSession]);
   const tick = () => {
-    if (hapticsEnabled) void Haptics.selectionAsync();
+    if (hapticsEnabled) tapHaptic();
   };
   const open = (next: Detail) => {
     tick();

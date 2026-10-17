@@ -1,3 +1,4 @@
+import { tapHaptic, tapHapticsEnabled } from "../../utils/tapHaptics";
 import { FloatingDockProvider } from "../../context/FloatingDockContext";
 import { PinnedActionProvider } from "../../components/PinnedAction";
 import GlassSurface from "../../components/GlassSurface";
@@ -13,6 +14,7 @@ export default function TabsLayout() {
   return (
     <FloatingDockProvider><PinnedActionProvider><Tabs
       tabBar={(props) => <SessionTabBar {...props} />}
+      screenListeners={{ tabPress: () => { if (tapHapticsEnabled()) tapHaptic(); } }}
       initialRouteName="index"
       backBehavior="initialRoute"
       screenOptions={{

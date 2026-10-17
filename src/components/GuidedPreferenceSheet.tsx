@@ -1,8 +1,9 @@
+import { tapHaptic } from "../utils/tapHaptics";
 import { View } from "react-native";
 import { colors } from "../constants/theme";
 import { useState } from "react";
-import * as Haptics from "expo-haptics";
-import { BottomSheetScrollView, TouchableOpacity as SheetButton } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import SheetButton from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
@@ -15,7 +16,7 @@ import { useUser } from "../context/UserContext";
 export default function GuidedPreferenceSheet({ owner, visible, onClose }: { owner: string; visible: boolean; onClose: () => void }) {
   const preference = useGuidedPreference(owner);
   const { hapticsEnabled } = useUser();
-  const feedback = () => { if (hapticsEnabled) void Haptics.selectionAsync().catch(() => {}); };
+  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
   const [draft, setDraft] = useState<GuidedPreference | null>(null);
   const [wasVisible, setWasVisible] = useState(visible);
   if (visible !== wasVisible) { setWasVisible(visible); if (visible) setDraft(null); }

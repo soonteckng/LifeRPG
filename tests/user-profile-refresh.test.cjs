@@ -16,6 +16,7 @@ function loadUserProvider(mocks) {
   }).outputText;
   new Function("require", "module", "exports", code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    if (name === "../utils/tapHaptics") return { setTapHapticsEnabled() {} };
     return require(name);
   }, module, module.exports);
   return module.exports;

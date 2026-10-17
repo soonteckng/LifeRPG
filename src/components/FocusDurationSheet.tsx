@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import TouchableOpacity from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";

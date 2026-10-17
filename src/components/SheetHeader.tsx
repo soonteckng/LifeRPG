@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 // Sheet touchables cooperate with the sheet's own drag gesture in its header.
-import { TouchableOpacity as Pressable } from "@gorhom/bottom-sheet";
+import Pressable from "./SheetTouchable";
 import { colors } from "../constants/theme";
 
 // One header for every sheet: a title, an optional line beneath, and a round close.

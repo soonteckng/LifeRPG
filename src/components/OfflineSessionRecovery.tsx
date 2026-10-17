@@ -1,3 +1,4 @@
+import { tapHaptic, tapHapticsEnabled } from "../utils/tapHaptics";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -114,7 +115,7 @@ export default function OfflineSessionRecovery({ active = true }: { active?: boo
         </View>
         <View style={styles.actions}>
           <Pressable accessibilityRole="button" accessibilityLabel="Retry connection"
-            accessibilityState={{ disabled, busy: busy || timer.actionBusy }} disabled={disabled} onPress={() => void run()}
+            accessibilityState={{ disabled, busy: busy || timer.actionBusy }} disabled={disabled} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); void run(); }}
             style={styles.button}>
             <Text style={styles.buttonText}>Retry connection</Text>
           </Pressable>

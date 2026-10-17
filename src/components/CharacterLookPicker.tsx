@@ -1,6 +1,6 @@
 import { StyleSheet, View } from "react-native";
 import { memo } from "react";
-import { TouchableOpacity } from "@gorhom/bottom-sheet";
+import TouchableOpacity from "./SheetTouchable";
 import { Ionicons } from "@expo/vector-icons";
 import CharacterArt from "./CharacterArt";
 import { Text } from "./AppText";

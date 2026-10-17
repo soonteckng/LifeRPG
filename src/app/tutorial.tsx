@@ -9,5 +9,5 @@ export default function TutorialScreen() {
   const router = useRouter();
   const { profile } = useUser();
   useEffect(() => { if (profile.onboarding_completed) router.replace("./guide"); }, [profile.onboarding_completed, router]);
-  return profile.onboarding_completed ? null : <OnboardingJourney initialStep={4} />;
+  return profile.onboarding_completed ? null : <OnboardingJourney initialStep={5} />;
 }
