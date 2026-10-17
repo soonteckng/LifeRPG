@@ -26,6 +26,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
       if (name.endsWith("/SwipeBack")) return {__esModule:true,default:props=>props.children};
+      if (name.endsWith("/FocusAreaDetailSheet")) return props=>React.createElement("AreaSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
@@ -921,13 +922,44 @@ test("Profile renders one Wellbeing row in the shared direction order with its c
   ];
   const ui = await profileScreen({"../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions:[]},loading:false,error:false,refresh:async()=>{}})}});
   try {
-    const displayed = ui.renderer.root.findAllByType("View").filter(node => node.props.accessible && typeof node.props.accessibilityLabel === "string");
+    const displayed = ui.renderer.root.findAllByType("Button").filter(node => typeof node.props.accessibilityLabel === "string" && node.props.accessibilityLabel.includes(", level "));
     assert.deepEqual(displayed.map(node => node.props.accessibilityLabel.split(", level ")[0]),
       ["Learning","Work & projects","Creativity","Everyday life","Wellbeing","Everyday focus"]);
     const wellbeing = displayed[4];
-    assert.equal(wellbeing.props.accessibilityLabel,"Wellbeing, level 3, 125 of 150 XP to the next level");
+    assert.equal(wellbeing.props.accessibilityLabel,"Wellbeing, level 3, 125 of 150 XP to the next level. View details");
     assert.equal(wellbeing.findByType("Meter").props.value,125/150);
   } finally {await ui.cleanup();}
+});
+
+test("a focus area opens its details and starts a session there once the sheet has closed", async () => {
+  const rows = [{...area(2,3,20),title:"Fitness & Health"}, {...area(7,2,40),title:"Grooming & Vitality"}, {...area(6,1,0),title:"Knowledge"}];
+  const now = Date.now(), sessions = [
+    {id:"a",subject_id:2,activity_type:"general",duration_seconds:900,xp_earned:0,gold_earned:0,completed_at:new Date(now-3600e3).toISOString()},
+    {id:"b",subject_id:7,activity_type:"general",duration_seconds:60,xp_earned:0,gold_earned:0,completed_at:new Date(now-7200e3).toISOString()},
+    {id:"c",subject_id:6,activity_type:"general",duration_seconds:1200,xp_earned:0,gold_earned:0,completed_at:new Date(now-3600e3).toISOString()},
+  ];
+  const calls = [];
+  const timer = {hasOpenSession:false,setNotes:value=>calls.push(["notes",value]),setLinkedTaskId:value=>calls.push(["quest",value]),setTargetAttributeId:value=>calls.push(["area",value]),reviewSummary:()=>calls.push("review")};
+  const ui = await profileScreen({
+    "../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions},loading:false,error:false,refresh:async()=>{}})},
+    "../../context/TimerContext":{useTimer:()=>timer},
+    "expo-router":{useRouter:()=>({navigate:route=>calls.push(route)}),useFocusEffect:effect=>React.useEffect(effect,[effect])},
+  });
+  try {
+    const sheet = () => ui.renderer.root.findByType("AreaSheet").props;
+    assert.equal(sheet().visible, false);
+    const tile = ui.renderer.root.findAllByType("Button").find(node => String(node.props.accessibilityLabel).startsWith("Wellbeing, level"));
+    await act(async () => tile.props.onPress());
+    assert.equal(sheet().visible, true);
+    assert.equal(sheet().area.title, "Wellbeing");
+    assert.equal(sheet().detail.seconds, 960, "both Wellbeing aliases count, other areas do not");
+    assert.equal(sheet().detail.sessions, 2);
+    await act(async () => sheet().onFocus());
+    assert.equal(sheet().visible, false);
+    assert.deepEqual(calls, [["notes",""],["quest",null],["area",2]], "nothing navigates while the sheet is still closing");
+    await act(async () => sheet().onDismiss());
+    assert.deepEqual(calls.slice(3), ["review","/session"]);
+  } finally { await ui.cleanup(); }
 });
 
 test('Profile level opens the shared tier path with the saved XP balance',async()=>{

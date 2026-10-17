@@ -20,6 +20,8 @@ import { Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { requiredCharacterXP } from "../../utils/levelTiers";
 import LevelTierSheet from "../../components/LevelTierSheet";
+import FocusAreaDetailSheet from "../../components/FocusAreaDetailSheet";
+import { focusAreaDetail } from "../../utils/focusAreaDetail";
 import AppSheet from "../../components/AppSheet";
 import SheetConfirmation from "../../components/SheetConfirmation";
 import CharacterPortrait from "../../components/CharacterPortrait";
@@ -61,6 +63,9 @@ export default function ProfileScreen() {
   const [saveError, setSaveError] = useState("");
   const [discard, setDiscard] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
+  const [areaId, setAreaId] = useState<number | null>(null);
+  const [areaOpen, setAreaOpen] = useState(false);
+  const afterArea = useRef<(() => void) | null>(null);
   useFocusEffect(
     useCallback(() => {
       void reloadProfile();
@@ -69,6 +74,17 @@ export default function ProfileScreen() {
   const areas = profileFocusAreaGrowth(data?.areas ?? []);
   const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
   const required = requiredCharacterXP(profile.level);
+  const selectedArea = areas.find(area => area.id === areaId) ?? null;
+  const areaDetail = selectedArea && data ? focusAreaDetail(selectedArea, data.areas, data.sessions, profile.timezone) : null;
+  const focusArea = () => {
+    if (!selectedArea) return;
+    // Existing sessions and unresolved completion/restoration always win, as on Home.
+    if (!timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !timer.sessionSummary)) {
+      timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id);
+    }
+    afterArea.current = () => { timer.reviewSummary?.(); router.navigate("/session"); };
+    setAreaOpen(false);
+  };
   const open = () => {
     if (sheetClosing.current) return;
     setName(profile.username);
@@ -118,7 +134,7 @@ export default function ProfileScreen() {
       action={<View ref={settingsIcon} collapsable={false}><Pressable accessibilityRole="button" accessibilityLabel="Open Settings" onPress={openSettings} style={p.back}><Ionicons name="settings-outline" size={23} color={colors.accent} /></Pressable></View>}>
       <ContentReveal><View style={s.stack}>
         <View style={s.hero} testID="profile-companion-card">
-          <View style={s.heroHead}><View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={112} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen} greetOnFocus /></View>
+          <View style={s.heroHead}><View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={112} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen} greetOnFocus /></View>
           <View style={s.identity}><Text style={s.companionLabel}>YOUR COMPANION</Text><Text style={s.username} numberOfLines={2}>{profile.username}</Text><Text style={[p.caption, s.centerText]}>{savedLook.title}</Text></View></View>
           <View style={s.levelBlock}><View style={s.levelRow}><Pressable style={s.levelPill} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={s.levelText}>Level {profile.level}</Text><Ionicons name="chevron-forward" size={12} color={colors.accent} /></Pressable><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} height={8} /><Text style={s.growthHint}>Your next level grows with the effort you record.</Text></View>
           <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.personalise}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.personaliseText}>Personalise</Text></Pressable>
@@ -132,14 +148,17 @@ export default function ProfileScreen() {
         <View style={s.areasCard}>
           <View style={s.areaHeading}><Text style={s.sectionTitle}>Your focus areas</Text><Text style={p.caption}>Where you make time for what matters.</Text></View>
           {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-          <View style={s.areaGrid}>{areas.map(area => <View key={area.id} accessible accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level"} style={s.areaRow}>
+          <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaRow}>
             <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={19} color={lifeAreaColor(area.id, area.color_code)} /></View>
             <Text style={p.rowTitle} numberOfLines={2}>{focusAreaTitle(area.title)}</Text><Text style={s.tileLevel}>Lv {area.level}</Text><Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={6} />
-          </View>)}</View>
+          </Pressable>)}</View>
           {data && !areas.length && <Text style={p.body}>Your overall level still grows. Focus areas will appear here when available.</Text>}
           <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
       </View></ContentReveal>
+      <FocusAreaDetailSheet visible={areaOpen} area={selectedArea && { ...selectedArea, color: lifeAreaColor(selectedArea.id, selectedArea.color_code) }} detail={areaDetail}
+        timeZone={profile.timezone} sessionOpen={timer.hasOpenSession} onFocus={focusArea} onClose={() => setAreaOpen(false)}
+        onDismiss={() => { const next = afterArea.current; afterArea.current = null; next?.(); }} />
       <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         expanded motionMode="timed" keyboardBehavior="fillParent" label="Personalise profile"
