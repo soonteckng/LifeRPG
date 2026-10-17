@@ -97,6 +97,7 @@ export function PersonalPage({
     });
   }, [controlled, navigation, router, position, width, reduced, expandFromIcon]);
   // The swipe has already carried the page away; leave without animating again.
+  // Settings opens from and returns to its icon, so it has no swipe.
   const swiped = useCallback(() => {
     if (closing.current) return;
     if (!navigation.canGoBack()) { router.replace("/profile"); return; }
@@ -113,7 +114,7 @@ export function PersonalPage({
       collapsable={false}
       onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
       style={{ flex: 1 }}
-    ><SwipeBack enabled={controlled && !exitReady} onBack={swiped}><Animated.View
+    ><SwipeBack enabled={controlled && !expandFromIcon && !exitReady} onBack={swiped}><Animated.View
       renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{

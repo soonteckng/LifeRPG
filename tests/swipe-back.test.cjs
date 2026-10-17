@@ -62,9 +62,11 @@ test('a swiped Android page leaves at once without running its own exit animatio
   await act(async()=>swipe.onBack());assert.deepEqual(dispatched,['back'],'a repeated callback is ignored');
  }finally{await act(async()=>tree.unmount());}
 });
-test('top-level pages never offer the swipe',async()=>{
+test('top-level pages and Settings never offer the swipe',async()=>{
  let swipe,tree;
- const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}},timing:()=>({start(){},stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>({})},'expo-router/react-navigation':{usePreventRemove:()=>{}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;}}});
+ const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(){return 0;}},timing:()=>({start(){},stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>({})},'expo-router/react-navigation':{usePreventRemove:()=>{}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;}}});
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Profile',subtitle:''},'Profile'));});
  try{assert.equal(swipe.enabled,false);}finally{await act(async()=>tree.unmount());}
+ await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Settings',subtitle:'',back:true,animateTransition:true,expandFromIcon:true},'Settings'));});
+ try{assert.equal(swipe.enabled,false,'Settings returns to its icon instead');}finally{await act(async()=>tree.unmount());}
 });
