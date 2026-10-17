@@ -1,4 +1,5 @@
 import { FloatingDockProvider } from "../../context/FloatingDockContext";
+import { PinnedActionProvider } from "../../components/PinnedAction";
 import GlassSurface from "../../components/GlassSurface";
 import { colors } from "../../constants/theme";
 import SessionTabBar from "../../components/SessionTabBar";
@@ -10,7 +11,7 @@ import { Platform, StyleSheet } from "react-native";
 export default function TabsLayout() {
   const reducedMotion = useReducedMotion();
   return (
-    <FloatingDockProvider><Tabs
+    <FloatingDockProvider><PinnedActionProvider><Tabs
       tabBar={(props) => <SessionTabBar {...props} />}
       initialRouteName="index"
       backBehavior="initialRoute"
@@ -21,7 +22,7 @@ export default function TabsLayout() {
         transitionSpec: { animation: "timing", config: { duration: reducedMotion ? 0 : 180 } },
         sceneStyle: { backgroundColor: colors.background },
         tabBarStyle: styles.tabBar,
-        tabBarBackground: () => <GlassSurface radius={24} />,
+        tabBarBackground: () => <GlassSurface radius={33} />,
         tabBarItemStyle: styles.tabItem,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,
@@ -73,14 +74,14 @@ export default function TabsLayout() {
           href: null,
         }}
       />
-    </Tabs></FloatingDockProvider>
+    </Tabs></PinnedActionProvider></FloatingDockProvider>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
     height: 66,
-    borderRadius: 24,
+    borderRadius: 33,
     backgroundColor: "transparent",
     borderTopWidth: 0,
     borderWidth: 0,

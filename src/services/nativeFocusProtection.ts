@@ -10,6 +10,8 @@ export interface ProtectionModule {
   openPermission(kind: "usage" | "overlay"): Promise<void>;
   start(json: string): Promise<ProtectionState>;
   stop(id: string): Promise<ProtectionState>;
+  takeBreak?(id: string, milliseconds: number): Promise<ProtectionState>;
+  endBreak?(id: string): Promise<ProtectionState>;
   pause?(id: string): Promise<ProtectionState>;
   networkStatus?(): Promise<NativeConnectivity>;
   addListener?(event: string, listener: (value: NativeConnectivity) => void): { remove(): void };
@@ -26,7 +28,7 @@ export async function getSessionProtectionModule(): Promise<ProtectionModule | n
     if (isRunningInExpoGo()) return null;
     const { requireOptionalNativeModule } = await import("expo-modules-core");
     const native = requireOptionalNativeModule<ProtectionModule>("LifeRPGFocusProtectionSpike");
-    return native?.formatVersion === 2 && [native.start, native.stop, native.pause, native.state, native.apps, native.openPermission, native.capabilities].every(fn => typeof fn === "function") ? native : null;
+    return !!native && native.formatVersion >= 2 && native.formatVersion <= 3 && [native.start, native.stop, native.pause, native.state, native.apps, native.openPermission, native.capabilities].every(fn => typeof fn === "function") ? native : null;
   } catch { return null; }
 }
 function checkedConnectivity(value: NativeConnectivity): NativeConnectivity | null {

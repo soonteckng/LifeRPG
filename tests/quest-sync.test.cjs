@@ -186,16 +186,16 @@ test('session quest chooser agrees with Home and quest sheet for old completions
   try{
     await ui.press('Choose from routines');
     const labels=()=>ui.root().findAllByType('Button').map(node=>node.props.accessibilityLabel).filter(value=>value?.startsWith('Choose '));
-    assert.deepEqual(labels(),['Choose from routines','Choose Due now','Choose Repeating today']);
+    assert.deepEqual(labels(),['Choose focus area','Choose from routines','Choose Due now','Choose Repeating today']);
     assert.ok(ui.calls.some(call=>Array.isArray(call)&&call[0]==='refresh'&&call[1]),'opening the chooser requests a fresh read');
     const lists=load('src/utils/questLists.ts').questLists(rows);
     assert.deepEqual(lists.today.map(row=>row.id),[1,4]);assert.ok(lists.available.some(row=>row.id===5),'All quests still includes legitimate upcoming tasks');
     await ui.press('Choose Due now');
     await ui.press('Switch to free session');
     await ui.press('Choose from routines');
-    assert.deepEqual(labels(),['Choose from routines','Choose Due now','Choose Repeating today']);
+    assert.deepEqual(labels(),['Choose focus area','Choose from routines','Choose Due now','Choose Repeating today']);
     await ui.update([task({id:6,title:'New saved suggestion'})]);
-    assert.deepEqual(labels(),['Choose from routines','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
+    assert.deepEqual(labels(),['Choose focus area','Choose from routines','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
   }finally{await ui.cleanup();}
 });
 

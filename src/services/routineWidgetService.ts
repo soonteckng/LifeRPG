@@ -144,7 +144,7 @@ export function createRoutineWidgetPublisher(options: {
       const rows = routines.filter(routine => routine.deletedAt === null).slice(0, 32).map(routine => {
         const area = areas.find(item => item.id === routine.focusAreaId), candidateColor = area?.color_code;
         return { id: routine.id, name: routine.name, durationSeconds: routine.durationSeconds,
-          areaTitle: focusAreaTitle(area?.title), color: candidateColor && /^#[0-9a-f]{6}$/i.test(candidateColor) ? candidateColor : "#AAB3FF" };
+          areaTitle: focusAreaTitle(area?.title), color: candidateColor && /^#[0-9a-f]{6}$/i.test(candidateColor) ? candidateColor : "#5E5CE6" };
       });
       return options.publish(scope, rows);
     },

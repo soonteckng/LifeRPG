@@ -22,8 +22,50 @@ class ProtectionPolicyTest {
     assertTrue(ProtectionPolicy.shouldCover(item, "social.app", setOf("phone.app"), setOf("social.app", "phone.app"), 0))
     assertFalse(ProtectionPolicy.shouldCover(item, "phone.app", setOf("phone.app"), setOf("phone.app"), 0))
   }
+  @Test fun bundledDistractionAppsBelongToTheBlockableCatalog() {
+    // PackageManager reports these launchable packages whether preinstalled,
+    // updated-system or user-installed. Flags must not exempt distractions.
+    val safety = ProtectionAppPolicy.essentials("com.soonteck.liferpg", listOf("oem.home", "oem.dialer"))
+    val catalog = ProtectionAppPolicy.catalog(listOf("com.google.android.youtube", "com.android.chrome", "social.app", "oem.home", "oem.dialer"), safety)
+    val item = lease().copy(mode = "essentials", allowed = emptySet())
+    for (pkg in listOf("com.google.android.youtube", "com.android.chrome", "social.app")) {
+      assertTrue(catalog.apps.contains(pkg)); assertTrue(ProtectionPolicy.shouldCover(item, pkg, catalog.essentials, catalog.apps, 2000))
+    }
+    assertFalse(catalog.apps.contains("oem.home")); assertFalse(catalog.apps.contains("oem.dialer"))
+  }
+  @Test fun essentialSystemSurfacesCannotBeBlockedEvenIfLaunchable() {
+    val safety = ProtectionAppPolicy.essentials("com.soonteck.liferpg", listOf("oem.home", "oem.dialer"))
+    val packages = safety + "com.google.android.youtube"
+    val catalog = ProtectionAppPolicy.catalog(packages.toList(), safety)
+    val item = lease().copy(mode = "essentials", allowed = emptySet())
+    for (pkg in listOf("com.soonteck.liferpg", "com.android.settings", "com.android.systemui", "com.android.emergency", "com.android.phone",
+      "com.google.android.permissioncontroller", "com.android.permissioncontroller", "com.android.packageinstaller", "com.samsung.android.incallui", "oem.dialer", "oem.home")) {
+      assertFalse(catalog.apps.contains(pkg)); assertFalse(ProtectionPolicy.shouldCover(item, pkg, catalog.essentials, packages, 2000))
+    }
+  }
+  @Test fun anAllowedBundledAppRemainsUsableWhileOtherBundledAppsAreCovered() {
+    val safety = ProtectionAppPolicy.essentials("com.soonteck.liferpg", emptyList())
+    val catalog = ProtectionAppPolicy.catalog(listOf("com.android.chrome", "com.google.android.youtube"), safety)
+    val item = lease().copy(allowed = setOf("com.android.chrome"))
+    assertFalse(ProtectionPolicy.shouldCover(item, "com.android.chrome", catalog.essentials, catalog.apps, 2000))
+    assertTrue(ProtectionPolicy.shouldCover(item, "com.google.android.youtube", catalog.essentials, catalog.apps, 2000))
+  }
+  @Test fun oneBreakAutomaticallyRestoresCoverWithoutJavaScript() {
+    val gate = ProtectionLeaseGate(); val item = lease(); assertTrue(gate.install(item));
+    assertTrue(gate.takeBreak(item.id, 11000, 300000)); val resting = gate.current!!;
+    assertEquals(50, resting.remaining(310999)); assertEquals(50, resting.remaining(311000));
+    assertFalse(ProtectionPolicy.shouldCover(resting, "social.app", emptySet(), setOf("social.app"), 310999));
+    assertTrue(ProtectionPolicy.shouldCover(resting, "social.app", emptySet(), setOf("social.app"), 311000));
+    assertFalse(gate.takeBreak(item.id, 311000, 300000)); assertEquals(0, resting.remaining(361000));
+  }
+  @Test fun earlyReturnCannotRestartBreakOrAffectAnotherLease() {
+    val gate = ProtectionLeaseGate(); val item = lease(); gate.install(item); gate.takeBreak(item.id, 11000, 300000);
+    assertFalse(gate.endBreak("foreign-id", 12000)); assertTrue(gate.endBreak(item.id, 12000));
+    assertEquals(50, gate.current!!.remaining(12000)); assertFalse(gate.takeBreak(item.id, 12000, 300000));
+    gate.finish(item.id,"stopped"); assertFalse(gate.takeBreak(item.id, 13000,300000));
+  }
   @Test fun malformedInputNeverInstallsProtection() {
-    val variants = listOf(raw().put("seconds", 0), raw().put("seconds", 601), raw().put("seconds", 2.5), raw().put("seconds", "60"), raw().put("version", 3), raw().put("extra", true), raw().put("id", "bad"), raw().put("scope", 33), raw().put("mode", "block-everything"), raw().put("allowed", org.json.JSONArray().put("../settings")))
+    val variants = listOf(raw().put("seconds", 0), raw().put("seconds", 601), raw().put("seconds", 2.5), raw().put("seconds", "60"), raw().put("version", 4), raw().put("extra", true), raw().put("id", "bad"), raw().put("scope", 33), raw().put("mode", "block-everything"), raw().put("allowed", org.json.JSONArray().put("../settings")))
     for (input in variants) { try { ProtectionPolicy.parse(input.toString(), 0); fail("Accepted malformed input") } catch (_: IllegalArgumentException) {} }
   }
   @Test fun essentialModeCannotCarryAnAmbiguousAllowList() {

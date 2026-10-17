@@ -9,6 +9,7 @@ function load(file, mocks={}, cache=new Map()) {
   const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    if(name.endsWith('/AppBuildInfo'))return()=>null;
     if(name.endsWith('/AppText'))return {Text:host('Text')};
     if(!name.startsWith('.'))return require(name);
     const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));
@@ -63,7 +64,7 @@ async function goalSheet(read,write) {
   const Sheet=props=>React.createElement('Sheet',props,props.header,props.children,props.footer);
   const Component=load('src/components/DailyGoalSheet.tsx',{
     'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
-    'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':Sheet,'./PersonalUI':{p:{}},
+    'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':Sheet,'./PersonalUI':{p:{}},'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':props=>React.createElement('Header',props),
     '../context/UserContext':{useUser:()=>({profile:{id:'owner',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},
     '../services/dailyGoalService':{getDailyGoalSettings:read,scheduleDailyGoal:write,missingGoalAPI:()=>false},
   }).default;
@@ -134,4 +135,29 @@ test('Settings immediately blocks another write while its lost-reply status chec
     assert.equal(button('Save daily goal'),undefined);assert.match(text(tree.root),/90 min from 2026-10-13/);
     assert.equal(writes,1);
   }finally{await act(async()=>tree.unmount());}
+});
+
+test('the goal sheet reads quietly while closed, then opens filled in and still refreshes',async()=>{
+  let reads=0,tree;const later=defer();
+  const Sheet=props=>React.createElement('Sheet',props,props.header,props.children,props.footer);
+  const Component=load('src/components/DailyGoalSheet.tsx',{
+    'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
+    './AppSheet':Sheet,'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':props=>React.createElement('Header',props),
+    '../context/UserContext':{useUser:()=>({profile:{id:'prefetch-owner',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},
+    '../services/dailyGoalService':{getDailyGoalSettings:async()=>++reads===1?{...goal,user_id:'prefetch-owner',next_goal_minutes:75}:later.promise,scheduleDailyGoal:async()=>{throw Error('no write');},missingGoalAPI:()=>false},
+  }).default;
+  const timers=[];const realSet=global.setTimeout,realClear=global.clearTimeout;
+  global.setTimeout=(fn,ms)=>{timers.push({fn,ms});return timers.length;};global.clearTimeout=()=>{};
+  try{
+    await act(async()=>{tree=create(React.createElement(Component,{visible:false,onClose(){},onSaved(){}}));});
+    assert.equal(reads,0,'nothing is read while Home is still settling');
+    await act(async()=>{timers.find(timer=>timer.ms===1500).fn();});
+    assert.equal(reads,1);
+    await act(async()=>tree.update(React.createElement(Component,{visible:true,onClose(){},onSaved(){}})));
+    assert.doesNotMatch(text(tree.root),/Checking your goal/,'the remembered reading shows at once');
+    assert.equal(tree.root.findByType('Input').props.value,'75');
+    assert.equal(reads,2,'opening still asks the server for the latest');
+    await act(async()=>later.resolve({...goal,user_id:'prefetch-owner',next_goal_minutes:90}));
+    assert.equal(tree.root.findByType('Input').props.value,'90');
+  }finally{global.setTimeout=realSet;global.clearTimeout=realClear;await act(async()=>tree.unmount());}
 });

@@ -76,7 +76,7 @@ test('measured result anchors actions in the native footer and excludes its scro
     assert.equal(ui.scroll().props.onContentSizeChange,undefined,'library footer padding cannot feed back into the natural body measurement');
     assert.equal(ui.scroll().findAllByType('Button').length,0);
     assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Done']);
-    assert.equal(ui.actions().props.style[0].flexShrink,0);
+    assert.equal([].concat(ui.actions().props.style)[0].flexShrink,0);
     ui.removeSave(); await ui.update({}); await ui.measure(42,285,94);
     assert.equal(ui.sheet().props.heightRatio*844,449,'a result without a Save action does not keep its missing button space');
     assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Done']);
@@ -91,8 +91,8 @@ test('short screen with large text keeps measured actions visible while details 
     assert.equal(height,544);
     assert.ok(height-28-72-210>0,'the body has remaining space after real header and action heights');
     assert.equal(ui.scroll().props.style.flex,1);
-    assert.equal(ui.actions().props.style[0].flexShrink,0);
-    assert.equal(ui.tree.root.findByType('Ring').props.size,48);
+    assert.equal([].concat(ui.actions().props.style)[0].flexShrink,0);
+    assert.ok(ui.tree.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'large text uses the smaller badge');
     assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Done']);
   } finally {await ui.cleanup();}
 });
@@ -125,8 +125,7 @@ test('offline pending Done stays reachable during sync and the same result becom
     await ui.update({visible:true,pending:false,localSaved:false,syncBusy:false,recovered:true,xpEarned:1,areaXpEarned:null,creditVersion:1,completedAtMs:Date.UTC(2026,9,13,4)});
     assert.match(text(ui.tree.root),/Earlier session saved/);
     assert.match(text(ui.tree.root),/Finished.*13 Oct 2026/);
-    assert.equal(ui.tree.root.findAllByType('Ring').length,1);
-    assert.equal(ui.tree.root.findByType('Ring').props.size,48,'online and offline use the same compact hero');
+    assert.ok(ui.tree.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'online and offline use the same compact hero');
     assert.match(text(ui.tree.root),/Character XP\+1/);
   } finally {await ui.cleanup();}
 });

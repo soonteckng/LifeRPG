@@ -14,6 +14,9 @@ function load(file, mocks = {}, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true} }).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    // Home's quiet tab preloads are covered by the Progress and Profile tests.
+    if(name.endsWith('/hooks/useCharacterData'))return{prefetchCharacterData(){}};
+    if(name.endsWith('/hooks/useProgressData'))return{prefetchProgress(){}};
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
     if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if(name.endsWith('/SavedRoutinesCard'))return host('SavedRoutinesCard');
@@ -57,7 +60,8 @@ function mocks(extra={}) {return {
 };}
 async function render(Component,props={}) {let tree;await act(async()=>{tree=create(React.createElement(Component,props));});return{
  tree,press:async label=>{
- const find=value=>tree.root.findAllByType('Button').find(node=>text(node)===value||node.props.accessibilityLabel===value);
+ // Start reads “Start 30 min · Area”; tests address it by its role.
+ const find=value=>tree.root.findAllByType('Button').find(node=>text(node)===value||node.props.accessibilityLabel===value||value==='Start session'&&/^Start .+ · /.test(text(node)));
  const chip=()=>tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-duration-chip');
  if(/^Use (30|60) minutes$/.test(label)&&!find(label)){
   await act(async()=>chip().props.onPress());
@@ -225,7 +229,7 @@ test('creating a personal quest keeps the suggestion and its Start; the quest re
  await act(async()=>routines.props.onStartLegacy(quest));assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.equal(starts,0);assert.deepEqual(routes,['/session']);routes.length=0;
  await act(async()=>{void ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start').props.onPress();});
  assert.equal(starts,1);assert.equal(ui.tree.root.findAllByType('View').filter(node=>node.props.testID==='guided-focus-card').length,1);assert.deepEqual(routes,['/session']);
- await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.match(text(ui.tree.root),/Continue session/);await ui.cleanup();
+ await act(async()=>pending.resolve(true));assert.deepEqual(routes,['/session']);assert.ok(ui.tree.root.findAll(node=>node.props.accessibilityLabel==='Continue session'&&typeof node.props.onPress==='function').length>0);assert.match(text(ui.tree.root),/Session running/);await ui.cleanup();
 });
 
 test('an older matching record or old quest receipt cannot mark a newly completed suggestion as a saved routine',async()=>{
@@ -360,7 +364,7 @@ test('preference Save remains in a safe-area footer outside the scrolling choice
  assert.equal(scroll.findAllByType('Button').some(button=>text(button)==='Save preferences'),false);
  const footer=ui.tree.root.findByType('Footer');assert.equal(footer.findAllByType('Button').filter(button=>button.props.testID==='save-guided-preferences').length,1);
  assert.equal(footer.findByType('View').props.style.paddingBottom,36);
- await ui.press('Practise what you’re learning');await ui.press('Save preferences');assert.equal(saved.need,'practice');assert.equal(saved.templateId,'practice-question');assert.equal(closed,1);await ui.cleanup();
+ await ui.press('Practise questions');await ui.press('Save preferences');assert.equal(saved.need,'practice');assert.equal(saved.templateId,'practice-question');assert.equal(closed,1);await ui.cleanup();
 });
 
 test('preference save failure keeps the draft and footer available for retry',async()=>{
@@ -369,7 +373,7 @@ test('preference save failure keeps the draft and footer available for retry',as
   './AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children,React.createElement('Footer',null,props.footer)):null,
   '../hooks/useGuidedPreference':{useGuidedPreference:()=>{const[error,setError]=React.useState(false);return{value:initial,ready:true,error,busy:false,save:async next=>{assert.equal(next.need,'assignments');if(++attempts===1){setError(true);return false;}return true;}};}},
  })).default;
- const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});await ui.press('Move an assignment forward');await ui.press('Save preferences');assert.equal(closed,0);assert.match(text(ui.tree.root),/Couldn’t save or load/);await ui.press('Save preferences');assert.equal(closed,1);assert.equal(attempts,2);await ui.cleanup();
+ const ui=await render(Sheet,{owner:'owner',visible:true,onClose:()=>closed++});await ui.press('Work on an assignment');await ui.press('Save preferences');assert.equal(closed,0);assert.match(text(ui.tree.root),/Couldn’t save or load/);await ui.press('Save preferences');assert.equal(closed,1);assert.equal(attempts,2);await ui.cleanup();
 });
 
 
@@ -438,7 +442,7 @@ test('both idle focus modes open preferences in the card without starting or cha
  try {
   for(const ui of [free,guided]){
    const change=ui.tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-card-preferences');
-   assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,44);
+   assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,52);
    await ui.press('Change focus direction');assert.equal(selectedCustomDuration(ui),'45 min 17 sec');
   }
   const suggestion=guided.tree.root.findAllByType('View').find(node=>node.props.testID==='focus-card-suggestion');

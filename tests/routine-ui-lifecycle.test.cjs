@@ -32,6 +32,8 @@ function base() {
       Keyboard: { dismiss() {} }, Switch: host('Switch'), AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     '@expo/vector-icons': { Ionicons: host('Icon') },
     '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
+    // Swipe actions are a gesture layer over the same rows; render the row itself.
+    'react-native-gesture-handler/ReanimatedSwipeable': { __esModule: true, default: props => props.children },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     'expo-haptics': { selectionAsync: async () => {} },
     './AppText': { Text: host('Text') }, './MotionPressable': host('Press'),
@@ -55,7 +57,13 @@ async function pendingCard() {
   const Card = load('src/components/SavedRoutinesCard.tsx').default;
   let tree; await act(async () => { tree = create(React.createElement(Card, props)); });
   return { calls, pending,
-    start: async () => act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start routine Review notes').props.onPress(); }),
+    output: () => tree.root.findAllByType('Text').map(node => node.children.filter(child => typeof child === 'string').join('')).join(' '),
+    // The play button asks first; the confirmation sheet owns the Start.
+    start: async () => {
+      await act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start routine Review notes').props.onPress(); });
+      await act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start Review notes now').props.onPress(); });
+    },
+    dismiss: async () => act(async () => { tree.root.findAllByType('Sheet').find(n => n.props.label === 'start routine').props.onDismiss(); }),
     update: async change => { state = { ...state, ...change.state }; props = { ...props, ...change.props }; timer = { ...timer, ...change.timer };
       await act(async () => tree.update(React.createElement(Card, props))); },
     release: async index => act(async () => { pending[index](routine); }),
@@ -88,8 +96,21 @@ test('an old routine read cannot unlock a newer pending Start or submit a duplic
     await ui.update({ props: { active: false } }); await ui.update({ props: { active: true } });
     await ui.start(); assert.equal(ui.pending.length, 2);
     await ui.release(0); await ui.start(); assert.equal(ui.pending.length, 2);
-    await ui.release(1);
+    await ui.release(1); await ui.dismiss();
     assert.deepEqual(ui.calls, [['start', 75, 2, 'Review notes'], ['route', '/session']]);
+  } finally { await ui.cleanup(); }
+});
+
+test('routine pending status distinguishes an active sync from a failed retry and clears after acknowledgement', async () => {
+  const ui = await pendingCard();
+  try {
+    await ui.update({ state: { pendingCount: 1, busy: true, error: null } });
+    assert.match(ui.output(), /Syncing routine changes/);
+    await ui.update({ state: { busy: false, error: "Saved on this phone. We'll sync your routines when the connection returns." } });
+    assert.doesNotMatch(ui.output(), /Syncing routine changes/);
+    assert.match(ui.output(), /Couldn't sync yet. We'll retry automatically/);
+    await ui.update({ state: { pendingCount: 0, error: null } });
+    assert.doesNotMatch(ui.output(), /Saved on this phone/);
   } finally { await ui.cleanup(); }
 });
 

@@ -3,7 +3,6 @@ package expo.modules.focusprotection
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.os.Process
 import android.os.SystemClock
 import android.provider.Settings
@@ -23,6 +22,8 @@ object ProtectionRuntime {
     }
     return true
   }
+  fun takeBreak(id: String, duration: Long): Boolean = gate.takeBreak(id, SystemClock.elapsedRealtime(), duration)
+  fun endBreak(id: String): Boolean = gate.endBreak(id, SystemClock.elapsedRealtime())
   fun active(id: String) = gate.active(id)
   fun covered(id: String) = gate.covered(id)
   fun finish(id: String, reason: String) {
@@ -46,20 +47,30 @@ object ProtectionRuntime {
     return manager.areNotificationsEnabled() && (manager.getNotificationChannel("liferpg_protection_preview")?.importance ?: 2) != 0
   }
   fun ready(context: Context) = Settings.canDrawOverlays(context) && usageAllowed(context) && notificationsAllowed(context)
+  /** Service startup needs package names only; label loading belongs to the chooser. */
+  fun appCatalog(context: Context): ProtectionAppCatalog {
+    val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val packages = context.packageManager.queryIntentActivities(intent, 0).mapNotNull { it.activityInfo?.packageName }
+    return ProtectionAppPolicy.catalog(packages, essentials(context))
+  }
   fun launchable(context: Context): List<Map<String, String>> {
     val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+    val safety = essentials(context)
     return context.packageManager.queryIntentActivities(intent, 0).mapNotNull { result ->
       val info = result.activityInfo?.applicationInfo ?: return@mapNotNull null
-      // Conservatively keep system/updated-system apps reachable, including OEM safety apps.
-      if (info.packageName == context.packageName || info.flags and (ApplicationInfo.FLAG_SYSTEM or ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) != 0) null
+      // Bundled browsers, video players and social apps are still distractions.
+      if (info.packageName in safety) null
       else mapOf("packageName" to info.packageName, "label" to result.loadLabel(context.packageManager).toString().take(80))
     }.distinctBy { it["packageName"] }.sortedBy { it["label"]?.lowercase() }
   }
   fun essentials(context: Context): Set<String> {
     val pm = context.packageManager
     val intents = listOf(Intent(Intent.ACTION_DIAL, android.net.Uri.parse("tel:")), Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME))
-    return setOf(context.packageName, "com.android.settings", "com.android.systemui", "com.android.phone",
-      "com.android.emergency", "com.samsung.android.incallui", "com.google.android.dialer") +
-      intents.flatMap { pm.queryIntentActivities(it, 0).map { item -> item.activityInfo.packageName } }
+    return ProtectionAppPolicy.essentials(context.packageName,
+      intents.flatMap { pm.queryIntentActivities(it, 0).map { item -> item.activityInfo.packageName } })
+  }
+  fun transientSurfaces(context: Context): Set<String> {
+    val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+    return context.packageManager.queryIntentActivities(home, 0).map { it.activityInfo.packageName }.toSet() + "com.android.systemui"
   }
 }

@@ -505,7 +505,7 @@ test('validated serialization restores both unknown requests and pending complet
 test('malformed versions, scopes and unexpected credential-bearing data are rejected', () => {
   const baseline = running();
   const corruptions = [
-    { ...baseline, schemaVersion: 3 },
+    { ...baseline, schemaVersion: 4 },
     { ...baseline, unexpected: true },
     { ...baseline, access_token: 'fixture_not_a_credential' },
     { ...baseline, scope: { ...SCOPE, ownerId: 'invalid-uuid' } },

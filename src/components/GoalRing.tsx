@@ -11,7 +11,7 @@ export default function GoalRing({ seconds, targetMinutes, compact = false, size
   const clock = `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, "0")}`;
   return <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal"
     accessibilityValue={{ min: 0, max: targetMinutes * 60, now: Math.min(seconds, targetMinutes * 60), text: label }}>
-    <ProgressRing size={size} progress={progress} stroke={size >= 220 ? 12 : 10} color={progress >= 1 ? "#7BDCC4" : colors.accent}>
+    <ProgressRing size={size} progress={progress} stroke={size >= 220 ? 12 : 10} color={progress >= 1 ? colors.success : colors.accent}>
       <View style={s.center} importantForAccessibility="no-hide-descendants">
         <Text style={[s.clock, { fontSize: Math.max(44, Math.min(52, Math.round(size * 0.20))) }]} adjustsFontSizeToFit numberOfLines={1} maxFontSizeMultiplier={1.3}>{clock}</Text>
         <Text style={s.target}>of {targetMinutes} min</Text>

@@ -134,6 +134,6 @@ const s = StyleSheet.create({
   page:{flex:1, backgroundColor:colors.background}, scroll:{flex:1},
   content:{flexGrow:1, justifyContent:"center", paddingHorizontal:24, paddingVertical:24},
   actions:{paddingHorizontal:24, paddingTop:16},
-  continue:{minHeight:56, paddingVertical:16, paddingHorizontal:20, borderRadius:18, backgroundColor:colors.primary, alignItems:"center", justifyContent:"center"},
-  continueText:{color:colors.primaryText, fontSize:18, lineHeight:24, fontWeight:"500"},
+  continue:{minHeight:56, paddingVertical:16, paddingHorizontal:20, borderRadius:28, backgroundColor:colors.primary, alignItems:"center", justifyContent:"center"},
+  continueText:{color:colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight:"500"},
 });

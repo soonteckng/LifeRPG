@@ -1,8 +1,12 @@
 // Bright category cues sit on neutral black surfaces.
-const palette = ["#6DD4B5", "#F4AA88", "#79BFF2", "#AAB3FF", "#E98ABC", "#C1A8FA"];
+const palette = ["#30D158", "#FF9F0A", "#64D2FF", "#5E5CE6", "#FF6482", "#BF5AF2"];
+// Colours saved by the previous palette keep their place in the new one.
+const previous = ["#6DD4B5", "#F4AA88", "#79BFF2", "#AAB3FF", "#E98ABC", "#C1A8FA"];
 export function lifeAreaColor(id: number | null | undefined, saved?: string | null): string {
   if (saved && /^#[0-9a-f]{6}$/i.test(saved)) {
-    if (palette.includes(saved.toUpperCase())) return saved.toUpperCase();
+    const code = saved.toUpperCase();
+    if (palette.includes(code)) return code;
+    if (previous.includes(code)) return palette[previous.indexOf(code)];
     const rgb = [1, 3, 5].map(offset => parseInt(saved.slice(offset, offset + 2), 16) / 255);
     const [red, green, blue] = rgb;
     const max = Math.max(...rgb), min = Math.min(...rgb), delta = max - min;
@@ -17,4 +21,11 @@ export function lifeAreaColor(id: number | null | undefined, saved?: string | nu
     }
   }
   return id == null ? palette[3] : palette[Math.abs(Math.floor(id)) % palette.length];
+}
+
+// A soft fill behind an area's icon: the area colour at low opacity.
+export function areaTint(hex: string, alpha = 0.16): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return `rgba(255,255,255,${alpha})`;
+  const [red, green, blue] = [1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16));
+  return `rgba(${red},${green},${blue},${alpha})`;
 }

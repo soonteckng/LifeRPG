@@ -7,6 +7,8 @@ function load(file,mocks={},cache=new Map()){
  const filename=path.resolve(__dirname,'..',file);if(cache.has(filename))return cache.get(filename).exports;
  const module={exports:{}};cache.set(filename,module);const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
+  if(name.endsWith('/AppBuildInfo'))return()=>null;
+  if(name.endsWith('/SwipeBack'))return{__esModule:true,default:props=>props.children};
   if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvite');if(name==='expo-constants')return {expoConfig:{android:{package:'com.soonteck.liferpg'}}};if(name==='expo')return {isRunningInExpoGo:()=>false};if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvitation');if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
    if(name==='expo-haptics')return {};if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
  },module,module.exports);return module.exports;
@@ -55,20 +57,22 @@ test('notification settings in Expo Go target the preview application instead of
 test('notification actions share fixed typography and preserve descriptive accessibility labels',async()=>{
  const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},StyleSheet:{create:value=>value}},'expo-router':{},'expo-router/react-navigation':{},'react-native-safe-area-context':{},'@expo/vector-icons':{},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header')});
  let tree;await act(async()=>{tree=create(React.createElement(React.Fragment,null,React.createElement(api.PersonalButton,{title:'Alarms & reminders',accessibilityLabel:'Open Alarms & reminders',onPress(){}}),React.createElement(api.PersonalButton,{title:'Notification settings',accessibilityLabel:'Open phone notification settings',onPress(){}})));});
- try{const labels=tree.root.findAllByType('Text');assert.equal(labels.length,2);for(const label of labels){assert.equal(label.props.adjustsFontSizeToFit,false);assert.equal(label.props.style[0].fontSize,16);assert.equal(label.props.style[0].lineHeight,24);}assert.deepEqual(tree.root.findAllByType('Button').map(node=>node.props.accessibilityLabel),['Open Alarms & reminders','Open phone notification settings']);}finally{await act(async()=>tree.unmount());}
+ try{const labels=tree.root.findAllByType('Text');assert.equal(labels.length,2);for(const label of labels){assert.equal(label.props.adjustsFontSizeToFit,false);assert.equal(label.props.style[0].fontSize,16);assert.equal(label.props.style[0].lineHeight,22);}assert.deepEqual(tree.root.findAllByType('Button').map(node=>node.props.accessibilityLabel),['Open Alarms & reminders','Open phone notification settings']);}finally{await act(async()=>tree.unmount());}
 });
 test('daily goal sheet validates the minimum and prevents duplicate schedule writes',async()=>{
  let saves=0,resolveSave,refreshed=0,tree;
  const settings={today_goal_minutes:60,next_goal_minutes:60,next_effective_date:'2026-10-08',pending:false,scheduling_available:true,weekly_limit_available:true,can_change_goal:true};
- const api=load('src/components/DailyGoalSheet.tsx',{'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':host('Sheet'),'./PersonalUI':{p:{}},'../context/UserContext':{useUser:()=>({profile:{daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},'../services/dailyGoalService':{getDailyGoalSettings:async()=>settings,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{saves++;return new Promise(resolve=>{resolveSave=resolve;});}}});
+ const api=load('src/components/DailyGoalSheet.tsx',{'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':host('Sheet'),'./PersonalUI':{p:{}},'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':host('Header'),'../context/UserContext':{useUser:()=>({profile:{daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},'../services/dailyGoalService':{getDailyGoalSettings:async()=>settings,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{saves++;return new Promise(resolve=>{resolveSave=resolve;});}}});
  await act(async()=>{tree=create(React.createElement(api.default,{visible:true,onClose(){},onSaved(){refreshed++;}}));});
  try{
-  assert.equal(tree.root.findByType('Sheet').props.expanded,true);assert.equal(tree.root.findByType('Sheet').props.heightRatio,.62);assert.equal(tree.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
+  // Short content floats as a fitted card; Save sits right under the rules.
+  const sheet=()=>tree.root.findByType('Sheet'),save=()=>tree.root.findAllByType('Button').find(node=>node.props.accessibilityState?.busy!==undefined);
+  assert.equal(sheet().props.floating,true);assert.equal(sheet().props.compact,true);assert.equal(sheet().props.footer,undefined);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('29'));
-  await act(async()=>tree.root.findByType('Sheet').props.footer.props.children.props.onPress());assert.equal(saves,0);
+  await act(async()=>save().props.onPress());assert.equal(saves,0);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('90'));
-  await act(async()=>{const save=tree.root.findByType('Sheet').props.footer.props.children.props.onPress;save();save();});assert.equal(saves,1);assert.equal(tree.root.findByType('Sheet').props.guardDismiss,true);
-  await act(async()=>resolveSave({...settings,next_goal_minutes:90,pending:true,can_change_goal:false}));assert.equal(refreshed,1);assert.equal(tree.root.findByType('Sheet').props.footer.props.children.props.disabled,true);
+  await act(async()=>{const press=save().props.onPress;press();press();});assert.equal(saves,1);assert.equal(sheet().props.guardDismiss,true);
+  await act(async()=>resolveSave({...settings,next_goal_minutes:90,pending:true,can_change_goal:false}));assert.equal(refreshed,1);assert.equal(save().props.disabled,true);
  }finally{await act(async()=>tree.unmount());}
 });
 

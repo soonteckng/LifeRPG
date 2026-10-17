@@ -1,4 +1,5 @@
 // Wire format shared with the future native adapter. No credentials belong here.
+export const JOURNAL_PROTECTED_VERSION = 3 as const;
 export const JOURNAL_VERSION = 1 as const;
 export const JOURNAL_CLIENT_TIMING_VERSION = 2 as const;
 export const JOURNAL_CLIENT_MAX_SEGMENTS = 256;
@@ -85,6 +86,7 @@ export interface JournalRecord {
   dismissedAtMs: number | null;
   verification: "server_timed" | "client_reported";
   clockWarning: boolean;
+  protection?: { breakStartedAtMs: number | null; breakEndsAtMs: number | null };
   clientTiming?: JournalClientTiming;
   serverCheckpoint?: { revision: number; observedAtMs: number; confirmedMs: number; clientSessionId: string };
   sync: {
@@ -105,7 +107,7 @@ export interface JournalCommand {
   request: { [key: string]: JournalJson };
 }
 export interface JournalEnvelope {
-  schemaVersion: typeof JOURNAL_VERSION | typeof JOURNAL_CLIENT_TIMING_VERSION;
+  schemaVersion: typeof JOURNAL_VERSION | typeof JOURNAL_CLIENT_TIMING_VERSION | typeof JOURNAL_PROTECTED_VERSION;
   scope: JournalScope;
   revision: number;
   admission: { epoch: number; active: boolean };
@@ -125,7 +127,7 @@ export interface JournalActionBase { epoch: number; expectedRevision: number }
 export type JournalAction =
   | { type: "admit"; epoch: number; expectedRevision: number }
   | { type: "revoke"; epoch: number; expectedRevision: number }
-  | (JournalActionBase & { type: "prepare_start"; operationId: string; clientSessionId: string; setup: JournalSetup; clock: JournalClock })
+  | (JournalActionBase & { type: "prepare_start"; protectedSession?: boolean; operationId: string; clientSessionId: string; setup: JournalSetup; clock: JournalClock })
   | (JournalActionBase & { type: "acknowledge_start"; operationId: string; snapshot: JournalServerSnapshot; clockWarning?: boolean })
   | (JournalActionBase & { type: "remember_start_identity"; operationId: string; serverSessionId: string; verifiedScope: JournalScope })
   | (JournalActionBase & { type: "request_start_end"; clientSessionId: string })
@@ -142,7 +144,8 @@ export type JournalAction =
   | (JournalActionBase & { type: "acknowledge_completion"; operationId: string; receipt: JournalReceipt })
   | (JournalActionBase & { type: "defer_sync"; clientSessionId: string; nowMs: number; delayMs: number; reasonCode: string; waitingAuth: boolean })
   | (JournalActionBase & { type: "dismiss"; clientSessionId: string; dismissedAtMs: number })
-  | (JournalActionBase & { type: "local_start"; clientSessionId: string; setup: JournalSetup; clock: JournalClock })
+  | (JournalActionBase & { type: "protect_session" | "begin_protected_break" | "end_protected_break"; clientSessionId: string; clock: JournalClock })
+  | (JournalActionBase & { type: "local_start"; protectedSession?: boolean; clientSessionId: string; setup: JournalSetup; clock: JournalClock })
   | (JournalActionBase & { type: "enter_client_timing"; clientSessionId: string; clock: JournalClock;
       serverRevision: number; serverObservedAtMs: number; serverConfirmedMs?: number })
   | (JournalActionBase & { type: "remember_server_checkpoint"; clientSessionId: string;

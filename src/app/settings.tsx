@@ -16,6 +16,7 @@ import { dateKey } from "../utils/progressAnalytics";
 import { getTodayProgress } from "../services/dailyProgressService";
 import { openAlarmSettings, openNotificationSettings } from "../services/notificationPermissionService";
 import { afterTransition } from "../utils/afterTransition";
+import AppBuildInfo from "../components/AppBuildInfo";
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -160,6 +161,7 @@ export default function SettingsScreen() {
           subtitle={sessionBlocksLogout ? "Finish or end your session first" : "Your saved progress stays with your account"} onPress={() => open("signout")} />
       </View>
       <Text style={p.caption}>LifeRPG · Your effort, reflected. Character attributes describe recorded practice and consistency.</Text>
+      <AppBuildInfo />
       <AppSheet label={sheet === "signout" ? "Sign out" : sheet === "goal" ? "Daily goal" : "Notifications"}
         motionMode="timed" compact
         visible={sheet !== null} guardDismiss={busy} onRequestClose={() => { if (!busy) setSheet(null); }}

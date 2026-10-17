@@ -21,6 +21,9 @@ function load(relativePath, mocks, cache = new Map()) {
   }).outputText;
   const localRequire = (name) => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
+    // Home's quiet tab preloads are covered by the Progress and Profile tests.
+    if (name.endsWith("/hooks/useCharacterData")) return { prefetchCharacterData() {} };
+    if (name.endsWith("/hooks/useProgressData")) return { prefetchProgress() {} };
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
     if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if (name.endsWith("/SavedRoutinesCard")) return props => React.createElement("SavedRoutinesBoundary", props);
@@ -720,7 +723,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   creditFields.completed_seconds = 3660;
   await act(async () => refresh());
   assert.match(output(), /61 \/ 60 min/);
-  assert.match(output(), /Daily goal reached/);
+  assert.match(output(), /Goal reached/);
   const goalBar = renderer.root.findAllByType("View").find(node => node.props.accessibilityRole === "progressbar");
   assert.equal(goalBar.props.accessibilityValue.now, 3600, "only the bar is capped, while 61 minutes stays visible");
   creditFields.completed_seconds = 0;

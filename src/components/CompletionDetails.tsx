@@ -20,9 +20,9 @@ export type CompletionData = {
 export function CompletionHero({ seconds, title, levelUp = false, compact = false }: {seconds: number; title?: string; levelUp?: boolean; compact?: boolean}) {
   const {fontScale} = useWindowDimensions();
   if (compact) return <View style={s.compactHero}>
-    <ProgressRing size={fontScale > 1.3 ? 48 : 60} progress={1} stroke={4}>
-      <Ionicons name={levelUp ? "sparkles-outline" : "checkmark"} size={26} color={colors.accent} />
-    </ProgressRing>
+    <View style={[s.badge, fontScale > 1.3 && s.badgeSmall]}>
+      <Ionicons name={levelUp ? "sparkles" : "checkmark"} size={26} color={colors.accent} />
+    </View>
     <View style={s.compactHeroCopy}>
       <Text style={s.caption}>Time recorded</Text>
       <Text style={s.compactTime}>{durationLabel(seconds)}</Text>
@@ -45,7 +45,7 @@ export function CompletionRows({ summary, areaTitle, areaColor, level, xpRemaini
   const areaXP = summary.creditVersion === 1 ? summary.areaXpEarned : areaTitle ? summary.xpEarned : null;
   const rowStyle = compact ? s.compactRow : s.row;
   return <View style={s.rows}>
-    <View style={rowStyle}><Text style={s.caption}>Character XP</Text><Text style={s.value}>+{summary.xpEarned}</Text></View>
+    <View style={rowStyle}><Text style={s.caption}>Character XP</Text><Text style={[s.value, s.xp]}>+{summary.xpEarned}</Text></View>
     {areaXP != null && <View style={rowStyle}>
       <Text style={[s.caption, areaColor && {color:areaColor}]}>{areaTitle ? focusAreaTitle(areaTitle) : "Focus area XP"}</Text>
       <Text style={[s.value, areaColor && {color:areaColor}]}>+{areaXP}{areaTitle ? " XP" : ""}</Text>
@@ -63,14 +63,17 @@ export function CompletionRows({ summary, areaTitle, areaColor, level, xpRemaini
 }
 const s = StyleSheet.create({
   hero: {alignItems:"center", gap:12},
-  compactHero: {flexDirection:"row", alignItems:"center", gap:16, paddingVertical:4},
+  compactHero: {flexDirection:"row", alignItems:"center", gap:16, paddingVertical:4, paddingHorizontal:4},
+  badge: {width:56, height:56, borderRadius:28, alignItems:"center", justifyContent:"center", backgroundColor:colors.accentSoft},
+  badgeSmall: {width:48, height:48, borderRadius:24},
+  xp: {color:colors.level, fontWeight:"700"},
   compactHeroCopy: {flex:1, minWidth:0, gap:4},
-  compactTime: {...type.hero, fontSize:36, lineHeight:44, letterSpacing:-0.5},
-  compactQuest: {...type.body, marginTop:4, color:colors.secondary},
+  compactTime: {...type.hero, fontSize:32, lineHeight:38, fontWeight:"700", letterSpacing:-0.6},
+  compactQuest: {...type.body, color:colors.secondary},
   caption: {...type.secondary, flexShrink:1},
   time: {...type.hero, textAlign:"center", letterSpacing:-1},
   quest: {...type.body, textAlign:"center"},
-  rows: {borderTopWidth:StyleSheet.hairlineWidth, borderTopColor:colors.line, paddingTop:12, gap:0},
+  rows: {paddingHorizontal:16, paddingVertical:6, borderRadius:20, backgroundColor:colors.sheetCard, gap:0},
   row: {minHeight:52, paddingVertical:8, flexDirection:"row", alignItems:"center", justifyContent:"space-between", gap:12},
   compactRow: {minHeight:40, paddingVertical:8, flexDirection:"row", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:8},
   continuity: {paddingVertical:8, gap:4},

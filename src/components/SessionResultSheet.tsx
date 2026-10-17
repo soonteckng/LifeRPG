@@ -88,6 +88,18 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     onDismiss?.();
   };
   const insets = useSafeAreaInsets();
+  const pendingIdentity = `${profile?.id}:${sessionId ?? "result"}:${ending}`;
+  const pendingKey = visible && pending && !offline ? pendingIdentity : null;
+  const [waiting, setWaiting] = useState({key: pendingKey, ready: false});
+  if (waiting.key !== pendingKey) setWaiting({key: pendingKey, ready: false});
+  useEffect(() => {
+    if (!pendingKey) return;
+    // Pending is also the normal first step of a successful End. Give the
+    // request time to finish before offering recovery, while keeping Done.
+    const timeout = setTimeout(() => setWaiting(current => current.key === pendingKey ? {key: pendingKey, ready: true} : current), 3000);
+    return () => clearTimeout(timeout);
+  }, [pendingKey]);
+  const needsRetry = pending && (offline || !!syncError && !syncBusy || waiting.key === pendingKey && waiting.ready);
   const screen = useWindowDimensions();
   const windowHeight = screen.height || 844;
   const fontScale = screen.fontScale || 1;
@@ -102,10 +114,11 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     });
   }, [measurementKey]);
   const measured: typeof measurements = measurements.key === measurementKey ? measurements : {key: measurementKey};
-  const resultHeight = completionSheetHeight({windowHeight, topInset: insets.top,
+  // The card floats above the bottom edge, so its tallest size leaves that gap too.
+  const resultHeight = completionSheetHeight({windowHeight, topInset: insets.top + Math.max(insets.bottom, 8) + 8,
     headerHeight: measured.header ?? 48 * fontScale,
     bodyHeight: measured.body ?? 300 * fontScale,
-    actionsHeight: measured.actions ?? 126 * fontScale + Math.max(insets.bottom, 12),
+    actionsHeight: measured.actions ?? 126 * fontScale + 16,
   });
   const level = newLevel ?? profile?.level;
   const xp = currentXP ?? profile?.current_xp;
@@ -128,9 +141,9 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     if (visible && !pending && !ending && !rejected && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, pending, ending, rejected, hapticsEnabled]);
   return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed}
-    label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
+    label={ending ? "session ended" : "session completion"} floating expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
     header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
-    footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={[s.actions, {paddingBottom:Math.max(insets.bottom, 12)}]} testID="session-result-actions">
+    footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={s.actions} testID="session-result-actions">
       {!pending && !ending && !rejected && saveAction}
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Done" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
     </View>}>
@@ -144,8 +157,8 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
         <View style={s.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
         {!!questTitle && <Text style={s.sessionTitle}>{questTitle}</Text>}
         <Text style={s.pendingText}>Your session has stopped. Ending early does not earn recorded time or XP.</Text>
-        {pending && <Text style={s.pendingText}>Your stop is saved on this phone. We’ll confirm it when you reconnect.</Text>}
-        {pending && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
+        {needsRetry && <Text style={s.pendingText}>{offline ? "Your stop is saved on this phone. We’ll confirm it when you reconnect." : "Your stop is saved on this phone. We’re waiting for confirmation."}</Text>}
+        {needsRetry && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
       </View> : <>
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
       {rejected ? <View style={s.pending}><Text style={s.pendingText} accessibilityLiveRegion="polite">Your session record stays on this phone. Your account did not accept this result, so it has not earned progress or completed a quest.</Text></View> : pending ? <View style={s.pending}>
@@ -160,17 +173,17 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
   </AppSheet>;
 }
 const s = StyleSheet.create({
-  title: { color: colors.text, fontSize: 24, lineHeight:30, fontWeight: "500", letterSpacing: -0.7, paddingHorizontal: 20, paddingBottom: 12 },
+  title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4, paddingHorizontal: 20, paddingBottom: 8 },
   scroll: {flex:1},
-  body: { paddingHorizontal: 20, paddingTop:4, paddingBottom: 16, gap: 16 },
-  actions: {flexShrink:0, paddingHorizontal:20, paddingTop:4, gap:10, backgroundColor:colors.surfaceRaised},
-  finished: {color:colors.secondary, fontSize:13, lineHeight:19},
+  body: { paddingHorizontal: 16, paddingTop:4, paddingBottom: 16, gap: 16 },
+  actions: {flexShrink:0, paddingHorizontal:16, paddingTop:4, paddingBottom:16, gap:10, backgroundColor:colors.surfaceRaised},
+  finished: {color:colors.secondary, fontSize: 13, lineHeight: 18},
   pending: {gap:12, paddingVertical:12},
-  pendingText: {color:colors.secondary, fontSize:16, lineHeight:23, textAlign:"center"},
-  sessionTitle: {color:colors.text, fontSize:17, lineHeight:24, textAlign:"center"},
+  pendingText: {color:colors.secondary, fontSize: 16, lineHeight: 22, textAlign:"center"},
+  sessionTitle: {color:colors.text, fontSize: 17, lineHeight: 22, textAlign:"center"},
   endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center", alignSelf:"center"},
   retry: {minHeight:48, justifyContent:"center", alignItems:"center"},
   retryText: {color:colors.accent, fontSize:17},
-  done: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: colors.primary },
-  doneText: { color: colors.background, fontSize: 18, fontWeight: "500" },
+  done: { minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 27, backgroundColor: colors.primary },
+  doneText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
 });

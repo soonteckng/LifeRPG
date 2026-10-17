@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput, TouchableOpacity } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
+import SheetHeader from "./SheetHeader";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
 import { parseDurationFields } from "../utils/sessionSetup";
@@ -29,12 +30,15 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
   // This short editor uses the measured keyboard offset instead of relying on
   // the native modal to resize around a device's numeric keyboard.
   return <AppSheet visible={visible} onRequestClose={onClose} compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="focus duration"
-    header={<View style={p.sheetHeader}><Text style={p.title}>Make time for focus</Text><Text style={p.body}>Choose a duration for this block.</Text></View>}
-    footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surface }}>
+    header={<SheetHeader title="Length" subtitle="How long would you like this block to run?" onClose={onClose} />}
+    footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12) + 12, backgroundColor: colors.surfaceRaised }}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Use this duration" disabled={disabled} onPress={save} style={p.button}><Text style={p.buttonText}>Use this duration</Text></TouchableOpacity>
     </View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={{ ...p.sheetBody, paddingBottom: 16 }}>
-      <View style={{ flexDirection: "row", gap: 10 }}>{[15, 30, 60].map(value => <View key={value} style={{ flex: 1 }}><TouchableOpacity disabled={disabled} accessibilityRole="button" accessibilityLabel={`Set duration to ${value} minutes`} onPress={() => { setMinutes(String(value)); setRemainder("0"); setError(""); }} style={{ minHeight: 48, paddingHorizontal: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder }}><Text style={{ color: colors.accent, fontSize: 15, fontWeight: "600" }}>{value} min</Text></TouchableOpacity></View>)}</View>
+      <View style={p.presets}>{[15, 30, 45, 60, 90].map(value => {
+        const chosen = minutes.trim() === String(value) && Number(remainder || 0) === 0;
+        return <View key={value} style={p.presetCell}><TouchableOpacity disabled={disabled} accessibilityRole="button" accessibilityLabel={`Set duration to ${value} minutes`} accessibilityState={{ selected: chosen }} onPress={() => { setMinutes(String(value)); setRemainder("0"); setError(""); }} style={[p.preset, chosen && p.presetChosen]}><Text style={[p.presetText, chosen && p.presetTextChosen]}>{value}</Text></TouchableOpacity></View>;
+      })}</View>
       <View style={{ flexDirection: "row", gap: 12 }}>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><BottomSheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><BottomSheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
@@ -46,10 +50,12 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
 }
 
 const p = StyleSheet.create({
- sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 8 }, title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "500" },
- body: { color: colors.secondary, fontSize: 16, lineHeight: 23 }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 21 },
- sheetBody: { paddingHorizontal: 20, gap: 16 }, rowTitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
- input: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, backgroundColor: colors.surface, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
- button: { minHeight: 52, padding: 14, borderRadius: 16, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
- buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 23, fontWeight: "500" }, error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
+ presets: { flexDirection: "row", gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.sheetCard }, presetCell: { flex: 1 },
+ preset: { minHeight: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" }, presetChosen: { backgroundColor: colors.selection },
+ presetText: { color: colors.secondary, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] }, presetTextChosen: { color: colors.text },
+ caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+ sheetBody: { paddingHorizontal: 16, gap: 16 }, rowTitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
+ input: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: colors.sheetCard, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
+ button: { minHeight: 54, padding: 14, borderRadius: 27, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+ buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
 });

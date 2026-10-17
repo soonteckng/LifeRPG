@@ -32,6 +32,7 @@ export interface SessionCountdownProjection {
   elapsedMs: number;
   observedClock: JournalClock;
   // Derived display deadline; never replace the journal's persisted deadline.
+  resumeAtMs?: number;
   deadlineMs: number | null;
   clockWarning: boolean;
   // Eligibility only; permissions and actual OS delivery remain native concerns.

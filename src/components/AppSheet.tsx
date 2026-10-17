@@ -1,4 +1,4 @@
-import { colors } from "../constants/theme";
+import { colors, radius } from "../constants/theme";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFooter,
@@ -59,6 +59,12 @@ interface Props {
   footer?: React.ReactNode;
   label: string;
   activityId?: symbol;
+  // An action that leaves for another screen skips the slide, so the next
+  // screen appears at once instead of after the sheet has visibly closed.
+  closeInstantly?: boolean;
+  // Short content floats as a rounded card above the screen edge instead of
+  // a full-width sheet with empty space beneath it.
+  floating?: boolean;
 }
 
 const DismissContext = createContext({
@@ -95,6 +101,7 @@ function SheetHandle() {
 // while pending results settle or an editor updates its actions.
 function SheetFooter(props: BottomSheetFooterProps) {
   const { footer } = useContext(DismissContext);
+  // The sheet's container already ends above a floating card's bottom inset.
   return <BottomSheetFooter {...props} bottomInset={0}>{footer}</BottomSheetFooter>;
 }
 
@@ -162,6 +169,8 @@ export default function AppSheet({
   footer,
   label,
   activityId,
+  closeInstantly = false,
+  floating = false,
 }: Props) {
   const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const timingConfigs = useBottomSheetTimingConfigs(listTiming);
@@ -189,6 +198,7 @@ export default function AppSheet({
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const maxHeight = Math.max(240, height - insets.top - 24);
+  const floatInset = floating ? Math.max(insets.bottom, 8) + 8 : 0;
   const snapPoints = useMemo(
     () =>
       compact
@@ -201,12 +211,6 @@ export default function AppSheet({
     if (visible) setMounted(true);
   }
 
-  useEffect(() => {
-    if (!visible && mounted) {
-      Keyboard.dismiss();
-      ref.current?.close();
-    }
-  }, [visible, mounted]);
 
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => {
@@ -235,6 +239,18 @@ export default function AppSheet({
     // iOS must finish dismissing its native modal before a new route is presented.
     if (Platform.OS !== "ios") onDismiss?.();
   }, [visible, onRequestClose, onDismiss]);
+
+  const latestFinishClose = useRef(finishClose);
+  useLayoutEffect(() => { latestFinishClose.current = finishClose; });
+  useEffect(() => {
+    if (!visible && mounted) {
+      Keyboard.dismiss();
+      if (closeInstantly) latestFinishClose.current();
+      else ref.current?.close();
+    }
+    // Only a visibility change closes; re-renders must not restart the slide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, mounted]);
 
   const backdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -303,6 +319,9 @@ export default function AppSheet({
                 maxHeight,
               )}
               topInset={insets.top + 12}
+              detached={floating}
+              bottomInset={floatInset}
+              style={floating ? styles.floating : undefined}
               enablePanDownToClose={!guardDismiss}
               enableHandlePanningGesture
               enableContentPanningGesture
@@ -317,7 +336,7 @@ export default function AppSheet({
               enableBlurKeyboardOnGesture
               android_keyboardInputMode={androidKeyboardInputMode}
               overrideReduceMotion={ReduceMotion.System}
-              backgroundStyle={styles.surface}
+              backgroundStyle={floating ? styles.floatingSurface : styles.surface}
               backdropComponent={backdrop}
               onClose={finishClose}
               footerComponent={footer ? SheetFooter : undefined}
@@ -337,16 +356,16 @@ const styles = StyleSheet.create({
   root: { flex: 1 },
   surface: {
     backgroundColor: colors.surfaceRaised,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
+    borderTopLeftRadius: radius.sheet,
+    borderTopRightRadius: radius.sheet,
   },
+  floating: { marginHorizontal: 8 },
+  floatingSurface: { backgroundColor: colors.surfaceRaised, borderRadius: radius.sheet },
   handleTarget: { height: 28, alignItems: "center", justifyContent: "center" },
   handle: {
-    width: 34,
-    height: 4,
+    width: 36,
+    height: 5,
     borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.36)",
+    backgroundColor: "rgba(255,255,255,0.24)",
   },
 });

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
@@ -15,17 +15,26 @@ import { routineDuration } from "../utils/savedRoutine";
 import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
 import type { SavedRoutine } from "../types/savedRoutine";
 import type { Subject, Task } from "../services/taskService";
-import { colors } from "../constants/theme";
+import { colors, radius } from "../constants/theme";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
 import RoutineEditorSheet from "./RoutineEditorSheet";
 import QuestSheet from "./QuestSheet";
+import SheetHeader from "./SheetHeader";
+import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
 export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy }: { subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void }) {
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
+  // Play asks before starting; holding a row offers its other actions; the
+  // row itself opens its editor. One small card carries all three.
+  const [menu, setMenu] = useState<{ entry: RoutineEntry; mode: "start" | "options" | "remove" } | null>(null);
+  const confirm = menu?.entry ?? null;
+  const setConfirm = (entry: RoutineEntry | null) => setMenu(entry ? { entry, mode: "start" } : null);
+  // Starting from a sheet opens the session at once rather than after the slide.
+  const [leaving, setLeaving] = useState(false);
   const { entries, done } = routinePresentation(routines.routines, legacyTasks);
   const scopeKey = `${routines.scope?.backendId ?? ""}:${routines.scope?.ownerId ?? ""}`;
   const admissionEpoch = routines.admissionEpoch ?? 0;
@@ -35,7 +44,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const [previousSurface, setPreviousSurface] = useState({ active, scopeKey, admissionEpoch, online: routines.online, generation: 0 });
   if (previousSurface.active !== active || previousSurface.scopeKey !== scopeKey || previousSurface.admissionEpoch !== admissionEpoch || previousSurface.online !== routines.online) {
     setPreviousSurface({ active, scopeKey, admissionEpoch, online: routines.online, generation: previousSurface.generation + 1 });
-    setManage(false); setEditor(null); setLegacyEditor(null); setShowDone(false); setMessage("");
+    setManage(false); setMenu(null); setLeaving(false); setEditor(null); setLegacyEditor(null); setShowDone(false); setMessage("");
   }
   const surfaceKey = JSON.stringify([scopeKey, admissionEpoch, previousSurface.generation]);
   const currentSurface = useRef(active ? surfaceKey : "");
@@ -59,9 +68,9 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       // Present the controller's starting state immediately, just like Home's
       // quick start. A server reply must not delay opening the timer.
       const open = () => { if (onStarted) onStarted(); else if (routines.online) router.push("/session"); };
-      if (manage) {
-        if (onStarted || routines.online) afterManageDismiss.current = { surfaceKey, open };
-        setManage(false);
+      if (manage || confirm) {
+        if (onStarted || routines.online) { afterManageDismiss.current = { surfaceKey, open }; setLeaving(true); }
+        setManage(false); setConfirm(null);
       } else open();
       const started = await request;
       if (currentSurface.current !== surfaceKey) return;
@@ -70,11 +79,11 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       if (currentSurface.current === surfaceKey) setMessage("Couldn't start this routine. Your saved settings are still here.");
     } finally { if (locked.current === operation) locked.current = null; }
   };
-  const edit = (routine: SavedRoutine | null) => { feedback(); if (manage) { nextEditor.current = routine; setManage(false); } else setEditor({ routine }); };
+  const edit = (routine: SavedRoutine | null) => { feedback(); if (manage || menu) { nextEditor.current = routine; setManage(false); setMenu(null); } else setEditor({ routine }); };
   const editLegacy = (task: Task) => {
     if (!active || !routines.online) return;
     feedback();
-    if (manage) { nextLegacyEditor.current = task; setManage(false); }
+    if (manage || menu) { nextLegacyEditor.current = task; setManage(false); setMenu(null); }
     else setLegacyEditor(task);
   };
   const startLegacy = async (task: Task) => {
@@ -90,7 +99,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     };
     const operation = {}; locked.current = operation; feedback();
     try {
-      if (manage) { afterManageDismiss.current = { surfaceKey, open }; setManage(false); }
+      if (manage || confirm) { afterManageDismiss.current = { surfaceKey, open }; setLeaving(true); setManage(false); setConfirm(null); }
       else await open();
     } finally { if (locked.current === operation) locked.current = null; }
   };
@@ -101,63 +110,163 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     catch { if (currentSurface.current === surfaceKey) setMessage("Your phone couldn't add the widget. Try again from your launcher’s widget list."); }
     finally { if (locked.current === operation) locked.current = null; }
   };
-  const savedRow = (routine: SavedRoutine) => <View key={`routine:${routine.id}`} style={s.row}>
-    <View style={[s.areaDot, { backgroundColor: lifeAreaColor(routine.focusAreaId, subjects.find(area => area.id === routine.focusAreaId)?.color_code) }]} />
-    <Pressable disabled={blocked} onPress={() => void start(routine)} accessibilityRole="button" accessibilityLabel={`Start ${routine.name}, ${routineDuration(routine.durationSeconds)}`} style={s.detail}>
-      <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routineDuration(routine.durationSeconds)} · {focusAreaTitle(subjects.find(area => area.id === routine.focusAreaId)?.title)}{routine.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}</Text>
-    </Pressable>
-    {manage ? <><Pressable onPress={() => edit(routine)} accessibilityRole="button" accessibilityLabel={`Edit ${routine.name}`} style={s.icon}><Ionicons name="create-outline" size={21} color={colors.accent} /></Pressable>{widget && <Pressable onPress={() => void pin(routine)} accessibilityRole="button" accessibilityLabel={`Add ${routine.name} widget`} style={s.icon}><Ionicons name="grid-outline" size={20} color={colors.accent} /></Pressable>}</> : <Pressable disabled={blocked} onPress={() => void start(routine)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.icon}><Ionicons name="play" size={18} color={blocked ? colors.secondary : colors.accent} /></Pressable>}
-  </View>;
-  const legacyRow = (task: Task, completed = false) => {
-    const disabled = blocked || completed || !task.is_due_today || !onStartLegacy || !routines.online;
-    const area = subjects.find(item => item.id === task.subject_id);
-    return <View key={`task:${task.id}`} style={s.row}>
-      <View style={[s.areaDot, { backgroundColor: completed ? colors.success : lifeAreaColor(task.subject_id, area?.color_code) }]} />
-      <Pressable disabled={completed && manage ? !routines.online : disabled} onPress={() => completed ? editLegacy(task) : void startLegacy(task)} accessibilityRole="button" accessibilityLabel={completed ? `Edit ${task.title}` : `Start ${task.title}, ${task.target_minutes || 30} minutes`} style={s.detail}>
-        <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
-        <Text style={s.caption}>{routineDuration((task.target_minutes || 30) * 60)} · {focusAreaTitle(area?.title)}{task.is_recurring ? task.repeat_rule === "daily" ? " · Daily" : ` · ${task.repeat_rule.split(",").join(", ")}` : " · Once"}{completed ? " · Done today" : !task.is_due_today ? " · Upcoming" : ""}</Text>
-      </Pressable>
-      {manage ? <Pressable disabled={!routines.online} onPress={() => editLegacy(task)} accessibilityRole="button" accessibilityLabel={`Edit routine ${task.title}`} style={s.icon}><Ionicons name="create-outline" size={21} color={colors.accent} /></Pressable>
-        : <Pressable disabled={disabled} onPress={() => void startLegacy(task)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.icon}><Ionicons name="play" size={18} color={disabled ? colors.secondary : colors.accent} /></Pressable>}
-    </View>;
+  const remove = async (routine: SavedRoutine) => {
+    if (!active || locked.current) return;
+    const operation = {}; locked.current = operation; feedback();
+    try { const removed = await routines.remove(routine.id); if (currentSurface.current !== surfaceKey) return; setMenu(null); if (!removed) setMessage("Couldn't remove this routine. Try again."); }
+    catch { if (currentSurface.current === surfaceKey) { setMenu(null); setMessage("Couldn't remove this routine. Try again."); } }
+    finally { if (locked.current === operation) locked.current = null; }
   };
-  const row = (entry: RoutineEntry) => entry.kind === "saved" ? savedRow(entry.routine) : legacyRow(entry.task);
-  return <>
-    <View style={s.card} testID="saved-routines-card"><View style={s.heading}><Text accessibilityRole="header" style={s.title}>Your routines</Text><Pressable disabled={!active || !routines.ready} onPress={() => { if (entries.length || done.length) { feedback(); setShowDone(false); setManage(true); } else edit(null); }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{entries.length || done.length ? "Manage" : "Add routine"}</Text></Pressable></View>
-      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : entries.length ? entries.slice(0, 3).map(row) : <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="add" size={20} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={17} color={colors.muted} /></Pressable>}
-      {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
-      {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
-      {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? "Syncing routine changes…" : "Syncs when you reconnect."}</Text>}
-      {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
-    </View>
-    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={() => {
+  const hold = (entry: RoutineEntry) => { if (!active) return; feedback(); setMessage(""); setMenu({ entry, mode: "options" }); };
+  const afterSheetDismiss = () => {
+      setLeaving(false);
       if (currentSurface.current !== surfaceKey) return;
       const pending = afterManageDismiss.current;
       afterManageDismiss.current = null;
       if (pending && active && currentSurface.current === pending.surfaceKey) { pending.open(); return; }
       if (nextLegacyEditor.current && active && routines.online) { setLegacyEditor(nextLegacyEditor.current); nextLegacyEditor.current = null; return; }
       if (nextEditor.current !== undefined && active) { setEditor({ routine: nextEditor.current }); nextEditor.current = undefined; }
-    }} compact maxHeightRatio={0.82} label="routines" header={<View style={s.sheetHeading}><Text style={s.title}>Your routines</Text><Text style={s.caption}>Start here again without setting everything up.</Text></View>}>
+  };
+  const ask = (entry: RoutineEntry) => { if (blocked) return; feedback(); setMessage(""); setConfirm(entry); };
+  const areaOf = (id: number | null | undefined) => subjects.find(area => area.id === id);
+  const savedEntry = (routine: SavedRoutine): RoutineEntry => ({ kind: "saved", key: `routine:${routine.id}`, name: routine.name, seconds: routine.durationSeconds, areaId: routine.focusAreaId, routine });
+  const legacyEntry = (task: Task): RoutineEntry => ({ kind: "legacy", key: `task:${task.id}`, name: task.title, seconds: (task.target_minutes || 30) * 60, areaId: task.subject_id, task });
+  const savedRow = (routine: SavedRoutine, inSheet = false) => {
+    const area = areaOf(routine.focusAreaId), entry = savedEntry(routine);
+    return <View key={`routine:${routine.id}`} style={[s.row, inSheet && s.sheetRow]}>
+      <View style={[s.areaDot, { backgroundColor: lifeAreaColor(routine.focusAreaId, area?.color_code) }]} />
+      <Pressable disabled={!active} onPress={() => edit(routine)} onLongPress={inSheet ? undefined : () => hold(entry)} delayLongPress={350}
+        accessibilityRole="button" accessibilityLabel={`Edit ${routine.name}, ${routineDuration(routine.durationSeconds)}`}
+        accessibilityActions={inSheet ? undefined : [{ name: "longpress", label: "More actions" }]} onAccessibilityAction={() => hold(entry)} style={s.detail}>
+        <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routineDuration(routine.durationSeconds)} · {focusAreaTitle(area?.title)}{routine.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}</Text>
+      </Pressable>
+      {inSheet ? <><Pressable onPress={() => edit(routine)} accessibilityRole="button" accessibilityLabel={`Edit ${routine.name}`} style={s.icon}><Ionicons name="create-outline" size={20} color={colors.accent} /></Pressable>{widget && <Pressable onPress={() => void pin(routine)} accessibilityRole="button" accessibilityLabel={`Add ${routine.name} widget`} style={s.icon}><Ionicons name="grid-outline" size={19} color={colors.accent} /></Pressable>}</>
+        : <Pressable disabled={blocked} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.play}><Ionicons name="play" size={15} color={blocked ? colors.tertiary : colors.text} /></Pressable>}
+    </View>;
+  };
+  const legacyRow = (task: Task, completed = false, inSheet = false) => {
+    const disabled = blocked || completed || !task.is_due_today || !onStartLegacy || !routines.online;
+    const area = areaOf(task.subject_id), entry = legacyEntry(task);
+    return <View key={`task:${task.id}`} style={[s.row, inSheet && s.sheetRow]}>
+      <View style={[s.areaDot, { backgroundColor: completed ? colors.success : lifeAreaColor(task.subject_id, area?.color_code) }]} />
+      <Pressable disabled={!active || !routines.online} onPress={() => editLegacy(task)} onLongPress={inSheet || completed ? undefined : () => hold(entry)} delayLongPress={350}
+        accessibilityRole="button" accessibilityLabel={`Edit ${task.title}, ${task.target_minutes || 30} minutes`} style={s.detail}>
+        <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
+        <Text style={s.caption}>{routineDuration((task.target_minutes || 30) * 60)} · {focusAreaTitle(area?.title)}{task.is_recurring ? task.repeat_rule === "daily" ? " · Daily" : ` · ${task.repeat_rule.split(",").join(", ")}` : " · Once"}{completed ? " · Done today" : !task.is_due_today ? " · Upcoming" : ""}</Text>
+      </Pressable>
+      {inSheet ? <Pressable disabled={!routines.online} onPress={() => editLegacy(task)} accessibilityRole="button" accessibilityLabel={`Edit routine ${task.title}`} style={s.icon}><Ionicons name="create-outline" size={20} color={colors.accent} /></Pressable>
+        : <Pressable disabled={disabled} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.play}><Ionicons name="play" size={15} color={disabled ? colors.tertiary : colors.text} /></Pressable>}
+    </View>;
+  };
+  const row = (entry: RoutineEntry, inSheet = false) => entry.kind === "saved" ? savedRow(entry.routine, inSheet) : legacyRow(entry.task, false, inSheet);
+  // Home rows also slide left to reveal Edit and Remove, as in Mail or Reminders.
+  const homeRow = (entry: RoutineEntry) => <SwipeRow key={entry.key} enabled={active && (entry.kind === "saved" || routines.online)} label={entry.name}
+    onEdit={() => entry.kind === "saved" ? edit(entry.routine) : editLegacy(entry.task)}
+    onRemove={entry.kind === "saved" ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined}>{row(entry)}</SwipeRow>;
+  const visibleEntries = entries.slice(0, 3);
+  const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
+  const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
+  const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
+  return <>
+    <View style={s.card} testID="saved-routines-card">
+      <View style={s.heading}>
+        <Text accessibilityRole="header" style={s.title}>Your routines</Text>
+        <View style={s.headingActions}>
+          {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); setShowDone(false); setManage(true); }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{entries.length > 3 ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
+          <Pressable disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="New routine" style={s.add}><Ionicons name="add" size={20} color={colors.accent} /></Pressable>
+        </View>
+      </View>
+      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.group}>
+        {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
+      </View> : <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>}
+      {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}
+      {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
+      {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
+      {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
+      {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
+    </View>
+    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title="Your routines" subtitle="Start here again without setting everything up." onClose={() => setManage(false)} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}>
-        {showDone ? done.map(task => legacyRow(task, true)) : entries.map(row)}
+        {showDone ? done.map(task => legacyRow(task, true, true)) : entries.map(entry => row(entry, true))}
         {!!done.length && <Pressable accessibilityRole="button" onPress={() => { feedback(); setShowDone(value => !value); }} style={s.manage}><Text style={s.link}>{showDone ? "Back to your routines" : `Done today (${done.length})`}</Text></Pressable>}
-        <Pressable onPress={() => edit(null)} disabled={routines.routines.length >= 32} accessibilityRole="button" style={s.add}><Ionicons name="add" size={22} color={colors.accent} /><Text style={s.link}>Add routine</Text></Pressable>
+        <Pressable onPress={() => edit(null)} disabled={routines.routines.length >= 32} accessibilityRole="button" style={s.addRow}><Ionicons name="add" size={22} color={colors.accent} /><Text style={s.link}>Add routine</Text></Pressable>
         {Platform.OS === "android" && !widget && <Text style={s.caption}>Routine widgets need the updated Android app. Saved routines already work here.</Text>}
         {routines.conflicts.map(conflict => <View key={conflict.operation.operationId} style={s.conflict}><Text style={s.name}>{conflict.operation.draft.name}</Text><Text style={s.caption}>{conflict.reason}</Text><View style={s.heading}><Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, false)} style={s.manage}><Text style={s.link}>Use other device’s version</Text></Pressable>{(!conflict.latest || conflict.latest.deletedAt === null) && <Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, true)} style={s.manage}><Text style={s.link}>Keep my changes</Text></Pressable>}</View></View>)}
         {!!routines.error && <Text accessibilityRole="alert" style={s.caption}>{routines.error}</Text>}
         {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       </BottomSheetScrollView>
     </AppSheet>
+    <AppSheet key={`confirm:${surfaceKey}`} visible={!!menu && active} onRequestClose={() => setMenu(null)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact floating
+      label={menu?.mode === "options" ? "routine options" : menu?.mode === "remove" ? "remove routine" : "start routine"}
+      header={menu ? <View style={s.sheetHeading}><Text style={s.confirmTitle} numberOfLines={2}>{menu.mode === "start" ? `Start “${menu.entry.name}”?` : menu.mode === "remove" ? `Remove “${menu.entry.name}”?` : menu.entry.name}</Text>
+        <View style={s.confirmMeta}><View style={[s.areaDot, { backgroundColor: lifeAreaColor(menu.entry.areaId, menuArea?.color_code) }]} /><Text style={s.caption}>{menu.mode === "remove" ? "Your recorded sessions and progress stay saved." : `${routineDuration(menu.entry.seconds)} · ${focusAreaTitle(menuArea?.title)}`}</Text></View></View> : null}>
+      <BottomSheetScrollView contentContainerStyle={s.confirmBody}>
+        {menu?.mode === "options" ? <View style={s.menuGroup}>
+          <MenuAction first icon="play" label="Start now" onPress={startMenu} disabled={blocked || (menu.entry.kind === "legacy" && (!menu.entry.task.is_due_today || !onStartLegacy || !routines.online))} />
+          <MenuAction icon="create-outline" label="Edit routine" onPress={() => menu.entry.kind === "saved" ? edit(menu.entry.routine) : editLegacy(menu.entry.task)} />
+          {menuRoutine && widget && <MenuAction icon="grid-outline" label="Add widget" onPress={() => { setMenu(null); void pin(menuRoutine); }} />}
+          {menuRoutine && <MenuAction danger icon="trash-outline" label="Remove routine" onPress={() => { feedback(); setMenu({ entry: menu.entry, mode: "remove" }); }} />}
+        </View> : menu?.mode === "remove" ? <>
+          <Pressable onPress={() => { if (menuRoutine) void remove(menuRoutine); }} accessibilityRole="button" accessibilityLabel="Remove routine" style={s.removeButton}><Text style={s.removeText}>Remove routine</Text></Pressable>
+          <Pressable onPress={() => setMenu(null)} accessibilityRole="button" accessibilityLabel="Keep routine" style={s.confirmCancel}><Text style={s.cancelText}>Keep routine</Text></Pressable>
+        </> : <>
+          <Pressable disabled={blocked} onPress={startMenu} accessibilityRole="button" accessibilityLabel={confirm ? `Start ${confirm.name} now` : "Start now"} style={[s.confirmStart, blocked && s.confirmDisabled]}>
+            <Text style={s.confirmStartText}>Start session</Text><View style={s.confirmPlay}><Ionicons name="play" size={17} color={colors.primary} /></View>
+          </Pressable>
+          <Pressable onPress={() => setMenu(null)} accessibilityRole="button" accessibilityLabel="Not now" style={s.confirmCancel}><Text style={s.cancelText}>Not now</Text></Pressable>
+        </>}
+      </BottomSheetScrollView>
+    </AppSheet>
     <RoutineEditorSheet key={`edit:${surfaceKey}`} visible={!!editor && active} onClose={() => setEditor(null)} routine={editor?.routine} subjects={subjects} initialAreaId={initialAreaId} initialSeconds={initialSeconds} />
     {legacyEditor && active && <QuestSheet key={`legacy:${scopeKey}:${legacyEditor.id}`} visible onClose={() => setLegacyEditor(null)} editorOnly initialTask={legacyEditor} expectedOwnerId={profile?.id} routineLanguage />}
   </>;
 }
+
+function MenuAction({ icon, label, onPress, danger = false, disabled = false, first = false }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; danger?: boolean; disabled?: boolean; first?: boolean }) {
+  return <Pressable disabled={disabled} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[s.menuRow, !first && s.menuDivider, disabled && s.confirmDisabled]}>
+    <Text style={[s.menuText, danger && s.danger]}>{label}</Text><Ionicons name={icon} size={19} color={danger ? colors.danger : colors.text} />
+  </Pressable>;
+}
+
+function SwipeRow({ enabled, label, onEdit, onRemove, children }: { enabled: boolean; label: string; onEdit: () => void; onRemove?: () => void; children: ReactNode }) {
+  if (!enabled) return <>{children}</>;
+  return <Swipeable friction={1.6} rightThreshold={56} overshootRight={false} dragOffsetFromRightEdge={12}
+    renderRightActions={(_progress, _translation, methods) => <View style={s.swipeActions}>
+      <Pressable onPress={() => { methods.close(); onEdit(); }} accessibilityRole="button" accessibilityLabel={`Edit ${label}`} style={[s.swipeAction, s.swipeEdit]}><Ionicons name="create-outline" size={19} color={colors.text} /><Text style={s.swipeText}>Edit</Text></Pressable>
+      {onRemove && <Pressable onPress={() => { methods.close(); onRemove(); }} accessibilityRole="button" accessibilityLabel={`Remove ${label}`} style={[s.swipeAction, s.swipeRemove]}><Ionicons name="trash-outline" size={19} color={colors.text} /><Text style={s.swipeText}>Remove</Text></Pressable>}
+    </View>}>{children}</Swipeable>;
+}
 const s = StyleSheet.create({
-  card: { paddingHorizontal: 0, paddingVertical: 0, gap: 10 },
-  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3 },
-  manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 4 }, link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10, paddingLeft: 16, paddingRight: 10, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 3, minHeight: 44, justifyContent: "center" },
+  card: { gap: 10 },
+  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+  manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
+  add: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
+  group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
-  name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 20 }, icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }, empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 14, lineHeight: 20, fontWeight: "500" },
-  sheetHeading: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 }, list: { paddingHorizontal: 20, paddingBottom: 24, gap: 10 }, add: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 14, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
+  name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  hint: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
+  play: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
+  icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
+  empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
+  sheetHeading: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 }, list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 }, addRow: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 25, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
+  confirmTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 }, confirmMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
+  confirmBody: { paddingHorizontal: 16, paddingBottom: 12, gap: 4 },
+  confirmStart: { minHeight: 60, paddingLeft: 22, paddingRight: 9, borderRadius: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.primary },
+  confirmStartText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
+  confirmPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
+  confirmCancel: { minHeight: 50, alignItems: "center", justifyContent: "center" }, confirmDisabled: { opacity: 0.5 }, cancelText: { color: colors.text, fontSize: 16, fontWeight: "500" },
+  menuGroup: { borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden", marginBottom: 4 },
+  menuRow: { minHeight: 52, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  menuDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  menuText: { color: colors.text, fontSize: 16, lineHeight: 22 }, danger: { color: colors.danger },
+  removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
+  removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
+  swipeActions: { flexDirection: "row" },
+  swipeAction: { width: 76, alignItems: "center", justifyContent: "center", gap: 3 },
+  swipeEdit: { backgroundColor: colors.selection }, swipeRemove: { backgroundColor: "#D93D35" },
+  swipeText: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  sheetRow: { backgroundColor: colors.sheetCard, borderRadius: radius.row },
 });

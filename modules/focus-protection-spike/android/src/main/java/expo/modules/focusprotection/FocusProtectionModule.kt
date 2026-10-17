@@ -17,6 +17,12 @@ class FocusProtectionModule : Module() {
   private fun network() = connectivity ?: ConnectivityObserver(context) { sendEvent("onConnectivityChanged", it) }.also { connectivity = it }
   private fun visibleActivity() = appContext.currentActivity?.takeIf { it.hasWindowFocus() }
     ?: throw IllegalStateException("Open LifeRPG before starting protection or changing permissions.")
+  // A React Native Modal/bottom sheet can own window focus while its hosting
+  // Activity is still resumed. Permission review must work from that sheet.
+  private fun settingsActivity() = appContext.currentActivity?.takeIf {
+    !it.isFinishing && !it.isDestroyed
+  }
+    ?: throw IllegalStateException("Open LifeRPG before changing permissions.")
   override fun definition() = ModuleDefinition {
     Name("LifeRPGFocusProtectionSpike")
     Constant("formatVersion") { PROTECTION_VERSION }
@@ -30,7 +36,7 @@ class FocusProtectionModule : Module() {
     AsyncFunction("apps") { ProtectionRuntime.launchable(context) }
     AsyncFunction("state") { ProtectionRuntime.state() }
     AsyncFunction("openPermission") { kind: String ->
-      val activity = visibleActivity()
+      val activity = settingsActivity()
       require(kind == "usage" || kind == "overlay")
       val action = if (kind == "usage") Settings.ACTION_USAGE_ACCESS_SETTINGS else Settings.ACTION_MANAGE_OVERLAY_PERMISSION
       val intent = Intent(action, Uri.parse("package:${context.packageName}"))
@@ -47,6 +53,12 @@ class FocusProtectionModule : Module() {
       catch (error: Exception) { ProtectionRuntime.finish(lease.id, "interrupted"); throw error }
       ProtectionRuntime.state()
     }.runOnQueue(Queues.MAIN)
+    AsyncFunction("takeBreak") { id: String, duration: Double ->
+      require(duration.isFinite() && duration % 1.0 == 0.0 && duration in 1.0..300000.0)
+      check(ProtectionRuntime.takeBreak(id, duration.toLong())) { "This break is no longer available." }
+      ProtectionRuntime.state()
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("endBreak") { id: String -> ProtectionRuntime.endBreak(id); ProtectionRuntime.state() }.runOnQueue(Queues.MAIN)
     AsyncFunction("stop") { id: String -> ProtectionService.stop(context, id, "stopped"); ProtectionRuntime.state() }.runOnQueue(Queues.MAIN)
     AsyncFunction("pause") { id: String -> ProtectionService.stop(context, id, "paused"); ProtectionRuntime.state() }.runOnQueue(Queues.MAIN)
     // React reload/recents removal must not cancel a still-running native session lease.

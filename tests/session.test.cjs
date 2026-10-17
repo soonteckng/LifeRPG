@@ -57,12 +57,12 @@ const fixtureServerId = (value) => {
 };
 const definitiveServerRejection = () => Object.assign(Error("Server rejected the request"), { failureKind: "definitive", requestSent: true });
 
-async function providerSetup(overrides = {}, notifications = null, nativeLifecycle = null) {
+async function providerSetup(overrides = {}, notifications = null, nativeLifecycle = null, protectionNative = null) {
   let state, show = true, tick, foreground;
   const summarySnapshots = [];
   const calls = [];
   const realInterval = global.setInterval, realClear = global.clearInterval, realNow = Date.now;
-  let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false;
+  let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false, sessionReads = 0;
   const serverRows = new Map(), values = new Map();
   const storage = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); } };
   global.setInterval = (fn) => { tick = fn; return 1; };
@@ -129,7 +129,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
       row.completed_at = new Date(now).toISOString(); row.credit_result = saved;
       return { sessionId: id, durationSeconds: saved.duration_seconds, result: saved };
     },
-    async readSession(id) { await initialRows(); return serverRows.has(id) ? mapper(serverRows.get(id), scope, observe()) : null; },
+    async readSession(id) { sessionReads++; await initialRows(); return serverRows.has(id) ? mapper(serverRows.get(id), scope, observe()) : null; },
     async readOpenSessions() {
       await initialRows();
       return { complete: true, sessions: [...serverRows.values()].filter(row => ["active", "paused"].includes(row.status)).map(row => mapper(row, scope, observe())) };
@@ -140,6 +140,15 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   const auth = { user: { id: PROVIDER_SCOPE.ownerId }, localOwner: { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId },
     accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async () => { verifications++; return { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }; } };
   const flush = () => new Promise(resolve => setImmediate(resolve));
+  // Legacy fixture sessions keep their original controls. Protection cases use
+  // the production readiness function, replacing only the device boundary.
+  const prepareProtectedSession = protectionNative
+    ? load("src/services/protectedSessionStart.ts", {
+      "react-native": { Platform: { OS: "android" } },
+      "@react-native-async-storage/async-storage": storage,
+      "./nativeFocusProtection": { getSessionProtectionModule: async () => protectionNative },
+    }).prepareProtectedSession
+    : async () => false;
   const { TimerProvider, useTimer } = load("src/context/TimerContext.tsx", {
     "react-native": { Platform: { OS: "android" }, AppState: { addEventListener: (_, fn) => { foreground=fn; return { remove() {} }; } } },
     "expo": { isRunningInExpoGo: () => false },
@@ -147,6 +156,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "@react-native-async-storage/async-storage": storage,
     "expo-notifications": notifications,
     "expo-haptics": { notificationAsync: async () => {}, NotificationFeedbackType: { Success: "success" } },
+    "../services/protectedSessionStart": { prepareProtectedSession },
     "../services/sessionService": service,
     "../services/offlineSessionService": {
       createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, readFreshGrant: () => null }),
@@ -166,7 +176,8 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, calls, verifications: () => verifications, summarySnapshots,
+    state: () => state, calls, verifications: () => verifications, summarySnapshots, sessionReads: () => sessionReads,
+    persistedJournal: () => JSON.parse([...values].find(([key]) => key.startsWith("liferpg:session-journal:v1:"))?.[1] ?? "null"),
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
     backgroundTime: (seconds) => { now += seconds*1000; },
@@ -503,10 +514,17 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   let renderer;
   await act(async()=>{renderer=create(React.createElement(Screen));});
   const text=(node)=>typeof node==="string"?node:(node.children??[]).map(text).join("");
-  const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label);
+  // Setup mirrors Home: Length is one row whose sheet holds presets and custom time.
+  const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label||label==="Set a custom focus duration"&&node.props.testID==="focus-duration-chip");
   return {
     calls,animations,button,root:()=>renderer.root,output:()=>text(renderer.root),
-    press:async(label)=>{const node=button(label);assert.ok(node,label);await act(async()=>node.props.onPress());},
+    press:async(label)=>{
+      const preset=/^Use (\d+) minutes$/.exec(label);
+      if(preset&&!button(label)){
+        await act(async()=>button("Set a custom focus duration").props.onPress());
+        await act(async()=>renderer.root.findByType("DurationSheet").props.onConfirm(Number(preset[1])*60));return;
+      }
+      const node=button(label);assert.ok(node,label);await act(async()=>node.props.onPress());},
     update:async(changes)=>{state={...state,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
     updateRoutines:async(changes)=>{savedRoutines={...savedRoutines,...changes};await act(async()=>renderer.update(React.createElement(Screen)));},
     dismissResult:async(sessionId=state.sessionId ?? null, overrides={})=>{await act(async()=>lifecycle.dismissResult({
@@ -517,6 +535,62 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     cleanup:async()=>{await act(async()=>renderer.unmount());},
   };
 }
+
+test("a fresh ready Android Start persists protection and renders the break control after reconciliation", async () => {
+  let readinessChecks = 0;
+  const native = { formatVersion: 3, capabilities: async () => {
+    readinessChecks++;
+    return { supported: true, usage: true, overlay: true, notifications: true };
+  } };
+  const provider = await providerSetup({}, null, null, native);
+  let screen;
+  try {
+    await provider.run(timer => timer.startTimer(120, "Fresh protected session"));
+    assert.equal(readinessChecks, 1, "Start checks the production native readiness boundary");
+    assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
+    assert.equal(provider.state().protectedSession, true);
+    assert.equal(provider.state().hasOpenSession, true);
+    assert.equal(provider.state().actionError, null);
+    const started = provider.persistedJournal();
+    assert.equal(started.schemaVersion, 3);
+    assert.deepEqual(started.records[0].protection, { breakStartedAtMs: null, breakEndsAtMs: null });
+    screen = await screenSetup(provider.state());
+    assert.ok(screen.button("5-min break"), "a new protected session exposes its one break");
+    assert.equal(screen.button("5-min break").props.disabled, false);
+    assert.equal(screen.button("Pause"), undefined);
+    assert.equal(screen.button("Resume"), undefined);
+
+    const readsBeforeForeground = provider.sessionReads();
+    await provider.background();
+    provider.backgroundTime(2);
+    await provider.foreground();
+    assert.ok(provider.sessionReads() > readsBeforeForeground, "foreground actually reconciles the server session");
+    assert.equal(provider.state().protectedSession, true);
+    assert.deepEqual(provider.persistedJournal().records[0].protection, started.records[0].protection);
+    await screen.update(provider.state());
+    assert.ok(screen.button("5-min break"), "server reconciliation cannot turn the break into legacy Pause");
+    assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
+  } finally {
+    await screen?.cleanup();
+    await provider.cleanup();
+  }
+});
+
+test("Android Start with missing protection access cannot create an ordinary timer or server session", async () => {
+  for (const missing of ["supported", "usage", "overlay", "notifications", "updated-build"]) {
+    const native = { formatVersion: missing === "updated-build" ? 2 : 3,
+      capabilities: async () => ({ supported: true, usage: true, overlay: true, notifications: true, [missing]: false }) };
+    const provider = await providerSetup({}, null, null, native);
+    try {
+      await provider.run(timer => timer.startTimer(120, "Must not start"));
+      assert.equal(provider.calls.filter(([name]) => name === "start").length, 0, missing);
+      assert.equal(provider.state().hasOpenSession, false, missing);
+      assert.equal(provider.state().protectionSetupRequired, true, missing);
+      assert.match(provider.state().actionError, missing === "updated-build" ? /updated Android build/ : /Set up session protection/, missing);
+      assert.equal(provider.persistedJournal().records.length, 0, missing);
+    } finally { await provider.cleanup(); }
+  }
+});
 
 test("opening Custom keeps the timer display and applied duration stable",async()=>{
   const ui=await screenSetup();
@@ -812,13 +886,13 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   assert.equal(completed.detail,"Review session");
 });
 
-test("free setup has one Life area category and a discoverable optional quest row",async()=>{
+test("free setup lists the same rows as Home with an optional routine",async()=>{
   const ui=await screenSetup();
   assert.ok(ui.button("Choose from routines"));
-  assert.ok(ui.button("Select Everyday focus"));
-  assert.equal(ui.button("Choose focus area"),undefined);
+  assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Everyday focus");
+  assert.ok(ui.button("Set a custom focus duration"));
   assert.equal(ui.button("Choose activity"),undefined);
-  assert.match(ui.output(),/Optional/);
+  assert.match(ui.output(),/RoutineNone/);
   await ui.press("Choose from routines");
   assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
@@ -905,12 +979,12 @@ test("viewed completion hides its dock without hiding a running session",async()
   const Dock=load("src/components/SessionTabBar.tsx",{
     "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:390,fontScale:1})},
     "expo-router":{useRouter:()=>({navigate:()=>{}})},"expo-router/js-tabs":{BottomTabBar:host("Tabs")},
-    "@expo/vector-icons":{Ionicons:host("Icon")},"react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:0})},
+    "@expo/vector-icons":{Ionicons:host("Icon")},"react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:0})},"react-native-svg":{__esModule:true,default:host("Svg"),Defs:host("Defs"),LinearGradient:host("Gradient"),Rect:host("Rect"),Stop:host("Stop")},
     "../context/TimerContext":{useTimer:()=>timer},
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);
-  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#1E1E21");
+  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#63E6BE");
   assert.equal(renderer.root.findByType("Button").props.activeOpacity,1);
   timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
   assert.equal(renderer.root.findAllByType("Button").length,0);
@@ -1314,12 +1388,13 @@ test("saved completion carries independent XP banks and server goal credit witho
   } finally { await ui.cleanup(); }
 });
 
-test("compact Session chips select the saved Life area without touching quest or duration", async()=>{
+test("the focus area row selects the saved Life area without touching quest or duration", async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
-  await ui.press("Select Learning");
+  await ui.press("Choose focus area");
+  await ui.press("Learning");
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
-  assert.equal(ui.button("Select Learning").props.accessibilityState.selected,true);
+  assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Learning");
   await ui.press("Use 60 minutes");
   assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
   await ui.update({duration:3600,timeLeft:3600});
@@ -1328,13 +1403,15 @@ test("compact Session chips select the saved Life area without touching quest or
   await ui.cleanup();
 });
 
-test("Session category chips share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
+test("Session area choices share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
   const ui=await screenSetup({targetAttributeId:3}, {subjects:[{id:1,title:"General"},{id:2,title:"Fitness & Health"},{id:3,title:"Grooming & Vitality"},{id:4,title:"Work"},{id:5,title:"Creative practice"}]});
   try {
-    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Select Wellbeing");
-    assert.equal(choices.length,1);assert.equal(ui.button("Select Wellbeing").props.accessibilityState.selected,true);
-    await ui.press("Select Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
-    assert.ok(ui.button("Select Work & projects"));assert.ok(ui.button("Select Creativity"));
+    await ui.press("Choose focus area");
+    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Wellbeing");
+    assert.equal(choices.length,1);assert.equal(choices[0].props.accessibilityState.checked,true);
+    await ui.press("Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
+    await ui.press("Choose focus area");
+    assert.ok(ui.button("Work & projects"));assert.ok(ui.button("Creativity"));
   } finally {await ui.cleanup();}
 });
 
@@ -1343,12 +1420,12 @@ test("the completed route does not render an additional area reward below the sh
   try{assert.doesNotMatch(ui.output(),/Character XP|Focus area XP|Everyday focus\+1 XP/);assert.equal(ui.button("New session"),undefined);}
   finally{await ui.cleanup();}
 });
-test("five visible Life areas need no More sheet; additional areas remain selectable",async()=>{
+test("every Life area is reachable from one focus area sheet",async()=>{
   const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
   const ui=await screenSetup({}, {subjects});
-  for(const area of subjects) assert.ok(ui.button(`Select ${area.title === "General" ? "Everyday focus" : area.title}`));
-  assert.equal(ui.button("Choose focus area"),undefined);
-  await ui.press("Select Area 5");
+  await ui.press("Choose focus area");
+  for(const area of subjects) assert.ok(ui.button(area.title === "General" ? "Everyday focus" : area.title));
+  await ui.press("Area 5");
   assert.deepEqual(ui.calls.at(-1),["area",5]);
   await ui.cleanup();
   const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
@@ -1357,11 +1434,6 @@ test("five visible Life areas need no More sheet; additional areas remain select
   assert.deepEqual(extra.calls.at(-1),["area",7]);
   await extra.cleanup();
 });
-
-
-
-
-
 
 test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
   const calls=[];
@@ -1396,13 +1468,13 @@ test("completion message shows saved exact duration and awards; Done only closes
     const scroll=renderer.root.findByType('Scroll');
     assert.equal(scroll.props.enableFooterMarginAdjustment,true, 'scrollable details reserve the native footer height');
     const actions=renderer.root.findByProps({testID:'session-result-actions'});
-    assert.equal(actions.props.style[0].flexShrink,0);
+    assert.equal([].concat(actions.props.style)[0].flexShrink,0);
     assert.equal(scroll.props.style.flex,1);
     assert.equal(scroll.findAllByType('Button').length,0,'Done and Save as quest must not require scrolling through result details');
     assert.equal(actions.findByType('Button').props.accessibilityRole,'button');
     assert.equal(text(actions.findByType('Button')),'Done');
     assert.equal(actions.findByType('GuidedBoundary').props.compact,true);
-    assert.equal(renderer.root.findByType('Ring').props.size,60);
+    assert.ok(renderer.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===56)),'the compact hero shows its badge');
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
@@ -1421,7 +1493,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     fontScale=1.6;
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
-    assert.equal(renderer.root.findByType('Ring').props.size,48,'large text gets a smaller decorative ring instead of reducing text or hiding actions');
+    assert.ok(renderer.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'large text gets a smaller decorative badge instead of reducing text or hiding actions');
     assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
     assert.equal(scrollResets.length,2);
     await act(async()=>renderer.root.findByType("Button").props.onPress());
@@ -1542,20 +1614,19 @@ test("Quick Start cannot discard failed completion or restoration and rejects in
   } finally {await ui.cleanup();}
 });
 
-test("Session presets include the 30-minute default and match typed duration", async()=>{
+test("Session length row shows the 30-minute default and applies sheet presets", async()=>{
   const ui=await screenSetup();
   try {
-    assert.equal(ui.button("Use 30 minutes").props.accessibilityState.selected,true);
-    assert.equal(ui.button("25 minutes"),undefined);
-    for(const minutes of [30,60]) assert.ok(ui.button(`Use ${minutes} minutes`));
-    assert.ok(ui.button("Set a custom focus duration"));
+    assert.equal(ui.button("Set a custom focus duration").props.accessibilityValue.text,"30 min");
     await ui.press("Use 60 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
     await ui.update({duration:3600,timeLeft:3600});
+    assert.equal(ui.button("Set a custom focus duration").props.accessibilityValue.text,"60 min");
     await ui.press("Use 30 minutes");
     assert.deepEqual(ui.calls.at(-1),["seconds",1800]);
   } finally {await ui.cleanup();}
 });
+
 test("global Done closes the session route once with its existing fade while retaining no duplicate summary",async()=>{
   const ui=await screenSetup({isCompleted:true,sessionSummary:{durationSeconds:90,xpEarned:1,goldEarned:0}}, {}, true);
   try{
@@ -1587,6 +1658,33 @@ test("repeated terminal-clear publications only dismiss the anchored session rou
     assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
   }finally{await ui.cleanup();}
 });
+test("a pending protected control keeps its label and shows busy feedback after the first tap", async () => {
+  const ui = await screenSetup({hasOpenSession:true,isRunning:true,protectedSession:true,breakUsed:false,breakSecondsLeft:0,actionBusy:true});
+  try {
+    const control = ui.button('5-min break');
+    assert.ok(control);
+    assert.equal(control.props.disabled,true);
+    assert.equal(control.props.accessibilityState.busy,true);
+    assert.equal(ui.root().findAllByType('Spinner').length,1);
+    await ui.update({actionBusy:false});
+    assert.equal(ui.button('5-min break').props.disabled,false);
+    assert.equal(ui.root().findAllByType('Spinner').length,0);
+  } finally { await ui.cleanup(); }
+});
+
+test("slow legacy control confirmation becomes visibly busy and clears on completion", async () => {
+  const ui = await screenSetup({hasOpenSession:true,isRunning:false,actionBusy:true,interactionKind:'pause',syncStatus:'waiting'});
+  try {
+    assert.equal(ui.root().findAllByType('Spinner').length,0);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve,450)); });
+    assert.equal(ui.root().findAllByType('Spinner').length,1);
+    assert.equal(ui.button('Resume').props.disabled,true);
+    await ui.update({actionBusy:false,interactionKind:null,syncStatus:'idle'});
+    assert.equal(ui.root().findAllByType('Spinner').length,0);
+    assert.equal(ui.button('Resume').props.disabled,false);
+  } finally { await ui.cleanup(); }
+});
+
 test("Pause and Resume feedback keeps controls readable without a spinner, confirmation flash or phase fade",async()=>{
   const ui=await screenSetup({hasOpenSession:true,isRunning:false,actionBusy:true,interactionKind:"pause",syncStatus:"waiting"});
   try {

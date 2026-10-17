@@ -23,7 +23,7 @@ internal object CountdownEngine {
       || (projection.identity.clientSessionId == previous.identity.clientSessionId
         && projection.identity.recordRevision < previous.identity.recordRevision))) return Decision(false, current)
     val anchor = if (projection.phase == "running") {
-      val remaining = (projection.deadlineMs!! - wallMs).coerceIn(0, projection.targetMs)
+      val remaining = (projection.deadlineMs!! - wallMs).coerceIn(0, projection.targetMs + if (projection.resumeAtMs != null) 300000 else 0)
       CountdownAnchor(wallMs, elapsedMs, bootId, elapsedMs + remaining)
     } else null
     val actions = if (projection.showOngoing) projection.actions.map {
@@ -46,9 +46,15 @@ internal object CountdownEngine {
     val anchor = current.anchor
     val duration = if (anchor != null && anchor.bootId == bootId && elapsedMs >= anchor.elapsedMs)
       anchor.deadlineElapsedMs - elapsedMs else projection.deadlineMs!! - wallMs
-    return duration.coerceIn(0, projection.targetMs)
+    return duration.coerceIn(0, if (projection.resumeAtMs != null) projection.remainingMs else projection.targetMs)
   }
 
+  fun breakRemaining(current: CountdownState, wallMs: Long, elapsedMs: Long, bootId: String): Long {
+    val p = current.projection ?: return 0
+    if (p.resumeAtMs == null || current.cleared) return 0
+    val a = current.anchor
+    return (if (a != null && a.bootId == bootId && elapsedMs >= a.elapsedMs) a.deadlineElapsedMs - elapsedMs - p.remainingMs else p.resumeAtMs - wallMs).coerceAtLeast(0)
+  }
   // Android's chronometer displays a whole second before the app's ceil-based
   // numeral unless its DISPLAY base is shifted. Never shift the alarm anchor,
   // timeout, stored deadline, elapsed time or completion eligibility.
@@ -60,7 +66,7 @@ internal object CountdownEngine {
     val old = current.anchor
     if (old != null && old.bootId == bootId && elapsedMs >= old.elapsedMs) return current
     return current.copy(anchor = CountdownAnchor(wallMs, elapsedMs, bootId,
-      elapsedMs + remaining(current, wallMs, elapsedMs, bootId)))
+      elapsedMs + (if (projection.resumeAtMs != null) (projection.deadlineMs!! - wallMs).coerceIn(0, projection.targetMs + 300000) else remaining(current, wallMs, elapsedMs, bootId))))
   }
 
   fun alarmMatches(current: CountdownState, leaseId: String?, clientId: String?, journalRevision: Long,

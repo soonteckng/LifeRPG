@@ -1,6 +1,6 @@
 import {
   JOURNAL_MAX_BYTES, JOURNAL_MAX_COMMANDS, JOURNAL_MAX_RECORDS, JOURNAL_VERSION,
-  JOURNAL_CLIENT_TIMING_VERSION, JOURNAL_CLIENT_MAX_SEGMENTS, JOURNAL_CLIENT_MAX_SPAN_MS,
+  JOURNAL_PROTECTED_VERSION, JOURNAL_CLIENT_TIMING_VERSION, JOURNAL_CLIENT_MAX_SEGMENTS, JOURNAL_CLIENT_MAX_SPAN_MS,
   JournalValidationError,
   type JournalClock, type JournalEnvelope, type JournalJson, type JournalReceipt,
   type JournalScope, type JournalSetup,
@@ -138,12 +138,20 @@ function validateClientTiming(item: JsonObject): void {
 
 function validateRecord(value: unknown, version: number): JsonObject {
   const item = object(value);
+  const hasProtection = Object.hasOwn(item, "protection");
+  if (hasProtection) {
+    const saved = object(item.protection); keys(saved, ["breakStartedAtMs", "breakEndsAtMs"]);
+    if (version !== JOURNAL_PROTECTED_VERSION || !nullableTime(saved.breakStartedAtMs) || !nullableTime(saved.breakEndsAtMs)
+      || (saved.breakStartedAtMs === null) !== (saved.breakEndsAtMs === null)
+      || saved.breakStartedAtMs !== null && ((saved.breakEndsAtMs as number) < (saved.breakStartedAtMs as number)
+        || (saved.breakEndsAtMs as number) - (saved.breakStartedAtMs as number) > 300000)) invalid();
+  }
   const hasTiming = Object.hasOwn(item, "clientTiming");
   const hasCheckpoint = Object.hasOwn(item, "serverCheckpoint");
-  if ((hasTiming || hasCheckpoint) && version !== JOURNAL_CLIENT_TIMING_VERSION) invalid();
+  if ((hasTiming || hasCheckpoint) && version < JOURNAL_CLIENT_TIMING_VERSION) invalid();
   keys(item, ["clientSessionId", "serverSessionId", "revision", "state", "setup", "startedAtMs", "elapsedMs",
     "clockAnchor", "endsAtMs", "completedAtMs", "observedAtMs", "dismissedAtMs", "verification", "clockWarning", "sync",
-    ...(hasTiming ? ["clientTiming"] : []), ...(hasCheckpoint ? ["serverCheckpoint"] : [])]);
+    ...(hasProtection ? ["protection"] : []), ...(hasTiming ? ["clientTiming"] : []), ...(hasCheckpoint ? ["serverCheckpoint"] : [])]);
   if (!isJournalUuid(item.clientSessionId) || !(item.serverSessionId === null || isJournalUuid(item.serverSessionId))
       || !integer(item.revision) || typeof item.state !== "string"
       || !["not_started", "running", "paused", "completed", "cancelled"].includes(item.state)
@@ -178,7 +186,7 @@ function validateRecord(value: unknown, version: number): JsonObject {
     if (item.state !== "completed" || sync.state !== "synced") invalid();
   }
   if (item.dismissedAtMs !== null
-      && ((!hasTiming && sync.state !== "rejected" && !(version === JOURNAL_CLIENT_TIMING_VERSION
+      && ((!hasTiming && sync.state !== "rejected" && !(version >= JOURNAL_CLIENT_TIMING_VERSION
         && (item.state === "completed" || item.state === "cancelled" && sync.state === "synced")))
         || !["completed", "cancelled"].includes(item.state as string))) invalid();
   if (hasTiming) {
@@ -211,7 +219,7 @@ function validateRecord(value: unknown, version: number): JsonObject {
 export function validateJournalEnvelope(value: unknown, scope: JournalScope): JournalEnvelope {
   validateJournalScope(scope);
   const envelope = object(value);
-  if (envelope.schemaVersion !== JOURNAL_VERSION && envelope.schemaVersion !== JOURNAL_CLIENT_TIMING_VERSION)
+  if (!([JOURNAL_VERSION, JOURNAL_CLIENT_TIMING_VERSION, JOURNAL_PROTECTED_VERSION] as number[]).includes(envelope.schemaVersion as number))
     throw new JournalValidationError("unsupported_version");
   keys(envelope, ["schemaVersion", "scope", "revision", "admission", "records", "commands"]);
   validateJournalScope(envelope.scope as JournalScope);
@@ -269,7 +277,7 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
       if (!journalJsonEqual(request.setup, record.setup)
           || (request.clock as JournalClock).wallTimeMs !== command.createdAtMs) invalid();
     } else if (command.kind === "import") {
-      if (envelope.schemaVersion !== JOURNAL_CLIENT_TIMING_VERSION || !record.clientTiming
+      if ((envelope.schemaVersion as number) < JOURNAL_CLIENT_TIMING_VERSION || !record.clientTiming
           || !["completed", "cancelled"].includes(record.state as string)) invalid();
       const timing = object(record.clientTiming);
       keys(request, ["policyVersion", "ending", "clientSessionId", "serverSessionId", "expectedRevision", "setup",
@@ -321,7 +329,7 @@ export function validateJournalEnvelope(value: unknown, scope: JournalScope): Jo
     }
     if (record.dismissedAtMs !== null && commands.some(item => isUnresolved(item)
       && !(record.clientTiming && item.kind === "import")
-      && !(envelope.schemaVersion === JOURNAL_CLIENT_TIMING_VERSION && record.state === "completed" && item.kind === "complete"))) invalid();
+      && !((envelope.schemaVersion as number) >= JOURNAL_CLIENT_TIMING_VERSION && record.state === "completed" && item.kind === "complete"))) invalid();
     if (record.state === "not_started" && !commands.some(item => item.kind === "start" && isUnresolved(item))) invalid();
     if (record.state === "not_started" && record.serverSessionId !== null
         && !commands.some(item => item.kind === "start" && item.status === "unknown")) invalid();

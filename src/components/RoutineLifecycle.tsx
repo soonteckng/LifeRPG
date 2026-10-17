@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { AppState, Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import { useAuth } from "../context/AuthContext";
@@ -37,19 +37,30 @@ export default function RoutineLifecycle() {
   const { soundEnabled } = useUser();
   const routines = useSavedRoutines();
   const { scope, ready, pendingCount } = routines;
-  const transport = useMemo(() => scope ? createRoutineTransport(scope, async () => {
-    const owner = await verifyCurrentOwner();
-    return owner?.backendId === scope.backendId ? owner.id : null;
-  }) : null, [scope, verifyCurrentOwner]);
+  // Owner verification itself updates Auth state. Its fresh callback must not
+  // replace the transport and invalidate the very sync awaiting that proof.
+  // Read only the latest committed verifier; account/admission changes still
+  // cancel the effect below and every RPC keeps its immutable expected owner.
+  const ownerVerifier = useRef(verifyCurrentOwner);
+  useLayoutEffect(() => { ownerVerifier.current = verifyCurrentOwner; }, [verifyCurrentOwner]);
+  const syncNow = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (!scope || !ready || !transport || auth.accessMode !== "online") return;
+    if (!scope || !ready || auth.accessMode !== "online") return;
     let active = true;
+    const transport = createRoutineTransport(scope, async () => {
+      const owner = await ownerVerifier.current();
+      return owner?.backendId === scope.backendId ? owner.id : null;
+    });
     const sync = () => { if (active && AppState.currentState === "active") void savedRoutineStore.sync(scope, transport, () => active); };
+    syncNow.current = sync;
     sync();
     const interval = setInterval(() => { if (savedRoutineStore.snapshot(scope).pendingCount) sync(); }, 15000);
     const foreground = AppState.addEventListener("change", state => { if (state === "active") sync(); });
-    return () => { active = false; clearInterval(interval); foreground.remove(); };
-  }, [scope, ready, pendingCount, transport, auth.accessMode, auth.admissionEpoch]);
+    return () => { active = false; if (syncNow.current === sync) syncNow.current = null; clearInterval(interval); foreground.remove(); };
+  }, [scope, ready, auth.accessMode, auth.admissionEpoch]);
+  // Queue edits wake an idle sync without cancelling an in-flight drain after
+  // each acknowledgement. The store coalesces these calls into one flight.
+  useEffect(() => { if (pendingCount) syncNow.current?.(); }, [pendingCount]);
   useEffect(() => {
     reminderSound = soundEnabled;
     const reconcile = () => { void reminders.update(ready ? scope : null, routines.routines).catch(() => {}); };

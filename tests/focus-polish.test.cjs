@@ -33,7 +33,7 @@ test('character tiers use the saved XP curve, have exact boundaries and keep gro
 });
 
 test('tier path renders all stages with one current tier and a clear next target',async()=>{
- const api=load('src/components/LevelTierSheet.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:16})},'./AppSheet':sheet});
+ const api=load('src/components/LevelTierSheet.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),TouchableOpacity:host('Press')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:16})},'./AppSheet':sheet});
  let tree;await act(async()=>{tree=create(React.createElement(api.default,{visible:true,onClose(){},level:3,currentXP:100}));});
  try{assert.match(content(tree.root),/Spark/);assert.match(content(tree.root),/Next tier: Momentum at level 6/);assert.doesNotMatch(content(tree.root),/total XP|more XP|XP to level/);const stages=tree.root.findAllByType('View').filter(node=>node.props.accessibilityLabel?.includes(', Level'));assert.equal(stages.length,12);assert.equal(stages.filter(node=>node.props.accessibilityLabel.includes('current tier')).length,1);assert.equal(tree.root.findByType('Sheet').props.expanded,true);}finally{await act(async()=>tree.unmount());}
 });

@@ -23,6 +23,7 @@ import { usePreventRemove } from "expo-router/react-navigation";
 import { TourScrollView } from "./FeatureTour";
 import { navigationTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
+import SwipeBack from "./SwipeBack";
 import { readSettingsOrigin, settingsTransform } from "../utils/settingsOrigin";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
@@ -95,6 +96,13 @@ export function PersonalPage({
       }
     });
   }, [controlled, navigation, router, position, width, reduced, expandFromIcon]);
+  // The swipe has already carried the page away; leave without animating again.
+  // Settings opens from and returns to its icon, so it has no swipe.
+  const swiped = useCallback(() => {
+    if (closing.current) return;
+    if (!navigation.canGoBack()) { router.replace("/profile"); return; }
+    closing.current = true; setExitReady(true);
+  }, [navigation, router]);
   usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
     if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }
@@ -106,7 +114,7 @@ export function PersonalPage({
       collapsable={false}
       onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
       style={{ flex: 1 }}
-    ><Animated.View
+    ><SwipeBack enabled={controlled && !expandFromIcon && !exitReady} onBack={swiped}><Animated.View
       renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
@@ -149,7 +157,7 @@ export function PersonalPage({
           </View>
         </TourScrollView>
       </SafeAreaView>
-    </Animated.View></View>
+    </Animated.View></SwipeBack></View>
   );
 }
 export function PersonalRow({
@@ -323,14 +331,12 @@ export const p = StyleSheet.create({
   button: {
     minHeight: 50,
     padding: 14,
-    borderRadius: 16,
+    borderRadius: 25,
     backgroundColor: colors.primary,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255,255,255,0.28)",
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonText: { fontSize: 16, lineHeight: 24, fontWeight: "500", color: colors.primaryText, textAlign: "center" },
+  buttonText: { fontSize: 16, lineHeight: 22, fontWeight: "600", color: colors.primaryText, textAlign: "center" },
   secondaryButton: { backgroundColor: colors.accentSoft },
   input: {
     minHeight: 50,
@@ -342,7 +348,7 @@ export const p = StyleSheet.create({
     color: colors.text,
     fontSize: 16,
   },
-  error: { color: colors.danger, fontSize: 14, lineHeight: 21 },
+  error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   sheetHeader: { paddingHorizontal: 20, paddingBottom: 12, gap: 6 },
   sheetBody: { paddingHorizontal: 20, paddingBottom: 30, gap: 16 },
   divider: { height: 1, backgroundColor: colors.line },

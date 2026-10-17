@@ -101,9 +101,9 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   </OnboardingFrame>;
 }
 const s = StyleSheet.create({
-  choices: { gap: 12 }, note: { padding: 22, borderRadius: 22, backgroundColor: colors.surface, gap: 12 }, noteTitle: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: "500" }, noteBody: { color: colors.secondary, fontSize: 17, lineHeight: 25 },
-  inputError: { color: colors.danger, fontSize: 16, lineHeight: 23, fontWeight: "500" },
-  input: { minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 16, color: colors.text, fontSize: 20 }, hint: { color: colors.secondary, fontSize: 15, lineHeight: 22 }, goals: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
+  choices: { gap: 12 }, note: { padding: 22, borderRadius: 22, backgroundColor: colors.surface, gap: 12 }, noteTitle: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: "500" }, noteBody: { color: colors.secondary, fontSize: 17, lineHeight: 22 },
+  inputError: { color: colors.danger, fontSize: 16, lineHeight: 22, fontWeight: "500" },
+  input: { minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 16, color: colors.text, fontSize: 20 }, hint: { color: colors.secondary, fontSize: 15, lineHeight: 20 }, goals: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   goal: { flexGrow: 1, flexBasis: "45%", borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 18, gap: 6 }, selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, goalNumber: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500" },
   illustration: { alignItems: "center", paddingVertical: 4 }, symbol: { width: 112, height: 112, borderRadius: 56, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
 });

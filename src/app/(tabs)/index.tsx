@@ -10,14 +10,16 @@ import { useFocusDurationPreference } from "../../hooks/useFocusDurationPreferen
 import { preferenceForFocusArea } from "../../utils/focusPreference";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
+import { usePinnedActionPresent } from "../../components/PinnedAction";
 import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import { lifeAreaColor } from "../../utils/lifeAreaColor";
 import { validSessionSeconds } from "../../utils/sessionSetup";
 import CharacterMark from "../../components/CharacterMark";
-import ProgressRing from "../../components/ProgressRing";
 import ContentReveal from "../../components/ContentReveal";
+import ProgressRing from "../../components/ProgressRing";
+import { requiredCharacterXP } from "../../utils/levelTiers";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,7 +33,7 @@ import SavedRoutinesCard from "../../components/SavedRoutinesCard";
 import SessionProtectionControl from "../../components/SessionProtectionControl";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
-import { colors } from "../../constants/theme";
+import { colors, radius } from "../../constants/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useWindowDimensions, StyleSheet, View } from "react-native";
 import {
@@ -44,6 +46,8 @@ import { useUser } from "../../context/UserContext";
 import { getFocusStreak } from "../../services/progressService";
 import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
+import { prefetchCharacterData } from "../../hooks/useCharacterData";
+import { prefetchProgress } from "../../hooks/useProgressData";
 
 export default function HomeScreen() {
   const { accessMode, admissionEpoch } = useAuth();
@@ -53,7 +57,8 @@ export default function HomeScreen() {
   const timer = useTimer();
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
-  const dockKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale);
+  const pinned = usePinnedActionPresent();
+  const dockKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale, pinned);
   const dockHeight = useFloatingDockHeight(dockKey, dockEstimate);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
 
@@ -84,11 +89,22 @@ export default function HomeScreen() {
   const quickTitle = retainedAttempt?.title ?? quickArea?.title ?? "General";
   const activeSubject = subjects.find(area => area.id === timer.targetAttributeId);
   const activeArea = activeSubject?.title ?? "General";
+  // Start only looks unavailable when something needs fixing, never while Home settles.
+  const startUnavailable = !!timer.restoreError || !!questsError;
   const blocked = !!(timer.actionBusy || timer.endingSession || timer.isRestoring || timer.restoreError || (timer.isCompleted && !sessionSummary));
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
+  // Once Home has settled, ready Profile and Progress quietly so their first
+  // visit is already drawn. Each loads at most once until it goes stale.
+  useEffect(() => {
+    if (!owner || accessMode !== "online") return;
+    const later = setTimeout(() => { prefetchCharacterData(owner, sessionSummary); prefetchProgress(owner, timeZone); }, 1500);
+    return () => clearTimeout(later);
+    // Only an account, mode or zone change asks again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, accessMode, timeZone]);
   const [goalCompleted, setGoalCompleted] = useState(false);
   const [todayGoal, setTodayGoal] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -138,6 +154,7 @@ export default function HomeScreen() {
   const remainingSeconds = Math.max(0, dailyGoalMinutes * 60 - safeCompletedSeconds);
 
   const level = profile?.level ?? 1;
+  const levelShare = Math.max(0, Math.min(99, Math.floor(((profile?.current_xp ?? 0) / requiredCharacterXP(level)) * 100)));
 
 
   const displayName = profile?.username?.trim() || "Hero";
@@ -197,18 +214,20 @@ export default function HomeScreen() {
     setGuidedSettings(true);
   };
 
-  const goalSummary = <View testID="home-compact-goal" style={styles.guidedGoal}>
-    <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.guidedGoalHeading} accessibilityRole="button" accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Change your goal`}>
+  const goalShare = Math.min(1, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60));
+  const goalSummary = <View testID="home-compact-goal">
+    <TouchableOpacity onPress={() => setGoalSettings(true)} style={styles.goalRow} accessibilityRole="button" accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Change your goal`}>
       <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
-        <ProgressRing size={52} stroke={6} progress={safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60)} color={isGoalComplete ? colors.success : colors.accent}>
-          <Ionicons name={isGoalComplete ? "checkmark" : "time-outline"} size={20} color={isGoalComplete ? colors.success : colors.accent} />
+        <ProgressRing size={104} stroke={12} progress={goalShare} color={isGoalComplete ? colors.success : colors.accent} track={colors.accentSoft}>
+          <Text style={styles.ringValue} numberOfLines={1} adjustsFontSizeToFit>{Math.floor(safeCompletedSeconds / 60)}</Text>
+          <Text style={styles.ringUnit}>of {dailyGoalMinutes} min</Text>
         </ProgressRing>
       </View>
       <View style={styles.goalCopy}>
-        <Text style={[styles.focusHeading, styles.goalLabel]}>{isGoalComplete ? "Daily goal reached" : "Today"}</Text>
-        <Text style={styles.goalValueText}>{dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}</Text>
+        <Text style={styles.goalLabel}>{isGoalComplete ? "Goal reached" : "Today"}</Text>
+        <Text style={styles.goalHeadline} numberOfLines={2}>{isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
+        <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text></View>
       </View>
-      <Ionicons name="options-outline" size={20} color={colors.accent} />
     </TouchableOpacity>
   </View>;
 
@@ -223,15 +242,20 @@ export default function HomeScreen() {
         <View testID="home-layout" style={styles.layout}>
           <TourAnchor id="home-identity"><View style={{ gap: 16 }}><View style={styles.headerBlock}>
             <View style={styles.identityRow}>
-              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones"><CharacterMark size={46} avatar={profile?.avatar ?? "🌱"} /></TouchableOpacity>
-              <View style={styles.identity} accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
-                <Text style={styles.greeting}>{greeting},</Text>
-                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
+              <View style={styles.identity}>
+                <View accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
+                  <Text style={styles.greeting}>{greeting},</Text>
+                  <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
+                </View>
+                <TouchableOpacity style={styles.levelButton} hitSlop={{ top: 10, bottom: 10, right: 12 }} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}, ${levelShare}% to level ${level + 1}. View level tiers`}>
+                  <Text style={styles.levelText}>Level {level} · {levelShare}% to level {level + 1}</Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity style={styles.levelButton} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}. View level tiers`}><Ionicons name="sparkles-outline" size={14} color={colors.accent} /><Text style={styles.levelText}>Lv {level}</Text></TouchableOpacity>
-            </View>
-            <View style={styles.identityMeta}>
-              <View style={styles.identityStat}><Ionicons name="flame-outline" size={15} color={colors.accent} /><Text style={styles.metaText}>{streakDays > 0 ? `${streakDays}-day focus streak` : "A fresh start"}</Text></View>
+              <TouchableOpacity style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="View your companion, focus areas and milestones">
+                <ProgressRing size={64} stroke={3.5} progress={levelShare / 100} color={colors.level} track={colors.levelSoft}>
+                  <View style={styles.avatarDisc}><CharacterMark size={42} avatar={profile?.avatar ?? "🌱"} /></View>
+                </ProgressRing>
+              </TouchableOpacity>
             </View>
           </View>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -244,13 +268,13 @@ export default function HomeScreen() {
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {(guided.error || durationPreference.error) && <TouchableOpacity onPress={() => { void guided.retry(); void durationPreference.retry(); }} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
             {!hasOpenSession && <TouchableOpacity onPress={openFocusPreferences} accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose a focus area or free focus" style={styles.changeButton}><Text style={styles.link}>Change direction</Text></TouchableOpacity>}
-          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))}
+          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))} dimmed={startUnavailable}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onStarted={openSession} onPreferences={openFocusPreferences} selectedSeconds={quickSeconds}
             onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)} /> : <FreeFocusCard key={owner}
-            seconds={hasOpenSession ? timer.timeLeft : quickSeconds}
+            seconds={hasOpenSession ? timer.finishing ? 0 : timer.timeLeft : quickSeconds} duration={hasOpenSession ? timer.duration : undefined}
             area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
-            active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} starting={quickStarting}
+            active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={!!hasOpenSession && timer.finishing} dimmed={startUnavailable} starting={quickStarting}
             disabled={blocked || (!hasOpenSession && (areasLoading || questsError)) || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || areasLoading || questsError || guided.busy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onPreferences={openFocusPreferences} onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)}
@@ -275,36 +299,33 @@ export default function HomeScreen() {
   );
 }
 const styles = StyleSheet.create({
-  guidedGoalSection: { flexGrow: 0, paddingTop: 0, gap: 12 },
-  guidedGoal: { width: "100%", gap: 8 },
-  guidedGoalHeading: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 14 }, goalCopy: { flex: 1, minWidth: 0, gap: 2 },
-  goalLabel: { fontSize: 12, lineHeight: 16, letterSpacing: 0.9, textTransform: "uppercase", color: colors.muted }, goalValue: { flexDirection: "row", alignItems: "center", gap: 10, flexShrink: 1 }, goalValueText: { color: colors.text, fontSize: 20, lineHeight: 26, letterSpacing: -0.3, fontWeight: "600", flexShrink: 1, fontVariant: ["tabular-nums"] },
-  guidedTrack: { height: 8, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.07)", overflow: "hidden" },
-  guidedFill: { height: 8, borderRadius: 4, backgroundColor: colors.accent },
+  goalRow: { flexDirection: "row", alignItems: "center", gap: 18 },
+  goalCopy: { flex: 1, minWidth: 0, gap: 4 },
+  goalLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.9, textTransform: "uppercase" },
+  goalHeadline: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  streakRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  streakText: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  ringValue: { color: colors.text, fontSize: 30, lineHeight: 34, fontWeight: "700", letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
+  ringUnit: { color: colors.secondary, fontSize: 12, lineHeight: 16 },
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 24 },
   focusContainer: { width: "100%", alignSelf: "stretch" },
-  identityRow: { flexDirection: "row", gap: 14, alignItems: "center" },
-  identity: { flex: 1, minWidth: 0 },
-  headerBlock: { gap: 10, paddingTop: 0, paddingBottom: 0 },
-  greeting: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "400" },
-  name: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 },
-  avatarFrame: { width: 58, height: 58, borderRadius: 29, alignItems: "center", justifyContent: "center", backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
-  levelButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 22, backgroundColor: colors.accentSoft, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
-  levelText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  identityMeta: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 10, paddingLeft: 72 },
-  identityStat: { minHeight: 30, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, borderRadius: 15, backgroundColor: "rgba(255,255,255,0.05)" }, heroRing: { width: 152, height: 152, alignItems: "center", justifyContent: "center" }, chipRow: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 10 },
-  metaText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
-  metaDivider: { width: 3, height: 3, borderRadius: 2, backgroundColor: colors.muted },
-  goalSection: { flexShrink: 0, alignItems: "stretch", paddingBottom: 0, gap: 12 },
-  goalHint: { textAlign: "center", color: colors.secondary, fontSize: 16, lineHeight: 22, maxWidth: 340 },
-  focusCard: { width: "100%", borderRadius: 22, backgroundColor: colors.surfaceRaised, padding: 14, gap: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  identityRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
+  identity: { flex: 1, minWidth: 0, gap: 2 },
+  headerBlock: { gap: 4 },
+  greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "400" },
+  name: { color: colors.text, fontSize: 32, lineHeight: 38, fontWeight: "700", letterSpacing: -0.8 },
+  levelButton: { alignSelf: "flex-start", minHeight: 28, justifyContent: "center" },
+  levelText: { color: colors.level, fontSize: 13, lineHeight: 18, fontWeight: "600" },
+  avatarFrame: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
+  avatarDisc: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  focusCard: { width: "100%", borderRadius: radius.card, backgroundColor: colors.surface, padding: 14, gap: 12 },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
-  primaryButton: { borderWidth: StyleSheet.hairlineWidth, borderColor: "rgba(255,255,255,0.28)", backgroundColor: colors.primary, width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 16, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
-  primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "500", flexShrink: 1, textAlign: "center" },
+  primaryButton: { backgroundColor: colors.primary, width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 26, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },
+  primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "600", flexShrink: 1, textAlign: "center" },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
   retry: { marginTop: 12, paddingVertical: 10 },
   retryText: { color: colors.danger, fontSize: 13 },

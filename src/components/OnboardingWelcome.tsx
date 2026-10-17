@@ -53,5 +53,5 @@ const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background, justifyContent: "center", padding: 32 }, content: { alignItems: "center", gap: 28 },
   halo: { width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.line },
   words: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: 8, rowGap: 4 }, word: { fontSize: 30, lineHeight: 40, fontWeight: "500", letterSpacing: -0.5, color: colors.text }, brand: { color: colors.accent },
-  detail: { textAlign: "center", fontSize: 17, lineHeight: 27, color: colors.secondary },
+  detail: { textAlign: "center", fontSize: 17, lineHeight: 22, color: colors.secondary },
 });

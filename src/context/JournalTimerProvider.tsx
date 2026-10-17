@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useLayoutEffe
 import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
+import { prepareProtectedSession } from "../services/protectedSessionStart";
 import { uuid } from "expo-modules-core";
 import { readSuggestedFocus, encodeSuggestedFocus, suggestedFocus, type SuggestedFocus } from "../constants/guidedQuests";
 import { createJournalSessionTransport } from "../services/sessionService";
@@ -38,6 +39,7 @@ interface SessionSummary {
   dailyCompletedSeconds?: number; dailyGoalMinutes?: number; goalReachedNow?: boolean; creditedDate?: string;
 }
 interface TimerContextType {
+  protectedSession: boolean; breakUsed: boolean; breakSecondsLeft: number; breakEndsAtMs: number | null; protectionSetupRequired: boolean;
   offlineAvailable: boolean;
   clientReported: boolean;
   offlineControlsAvailable: boolean;
@@ -45,6 +47,8 @@ interface TimerContextType {
   sessionId: string | null; recoveredSession: boolean;
   protectionSessionId: string | null;
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
+  /** Shown as 00:00 "Finishing up" while the confirmed timer catches up with the tap. End waits. */
+  finishing: boolean;
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
   syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; sessionEnded: boolean; unsyncedSessionCount: number;
@@ -91,6 +95,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [runtimeScopeKey, setRuntimeScopeKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ seconds: 1800, activityType: "other", subjectId: null as number | null,
     taskId: null as number | null, notes: "" });
+  const [protectionFailure, setProtectionFailure] = useState<{ scope: string | null; message: string } | null>(null);
   const [hiddenSavedId, setHiddenSavedId] = useState<string | null>(null);
   const [viewedSummaryId, setViewedSummaryId] = useState<string | null>(null);
   const [questTitle, setQuestTitle] = useState<{ id: number; title: string } | null>(null);
@@ -154,7 +159,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.restoreError === next.restoreError && current.syncStatus === next.syncStatus
       && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
       && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
-      && current.displayTimeLeft === next.displayTimeLeft
+      && current.displayTimeLeft === next.displayTimeLeft && current.finishing === next.finishing && current.breakSecondsLeft === next.breakSecondsLeft
       && current.recovered === next.recovered
       && current.offlineAvailable === next.offlineAvailable
       && current.cloudSaveVersion === next.cloudSaveVersion
@@ -308,7 +313,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setDraft(next); setHiddenSavedId(record?.state === "completed" ? record.clientSessionId : null); setViewedSummaryId(null);
     const startSetup: JournalSetup = { targetSeconds: seconds, activityType: next.activityType,
       taskId: next.taskId, subjectId: next.subjectId, notes: next.notes, title: title ?? readSuggestedFocus(next.notes)?.title ?? null };
-    try { return await controller.start(startSetup); }
+    try {
+      const protectedSession = await prepareProtectedSession(JSON.stringify([backendId, ownerId]));
+      if (controllerRef.current !== controller || authRef.current.admissionEpoch !== auth.admissionEpoch) return false;
+      setProtectionFailure(null);
+      return await controller.start(startSetup, protectedSession);
+    } catch (error) {
+      setProtectionFailure({ scope: controllerScopeKey, message: error instanceof Error ? error.message : "Check protection settings before starting." }); return false;
+    }
     finally { startInFlight.current = false; }
   };
   const startSuggestedTimer = (focus: SuggestedFocus, subjectId: number | null) => {
@@ -331,14 +343,19 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId, setViewedSummaryId]);
   const consumeNotificationAction = useCallback((nonce: string) => countdownRef.current?.action(nonce) ?? Promise.resolve(null), []);
   return <TimerContext.Provider value={{
+    protectedSession: !!record?.protection, breakUsed: record?.protection?.breakStartedAtMs != null,
+    breakSecondsLeft: runtime.breakSecondsLeft ?? 0,
+    breakEndsAtMs: record?.state === "running" ? record.protection?.breakEndsAtMs ?? null : null,
+    protectionSetupRequired: protectionFailure?.scope === controllerScopeKey,
     offlineAvailable: runtime.offlineAvailable,
     clientReported: !!record?.clientTiming,
     offlineControlsAvailable: !!record?.clientTiming || runtime.offlineAvailable && !!record?.serverCheckpoint,
     cloudSaveVersion: runtime.cloudSaveVersion,
     sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, protectionSessionId: record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
-    timeLeft, duration, isRunning: !runtime.ending && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
+    timeLeft, duration, isRunning: !runtime.ending && !(runtime.breakSecondsLeft && runtime.breakSecondsLeft > 0) && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
+    finishing: open && !runtime.ending && !!runtime.finishing,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
-    actionBusy: runtime.busy, actionError: runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
+    actionBusy: runtime.busy, actionError: protectionFailure?.scope === controllerScopeKey ? protectionFailure.message : runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
     syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
     retryCompletion: retry, retryAction: retry,
     resolveQuestTitle: (id, title) => { if (id === linkedTaskId) setQuestTitle(current => current?.id === id && current.title === title ? current : { id, title }); },

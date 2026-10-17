@@ -26,6 +26,24 @@ internal fun activeState(projection: CountdownProjection = projection()): Countd
 }
 
 class CountdownEngineTest {
+  @Test fun protectedBreakFreezesEffortAndKeepsTheFullFinishAlarmDeadline() {
+    val p = projection(remaining = 50000).copy(resumeAtMs = 1300000, deadlineMs = 1350000, actions = listOf("resume", "end"))
+    val state = activeState(p)
+    assertEquals(300000L, CountdownEngine.breakRemaining(state,1000000,20000,"boot-a"))
+    assertEquals(50000L, CountdownEngine.remaining(state,1299999,319999,"boot-a"))
+    assertEquals(0L, CountdownEngine.breakRemaining(state,1300000,320000,"boot-a"))
+    assertEquals(49000L, CountdownEngine.remaining(state,1301000,321000,"boot-a"))
+    assertFalse(CountdownEngine.expire(state,1300000,320000,"boot-a").accepted)
+    assertTrue(CountdownEngine.expire(state,1350000,370000,"boot-a").accepted)
+    assertEquals(p,CountdownParser.projection(p.json()))
+  }
+  @Test fun breakNotificationRecoversItsDeadlineAfterNativeProcessRestart() {
+    val p = projection(remaining = 50000).copy(resumeAtMs = 1300000, deadlineMs = 1350000, actions = listOf("resume", "end"))
+    val state = activeState(p).copy(anchor = null)
+    val restored = CountdownEngine.repairAnchor(state,1250000,5000,"boot-b")
+    assertEquals(50000L,CountdownEngine.breakRemaining(restored,1250000,5000,"boot-b"))
+    assertEquals(50000L,CountdownEngine.remaining(restored,1250000,5000,"boot-b"))
+  }
   @Test fun freshLeaseOwnsOnlyItsScope() {
     val activated = CountdownEngine.activate(CountdownState(), leaseA, testScope)
     assertTrue(activated.accepted); assertEquals(testScope, activated.state.scope)
