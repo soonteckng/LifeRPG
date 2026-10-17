@@ -18,7 +18,7 @@ export interface FocusCardProps {
   label: string; title: string; instruction: string; contentKey: string; suggested?: boolean;
   seconds: number; duration?: number; area: string; tint: string; active: boolean; running: boolean;
   busy: boolean; disabled: boolean; editDisabled: boolean; restoring?: boolean;
-  failed?: boolean; error?: string; setupDisabled?: boolean; awaitingStart?: boolean; onDuration: (seconds: number) => void;
+  failed?: boolean; error?: string; setupDisabled?: boolean; awaitingStart?: boolean; finishing?: boolean; onDuration: (seconds: number) => void;
   customSeconds?: number | null; onCustomDuration?: (seconds: number) => void;
   onPreferences?: () => void;
   goal?: ReactNode;
@@ -33,7 +33,7 @@ export default function FocusCard(props: FocusCardProps) {
   const preferencesLocked = props.busy || (props.setupDisabled ?? editLocked);
   const suggested = !props.active && props.suggested;
   const openPreferences = () => { if (!preferencesLocked) props.onPreferences?.(); };
-  const dock = sessionDockState({ isCompleted: false, isRunning: props.running, actionError: null, sessionSummary: null, timeLeft: props.seconds, awaitingStart: props.awaitingStart });
+  const dock = sessionDockState({ isCompleted: false, isRunning: props.running, actionError: null, sessionSummary: null, timeLeft: props.seconds, awaitingStart: props.awaitingStart, finishing: props.finishing });
   const prompt = <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
     <View style={[s.heading, props.active ? s.fieldsRow : s.group]}>
     {!props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
@@ -53,14 +53,14 @@ export default function FocusCard(props: FocusCardProps) {
     {props.goal && <View style={s.goalCard}>{props.goal}</View>}
     {props.active ? <View style={s.sessionCard}>
       <View style={s.heading}>
-        <Text style={s.label}>{props.awaitingStart ? "Checking session start" : props.running ? "In progress" : "Paused"}</Text>
+        <Text style={s.label}>{props.awaitingStart ? "Checking session start" : props.finishing ? "Finishing up" : props.running ? "In progress" : "Paused"}</Text>
       </View>
       {prompt}
       <View style={s.duration} testID="focus-card-duration"><Text style={s.meta}>{props.awaitingStart ? "Planned time" : "Time remaining"}</Text><Text style={s.remaining} accessibilityLabel={durationLabel(props.seconds)}>{sessionTime(props.seconds)}</Text></View>
     </View> : prompt}
     {props.active && !!props.protection && <View style={s.group}>{props.protection}</View>}
     <PinnedAction>
-      {props.active ? <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={[s.banner, locked && s.disabled]}
+      {props.active ? <Pressable testID={props.startID} onPress={props.onStart} disabled={locked} style={s.banner}
         accessibilityRole="button" accessibilityLabel="Continue session" accessibilityState={{ disabled: locked, busy: props.busy }}>
         {!props.awaitingStart && !!props.duration && props.duration > 0 && <View pointerEvents="none" style={s.progressTrack}>
           <View style={[s.progressFill, { width: `${Math.max(0, Math.min(1, 1 - props.seconds / props.duration)) * 100}%` }]} />
@@ -120,6 +120,6 @@ const s = StyleSheet.create({
   barTitle: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   barTime: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 19, fontWeight: "500", fontVariant: ["tabular-nums"] },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 3, backgroundColor: "rgba(17,19,27,0.10)" },
-  progressFill: { height: 3, backgroundColor: "rgba(17,19,27,0.45)" },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(17,19,27,0.12)" },
+  progressFill: { height: 4, backgroundColor: "rgba(17,19,27,0.78)" },
 });

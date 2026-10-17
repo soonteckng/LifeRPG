@@ -165,6 +165,7 @@ export default function ProgressScreen() {
     period,
     timeZone,
     sessionSummary,
+    profile?.id ?? "",
   );
   const analytics = useMemo(
     () =>

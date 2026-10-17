@@ -56,7 +56,9 @@ export default function GlobalRewardListener() {
       ? { key: pendingKey, ready: true } : current), 700);
     return () => clearTimeout(deadline);
   }, [pendingKey]);
-  const ready = !pending || ending || !online || timer.clientReported || !!timer.actionError
+  // Elsewhere in the app there is no saving status to read, and waiting would
+  // flash half-finished Home controls; the sheet takes over at once instead.
+  const ready = !pending || ending || !online || timer.clientReported || !!timer.actionError || !insideSession
     || pendingSurface.key === pendingKey && pendingSurface.ready;
   const available = !!ownerId && terminal && !timer.hasOpenSession && !timer.summaryViewed && ready;
   const quest = tasks.find(item => item.id === timer.linkedTaskId);

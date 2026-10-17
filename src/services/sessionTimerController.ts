@@ -80,6 +80,9 @@ export interface SessionTimerControllerSnapshot {
   // A transient view of the tap, never a journal transition or reward authority.
   interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
   displayTimeLeft: number | null;
+  // The tap-anchored display has reached zero while the confirmed (server)
+  // timer still has its last few seconds. Presentation only.
+  finishing?: boolean;
   recovered: boolean;
   breakSecondsLeft?: number;
   offlineAvailable: boolean;
@@ -213,6 +216,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     const displayTimeLeft = displayRemaining !== null && displayClock?.running && timer && timer.remainingMs > 0
       ? Math.max(1, displayRemaining) : displayRemaining;
     const feedback = interaction && clock ? { kind: interaction.kind, timeLeft: displayTimeLeft ?? state.timeLeft } : null;
+    const finishing = displayRemaining !== null && displayRemaining <= 0 && !!displayClock?.running && !!timer && timer.remainingMs > 0;
     const receipt = record?.sync.receipt ?? null;
     const waiting = !!record && (!!pending(record) || ["pending", "waiting_auth"].includes(record.sync.state));
     const syncStatus = !record ? "idle" : record.sync.state === "rejected" ? "rejected"
@@ -228,7 +232,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       breakSecondsLeft: record?.state === "running" && record.protection?.breakEndsAtMs && clock ? Math.max(0, Math.ceil((record.protection.breakEndsAtMs - clock.wallTimeMs) / 1000)) : 0,
       syncStatus, receipt: receipt ? copy(receipt) : null,
       rewardsVisible: !!receipt && rewardId === record?.clientSessionId,
-      ending: !!record && (pending(record)?.kind === "cancel" || record.state === "cancelled" && pending(record)?.kind === "import" || startStopRequested(record)), unsyncedSessionCount, interaction: feedback, displayTimeLeft,
+      ending: !!record && (pending(record)?.kind === "cancel" || record.state === "cancelled" && pending(record)?.kind === "import" || startStopRequested(record)), unsyncedSessionCount, interaction: feedback, displayTimeLeft, finishing,
       recovered: !!record && recoveredIds.has(record.clientSessionId),
       offlineAvailable: offlineAvailable(),
     };

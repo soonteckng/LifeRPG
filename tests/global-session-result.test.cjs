@@ -170,13 +170,21 @@ test('pending Done is available offline and confirmation resurfaces once after d
   }finally{await ui.cleanup();}
 });
 
-test('online saving uses a short grace but maintains one pending sheet while the confirmed receipt arrives',async t=>{
+test('online saving inside Session uses a short grace but maintains one pending sheet while the confirmed receipt arrives',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
-  const ui=await setup({isCompleted:true,syncStatus:'waiting'});
+  const ui=await setup({isCompleted:true,syncStatus:'waiting'},'online','/session');
   try{
     const result=ui.result();assert.equal(result.props.visible,false);
     await act(async()=>t.mock.timers.tick(800));assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
     await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
+  }finally{await ui.cleanup();}
+});
+test('outside Session a finished session is presented at once while it saves, never after half-finished Home states',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const ui=await setup({isCompleted:true,syncStatus:'waiting'});
+  try{
+    const result=ui.result();assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
+    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);assert.equal(result.props.pending,false);
   }finally{await ui.cleanup();}
 });
 

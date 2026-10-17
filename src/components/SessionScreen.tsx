@@ -87,6 +87,8 @@ export default function SessionScreen() {
   }
   const [confirmEnd, setConfirmEnd] = useState(false);
   if (!onlineSurfaces && (picker !== null || confirmEnd)) { setPicker(null); setConfirmEnd(false); }
+  // The last seconds are already earned; never offer to discard them.
+  if (liveTimer.finishing && confirmEnd) setConfirmEnd(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [slowControl, setSlowControl] = useState(false);
   useEffect(() => {
@@ -356,12 +358,14 @@ export default function SessionScreen() {
     : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
   const displayedSeconds = phase === "setup" ? timer.duration
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
-    : timer.timeLeft;
+    : timer.finishing ? 0 : timer.timeLeft;
   const breakActive = timer.breakSecondsLeft > 0;
   const breakSpent = timer.protectedSession && timer.breakUsed && !breakActive;
   const disabled = breakSpent || cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
   const immediateControl = timer.hasOpenSession || timer.awaitingStart || endRequested;
-  const controlPending = timer.actionBusy && (slowControl || !timer.interactionKind);
+  // A start being confirmed keeps its normal label, never a spinner (it is quick and expected).
+  const starting = timer.hasOpenSession && timer.interactionKind === "start";
+  const controlPending = timer.actionBusy && !starting && (slowControl || !timer.interactionKind);
   const checkingStart = timer.awaitingStart && !timer.interactionKind;
   const actionLabel = breakActive ? "End break early" : timer.protectedSession && timer.hasOpenSession ? breakSpent ? "Break used" : "5-min break" : phase === "ended" ? "Stopped" : checkingStart ? "Checking start" : timer.awaitingStart ? "Pause" : timer.hasOpenSession ? timer.isRunning ? "Pause" : "Resume" : "Start";
   const needsRecovery = !cancellationSaved && !timer.endingSession && !timer.isCompleted
@@ -387,12 +391,12 @@ export default function SessionScreen() {
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
             {(phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
-              progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
+              progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={breakActive ? "#F5B84B" : phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.success} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }]}>
             <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds}
-              compact caption={breakActive ? "break left · time is not recorded" : phase === "setup" ? isQuest ? "Planned focus" : undefined : `of ${sessionTime(timer.duration)}`} />
+              compact caption={breakActive ? "break left · time is not recorded" : phase === "setup" ? isQuest ? "Planned focus" : undefined : timer.finishing ? "Finishing up…" : `of ${sessionTime(timer.duration)}`} />
           </View>
           <Text style={[styles.status, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
@@ -461,9 +465,9 @@ export default function SessionScreen() {
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.background} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
-            {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy || timer.endingSession} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
+            {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy || timer.endingSession || !!timer.finishing} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
             </View>
-            {timer.hasOpenSession && phase !== "ended" && <Text style={styles.cancelHint}>Ending now doesn’t save this session.</Text>}
+            {timer.hasOpenSession && phase !== "ended" && <Text style={styles.cancelHint}>{timer.finishing ? "Saving your full session in a moment." : "Ending now doesn’t save this session."}</Text>}
           </>}
         </Animated.View>
       </KeyboardAvoidingView>

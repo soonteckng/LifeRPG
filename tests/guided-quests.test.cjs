@@ -14,6 +14,9 @@ function load(file, mocks = {}, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true} }).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    // Home's quiet tab preloads are covered by the Progress and Profile tests.
+    if(name.endsWith('/hooks/useCharacterData'))return{prefetchCharacterData(){}};
+    if(name.endsWith('/hooks/useProgressData'))return{prefetchProgress(){}};
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
     if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
     if(name.endsWith('/SavedRoutinesCard'))return host('SavedRoutinesCard');

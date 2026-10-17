@@ -59,6 +59,9 @@ interface Props {
   footer?: React.ReactNode;
   label: string;
   activityId?: symbol;
+  // An action that leaves for another screen skips the slide, so the next
+  // screen appears at once instead of after the sheet has visibly closed.
+  closeInstantly?: boolean;
 }
 
 const DismissContext = createContext({
@@ -162,6 +165,7 @@ export default function AppSheet({
   footer,
   label,
   activityId,
+  closeInstantly = false,
 }: Props) {
   const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const timingConfigs = useBottomSheetTimingConfigs(listTiming);
@@ -201,12 +205,6 @@ export default function AppSheet({
     if (visible) setMounted(true);
   }
 
-  useEffect(() => {
-    if (!visible && mounted) {
-      Keyboard.dismiss();
-      ref.current?.close();
-    }
-  }, [visible, mounted]);
 
   useEffect(() => {
     const show = Keyboard.addListener("keyboardDidShow", () => {
@@ -235,6 +233,18 @@ export default function AppSheet({
     // iOS must finish dismissing its native modal before a new route is presented.
     if (Platform.OS !== "ios") onDismiss?.();
   }, [visible, onRequestClose, onDismiss]);
+
+  const latestFinishClose = useRef(finishClose);
+  useLayoutEffect(() => { latestFinishClose.current = finishClose; });
+  useEffect(() => {
+    if (!visible && mounted) {
+      Keyboard.dismiss();
+      if (closeInstantly) latestFinishClose.current();
+      else ref.current?.close();
+    }
+    // Only a visibility change closes; re-renders must not restart the slide.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, mounted]);
 
   const backdrop = useCallback(
     (props: BottomSheetBackdropProps) => (

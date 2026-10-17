@@ -135,26 +135,31 @@ test("today's goal remains the first card before and after milestone history arr
  }finally{await ui.cleanup();}
 });
 
-test('Profile history is immediately reused by Milestones while refresh stays account-scoped',async()=>{
- let owner='first',snapshot,pending=false,resolveAreas,resolveSessions;
+test('Profile history is immediately reused by Milestones, refreshed after a new session, and stays account-scoped',async()=>{
+ let owner='first',summary=null,snapshot,pending=false,resolveAreas,resolveSessions,calls=0;
  const hook=load('src/hooks/useCharacterData.ts',{
   'expo-router':{useFocusEffect:callback=>React.useEffect(callback,[callback])},
   'react-native':{AppState:{addEventListener:()=>({remove(){}})}},
   '../context/UserContext':{useUser:()=>({profile:{id:owner}})},
-  '../context/TimerContext':{useTimer:()=>({sessionSummary:null})},
+  '../context/TimerContext':{useTimer:()=>({sessionSummary:summary})},
   '../utils/afterTransition':{afterTransition:callback=>{callback();return()=>{};}},
   '../services/progressService':{
-   getProgressSubjects:()=>pending?new Promise(resolve=>{resolveAreas=resolve;}):Promise.resolve([{id:1,title:'Learning'}]),
+   getProgressSubjects:()=>{calls++;return pending?new Promise(resolve=>{resolveAreas=resolve;}):Promise.resolve([{id:1,title:'Learning'}]);},
    getCompletedSessions:()=>pending?new Promise(resolve=>{resolveSessions=resolve;}):Promise.resolve([session('first','2026-09-01T04:00:00Z')]),
   },
  }).useCharacterData;
  function Consumer(){snapshot=hook();return null;}
  let renderer;
  await act(async()=>{renderer=create(React.createElement(Consumer));});
- const saved=snapshot.data;assert.equal(saved.userId,'first');
+ const saved=snapshot.data;assert.equal(saved.userId,'first');assert.equal(calls,1);
  await act(async()=>renderer.unmount());pending=true;
  await act(async()=>{renderer=create(React.createElement(Consumer));});
- assert.equal(snapshot.data,saved);assert.equal(snapshot.loading,true);
+ assert.equal(snapshot.data,saved);assert.equal(snapshot.loading,false);assert.equal(calls,1,'a fresh copy is reused without a download');
+ await act(async()=>renderer.unmount());summary={sessionId:'new'};
+ await act(async()=>{renderer=create(React.createElement(Consumer));});
+ assert.equal(snapshot.data,saved,'the old copy shows while a newer session is loaded');assert.equal(calls,2);
+ await act(async()=>{resolveAreas([{id:1,title:'Learning'}]);resolveSessions([]);});
+ assert.notEqual(snapshot.data,saved);
  await act(async()=>renderer.unmount());owner='second';
  await act(async()=>{renderer=create(React.createElement(Consumer));});
  assert.equal(snapshot.data,null);

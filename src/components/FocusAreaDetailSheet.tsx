@@ -15,16 +15,15 @@ import type { FocusAreaDetail } from "../utils/focusAreaDetail";
 type Area = { id: number; title: string; level: number; current: number; required: number; color: string };
 const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
 
-export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, sessionOpen, onFocus, onClose, onDismiss }: {
-  visible: boolean; area: Area | null; detail: FocusAreaDetail | null; timeZone: string; sessionOpen: boolean;
+export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, sessionOpen, leaving = false, onFocus, onClose, onDismiss }: {
+  visible: boolean; area: Area | null; detail: FocusAreaDetail | null; timeZone: string; sessionOpen: boolean; leaving?: boolean;
   onFocus: () => void; onClose: () => void; onDismiss: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const title = focusAreaTitle(area?.title);
   const peak = Math.max(1, ...(detail?.days.map(day => day.seconds) ?? []));
-  const change = detail ? detail.weekSeconds - detail.previousWeekSeconds : 0;
   const time = (at: string) => new Intl.DateTimeFormat(undefined, { timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(at));
-  return <AppSheet visible={visible && !!area} onRequestClose={onClose} onDismiss={onDismiss} label={`${title} focus area`}
+  return <AppSheet visible={visible && !!area} onRequestClose={onClose} onDismiss={onDismiss} closeInstantly={leaving} label={`${title} focus area`}
     header={area && <View style={s.header}>
       <View style={[s.icon, { backgroundColor: `${area.color}22` }]}><Ionicons name={focusAreaIcon(area.title)} size={24} color={area.color} /></View>
       <View style={s.headerText}><Text style={s.title} numberOfLines={1}>{title}</Text><Text style={s.caption}>Level {area.level}</Text></View>
@@ -46,14 +45,14 @@ export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, 
           <View key={label} style={s.stat} accessible accessibilityLabel={`${label}, ${value}`}><Text style={s.statValue}>{value}</Text><Text style={s.caption}>{label}</Text></View>)}
       </View>
       <View style={s.card}>
-        <View style={s.between}><Text style={s.label}>Last 7 days</Text>
-          {detail.previousWeekSeconds + detail.weekSeconds > 0 && <Text style={s.caption}>{change === 0 ? "Same as the week before" : `${change > 0 ? "+" : "−"}${durationLabel(Math.abs(change))} vs the week before`}</Text>}</View>
-        <View style={s.bars} accessible accessibilityLabel={`Last 7 days: ${durationLabel(detail.weekSeconds)} in ${title}`}>
+        <View style={s.between}><Text style={s.label}>Day by day</Text>
+          {detail.lastWeekByNow > 0 && <Text style={s.caption}>This point last week: {durationLabel(detail.lastWeekByNow)}</Text>}</View>
+        <View style={s.bars} accessible accessibilityLabel={`This week: ${durationLabel(detail.weekSeconds)} in ${title}`}>
           {detail.days.map((day, index) => {
-            const today = index === detail.days.length - 1;
+            const today = !day.future && detail.days[index + 1]?.future !== false;
             return <View key={day.day} style={s.barColumn}>
               <View style={s.barTrack}><View style={[s.bar, { height: `${day.seconds ? Math.max(8, day.seconds / peak * 100) : 0}%`, backgroundColor: area.color }]} /></View>
-              <Text style={[s.weekday, today && { color: colors.text }]}>{WEEKDAY[new Date(`${day.day}T12:00:00Z`).getUTCDay()]}</Text>
+              <Text style={[s.weekday, today && s.today, day.future && s.future]}>{WEEKDAY[new Date(`${day.day}T12:00:00Z`).getUTCDay()]}</Text>
             </View>;
           })}
         </View>
@@ -89,6 +88,8 @@ const s = StyleSheet.create({
   barTrack: { flex: 1, width: "100%", maxWidth: 22, justifyContent: "flex-end", borderRadius: 6, backgroundColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   bar: { width: "100%", borderRadius: 6 },
   weekday: { color: colors.muted, fontSize: 12, lineHeight: 16 },
+  today: { color: colors.text, fontWeight: "600" },
+  future: { opacity: 0.45 },
   section: { color: colors.text, fontSize: 17, lineHeight: 23, fontWeight: "600", paddingTop: 6 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.sheetCard },
   footer: { paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surfaceRaised },

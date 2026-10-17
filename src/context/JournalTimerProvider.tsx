@@ -47,6 +47,8 @@ interface TimerContextType {
   sessionId: string | null; recoveredSession: boolean;
   protectionSessionId: string | null;
   timeLeft: number; duration: number; isRunning: boolean; isCompleted: boolean; hasOpenSession: boolean;
+  /** Shown as 00:00 "Finishing up" while the confirmed timer catches up with the tap. End waits. */
+  finishing: boolean;
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
   syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; sessionEnded: boolean; unsyncedSessionCount: number;
@@ -157,7 +159,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       && current.restoreError === next.restoreError && current.syncStatus === next.syncStatus
       && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
       && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
-      && current.displayTimeLeft === next.displayTimeLeft && current.breakSecondsLeft === next.breakSecondsLeft
+      && current.displayTimeLeft === next.displayTimeLeft && current.finishing === next.finishing && current.breakSecondsLeft === next.breakSecondsLeft
       && current.recovered === next.recovered
       && current.offlineAvailable === next.offlineAvailable
       && current.cloudSaveVersion === next.cloudSaveVersion
@@ -351,6 +353,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     cloudSaveVersion: runtime.cloudSaveVersion,
     sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, protectionSessionId: record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && !(runtime.breakSecondsLeft && runtime.breakSecondsLeft > 0) && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
+    finishing: open && !runtime.ending && !!runtime.finishing,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: protectionFailure?.scope === controllerScopeKey ? protectionFailure.message : runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
     syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,

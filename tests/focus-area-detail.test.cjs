@@ -14,18 +14,18 @@ const areas=[{id:2,title:'Fitness & Health'},{id:7,title:'Grooming & Vitality'},
 const at=(day,hour=4)=>new Date(`${day}T${String(hour).padStart(2,'0')}:00:00Z`).toISOString();
 const session=(id,subject,seconds,completed,extra={})=>({id,subject_id:subject,activity_type:'general',duration_seconds:seconds,xp_earned:0,gold_earned:0,completed_at:completed,...extra});
 
-test('an area counts its legacy aliases, this week by local day, and the week before',()=>{
+test('an area counts its legacy aliases in the same Monday–Sunday week and comparison as Progress',()=>{
  const detail=focusAreaDetail(areas[0],areas,[
   session('today',2,600,at('2026-10-17')),
-  session('alias',7,300,at('2026-10-11')),           // first day of the 7-day window
-  session('before',2,1200,at('2026-10-10')),          // the week before
+  session('alias',7,300,at('2026-10-11')),           // last Sunday: after this point last week
+  session('before',2,1200,at('2026-10-10')),          // last Saturday noon: before this point last week
   session('older',2,60,at('2026-09-01')),             // counted in all time only
   session('other',6,999,at('2026-10-17')),            // another area
   session('late',2,120,'2026-10-16T17:30:00Z'),       // 01:30 on the 17th in Kuala Lumpur
  ],'Asia/Kuala_Lumpur',NOW);
- assert.deepEqual(detail.days.map(day=>day.day),['2026-10-11','2026-10-12','2026-10-13','2026-10-14','2026-10-15','2026-10-16','2026-10-17']);
- assert.equal(detail.days[6].seconds,720);assert.equal(detail.days[0].seconds,300);
- assert.equal(detail.weekSeconds,1020);assert.equal(detail.previousWeekSeconds,1200);
+ assert.deepEqual(detail.days.map(day=>day.day),['2026-10-12','2026-10-13','2026-10-14','2026-10-15','2026-10-16','2026-10-17','2026-10-18']);
+ assert.equal(detail.days[5].seconds,720);assert.equal(detail.days[6].future,true);assert.equal(detail.days[5].future,false);
+ assert.equal(detail.weekSeconds,720);assert.equal(detail.lastWeekByNow,1200);
  assert.equal(detail.seconds,2280);assert.equal(detail.sessions,5);
  assert.deepEqual(detail.recent.map(item=>item.id),['today','late','alias']);
 });
@@ -62,10 +62,18 @@ test('the sheet shows the week, recent sessions and a start button that defers t
  const props={visible:true,area,detail,timeZone:'Asia/Kuala_Lumpur',sessionOpen:false,onFocus(){},onClose(){},onDismiss(){}};
  let tree;await act(async()=>{tree=create(React.createElement(Sheet,props));});
  const text=()=>tree.root.findAllByType('Text').map(node=>[].concat(node.props.children).join(''));
- assert.ok(text().includes('60 XP to level 3'));assert.ok(text().includes('+15m vs the week before'));
+ assert.ok(text().includes('60 XP to level 3'));assert.ok(text().includes('This point last week: 10m'));
  assert.equal(tree.root.findByType('Button').props.accessibilityLabel,'Start a session in Piano');
  assert.ok(text().includes('Focus session'));
  await act(async()=>tree.update(React.createElement(Sheet,{...props,sessionOpen:true})));
  assert.equal(tree.root.findByType('Button').props.accessibilityLabel,'Return to your session');
  await act(async()=>tree.unmount());
+});
+test('the area week agrees with the Progress tab for the same sessions',()=>{
+ const {buildProgress,periodFor}=load('src/utils/progressAnalytics.ts');
+ const rows=[session('a',2,600,at('2026-10-13')),session('b',7,900,at('2026-10-17')),session('c',6,300,at('2026-10-16')),session('d',2,120,at('2026-10-06'))];
+ const progress=buildProgress(periodFor('week','2026-10-17','Asia/Kuala_Lumpur',NOW),rows,[],'Asia/Kuala_Lumpur',areas,NOW);
+ const wellbeing=progress.areas.find(group=>group.key==='kind:wellbeing');
+ const detail=focusAreaDetail(areas[0],areas,rows,'Asia/Kuala_Lumpur',NOW);
+ assert.equal(detail.weekSeconds,wellbeing.seconds);
 });

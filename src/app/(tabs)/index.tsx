@@ -44,6 +44,8 @@ import { useUser } from "../../context/UserContext";
 import { getFocusStreak } from "../../services/progressService";
 import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
 import { getTodayProgress } from "../../services/dailyProgressService";
+import { prefetchCharacterData } from "../../hooks/useCharacterData";
+import { prefetchProgress } from "../../hooks/useProgressData";
 
 export default function HomeScreen() {
   const { accessMode, admissionEpoch } = useAuth();
@@ -90,6 +92,15 @@ export default function HomeScreen() {
   const [completedSeconds, setCompletedSeconds] = useState(0);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
+  // Once Home has settled, ready Profile and Progress quietly so their first
+  // visit is already drawn. Each loads at most once until it goes stale.
+  useEffect(() => {
+    if (!owner || accessMode !== "online") return;
+    const later = setTimeout(() => { prefetchCharacterData(owner, sessionSummary); prefetchProgress(owner, timeZone); }, 1500);
+    return () => clearTimeout(later);
+    // Only an account, mode or zone change asks again.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [owner, accessMode, timeZone]);
   const [goalCompleted, setGoalCompleted] = useState(false);
   const [todayGoal, setTodayGoal] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -246,10 +257,10 @@ export default function HomeScreen() {
           </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onStarted={openSession} onPreferences={openFocusPreferences} selectedSeconds={quickSeconds}
             onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)} /> : <FreeFocusCard key={owner}
-            seconds={hasOpenSession ? timer.timeLeft : quickSeconds} duration={hasOpenSession ? timer.duration : undefined}
+            seconds={hasOpenSession ? timer.finishing ? 0 : timer.timeLeft : quickSeconds} duration={hasOpenSession ? timer.duration : undefined}
             area={hasOpenSession ? activeArea : quickTitle} areaId={hasOpenSession ? timer.targetAttributeId : quickAreaId} subjects={subjects}
             tint={lifeAreaColor(hasOpenSession ? timer.targetAttributeId : quickAreaId, (hasOpenSession ? activeSubject : subjects.find(area => area.id === quickAreaId))?.color_code)}
-            active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} starting={quickStarting}
+            active={!!hasOpenSession} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={!!hasOpenSession && timer.finishing} starting={quickStarting}
             disabled={blocked || (!hasOpenSession && (areasLoading || questsError)) || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || areasLoading || questsError || guided.busy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onPreferences={openFocusPreferences} onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)}

@@ -207,11 +207,13 @@ test('slow online Start cannot display zero while End would still be an early ca
   h.verifyHook = async () => { if (!delayed) { delayed = true; h.advance(1200); } };
   assert.equal(await controller.start({ ...setup, targetSeconds: 10 }), true);
   h.verifyHook = null;
+  assert.equal(controller.getSnapshot().finishing, false);
   h.advance(8800);
   await controller.tick();
   const before = controller.getSnapshot();
   assert.equal(before.timeLeft, 2, 'canonical session still has server-timed work remaining');
   assert.equal(before.displayTimeLeft, 1, 'presentation must not advertise premature completion');
+  assert.equal(before.finishing, true, 'the screen says it is finishing instead of freezing at one second');
   h.advance(1200);
   assert.equal(journalApi.deriveJournalTimer(h.persisted().records[0], h.clock()).remainingMs, 0);
   assert.equal(h.persisted().records[0].state, 'running', 'expiry tick has not run yet');

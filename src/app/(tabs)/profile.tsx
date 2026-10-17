@@ -65,6 +65,7 @@ export default function ProfileScreen() {
   const [tiersOpen, setTiersOpen] = useState(false);
   const [areaId, setAreaId] = useState<number | null>(null);
   const [areaOpen, setAreaOpen] = useState(false);
+  const [leavingArea, setLeavingArea] = useState(false);
   const afterArea = useRef<(() => void) | null>(null);
   useFocusEffect(
     useCallback(() => {
@@ -83,7 +84,7 @@ export default function ProfileScreen() {
       timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id);
     }
     afterArea.current = () => { timer.reviewSummary?.(); router.navigate("/session"); };
-    setAreaOpen(false);
+    setLeavingArea(true); setAreaOpen(false);
   };
   const open = () => {
     if (sheetClosing.current) return;
@@ -157,8 +158,8 @@ export default function ProfileScreen() {
         </View>
       </View></ContentReveal>
       <FocusAreaDetailSheet visible={areaOpen} area={selectedArea && { ...selectedArea, color: lifeAreaColor(selectedArea.id, selectedArea.color_code) }} detail={areaDetail}
-        timeZone={profile.timezone} sessionOpen={timer.hasOpenSession} onFocus={focusArea} onClose={() => setAreaOpen(false)}
-        onDismiss={() => { const next = afterArea.current; afterArea.current = null; next?.(); }} />
+        timeZone={profile.timezone} sessionOpen={timer.hasOpenSession} onFocus={focusArea} onClose={() => setAreaOpen(false)} leaving={leavingArea}
+        onDismiss={() => { const next = afterArea.current; afterArea.current = null; setLeavingArea(false); next?.(); }} />
       <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         expanded motionMode="timed" keyboardBehavior="fillParent" label="Personalise profile"

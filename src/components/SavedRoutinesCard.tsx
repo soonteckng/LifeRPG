@@ -28,6 +28,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
   // Starting asks first; the row itself opens its editor.
   const [confirm, setConfirm] = useState<RoutineEntry | null>(null);
+  // Starting from a sheet opens the session at once rather than after the slide.
+  const [leaving, setLeaving] = useState(false);
   const { entries, done } = routinePresentation(routines.routines, legacyTasks);
   const scopeKey = `${routines.scope?.backendId ?? ""}:${routines.scope?.ownerId ?? ""}`;
   const admissionEpoch = routines.admissionEpoch ?? 0;
@@ -37,7 +39,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const [previousSurface, setPreviousSurface] = useState({ active, scopeKey, admissionEpoch, online: routines.online, generation: 0 });
   if (previousSurface.active !== active || previousSurface.scopeKey !== scopeKey || previousSurface.admissionEpoch !== admissionEpoch || previousSurface.online !== routines.online) {
     setPreviousSurface({ active, scopeKey, admissionEpoch, online: routines.online, generation: previousSurface.generation + 1 });
-    setManage(false); setConfirm(null); setEditor(null); setLegacyEditor(null); setShowDone(false); setMessage("");
+    setManage(false); setConfirm(null); setLeaving(false); setEditor(null); setLegacyEditor(null); setShowDone(false); setMessage("");
   }
   const surfaceKey = JSON.stringify([scopeKey, admissionEpoch, previousSurface.generation]);
   const currentSurface = useRef(active ? surfaceKey : "");
@@ -62,7 +64,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       // quick start. A server reply must not delay opening the timer.
       const open = () => { if (onStarted) onStarted(); else if (routines.online) router.push("/session"); };
       if (manage || confirm) {
-        if (onStarted || routines.online) afterManageDismiss.current = { surfaceKey, open };
+        if (onStarted || routines.online) { afterManageDismiss.current = { surfaceKey, open }; setLeaving(true); }
         setManage(false); setConfirm(null);
       } else open();
       const started = await request;
@@ -92,7 +94,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     };
     const operation = {}; locked.current = operation; feedback();
     try {
-      if (manage || confirm) { afterManageDismiss.current = { surfaceKey, open }; setManage(false); setConfirm(null); }
+      if (manage || confirm) { afterManageDismiss.current = { surfaceKey, open }; setLeaving(true); setManage(false); setConfirm(null); }
       else await open();
     } finally { if (locked.current === operation) locked.current = null; }
   };
@@ -104,6 +106,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     finally { if (locked.current === operation) locked.current = null; }
   };
   const afterSheetDismiss = () => {
+      setLeaving(false);
       if (currentSurface.current !== surfaceKey) return;
       const pending = afterManageDismiss.current;
       afterManageDismiss.current = null;
@@ -141,7 +144,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
       {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
     </View>
-    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} compact maxHeightRatio={0.82} label="routines" header={<View style={s.sheetHeading}><Text style={s.title}>Your routines</Text><Text style={s.caption}>Start here again without setting everything up.</Text></View>}>
+    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact maxHeightRatio={0.82} label="routines" header={<View style={s.sheetHeading}><Text style={s.title}>Your routines</Text><Text style={s.caption}>Start here again without setting everything up.</Text></View>}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}>
         {showDone ? done.map(task => legacyRow(task, true, true)) : entries.map(entry => row(entry, true))}
         {!!done.length && <Pressable accessibilityRole="button" onPress={() => { feedback(); setShowDone(value => !value); }} style={s.manage}><Text style={s.link}>{showDone ? "Back to your routines" : `Done today (${done.length})`}</Text></Pressable>}
@@ -152,7 +155,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       </BottomSheetScrollView>
     </AppSheet>
-    <AppSheet key={`confirm:${surfaceKey}`} visible={!!confirm && active} onRequestClose={() => setConfirm(null)} onDismiss={afterSheetDismiss} compact label="start routine"
+    <AppSheet key={`confirm:${surfaceKey}`} visible={!!confirm && active} onRequestClose={() => setConfirm(null)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact label="start routine"
       header={confirm ? <View style={s.sheetHeading}><Text style={s.confirmTitle} numberOfLines={2}>Start “{confirm.name}”?</Text><View style={s.confirmMeta}><View style={[s.areaDot, { backgroundColor: lifeAreaColor(confirm.areaId, subjects.find(area => area.id === confirm.areaId)?.color_code) }]} /><Text style={s.caption}>{routineDuration(confirm.seconds)} · {focusAreaTitle(subjects.find(area => area.id === confirm.areaId)?.title)}</Text></View></View> : null}>
       <BottomSheetScrollView contentContainerStyle={s.confirmBody}>
         <Pressable disabled={blocked} onPress={() => { if (!confirm) return; if (confirm.kind === "saved") void start(confirm.routine); else void startLegacy(confirm.task); }} accessibilityRole="button" accessibilityLabel={confirm ? `Start ${confirm.name} now` : "Start now"} style={[s.confirmStart, blocked && s.confirmDisabled]}>
