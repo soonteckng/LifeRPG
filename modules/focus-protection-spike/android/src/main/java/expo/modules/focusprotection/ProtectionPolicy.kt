@@ -47,13 +47,15 @@ class ProtectionForegroundTracker(private val transientPackages: Set<String>) {
     foreground = activity
     if (pkg !in transientPackages) application = activity
   }
-  @Suppress("UNUSED_PARAMETER")
   fun paused(pkg: String, name: String?, eventAt: Long = Long.MAX_VALUE) {
     val current = foreground ?: return
     if (pkg !in transientPackages || current.pkg != pkg) return
-    // Class names can differ between gesture/launcher events on OEM devices.
-    // Ignore a delayed event older than the latest resume, using the public
-    // event timestamp. Hidden activity-instance APIs are not used.
+    // A launcher can host several activities. On Samsung One UI, opening
+    // Recents resumes RecentsActivity and then pauses the Launcher activity;
+    // that pause must not return to the blocked app while Recents is visible.
+    // A cancelled gesture pauses the same activity it resumed. Unknown names
+    // still fall back. Delayed events older than the latest resume are ignored.
+    if (name != null && current.name != null && name != current.name) return
     if (eventAt < current.resumedEventAt) return
     foreground = application; transientStartedAt = null
   }
@@ -70,7 +72,11 @@ class ProtectionForegroundTracker(private val transientPackages: Set<String>) {
     // Keep an existing cover through the provisional launcher/System UI
     // transition. A real allowed app/phone/Settings resume bypasses this hold.
     // A stable Home destination is released once, after the short settle time.
-    return if (overlayShowing && current.pkg in transientPackages && started != null && elapsed - started in 0L until 1000L)
+    // The tick's clock is read before the event clock, so a fresh hold can be a
+    // few milliseconds negative; it still counts. Recents is a settled place
+    // the user chose to be, so it is released at once instead of covered.
+    val inRecents = current.name?.contains("Recents", ignoreCase = true) == true
+    return if (overlayShowing && current.pkg in transientPackages && started != null && elapsed - started < 1000L && !inRecents)
       application?.pkg ?: current.pkg else current.pkg
   }
 }

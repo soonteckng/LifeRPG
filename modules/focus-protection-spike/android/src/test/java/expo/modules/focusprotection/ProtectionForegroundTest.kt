@@ -77,21 +77,48 @@ class ProtectionForegroundTest {
     assertFalse(covered(tracker, now = 2200L, showing = true))
     assertFalse(covered(tracker, now = 2600L, showing = false))
   }
-  @Test fun mismatchedOemClassNamesDoNotLeaveTheTrackerStuckOnTheLauncher() {
+  @Test fun aPauseOfAnotherLauncherActivityDoesNotLeaveTheVisibleOne() {
     val tracker = tracker(); tracker.resumed("video.app", "Player", elapsed = 1000L, eventAt = 1000L)
     tracker.resumed("home.app", "Launcher", elapsed = 1200L, eventAt = 1200L)
     tracker.paused("home.app", "OverviewProxy", 1250L)
-    assertEquals("video.app", tracker.packageName)
-    assertTrue(covered(tracker, now = 1250L, showing = true))
-    assertTrue(covered(tracker, now = 5000L, showing = true))
+    assertEquals("home.app", tracker.packageName)
+    assertFalse(covered(tracker, now = 5000L, showing = true))
   }
-  @Test fun aGesturePauseWithNullOrDifferentClassNamesCanStillRecover() {
-    for (name in listOf(null, "OverviewProxy")) {
+  @Test fun aCancelledGesturePauseWithTheSameOrUnknownClassRecovers() {
+    for (name in listOf(null, "Launcher")) {
       val tracker = tracker(); tracker.resumed("video.app", "Player")
       tracker.resumed("home.app", "Launcher", elapsed = 1200L)
       tracker.paused("home.app", name)
       assertTrue(covered(tracker, now = 1600L, showing = true))
     }
+  }
+  // Recorded on a Samsung One UI phone (17 Oct 2026), package names generalised.
+  @Test fun samsungRecentsIsNotCoveredAndCancelledSwipesAreRecovered() {
+    val launcher = "home.app"; val tracker = tracker()
+    tracker.resumed("video.app", "Player", elapsed = 25109L, eventAt = 24750L)
+    assertTrue(covered(tracker, now = 25109L))
+    // Swipe starts: the cover stays even though the tick clock is read first.
+    tracker.resumed(launcher, "Launcher", elapsed = 25916L, eventAt = 25803L)
+    assertTrue(covered(tracker, now = 25915L, showing = true))
+    // Into Recents: the app and Launcher pause, RecentsActivity is visible.
+    tracker.paused("video.app", "Player", 26577L)
+    tracker.resumed(launcher, "com.android.quickstep.RecentsActivity", elapsed = 26721L, eventAt = 26587L)
+    tracker.paused(launcher, "Launcher", 26722L)
+    tracker.stopped(launcher, "Launcher", 26738L)
+    tracker.stopped("video.app", "Player", 26746L)
+    assertEquals(launcher, tracker.packageName)
+    assertFalse(covered(tracker, now = 27126L, showing = true))
+    // Tapping the blocked app in Recents covers it again.
+    tracker.paused(launcher, "com.android.quickstep.RecentsActivity", 37761L)
+    tracker.resumed(launcher, "Launcher", elapsed = 38008L, eventAt = 37768L)
+    tracker.paused(launcher, "Launcher", 38468L)
+    tracker.resumed("video.app", "Player", elapsed = 38814L, eventAt = 38482L)
+    assertTrue(covered(tracker, now = 38814L))
+    // A partial swipe that is cancelled returns to the blocked app with no new resume.
+    tracker.resumed(launcher, "Launcher", elapsed = 40022L, eventAt = 39634L)
+    tracker.paused(launcher, "Launcher", 41761L)
+    assertEquals("video.app", tracker.packageName)
+    assertTrue(covered(tracker, now = 42036L))
   }
   @Test fun repeatedLauncherAndSystemResumesCannotExtendTheGraceForever() {
     val tracker = tracker(); tracker.resumed("video.app", "Player")
