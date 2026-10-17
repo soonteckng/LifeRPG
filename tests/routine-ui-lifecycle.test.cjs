@@ -55,6 +55,7 @@ async function pendingCard() {
   const Card = load('src/components/SavedRoutinesCard.tsx').default;
   let tree; await act(async () => { tree = create(React.createElement(Card, props)); });
   return { calls, pending,
+    output: () => tree.root.findAllByType('Text').map(node => node.children.filter(child => typeof child === 'string').join('')).join(' '),
     start: async () => act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start routine Review notes').props.onPress(); }),
     update: async change => { state = { ...state, ...change.state }; props = { ...props, ...change.props }; timer = { ...timer, ...change.timer };
       await act(async () => tree.update(React.createElement(Card, props))); },
@@ -90,6 +91,19 @@ test('an old routine read cannot unlock a newer pending Start or submit a duplic
     await ui.release(0); await ui.start(); assert.equal(ui.pending.length, 2);
     await ui.release(1);
     assert.deepEqual(ui.calls, [['start', 75, 2, 'Review notes'], ['route', '/session']]);
+  } finally { await ui.cleanup(); }
+});
+
+test('routine pending status distinguishes an active sync from a failed retry and clears after acknowledgement', async () => {
+  const ui = await pendingCard();
+  try {
+    await ui.update({ state: { pendingCount: 1, busy: true, error: null } });
+    assert.match(ui.output(), /Syncing routine changes/);
+    await ui.update({ state: { busy: false, error: "Saved on this phone. We'll sync your routines when the connection returns." } });
+    assert.doesNotMatch(ui.output(), /Syncing routine changes/);
+    assert.match(ui.output(), /Couldn't sync yet. We'll retry automatically/);
+    await ui.update({ state: { pendingCount: 0, error: null } });
+    assert.doesNotMatch(ui.output(), /Saved on this phone/);
   } finally { await ui.cleanup(); }
 });
 

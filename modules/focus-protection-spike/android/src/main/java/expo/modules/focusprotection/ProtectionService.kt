@@ -16,12 +16,14 @@ import android.os.Process
 import android.view.Gravity
 import android.view.WindowManager
 import android.widget.*
+import android.util.Log
 
 /** Session-bound protection. It has no database or reward mutation path. */
 class ProtectionService : Service() {
   companion object {
     private const val CHANNEL = "liferpg_protection_preview"
     private const val NOTIFICATION = 84103
+    private const val TRACE_TAG = "LifeRPGProtection"
     private var instance: ProtectionService? = null
     fun canStart() = instance == null
     fun stop(context: Context, id: String, reason: String) {
@@ -37,6 +39,7 @@ class ProtectionService : Service() {
   private lateinit var monitor: Handler
   @Volatile private var leaseId: String? = null
   private var overlay: LinearLayout? = null
+  @Volatile private var overlayShowing = false
   private var remainingText: TextView? = null
   private var foreground = ProtectionForegroundTracker(emptySet())
   private var wasOnBreak = false
@@ -118,8 +121,11 @@ class ProtectionService : Service() {
         // Keep lifecycle state across lock screens. Unlocking need not emit a
         // new RESUMED event for the app which was already under our cover.
         queryForeground()
-        if (interactive && !locked) cover = ProtectionPolicy.shouldCover(lease, foreground.packageName, essentials, userApps, elapsed)
+        val candidate = foreground.packageForCover(elapsed, overlayShowing)
+        if (interactive && !locked) cover = ProtectionPolicy.shouldCover(lease, candidate, essentials, userApps, elapsed)
         val shouldCover = cover
+        if (cover != overlayShowing && Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG,
+          "decision cover=$cover foreground=${foreground.packageName} candidate=$candidate showing=$overlayShowing locked=$locked interactive=$interactive break=$onBreak")
         handler.post {
           // A queued detection must not re-cover apps after Stop or expiry.
           if (!ProtectionPolicy.sameLease(ProtectionRuntime.current, lease.id) || lease.remaining(SystemClock.elapsedRealtime()) <= 0) return@post
@@ -144,8 +150,11 @@ class ProtectionService : Service() {
     while (events.hasNextEvent()) {
       events.getNextEvent(event)
       val pkg = event.packageName ?: continue
-      if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) foreground.resumed(pkg, event.className)
-      else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND || event.eventType == UsageEvents.Event.ACTIVITY_STOPPED) foreground.paused(pkg, event.className)
+      if (Log.isLoggable(TRACE_TAG, Log.DEBUG) && event.eventType in listOf(UsageEvents.Event.MOVE_TO_FOREGROUND, UsageEvents.Event.MOVE_TO_BACKGROUND, UsageEvents.Event.ACTIVITY_STOPPED))
+        Log.d(TRACE_TAG, "event type=${event.eventType} package=$pkg class=${event.className} at=${event.timeStamp} elapsed=${SystemClock.elapsedRealtime()}")
+      if (event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND) foreground.resumed(pkg, event.className, SystemClock.elapsedRealtime(), event.timeStamp)
+      else if (event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND) foreground.paused(pkg, event.className, event.timeStamp)
+      else if (event.eventType == UsageEvents.Event.ACTIVITY_STOPPED) foreground.stopped(pkg, event.className, event.timeStamp)
     }
     lastQuery = now
   }
@@ -156,7 +165,16 @@ class ProtectionService : Service() {
   }
   private fun showOverlay(lease: ProtectionLease) {
     if (overlay != null) return
-    val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#080809")) }
+    val root = object : LinearLayout(this) {
+      override fun onWindowVisibilityChanged(visibility: Int) {
+        super.onWindowVisibilityChanged(visibility)
+        if (Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay windowVisibility=$visibility attached=$isAttachedToWindow")
+      }
+      override fun onDetachedFromWindow() {
+        if (Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay detached")
+        super.onDetachedFromWindow()
+      }
+    }.apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#080809")) }
     val scroll = ScrollView(this).apply { isFillViewport = true }
     val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(24), dp(36), dp(24), dp(36)) }
     column.addView(text("SESSION PROTECTED", 14f, "#21C6B7"))
@@ -185,7 +203,8 @@ class ProtectionService : Service() {
     root.addView(footer, LinearLayout.LayoutParams(-1, -2))
     wm.addView(root, WindowManager.LayoutParams(-1, -1, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT))
-    overlay = root; ProtectionRuntime.covered(lease.id)
+    overlay = root; overlayShowing = true; ProtectionRuntime.covered(lease.id)
+    if (Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay attached")
     if (ValueAnimator.areAnimatorsEnabled()) { root.alpha = 0f; root.animate().alpha(1f).setDuration(180).start() }
   }
   private fun openDestination(intent: Intent) {
@@ -207,7 +226,8 @@ class ProtectionService : Service() {
   }
   private fun hideOverlay() {
     overlay?.let { it.animate().cancel(); runCatching { wm.removeViewImmediate(it) } }
-    overlay = null; remainingText = null
+    if (overlayShowing && Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay removed")
+    overlay = null; overlayShowing = false; remainingText = null
   }
   private fun finish(id: String, reason: String) {
     if (Looper.myLooper() != Looper.getMainLooper()) {

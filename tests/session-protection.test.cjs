@@ -220,3 +220,30 @@ test('an actual native Start failure releases its lease and never silently resta
   assert.match(f.events.at(-1).error, /off for this session/);
   await f.controller.dispose();
 });
+
+test('a failed native state read is uncertain, never evidence that the matching service stopped', async () => {
+  const f = setup(); await f.controller.update(base); const lease = f.state(), realRead = f.native.state;
+  f.native.state = async () => { throw Error('Native bridge briefly unavailable'); };
+  await f.controller.update({ ...base, seconds: 3599 });
+  assert.equal(f.events.at(-1).state.status, 'checking');
+  assert.equal(f.events.at(-1).state.id, lease.id);
+  assert.equal(f.state().id, lease.id); assert.equal(f.stops.length, 0); assert.equal(f.starts.length, 1);
+  f.native.state = realRead;
+  await f.controller.update({ ...base, seconds: 3598 });
+  assert.equal(f.events.at(-1).state.status, 'active'); assert.equal(f.events.at(-1).state.id, lease.id);
+  assert.equal(f.events.at(-1).error, ''); assert.equal(f.starts.length, 1);
+  await f.controller.dispose();
+});
+
+test('an uncertain read cannot expose another account or session lease as checking or active', async () => {
+  const f = setup(); await f.controller.update(base); const lease = f.state();
+  const realRead = f.native.state;
+  f.native.state = async () => { throw Error('Native bridge briefly unavailable'); };
+  await f.controller.update({ ...base, ownerKey: 'backend/bob', sessionKey: 'bob-session', restoring: true });
+  assert.equal(f.events.at(-1).state.status, 'checking'); assert.equal(f.events.at(-1).state.id, null);
+  assert.equal(f.events.at(-1).state.scope, JSON.stringify(['backend/bob', 'bob-session']));
+  f.native.state = realRead;
+  await f.controller.update({ ...base, ownerKey: 'backend/bob', sessionKey: 'bob-session', restoring: true });
+  assert.deepEqual(f.stops, [lease.id]); assert.equal(f.state().id, null);
+  await f.controller.dispose();
+});

@@ -33,8 +33,9 @@ export default function SessionProtectionControl({ statusOnly = false, activeSur
   if (timer.protectionSetupRequired && activeSurface && !setupPromptSeen) { setSetupPromptSeen(true); setOpen(true); }
   if (!timer.protectionSetupRequired && setupPromptSeen) setSetupPromptSeen(false);
   const protectedNow = protection.active;
+  const checking = protection.state.status === "checking";
   const interrupted = ["interrupted", "permission-lost"].includes(protection.state.status);
-  const label = timer.breakSecondsLeft > 0 ? "On break · protection returns automatically" : protectedNow ? "Protected" : interrupted ? "Protection interrupted" : protection.selection.mode === "normal" ? "Set up protection" : `${modeName(protection.selection.mode)}${timer.hasOpenSession ? " · not covering apps" : ""}`;
+  const label = timer.breakSecondsLeft > 0 ? "On break · protection returns automatically" : checking ? "Checking protection…" : protectedNow ? "Protected" : interrupted ? "Protection interrupted" : protection.selection.mode === "normal" ? "Set up protection" : `${modeName(protection.selection.mode)}${timer.hasOpenSession ? " · not covering apps" : ""}`;
   return <>
     <Pressable testID="session-protection-control" disabled={!activeSurface} style={[s.control, statusOnly && s.status]} onPress={() => { if (activeSurface) setOpen(true); }} accessibilityRole="button" accessibilityLabel={`${label}. ${timer.hasOpenSession ? "Session protection details" : "Session protection settings"}`}>
       {statusOnly ? <Ionicons name={protectedNow ? "shield-checkmark-outline" : interrupted ? "shield-half-outline" : "shield-outline"} size={16} color={protectedNow ? colors.protection : colors.secondary} />
@@ -76,7 +77,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
   // for the next session. Never substitute that preference into Details.
   const selection = locked ? protection.sessionSelection : { mode, allowed };
   const permissionsReady = !!(protection.capabilities?.usage && protection.capabilities?.overlay && protection.capabilities?.notifications);
-  const canRestore = locked && !!selection && selection.mode !== "normal" && !protection.active && !timer.breakSecondsLeft;
+  const canRestore = locked && !!selection && selection.mode !== "normal" && !protection.active && protection.state.status !== "checking" && !timer.breakSecondsLeft;
   const applyDisabled = saving || protection.busy || !protection.loaded || !protection.supported || !permissionsReady || locked && !canRestore;
   const apply = async () => {
     if (applyDisabled || !isCurrent() || !selection) return;
@@ -106,7 +107,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
     <BottomSheetScrollView enableFooterMarginAdjustment contentContainerStyle={s.sheetBody} keyboardShouldPersistTaps="handled">
       {locked ? <View style={s.mode}>
         <Ionicons name="shield-checkmark-outline" size={21} color={colors.protection} />
-        <View style={s.detail}><Text style={s.modeTitle}>{selection ? modeName(selection.mode) : "Checking this session’s app choices…"}</Text><Text style={s.caption}>{!selection ? "Reading the choices saved when this session started." : selection.mode === "normal" ? "This session started without app protection." : timer.breakSecondsLeft > 0 ? "On break. Protection returns automatically." : protection.active ? "Active for this session" : "Protection is interrupted. Check permissions and restore it, or end your session."}</Text></View>
+        <View style={s.detail}><Text style={s.modeTitle}>{selection ? modeName(selection.mode) : "Checking this session’s app choices…"}</Text><Text style={s.caption}>{!selection ? "Reading the choices saved when this session started." : selection.mode === "normal" ? "This session started without app protection." : timer.breakSecondsLeft > 0 ? "On break. Protection returns automatically." : protection.state.status === "checking" ? "Checking protection on this phone. This does not stop the Android service. End session remains available." : protection.active ? "Active for this session" : "Protection is interrupted. Check permissions and restore it, or end your session."}</Text></View>
       </View> : <ModeChoices mode={mode} saving={saving} onSelect={handleModeChange} />}
       <View style={s.safety}><Ionicons name="call-outline" size={16} color={colors.protection} /><View style={s.detail}><Text style={s.modeTitle}>Always available in both modes</Text><Text style={s.caption}>Calls, emergency access, Settings and LifeRPG stay available. Your Home screen, system controls, permission and app installation screens also stay available. These essential screens are excluded from the app list below. End session is always reachable.</Text></View></View>
       {!protection.supported && <Text style={s.body}>Install the updated Android build to use protected sessions.</Text>}

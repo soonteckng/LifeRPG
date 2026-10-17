@@ -127,7 +127,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : entries.length ? entries.slice(0, 3).map(row) : <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="add" size={20} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={17} color={colors.muted} /></Pressable>}
       {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
       {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
-      {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? "Syncing routine changes…" : "Syncs when you reconnect."}</Text>}
+      {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
       {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
     </View>
     <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={() => {

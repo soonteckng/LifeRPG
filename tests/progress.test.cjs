@@ -166,6 +166,77 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   assert.equal(durationLabel(30), "30s");
   assert.equal(durationLabel(3600), "1h");
 });
+
+test("legacy Wellbeing aliases form one 16-minute group with both original sessions in Week and Month", () => {
+  const clock = new Date("2026-10-17T08:00:00Z");
+  const areaRows = Object.freeze([
+    Object.freeze({ id: 2, title: "Grooming & Vitality", color_code: "#EC4899" }),
+    Object.freeze({ id: 3, title: "Fitness & Health", color_code: "#EF4444" }),
+  ]);
+  const rows = Object.freeze([
+    Object.freeze(session("grooming", 60, "2026-10-17T07:00:00Z", 2)),
+    ...Array.from({ length: 15 }, (_, index) => Object.freeze(session(`fitness-${index}`, 60, "2026-10-17T06:00:00Z", 3))),
+  ]);
+  const before = JSON.stringify({ areaRows, rows });
+  for (const mode of ["week", "month"]) {
+    const result = buildProgress(periodFor(mode, "2026-10-17", TZ, clock), rows, [], TZ, areaRows, clock);
+    assert.equal(result.seconds, 960);
+    assert.equal(result.areas.length, 1);
+    const group = result.areas[0];
+    assert.equal(group.title, "Wellbeing");
+    assert.equal(group.seconds, 960);
+    assert.equal(group.color, "#F4AA88");
+    assert.equal(group.sessions.length, 16);
+    assert.equal(new Set(group.sessions.map(row => row.id)).size, 16);
+    assert.equal(group.sessions.filter(row => row.subject_id === 2).length, 1);
+    assert.equal(group.sessions.filter(row => row.subject_id === 3).length, 15);
+    assert.ok(group.sessions.every(row => rows.includes(row)), "drilldown retains the original saved sessions");
+  }
+  assert.equal(JSON.stringify({ areaRows, rows }), before, "analytics must not rewrite source rows or credit values");
+});
+
+test("alias daily segments use the same stable colour and identity as the combined period", () => {
+  const clock = new Date("2026-10-17T08:00:00Z");
+  const areaRows = [
+    { id: 2, title: "Grooming & Vitality", color_code: "#EC4899" },
+    { id: 3, title: "Fitness & Health", color_code: "#EF4444" },
+    { id: 8, title: "Wellbeing", color_code: "#F4AA88" },
+  ];
+  const rows = [session("grooming", 60, "2026-10-17T07:00:00Z", 2),
+    session("fitness", 900, "2026-10-16T07:00:00Z", 3), session("canonical", 120, "2026-10-17T06:00:00Z", 8)];
+  const result = buildProgress(periodFor("month", "2026-10-17", TZ, clock), rows, [], TZ, areaRows, clock);
+  assert.equal(result.areas.length, 1);
+  assert.equal(result.areas[0].seconds, 1080);
+  for (const day of result.days.filter(day => day.seconds)) {
+    const segments = analytics.sessionAreaSegments(day.sessions, areaRows);
+    assert.equal(segments.length, 1);
+    assert.equal(segments[0].seconds, day.seconds);
+    assert.equal(segments[0].key, result.areas[0].key);
+    assert.equal(segments[0].color, result.areas[0].color);
+  }
+  assert.deepEqual(analytics.sessionAreaSegments(rows, [...areaRows].reverse()), analytics.sessionAreaSegments(rows, areaRows));
+});
+
+test("distinct custom IDs and legacy activities remain separate while single-area colours stay unchanged", () => {
+  const clock = new Date("2026-10-17T08:00:00Z");
+  const areaRows = [
+    { id: 1, title: "Learning", color_code: "#A5B4FC" },
+    { id: 6, title: "My ceramics", color_code: "#79BFF2" },
+    { id: 7, title: "My ceramics", color_code: "#E98ABC" },
+    { id: 1, title: "Learning", color_code: "#A5B4FC" },
+  ];
+  const rows = [session("learning", 60, "2026-10-17T07:00:00Z", 1),
+    session("custom-one", 120, "2026-10-17T07:00:00Z", 6), session("custom-two", 180, "2026-10-17T07:00:00Z", 7),
+    { ...session("legacy", 30, "2026-10-17T07:00:00Z", null), activity_type: "study" }];
+  const result = buildProgress(periodFor("month", "2026-10-17", TZ, clock), rows, [], TZ, areaRows, clock);
+  assert.equal(result.seconds, 390);
+  assert.equal(result.areas.length, 4);
+  assert.equal(result.areas.filter(area => area.title === "My ceramics").length, 2);
+  assert.equal(new Set(result.areas.map(area => area.key)).size, 4);
+  assert.equal(result.areas.find(area => area.title === "Learning").color, "#79BFF2");
+  assert.equal(analytics.sessionAreaSegments(rows, areaRows).length, 4);
+});
+
 function serviceHarness(respond) {
   const calls = [];
   const supabase = {
@@ -617,6 +688,26 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
     assert.equal(rows.length, 2);
   } finally { await ui.cleanup(); }
 });
+test("Month Where it went opens both legacy Wellbeing sessions from one combined row", async () => {
+  const stamp = new Date(Date.now() - 1000).toISOString();
+  const ui = await screenHarness({
+    sessionRows: [session("grooming", 60, stamp, 2), session("fitness", 900, stamp, 3)],
+    areaRows: [{ id: 2, title: "Grooming & Vitality", color_code: "#EC4899" },
+      { id: 3, title: "Fitness & Health", color_code: "#EF4444" }],
+  });
+  try {
+    await ui.press("Month view");
+    const areaRows = ui.renderer.root.findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith(". View sessions"));
+    assert.deepEqual(areaRows.map(row => row.props.accessibilityLabel), ["Wellbeing, 16m. View sessions"]);
+    await ui.press("Wellbeing, 16m. View sessions");
+    const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
+    assert.equal(rows.length, 2);
+    assert.ok(rows.some(row => row.props.accessibilityLabel.includes("15m,")));
+    assert.ok(rows.some(row => row.props.accessibilityLabel.includes("1m,")));
+    assert.equal(ui.historyCalls(), 0);
+  } finally { await ui.cleanup(); }
+});
+
 test("empty selected period has no all-history escape or unbounded query", async () => {
   const ui = await screenHarness({ empty: true });
   try {

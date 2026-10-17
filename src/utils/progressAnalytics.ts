@@ -4,6 +4,7 @@ import type {
   ProgressSession,
 } from "../services/progressService";
 import { sessionCategory } from "./sessionReporting";
+import { FOCUS_AREAS, focusAreaKind } from "./focusAreas";
 
 export type PeriodMode = "week" | "month";
 export interface ProgressPeriod {
@@ -129,6 +130,33 @@ export function calendarLabel(
     timeZone: "UTC",
   }).format(new Date(`${key}T12:00:00Z`));
 }
+
+// Display aliases share one analytics group; saved subject/session IDs stay intact.
+// A duplicated catalogue kind uses its canonical colour even on a day containing
+// only one alias. Unrelated single-ID and custom-area colours remain unchanged.
+function progressAreaResolver(areas: { id: number; title: string; color_code?: string | null }[]) {
+  const idsByKind = new Map<string, Set<number>>();
+  for (const area of areas) {
+    const kind = focusAreaKind(area.title);
+    if (!kind) continue;
+    const ids = idsByKind.get(kind) ?? new Set<number>();
+    ids.add(area.id);
+    idsByKind.set(kind, ids);
+  }
+  return (session: ProgressSession) => {
+    const area = areas.find(item => item.id === session.subject_id);
+    const title = sessionCategory(session, areas);
+    const kind = focusAreaKind(area?.title);
+    const canonical = kind && idsByKind.get(kind)!.size > 1
+      ? FOCUS_AREAS.find(item => item.kind === kind) : undefined;
+    return {
+      key: kind ? `kind:${kind}` : area ? `area:${area.id}` : `legacy:${title}`,
+      title,
+      color: canonical?.color ?? lifeAreaColor(area?.id, area?.color_code),
+    };
+  };
+}
+
 export function buildProgress(
   period: ProgressPeriod,
   sessions: ProgressSession[],
@@ -190,15 +218,13 @@ export function buildProgress(
       sessions: ProgressSession[];
     }
   >();
+  const resolveArea = progressAreaResolver(areas);
   for (const s of selected) {
-    const title = sessionCategory(s, areas);
-    const area = areas.find((a) => a.id === s.subject_id);
-    const key = area ? `area:${area.id}` : `legacy:${title}`;
+    const { key, title, color } = resolveArea(s);
     const existing = groups.get(key) ?? {
       key,
       title,
-      color:
-        lifeAreaColor(area?.id, area?.color_code),
+      color,
       seconds: 0,
       sessions: [],
     };
@@ -262,12 +288,11 @@ export function sessionAreaSegments(
   areas: { id: number; title: string; color_code?: string | null }[],
 ) {
   const groups = new Map<string, { key: string; title: string; seconds: number; color: string }>();
+  const resolveArea = progressAreaResolver(areas);
   for (const session of sessions) {
     if (!Number.isFinite(session.duration_seconds) || session.duration_seconds <= 0) continue;
-    const area = areas.find(item => item.id === session.subject_id);
-    const title = sessionCategory(session, areas);
-    const key = area ? `area:${area.id}` : `legacy:${title}`;
-    const group = groups.get(key) ?? { key, title, seconds: 0, color: lifeAreaColor(area?.id, area?.color_code) };
+    const { key, title, color } = resolveArea(session);
+    const group = groups.get(key) ?? { key, title, seconds: 0, color };
     group.seconds += session.duration_seconds;
     groups.set(key, group);
   }

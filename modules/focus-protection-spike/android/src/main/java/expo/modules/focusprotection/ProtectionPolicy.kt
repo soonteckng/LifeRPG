@@ -33,18 +33,45 @@ object ProtectionAppPolicy {
  * Launcher/System UI pauses return to that app even on devices which omit its
  * second RESUMED event after cancelling the gesture. */
 class ProtectionForegroundTracker(private val transientPackages: Set<String>) {
-  private data class Activity(val pkg: String, val name: String?)
+  private data class Activity(val pkg: String, val name: String?, val resumedEventAt: Long)
   private var foreground: Activity? = null
   private var application: Activity? = null
+  private var transientStartedAt: Long? = null
   val packageName: String? get() = foreground?.pkg
-  fun resumed(pkg: String, name: String?) {
-    val activity = Activity(pkg, name)
+  fun resumed(pkg: String, name: String?, elapsed: Long = 0L, eventAt: Long = 0L) {
+    val activity = Activity(pkg, name, eventAt)
+    // Repeated launcher resumes in one gesture must not restart the hold.
+    if (pkg in transientPackages) {
+      if (foreground?.pkg !in transientPackages || transientStartedAt == null) transientStartedAt = elapsed
+    } else transientStartedAt = null
     foreground = activity
     if (pkg !in transientPackages) application = activity
   }
-  fun paused(pkg: String, name: String?) {
+  @Suppress("UNUSED_PARAMETER")
+  fun paused(pkg: String, name: String?, eventAt: Long = Long.MAX_VALUE) {
     val current = foreground ?: return
-    if (pkg in transientPackages && current.pkg == pkg && (name == null || current.name == null || current.name == name)) foreground = application
+    if (pkg !in transientPackages || current.pkg != pkg) return
+    // Class names can differ between gesture/launcher events on OEM devices.
+    // Ignore a delayed event older than the latest resume, using the public
+    // event timestamp. Hidden activity-instance APIs are not used.
+    if (eventAt < current.resumedEventAt) return
+    foreground = application; transientStartedAt = null
+  }
+  fun stopped(pkg: String, name: String?, eventAt: Long = Long.MAX_VALUE) {
+    val current = foreground ?: return
+    // Unlike PAUSED, an older Recents activity can be STOPPED after Home has
+    // already resumed. Do not treat that teardown as leaving the visible Home.
+    if (name == null || current.name == null || name != current.name) return
+    paused(pkg, name, eventAt)
+  }
+  fun packageForCover(elapsed: Long, overlayShowing: Boolean): String? {
+    val current = foreground ?: return null
+    val started = transientStartedAt
+    // Keep an existing cover through the provisional launcher/System UI
+    // transition. A real allowed app/phone/Settings resume bypasses this hold.
+    // A stable Home destination is released once, after the short settle time.
+    return if (overlayShowing && current.pkg in transientPackages && started != null && elapsed - started in 0L until 1000L)
+      application?.pkg ?: current.pkg else current.pkg
   }
 }
 object ProtectionPolicy {

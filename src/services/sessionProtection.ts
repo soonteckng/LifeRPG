@@ -30,6 +30,7 @@ export function createSessionProtectionController(options: { storage: Storage; n
   const returnedBreakLeases = new Set<string>();
   let suppressed = "", explicitlyEnabled = "", ownedId: string | null = null, working = false, dirty = false;
   let lastPublication = "";
+  let confirmedState: ProtectionState = idleProtection;
   const native = options.resolve ?? getSessionProtectionModule;
   const same = (value: ProtectionSessionProjection) => !disposed && latest?.ownerKey === value.ownerKey && latest?.sessionKey === value.sessionKey;
   // Protected break records remain running in the journal. At the deadline the
@@ -40,6 +41,7 @@ export function createSessionProtectionController(options: { storage: Storage; n
       && !current.ending && !current.restoring && current.seconds > 0;
   };
   const publish = (state: ProtectionState, error: string) => {
+    if (state.status !== "checking") confirmedState = state;
     const binding = bound?.ownerKey === latest?.ownerKey && bound?.sessionKey === latest?.sessionKey ? bound : null;
     const key = JSON.stringify([state.id, state.scope, state.status, state.secondsLeft, state.covers, error, binding]);
     if (key === lastPublication) return;
@@ -143,7 +145,17 @@ export function createSessionProtectionController(options: { storage: Storage; n
   const flush = async () => {
     if (working || disposed) return;
     working = true;
-    try { while (dirty && !disposed) { dirty = false; try { await pass(); } catch (error) { if (!disposed) publish(idleProtection, error instanceof Error ? error.message : "Could not check app protection."); } } }
+    try { while (dirty && !disposed) { dirty = false; try { await pass(); } catch (error) {
+      if (!disposed) {
+        const scope = latest?.ownerKey && latest.sessionKey ? JSON.stringify([latest.ownerKey, latest.sessionKey]) : null;
+        // A failed bridge/storage read says nothing about the running Android
+        // service. Retain only this session's last confirmed lease, mark its
+        // status unknown, and let the next native read settle it. Never turn a
+        // connectivity transition into a native Stop or borrow another owner.
+        const previous = scope && confirmedState.scope === scope ? confirmedState : { ...idleProtection, scope };
+        publish({ ...previous, status: "checking" }, error instanceof Error ? error.message : "Could not check app protection.");
+      }
+    } } }
     finally { working = false; }
   };
   return {
