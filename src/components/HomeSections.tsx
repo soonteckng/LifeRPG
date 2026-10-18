@@ -8,6 +8,7 @@ import { Text } from "./AppText";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import ExamRow from "./ExamRow";
+import ExamsCard from "./ExamsCard";
 import SectionHeader, { SeeAll } from "./SectionHeader";
 import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
@@ -40,26 +41,26 @@ export function HomeExams() {
   const coming = upcomingExams(plan.exams), soon = coming.filter(exam => daysUntil(exam.examDate) <= WEEK);
   const shown = soon.length ? soon.slice(0, 3) : coming.slice(0, 1);
   const courseFor = (id: string | null) => plan.courses.find(item => item.id === id) ?? null;
-  const open = (exam: StudyExam) => { const course = courseFor(exam.courseId); if (course) launcher.study(course); else { setEditing(exam); setSheet("add"); } };
+  // Same as Study and routines: tap to edit, Study to start, hold for more.
+  const edit = (exam: StudyExam) => { setEditing(exam); setSheet("add"); };
   const learning = suggestedArea(subjects, "learning")?.id ?? null;
   const subtitle = soon.length ? `${soon.length} in the next 7 days${soon.length > 3 ? " · nearest 3" : ""}` : coming.length ? `Next one in ${daysUntil(coming[0].examDate)} days` : "Nothing scheduled";
   const add = () => { setEditing(null); setSheet("add"); };
   return <View style={s.section} testID="home-exams">
     <SectionHeader title="Upcoming Exams" subtitle={subtitle}
       right={coming.length ? <SeeAll label={coming.length > shown.length ? `See all ${coming.length}` : "See all"} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
-    {shown.length ? <View style={s.stack}>{shown.map(exam => { const course = courseFor(exam.courseId);
-      return <ExamRow key={exam.id} exam={exam} course={course} card first onPress={() => open(exam)} onStudy={course ? () => launcher.study(course) : undefined}
-        label={course ? "Start studying" : "Edit exam"} />; })}</View>
+    {shown.length ? <ExamsCard exams={shown} courses={plan.courses} onEdit={edit} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} />
       : <Pressable onPress={add} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
         <Ionicons name="add-circle" size={24} color={colors.accent} />
       </Pressable>}
     <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} floating compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
-      header={<SheetHeader title="My Exams" subtitle="Tap one to start studying it." onClose={() => setSheet(null)} />}>
+      header={<SheetHeader title="My Exams" subtitle="Tap one to edit it, or Study to start." onClose={() => setSheet(null)} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
-        <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => <ExamRow key={exam.id} exam={exam} course={courseFor(exam.courseId)} first={index === 0} inSheet
-          onPress={() => { setSheet(null); setTimeout(() => open(exam), 250); }} label={courseFor(exam.courseId) ? "Start studying" : "Edit exam"} />)}</View>
+        <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => { const course = courseFor(exam.courseId);
+          return <ExamRow key={exam.id} exam={exam} course={course} first={index === 0} inSheet label="Edit exam"
+            onPress={() => { setSheet(null); setTimeout(() => edit(exam), 250); }} onStudy={course ? () => { setSheet(null); setTimeout(() => launcher.study(course), 250); } : undefined} />; })}</View>
         <Pressable onPress={() => { setSheet(null); setTimeout(add, 250); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={s.secondary}>
           <Ionicons name="add" size={18} color={colors.accent} /><Text style={s.secondaryText}>Add an exam</Text></Pressable>
         <Pressable onPress={() => { setSheet(null); setTimeout(() => router.navigate("/study"), 220); }} accessibilityRole="button" accessibilityLabel="Open Study" style={s.quiet}>
@@ -179,11 +180,11 @@ export function HomeMilestones() {
 }
 
 const s = StyleSheet.create({
-  section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 }, stack: { gap: 8 },
-  group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
-  sheetGroup: { backgroundColor: colors.sheetCard, borderRadius: 20 },
+  section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
+  group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  sheetGroup: { ...edge, backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
-  sheetCard: { backgroundColor: colors.sheetCard, borderRadius: 20, gap: 10 },
+  sheetCard: { ...edge, backgroundColor: colors.sheetCard, borderRadius: 20, gap: 10 },
   sheetBody: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
   icon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },

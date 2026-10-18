@@ -1542,6 +1542,9 @@ test("free and quest starts reveal visible controls and settle the same mounted 
     const control = ui.root().findByType("DurationControl");
     const stage = ui.root().findByProps({testID:"session-timer-stage"});
     await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:4}}}));
+    // Setup settling into place while the screen opens snaps; nothing bounces in.
+    await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:60}}}));
+    await act(async () => stage.props.onLayout({nativeEvent:{layout:{y:4}}}));
     assert.equal(ui.animations.some(a => a.duration === 300), false);
     ui.animations.length = 0; // Ignore the route entry animation already verified elsewhere.
     await ui.press("Start");

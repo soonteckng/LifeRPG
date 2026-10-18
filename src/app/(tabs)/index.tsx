@@ -213,9 +213,9 @@ export default function HomeScreen() {
             <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalRow} accessibilityRole="button"
               accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
               <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
-                <ProgressRing size={92} stroke={11} progress={goalShare} color={isGoalComplete ? colors.success : colors.accent} track={colors.accentSoft}>
+                <ProgressRing size={108} stroke={9} progress={goalShare} color={isGoalComplete ? colors.success : colors.accent} track={colors.accentSoft}>
                   <Text style={styles.ringValue} numberOfLines={1} adjustsFontSizeToFit>{Math.floor(safeCompletedSeconds / 60)}</Text>
-                  <Text style={styles.ringUnit}>of {dailyGoalMinutes} min</Text>
+                  <Text style={styles.ringUnit} numberOfLines={1} adjustsFontSizeToFit>of {dailyGoalMinutes} min</Text>
                 </ProgressRing>
               </View>
               <View style={[styles.goalCopy, styles.todayCopy]}>
@@ -233,7 +233,8 @@ export default function HomeScreen() {
               </TouchableOpacity>
               {!hasOpenSession && <TouchableOpacity testID="home-other-session" onPress={nextCourse ? justFocus : () => router.navigate("/routines")} accessibilityRole="button"
                 accessibilityLabel={nextCourse ? "Other session. Choose any activity" : "Choose a routine. Opens Routines"} style={styles.otherButton}>
-                <Ionicons name={nextCourse ? "add" : "repeat"} size={18} color={colors.accent} /><Text style={styles.startText} numberOfLines={1}>{nextCourse ? "Other session" : "Choose a routine"}</Text>
+                <Text style={styles.startText} numberOfLines={1}>{nextCourse ? "Other session" : "Choose a routine"}</Text>
+                <View style={styles.otherIcon}><Ionicons name={nextCourse ? "add" : "repeat"} size={17} color={colors.accent} /></View>
               </TouchableOpacity>}
             </View>}
           </View></TourAnchor>
@@ -275,22 +276,24 @@ const styles = StyleSheet.create({
   todayMenu: { position: "absolute", top: 12, right: 12, zIndex: 2 },
   avatarDisc: { ...edge, width: 50, height: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   today: { ...edge, padding: 16, gap: 16, borderRadius: radius.card, backgroundColor: colors.surface },
-  goalRow: { flexDirection: "row", alignItems: "center", gap: 18 },
+  goalRow: { flexDirection: "row", alignItems: "center", gap: 16 },
   goalCopy: { flex: 1, minWidth: 0, gap: 4 },
   goalLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.9, textTransform: "uppercase" },
   goalHeadline: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
   streakRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   streakText: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  ringValue: { color: colors.text, fontSize: 28, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
-  ringUnit: { color: colors.secondary, fontSize: 11, lineHeight: 15 },
+  ringValue: { color: colors.text, fontSize: 30, lineHeight: 34, fontWeight: "700", letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
+  ringUnit: { maxWidth: 70, color: colors.secondary, fontSize: 12, lineHeight: 16 },
   starts: { gap: 10 },
-  // One suggested next step, and a quieter way to do something else.
+  // One suggested next step, and a quieter way to do something else. Both
+  // read from the same left edge, with their icon on the right.
   nextButton: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 20, paddingRight: 8, borderRadius: 29, backgroundColor: colors.primary },
   nextTitle: { color: colors.primaryText, fontSize: 16, lineHeight: 21, fontWeight: "700" },
   nextDetail: { color: colors.primaryText, opacity: 0.7, fontSize: 12, lineHeight: 16, fontWeight: "600" },
   nextPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  otherButton: { ...edge, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 24, backgroundColor: colors.sheetCard },
-  startText: { flexShrink: 1, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  otherButton: { ...edge, minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 20, paddingRight: 8, borderRadius: 26, backgroundColor: colors.sheetCard },
+  otherIcon: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
+  startText: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   primaryButton: { backgroundColor: colors.primary, minHeight: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "600", textAlign: "center" },
   retry: { paddingVertical: 4 },

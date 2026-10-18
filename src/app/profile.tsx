@@ -242,7 +242,7 @@ const s = StyleSheet.create({
   heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.surface },
   heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   // Three numbers in one strip, not three boxes.
-  statsRow: { flexDirection: "row", borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
+  statsRow: { ...edge, flexDirection: "row", borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
   stat: { flex: 1, padding: 12, gap: 3 },
   statLine: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.line },
   statValue: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "800", fontVariant: ["tabular-nums"] },
@@ -261,7 +261,7 @@ const s = StyleSheet.create({
   areaHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   tileLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
   tileIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
-  subjects: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  subjects: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   subjectRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
   subjectLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   subjectDot: { width: 10, height: 10, borderRadius: 5 },

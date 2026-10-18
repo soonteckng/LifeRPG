@@ -16,9 +16,10 @@ import { revisionArea } from "../utils/focusAreas";
 import type { Subject } from "../services/taskService";
 
 /**
- * The study session's subject row. Any subject can be
- * picked or typed; a new one is added to My Subjects. Picking one also moves
- * the session to that subject's focus area.
+ * The study session's subject row. Once a subject is set (from an exam, a
+ * subject or Study) it just shows it; to study something else, go back and
+ * pick that. Without one, any subject can be picked or typed; a new one is
+ * added to My Subjects, and picking one moves the session to its focus area.
  */
 export default function SubjectSetupRow({ areas, areaId, generalId, learningId, disabled = false, onArea, open: openProp, onOpenChange, style }: {
   areas: Pick<Subject, "id" | "title">[]; areaId: number | null; generalId: number | null | undefined; learningId: number | null | undefined;
@@ -43,14 +44,17 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
     if (area !== areaId && areas.some(item => item.id === area)) onArea(area);
     setOpen(false);
   };
+  const value = course ? `${course.name}${nextExam ? `, ${nextExam.title} ${countdownLabel(daysUntil(nextExam.examDate))}` : ""}` : "None";
+  const content = <>
+    <View style={[s.icon, { backgroundColor: areaTint(tint) }]}><Ionicons name="school-outline" size={16} color={tint} /></View>
+    <View style={s.labelColumn}><Text style={s.label}>Subject</Text>{!!nextExam && <Text style={[s.exam, daysUntil(nextExam.examDate) <= 7 && s.examSoon]} numberOfLines={1}>{nextExam.title} {countdownLabel(daysUntil(nextExam.examDate)).toLowerCase()}</Text>}</View>
+    <Text style={[s.value, course ? s.chosen : s.prompt]} numberOfLines={1}>{course?.name ?? "Choose"}</Text>
+    {!course && <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />}
+  </>;
   return <>
-    <Pressable disabled={disabled} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Choose subject"
-      accessibilityValue={{ text: course ? `${course.name}${nextExam ? `, ${nextExam.title} ${countdownLabel(daysUntil(nextExam.examDate))}` : ""}` : "None" }} style={[s.row, style]}>
-      <View style={[s.icon, { backgroundColor: areaTint(tint) }]}><Ionicons name="school-outline" size={16} color={tint} /></View>
-      <View style={s.labelColumn}><Text style={s.label}>Subject</Text>{!!nextExam && <Text style={[s.exam, daysUntil(nextExam.examDate) <= 7 && s.examSoon]} numberOfLines={1}>{nextExam.title} {countdownLabel(daysUntil(nextExam.examDate)).toLowerCase()}</Text>}</View>
-      <Text style={[s.value, course ? s.chosen : s.prompt]} numberOfLines={1}>{course?.name ?? "Choose"}</Text>
-      <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
-    </Pressable>
+    {course ? <View accessible accessibilityLabel="Subject" accessibilityValue={{ text: value }} testID="session-subject" style={[s.row, style]}>{content}</View>
+      : <Pressable disabled={disabled} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Choose subject"
+        accessibilityValue={{ text: value }} style={[s.row, style]}>{content}</Pressable>}
     <AppSheet visible={open} onRequestClose={() => setOpen(false)} floating compact maxHeightRatio={0.85} label="subject choices"
       keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
       header={<SheetHeader title="Subject" subtitle="Counts as Revision when an exam is coming up, otherwise Learning." onClose={() => setOpen(false)} />}>

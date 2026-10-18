@@ -2,7 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
-import { colors, edge } from "../constants/theme";
+import { colors } from "../constants/theme";
 import { countdownLabel, courseColor, daysUntil, examDateLabel } from "../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../types/studyPlan";
 
@@ -11,16 +11,14 @@ import type { StudyCourse, StudyExam } from "../types/studyPlan";
  * row starts at the same edge; the divider is drawn inside the row, so it
  * never pushes a row sideways.
  */
-export default function ExamRow({ exam, course, first = false, onPress, onLongPress, onStudy, inSheet = false, card = false, label }: {
+export default function ExamRow({ exam, course, first = false, onPress, onLongPress, onStudy, inSheet = false, label }: {
   exam: StudyExam; course: StudyCourse | null; first?: boolean; onPress: () => void; onLongPress?: () => void; onStudy?: () => void; inSheet?: boolean;
-  /** Drawn as its own small bordered card, in a stack with a gap, instead of a row in a list. */
-  card?: boolean;
   /** What tapping the row does, for screen readers. */
   label?: string;
 }) {
   const days = daysUntil(exam.examDate), soon = days <= 7;
-  return <View style={[s.row, { backgroundColor: inSheet ? colors.sheetCard : colors.surface }, card && s.card]} testID="exam-row">
-    {!first && !card && <View style={s.line} />}
+  return <View style={[s.row, { backgroundColor: inSheet ? colors.sheetCard : colors.surface }]} testID="exam-row">
+    {!first && <View style={s.line} />}
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={350} accessibilityRole="button"
       accessibilityLabel={`${exam.title}, ${countdownLabel(days)}, ${examDateLabel(exam.examDate)}${label ? `. ${label}` : ""}`}
       accessibilityActions={onLongPress ? [{ name: "longpress", label: "More actions" }] : undefined} onAccessibilityAction={onLongPress} style={s.main}>
@@ -42,7 +40,6 @@ export default function ExamRow({ exam, course, first = false, onPress, onLongPr
 }
 const s = StyleSheet.create({
   row: { minHeight: 68, flexDirection: "row", alignItems: "center", paddingRight: 14 },
-  card: { ...edge, borderRadius: 18, overflow: "hidden" },
   line: { position: "absolute", top: 0, left: 70, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
   main: { flex: 1, minWidth: 0, minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 12 },
   days: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },

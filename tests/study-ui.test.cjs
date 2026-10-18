@@ -184,7 +184,7 @@ test('hold a subject to edit them all: each shows −, removing asks first and s
   assert.equal(presses(ui.root, 'Remove Maths').length, 0);
   await act(async () => ui.unmount());
 });
-test('the shared Subject row always shows, picks or creates any subject and moves the session to Learning', async () => {
+test('the shared Subject row picks or creates any subject and moves the session to Learning, then stays fixed', async () => {
   const selection = { value: null, listeners: new Set() }, ensured = [];
   const plan = { ready: true, courses: [course], exams: [exam], ensureCourse: async (name, area) => { ensured.push([name, area]); return id(7); } };
   const Row = load('src/components/SubjectSetupRow.tsx', { ...base(), '/SheetHeader': host('Header'), '/SheetTouchable': host('Press'),
@@ -194,28 +194,34 @@ test('the shared Subject row always shows, picks or creates any subject and move
   const areasSeen = [], props = { areas, areaId: 1, generalId: 1, learningId: 2, onArea: id => areasSeen.push(id) }; let ui;
   await act(async () => { ui = create(React.createElement(Row, props)); });
   const row = () => presses(ui.root, 'Choose subject')[0];
+  const fixed = () => ui.root.findAll(x => x.props.testID === 'session-subject' && x.type === 'View')[0];
   assert.equal(row().props.accessibilityValue.text, 'None'); assert.ok(texts(ui.root).includes('Choose'));
-  await act(async () => row().props.onPress());
-  await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
-  assert.deepEqual(areasSeen, [2], 'picking Maths moves the session to Learning'); assert.equal(selection.value, id(1));
-  await act(async () => ui.update(React.createElement(Row, { ...props, areaId: 2 })));
-  assert.equal(row().props.accessibilityValue.text, 'Maths, Calculus final in 12 days');
-  assert.ok(texts(ui.root).includes('Calculus final in 12 days'));
+  // A typed subject is added to My Subjects under Learning.
   await act(async () => row().props.onPress());
   await act(async () => ui.root.findByType('Input').props.onChangeText('Quantum Mechanics'));
   await act(async () => presses(ui.root, 'Add “Quantum Mechanics”')[0].props.onPress());
   assert.deepEqual(ensured, [['Quantum Mechanics', 2]], 'a typed subject joins My Subjects under Learning'); assert.equal(selection.value, id(7));
+  selection.value = null;
+  await act(async () => ui.update(React.createElement(Row, { ...props })));
+  await act(async () => row().props.onPress());
+  await act(async () => ui.root.findByType('Input').props.onChangeText(''));
+  await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
+  assert.deepEqual(areasSeen, [2, 2], 'a typed subject and Maths both move the session to Learning'); assert.equal(selection.value, id(1));
+  await act(async () => ui.update(React.createElement(Row, { ...props, areaId: 2 })));
+  assert.equal(presses(ui.root, 'Choose subject').length, 0, 'once set, the subject can’t be changed here');
+  assert.equal(fixed().props.accessibilityValue.text, 'Maths, Calculus final in 12 days');
+  assert.ok(texts(ui.root).includes('Calculus final in 12 days'));
+  assert.equal(fixed().findAllByType('Icon').some(x => x.props.name === 'chevron-forward'), false, 'no chevron on a fixed row');
   plan.courses = []; selection.value = null;
   await act(async () => ui.update(React.createElement(Row, { ...props, areaId: 2 })));
   assert.equal(presses(ui.root, 'Choose subject').length, 1, 'the row stays even before any subject exists');
   await act(async () => ui.unmount());
 });
-
-test('Home shows exams within a week, opens a study session straight from one, and peeks at your squad before its tab', async () => {
+test('Home shows exams within a week: tap edits, Study starts, hold offers more; and peeks at your squad before its tab', async () => {
   const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [] }, nav = [], timer = [];
   const sections = load('src/components/HomeSections.tsx', { ...base(),
     'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
-    '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'),
+    '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'), '/SwipeRow': props => props.children,
     '/SquadsSection': { SquadSummary: host('Summary') }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') }, '/SheetHeader': host('Header'),
     '/QuestContext': { useQuests: () => ({ subjects: withRevision }) }, '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) },
     '/TimerContext': { useTimer: () => ({ sessionSummary: null, setNotes() {}, setLinkedTaskId() {}, setTargetAttributeId: v => timer.push(v), setDurationInSeconds() {} }) },
@@ -236,9 +242,20 @@ test('Home shows exams within a week, opens a study session straight from one, a
   squads.squads = [{ id: id(8), name: 'Library crew', code: 'K7Q4PX', goalMinutes: null, members: [{ id: id(9), name: 'Aina', weekSeconds: 3600, focusingNow: true, isYou: false, level: 2 }] }];
   await rerender();
   assert.equal(rows().length, 3, 'the nearest three within a week');
-  assert.match(rows()[0].findAllByType('Press')[0].props.accessibilityLabel, /^Paper 2/);
-  await act(async () => rows()[0].findAllByType('Press')[0].props.onPress());
-  assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'straight to the study session');
+  const main = () => rows()[0].findAllByType('Press')[0];
+  assert.match(main().props.accessibilityLabel, /^Paper 2.*\. Edit exam$/);
+  await act(async () => main().props.onPress());
+  const editor = () => section('home-exams').findByType('ExamSheet').props;
+  assert.equal(editor().visible, true); assert.equal(editor().exam.title, 'Paper 2', 'tapping an exam opens it to edit, like Study');
+  assert.deepEqual(timer, []); assert.equal(nav.length, 0, 'tapping never starts a session');
+  await act(async () => editor().onClose());
+  await act(async () => main().props.onLongPress());
+  const options = section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'exam options');
+  assert.equal(options.props.visible, true, 'holding an exam offers its actions, like routines');
+  assert.deepEqual(presses(options, 'Edit exam').length + presses(options, 'Remove exam').length, 2);
+  await act(async () => options.props.onRequestClose());
+  await act(async () => presses(rows()[0], 'Study Maths')[0].props.onPress());
+  assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'Study goes straight to the session');
   // A grey "See all 5 ›" beside the title lists them all.
   const seeAll = presses(section('home-exams'), 'See all 5 exams')[0];
   assert.ok(texts(seeAll).includes('See all 5'));

@@ -124,6 +124,7 @@ export default function SessionScreen() {
   const [opacity] = useState(() => new Animated.Value(1));
   const [timerTranslate] = useState(() => new Animated.Value(0));
   const stageY = useRef<number | null>(null);
+  const stagePhase = useRef<string | null>(null);
   const stageAnimation = useRef<Animated.CompositeAnimation | null>(null);
   const lastPhase = useRef<string | null>(null);
   useEffect(() => () => stageAnimation.current?.stop(), []);
@@ -134,18 +135,22 @@ export default function SessionScreen() {
     }
   }, [reducedMotion, timerTranslate]);
   const settleTimerStage = (nextY: number) => {
-    const previousY = stageY.current;
-    stageY.current = nextY;
-    stageAnimation.current?.stop();
-    if (previousY === null || reducedMotion || Math.abs(previousY - nextY) < 1) {
+    const previousY = stageY.current, phaseChanged = stagePhase.current !== null && stagePhase.current !== phase;
+    stageY.current = nextY; stagePhase.current = phase;
+    // Only a start, pause or finish glides the timer. Layout settling while the
+    // screen opens (centring, choices loading) snaps, so nothing bounces in.
+    if (!phaseChanged && stageAnimation.current) return;
+    stageAnimation.current?.stop(); stageAnimation.current = null;
+    if (previousY === null || reducedMotion || !phaseChanged || Math.abs(previousY - nextY) < 1) {
       timerTranslate.setValue(0);
       return;
     }
     // Offset the newly laid-out stage to its old location, then settle to zero.
     // The duration control stays mounted; the countdown geometry stays fixed.
     timerTranslate.setValue(previousY - nextY);
-    stageAnimation.current = Animated.timing(timerTranslate, { toValue: 0, duration: 300, useNativeDriver: true });
-    stageAnimation.current.start();
+    const animation = Animated.timing(timerTranslate, { toValue: 0, duration: 300, useNativeDriver: true });
+    stageAnimation.current = animation;
+    animation.start(() => { if (stageAnimation.current === animation) stageAnimation.current = null; });
   };
 
   const task = tasks.find((item) => item.id === timer.linkedTaskId);

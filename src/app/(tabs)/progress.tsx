@@ -1076,7 +1076,7 @@ const s = StyleSheet.create({
   },
   sheetContent: { paddingHorizontal: 16, gap: 12 },
   // Lists and details inside the sheet sit on bordered cards, like every other sheet.
-  sheetGroup: { paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  sheetGroup: { ...edge, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden" },
   lastRow: { borderBottomWidth: 0 }, firstRow: { borderTopWidth: 0 },
   summary: { alignItems: "center", gap: 10, paddingVertical: 24 },
   summaryValue: {
@@ -1118,5 +1118,5 @@ const s = StyleSheet.create({
   explain: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 
   areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
-  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  sessionsCard: { ...edge, marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
 });

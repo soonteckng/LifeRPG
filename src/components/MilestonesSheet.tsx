@@ -111,7 +111,7 @@ const s = StyleSheet.create({
   badgeText: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: "600" },
   pathHead: { flexDirection: "row", alignItems: "center", paddingRight: 4, marginTop: 4 },
   link: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  group: { borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  group: { ...edge, borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },
   groupHead: { padding: 14, paddingBottom: 10, gap: 2 },
   row: { padding: 14, gap: 8 }, line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowHead: { flexDirection: "row", alignItems: "center", gap: 12 },

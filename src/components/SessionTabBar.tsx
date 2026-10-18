@@ -27,8 +27,6 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const bannerVisible = !!(hasOpenSession || (sessionSummary && !timer.summaryViewed));
   const route = props.state?.routes?.[props.state.index]?.name ?? "index";
   const pinned = usePinnedActionPresent(route);
-  // A tab's pinned Continue button already shows the running session.
-  const showBanner = bannerVisible && !(pinned && hasOpenSession);
   const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale, pinned);
   return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
     {/* Content fades into the background behind the bars, as on iOS, rather
@@ -42,7 +40,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     </Svg>
     <View pointerEvents="none" style={styles.scrim} />
     {pinned && <PinnedActionHost route={route} />}
-    {showBanner && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
+    {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : timer.breakSecondsLeft > 0 ? "Expand session on break" : isRunning ? "Expand running session" : "Expand paused session"}>
       {hasOpenSession && !timer.awaitingStart && timer.duration > 0 && <View pointerEvents="none" style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${timer.finishing ? 100 : Math.max(0, Math.min(1, 1 - timer.timeLeft / timer.duration)) * 100}%` }]} />

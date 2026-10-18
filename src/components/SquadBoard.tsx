@@ -4,6 +4,7 @@ import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { SquadFace } from "./SquadSheets";
 import OneTimeHint from "./OneTimeHint";
+import { PinnedAction } from "./PinnedAction";
 import { daysLeftInWeek } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { focusingCount, goalProgress, ranked, squadTotal } from "../utils/squads";
@@ -81,18 +82,16 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
         </Pressable>)}
       </View>}
     </View>
-    {/* The invite sits at the bottom of the page, however short the board is. */}
-    <View style={s.spacer} />
-
-    <View style={s.invite}>
+    {/* The invite pins above the tab bar, so it never needs a scroll to find. */}
+    <PinnedAction><View style={s.invite}>
       <View style={s.code} accessible accessibilityLabel={`Invite code ${squad.code.split("").join(" ")}`}><Text style={s.codeLabel}>Invite code</Text><Text style={s.codeText}>{squad.code}</Text></View>
       <Pressable onPress={onInvite} accessibilityRole="button" accessibilityLabel="Invite friends" style={s.primary}><Ionicons name="share-outline" size={17} color={colors.primaryText} /><Text style={s.primaryText}>Invite friends</Text></Pressable>
-    </View>
+    </View></PinnedAction>
     <OneTimeHint id="squad-hold" text="Hold someone to remove them from the squad." show={squad.ownerIsYou && squad.members.length > 1} />
   </View>;
 }
 const s = StyleSheet.create({
-  board: { flexGrow: 1, gap: 16 }, flex: { flex: 1, minWidth: 0 },
+  board: { gap: 16 }, flex: { flex: 1, minWidth: 0 },
   hero: { gap: 8, paddingHorizontal: 4 },
   faces: { flexDirection: "row", alignItems: "center", marginBottom: 2 }, faceSlot: { borderRadius: 22, borderWidth: 2, borderColor: colors.background },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", letterSpacing: -0.6 },
@@ -118,14 +117,13 @@ const s = StyleSheet.create({
   seat: { borderStyle: "dashed", borderColor: "rgba(255,255,255,0.16)", backgroundColor: "transparent" },
   seatFace: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" },
   seatText: { color: colors.secondary, fontSize: 15 }, seatInvite: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  spacer: { flexGrow: 1, minHeight: 8 },
   rank: { width: 18, textAlign: "center", color: colors.secondary, fontSize: 15, fontWeight: "700" },
   nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   rowName: { flex: 1, color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, you: { color: colors.secondary, fontWeight: "500" },
   time: { color: colors.secondary, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] },
   thin: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, thinFill: { height: 5, borderRadius: 3, backgroundColor: colors.accent },
   meta: { color: colors.secondary, fontSize: 13, minWidth: 40, textAlign: "right" },
-  invite: { flexDirection: "row", gap: 10, marginTop: 4 },
+  invite: { flexDirection: "row", gap: 10 },
   code: { ...edge, flex: 1, minHeight: 54, borderRadius: 27, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   codeLabel: { color: colors.secondary, fontSize: 12, lineHeight: 15 }, codeText: { color: colors.text, fontSize: 17, lineHeight: 21, fontWeight: "700", letterSpacing: 2 },
   primary: { flex: 1, minHeight: 54, borderRadius: 27, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },

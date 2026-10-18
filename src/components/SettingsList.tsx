@@ -3,7 +3,7 @@ import { StyleSheet, Switch, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
-import { colors, radius } from "../constants/theme";
+import { colors, edge, radius } from "../constants/theme";
 
 /** A titled group of settings rows in one bordered card, like the phone's own Settings. */
 export function SettingsGroup({ title, footer, children }: { title?: string; footer?: string; children: ReactNode }) {
@@ -37,7 +37,7 @@ export function SettingsRow({ icon, tint = colors.accent, title, value, subtitle
 const s = StyleSheet.create({
   group: { gap: 8 },
   title: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase", paddingHorizontal: 16 },
-  card: { borderRadius: radius.card - 4, backgroundColor: colors.surface, overflow: "hidden" },
+  card: { ...edge, borderRadius: radius.card - 4, backgroundColor: colors.surface, overflow: "hidden" },
   footer: { color: colors.secondary, fontSize: 13, lineHeight: 18, paddingHorizontal: 16 },
   row: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   divider: { position: "absolute", top: 0, left: 58, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
