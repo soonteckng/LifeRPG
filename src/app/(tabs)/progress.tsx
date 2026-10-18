@@ -531,29 +531,24 @@ export default function ProgressScreen() {
               </View>}
               {!freshPeriod && <>
               <Section title="By category" />
-              <View style={s.card}>
-                {analytics.areas.length > 0 && <View style={s.areaShare}>
-                  {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}
-                </View>}
-                {analytics.areas.length ? (
-                  <View style={s.areaSummary}>
-                    {analytics.areas.map((area, index) => <Pressable key={area.key}
-                      onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
-                      accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={[s.areaSummaryItem, index > 0 && s.areaRowDivider]}>
-                      <View style={[s.areaDot, { backgroundColor: area.color }]} />
-                      <Text style={s.areaRowTitle} numberOfLines={1}>{area.title}</Text>
-                      <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
-                      <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-                    </Pressable>)}
-                  </View>
-                ) : (
-                  <Empty
-                    icon="leaf-outline"
-                    title="Room to grow"
-                    body="Your completed sessions will show where you’re investing your time."
-                  />
-                )}
-              </View>
+              {analytics.areas.length ? <View style={s.categoryStack}>
+                {/* Each category is its own card: its share of the time, and its sessions a tap away. */}
+                {analytics.areas.map(area => <Pressable key={area.key}
+                  onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
+                  accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
+                  <View style={[s.areaDot, { backgroundColor: area.color }]} />
+                  <Text style={s.categoryName} numberOfLines={1}>{area.title}</Text>
+                  <View style={s.categoryTrack}><View style={[s.categoryFill, { width: `${Math.max(4, Math.round(100 * area.seconds / Math.max(1, analytics.areas[0].seconds)))}%`, backgroundColor: area.color }]} /></View>
+                  <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+                </Pressable>)}
+              </View> : <View style={s.card}>
+                <Empty
+                  icon="leaf-outline"
+                  title="Room to grow"
+                  body="Your completed sessions will show where you’re investing your time."
+                />
+              </View>}
               <Section title="Sessions" subtitle={sessionScope === "period"
                 ? `${listedSessions.length} completed this ${mode}`
                 : `${heroDay ? calendarLabel(heroDay.key, { weekday: "long", month: "short", day: "numeric" }) : "Selected day"} · ${listedSessions.length} completed`} />
@@ -823,8 +818,10 @@ export default function ProgressScreen() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   periodToolbar: { flexDirection: "column", alignItems: "stretch" },
-  areaSummary: { flexDirection: "column", gap: 0 },
-  areaSummaryItem: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 46 },
+  categoryStack: { gap: 8 },
+  categoryCard: { ...edge, minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 14, paddingRight: 10, borderRadius: 18, backgroundColor: colors.surface },
+  categoryName: { width: "30%", color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" },
+  categoryTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, categoryFill: { height: 6, borderRadius: 3 },
   historyEntrance: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 50 },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },
@@ -938,7 +935,6 @@ const s = StyleSheet.create({
   dayDetailHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   dayDetailTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", flexShrink: 1 },
   dayDetailValue: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  areaShare: { flexDirection: "row", height: 10, borderRadius: 5, overflow: "hidden", marginTop: 10, marginBottom: 6 },
   consistency: {
     flexDirection: "row",
     alignItems: "center",
@@ -1121,8 +1117,6 @@ const s = StyleSheet.create({
   },
   explain: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
 
-  areaRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20 },
   areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
   sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
 });

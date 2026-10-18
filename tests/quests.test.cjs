@@ -30,6 +30,10 @@ function load(relativePath, mocks, cache = new Map()) {
     if (name.endsWith("/AuthContext")) return { useAuth: () => ({accessMode:"online"}) };
     if (name === "expo-haptics") return {selectionAsync:async()=>{}};
     if (name.endsWith("/UserContext")) return mocks["../../context/UserContext"] ?? {useUser:()=>({hapticsEnabled:false})};
+    // Shared hooks import the screens' contexts from one folder up; they get the same mocks.
+    if (name === "../context/TimerContext" && mocks["../../context/TimerContext"]) return mocks["../../context/TimerContext"];
+    if (name === "../context/QuestContext" && mocks["../../context/QuestContext"]) return mocks["../../context/QuestContext"];
+    if (name.endsWith("/useFocusDurationPreference") && !Object.hasOwn(mocks, name)) return {useFocusDurationPreference:()=>({ready:true,selectedSeconds:1800,value:{customSeconds:null},choose:async()=>{}})};
     if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
     if (name.endsWith("/CharacterMark")) return props => React.createElement("CharacterMark", props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>React.createElement("TourAnchor",props,props.children), TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
@@ -657,7 +661,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../components/ContentReveal": ({ children }) => children,
     "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary, ...homeFlags,
-      setNotes: () => {}, setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
+      setNotes: () => {}, setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setDurationInSeconds: seconds => sessionCalls.push(["seconds",seconds]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, ...creditFields }; } },
@@ -696,17 +700,24 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
   assert.equal(identity.findAllByProps({testID:"home-compact-goal"}).length,0);assert.ok(focus.findByProps({testID:"home-compact-goal"}));
-  // Home is a dashboard: it links to Routines and Study instead of setting up a session itself.
-  assert.ok(focus.findByProps({testID:"home-start-routine"}));assert.ok(focus.findByProps({testID:"home-start-study"}));
+  // The Today card offers one next step. With a session open, that step is going back to it.
   assert.equal(renderer.root.findAllByProps({testID:"home-quick-start"}).length,0);assert.equal(renderer.root.findAllByProps({testID:"focus-duration-chip"}).length,0);
+  assert.equal(focus.findAllByProps({testID:"home-other-session"}).length,0);
   sessionCalls.length = 0;
-  await act(async()=>focus.findByProps({testID:"home-start-routine"}).props.onPress());
-  await act(async()=>focus.findByProps({testID:"home-start-study"}).props.onPress());
-  assert.deepEqual(sessionCalls,[["navigate","/routines"],["navigate","/study"]]);
+  await act(async()=>focus.findByProps({testID:"home-continue"}).props.onPress());
+  assert.deepEqual(sessionCalls,[["navigate","/session"]]);
   sessionCalls.length = 0;
   openSession = false;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin);
+  // With no exam this week the next step is to just focus; the other button picks a routine.
+  const today = () => renderer.root.findAllByType("TourAnchor").find(node=>node.props.id === "home-focus");
+  await act(async()=>today().findByProps({testID:"home-just-focus"}).props.onPress());
+  assert.deepEqual(sessionCalls.filter(call=>call[0]==="navigate"),[["navigate","/session"]]);
+  sessionCalls.length = 0;
+  await act(async()=>today().findByProps({testID:"home-other-session"}).props.onPress());
+  assert.deepEqual(sessionCalls,[["navigate","/routines"]]);
+  sessionCalls.length = 0;
   const previousTasks=homeTasks;
   for(const count of [0,1,2]){
     homeTasks=Array.from({length:count},(_,i)=>task({id:200+i,title:`Focus ${i}`}));
@@ -1063,7 +1074,7 @@ test("Today and All occupy equal native containers with identical full-width tou
 
 // Quick focus moved from Home to the Routines tab; both screens share these mocks.
 const quickFocusSetup = (history, start, durationStorage) => quickHomeSetup(history, start, durationStorage, "src/app/(tabs)/routines.tsx");
-async function quickHomeSetup(history = null, start = async () => true, durationStorage = null, file = "src/app/(tabs)/index.tsx") {
+async function quickHomeSetup(history = null, start = async () => true, durationStorage = null, file = "src/app/(tabs)/index.tsx", extra = {}) {
   const calls=[];
   let owner="owner-a", timerFlags={}, historyValue=history;
   const setters = {
@@ -1079,7 +1090,7 @@ async function quickHomeSetup(history = null, start = async () => true, duration
     "react-native-safe-area-context":{SafeAreaView:host("View"),useSafeAreaInsets:()=>({top:24,bottom:24})},
     "../../components/PersonalUI":{PersonalPage:({children})=>React.createElement("Page",null,children)},
     "../../components/SavedRoutinesCard":host("SavedRoutines"), "../../components/SessionProtectionControl":host("Protection"),
-    "../../components/CategorySheet":host("CategorySheet"), "../../hooks/useTabDockInset":{useTabDockInset:()=>120}, "../../context/AuthContext":{useAuth:()=>({accessMode:"online",admissionEpoch:1})},
+    "../../hooks/useTabDockInset":{useTabDockInset:()=>120}, "../../context/AuthContext":{useAuth:()=>({accessMode:"online",admissionEpoch:1})},
     "../../components/GoalRing":host("GoalRing"), '../../components/ProgressRing':host('ProgressRing'), "../../components/CharacterMark":host("CharacterMark"),
     "../../components/ContentReveal":({children})=>children, "../../components/QuestSheet":host("QuestSheet"),
     "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})},
@@ -1087,9 +1098,9 @@ async function quickHomeSetup(history = null, start = async () => true, duration
     "../../context/TimerContext":{useTimer:()=>({...setters,...timerFlags,startFreeTimer:async(seconds,area)=>{calls.push(["start",seconds,area]);return start();}})},
     "../../services/progressService":{getFocusStreak:async()=>0,getLastFreeSession:async id=>{calls.push(["history",id]);return historyValue;}},
     "../../services/dailyProgressService":{getTodayProgress:async()=>null},
-    "../../hooks/useHomeLifecycle":{useHomeLifecycle:()=>12},
+    "../../hooks/useHomeLifecycle":{useHomeLifecycle:()=>12}, ...extra,
   };
-  // Shared hooks such as useQuickStart import the same contexts from one folder up.
+  // Shared hooks such as useJustFocus import the same contexts from one folder up.
   for (const key of Object.keys(mocks)) if (key.startsWith("../../context/")) mocks[key.slice(3)] = mocks[key];
   const Home=load(file, mocks).default;
   let renderer; await act(async()=>{renderer=create(React.createElement(Home));});
@@ -1097,22 +1108,57 @@ async function quickHomeSetup(history = null, start = async () => true, duration
     update:async(flags={},newOwner=owner,nextHistory=historyValue)=>{timerFlags=flags;owner=newOwner;historyValue=nextHistory;await act(async()=>renderer.update(React.createElement(Home)));},
     output:()=>JSON.stringify(renderer.toJSON()),cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
-test("Quick focus in Routines Quick Start opens immediately, retains the exact duration and neutral area, and ignores rapid taps", async()=>{
-  let resolve; const pending=new Promise(r=>resolve=r);
-  const ui=await quickFocusSetup({task_id:null,subject_id:2,duration_seconds:1859},()=>pending);
+test("Home's next step is revising the subject with an exam this week; Other session is any activity", async()=>{
+  const day=n=>{const d=new Date();d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;};
+  const maths={kind:"course",id:"c1",name:"Maths",focusAreaId:2,deletedAt:null}, plan={ready:true,courses:[maths],exams:[{kind:"exam",id:"e1",title:"Maths final",courseId:"c1",examDate:day(3),deletedAt:null},{kind:"exam",id:"e2",title:"Later",courseId:"c1",examDate:day(20),deletedAt:null}],recent:[]};
+  const withRevision=[...subjects,{id:3,title:"Revision"}];
+  const ui=await quickHomeSetup(null,undefined,null,"src/app/(tabs)/index.tsx",{"../../hooks/useStudyPlan":{useStudyPlan:()=>plan},
+    "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects:withRevision,loading:false,refresh:async()=>{}})},"../context/QuestContext":{useQuests:()=>({tasks:[],subjects:withRevision,loading:false,refresh:async()=>{}})}});
   try {
-    assert.match(ui.output(),/30 min/); assert.match(ui.output(),/Everyday focus/);
-    let first;
-    await act(async()=>{first=ui.button("home-start-focus").props.onPress();ui.button("home-start-focus").props.onPress();});
-    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1]]);
-    assert.equal(ui.calls.some(call=>call[0]==="history"),false,'saved session history must not choose the setup duration');
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
-    assert.equal(ui.button("home-start-focus").props.disabled,true);
-    await act(async()=>{resolve(true);await first;});
+    const revise=ui.button("home-revise");
+    assert.equal(revise.props.accessibilityLabel,"Revise Maths. Exam in 3 days");
+    await act(async()=>revise.props.onPress());
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",3]],"an exam this week makes it Revision");
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
+    ui.calls.length=0;
+    const other=ui.button("home-other-session");
+    assert.equal(other.props.accessibilityLabel,"Other session. Choose any activity");
+    await act(async()=>other.props.onPress());
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",1]],"any activity starts from Everyday focus");
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
+    plan.exams=plan.exams.slice(1);
+    await ui.update();
+    assert.equal(ui.button("home-revise"),undefined,"an exam weeks away does not take over the button");
+    assert.ok(ui.button("home-just-focus"));
+  }finally{await ui.cleanup();}
+});
+test("Just focus in Routines opens the session screen with Everyday focus and the saved length, and never starts by itself", async()=>{
+  const ui=await quickFocusSetup();
+  try {
+    const just=()=>ui.button("routines-just-focus");
+    assert.equal(just().props.accessibilityLabel,"Just focus. Any activity, your time");
+    await act(async()=>just().props.onPress());
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",1]],"any activity starts from Everyday focus");
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="seconds"),[["seconds",1800]],"the length from Settings › Sessions");
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="task"),[["task",null]]);
+    assert.equal(ui.calls.some(c=>c[0]==="start"),false,"the session screen confirms the start");
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
+    assert.equal(ui.renderer.root.findAll(node=>node.props.testID==="home-start-focus").length,0,"no Quick focus card or pinned Start");
   }finally{await ui.cleanup();}
 });
 
+test("with a session open, Just focus returns to it and changes nothing",async()=>{
+  const ui=await quickFocusSetup();
+  try {
+    for(const isRunning of [true,false]) {
+      await ui.update({hasOpenSession:true,isRunning,timeLeft:125,targetAttributeId:2});
+      ui.calls.length=0;
+      assert.match(ui.button("routines-just-focus").props.accessibilityLabel,/Return to your session/);
+      await act(async()=>ui.button("routines-just-focus").props.onPress());
+      assert.deepEqual(ui.calls,[["navigate","/session"]]);
+    }
+  }finally{await ui.cleanup();}
+});
 test("Home can open recovery for an unsaved, rejected or unreadable session even when ordinary starts are blocked", async()=>{
   const ui=await quickHomeSetup(null,async()=>true);
   const review=()=>ui.renderer.root.findAllByType("Pressable").find(node=>node.props.accessibilityLabel==="Review saved session");
@@ -1140,98 +1186,6 @@ test("Home explicitly reopens an acknowledged pending End before navigating to i
   }finally{await ui.cleanup();}
 });
 
-test("Quick focus in Routines failure stays actionable and its sole Change entry cannot navigate or change duration", async()=>{
-  let succeeded=false; const ui=await quickFocusSetup(null,async()=>succeeded);
-  try {
-    assert.match(ui.output(),/30 min/);
-    await act(async()=>ui.button("home-start-focus").props.onPress());
-    assert.match(ui.output(),/Retry start/);
-    assert.equal(ui.calls.filter(c=>c[0]==="navigate").length,1);
-    succeeded=true;
-    await act(async()=>ui.button("home-start-focus").props.onPress());
-    assert.deepEqual(ui.calls.filter(c=>c[0]==="start"),[["start",1800,1],["start",1800,1]]);
-    ui.calls.length=0;
-    await act(async()=>ui.button("focus-card-preferences").props.onPress());
-    assert.deepEqual(ui.calls,[]);
-    assert.equal(ui.renderer.root.findAllByType("Sheet").some(node=>node.props.label==="focus area"),false);assert.equal(ui.renderer.root.findByType("CategorySheet").props.visible,true);
-  }finally{await ui.cleanup();}
-});
-test("Quick focus in Routines continues active or paused sessions and protects restoration/completion before starting",async()=>{
-  const ui=await quickFocusSetup();
-  try {
-    for(const isRunning of [true,false]) {
-      await ui.update({hasOpenSession:true,isRunning,timeLeft:125,targetAttributeId:2});
-      assert.match(ui.output(),/2 min 5 sec/);
-      await act(async()=>ui.button("home-start-focus").props.onPress());
-      assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
-      assert.equal(ui.button("home-change-focus"),undefined);
-    }
-    for(const flag of [{isRestoring:true},{restoreError:true},{actionBusy:true},{isCompleted:true}]) {
-      await ui.update(flag);assert.equal(ui.button("home-start-focus").props.disabled,true);
-      await act(async()=>ui.button("home-start-focus").props.onPress());
-    }
-    assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
-  }finally{await ui.cleanup();}
-});
-test("Quick focus in Routines ignores session history when choosing the initial preset across accounts",async()=>{
-  const ui=await quickFocusSetup({task_id:null,subject_id:99,duration_seconds:1859});
-  try {
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
-    await ui.update({},"owner-b",null);
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
-    await ui.update({},"owner-c",{task_id:2,subject_id:2,duration_seconds:900});
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
-    await ui.update({},"owner-d",{task_id:null,subject_id:2,duration_seconds:30});
-    assert.equal(ui.button("home-start-focus").props.accessibilityLabel,"Start 30 min, Everyday focus");
-  }finally{await ui.cleanup();}
-});
-
-test("free focus presets and custom seconds start the selected time and cannot leak across accounts",async()=>{
- const ui=await quickFocusSetup();
- try{
-  const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
-  await act(async()=>control('Set duration to 60 minutes').props.onPress());
-  await act(async()=>control('Use this duration').props.onPress());
-  await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start'),[['start',3600,1]]);
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
-  const inputs=()=>ui.renderer.root.findAllByType('Input');
-  await act(async()=>{inputs().find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');inputs().find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
-  await act(async()=>control('Use this duration').props.onPress());
-  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 45 min 17 sec, Everyday focus');
-  await act(async()=>ui.button('home-start-focus').props.onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='start').at(-1),['start',2717,1]);
-  await ui.update({},'another-account',null);assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
- }finally{await ui.cleanup();}
-});
-
-test('Quick focus cold restart keeps its preset and its duration chip edits the currently displayed time',async()=>{
- const values=new Map(),db={getItem:async key=>values.get(key)??null,setItem:async(key,value)=>{values.set(key,value);}};
- let ui=await quickFocusSetup({task_id:null,duration_seconds:480},async()=>true,db);
- const control=label=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.accessibilityLabel===label);
- const input=label=>ui.renderer.root.findAllByType('Input').find(n=>n.props.accessibilityLabel===label);
- try{
-  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
-  await act(async()=>control('Set duration to 60 minutes').props.onPress());
-  await act(async()=>control('Use this duration').props.onPress());
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
-  assert.equal(input('Focus minutes').props.value,'60','the first Custom editor uses the selected preset');
-  await act(async()=>{input('Focus minutes').props.onChangeText('2');input('Focus seconds').props.onChangeText('15');});
-  await act(async()=>control('Use this duration').props.onPress());
-  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 2 min 15 sec, Everyday focus');
-  await ui.cleanup();
-  ui=await quickFocusSetup({task_id:null,duration_seconds:480},async()=>true,db);
-  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 60 min, Everyday focus');
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
-  assert.equal(input('Focus minutes').props.value,'60');assert.equal(input('Focus seconds').props.value,'0');
-  await act(async()=>ui.renderer.root.findAllByType('Sheet').find(n=>n.props.label==='focus duration').props.onRequestClose());
-  await ui.update({},'another-account',null);
-  assert.equal(ui.button('home-start-focus').props.accessibilityLabel,'Start 30 min, Everyday focus');
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(n=>n.props.testID==='focus-duration-chip').props.onPress());
-  assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'0');
- }finally{await ui.cleanup();}
-});
-
 test('Home level button opens and dismisses the tier path without changing its timer',async()=>{
  const ui=await quickHomeSetup();
  try{
@@ -1243,7 +1197,7 @@ test('Home level button opens and dismisses the tier path without changing its t
  }finally{await ui.cleanup();}
 });
 
-test('Home: the goal ring opens Today, its ••• changes the goal, Settings sits by the avatar and holding a title rearranges sections',async()=>{
+test('Home: the goal ring opens Today, its ••• changes the goal, and Settings sits by the avatar',async()=>{
  const ui=await quickHomeSetup();
  try{
   const find=type=>ui.renderer.root.findAllByType(type);
@@ -1257,15 +1211,9 @@ test('Home: the goal ring opens Today, its ••• changes the goal, Settings 
   assert.equal(find('GoalSheet')[0].props.visible,true);
   await act(async()=>ui.button('home-settings').props.onPress());
   assert.deepEqual(ui.calls.filter(call=>call[0]==='navigate').at(-1),['navigate','/settings']);
-  // Holding any section's title rearranges Home; Routines is the first section by default.
-  const rearrange=()=>({onPress:find('SavedRoutines')[0].props.onHeaderLongPress});
-  await act(async()=>rearrange().onPress());
-  const arranger=find('HomeArranger')[0];
-  assert.deepEqual(arranger.props.order,['routines','exams','squad','week','milestones']);
-  await act(async()=>{await arranger.props.onChange(['week','routines','exams','squad','milestones']);});
-  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(node=>node.props.accessibilityLabel==='Done rearranging').props.onPress());
+  // Home's sections come in one fixed order; nothing can be rearranged.
   assert.equal(find('HomeArranger').length,0);
-  await act(async()=>rearrange().onPress());
-  assert.deepEqual(find('HomeArranger')[0].props.order,['week','routines','exams','squad','milestones'],'the new order is kept');
+  const layout=ui.renderer.root.findByProps({testID:'home-layout'});
+  assert.ok(layout.findAll(node=>node.type==='SavedRoutines').length===1);
  }finally{await ui.cleanup();}
 });

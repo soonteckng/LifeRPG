@@ -3,16 +3,17 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import ExamRow from "./ExamRow";
 import SwipeRow from "./SwipeRow";
 import ItemActionSheet from "./ItemActionSheet";
-import { colors, radius } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { countdownLabel, courseColor, daysUntil, examDateLabel } from "../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../types/studyPlan";
 
-const ROW = 68, SHOWN = 3.5;
+const ROW = 68 + 8, SHOWN = 3.5;
 
 /**
- * My Exams in Study: one card that scrolls inside itself after three and a
- * half rows, so exam season never makes the page endless. Rows behave like
- * routines: tap to edit, Study to start, hold for more, swipe for Edit/Remove.
+ * My Exams in Study: each exam is its own small card. After three and a half
+ * the list scrolls inside itself, so exam season never makes the page endless.
+ * Cards behave like routines: tap to edit, Study to start, hold for more,
+ * swipe for Edit/Remove.
  */
 export default function ExamsCard({ exams, courses, onEdit, onStudy, onRemove }: {
   exams: StudyExam[]; courses: StudyCourse[]; onEdit: (exam: StudyExam) => void; onStudy: (course: StudyCourse) => void; onRemove: (id: string) => Promise<boolean>;
@@ -25,14 +26,14 @@ export default function ExamsCard({ exams, courses, onEdit, onStudy, onRemove }:
   const current = menu ?? shown, course = current ? courseFor(current.exam.courseId) : null;
   const scrolls = exams.length > SHOWN;
   return <>
-    <View style={[s.card, scrolls && { height: Math.round(ROW * SHOWN) }]} testID="exams-card">
-      <ScrollView nestedScrollEnabled scrollEnabled={scrolls} showsVerticalScrollIndicator={scrolls}>
-        {exams.map((exam, index) => {
+    <View style={[s.list, scrolls && { height: Math.round(ROW * SHOWN) }]} testID="exams-card">
+      <ScrollView nestedScrollEnabled scrollEnabled={scrolls} showsVerticalScrollIndicator={scrolls} contentContainerStyle={s.stack}>
+        {exams.map(exam => {
           const owner = courseFor(exam.courseId);
-          return <SwipeRow key={exam.id} enabled label={exam.title} onEdit={() => onEdit(exam)} onRemove={() => setMenu({ exam, mode: "remove" })}>
-            <ExamRow exam={exam} course={owner} first={index === 0} onPress={() => onEdit(exam)} onLongPress={() => setMenu({ exam, mode: "options" })}
+          return <View key={exam.id} style={s.item}><SwipeRow enabled label={exam.title} onEdit={() => onEdit(exam)} onRemove={() => setMenu({ exam, mode: "remove" })}>
+            <ExamRow exam={exam} course={owner} first onPress={() => onEdit(exam)} onLongPress={() => setMenu({ exam, mode: "options" })}
               onStudy={owner ? () => onStudy(owner) : undefined} label="Edit exam" />
-          </SwipeRow>;
+          </SwipeRow></View>;
         })}
       </ScrollView>
     </View>
@@ -50,5 +51,7 @@ export default function ExamsCard({ exams, courses, onEdit, onStudy, onRemove }:
   </>;
 }
 const s = StyleSheet.create({
-  card: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  list: { overflow: "hidden" }, stack: { gap: 8 },
+  // The card's edge sits on this wrapper, so swipe actions stay inside it.
+  item: { ...edge, borderRadius: 18, backgroundColor: colors.surface, overflow: "hidden" },
 });

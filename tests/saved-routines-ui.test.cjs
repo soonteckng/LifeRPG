@@ -140,7 +140,7 @@ test('an empty list offers two ready-made routines that open the editor prefille
  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,initialSeconds:1800,initialAreaId:1}));});
  try{
-  await act(async()=>press(ui.root,'Add Review today’s notes, 30 minutes'));
+  await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Add Review today’s notes, 30 minutes')).props.onPress());
   const editor=ui.root.findByType('Editor').props;
   assert.equal(editor.visible,true);assert.equal(editor.initialName,'Review today’s notes');assert.equal(editor.initialSeconds,1800);assert.equal(editor.initialAreaId,2,'the Learning area');
  }finally{await act(async()=>ui.unmount());}
@@ -163,8 +163,8 @@ test('suggested routines stay offered after other routines exist; a saved one le
  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
  try{
   const labels=ui.root.findAllByType('Press').map(x=>x.props.accessibilityLabel);
-  assert.ok(labels.includes('Add Review today’s notes, 30 minutes'));assert.ok(labels.includes('Add Plan tomorrow, 15 minutes'));
+  assert.ok(labels.some(label=>label?.startsWith('Add Review today’s notes, 30 minutes')));assert.ok(labels.some(label=>label?.startsWith('Add Plan tomorrow, 15 minutes')));
   assert.equal(labels.some(label=>label?.startsWith('Add Read before bed')),false);
-  assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Suggested routines'));
+  assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Ideas to start with'),'ideas sit under their own title, as chips');
  }finally{await act(async()=>ui.unmount());}
 });

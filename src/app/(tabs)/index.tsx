@@ -14,20 +14,20 @@ import { levelTierProgress, requiredCharacterXP } from "../../utils/levelTiers";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
 import { HomeExams, HomeMilestones, HomeSquad, HomeWeek } from "../../components/HomeSections";
-import HomeArranger from "../../components/HomeArranger";
 import TodaySheet from "../../components/TodaySheet";
 import MoreMenu from "../../components/MoreMenu";
 import { CircleButton } from "../../components/SectionHeader";
-import { appPreferences, type HomeSection } from "../../services/appPreferences";
-import { homeEditRequest } from "../../services/homeEditRequest";
-import { useAppPreferences } from "../../hooks/useAppPreferences";
+import { useStudyPlan } from "../../hooks/useStudyPlan";
+import { useStudyLauncher } from "../../hooks/useStudyLauncher";
+import { useJustFocus } from "../../hooks/useJustFocus";
+import { daysUntil, upcomingExams } from "../../utils/studyPlan";
 import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
@@ -63,13 +63,7 @@ export default function HomeScreen() {
   const [goalSettings, setGoalSettings] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
-  // Sections in the order this account chose; Rearrange Home edits it in place.
-  useAppPreferences();
-  const order = appPreferences.homeOrder(owner);
-  const [arranging, setArranging] = useState(false);
-  // Settings › Rearrange Home asks before returning here; leaving Home ends the edit.
-  useFocusEffect(useCallback(() => { if (homeEditRequest.take()) setArranging(true); return () => setArranging(false); }, []));
-  const rearrange = () => setArranging(true);
+  const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus();
   const avatar = useRef<View>(null);
   const openProfile = () => {
     // Profile grows out of the avatar, then shrinks back into it.
@@ -81,7 +75,7 @@ export default function HomeScreen() {
   const [surfaceMode, setSurfaceMode] = useState(accessMode);
   if (surfaceMode !== accessMode) {
     setSurfaceMode(accessMode);
-    if (accessMode !== "online") { setGoalSettings(false); setTiersOpen(false); setTodayOpen(false); setArranging(false); }
+    if (accessMode !== "online") { setGoalSettings(false); setTiersOpen(false); setTodayOpen(false); }
   }
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
@@ -166,14 +160,13 @@ export default function HomeScreen() {
   const needsReview = !!(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary));
   const goalShare = Math.min(1, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60));
 
-  const sections: Record<HomeSection, React.ReactNode> = {
-    routines: <TourAnchor key="routines" id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
-      limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} onHeaderLongPress={rearrange} /></TourAnchor>,
-    exams: <HomeExams key="exams" rearrange={rearrange} />,
-    squad: <HomeSquad key="squad" rearrange={rearrange} />,
-    week: <HomeWeek key="week" rearrange={rearrange} />,
-    milestones: <HomeMilestones key="milestones" rearrange={rearrange} />,
-  };
+  // The Today card suggests one next step: revise for an exam this week, or just focus.
+  const nextExam = upcomingExams(plan.exams).find(exam => daysUntil(exam.examDate) <= 7 && plan.courses.some(course => course.id === exam.courseId));
+  const nextCourse = nextExam ? plan.courses.find(course => course.id === nextExam.courseId) ?? null : null;
+  const examDays = nextExam ? daysUntil(nextExam.examDate) : 0;
+  const primary = hasOpenSession ? { title: "Return to your session", detail: timer.isRunning ? "In progress" : "Paused", onPress: openSession, testID: "home-continue" }
+    : nextCourse ? { title: `Revise ${nextCourse.name}`, detail: examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`, onPress: () => launcher.study(nextCourse), testID: "home-revise" }
+    : { title: "Start focusing", detail: "Any activity, your time", onPress: justFocus, testID: "home-just-focus" };
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
@@ -234,23 +227,23 @@ export default function HomeScreen() {
             {needsReview ? <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Review saved session</Text>
             </TouchableOpacity> : <View style={styles.starts}>
-              <TouchableOpacity testID="home-start-routine" onPress={() => router.navigate("/routines")} accessibilityRole="button" accessibilityLabel="Start a routine. Opens Routines" style={styles.startButton}>
-                <Ionicons name="repeat" size={17} color="#BF5AF2" /><Text style={styles.startText} numberOfLines={1}>Start a routine</Text>
+              <TouchableOpacity testID={primary.testID} onPress={primary.onPress} accessibilityRole="button" accessibilityLabel={`${primary.title}. ${primary.detail}`} style={styles.nextButton}>
+                <View style={styles.goalCopy}><Text style={styles.nextTitle} numberOfLines={1}>{primary.title}</Text><Text style={styles.nextDetail} numberOfLines={1}>{primary.detail}</Text></View>
+                <View style={styles.nextPlay}><Ionicons name={hasOpenSession ? "chevron-up" : "play"} size={17} color={colors.primary} /></View>
               </TouchableOpacity>
-              <TouchableOpacity testID="home-start-study" onPress={() => router.navigate("/study")} accessibilityRole="button" accessibilityLabel="Study. Opens Study" style={styles.startButton}>
-                <Ionicons name="school" size={17} color="#64D2FF" /><Text style={styles.startText} numberOfLines={1}>Study</Text>
-              </TouchableOpacity>
+              {!hasOpenSession && <TouchableOpacity testID="home-other-session" onPress={nextCourse ? justFocus : () => router.navigate("/routines")} accessibilityRole="button"
+                accessibilityLabel={nextCourse ? "Other session. Choose any activity" : "Choose a routine. Opens Routines"} style={styles.otherButton}>
+                <Ionicons name={nextCourse ? "add" : "repeat"} size={18} color={colors.accent} /><Text style={styles.startText} numberOfLines={1}>{nextCourse ? "Other session" : "Choose a routine"}</Text>
+              </TouchableOpacity>}
             </View>}
           </View></TourAnchor>
 
-          {arranging ? <View style={styles.arrange} testID="home-arrange">
-            <View style={styles.arrangeHead}>
-              <View style={styles.goalCopy}><Text style={styles.arrangeTitle} accessibilityRole="header">Rearrange Home</Text>
-                <Text style={styles.streakText}>Drag ≡ to move a section.</Text></View>
-              <TouchableOpacity onPress={() => setArranging(false)} accessibilityRole="button" accessibilityLabel="Done rearranging" style={styles.done}><Text style={styles.doneText}>Done</Text></TouchableOpacity>
-            </View>
-            <HomeArranger order={order} onChange={next => void appPreferences.setHomeOrder(owner, next)} />
-          </View> : order.map(key => sections[key])}
+          <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
+            limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} /></TourAnchor>
+          <HomeExams />
+          <HomeSquad />
+          <HomeWeek />
+          <HomeMilestones />
         </View>
         </ContentReveal>
       </TourScrollView>
@@ -280,11 +273,6 @@ const styles = StyleSheet.create({
   avatarFrame: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
   todayCopy: { paddingRight: 30 },
   todayMenu: { position: "absolute", top: 12, right: 12, zIndex: 2 },
-  arrange: { gap: 14 },
-  arrangeHead: { flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 4 },
-  arrangeTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
-  done: { minHeight: 36, paddingHorizontal: 18, borderRadius: 18, justifyContent: "center", backgroundColor: colors.primary },
-  doneText: { color: colors.primaryText, fontSize: 15, fontWeight: "700" },
   avatarDisc: { ...edge, width: 50, height: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   today: { ...edge, padding: 16, gap: 16, borderRadius: radius.card, backgroundColor: colors.surface },
   goalRow: { flexDirection: "row", alignItems: "center", gap: 18 },
@@ -295,8 +283,13 @@ const styles = StyleSheet.create({
   streakText: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   ringValue: { color: colors.text, fontSize: 28, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
   ringUnit: { color: colors.secondary, fontSize: 11, lineHeight: 15 },
-  starts: { flexDirection: "row", gap: 10 },
-  startButton: { ...edge, flex: 1, minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10, borderRadius: 16, backgroundColor: colors.sheetCard },
+  starts: { gap: 10 },
+  // One suggested next step, and a quieter way to do something else.
+  nextButton: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 20, paddingRight: 8, borderRadius: 29, backgroundColor: colors.primary },
+  nextTitle: { color: colors.primaryText, fontSize: 16, lineHeight: 21, fontWeight: "700" },
+  nextDetail: { color: colors.primaryText, opacity: 0.7, fontSize: 12, lineHeight: 16, fontWeight: "600" },
+  nextPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
+  otherButton: { ...edge, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, borderRadius: 24, backgroundColor: colors.sheetCard },
   startText: { flexShrink: 1, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   primaryButton: { backgroundColor: colors.primary, minHeight: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "600", textAlign: "center" },

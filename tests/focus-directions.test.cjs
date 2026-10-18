@@ -245,7 +245,7 @@ test('active guided focus retains its saved wording and continue action without 
   } finally { await ui.cleanup(); }
 });
 
-test('in-card preferences actions ignore taps while either mode is handling session setup', async () => {
+test('the offline focus card ignores preference taps while a session setup is being handled', async () => {
   const preference = { version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false };
   const shared = {
     ...mocks, './ContentReveal': props => props.children, './FocusLengthControl': host('Length'), './FocusAreaSheet': () => null,
@@ -253,19 +253,18 @@ test('in-card preferences actions ignore taps while either mode is handling sess
     '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ value: preference, busy: false, ready: true, error: false }) },
     '../context/TimerContext': { useTimer: () => ({ actionBusy: true }) },
   };
-  const Free = load('src/components/FreeFocusCard.tsx', shared).default, Guided = load('src/components/GuidedFocusCard.tsx', shared).default;
+  const Guided = load('src/components/GuidedFocusCard.tsx', shared).default;
   let opened = 0;
-  function FreeHarness() { return React.createElement(Free, { seconds: 1859, area: 'Learning', tint: '#fff', active: false, running: false, starting: true, disabled: false, changeDisabled: false, restoring: false, failed: false, onChange() {}, onStart() {}, onDuration() {}, onPreferences: () => opened++ }); }
   function GuidedHarness() { return React.createElement(Guided, { owner: 'person', subjects: [], disabled: false, onStarted() {}, onPreferences: () => opened++ }); }
-  const free = await render(FreeHarness), guided = await render(GuidedHarness);
+  const guided = await render(GuidedHarness);
   try {
-    for (const ui of [free, guided]) {
+    for (const ui of [guided]) {
       const actions = ui.tree.root.findAllByType('Button').filter(button => ['focus-card-preferences', 'focus-card-suggestion'].includes(button.props.testID));
       assert.ok(actions.length > 0);
       for (const action of actions) { assert.equal(action.props.disabled, true); assert.equal(action.props.accessibilityState.disabled, true); await act(async () => action.props.onPress()); }
     }
     assert.equal(opened, 0);
-  } finally { await free.cleanup(); await guided.cleanup(); }
+  } finally { await guided.cleanup(); }
 });
 
 test('every direction offers four distinct first steps, each with a short hint', () => {

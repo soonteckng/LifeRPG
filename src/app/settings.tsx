@@ -15,7 +15,6 @@ import { useTimer } from "../context/TimerContext";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useFocusDurationPreference } from "../hooks/useFocusDurationPreference";
 import { appPreferences } from "../services/appPreferences";
-import { homeEditRequest } from "../services/homeEditRequest";
 import { getDailyGoalSettings } from "../services/dailyGoalService";
 import { readNotificationPermission, type NotificationPermission } from "../services/notificationPermissionService";
 import { durationLabel } from "../utils/sessionSetup";
@@ -32,7 +31,7 @@ export default function SettingsScreen() {
   const duration = useFocusDurationPreference(profile.id);
   const [goal, setGoal] = useState<{ owner: string; today: number; next: number | null } | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
-  const [signingOut, setSigningOut] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [reset, setReset] = useState(false);
+  const [signingOut, setSigningOut] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const lock = useRef(false), generation = useRef(0);
   // Values only; each page loads and edits its own details.
   const load = useCallback(async () => {
@@ -57,7 +56,6 @@ export default function SettingsScreen() {
     catch { setError("Could not sign out. Check your connection and try again."); lock.current = false; setBusy(false); }
   };
   const goalValue = goal && goal.owner === profile.id ? `${goal.today} min${goal.next ? ` → ${goal.next}` : ""}` : `${profile.daily_goal_minutes} min`;
-  const rearrange = () => { homeEditRequest.ask(); router.navigate("/"); };
   return (
     <PersonalPage title="Settings" subtitle="" back animateTransition fallback="/">
       <View style={s.account} accessible accessibilityLabel={`${profile.username}, ${user?.email ?? "signed in"}`}>
@@ -71,10 +69,8 @@ export default function SettingsScreen() {
         {Platform.OS === "android" && <SettingsRow icon="shield-checkmark-outline" tint="#30D158" title="Session protection" onPress={() => router.navigate("/protection")} />}
       </SettingsGroup>
 
-      <SettingsGroup title="Home & feel" footer={preferenceError ?? undefined}>
-        <SettingsRow first icon="apps-outline" tint="#BF5AF2" title="Rearrange Home" onPress={rearrange} />
-        <SettingsRow icon="refresh" tint="#BF5AF2" title="Reset Home layout" disabled={!preferences.homeOrder[profile.id]} onPress={() => setReset(true)} />
-        <SettingsRow icon="phone-portrait-outline" tint="#FF9F0A" title="Haptic feedback"
+      <SettingsGroup title="Feel" footer={preferenceError ?? undefined}>
+        <SettingsRow first icon="phone-portrait-outline" tint="#FF9F0A" title="Haptic feedback"
           toggle={{ value: hapticsEnabled, onChange: value => { setHapticsEnabled(value); setTapHapticsEnabled(value); if (value) tapHaptic(); } }} />
         <SettingsRow icon="sparkles-outline" tint="#FF9F0A" title="Reduce motion" subtitle="Calmer transitions, on top of your phone’s setting"
           toggle={{ value: preferences.reduceMotion, onChange: value => void appPreferences.update({ reduceMotion: value }) }} />
@@ -106,14 +102,6 @@ export default function SettingsScreen() {
           <PersonalButton title={busy ? "Signing out..." : "Sign out"} disabled={busy || sessionBlocksLogout} onPress={() => void logout()} />
           <PersonalButton secondary title="Keep me signed in" disabled={busy} onPress={() => setSigningOut(false)} />
           {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
-        </BottomSheetScrollView>
-      </AppSheet>
-      <AppSheet label="Reset Home layout" motionMode="timed" compact floating visible={reset} onRequestClose={() => setReset(false)}
-        header={<View style={p.sheetHeader}><Text style={p.title}>Reset Home layout?</Text></View>}>
-        <BottomSheetScrollView contentContainerStyle={p.sheetBody}>
-          <Text style={p.body}>Home goes back to its original order. Nothing else changes.</Text>
-          <PersonalButton title="Reset layout" onPress={() => { void appPreferences.setHomeOrder(profile.id, null); setReset(false); }} />
-          <PersonalButton secondary title="Keep my layout" onPress={() => setReset(false)} />
         </BottomSheetScrollView>
       </AppSheet>
     </PersonalPage>

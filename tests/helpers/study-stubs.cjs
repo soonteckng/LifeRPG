@@ -13,7 +13,6 @@ module.exports = name => {
   if (name.endsWith('/HomeSections')) return { __esModule: true, HomeExams: () => null, HomeSquad: () => null, HomeWeek: () => null, HomeMilestones: () => null,
     useWeekProgress: () => ({ week: null, period: { today: '' } }), WeekBars: () => null };
   // Home's drag-to-rearrange runs on the native gesture system; tests see its props.
-  if (name.endsWith('/HomeArranger')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('HomeArranger', props), HOME_SECTION_INFO: {} }; }
   if (name.endsWith('/TodaySheet')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('TodaySheet', props) }; }
   // Swipe actions run on the native gesture system; rows render as they are.
   if (name.endsWith('/SwipeRow')) return { __esModule: true, default: props => props.children };

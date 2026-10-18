@@ -18,7 +18,6 @@ import { routinePresentation, type RoutineEntry } from "../utils/routinePresenta
 import type { SavedRoutine } from "../types/savedRoutine";
 import type { Subject, Task } from "../services/taskService";
 import { colors, radius, edge } from "../constants/theme";
-import { type } from "../constants/typography";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
@@ -26,7 +25,7 @@ import RoutineEditorSheet from "./RoutineEditorSheet";
 import QuestSheet from "./QuestSheet";
 import SheetHeader from "./SheetHeader";
 import SwipeRow from "./SwipeRow";
-import SectionHeader, { CircleButton } from "./SectionHeader";
+import SectionHeader, { CircleButton, SeeAll } from "./SectionHeader";
 import OneTimeHint from "./OneTimeHint";
 import { appPreferences } from "../services/appPreferences";
 
@@ -37,14 +36,12 @@ const ROUTINE_TEMPLATES: RoutineTemplate[] = [
   { name: "Plan tomorrow", minutes: 15, area: "personal" },
 ];
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, onHeaderLongPress }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
-  /** Home rearranges its sections when the title is held. */
-  onHeaderLongPress?: () => void;
 }) {
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -200,32 +197,29 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
   return <>
     <View style={s.card} testID="saved-routines-card">
-      {/* On Home the title opens Routines; in Routines it sits beside Edit and +. */}
-      {onSeeAll ? <SectionHeader title="My Routines" subtitle={entries.length > limit ? `${limit} of ${entries.length}` : undefined} onPress={() => { feedback(); onSeeAll(); }}
-        onLongPress={onHeaderLongPress} pressLabel="My Routines. Open Routines" />
+      {/* On Home, See all opens Routines; in Routines the header has Edit and +. */}
+      {onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll label={entries.length > limit ? `See all ${entries.length}` : "See all"} accessibilityLabel="My Routines. Open Routines" onPress={() => { feedback(); onSeeAll(); }} />} />
         : <SectionHeader title="My Routines" right={<View style={s.headingActions}>
-          {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); setShowDone(false); setManage(true); }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>Edit</Text></Pressable>}
+          {!!(entries.length || done.length) && active && routines.ready && <SeeAll label="Edit" accessibilityLabel="Manage your routines" onPress={() => { feedback(); setShowDone(false); setManage(true); }} />}
           <CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />
         </View>} />}
       <OneTimeHint id="routine-hold" text="Hold or swipe a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
-      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.group}>
-        {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
-      </View> : <View style={s.group}>
+      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.stack}>
+        {/* Each routine is its own small card; swipe actions stay inside it. */}
+        {visibleEntries.map(entry => <View key={entry.key} style={s.itemCard}>{homeRow(entry)}</View>)}
+      </View> : <View style={s.itemCard}>
         <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
       {/* Ready-made starting points stay offered until each one is saved. */}
       {offerSuggestions && routines.ready && !!suggestions.length && <View style={s.suggested}>
-        <Text style={s.sectionLabel}>Suggested routines</Text>
-        <View style={s.group}>
-        {suggestions.map((template, index) => {
+        <SectionHeader title="Ideas to start with" />
+        <View style={s.ideas}>{suggestions.map(template => {
           const area = suggestedArea(subjects as Subject[], template.area);
-          return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button" accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes`} style={[s.row, index > 0 && s.divider]}>
-            <View style={[s.areaDot, { backgroundColor: lifeAreaColor(area?.id, area?.color_code) }]} />
-            <View style={s.detail}><Text style={s.name}>{template.name}</Text><Text style={s.caption}>{template.minutes} min · {focusAreaTitle(area?.title)}</Text></View>
-            <View style={s.play}><Ionicons name="add" size={18} color={colors.accent} /></View>
+          return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button"
+            accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes, ${focusAreaTitle(area?.title)}`} style={s.idea}>
+            <Ionicons name="add" size={15} color={colors.accent} /><Text style={s.ideaText}>{template.name}</Text>
           </Pressable>;
-        })}
-        </View>
+        })}</View>
       </View>}
       {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
       {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
@@ -280,12 +274,14 @@ function MenuAction({ icon, label, onPress, danger = false, disabled = false, fi
 const s = StyleSheet.create({
   card: { gap: 10 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 },
-  suggested: { gap: 8, marginTop: 6 },
-  sectionLabel: { ...type.label, paddingHorizontal: 4 },
+  suggested: { gap: 10, marginTop: 14 },
+  ideas: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  idea: { ...edge, minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.surface },
+  ideaText: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  stack: { gap: 8 },
+  itemCard: { ...edge, borderRadius: 18, backgroundColor: colors.surface, overflow: "hidden" },
   headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
   name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },

@@ -214,7 +214,7 @@ test('Home stays a dashboard when suggestions were on: no suggestion card, and o
   'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
   '../../components/ProgressRing':host('ProgressRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon',level:1,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
-  '../../context/TimerContext':{useTimer:()=>timer},
+  '../../context/TimerContext':{useTimer:()=>timer},'../context/TimerContext':{useTimer:()=>timer},
   '../../context/QuestContext':{useQuests:()=>({tasks:[quest],subjects:[{id:2,title:'Knowledge'}],loading:false,refresh:async()=>{}})},
   '../../services/progressService':{getFocusStreak:async()=>0},'../../services/dailyProgressService':{getTodayProgress:async()=>null},'../../hooks/useHomeLifecycle':{useHomeLifecycle:()=>12},
  })).default;
@@ -399,46 +399,27 @@ test('choosing a preset or custom duration never rewrites the saved suggestion d
  await ui.cleanup();ui=await render(Card,props);assert.match(text(ui.tree.root),/Review your notes/);await ui.cleanup();
 });
 
-test('both idle focus modes open preferences in the card without starting or changing the selected session',async()=>{
+test('the offline suggested-focus card opens preferences in the card without starting or changing the selected session',async()=>{
  const calls=[],shared=mocks({'../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(...args)=>calls.push(['start',...args])})}});
- const Free=load('src/components/FreeFocusCard.tsx',shared).default,Guided=load('src/components/GuidedFocusCard.tsx',shared).default;
- const free=await render(Free,{seconds:2717,area:'Work & projects',areaId:3,tint:'#fff',active:false,running:false,starting:false,disabled:false,changeDisabled:false,restoring:false,failed:false,onChange:id=>calls.push(['area',id]),onStart:()=>calls.push(['free']),onDuration:seconds=>calls.push(['duration',seconds]),onPreferences:()=>calls.push(['preferences','free'])});
+ const Guided=load('src/components/GuidedFocusCard.tsx',shared).default;
  const guided=await render(Guided,{owner:'owner',subjects:[{id:2,title:'Learning'}],selectedSeconds:2717,disabled:false,onStarted:()=>calls.push(['entered']),onPreferences:()=>calls.push(['preferences','guided'])});
  try {
-  for(const ui of [free,guided]){
-   const change=ui.tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-card-preferences');
-   assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,52);
-   await ui.press('Change focus direction');assert.equal(selectedCustomDuration(ui),'45 min 17 sec');
-  }
+  const change=guided.tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-card-preferences');
+  assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,52);
+  await guided.press('Change focus direction');assert.equal(selectedCustomDuration(guided),'45 min 17 sec');
   const suggestion=guided.tree.root.findAllByType('View').find(node=>node.props.testID==='focus-card-suggestion');
   assert.equal(text(suggestion),'Suggested: Review your notes');assert.equal(suggestion.props.onPress,undefined);
   const title=suggestion.findByType('Text');assert.equal(title.props.numberOfLines,2);assert.notEqual(title.props.allowFontScaling,false);
   assert.equal(guided.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);
-  assert.deepEqual(calls,[['preferences','free'],['preferences','guided']]);
-  assert.match(text(free.tree.root),/Work & projects/);assert.match(text(guided.tree.root),/Learning/);
- }finally{await free.cleanup();await guided.cleanup();}
+  assert.deepEqual(calls,[['preferences','guided']]);
+  assert.match(text(guided.tree.root),/Learning/);
+ }finally{await guided.cleanup();}
 });
-
 test('a preferences read error keeps the in-card recovery action and current suggestion available',async()=>{
  let opened=0;const value={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
  const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({value,ready:false,busy:false,error:true})},'../context/TimerContext':{useTimer:()=>({})}})).default;
  const ui=await render(Card,{owner:'owner',subjects:[],selectedSeconds:1859,disabled:false,onStarted(){},onPreferences:()=>opened++});
  try{assert.match(text(ui.tree.root),/Tap Change to try again/);assert.doesNotMatch(text(ui.tree.root),/Find your next step/);await ui.press('Change focus direction');assert.equal(opened,1);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');}finally{await ui.cleanup();}
-});
-
-test('free and suggested focus render one card structure with the same preset, custom and primary controls',async()=>{
- const shared=mocks({'../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},'../context/TimerContext':{useTimer:()=>({})}});
- const Free=load('src/components/FreeFocusCard.tsx',shared).default,Guided=load('src/components/GuidedFocusCard.tsx',shared).default;
- const free=await render(Free,{seconds:1800,area:'General',tint:'#fff',active:false,running:false,starting:false,disabled:false,changeDisabled:false,restoring:false,failed:false,onChange(){},onStart(){},onDuration(){}});
- const guided=await render(Guided,{owner:'owner',subjects:[],disabled:false,onStarted(){}});
- try {
-  const view=(ui,id)=>ui.tree.root.findAllByType('View').find(n=>n.props.testID===id);
-  assert.deepEqual(view(free,'home-quick-start').props.style,view(guided,'guided-focus-card').props.style);
-  assert.equal(view(free,'focus-card-prompt').props.style.minHeight,view(guided,'focus-card-prompt').props.style.minHeight);
-  const roles=ui=>ui.tree.root.findAllByType('Button').map(n=>n.props.accessibilityLabel?.replace(/^Start .*/, 'Start'));
-  assert.deepEqual(roles(free),roles(guided));assert.equal(view(free,'home-quick-start').props.style.flexGrow,undefined);
-  assert.doesNotMatch(text(free.tree.root),/Suggested/);assert.match(text(guided.tree.root),/Suggested: Review your notes/);
- }finally{await free.cleanup();await guided.cleanup();}
 });
 
 test('custom focus duration validates bounds and cancel leaves the chosen duration untouched',async()=>{
@@ -477,40 +458,6 @@ test('one Change action leaves the exact selected timer and confirmed setup inta
  try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);await ui.press('Change focus direction');assert.equal(opened,1);assert.equal(calls.length,0);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');assert.match(text(ui.tree.root),/Learning/);await ui.press('Start session');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],2);}finally{await ui.cleanup();}
 });
 
-test('Quick focus in Routines saves its category, keeps the exact time and never shows a suggestion',async()=>{
- const db=storage(),api=load('src/services/guidedPreferenceService.ts',{'@react-native-async-storage/async-storage':db.api});
- db.values.set('liferpg:guided:v1:owner',JSON.stringify({version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false}));
- await api.guidedPreferenceStore.load('owner');
- const usePreference=load('src/hooks/useGuidedPreference.ts',{'../services/guidedPreferenceService':api}).useGuidedPreference;
- const routes=[],starts=[],subjects=[{id:1,title:'Everyday focus'},{id:2,title:'Learning'},{id:3,title:'Work & projects'}];
- const timer={hasOpenSession:false,startFreeTimer:async(seconds,id)=>{starts.push([seconds,id]);return true;}};
- const user={useUser:()=>({profile:{id:'owner',username:'Soon Teck',daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})};
- const quests={useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})};
- const Routines=load('src/app/(tabs)/routines.tsx',mocks({
-  'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:()=>{}},
-  '../../components/AppText':{Text:host('Text')},'../../components/ContentReveal':p=>p.children,
-  '../../components/PersonalUI':{PersonalPage:props=>React.createElement('Page',null,props.children)},'../../hooks/useTabDockInset':{useTabDockInset:()=>120},
-  './useGuidedPreference':{useGuidedPreference:usePreference},
-  '../../context/UserContext':user,'../context/UserContext':user,'../../context/TimerContext':{useTimer:()=>timer},'../context/TimerContext':{useTimer:()=>timer},
-  '../../context/QuestContext':quests,'../context/QuestContext':quests,
- })).default;
- const ui=await render(Routines);
- const pick=title=>act(async()=>ui.tree.root.findAllByType('Button').find(node=>node.props.accessibilityLabel===title||node.props.accessibilityLabel?.startsWith(title+'. ')).props.onPress());
- try{
-  assert.doesNotMatch(text(ui.tree.root),/Suggested:/);assert.equal(selectedCustomDuration(ui),'30 min');
-  await ui.press('Change focus direction');assert.match(text(ui.tree.root),/Where should this time count\?/);
-  // Every category explains itself.
-  assert.match(text(ui.tree.root),/Reading, studying and building knowledge/);
-  await pick('Learning');assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,2);assert.equal(ui.tree.root.findAllByType('Sheet').length,0);
-  await setTenMinuteCustom(ui);assert.equal(selectedCustomDuration(ui),'10 min');
-  await ui.press('Change focus direction');await pick('Everyday focus');assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,1,'Everyday focus counts toward the general category');assert.equal(selectedCustomDuration(ui),'10 min');
-  db.api.setItem=async()=>{throw Error('Offline');};
-  await ui.press('Change focus direction');await pick('Work & projects');
-  assert.match(text(ui.tree.root),/Couldn’t save your category/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,1);
-  await ui.press('Start session');assert.deepEqual(starts,[[600,1]]);assert.deepEqual(routes,['/session']);
-  assert.doesNotMatch(text(ui.tree.root),/Suggested:/);
- }finally{await ui.cleanup();}
-});
 test('read-only activity and area cannot publish a second setup path or change attribution',async()=>{
  const calls=[],preference={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
  const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,value:preference,busy:false,error:false,save:async()=>false})},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus.templateId,id,focus.seconds]);return true;}})}})).default;

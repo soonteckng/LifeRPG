@@ -8,7 +8,7 @@ import { Text } from "./AppText";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import ExamRow from "./ExamRow";
-import SectionHeader from "./SectionHeader";
+import SectionHeader, { SeeAll } from "./SectionHeader";
 import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
 import { SquadFace, SquadJoinSheet } from "./SquadSheets";
@@ -28,13 +28,12 @@ import { ranked, squadTotal } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
 import type { StudyExam } from "../types/studyPlan";
 
-// Home is a summary: each section shows what matters now. Its title (with ›)
-// opens the section in full; holding the title rearranges Home.
-type SectionProps = { rearrange: () => void };
+// Home is a summary: each section shows what matters now as its own small
+// cards, and a quiet "See all ›" opens the section in full.
 const WEEK = 7;
 
 /** Exams within the next week (up to three), or the next one if none are that close. Tapping one starts studying it. */
-export function HomeExams({ rearrange }: SectionProps) {
+export function HomeExams() {
   const router = useRouter(), plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), { subjects = [] } = useQuests();
   const [sheet, setSheet] = useState<"all" | "add" | null>(null);
   const [editing, setEditing] = useState<StudyExam | null>(null);
@@ -46,10 +45,11 @@ export function HomeExams({ rearrange }: SectionProps) {
   const subtitle = soon.length ? `${soon.length} in the next 7 days${soon.length > 3 ? " · nearest 3" : ""}` : coming.length ? `Next one in ${daysUntil(coming[0].examDate)} days` : "Nothing scheduled";
   const add = () => { setEditing(null); setSheet("add"); };
   return <View style={s.section} testID="home-exams">
-    <SectionHeader title="Upcoming Exams" subtitle={subtitle} onLongPress={rearrange} onPress={coming.length ? () => setSheet("all") : add}
-      pressLabel={coming.length ? `Upcoming Exams, ${subtitle}. See all ${coming.length} exams` : "Upcoming Exams. Add an exam"} />
-    {shown.length ? <View style={s.group}>{shown.map((exam, index) => <ExamRow key={exam.id} exam={exam} course={courseFor(exam.courseId)} first={index === 0}
-      onPress={() => open(exam)} label={courseFor(exam.courseId) ? "Start studying" : "Edit exam"} />)}</View>
+    <SectionHeader title="Upcoming Exams" subtitle={subtitle}
+      right={coming.length ? <SeeAll label={coming.length > shown.length ? `See all ${coming.length}` : "See all"} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
+    {shown.length ? <View style={s.stack}>{shown.map(exam => { const course = courseFor(exam.courseId);
+      return <ExamRow key={exam.id} exam={exam} course={course} card first onPress={() => open(exam)} onStudy={course ? () => launcher.study(course) : undefined}
+        label={course ? "Start studying" : "Edit exam"} />; })}</View>
       : <Pressable onPress={add} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
@@ -73,7 +73,7 @@ export function HomeExams({ rearrange }: SectionProps) {
 }
 
 /** Your squad's week. Tapping it peeks at the leaderboard; the Squads tab has the whole squad. */
-export function HomeSquad({ rearrange }: SectionProps) {
+export function HomeSquad() {
   const router = useRouter(), squads = useSquads();
   const chosen = squadSelection.get();
   const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
@@ -82,8 +82,8 @@ export function HomeSquad({ rearrange }: SectionProps) {
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
-    <SectionHeader title="My Squad" subtitle={squad ? squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined : undefined} onLongPress={rearrange}
-      onPress={squad ? openSquads : () => setJoining(true)} pressLabel={squad ? "My Squad. Open Squads" : "My Squad. Join or start a squad"} />
+    <SectionHeader title="My Squad" subtitle={squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
+      right={squad ? <SeeAll onPress={openSquads} accessibilityLabel="My Squad. Open Squads" /> : undefined} />
     {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
       accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
       <SquadSummary squad={squad} />
@@ -137,13 +137,13 @@ export function WeekBars({ height = 44, wide = false }: { height?: number; wide?
 }
 
 /** This week in one line and seven small bars. Tapping it opens the week by category. */
-export function HomeWeek({ rearrange }: SectionProps) {
+export function HomeWeek() {
   const router = useRouter(), { week } = useWeekProgress();
   const [open, setOpen] = useState(false);
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
   return <View style={s.section} testID="home-week">
-    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onLongPress={rearrange} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
+    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} right={<SeeAll onPress={() => router.navigate("/progress")} accessibilityLabel="This Week. Open Progress" />} />
     <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
       <View style={s.flex}>
         <Text style={s.total}>{durationLabel(week?.seconds ?? 0)}</Text>
@@ -170,16 +170,16 @@ export function HomeWeek({ rearrange }: SectionProps) {
 }
 
 /** Your nearest milestone; the whole collection opens as a card. */
-export function HomeMilestones({ rearrange }: SectionProps) {
+export function HomeMilestones() {
   const [open, setOpen] = useState(false);
   return <View style={s.section} testID="home-milestones">
-    <SectionHeader title="My Milestones" onLongPress={rearrange} onPress={() => setOpen(true)} pressLabel="My Milestones. See all milestones" />
+    <SectionHeader title="My Milestones" right={<SeeAll onPress={() => setOpen(true)} accessibilityLabel="My Milestones. See all milestones" />} />
     <MilestonesRow open={open} onOpenChange={setOpen} />
   </View>;
 }
 
 const s = StyleSheet.create({
-  section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
+  section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 }, stack: { gap: 8 },
   group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   sheetGroup: { backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },

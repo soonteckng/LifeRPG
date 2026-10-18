@@ -10,6 +10,7 @@ import { focusingCount, goalProgress, ranked, squadTotal } from "../utils/squads
 import { studyTime } from "../utils/studyPlan";
 import type { Squad, SquadMember } from "../types/squads";
 
+const SQUAD_SIZE = 8;
 const PODIUM = [{ place: 2, height: 54, medal: "#C7CBD1" }, { place: 1, height: 78, medal: "#FFD60A" }, { place: 3, height: 40, medal: "#D9A066" }] as const;
 
 /**
@@ -24,9 +25,10 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
   const top = Math.max(1, members[0]?.weekSeconds ?? 0);
   const podium = anyTime && members.length >= 2 ? members.slice(0, 3) : [];
   const rest = members.slice(podium.length);
+  const seats = Math.max(0, Math.min(SQUAD_SIZE - members.length, 4 - members.length));
   const label = (member: SquadMember, index: number) => `${index + 1}. ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)} this week, level ${member.level}${member.focusingNow ? ", focusing now" : ""}`;
   const holdable = (member: SquadMember) => squad.ownerIsYou && !member.isYou;
-  return <View style={s.stack} testID="squad-board">
+  return <View style={s.board} testID="squad-board">
     <View style={s.hero}>
       <View style={s.faces}>{squad.members.slice(0, 5).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={member} size={40} ring={colors.background} /></View>)}</View>
       <Text style={s.name} accessibilityRole="header" numberOfLines={2}>{squad.name}</Text>
@@ -56,7 +58,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
           </Pressable>;
         })}
       </View>}
-      {rest.length > 0 && <View style={s.list}>{rest.map((member, index) => {
+      {(rest.length > 0 || seats > 0) && <View style={s.stack}>{rest.map((member, index) => {
         const place = podium.length + index, hold = holdable(member);
         const row = <>
           <Text style={s.rank}>{place + 1}</Text>
@@ -67,10 +69,20 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
           </View>
         </>;
         return hold ? <Pressable key={member.id} disabled={busy} onLongPress={() => onRemove(member)} delayLongPress={450} accessibilityRole="button" accessibilityLabel={label(member, place)}
-          accessibilityHint="Hold to remove from the squad" style={[s.row, index > 0 && s.line]}>{row}</Pressable>
-          : <View key={member.id} accessible accessibilityLabel={label(member, place)} style={[s.row, index > 0 && s.line]}>{row}</View>;
-      })}</View>}
+          accessibilityHint="Hold to remove from the squad" style={s.row}>{row}</Pressable>
+          : <View key={member.id} accessible accessibilityLabel={label(member, place)} style={s.row}>{row}</View>;
+      })}
+        {/* A small squad shows its empty seats, each one an invite. */}
+        {Array.from({ length: seats }, (_, index) => <Pressable key={`seat-${index}`} onPress={onInvite} accessibilityRole="button" accessibilityLabel="Open seat. Invite a friend" testID="squad-open-seat" style={[s.row, s.seat]}>
+          <Text style={s.rank} />
+          <View style={s.seatFace}><Ionicons name="add" size={18} color={colors.tertiary} /></View>
+          <Text style={[s.flex, s.seatText]}>Open seat</Text>
+          <Text style={s.seatInvite}>Invite</Text>
+        </Pressable>)}
+      </View>}
     </View>
+    {/* The invite sits at the bottom of the page, however short the board is. */}
+    <View style={s.spacer} />
 
     <View style={s.invite}>
       <View style={s.code} accessible accessibilityLabel={`Invite code ${squad.code.split("").join(" ")}`}><Text style={s.codeLabel}>Invite code</Text><Text style={s.codeText}>{squad.code}</Text></View>
@@ -80,7 +92,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
   </View>;
 }
 const s = StyleSheet.create({
-  stack: { gap: 16 }, flex: { flex: 1, minWidth: 0 },
+  board: { flexGrow: 1, gap: 16 }, flex: { flex: 1, minWidth: 0 },
   hero: { gap: 8, paddingHorizontal: 4 },
   faces: { flexDirection: "row", alignItems: "center", marginBottom: 2 }, faceSlot: { borderRadius: 22, borderWidth: 2, borderColor: colors.background },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", letterSpacing: -0.6 },
@@ -93,7 +105,7 @@ const s = StyleSheet.create({
   section: { gap: 10, marginTop: 6 },
   sectionHead: { gap: 1, paddingHorizontal: 4 },
   sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
-  podium: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 10, paddingTop: 18, paddingHorizontal: 12, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  podium: { ...edge, flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 10, paddingTop: 18, paddingHorizontal: 12, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   podiumSlot: { flex: 1, maxWidth: 120, alignItems: "center", gap: 4 },
   medal: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   medalText: { color: "#1C1C1E", fontSize: 12, fontWeight: "800" },
@@ -101,9 +113,12 @@ const s = StyleSheet.create({
   podiumTime: { color: colors.secondary, fontSize: 13, lineHeight: 17, fontVariant: ["tabular-nums"] },
   pillar: { alignSelf: "stretch", marginTop: 6, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.sheetCard },
   pillarFirst: { backgroundColor: "rgba(255,214,10,0.18)" },
-  list: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
-  row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
-  line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  stack: { gap: 8 },
+  row: { ...edge, minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 18, backgroundColor: colors.surface },
+  seat: { borderStyle: "dashed", borderColor: "rgba(255,255,255,0.16)", backgroundColor: "transparent" },
+  seatFace: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" },
+  seatText: { color: colors.secondary, fontSize: 15 }, seatInvite: { color: colors.accent, fontSize: 14, fontWeight: "600" },
+  spacer: { flexGrow: 1, minHeight: 8 },
   rank: { width: 18, textAlign: "center", color: colors.secondary, fontSize: 15, fontWeight: "700" },
   nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   rowName: { flex: 1, color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, you: { color: colors.secondary, fontWeight: "500" },

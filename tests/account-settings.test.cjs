@@ -137,8 +137,8 @@ async function settings(options = {}, file = "src/app/settings.tsx") {
   const navigate = [], updates = [];
   const ui = await screen(file, {
     ...sheets,
-    "../hooks/useAppPreferences": { useAppPreferences: () => ({ reduceMotion: false, examReminders: true, homeOrder: options.homeOrder ?? {} }) },
-    "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; }, setHomeOrder: async (owner, order) => { updates.push({ owner, order }); return true; } } },
+    "../hooks/useAppPreferences": { useAppPreferences: () => ({ reduceMotion: false, examReminders: true, hints: [] }) },
+    "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; } } },
     "../hooks/useFocusDurationPreference": { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, choose: async () => {} }) },
     "../components/CharacterMark": host("Mark"),
     "react-native": { ...Native, AppState: { addEventListener: (_, fn) => { foreground = fn; return { remove() {} }; } },
@@ -179,8 +179,8 @@ test("Settings groups its rows and every row opens its own page", async () => {
   const ui = await settings();
   try {
     assert.match(ui.text(), /Hero/); assert.match(ui.text(), /test@example.com/);
-    for (const group of ["Focus", "Home & feel", "Notifications", "Help"]) assert.match(ui.text(), new RegExp(group));
-    assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction|EAS|Expo Go|native build|widgets/);
+    for (const group of ["Focus", "Feel", "Notifications", "Help"]) assert.match(ui.text(), new RegExp(group));
+    assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction|EAS|Expo Go|native build|widgets|Rearrange Home|Reset Home layout/);
     await ui.press("Daily goal60 min");
     await ui.press("Sessions30 min");
     await ui.press("NotificationsOff");
@@ -190,17 +190,6 @@ test("Settings groups its rows and every row opens its own page", async () => {
     await act(async () => toggle("Reduce motion").props.onValueChange(true));
     await act(async () => toggle("Exam reminders").props.onValueChange(false));
     assert.deepEqual(ui.calls().updates, [{ reduceMotion: true }, { examReminders: false }]);
-  } finally { await ui.cleanup(); }
-});
-test("Rearrange Home asks Home to open in edit mode; Reset only appears useful once there is a layout", async () => {
-  const ui = await settings({ homeOrder: { account: ["week", "routines", "exams", "squad", "milestones"] } });
-  try {
-    await ui.press("Rearrange Home");
-    assert.deepEqual(ui.calls().navigate, ["/"]);
-    assert.equal(load("src/services/homeEditRequest.ts").homeEditRequest.take(), false, "each load has its own request store");
-    await ui.press("Reset Home layout");
-    await ui.pressTitle("Reset layout");
-    assert.deepEqual(ui.calls().updates.at(-1), { owner: "account", order: null });
   } finally { await ui.cleanup(); }
 });
 const goalPage = options => settings(options, "src/app/settings-goal.tsx");

@@ -31,8 +31,8 @@ const base = () => ({
   '/notificationPermissionService': { readNotificationPermission: async () => ({ granted: true }), enableNotifications: async () => ({ granted: true }) },
   '/tapHaptics': { tapHaptic: () => {}, tapHapticsEnabled: () => false },
 });
-// The Routines and Study tabs start sessions through useQuickStart; its stores stay out of the way here.
-const quickStartMocks = starts => ({
+// Just focus and the study launcher read the saved session length; their stores stay out of the way here.
+const startMocks = starts => ({
   '/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, busy: false, error: false, value: { enabled: false, invited: true }, save: async () => true }) },
   '/useFocusDurationPreference': { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, error: false, choose: async () => {} }) },
   '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'Asia/Kuala_Lumpur' }, hapticsEnabled: false }) },
@@ -111,11 +111,12 @@ function studyScreen(plan, timer = {}) {
     '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: props => React.createElement('Page', props, props.action, props.children) },
     '/StudyExamSheet': host('ExamSheet'), '/StudySubjectSheet': { __esModule: true, default: host('SubjectSheet') }, '/SubjectPicker': host('Picker'), '/SheetHeader': host('Header'),
     '/StudyLifecycle': { requestStudySync: () => {} }, '/QuestContext': { useQuests: () => ({ subjects: withRevision }) },
-    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => calls.push('notes'), setLinkedTaskId: () => {}, setTargetAttributeId: v => calls.push(['area', v]), ...timer }) },
+    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => calls.push('notes'), setLinkedTaskId: () => {}, setTargetAttributeId: v => calls.push(['area', v]), setDurationInSeconds: () => {}, ...timer }) },
     '/useStudyPlan': { useStudyPlan: () => ({ ready: true, error: null, courses: [], exams: [], recent: [], saveCourse: async d => { calls.push(['course', d]); return true; }, saveExam: async () => true,
       remove: async (kind, removed) => { calls.push(['remove', kind, removed]); return true; }, ...plan }) },
     '/studySelection': { studySelection: { get: () => null, subscribe: () => () => {}, choose: v => calls.push(['subject', v]) } },
     '/setupMode': { setupMode: { choose: v => calls.push(['mode', v]) } }, '/SheetTouchable': host('Press'),
+    '/useFocusDurationPreference': startMocks([])['/useFocusDurationPreference'], '/UserContext': startMocks([])['/UserContext'],
   }).default;
   return { Screen, calls };
 }
@@ -217,10 +218,10 @@ test('Home shows exams within a week, opens a study session straight from one, a
     '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'),
     '/SquadsSection': { SquadSummary: host('Summary') }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') }, '/SheetHeader': host('Header'),
     '/QuestContext': { useQuests: () => ({ subjects: withRevision }) }, '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) },
-    '/TimerContext': { useTimer: () => ({ sessionSummary: null, setNotes() {}, setLinkedTaskId() {}, setTargetAttributeId: v => timer.push(v) }) },
+    '/TimerContext': { useTimer: () => ({ sessionSummary: null, setNotes() {}, setLinkedTaskId() {}, setTargetAttributeId: v => timer.push(v), setDurationInSeconds() {} }) },
+    '/useFocusDurationPreference': startMocks([])['/useFocusDurationPreference'],
     '/useProgressData': { useProgressData: () => ({ data: null }) } });
-  const rearranged = [];
-  const home = () => React.createElement('Home', null, ...['HomeExams', 'HomeSquad', 'HomeWeek'].map(name => React.createElement(sections[name], { key: name, rearrange: () => rearranged.push(name) })));
+  const home = () => React.createElement('Home', null, ...['HomeExams', 'HomeSquad', 'HomeWeek'].map(name => React.createElement(sections[name], { key: name })));
   let ui; await act(async () => { ui = create(home()); });
   const rerender = () => act(async () => ui.update(home()));
   const section = testID => within(ui.root, testID);
@@ -228,7 +229,7 @@ test('Home shows exams within a week, opens a study session straight from one, a
   const inSheet = node => { for (let at = node.parent; at; at = at.parent) if (at.type === 'Sheet') return true; return false; };
   const rows = () => section('home-exams').findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string').filter(row => !inSheet(row));
   for (const title of ['Upcoming Exams', 'Got an exam coming up?', 'My Squad', 'Focus with friends', 'This Week']) assert.ok(texts(ui.root).includes(title), title);
-  assert.equal(texts(ui.root).some(t => /^(Study|Squads|Progress)$/.test(t)), false, 'no green text links; each section has a ••• menu');
+  assert.equal(texts(ui.root).some(t => /^(Study|Squads|Progress)$/.test(t)), false, 'no green text links; each section has a grey See all');
   await act(async () => presses(ui.root, 'Add an exam')[0].props.onPress());
   assert.equal(section('home-exams').findByType('ExamSheet').props.visible, true, 'adding an exam happens right here');
   plan.exams = [exam, ...[2, 3, 5, 6].map(n => ({ ...exam, id: id(10 + n), title: `Paper ${n}`, examDate: inDays(n) }))];
@@ -238,13 +239,11 @@ test('Home shows exams within a week, opens a study session straight from one, a
   assert.match(rows()[0].findAllByType('Press')[0].props.accessibilityLabel, /^Paper 2/);
   await act(async () => rows()[0].findAllByType('Press')[0].props.onPress());
   assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'straight to the study session');
-  // The title reads "Upcoming Exams ›": tapping it lists them all, holding it rearranges Home.
-  const title = section('home-exams').findAllByType('Press').find(x => /See all 5 exams$/.test(x.props.accessibilityLabel ?? ''));
-  assert.equal(title.props.accessibilityLabel, 'Upcoming Exams, 4 in the next 7 days · nearest 3. See all 5 exams');
-  await act(async () => title.props.onPress());
+  // A grey "See all 5 ›" beside the title lists them all.
+  const seeAll = presses(section('home-exams'), 'See all 5 exams')[0];
+  assert.ok(texts(seeAll).includes('See all 5'));
+  await act(async () => seeAll.props.onPress());
   assert.equal(section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'all exams').props.visible, true, 'the full list opens here, not in Study');
-  await act(async () => title.props.onLongPress());
-  assert.deepEqual(rearranged, ['HomeExams']);
   assert.equal(ui.root.findAllByType('Menu').length, 0, 'no ••• on Home sections');
   await act(async () => section('home-squad-section').findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
   const peek = section('home-squad-section').findAllByType('Sheet').find(x => x.props.label === 'squad peek');
@@ -255,25 +254,24 @@ test('Home shows exams within a week, opens a study session straight from one, a
   assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());
 });
-test('the Routines tab holds quick focus and every routine, and starts old routines the same way Home does', async () => {
+test('the Routines tab starts with Just focus, holds every routine, and starts old routines the same way Home does', async () => {
   const calls = [];
-  const Screen = load('src/app/(tabs)/routines.tsx', { ...base(), ...quickStartMocks(calls), 'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
-    '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: host('Page') }, '/SavedRoutinesCard': host('Routines'), '/CategorySheet': host('CategorySheet'),
+  const Screen = load('src/app/(tabs)/routines.tsx', { ...base(), ...startMocks(calls), 'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
+    '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: host('Page') }, '/SavedRoutinesCard': host('Routines'),
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
+    '/setupMode': { setupMode: { choose: v => calls.push(['mode', v]), chooseRoutine: v => calls.push(['routine', v]) } },
     '/QuestContext': { useQuests: () => ({ tasks: [{ id: 5 }], subjects: areas, refresh: async () => {} }) }, '/SheetTouchable': host('Press'),
-    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => {}, setLinkedTaskId: v => calls.push(['quest', v]), setDurationInMinutes: v => calls.push(['minutes', v]), setTargetAttributeId: v => calls.push(['area', v]), startFreeTimer: async (...a) => { calls.push(['start', ...a]); return true; } }) },
+    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => {}, setLinkedTaskId: v => calls.push(['quest', v]), setDurationInMinutes: v => calls.push(['minutes', v]), setDurationInSeconds: v => calls.push(['seconds', v]), setTargetAttributeId: v => calls.push(['area', v]), startFreeTimer: async (...a) => { calls.push(['start', ...a]); return true; } }) },
   }).default;
   let ui; await act(async () => { ui = create(React.createElement(Screen)); });
   const card = ui.root.findByType('Routines').props;
   assert.equal(ui.root.findByType('Page').props.title, 'Routines'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
-  assert.ok(texts(ui.root).includes('Quick focus')); assert.equal(texts(ui.root).includes('Any activity, counted toward a category.'), false, 'no permanent instructions under titles');
+  assert.ok(texts(ui.root).includes('Just focus')); assert.equal(texts(ui.root).includes('Quick focus'), false, 'the old quick focus card is gone');
   await act(async () => card.onStartLegacy({ id: 5, target_minutes: 25, subject_id: 2 }));
-  assert.deepEqual(calls, [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
+  assert.deepEqual(calls.filter(c => c[0] !== 'mode'), [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
   calls.length = 0;
-  await act(async () => ui.root.findAll(x => x.props.testID === 'focus-card-preferences' && x.type === 'Press')[0].props.onPress());
-  assert.equal(ui.root.findByType('CategorySheet').props.visible, true, 'the category opens one shared picker');
-  await act(async () => ui.root.findAll(x => x.props.testID === 'home-start-focus' && x.type === 'Press')[0].props.onPress());
-  assert.deepEqual(calls, [['start', 1800, 1, undefined], ['nav', '/session']], 'quick focus starts in your category');
+  await act(async () => ui.root.findAll(x => x.props.testID === 'routines-just-focus' && x.type === 'Press')[0].props.onPress());
+  assert.deepEqual(calls, [['quest', null], ['area', 1], ['seconds', 1800], ['mode', 'routine'], ['routine', null], ['nav', '/session']], 'Just focus opens the session in Everyday focus at your saved length, starting nothing yet');
   await act(async () => ui.unmount());
 });
 test('the exam name follows the subject until it is edited, and a typed subject stays pickable', async () => {
@@ -317,18 +315,11 @@ test('My Milestones shows the nearest one and opens the whole collection as a sh
 });
 test('every category explains where its time goes, Everyday focus first, in one shared list', () => {
   const areasApi = load('src/utils/focusAreas.ts', {});
-  const sheet = load('src/components/CategorySheet.tsx', { ...base(), '/SheetHeader': host('Header'), '/FocusAreaPicker': host('Areas') });
   const subjects = [{ id: 1, title: 'General' }, { id: 2, title: 'Learning' }, { id: 3, title: 'Fitness & Health' }, { id: 4, title: 'Work' }];
-  const choices = sheet.categoryChoices(subjects, null);
-  assert.equal(choices[0].title, 'Everyday focus'); assert.equal(choices[0].id, 1);
+  const choices = areasApi.focusAreaChoices(subjects, null);
+  assert.equal(areasApi.focusAreaTitle(choices[0].title), 'Everyday focus'); assert.equal(choices[0].id, 1);
   assert.equal(choices.filter(c => areasApi.focusAreaTitle(c.title) === 'Everyday focus').length, 1, 'no duplicate Everyday focus');
   for (const choice of choices) assert.ok(areasApi.focusAreaHint(choice.title).length > 10, `${choice.title} has a description`);
-});
-
-test('a saved Home order drops unknown sections, keeps each once and adds new ones at the end', () => {
-  const prefs = load('src/services/appPreferences.ts', { '@react-native-async-storage/async-storage': { getItem: async () => null, setItem: async () => {} } });
-  assert.deepEqual(prefs.cleanHomeOrder(null), ['routines', 'exams', 'squad', 'week', 'milestones'], 'routines come before exams by default');
-  assert.deepEqual(prefs.cleanHomeOrder(['week', 'bogus', 'week', 'squad']), ['week', 'squad', 'routines', 'exams', 'milestones']);
 });
 
 test('Revision and Learning break down by subject; untagged time is Other and sits last', () => {
@@ -365,5 +356,23 @@ test('a one-time tip shows until it is dismissed or its gesture is used, then ne
   assert.deepEqual(JSON.parse(store.values.get('liferpg:app-preferences:v1')).hints, ['subject-hold']);
   await act(async () => { await prefs.appPreferences.retireHint('routine-hold'); await prefs.appPreferences.retireHint('routine-hold'); });
   assert.deepEqual(prefs.appPreferences.get().hints, ['subject-hold', 'routine-hold'], 'using the gesture retires a tip once');
+  await act(async () => ui.unmount());
+});
+
+test('a small squad shows open seats that invite, and the invite stays last on the page', async () => {
+  const Board = load('src/components/SquadBoard.tsx', { ...base(), '/SquadSheets': { SquadFace: host('Face') }, '/OneTimeHint': host('Hint'), '/SquadsSection': { daysLeftInWeek: () => 3 } }).default;
+  const member = (n, extra = {}) => ({ id: id(20 + n), name: `Friend ${n}`, weekSeconds: 600 * n, focusingNow: false, isYou: false, level: 1, ...extra });
+  const squad = members => ({ id: id(8), name: 'Library crew', code: 'K7Q4PX', goalMinutes: null, ownerIsYou: true, members });
+  let invites = 0, ui;
+  const render = members => React.createElement(Board, { squad: squad(members), busy: false, onSetGoal: () => {}, onRemove: () => {}, onInvite: () => invites++ });
+  await act(async () => { ui = create(render([member(1, { isYou: true })])); });
+  const seats = () => ui.root.findAll(x => x.props.testID === 'squad-open-seat' && x.type === 'Press');
+  assert.equal(seats().length, 3, 'one person still sees a full-looking board');
+  await act(async () => seats()[0].props.onPress());
+  assert.equal(invites, 1, 'a seat is an invite');
+  const buttons = ui.root.findAllByType('Press');
+  assert.equal(buttons.at(-1).props.accessibilityLabel, 'Invite friends', 'invite sits at the bottom');
+  await act(async () => ui.update(render([1, 2, 3, 4].map(n => member(n)))));
+  assert.equal(seats().length, 0, 'four or more members need no placeholders');
   await act(async () => ui.unmount());
 });

@@ -8,7 +8,7 @@ import { colors, edge } from "../constants/theme";
 /**
  * A section's title, an optional line under it, and one control on the right.
  * With onPress the title reads "Title ›" and opens the section in full;
- * holding it runs onLongPress (Home uses that to rearrange).
+ * holding it runs onLongPress.
  */
 export default function SectionHeader({ title, subtitle, right, onPress, onLongPress, pressLabel }: {
   title: string; subtitle?: string; right?: ReactNode; onPress?: () => void; onLongPress?: () => void; pressLabel?: string;
@@ -23,10 +23,17 @@ export default function SectionHeader({ title, subtitle, right, onPress, onLongP
   return <View style={s.head}>
     {onPress || onLongPress ? <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={450} disabled={!onPress && !onLongPress}
       accessibilityRole={onPress ? "button" : undefined} accessibilityLabel={onPress ? pressLabel ?? `${title}${subtitle ? `, ${subtitle}` : ""}. Show all` : undefined}
-      accessibilityActions={onLongPress ? [{ name: "longpress", label: "Rearrange Home" }] : undefined}
+      accessibilityActions={onLongPress ? [{ name: "longpress", label: "More actions" }] : undefined}
       onAccessibilityAction={onLongPress} style={s.copy}>{copy}</Pressable> : copy}
     {right}
   </View>;
+}
+
+/** A quiet grey "See all ›" link for a section header. */
+export function SeeAll({ label = "See all", onPress, accessibilityLabel, testID }: { label?: string; onPress: () => void; accessibilityLabel?: string; testID?: string }) {
+  return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} hitSlop={10} testID={testID} style={s.seeAll}>
+    <Text style={s.seeAllText}>{label}</Text><Ionicons name="chevron-forward" size={15} color={colors.muted} />
+  </Pressable>;
 }
 
 /** The round, bordered + (or other icon) button used next to section titles. */
@@ -46,4 +53,6 @@ const s = StyleSheet.create({
   subtitle: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   circle: { ...edge, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   disabled: { opacity: 0.4 },
+  seeAll: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: 2, paddingLeft: 8 },
+  seeAllText: { color: colors.muted, fontSize: 15, fontWeight: "500" },
 });

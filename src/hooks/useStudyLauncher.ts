@@ -1,6 +1,9 @@
 import { useRouter } from "expo-router";
 import { useTimer } from "../context/TimerContext";
 import { useQuests } from "../context/QuestContext";
+import { useUser } from "../context/UserContext";
+import { useFocusDurationPreference } from "./useFocusDurationPreference";
+import { validSessionSeconds } from "../utils/sessionSetup";
 import { setupMode } from "../services/setupMode";
 import { studySelection } from "../services/studySelection";
 import { generalArea, revisionArea, suggestedArea } from "../utils/focusAreas";
@@ -13,7 +16,8 @@ import type { StudyCourse, StudyExam } from "../types/studyPlan";
  * subject has an exam coming up, otherwise as Learning.
  */
 export function useStudyLauncher(exams: StudyExam[]) {
-  const router = useRouter(), timer = useTimer(), { subjects = [] } = useQuests();
+  const router = useRouter(), timer = useTimer(), { subjects = [] } = useQuests(), { profile } = useUser();
+  const duration = useFocusDurationPreference(profile?.id ?? "");
   const blocked = !!(timer.hasOpenSession || timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !timer.sessionSummary));
   const areaFor = (course: Pick<StudyCourse, "id" | "focusAreaId">) => {
     const general = generalArea(subjects)?.id ?? null;
@@ -25,6 +29,8 @@ export function useStudyLauncher(exams: StudyExam[]) {
     if (blocked) { router.navigate("/session"); return; }
     timer.setNotes(""); timer.setLinkedTaskId(null);
     timer.setTargetAttributeId(areaFor(course));
+    // Study starts from the length set in Settings › Sessions.
+    if (duration.ready && validSessionSeconds(duration.selectedSeconds)) timer.setDurationInSeconds(duration.selectedSeconds);
     studySelection.choose(course.id); setupMode.choose("study");
     timer.reviewSummary?.(); router.navigate("/session");
   };

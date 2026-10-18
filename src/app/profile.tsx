@@ -4,7 +4,7 @@ import Pressable from "../components/MotionPressable";
 import { useTimer } from "../context/TimerContext";
 import { Text } from "../components/AppText";
 import ContentReveal from "../components/ContentReveal";
-import { lifeAreaColor } from "../utils/lifeAreaColor";
+import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -139,25 +139,24 @@ export default function ProfileScreen() {
   return (
     <PersonalPage title="Profile" subtitle="" compact back animateTransition expandFromIcon fallback="/">
       <ContentReveal><View style={s.stack}>
+        {/* A compact header: your companion on the left, who you are and your level on the right. */}
         <View style={s.hero} testID="profile-companion-card">
           <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={s.portrait}>
-            <ProgressRing size={150} stroke={5} progress={profile.current_xp / required} color={colors.level} track={colors.levelSoft}>
-              <View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={112} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} greetOnFocus /></View>
+            <ProgressRing size={100} stroke={4} progress={profile.current_xp / required} color={colors.level} track={colors.levelSoft}>
+              <View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={72} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} greetOnFocus /></View>
             </ProgressRing>
             <View style={s.levelBadge}><Text style={s.levelBadgeText}>LV {profile.level}</Text></View>
           </Pressable>
           <View style={s.identity}>
             <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
             <Text style={s.tier} numberOfLines={1}>{tier.title} · {savedLook.title}</Text>
+            <Meter value={profile.current_xp / required} height={5} color={colors.level} />
+            <Text style={p.caption} numberOfLines={1}>{profile.current_xp} / {required} XP · {required - profile.current_xp} to level {profile.level + 1}</Text>
           </View>
-          <View style={s.xpBlock}>
-            <Meter value={profile.current_xp / required} height={6} color={colors.level} />
-            <View style={s.xpRow}><Text style={p.caption}>{profile.current_xp} / {required} XP</Text><Text style={p.caption}>{required - profile.current_xp} XP to level {profile.level + 1}</Text></View>
-          </View>
-          <View style={s.heroActions}>
-            <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
-            <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={s.heroButton}><Ionicons name="sparkles-outline" size={17} color={colors.level} /><Text style={s.heroButtonText}>Level journey</Text></Pressable>
-          </View>
+        </View>
+        <View style={s.heroActions}>
+          <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
+          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={s.heroButton}><Ionicons name="sparkles-outline" size={17} color={colors.level} /><Text style={s.heroButtonText}>Level journey</Text></Pressable>
         </View>
         <View style={s.statsRow}>
           {[["time-outline", durationLabel(milestones.totals.seconds), "focused", "#64D2FF"], ["calendar-outline", String(milestones.totals.days), milestones.totals.days === 1 ? "focus day" : "focus days", colors.accent],
@@ -183,14 +182,11 @@ export default function ProfileScreen() {
         <View style={s.areasCard}>
           <SectionHeader title="My Categories" />
           {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-          {/* One compact list: name, level and progress to the next level on a line each. */}
-          {!!areas.length && <View style={s.subjects}>{areas.map((area, index) => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={[s.areaRow, index > 0 && s.subjectLine]}>
-            <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={17} color={lifeAreaColor(area.id, area.color_code)} /></View>
-            <View style={s.detail}>
-              <View style={s.areaHead}><Text style={[p.rowTitle, s.flex]} numberOfLines={1}>{focusAreaTitle(area.title)}</Text><Text style={s.tileLevel}>Lv {area.level}</Text></View>
-              <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={5} />
-            </View>
-            <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+          {/* Two small tiles a row: short to scroll, every category at a glance. */}
+          {!!areas.length && <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaTile}>
+            <View style={s.areaHead}><View style={[s.tileIcon, { backgroundColor: areaTint(lifeAreaColor(area.id, area.color_code)) }]}><Ionicons name={focusAreaIcon(area.title)} size={16} color={lifeAreaColor(area.id, area.color_code)} /></View><Text style={s.tileLevel}>Lv {area.level}</Text></View>
+            <Text style={p.rowTitle} numberOfLines={1}>{focusAreaTitle(area.title)}</Text>
+            <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={5} />
           </Pressable>)}</View>}
           {data && !areas.length && <Text style={p.body}>Your overall level still grows. Categories will appear here when available.</Text>}
         </View>
@@ -237,14 +233,13 @@ export default function ProfileScreen() {
 }
 const s = StyleSheet.create({
   stack: { gap: 24 }, section: { gap: 10 },
-  hero: { ...edge, paddingVertical: 22, paddingHorizontal: 18, gap: 14, borderRadius: radius.card, backgroundColor: colors.surface, alignItems: "stretch" },
-  portrait: { alignSelf: "center", alignItems: "center" },
-  levelBadge: { marginTop: -14, paddingHorizontal: 12, minHeight: 26, borderRadius: 13, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
+  hero: { ...edge, flexDirection: "row", alignItems: "center", gap: 16, padding: 18, borderRadius: radius.card, backgroundColor: colors.surface },
+  portrait: { alignItems: "center" },
+  levelBadge: { marginTop: -12, paddingHorizontal: 10, minHeight: 24, borderRadius: 12, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
   levelBadgeText: { color: "#2B2200", fontSize: 12, fontWeight: "800", letterSpacing: 0.6 },
-  tier: { color: colors.level, fontSize: 14, lineHeight: 19, fontWeight: "600", textAlign: "center" },
-  xpBlock: { gap: 6 }, xpRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  tier: { color: colors.level, fontSize: 14, lineHeight: 19, fontWeight: "600", marginBottom: 4 },
   heroActions: { flexDirection: "row", gap: 10 },
-  heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.sheetCard },
+  heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.surface },
   heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   // Three numbers in one strip, not three boxes.
   statsRow: { flexDirection: "row", borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
@@ -256,13 +251,14 @@ const s = StyleSheet.create({
   badgeIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft },
   badgeText: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: "600" },
   emptyBadges: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.card, backgroundColor: colors.surface },
-  glow: { width: 128, height: 128, borderRadius: 64, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, identity: { alignItems: "center", gap: 4 },
-  username: { color: colors.text, fontSize: 28, lineHeight: 34, textAlign: "center", fontWeight: "700", letterSpacing: -0.5 },
+  glow: { width: 84, height: 84, borderRadius: 42, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, identity: { flex: 1, minWidth: 0, gap: 3 },
+  username: { color: colors.text, fontSize: 24, lineHeight: 29, fontWeight: "700", letterSpacing: -0.5 },
   growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  areasCard: { gap: 12, paddingHorizontal: 2 }, flex: { flex: 1, minWidth: 0 },
-  areaRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
-  areaHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  areasCard: { gap: 12, paddingHorizontal: 2 },
+  areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  areaTile: { ...edge, flexBasis: "48%", flexGrow: 1, padding: 12, gap: 8, borderRadius: 18, backgroundColor: colors.surface },
+  areaHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   tileLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
   tileIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
   subjects: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },

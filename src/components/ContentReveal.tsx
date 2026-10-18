@@ -3,7 +3,7 @@ import { Animated } from "react-native";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 // Content remains mounted and readable while motion preference resolves.
-export default function ContentReveal({ children }: { children: ReactNode }) {
+export default function ContentReveal({ children, fill = false }: { children: ReactNode; fill?: boolean }) {
   const reduced = useReducedMotion();
   const [opacity] = useState(() => new Animated.Value(1));
   useEffect(() => {
@@ -13,5 +13,5 @@ export default function ContentReveal({ children }: { children: ReactNode }) {
     animation.start();
     return () => animation.stop();
   }, [opacity, reduced]);
-  return <Animated.View style={{ opacity }}>{children}</Animated.View>;
+  return <Animated.View style={[{ opacity }, fill && { flexGrow: 1 }]}>{children}</Animated.View>;
 }

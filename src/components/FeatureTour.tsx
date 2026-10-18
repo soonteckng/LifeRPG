@@ -16,7 +16,7 @@ import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
 
 export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Your companion, streak and level grow with the effort you record. Tap your level to see the tier path." },
-  { id: "home-focus", route: "/", title: "Your day, in one card.", body: "Today’s goal and how far you’ve come. Tap it for your day and week; use ••• to change the goal. Start a routine or a study session from here. Goal changes start tomorrow." },
+  { id: "home-focus", route: "/", title: "Your day, in one card.", body: "Today’s goal and how far you’ve come. Tap the ring for your day and week, and ••• to change the goal. The green button is your next step; Other session is anything else. Goal changes start tomorrow." },
   { id: "home-quests", route: "/", title: "Your routines, together.", body: "Save something you want to return to. Tap a routine to begin. The Routines tab holds them all, with your previous quests and their history." },
   { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "See the effort you recorded each day, with Week or Month totals alongside it. Explore your sessions, categories, streaks and milestones." },
   { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Tap your picture on Home to come here. Personalise your companion, see your badges, and watch your categories and subjects grow with the effort you’ve recorded." },

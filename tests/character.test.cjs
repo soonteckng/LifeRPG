@@ -799,7 +799,7 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   const ui = await profileScreen();
   try {
     assert.match(ui.text(), /My Categories/);
-    assert.match(ui.text(), /LearningLv 2/);
+    assert.match(ui.text(), /Lv 2Learning/);
     assert.doesNotMatch(
       ui.text(),
       /Connect areas|No Life areas connected|Explore your progress/,
@@ -891,7 +891,7 @@ test('Profile level opens the shared tier path with the saved XP balance',async(
 test("Profile opts only its hero into entrance greetings and pauses it behind profile sheets", async () => {
   const ui = await profileScreen();
   try {
-    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 112);
+    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 72);
     assert.equal(hero().props.greetOnFocus, true);
     assert.equal(hero().props.animate, true);
     assert.equal(ui.renderer.root.findAllByType("Portrait").find(node => node.props.interactive === false).props.greetOnFocus, undefined);

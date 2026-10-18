@@ -38,6 +38,7 @@ export function PersonalPage({
   bottomContentInset = 0,
   expandFromIcon = false,
   fallback = "/profile",
+  fill = false,
 }: {
   title: string;
   subtitle: string;
@@ -51,6 +52,8 @@ export function PersonalPage({
   expandFromIcon?: boolean;
   /** Where Back goes when there is nothing to go back to. */
   fallback?: "/profile" | "/settings" | "/";
+  /** Let the content fill the screen, so something can sit at the bottom of a short page. */
+  fill?: boolean;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -148,9 +151,10 @@ export function PersonalPage({
           contentContainerStyle={[
             p.content,
             { paddingBottom: Math.max(48, insets.bottom + 24, bottomContentInset + 24) },
+            fill && { flexGrow: 1 },
           ]}
         >
-          <View style={{ gap: compact ? 12 : 20 }}>
+          <View style={[{ gap: compact ? 12 : 20 }, fill && { flexGrow: 1 }]}>
             {back && (
               <View style={{ gap: 6, paddingBottom: 4 }}>
                 {!!subtitle && <Text style={p.body}>{subtitle}</Text>}

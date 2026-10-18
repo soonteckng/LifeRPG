@@ -12,7 +12,7 @@ export default function SessionSettingsScreen() {
   const router = useRouter(), { profile } = useUser();
   const duration = useFocusDurationPreference(profile.id);
   return <PersonalPage title="Sessions" subtitle="" back animateTransition fallback="/settings">
-    <SettingsGroup title="Starting length" footer="Quick focus and Study start with this length. You can still change it for any one session.">
+    <SettingsGroup title="Starting length" footer="Just focus and Study start with this length. You can still change it for any one session.">
       <View style={{ padding: 14 }}>
         <FocusLengthControl showLabel={false} seconds={duration.selectedSeconds} customSeconds={duration.value.customSeconds} disabled={!duration.ready}
           onChange={seconds => void duration.choose(seconds)} onCustomSave={seconds => void duration.choose(seconds, true)} />

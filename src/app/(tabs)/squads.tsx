@@ -45,10 +45,10 @@ export default function SquadsScreen() {
     { label: "Leave squad", icon: "exit-outline" as const, danger: true, onPress: () => setConfirm({ kind: "leave" }) },
   ] : [];
   return <View style={s.screen}>
-    <PersonalPage title="Squads" subtitle="" compact bottomContentInset={bottomInset}
+    <PersonalPage title="Squads" subtitle="" compact fill={!!squad} bottomContentInset={bottomInset}
       action={squad ? <MoreMenu options={options} label="Squad options" size={36} testID="squad-options" />
         : <CircleButton size={36} label="Join or start a squad" onPress={() => setJoining(true)} />}>
-      <ContentReveal><View style={s.stack}>
+      <ContentReveal fill={!!squad}><View style={[s.stack, !!squad && s.fill]}>
         {squads.squads.length > 1 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.switcher} accessibilityRole="tablist">
           {squads.squads.map(item => {
             const selected = item.id === squad?.id;
@@ -79,7 +79,7 @@ export default function SquadsScreen() {
 }
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
-  stack: { gap: 14 },
+  stack: { gap: 14 }, fill: { flexGrow: 1 },
   switcher: { gap: 8, paddingRight: 8 },
   tab: { ...edge, minHeight: 36, maxWidth: 200, paddingHorizontal: 16, borderRadius: 18, justifyContent: "center", backgroundColor: colors.surface },
   tabOn: { backgroundColor: colors.accentSoft, borderColor: "rgba(99,230,190,0.4)" },
