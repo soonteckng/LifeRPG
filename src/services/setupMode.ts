@@ -1,9 +1,9 @@
 /**
  * Which kind of session the shared setup is preparing: a routine (any activity
  * in a category, or one of your saved routines) or study, plus the routine
- * picked for Routine. Home's card and the session screen read the same values;
- * the Study and Routines tabs set them before opening setup. Nothing here
- * outlives the app process.
+ * picked for Routine. The Study and Routines tabs set them before opening the
+ * session screen, which then stays in that one mode. Nothing here outlives the
+ * app process.
  */
 export type SetupMode = "routine" | "study";
 type Listener = () => void;

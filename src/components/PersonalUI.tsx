@@ -37,6 +37,7 @@ export function PersonalPage({
   floatingAction = false,
   bottomContentInset = 0,
   expandFromIcon = false,
+  fallback = "/profile",
 }: {
   title: string;
   subtitle: string;
@@ -48,6 +49,8 @@ export function PersonalPage({
   floatingAction?: boolean;
   bottomContentInset?: number;
   expandFromIcon?: boolean;
+  /** Where Back goes when there is nothing to go back to. */
+  fallback?: "/profile" | "/squads" | "/";
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -79,11 +82,11 @@ export function PersonalPage({
     if (closing.current) return;
     if (!controlled) {
       if (router.canGoBack()) router.back();
-      else router.replace("/profile");
+      else router.replace(fallback);
       return;
     }
     if (!navigation.canGoBack()) {
-      router.replace("/profile");
+      router.replace(fallback);
       return;
     }
     closing.current = true;
@@ -95,14 +98,14 @@ export function PersonalPage({
         position.setValue(0);
       }
     });
-  }, [controlled, navigation, router, position, width, reduced, expandFromIcon]);
+  }, [controlled, navigation, router, position, width, reduced, expandFromIcon, fallback]);
   // The swipe has already carried the page away; leave without animating again.
   // Settings opens from and returns to its icon, so it has no swipe.
   const swiped = useCallback(() => {
     if (closing.current) return;
-    if (!navigation.canGoBack()) { router.replace("/profile"); return; }
+    if (!navigation.canGoBack()) { router.replace(fallback); return; }
     closing.current = true; setExitReady(true);
-  }, [navigation, router]);
+  }, [navigation, router, fallback]);
   usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
     if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }

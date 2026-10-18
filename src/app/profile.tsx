@@ -1,13 +1,11 @@
-import { focusAreaTitle, focusAreaIcon } from "../../utils/focusAreas";
-import { PROFILE_NAME_LIMIT, profileNameError } from "../../constants/profile";
-import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
-import Pressable from "../../components/MotionPressable";
-import { useTimer } from "../../context/TimerContext";
-import { floatingTabInset } from "../../utils/floatingTabInset";
-import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { Text } from "../../components/AppText";
-import ContentReveal from "../../components/ContentReveal";
-import { lifeAreaColor } from "../../utils/lifeAreaColor";
+import { focusAreaTitle, focusAreaIcon } from "../utils/focusAreas";
+import { PROFILE_NAME_LIMIT, profileNameError } from "../constants/profile";
+import { rememberSettingsOrigin } from "../utils/settingsOrigin";
+import Pressable from "../components/MotionPressable";
+import { useTimer } from "../context/TimerContext";
+import { Text } from "../components/AppText";
+import ContentReveal from "../components/ContentReveal";
+import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
@@ -15,33 +13,32 @@ import {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { requiredCharacterXP } from "../../utils/levelTiers";
-import LevelTierSheet from "../../components/LevelTierSheet";
-import FocusAreaDetailSheet from "../../components/FocusAreaDetailSheet";
-import { focusAreaDetail } from "../../utils/focusAreaDetail";
-import AppSheet from "../../components/AppSheet";
-import SheetConfirmation from "../../components/SheetConfirmation";
-import CharacterPortrait from "../../components/CharacterPortrait";
+import { requiredCharacterXP } from "../utils/levelTiers";
+import LevelTierSheet from "../components/LevelTierSheet";
+import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
+import { focusAreaDetail } from "../utils/focusAreaDetail";
+import AppSheet from "../components/AppSheet";
+import SheetConfirmation from "../components/SheetConfirmation";
+import CharacterPortrait from "../components/CharacterPortrait";
 import {
   Meter,
   PersonalButton,
   PersonalPage,
   p,
-} from "../../components/PersonalUI";
-import { colors, radius } from "../../constants/theme";
-import { useUser } from "../../context/UserContext";
-import { useCharacterData } from "../../hooks/useCharacterData";
-import { earnedMilestones, profileFocusAreaGrowth } from "../../utils/characterGrowth";
-import { durationLabel } from "../../utils/progressAnalytics";
-import { useStudyPlan } from "../../hooks/useStudyPlan";
-import { setupMode } from "../../services/setupMode";
-import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from "../../utils/studyPlan";
+} from "../components/PersonalUI";
+import { colors, radius } from "../constants/theme";
+import { useUser } from "../context/UserContext";
+import { useCharacterData } from "../hooks/useCharacterData";
+import { profileFocusAreaGrowth } from "../utils/characterGrowth";
+import { useStudyPlan } from "../hooks/useStudyPlan";
+import { setupMode } from "../services/setupMode";
+import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
 
-import CharacterLookPicker from "../../components/CharacterLookPicker";
-import { characterLook } from "../../utils/characterAppearance";
+import CharacterLookPicker from "../components/CharacterLookPicker";
+import { characterLook } from "../utils/characterAppearance";
 export default function ProfileScreen() {
   const router = useRouter();
   const settingsIcon = useRef<View>(null);
@@ -53,7 +50,6 @@ export default function ProfileScreen() {
   };
   const insets = useSafeAreaInsets();
   const timer = useTimer();
-  const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { profile, updateProfile, reloadProfile } = useUser();
   const { data, loading, error, refresh } = useCharacterData();
   const study = useStudyPlan();
@@ -77,7 +73,6 @@ export default function ProfileScreen() {
     }, [reloadProfile]),
   );
   const areas = profileFocusAreaGrowth(data?.areas ?? []);
-  const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
   const required = requiredCharacterXP(profile.level);
   const selectedArea = areas.find(area => area.id === areaId) ?? null;
   const areaDetail = selectedArea && data ? focusAreaDetail(selectedArea, data.areas, data.sessions, profile.timezone) : null;
@@ -135,7 +130,7 @@ export default function ProfileScreen() {
   const chooseLook = useCallback((next: string) => { Keyboard.dismiss(); setAvatar(next); setSaveError(""); }, []);
   const savedLook = characterLook(profile.avatar), draftLook = characterLook(avatar || profile.avatar);
   return (
-    <PersonalPage bottomContentInset={tabBarHeight} title="Profile" subtitle="" compact
+    <PersonalPage title="Profile" subtitle="" compact back animateTransition fallback="/"
       action={<View ref={settingsIcon} collapsable={false}><Pressable accessibilityRole="button" accessibilityLabel="Open Settings" onPress={openSettings} style={p.back}><Ionicons name="settings-outline" size={23} color={colors.accent} /></Pressable></View>}>
       <ContentReveal><View style={s.stack}>
         <View style={s.hero} testID="profile-companion-card">
@@ -145,13 +140,8 @@ export default function ProfileScreen() {
           <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.personalise}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.personaliseText}>Personalise</Text></Pressable>
         </View>
         {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
-        <Pressable testID="profile-milestones-entry" onPress={() => router.navigate("/rewards")} accessibilityRole="button" accessibilityLabel="View your milestone collection" style={s.milestones}>
-          <View style={p.icon}><Ionicons name="ribbon-outline" size={23} color={colors.accent} /></View>
-          <View style={s.detail}><Text style={p.rowTitle}>Your milestones</Text><Text style={p.caption}>{data ? totals.milestones.filter(m => m.unlocked).length + " of " + totals.milestones.length + " earned" : "Your collection of small beginnings"}</Text>{data && <Text style={s.history}>{durationLabel(totals.seconds)} · {totals.sessions} sessions</Text>}</View>
-          <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
-        </Pressable>
         <View style={s.areasCard}>
-          <View style={s.areaHeading}><Text style={s.sectionTitle}>Your categories</Text><Text style={p.caption}>Where you make time for what matters.</Text></View>
+          <View style={s.areaHeading}><Text style={s.sectionTitle}>My Categories</Text><Text style={p.caption}>Each grows with the time you give it. Tap one for its story.</Text></View>
           {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
           <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaRow}>
             <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={19} color={lifeAreaColor(area.id, area.color_code)} /></View>
@@ -161,7 +151,7 @@ export default function ProfileScreen() {
           <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
         {study.courses.length > 0 && <View style={s.areasCard} testID="profile-subjects">
-          <View style={s.areaHeading}><Text style={s.sectionTitle}>Your subjects</Text><Text style={p.caption}>All the time you’ve given each one.</Text></View>
+          <View style={s.areaHeading}><Text style={s.sectionTitle}>My Subjects</Text><Text style={p.caption}>All the time you’ve given each one.</Text></View>
           <View style={s.subjects}>{study.courses.map((course, index) => {
             const exam = upcomingExams(study.exams).find(item => item.courseId === course.id);
             return <Pressable key={course.id} onPress={() => router.navigate("/study")} accessibilityRole="button"
@@ -203,7 +193,7 @@ const s = StyleSheet.create({
   stack: { gap: 24 }, hero: { padding: 18, gap: 16, borderRadius: radius.card, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
   heroHead: { alignItems: "center", gap: 10 }, personalise: { alignSelf: "center", minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.accentSoft }, personaliseText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600" }, glow: { width: 136, height: 136, borderRadius: 68, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, centerText: { textAlign: "center" }, identity: { alignItems: "center", gap: 5 }, companionLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "500", letterSpacing: 1.4, textAlign: "center" }, username: { color: colors.text, fontSize: 30, lineHeight: 36, textAlign: "center", fontWeight: "600", letterSpacing: -0.4 },
   levelBlock: { gap: 8 }, levelRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, levelPill: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 14, borderRadius: 22, backgroundColor: colors.levelSoft }, levelText: { color: colors.level, fontSize: 14, lineHeight: 20, fontWeight: "600" }, growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  milestones: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   areasCard: { gap: 12, paddingHorizontal: 2 }, areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, tileLevel: { position: "absolute", top: 14, right: 14, color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] }, tileIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" }, areaHeading: { gap: 5, paddingBottom: 8 }, sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3 }, areaRow: { flexGrow: 1, flexBasis: "46%", minWidth: 140, padding: 14, gap: 10, borderRadius: radius.tile, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, areaLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   subjects: { borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
   subjectRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },

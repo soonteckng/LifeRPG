@@ -56,7 +56,7 @@ function GlobalBackHandler() {
       }
 
       // Tabs are root-level destinations. Android back always returns Home.
-      if (pathname === "/routines" || pathname === "/study" || pathname === "/progress" || pathname === "/profile") {
+      if (pathname === "/routines" || pathname === "/study" || pathname === "/squads" || pathname === "/progress") {
         router.replace("/");
         return true;
       }
@@ -188,6 +188,8 @@ function AppContent() {
               name="rewards"
               options={secondaryNativeOptions(reducedMotion)}
             />
+            <Stack.Screen name="profile" options={secondaryNativeOptions(reducedMotion)} />
+            <Stack.Screen name="squad/[id]" options={secondaryNativeOptions(reducedMotion)} />
             <Stack.Screen
               name="settings"
               options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}

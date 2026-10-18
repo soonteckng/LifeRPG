@@ -24,7 +24,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
-import SquadsSection from "../../components/SquadsSection";
+import MilestonesRow from "../../components/MilestonesRow";
 import { colors, radius, edge } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
@@ -283,7 +283,6 @@ export default function ProgressScreen() {
           />
         }
       >
-        <SquadsSection />
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
@@ -650,7 +649,8 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
-
+              <Section title="My Milestones" />
+              <MilestonesRow />
             </ContentReveal>
           )
         )}

@@ -26,6 +26,11 @@ export const FOCUS_AREAS = [
   { kind: "personal", title: "Everyday life", hint: "Planning, organising and taking care of life tasks.", color: "#30D158" },
   { kind: "wellbeing", title: "Wellbeing", hint: "Reading for pleasure, journaling, movement and time to recharge.", color: "#FF9F0A" },
 ] as const;
+/** One line on what belongs in a category, for pickers. Custom ones have none. */
+export function focusAreaHint(title?: string | null): string {
+  const kind = focusAreaKind(title?.trim()) ?? (title ? null : "general");
+  return kind ? FOCUS_AREAS.find(area => area.kind === kind)?.hint ?? "" : "";
+}
 export function missingFocusAreas(areas: { title: string }[]) {
   const available = new Set(areas.map(area => focusAreaKind(area.title)));
   return FOCUS_AREAS.filter(area => !available.has(area.kind));

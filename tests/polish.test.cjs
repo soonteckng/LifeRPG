@@ -301,7 +301,7 @@ test('quest tour tip keeps its complete sentence and full stop in a natural-heig
   const prior=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);
   for(let i=0;i<2;i++){await ui.press('Next tour tip');await ui.advance(140);}
   const copy=ui.api.TOUR_STEPS[2].body;
-  assert.equal(copy,'Save something you want to return to. Your previous quests are here too, with their history kept. Tap a routine to begin, or Manage to change it.');assert.ok(copy.endsWith('.'));
+  assert.equal(copy,'Save something you want to return to. Tap a routine to begin. The Routines tab holds them all, with your previous quests and their history.');assert.ok(copy.endsWith('.'));
   const body=ui.tree.root.findAllByType('Text').find(node=>node.children.includes(copy));
   assert.ok(body);assert.equal(body.props.numberOfLines,undefined,'guide text must not be shortened with a line limit');
   const viewport=ui.tree.root.findAllByType('Scroll').find(node=>node.props.style?.flexGrow===0);

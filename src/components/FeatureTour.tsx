@@ -16,10 +16,10 @@ import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
 
 export const TOUR_STEPS = [
   { id: "home-identity", route: "/", title: "Your day, at a glance.", body: "Your companion, streak and level grow with the effort you record. Tap your level to see the tier path." },
-  { id: "home-focus", route: "/", title: "Your focus block.", body: "Today’s goal and your next session live in one card. Tap the category to choose an area and suggestion, or free focus. Tap the time to set your session length, then start. Goal changes are available once every seven days and start tomorrow." },
-  { id: "home-quests", route: "/", title: "Your routines, together.", body: "Save something you want to return to. Your previous quests are here too, with their history kept. Tap a routine to begin, or Manage to change it." },
-  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "See the effort you recorded each day, with Week or Month totals alongside it. Explore your task sessions, areas and current and longest streaks." },
-  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Personalise your companion here. This page also holds your focus areas and milestone collection. Growth reflects the effort you’ve recorded." },
+  { id: "home-focus", route: "/", title: "Your day, in one card.", body: "Today’s goal and how far you’ve come. Tap the ring to change the goal, or start a routine or a study session from here. Goal changes are available once every seven days and start tomorrow." },
+  { id: "home-quests", route: "/", title: "Your routines, together.", body: "Save something you want to return to. Tap a routine to begin. The Routines tab holds them all, with your previous quests and their history." },
+  { id: "progress-overview", route: "/progress", title: "See your rhythm.", body: "See the effort you recorded each day, with Week or Month totals alongside it. Explore your sessions, categories, streaks and milestones." },
+  { id: "profile-areas", route: "/profile", title: "Watch your effort grow.", body: "Tap your picture on Home to come here. Personalise your companion and see your categories and subjects grow with the effort you’ve recorded." },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
 const pendingOwners = new Set<string>();

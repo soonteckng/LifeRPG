@@ -57,3 +57,28 @@ test("a pinned action moves to the host with its handler and returns nothing in 
   assert.ok(presence.includes(true));
   await act(async () => ui.unmount());
 });
+
+test("each tab keeps its own pinned slot, so the tab bar shows the button for the tab on screen", async () => {
+  const Start = ({ route, label }) => React.createElement(pinned.PinnedRoute, { name: route },
+    React.createElement(pinned.PinnedAction, null, React.createElement(Button, { label })));
+  const seen = {};
+  function Presence({ route }) { seen[route] = pinned.usePinnedActionPresent(route); return null; }
+  const tree = showStudy => React.createElement(pinned.PinnedActionProvider, null,
+    React.createElement(Start, { route: "routines", label: "Start quick focus" }),
+    showStudy ? React.createElement(Start, { route: "study", label: "Start studying" }) : null,
+    React.createElement("RoutinesDock", null, React.createElement(pinned.PinnedActionHost, { route: "routines" })),
+    React.createElement("StudyDock", null, React.createElement(pinned.PinnedActionHost, { route: "study" })),
+    React.createElement("HomeDock", null, React.createElement(pinned.PinnedActionHost, { route: "index" })),
+    React.createElement(Presence, { route: "routines" }), React.createElement(Presence, { route: "study" }), React.createElement(Presence, { route: "index" }));
+  let ui;
+  await act(async () => { ui = create(tree(true)); });
+  assert.equal(ui.root.findByType("RoutinesDock").findByType(Button).props.label, "Start quick focus");
+  assert.equal(ui.root.findByType("StudyDock").findByType(Button).props.label, "Start studying");
+  assert.equal(ui.root.findByType("HomeDock").findAllByType(Button).length, 0, "Home pins nothing of its own");
+  assert.deepEqual(seen, { routines: true, study: true, index: false });
+  await act(async () => ui.update(tree(false)));
+  assert.equal(ui.root.findByType("StudyDock").findAllByType(Button).length, 0, "leaving Study empties only its slot");
+  assert.equal(ui.root.findByType("RoutinesDock").findByType(Button).props.label, "Start quick focus");
+  assert.deepEqual(seen, { routines: true, study: false, index: false });
+  await act(async () => ui.unmount());
+});

@@ -1,4 +1,4 @@
-import { focusAreaTitle, focusAreaChoices, focusAreaIcon, generalArea, suggestedArea } from "../utils/focusAreas";
+import { focusAreaTitle, focusAreaChoices, focusAreaHint, focusAreaIcon, generalArea, suggestedArea } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import TouchableOpacity from "./MotionPressable";
@@ -39,11 +39,11 @@ import { encodeRoutineSession, readRoutineSession } from "../utils/routineSessio
 import { routineDuration } from "../utils/savedRoutine";
 import SessionProtectionControl from "./SessionProtectionControl";
 import SubjectSetupRow from "./SubjectSetupRow";
-import SetupModeSwitch, { useSetupMode } from "./SetupModeSwitch";
+import { useSetupMode } from "../hooks/useSetupMode";
 import { setupMode, type SetupMode } from "../services/setupMode";
 import { studySelection } from "../services/studySelection";
 import { useStudyPlan } from "../hooks/useStudyPlan";
-import { courseArea } from "../utils/studyPlan";
+import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 
 type Picker = "duration" | "quest" | "area" | null;
 
@@ -347,14 +347,6 @@ export default function SessionScreen() {
     Keyboard.dismiss();
     void timer.startTimer(timer.duration, task?.title ?? routineName ?? undefined);
   };
-  const chooseMode = (next: SetupMode) => {
-    if (locked) return;
-    if (next === "study") {
-      if (isRoutine) clearRoutine();
-      const subjectArea = chosenCourse ? courseArea(chosenCourse, general?.id) : learning?.id ?? null;
-      if (subjectArea !== null) timer.setTargetAttributeId(subjectArea);
-    }
-  };
   // Back to any activity: the category stays, the routine's link and name go.
   const clearRoutine = () => {
     if (locked) return;
@@ -386,6 +378,11 @@ export default function SessionScreen() {
     else start();
   };
   const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading routine…" : "Routine unavailable") : suggestion?.title ?? routineName ?? "Free session");
+  const contextExam = chosenCourse ? upcomingExams(study.exams).find(exam => exam.courseId === chosenCourse.id) : undefined;
+  const contextTitle = sessionMode === "study" ? chosenCourse?.name ?? "Choose a subject" : isRoutine ? title : focusAreaTitle(area?.title);
+  const contextDetail = sessionMode === "study"
+    ? chosenCourse ? [contextExam ? `${contextExam.title} ${countdownLabel(daysUntil(contextExam.examDate)).toLowerCase()}` : null, `${studyTime(weekSeconds(study.recent, chosenCourse.id))} studied this week`].filter(Boolean).join(" · ") : "Its time counts toward Learning and its exams."
+    : isRoutine ? focusAreaTitle(area?.title) : focusAreaHint(area?.title ?? "") || "Any activity you choose.";
   const status = phase === "ended" ? "Session ended" : timer.isRestoring ? "Restoring your session…" : timer.awaitingStart ? "Checking your saved start…"
     : timer.endingSession ? "Session ended"
     : timer.isCompleted ? timer.sessionSummary ? "Time recorded" : timer.syncStatus === "rejected" ? "Kept on this phone. Your account did not accept it." : "Saved on this phone. Waiting to sync."
@@ -414,7 +411,7 @@ export default function SessionScreen() {
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? isRoutine ? "Routine session" : "New session" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
           importantForAccessibility={timer.isCompleted ? "no-hide-descendants" : "auto"}
@@ -452,9 +449,13 @@ export default function SessionScreen() {
                 <Text style={styles.secondary}>{missingQuest ? task ? "This routine is already done or isn’t scheduled for today. Choose another routine, or Any activity." : "Your routine is still linked. Reload its details before starting, or choose Any activity." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
               </View>}
-              {/* The same switch and rows as Home, so every session is set up one way. */}
+              {/* What this session is for, so the screen reads as a plan rather than an empty form. */}
+              <View style={styles.context} testID="session-context">
+                <Text style={styles.contextTitle} numberOfLines={2}>{contextTitle}</Text>
+                {!!contextDetail && <Text style={styles.contextDetail} numberOfLines={2}>{contextDetail}</Text>}
+              </View>
+              {/* A routine session stays a routine and a study session stays study; each tab sets which. */}
               <View style={styles.setup}>
-                <SetupModeSwitch value={sessionMode} disabled={locked} onChange={chooseMode} />
                 {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose category" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
                   <View style={[styles.rowIcon, { backgroundColor: areaTint(areaColor) }]}><Ionicons name={focusAreaIcon(area?.title ?? "")} size={16} color={areaColor} /></View>
                   <Text style={styles.rowLabel}>Category</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
@@ -561,6 +562,9 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: 20, paddingBottom: 20 },
   secondary: { color: colors.secondary, fontSize: 16, lineHeight: 22 },
   setupStack: { gap: 8 },
+  context: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingBottom: 12 },
+  contextTitle: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "700", letterSpacing: -0.3, textAlign: "center" },
+  contextDetail: { color: colors.secondary, fontSize: 14, lineHeight: 19, textAlign: "center" },
   setup: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   setupRow: { minHeight: 52, paddingVertical: 11, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   lastRow: { borderBottomWidth: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },

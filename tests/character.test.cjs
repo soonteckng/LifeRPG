@@ -826,7 +826,8 @@ test("Settings renders in Expo Go even when notification import would throw", as
 });
 
 async function profileScreen(overrides = {}) {
-  return screen("src/app/(tabs)/profile.tsx", {
+  // Profile is a page beside the tabs now, one folder up from them.
+  const mocks = {
     "../../context/TimerContext": {useTimer: () => ({})},
     "expo-router": {
       useRouter: () => ({ navigate() {} }),
@@ -879,12 +880,13 @@ async function profileScreen(overrides = {}) {
       }),
     },
     ...overrides,
-  });
+  };
+  return screen("src/app/profile.tsx", Object.fromEntries(Object.entries(mocks).map(([key, value]) => [key.replace(/^\.\.\/\.\.\//, "../"), value])));
 }
 test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
   const ui = await profileScreen();
   try {
-    assert.match(ui.text(), /Your categories/);
+    assert.match(ui.text(), /My Categories/);
     assert.match(ui.text(), /LearningLv 2/);
     assert.doesNotMatch(
       ui.text(),
@@ -1193,11 +1195,11 @@ test("onboarding profile validation rejects too-long names before the RPC and pr
  await api.saveOnboardingProfile('  Soon Teck  ','⭐','Scholar',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_username,'Soon Teck');
 });
 
-test("Profile has one milestone collection entry instead of a badge shortcut grid",async()=>{
+test("Profile leaves milestones to Progress and keeps My Categories and My Subjects",async()=>{
  const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
  try{
-  const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,1);
-  await act(async()=>entries[0].props.onPress());assert.deepEqual(routes,['/rewards']);assert.match(ui.text(),/Your categories/);
+  const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,0);
+  assert.match(ui.text(),/My Categories/);assert.doesNotMatch(ui.text(),/Your categories/);
  }finally{await ui.cleanup();}
 });
 

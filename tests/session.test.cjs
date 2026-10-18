@@ -521,9 +521,13 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   await act(async()=>{renderer=create(React.createElement(Screen));});
   const text=(node)=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   // Setup mirrors Home: Length is one row whose sheet holds presets and custom time.
-  const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label||label==="Set a custom focus duration"&&node.props.testID==="focus-duration-chip");
+  // Category rows read "Learning. Reading, studying…"; tests address them by their name.
+  const button=(label)=>renderer.root.findAllByType("Button").find((node)=>node.props.accessibilityLabel===label||text(node)===label||label==="Set a custom focus duration"&&node.props.testID==="focus-duration-chip")
+    ?? renderer.root.findAllByType("Button").find(node=>node.props.accessibilityLabel?.startsWith(label+". "));
   return {
     calls,animations,button,root:()=>renderer.root,output:()=>text(renderer.root),
+    // The tab that opened the session sets its one mode; tests switch it here.
+    mode:async(next)=>{await act(async()=>load("src/services/setupMode.ts",{},cache).setupMode.choose(next));},
     press:async(label)=>{
       const preset=/^Use (\d+) minutes$/.exec(label);
       if(preset&&!button(label)){
@@ -892,10 +896,13 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   assert.equal(completed.detail,"Review session");
 });
 
-test("Routine setup lists the same switch and rows as Home: category, optional routine, length",async()=>{
+test("Routine setup is one mode with no switch: what it is for, then category, optional routine, length",async()=>{
   const ui=await screenSetup();
-  assert.ok(ui.button("Routine. Any activity in a category, or one of your routines"),"Routine is one of the two setup modes");
-  assert.ok(ui.button("Study. A subject, counted toward its exams"));
+  assert.equal(ui.button("Routine. Any activity in a category, or one of your routines"),undefined,"no Routine/Study switch");
+  assert.equal(ui.button("Study. A subject, counted toward its exams"),undefined);
+  assert.match(ui.output(),/Quick focus/);
+  const context=ui.root().findAll(node=>node.props.testID==="session-context"&&typeof node.type==="string")[0];
+  assert.match(JSON.stringify(context.findAllByType("Text").map(node=>node.props.children)),/Everyday focus/,"the screen opens with what this time is for");
   assert.equal(ui.button("Choose category").props.accessibilityValue.text,"Everyday focus");
   assert.equal(ui.button("Choose routine").props.accessibilityHint,"Any activity in this category","a routine is optional");
   assert.ok(ui.button("Set a custom focus duration"));
@@ -1414,7 +1421,7 @@ test("Session area choices share canonical labels and preserve a selected legacy
   const ui=await screenSetup({targetAttributeId:3}, {subjects:[{id:1,title:"General"},{id:2,title:"Fitness & Health"},{id:3,title:"Grooming & Vitality"},{id:4,title:"Work"},{id:5,title:"Creative practice"}]});
   try {
     await ui.press("Choose category");
-    const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Wellbeing");
+    const choices=ui.root().findAllByType("Button").filter(node=>/^Wellbeing(\. |$)/.test(node.props.accessibilityLabel??""));
     assert.equal(choices.length,1);assert.equal(choices[0].props.accessibilityState.checked,true);
     await ui.press("Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
     await ui.press("Choose category");
@@ -2005,7 +2012,9 @@ test("display-only countdown keeps its node and exact digits across minute bound
 test("Study mode shows the shared Subject row wired to the session's area; quest setup leaves it out",async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Learning"}]});
   assert.equal(ui.root().findAllByType("SubjectRow").length,0,"Focus mode shows the focus area row instead");
-  await ui.press("Study. A subject, counted toward its exams");
+  await ui.mode("study");
+  assert.match(ui.output(),/Study session/);assert.match(ui.output(),/Choose a subject/);
+  assert.equal(ui.button("Choose category"),undefined,"study has no category or routine rows");assert.equal(ui.button("Choose routine"),undefined);
   const row=ui.root().findByType("SubjectRow");
   assert.equal(row.props.learningId,2);
   assert.equal(row.props.generalId,1); assert.equal(row.props.disabled,false);
@@ -2013,6 +2022,7 @@ test("Study mode shows the shared Subject row wired to the session's area; quest
   assert.deepEqual(ui.calls.at(-1),["area",2]);
   await ui.update({linkedTaskId:7});
   assert.equal(ui.root().findAllByType("SubjectRow").length,0);
+  await ui.mode("routine");
   await ui.cleanup();
 });
 test("only Study starts arm the picked subject, in one place, the timer, before the session exists",()=>{

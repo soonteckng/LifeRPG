@@ -63,21 +63,21 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
-        name="progress"
+        name="squads"
         options={{
-          title: "Progress",
+          title: "Squads",
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon focused={focused} name="stats-chart-outline" size={21} color={color} />
+            <TabIcon focused={focused} name="people-outline" size={23} color={color} />
           ),
         }}
       />
 
       <Tabs.Screen
-        name="profile"
+        name="progress"
         options={{
-          title: "Profile",
+          title: "Progress",
           tabBarIcon: ({ color, focused }) => (
-            <TabIcon focused={focused} name="person-outline" size={22} color={color} />
+            <TabIcon focused={focused} name="stats-chart-outline" size={21} color={color} />
           ),
         }}
       />

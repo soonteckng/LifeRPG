@@ -50,16 +50,16 @@ export default function FocusCard(props: FocusCardProps) {
     <View style={[s.heading, props.active ? s.fieldsRow : s.group]}>
     {!props.active && props.modeSwitch}
     {!props.active && props.leadRow ? props.leadRow : !props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
-      accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose a category and a suggested activity, or free focus." accessibilityState={{ disabled: preferencesLocked }}>
+      accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose where this time counts." accessibilityState={{ disabled: preferencesLocked }}>
       <View style={[s.rowIcon, { backgroundColor: areaTint(props.tint) }]}><Ionicons name={focusAreaIcon(props.area)} size={16} color={props.tint} /></View><Text style={s.rowLabel}>Category</Text><View style={s.rowValue}><Text style={s.rowValueText} numberOfLines={1}>{areaLabel}</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
     </Pressable> : <View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.title} accessibilityRole="header">{props.active ? props.title : areaLabel}</Text></View>}
     {!props.active && !props.leadRow && props.afterArea}
     {!props.active && <FocusLengthControl compact showLabel={false} seconds={props.seconds} customSeconds={props.customSeconds} disabled={editLocked} onChange={props.onDuration} onCustomSave={props.onCustomDuration} />}
     {!props.active && props.protection}
     </View>
-    {!props.active && !props.leadRow && (suggested || !props.afterArea) && <View style={s.suggestionRow} testID="focus-card-suggestion">
-      <Ionicons name={suggested ? "bulb-outline" : "leaf-outline"} size={15} color={suggested ? colors.accent : colors.secondary} />
-      <Text style={s.suggestion} numberOfLines={2} accessibilityLabel={suggested ? `Suggested: ${props.title}. ${props.instruction}` : "Free focus. Choose your own activity."}>{suggested ? `Suggested: ${props.title}` : "Free focus · One thing at a time."}</Text>
+    {!props.active && !props.leadRow && suggested && <View style={s.suggestionRow} testID="focus-card-suggestion">
+      <Ionicons name="bulb-outline" size={15} color={colors.accent} />
+      <Text style={s.suggestion} numberOfLines={2} accessibilityLabel={`Suggested: ${props.title}. ${props.instruction}`}>{`Suggested: ${props.title}`}</Text>
     </View>}
     {props.active && <Text style={s.instruction} numberOfLines={touring ? tour?.previewLines ?? 2 : 2}>{props.instruction}</Text>}
   </ContentReveal></View>;

@@ -62,23 +62,55 @@ const sheets = () => load('src/components/SquadSheets.tsx', {
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
 
-test('squad sheet ranks members, shares the code and asks before leaving or removing', async () => {
-  const { SquadSheet } = sheets(); const calls = []; let ui;
-  await act(async () => { ui = create(React.createElement(SquadSheet, { visible: true, squad: squad(), onClose: () => calls.push('close'),
-    onLeave: async id => { calls.push(['leave', id]); return null; }, onRemove: async (id, m) => { calls.push(['remove', m]); return null; } })); });
-  assert.equal(ui.root.findByType('Header').props.subtitle, '2 members · you lead this squad · 1 focusing now');
-  await act(async () => pressLabel(ui.root, 'Share invite').props.onPress());
+// A squad is its own page now, opened from Squads or Home. Its ••• menu holds the leader's tools.
+class AnimatedValue { constructor(value) { this.value = value; } interpolate(config) { return { source: this, config }; } }
+const squadPage = (state, nav = []) => load('src/app/squad/[id].tsx', {
+  'react-native': { ...rn, StyleSheet: { ...rn.StyleSheet, absoluteFill: {} }, Animated: { View: host('Animated'), Value: AnimatedValue, spring: () => ({ start() {} }) } },
+  'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) }, '/useReducedMotion': { useReducedMotion: () => true },
+  '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
+  'expo-router': { useFocusEffect: () => {}, useLocalSearchParams: () => ({ id: squad().id }), useRouter: () => ({ canGoBack: () => true, back: () => nav.push('back'), replace: route => nav.push(route) }) },
+  '/PersonalUI': { PersonalPage: ({ title, action, children }) => React.createElement('Page', { title }, action, children) },
+  '/MotionPressable': host('Press'), '/AppText': { Text: host('Text') }, '/SheetConfirmation': host('Confirm'), '/useSquads': { useSquads: () => state() },
+  '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
+  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/ProgressRing': host('Ring'),
+}).default;
+const words = root => root.findAllByType('Text').map(t => [].concat(t.props.children).filter(x => typeof x === 'string' || typeof x === 'number').join(''));
+
+test('a squad opens as its own page: it ranks members, shares the code and asks before leaving or removing', async () => {
+  const calls = [], nav = []; let current = squad();
+  const state = () => ({ ready: true, squads: current ? [current] : [], refresh: async () => {}, update: async () => null,
+    leave: async id => { calls.push(['leave', id]); return null; }, remove: async (id, m) => { calls.push(['remove', m]); return null; } });
+  const Page = squadPage(state, nav); let ui;
+  await act(async () => { ui = create(React.createElement(Page)); });
+  assert.equal(ui.root.findByType('Page').props.title, 'Calc crew');
+  assert.ok(words(ui.root).includes('2 members · you lead this squad · 1 focusing now'));
+  await act(async () => pressLabel(ui.root, 'Invite friends').props.onPress());
   assert.match(rn.shared.message, /K7Q4PX/);
-  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now').props.onPress());
+  const row = pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now');
+  assert.equal(row.props.onPress, undefined, 'a tap never removes anyone');
+  await act(async () => row.props.onLongPress());
   assert.equal(calls.length, 0, 'removing asks first');
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
   assert.deepEqual(calls, [['remove', member(2).id]]);
+  assert.equal(ui.root.findAll(n => n.props.testID === 'squad-menu').length, 0);
+  await act(async () => pressLabel(ui.root, 'Squad options').props.onPress());
+  assert.deepEqual(ui.root.findAllByType('Press').filter(x => x.props.accessibilityRole === 'menuitem').map(x => x.props.accessibilityLabel), ['Edit name and goal', 'New invite code', 'Share invite', 'Leave squad']);
   await act(async () => pressLabel(ui.root, 'Leave squad').props.onPress());
+  assert.equal(ui.root.findAll(n => n.props.testID === 'squad-menu').length, 0, 'choosing an option closes the menu');
   assert.equal(ui.root.findByType('Confirm').props.message, utils.leaveOutcome(squad()), 'leaving says what happens to the squad');
   assert.match(ui.root.findByType('Confirm').props.message, /longest becomes the leader/);
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
-  assert.deepEqual(calls.slice(1), [['leave', squad().id], 'close']);
+  assert.deepEqual(calls.slice(1), [['leave', squad().id]]); assert.deepEqual(nav, ['back'], 'leaving returns to the list');
+  current = { ...squad(), ownerIsYou: false };
+  await act(async () => ui.update(React.createElement(Page)));
+  await act(async () => pressLabel(ui.root, 'Squad options').props.onPress());
+  assert.deepEqual(ui.root.findAllByType('Press').filter(x => x.props.accessibilityRole === 'menuitem').map(x => x.props.accessibilityLabel), ['Share invite', 'Leave squad'], 'members only share or leave');
+  await act(async () => pressLabel(ui.root, 'Close squad options').props.onPress());
+  assert.equal(ui.root.findAll(n => n.props.testID === 'squad-menu').length, 0, 'tapping outside closes the menu');
   assert.match(utils.leaveOutcome(squad(1, [member(1, 0)])), /squad closes and its invite code stops working/, 'the last member is told the squad ends');
+  current = null;
+  await act(async () => ui.update(React.createElement(Page)));
+  assert.ok(words(ui.root).includes('This squad isn’t here anymore'), 'a squad that closed says so instead of a blank page');
   await act(async () => ui.unmount());
 });
 
@@ -117,28 +149,59 @@ test('join and create explain a missing code or name instead of greying out; err
   await act(async () => ui.unmount());
 });
 
-test('leaders rename, set a weekly goal and get a new code; the goal shows as a bar', async () => {
-  const { SquadSheet } = sheets(); const calls = []; let ui;
-  const props = { visible: true, squad: { ...squad(), goalMinutes: 60 }, onClose: () => {}, onLeave: async () => null, onRemove: async () => null,
-    onUpdate: async (id, change) => { calls.push(change); return null; } };
-  await act(async () => { ui = create(React.createElement(SquadSheet, props)); });
-  const texts = () => ui.root.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
-  assert.ok(texts().includes('of 1h goal')); assert.ok(texts().includes('20m to go · resets Monday'));
+test('leaders rename, set a weekly goal and get a new code from the menu; the goal shows as a bar', async () => {
+  const calls = []; let current = { ...squad(), goalMinutes: 60 };
+  const state = () => ({ ready: true, squads: [current], refresh: async () => {}, leave: async () => null, remove: async () => null,
+    update: async (id, change) => { calls.push(change); return null; } });
+  const Page = squadPage(state); let ui;
+  await act(async () => { ui = create(React.createElement(Page)); });
+  assert.ok(words(ui.root).includes('of 1h goal')); assert.ok(words(ui.root).some(t => /^20m to go · \d+ days? left$/.test(t)));
   const byText = label => ui.root.findAllByType('Press').find(x => x.findAllByType('Text').some(t => t.props.children === label));
+  await act(async () => pressLabel(ui.root, 'Squad options').props.onPress());
   await act(async () => pressLabel(ui.root, 'Edit name and goal').props.onPress());
+  assert.equal(ui.root.findByType('Sheet').props.label, 'edit squad');
   await act(async () => ui.root.findByType('Input').props.onChangeText('  Calc crew 2 '));
-  await act(async () => ui.root.findAllByType('Press').find(x => x.props.accessibilityLabel === '10 hours a week').props.onPress());
+  await act(async () => pressLabel(ui.root, '10 hours a week').props.onPress());
   await act(async () => byText('Save').props.onPress());
   assert.deepEqual(calls[0], { name: 'Calc crew 2', goalMinutes: 600 });
-  await act(async () => pressLabel(ui.root, 'Edit name and goal').props.onPress());
-  await act(async () => byText('New code').props.onPress());
+  assert.equal(ui.root.findAllByType('Sheet').length, 0, 'a saved edit closes the sheet');
+  await act(async () => pressLabel(ui.root, 'Squad options').props.onPress());
+  await act(async () => pressLabel(ui.root, 'New invite code').props.onPress());
   assert.equal(ui.root.findByType('Confirm').props.title, 'Get a new invite code?');
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
   assert.equal(calls[1], 'code');
-  await act(async () => ui.update(React.createElement(SquadSheet, { ...props, squad: { ...squad(), ownerIsYou: false, goalMinutes: null } })));
-  assert.equal(pressLabel(ui.root, 'Edit name and goal'), undefined, 'members cannot edit'); assert.ok(texts().includes('Resets every Monday.'));
-  await act(async () => ui.update(React.createElement(SquadSheet, { ...props, squad: { ...squad(), goalMinutes: null } })));
-  await act(async () => pressLabel(ui.root, 'Set a weekly goal').props.onPress());
-  assert.ok(ui.root.findAllByType('Press').some(x => x.props.accessibilityLabel === '10 hours a week'), 'a leader without a goal is one tap from setting one');
+  current = { ...squad(), goalMinutes: null };
+  await act(async () => ui.update(React.createElement(Page)));
+  await act(async () => byText('Set a weekly goal').props.onPress());
+  assert.ok(pressLabel(ui.root, '10 hours a week'), 'a leader without a goal is one tap from setting one');
+  current = { ...squad(), ownerIsYou: false, goalMinutes: null };
+  await act(async () => ui.update(React.createElement(Page)));
+  assert.equal(byText('Set a weekly goal'), undefined, 'members cannot set the goal');
+  assert.ok(words(ui.root).some(t => /^Resets on Monday · \d+ days? left$/.test(t)));
+  await act(async () => ui.unmount());
+});
+
+test('the Squads tab lists My Squads, each opening its own page, and an empty tab invites you to start one', async () => {
+  const nav = []; let current = [];
+  const Tab = load('src/app/(tabs)/squads.tsx', {
+    'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
+    'expo-router': { useFocusEffect: () => {}, useRouter: () => ({ push: to => nav.push(to) }) }, '/useTabDockInset': { useTabDockInset: () => 100 },
+    '/PersonalUI': { PersonalPage: ({ title, action, children }) => React.createElement('Page', { title }, action, children) }, '/ContentReveal': props => props.children,
+    '/MotionPressable': host('Press'), '/AppText': { Text: host('Text') }, '/SquadsSection': { SquadSummary: host('Summary') },
+    '/SquadSheets': { SquadJoinSheet: host('JoinSheet') },
+    '/useSquads': { useSquads: () => ({ ready: true, online: true, squads: current, refresh: async () => {}, join: async () => null, create: async () => null }) },
+  }).default;
+  let ui; await act(async () => { ui = create(React.createElement(Tab)); });
+  assert.equal(ui.root.findByType('Page').props.title, 'Squads');
+  assert.ok(ui.root.findAll(n => n.props.testID === 'squads-empty').length > 0);
+  await act(async () => ui.root.findAllByType('Press').filter(x => x.props.accessibilityLabel === 'Join or start a squad').at(-1).props.onPress());
+  assert.equal(ui.root.findByType('JoinSheet').props.visible, true);
+  await act(async () => ui.root.findByType('JoinSheet').props.onClose());
+  current = [squad(), { ...squad(2), ownerIsYou: false, name: 'Library' }];
+  await act(async () => ui.update(React.createElement(Tab)));
+  assert.equal(ui.root.findAllByType('Summary').length, 2);
+  assert.equal(ui.root.findByType('JoinSheet').props.leading, 'Calc crew'); assert.equal(ui.root.findByType('JoinSheet').props.memberships, 2);
+  await act(async () => ui.root.findAllByType('Press').filter(x => typeof x.props.accessibilityLabel === 'string' && x.props.accessibilityLabel.startsWith('Library,'))[0].props.onPress());
+  assert.deepEqual(nav, [{ pathname: '/squad/[id]', params: { id: squad(2).id } }]);
   await act(async () => ui.unmount());
 });

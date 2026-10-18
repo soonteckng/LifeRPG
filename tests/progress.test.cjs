@@ -764,8 +764,11 @@ test("Quick Start history is bounded, owner filtered and excludes quests, tiny s
   await assert.rejects(serviceHarness(() => ({error:Error("Offline")})).service.getLastFreeSession("owner-a",now), /Offline/);
 });
 
-test("Progress stays focused on analytics and does not duplicate Profile's milestone collection entry",async()=>{
- const ui=await screenHarness();try{assert.equal(ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??'')).length,0);assert.doesNotMatch(ui.text(),/Keep growing at your pace/);}finally{await ui.cleanup();}
+test("Progress holds My Milestones once, below the analytics, and no squads",async()=>{
+ const ui=await screenHarness();try{
+  const text=ui.text();assert.equal(text.split('My Milestones').length-1,1);assert.doesNotMatch(text,/My Squad|Keep growing at your pace/);
+  assert.ok(text.indexOf('My Milestones')>text.indexOf('Consistency'));
+ }finally{await ui.cleanup();}
 });
 
 test("a new local week compares the same clock time and does not discourage a first session", () => {
