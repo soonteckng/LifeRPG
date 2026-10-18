@@ -46,3 +46,7 @@ export const guideColors = {
 
 // One corner per level, so cards, tiles and rows read as one family.
 export const radius = { card: 24, tile: 20, row: 16, sheet: 32 } as const;
+
+// Every card, tile and sheet panel shares this thin edge, so surfaces read
+// the same on black pages and inside sheets.
+export const edge = { borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" } as const;

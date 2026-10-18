@@ -16,6 +16,7 @@ export function useStudyPlan() {
   return { ...state, scope, online: auth.accessMode === "online",
     saveCourse: (draft: StudyCourseDraft, id?: string) => scope ? studyPlanStore.saveCourse(scope, draft, id) : Promise.resolve(false),
     saveExam: (draft: StudyExamDraft, id?: string) => scope ? studyPlanStore.saveExam(scope, draft, id) : Promise.resolve(false),
+    ensureCourse: (name: string, focusAreaId: number | null) => scope ? studyPlanStore.ensureCourse(scope, name, focusAreaId) : Promise.resolve(null),
     remove: (kind: "course" | "exam", id: string) => scope ? studyPlanStore.remove(scope, kind, id) : Promise.resolve(false),
   };
 }

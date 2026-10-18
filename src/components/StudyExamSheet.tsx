@@ -6,9 +6,10 @@ import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import SheetConfirmation from "./SheetConfirmation";
 import MonthCalendar from "./MonthCalendar";
+import SubjectPicker, { type SubjectPick } from "./SubjectPicker";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
-import { colors, radius } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { areaTint } from "../utils/lifeAreaColor";
 import { addDays, countdownLabel, courseColor, dateKey, daysUntil, EXAM_DAYS_AHEAD, examDateLabel, examTimeLabel, validExamDraft } from "../utils/studyPlan";
@@ -20,24 +21,32 @@ import type { StudyCourse, StudyExam, StudyExamDraft } from "../types/studyPlan"
 const EXAM_TIMES = Array.from({ length: 27 }, (_, index) => 7 * 60 + index * 30);
 
 /** Add or edit one exam: a name, an optional subject and a day. */
-export default function StudyExamSheet({ visible, exam, courses, initialCourseId = null, onSave, onRemove, onClose, onDismiss }: {
-  visible: boolean; exam: StudyExam | null; courses: StudyCourse[]; initialCourseId?: string | null;
-  onSave: (draft: StudyExamDraft, id?: string) => Promise<boolean>; onRemove: (id: string) => Promise<boolean>; onClose: () => void; onDismiss?: () => void;
+export default function StudyExamSheet({ visible, exam, courses, initialCourseId = null, initialTitle = "", onSave, onEnsureSubject, onRemove, onClose, onDismiss }: {
+  visible: boolean; exam: StudyExam | null; courses: StudyCourse[]; initialCourseId?: string | null; initialTitle?: string;
+  onSave: (draft: StudyExamDraft, id?: string) => Promise<boolean>; onEnsureSubject: (name: string) => Promise<string | null>;
+  onRemove: (id: string) => Promise<boolean>; onClose: () => void; onDismiss?: () => void;
 }) {
   const today = dateKey(new Date());
   const makeDraft = (): StudyExamDraft => exam ? { title: exam.title, courseId: exam.courseId, examDate: exam.examDate, examMinute: exam.examMinute ?? null, remind: exam.remind ?? true }
-    : { title: "", courseId: initialCourseId, examDate: addDays(today, 14), examMinute: null, remind: true };
+    : { title: initialTitle, courseId: initialCourseId, examDate: addDays(today, 14), examMinute: null, remind: true };
   const [draft, setDraft] = useState(makeDraft), [original, setOriginal] = useState(() => JSON.stringify(makeDraft()));
   const [wasVisible, setWasVisible] = useState(visible), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"discard" | "remove" | null>(null);
+  // A subject picked from the list or typed in is only created when the exam is saved.
+  const [newSubject, setNewSubject] = useState<string | null>(null), [picking, setPicking] = useState(false);
   if (wasVisible !== visible) {
     setWasVisible(visible);
-    if (visible) { const next = makeDraft(); setDraft(next); setOriginal(JSON.stringify(next)); setError(""); setConfirm(null); setBusy(false); }
+    if (visible) { const next = makeDraft(); setDraft(next); setOriginal(JSON.stringify(next)); setError(""); setConfirm(null); setBusy(false); setNewSubject(null); setPicking(false); }
   }
   const lock = useRef(false);
-  const dirty = JSON.stringify(draft) !== original;
+  const dirty = JSON.stringify(draft) !== original || newSubject !== null;
+  const subjectName = newSubject ?? courses.find(course => course.id === draft.courseId)?.name ?? null;
   const days = daysUntil(draft.examDate);
-  const close = () => { if (busy) return; Keyboard.dismiss(); if (dirty) setConfirm("discard"); else onClose(); };
+  const close = () => { if (busy) return; Keyboard.dismiss(); if (picking) setPicking(false); else if (dirty) setConfirm("discard"); else onClose(); };
+  const pick = (choice: SubjectPick) => {
+    setDraft(current => ({ ...current, courseId: choice.id, title: current.title.trim() ? current.title : `${choice.name} exam` }));
+    setNewSubject(choice.id ? null : choice.name); setPicking(false); setError("");
+  };
   const run = async (work: () => Promise<boolean>, failure: string) => {
     if (lock.current) return; lock.current = true; setBusy(true);
     try { if (await work()) { setConfirm(null); onClose(); } else setError(failure); }
@@ -52,15 +61,16 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
     void run(async () => {
       // Ask for notifications only when a reminder is actually being saved.
       if (next.remind) { const permission = await readNotificationPermission().catch(() => null); if (permission && !permission.granted && permission.action === "enable") await enableNotifications().catch(() => null); }
-      return onSave(next, exam?.id);
+      const courseId = newSubject ? await onEnsureSubject(newSubject) : next.courseId;
+      if (newSubject && !courseId) return false;
+      return onSave({ ...next, courseId }, exam?.id);
     }, "Couldn't save this exam. Your details are still here.");
   };
-  const subjects = [...courses.map(course => ({ id: course.id as string | null, name: course.name })), { id: null, name: "None" }];
   return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} floating compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="exam editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
-    header={<SheetHeader title={exam ? "Edit exam" : "New exam"} subtitle={`${days >= 0 ? `${countdownLabel(days)} · ` : ""}${examDateLabel(draft.examDate)}${draft.examMinute !== null ? ` · ${examTimeLabel(draft.examMinute)}` : ""}`} onClose={close} closeLabel="Close exam editor" />}
+    header={picking ? <SheetHeader title="Subject" subtitle="Pick one or type your own." onClose={() => setPicking(false)} closeLabel="Back to exam" /> : <SheetHeader title={exam ? "Edit exam" : "New exam"} subtitle={`${days >= 0 ? `${countdownLabel(days)} · ` : ""}${examDateLabel(draft.examDate)}${draft.examMinute !== null ? ` · ${examTimeLabel(draft.examMinute)}` : ""}`} onClose={close} closeLabel="Close exam editor" />}
     // Save stays in view while the calendar and times scroll.
-    footer={<View style={s.footer}>
+    footer={picking ? undefined : <View style={s.footer}>
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       <View style={s.actions}>
         {exam && <Pressable disabled={busy} onPress={() => setConfirm("remove")} accessibilityRole="button" accessibilityLabel="Remove exam" style={s.remove}><Ionicons name="trash-outline" size={21} color={colors.danger} /></Pressable>}
@@ -72,19 +82,16 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
       confirmLabel={confirm === "remove" ? "Remove exam" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)}
       onConfirm={() => { if (confirm === "remove" && exam) void run(() => onRemove(exam.id), "Couldn't remove this exam. Try again."); else { setConfirm(null); onClose(); } }} />}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      {picking ? <SubjectPicker courses={courses} selectedName={subjectName} onPick={pick} /> : <>
       <BottomSheetTextInput value={draft.title} maxLength={80} editable={!busy} placeholder="For example, Calculus final" placeholderTextColor={colors.secondary}
         accessibilityLabel="Exam name" style={[s.input, !!error && !draft.title.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
         onChangeText={title => { setDraft(current => ({ ...current, title })); setError(""); }} />
-      {courses.length > 0 && <View style={s.group}>
-        <Text style={s.label}>Subject</Text>
-        <View style={s.chips}>{subjects.map(item => {
-          const selected = item.id === draft.courseId, tint = item.id ? courseColor(item.id) : colors.secondary;
-          return <Pressable key={item.id ?? "none"} disabled={busy} onPress={() => setDraft(current => ({ ...current, courseId: item.id }))} accessibilityRole="radio"
-            accessibilityState={{ checked: selected }} accessibilityLabel={item.id ? item.name : "No subject"} style={[s.chip, selected && { backgroundColor: areaTint(tint, 0.18) }]}>
-            <Text style={[s.chipText, selected && { color: item.id ? tint : colors.text }]} numberOfLines={1}>{item.name}</Text>
-          </Pressable>;
-        })}</View>
-      </View>}
+      <Pressable disabled={busy} onPress={() => { Keyboard.dismiss(); setPicking(true); }} accessibilityRole="button" accessibilityLabel="Choose subject" accessibilityValue={{ text: subjectName ?? "None" }} style={s.subjectRow}>
+        <View style={[s.subjectIcon, { backgroundColor: areaTint(draft.courseId ? courseColor(draft.courseId) : colors.accent) }]}><Ionicons name="school-outline" size={16} color={draft.courseId ? courseColor(draft.courseId) : colors.accent} /></View>
+        <Text style={s.remindTitle}>Subject</Text>
+        <Text style={[s.subjectValue, !subjectName && { color: colors.accent }]} numberOfLines={1}>{subjectName ?? "Choose"}</Text>
+        <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+      </Pressable>
       <MonthCalendar key={`${visible}:${exam?.id ?? "new"}`} value={draft.examDate} min={today} max={addDays(today, EXAM_DAYS_AHEAD)} today={today}
         onChange={examDate => { setDraft(current => ({ ...current, examDate })); setError(""); }} />
       <View style={s.group}>
@@ -104,20 +111,24 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
         <Switch value={draft.remind} disabled={busy} onValueChange={remind => { if (tapHapticsEnabled()) tapHaptic(); setDraft(current => ({ ...current, remind })); }}
           accessibilityLabel="Remind me about this exam" trackColor={{ true: colors.accent, false: colors.selection }} thumbColor={colors.text} />
       </View>
+      </>}
     </BottomSheetScrollView>
   </AppSheet>;
 }
 const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 },
-  input: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
+  input: { ...edge, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
   inputError: { borderWidth: 1, borderColor: colors.danger },
   group: { gap: 8 }, label: { ...type.label, paddingHorizontal: 4 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
+  subjectRow: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 56, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.sheetCard },
+  subjectIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  subjectValue: { flex: 1, textAlign: "right", color: colors.text, fontSize: 16 },
+  chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
   chipText: { color: colors.text, fontSize: 15, fontWeight: "600" },
   chipOn: { backgroundColor: colors.accentSoft }, chipTextOn: { color: colors.accent },
   times: { gap: 8, paddingRight: 4 }, flex: { flex: 1, minWidth: 0, gap: 2 },
-  remind: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: colors.sheetCard },
+  remind: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: colors.sheetCard },
   remindTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   footer: { gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16, backgroundColor: colors.surface, borderBottomLeftRadius: radius.sheet, borderBottomRightRadius: radius.sheet }, actions: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },

@@ -197,6 +197,9 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   };
 }
 
+// Routine is one of the three setup modes; its row or the mode switch opens the chooser.
+async function openRoutines(ui){const row=ui.button('Choose routine')||ui.button('Change routine');await ui.press(row?row.props.accessibilityLabel:'Routine. One of your saved routines');}
+
 test("provider blocks repeated starts and preserves an unknown start without reissuing it", async () => {
   const pending = deferred();
   let starts = 0;
@@ -801,7 +804,7 @@ test("custom picker changes setup only on confirm; Retry uses exact seconds",asy
 
 test("back dismisses keyboard, then picker, then the screen without resetting",async()=>{
   const ui=await screenSetup();
-  await ui.press("Choose from routines");
+  await openRoutines(ui);
   await ui.keyboard();
   await ui.back();
   assert.equal(ui.root().findAllByType("Sheet").length,1);
@@ -889,14 +892,13 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   assert.equal(completed.detail,"Review session");
 });
 
-test("free setup lists the same rows as Home with an optional routine",async()=>{
+test("free setup lists the same switch and rows as Home",async()=>{
   const ui=await screenSetup();
-  assert.ok(ui.button("Choose from routines"));
+  assert.ok(ui.button("Routine. One of your saved routines"),"Routine is one of the three setup modes");
   assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Everyday focus");
   assert.ok(ui.button("Set a custom focus duration"));
   assert.equal(ui.button("Choose activity"),undefined);
-  assert.match(ui.output(),/RoutineNone/);
-  await ui.press("Choose from routines");
+  await openRoutines(ui);
   assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
 });
@@ -1805,7 +1807,7 @@ test("global End dismissal retains the running or paused countdown until the rou
 test("Themed quest picker selects the existing quest settings, closes, and never starts automatically",async()=>{
   const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
   try {
-    await ui.press("Choose from routines");
+    await openRoutines(ui);
     assert.match(ui.output(),/45 min · Learning/);
     assert.equal(ui.button("Choose Tomorrow"),undefined);
     await ui.press("Choose Read and reflect");
@@ -1823,7 +1825,7 @@ test("routine chooser combines saved presets and eligible linked routines while 
     tasks:[{id:9,title:'Read and reflect',target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false}],
     subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],savedRoutines:{routines:[routine]}});
   try {
-    await ui.press('Choose from routines');assert.ok(ui.button('Choose Read and reflect'));assert.ok(ui.button('Choose Review thermodynamics'));
+    await openRoutines(ui);assert.ok(ui.button('Choose Read and reflect'));assert.ok(ui.button('Choose Review thermodynamics'));
     await ui.press('Choose Review thermodynamics');
     assert.deepEqual(ui.calls.map(call=>call[0]),['task','area','notes','seconds']);
     assert.deepEqual(ui.calls[0],['task',null]);assert.deepEqual(ui.calls[1],['area',2]);assert.deepEqual(ui.calls[3],['seconds',91]);
@@ -1854,7 +1856,7 @@ test("free session clears both routine metadata and the legacy link",async()=>{
     {linkedTaskId:null,notes:metadata.encodeRoutineSession('Saved preset')}]) {
     const ui=await screenSetup({...initial,duration:91});
     try {
-      await ui.press('Switch to free session');
+      await ui.press('Focus. Any activity in a focus area');
       assert.deepEqual(ui.calls,[['task',null],['notes',''],['area',1],['seconds',1800]]);
       assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
     }finally{await ui.cleanup();}
@@ -1874,10 +1876,10 @@ test("routine picker ignores an old account's rows and stale selection callback"
     focusAreaId:1,reminder:{enabled:false,hour:9,minute:0}};
   const ui=await screenSetup({},{tasks:[],savedRoutines:{routines:[routine]}});
   try {
-    await ui.press('Choose from routines');const oldSelect=ui.button('Choose Private old preset').props.onPress;
+    await openRoutines(ui);const oldSelect=ui.button('Choose Private old preset').props.onPress;
     await ui.update({ownerId:'owner-b',admissionEpoch:2});
     await act(async()=>oldSelect());assert.equal(ui.calls.length,0);
-    await ui.press('Choose from routines');assert.equal(ui.button('Choose Private old preset'),undefined);
+    await openRoutines(ui);assert.equal(ui.button('Choose Private old preset'),undefined);
     await ui.updateRoutines({scope:{ownerId:'owner-b',backendId:'test-backend'},routines:[{...routine,id:'new-routine',name:'New account preset'}]});
     assert.ok(ui.button('Choose New account preset'));await ui.press('Choose New account preset');
     assert.deepEqual(ui.calls[0],['task',null]);assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
@@ -1997,9 +1999,12 @@ test("display-only countdown keeps its node and exact digits across minute bound
  }finally{await act(async()=>renderer.unmount());}
 });
 
-test("free setup includes the shared Subject row wired to the session's area; quest setup leaves it out",async()=>{
+test("Study mode shows the shared Subject row wired to the session's area; quest setup leaves it out",async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Learning"}]});
+  assert.equal(ui.root().findAllByType("SubjectRow").length,0,"Focus mode shows the focus area row instead");
+  await ui.press("Study. A subject, counted toward its exams");
   const row=ui.root().findByType("SubjectRow");
+  assert.equal(row.props.learningId,2);
   assert.equal(row.props.generalId,1); assert.equal(row.props.disabled,false);
   await act(async()=>row.props.onArea(2));
   assert.deepEqual(ui.calls.at(-1),["area",2]);
@@ -2007,8 +2012,9 @@ test("free setup includes the shared Subject row wired to the session's area; qu
   assert.equal(ui.root().findAllByType("SubjectRow").length,0);
   await ui.cleanup();
 });
-test("every start arms the picked subject in one place, the timer, before the session exists",()=>{
+test("only Study starts arm the picked subject, in one place, the timer, before the session exists",()=>{
   const source=fs.readFileSync(path.join(__dirname,"../src/context/JournalTimerProvider.tsx"),"utf8");
-  assert.match(source,/studySelection\.arm\(record\?\.clientSessionId \?\? null\);\s*try \{\s*const protectedSession/);
+  assert.match(source,/if \(setupMode\.get\(\) === "study"\) studySelection\.arm\(record\?\.clientSessionId \?\? null\); else studySelection\.disarm\(\);\s*try \{\s*const protectedSession/,
+    "only a Study setup tags the session; Focus and Routine starts clear any armed subject");
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname,"../src/components/SessionScreen.tsx"),"utf8"),/studySelection\.arm/);
 });

@@ -1,4 +1,4 @@
-import { focusAreaTitle, focusAreaChoices, focusAreaIcon, generalArea } from "../utils/focusAreas";
+import { focusAreaTitle, focusAreaChoices, focusAreaIcon, generalArea, suggestedArea } from "../utils/focusAreas";
 import { questLists } from "../utils/questLists";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import TouchableOpacity from "./MotionPressable";
@@ -9,7 +9,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import SheetButton from "./SheetTouchable";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
@@ -17,7 +17,7 @@ import ProgressRing from "./ProgressRing";
 import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
-import { colors, radius } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import SessionCountdown from "./SessionCountdown";
 import FocusLengthControl from "./FocusLengthControl";
 import FocusAreaPicker from "./FocusAreaPicker";
@@ -39,6 +39,11 @@ import { encodeRoutineSession, readRoutineSession } from "../utils/routineSessio
 import { routineDuration } from "../utils/savedRoutine";
 import SessionProtectionControl from "./SessionProtectionControl";
 import SubjectSetupRow from "./SubjectSetupRow";
+import SetupModeSwitch, { useSetupMode } from "./SetupModeSwitch";
+import { setupMode, type SetupMode } from "../services/setupMode";
+import { studySelection } from "../services/studySelection";
+import { useStudyPlan } from "../hooks/useStudyPlan";
+import { courseArea } from "../utils/studyPlan";
 
 type Picker = "duration" | "quest" | "area" | null;
 
@@ -76,6 +81,7 @@ export default function SessionScreen() {
   const { sessionSummary, rewardsVisible } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const routines = useSavedRoutines();
+  const study = useStudyPlan();
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
   const { width, height, fontScale } = useWindowDimensions();
@@ -159,6 +165,12 @@ export default function SessionScreen() {
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
   const compactSetup = phase === "setup" && !isQuest;
   const areaColor = lifeAreaColor(timer.targetAttributeId, area?.color_code);
+  const learning = suggestedArea(subjects, "learning");
+  const storedMode = useSetupMode();
+  const sessionMode: SetupMode = isRoutine ? "routine" : storedMode;
+  const chosenCourseId = useSyncExternalStore(studySelection.subscribe, studySelection.get, studySelection.get);
+  const chosenCourse = study.courses.find(item => item.id === chosenCourseId) ?? null;
+  const [subjectPicker, setSubjectPicker] = useState(false);
   const pickerState = useRef({ scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general });
   useLayoutEffect(() => { pickerState.current = { scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general }; },
     [presentationScope, locked, selectableRoutines, timer, subjects, general]);
@@ -325,8 +337,17 @@ export default function SessionScreen() {
   };
   const start = () => {
     if (locked || missingQuest || timer.restoreError || picker || !validSessionSeconds(timer.duration)) return;
+    // Routine and Study need their pick first; Start opens the picker instead.
+    if (sessionMode === "routine" && !isRoutine) { setPicker("quest"); return; }
+    if (sessionMode === "study" && !chosenCourse) { setSubjectPicker(true); return; }
     Keyboard.dismiss();
     void timer.startTimer(timer.duration, task?.title ?? routineName ?? undefined);
+  };
+  const chooseMode = (next: SetupMode) => {
+    if (locked) return;
+    if (next !== "routine" && isRoutine) switchToFree();
+    if (next === "routine" && !isRoutine) setPicker("quest");
+    if (next === "study") { const subjectArea = chosenCourse ? courseArea(chosenCourse, general?.id) : learning?.id ?? null; if (subjectArea !== null) timer.setTargetAttributeId(subjectArea); }
   };
   const switchToFree = () => {
     if (locked) return;
@@ -343,11 +364,11 @@ export default function SessionScreen() {
       const notes = encodeRoutineSession(entry.name);
       if (notes === null || entry.areaId !== null && !current.subjects.some(item => item.id === entry.areaId)) return;
       current.timer.setLinkedTaskId(null); current.timer.setTargetAttributeId(entry.areaId);
-      current.timer.setNotes(notes); current.timer.setDurationInSeconds(entry.seconds); setSelectedRoutineKey(entry.key);
+      current.timer.setNotes(notes); current.timer.setDurationInSeconds(entry.seconds); setSelectedRoutineKey(entry.key); setupMode.choose("routine");
     } else {
       current.timer.setNotes(""); current.timer.setLinkedTaskId(entry.task.id);
       current.timer.setTargetAttributeId(entry.areaId ?? current.general?.id ?? null);
-      current.timer.setDurationInMinutes(entry.seconds / 60); setSelectedRoutineKey(null);
+      current.timer.setDurationInMinutes(entry.seconds / 60); setSelectedRoutineKey(null); setupMode.choose("routine");
     }
     setPicker(null);
   };
@@ -422,23 +443,24 @@ export default function SessionScreen() {
                 <Text style={styles.secondary}>{missingQuest ? task ? "This routine is already done or isn’t scheduled for today. Choose another routine or switch to a free session." : "Your routine is still linked. Reload its details before starting, or switch to a free session." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
               </View>}
-              {/* The same rows as Home, in the same order, so a block is set up one way everywhere. */}
+              {/* The same switch and rows as Home, so every session is set up one way. */}
               <View style={styles.setup}>
-                {!isQuest && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose focus area" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
+                <SetupModeSwitch value={sessionMode} disabled={locked} onChange={chooseMode} />
+                {sessionMode === "focus" && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose focus area" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
                   <View style={[styles.rowIcon, { backgroundColor: areaTint(areaColor) }]}><Ionicons name={focusAreaIcon(area?.title ?? "")} size={16} color={areaColor} /></View>
                   <Text style={styles.rowLabel}>Focus area</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
                   <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>}
-                {!isQuest && <SubjectSetupRow areas={subjects} areaId={timer.targetAttributeId} generalId={general?.id} disabled={locked} onArea={id => timer.setTargetAttributeId(id)} />}
+                {sessionMode === "study" && <SubjectSetupRow areas={subjects} areaId={timer.targetAttributeId} generalId={general?.id} learningId={learning?.id} disabled={locked}
+                  onArea={id => timer.setTargetAttributeId(id)} open={subjectPicker} onOpenChange={setSubjectPicker} />}
+                {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose routine"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : undefined} style={styles.setupRow}>
+                  <View style={[styles.rowIcon, isRoutine && { backgroundColor: areaTint(areaColor) }]}><Ionicons name="repeat" size={16} color={isRoutine ? areaColor : colors.accent} /></View>
+                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine ? styles.rowValueChosen : styles.rowValuePrompt]} numberOfLines={1}>{isRoutine ? title : "Choose"}</Text>
+                  <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+                </TouchableOpacity>}
                 {!isQuest && <FocusLengthControl compact showLabel={false} seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
                 <SessionProtectionControl activeSurface={onlineSurfaces} />
-                <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose from routines"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : undefined} style={[styles.setupRow, styles.lastRow]}>
-                  <View style={styles.rowIcon}><Ionicons name="repeat" size={16} color={colors.secondary} /></View>
-                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine && styles.rowValueChosen]} numberOfLines={1}>{isRoutine ? title : "None"}</Text>
-                  <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
-                </TouchableOpacity>
               </View>
-              {isRoutine && <Action disabled={locked} label="Switch to free session" onPress={switchToFree} />}
             </View>}
 
           </Animated.View>
@@ -524,18 +546,18 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: 20, paddingBottom: 20 },
   secondary: { color: colors.secondary, fontSize: 16, lineHeight: 22 },
   setupStack: { gap: 8 },
-  setup: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  setup: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   setupRow: { minHeight: 52, paddingVertical: 11, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   lastRow: { borderBottomWidth: 0, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   rowLabel: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   rowValue: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 16, lineHeight: 22 },
-  rowValueChosen: { color: colors.text },
+  rowValueChosen: { color: colors.text }, rowValuePrompt: { color: colors.accent, fontWeight: "600" },
   protectionStatus: { marginTop: 10, alignItems: "center" },
   label: { color: colors.text, fontSize: 17, flexShrink: 1 },
   link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
   questPickerBody: { gap: 8 },
-  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, padding: 12, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: "transparent" },
+  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, padding: 12, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: colors.line },
   questPickerSelected: { borderColor: colors.accent },
   questPickerIcon: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "500" },

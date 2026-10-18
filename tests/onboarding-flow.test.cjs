@@ -162,7 +162,7 @@ test('setup sections fade upwards in order without animating layout or the pinne
  }finally{await act(async()=>tree.unmount());}
 });
 
-test('Android setup asks about app protection with Allow buttons and saves the mode once permissions are ready', async () => {
+test('Android setup asks about app protection with Allow buttons, names what can never be blocked and saves the allow list once ready', async () => {
   const env = environment(true); const calls = []; let caps = { usage: false, overlay: false, notifications: false }, tree;
   const protection = () => ({ supported: true, selection: { mode: 'normal', allowed: [] }, capabilities: caps,
     refresh: async () => { calls.push('refresh'); }, openPermission: async kind => { calls.push(['open', kind]); }, choose: async (...args) => { calls.push(['choose', ...args]); return true; } });
@@ -183,10 +183,13 @@ test('Android setup asks about app protection with Allow buttons and saves the m
     assert.ok(button('Maybe later'), 'protection stays optional');
     await act(async () => button('Allow Usage Access').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call)), [['open', 'usage']]);
+    const copy = JSON.stringify(tree.toJSON());
+    assert.match(copy, /You can change this later/); assert.match(copy, /can never be blocked/);
+    assert.equal(tree.root.findAllByType('Segmented').length, 0, 'allow list is the one mode, so there is nothing to pick');
     caps = { usage: true, overlay: true, notifications: true };
-    await act(async () => tree.root.findByType('Segmented').props.onChange('allow-list'));
+    await act(async () => tree.update(React.createElement(Journey, { initialStep: 4 })));
     await act(async () => button('Continue').props.onPress());
-    assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list']]);
+    assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list', []]]);
     assert.equal(tree.root.findByType('Frame').props.step, 6);
   } finally { await act(async () => tree.unmount()); }
 });

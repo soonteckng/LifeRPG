@@ -1,5 +1,4 @@
-import { focusAreaIcon, focusAreaTitle, generalArea } from "../utils/focusAreas";
-import SubjectSetupRow from "./SubjectSetupRow";
+import { focusAreaIcon, focusAreaTitle } from "../utils/focusAreas";
 import { areaTint } from "../utils/lifeAreaColor";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
@@ -11,7 +10,7 @@ import FocusLengthControl from "./FocusLengthControl";
 import { PinnedAction } from "./PinnedAction";
 import { useFeatureTour } from "./FeatureTour";
 import type { Subject } from "../services/taskService";
-import { colors, radius } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import { durationLabel, sessionTime } from "../utils/sessionSetup";
 import { sessionDockState } from "../utils/sessionReporting";
 
@@ -28,6 +27,10 @@ export interface FocusCardProps {
   goal?: ReactNode;
   protection?: ReactNode;
   subjects?: Subject[]; areaId?: number | null; onArea?: (id: number | null) => void; onStart: () => void;
+  /** Focus · Routine · Study, shown above the rows before a session starts. */
+  modeSwitch?: ReactNode;
+  /** Routine and Study replace the Focus area row with their own first row. */
+  leadRow?: ReactNode;
 }
 export default function FocusCard(props: FocusCardProps) {
   const areaLabel = focusAreaTitle(props.area);
@@ -43,15 +46,15 @@ export default function FocusCard(props: FocusCardProps) {
   const onBreak = (props.breakSeconds ?? 0) > 0;
   const prompt = <View style={s.prompt} testID="focus-card-prompt"><ContentReveal key={props.contentKey}>
     <View style={[s.heading, props.active ? s.fieldsRow : s.group]}>
-    {!props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
+    {!props.active && props.modeSwitch}
+    {!props.active && props.leadRow ? props.leadRow : !props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
       accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose your focus area and a suggested activity, or free focus." accessibilityState={{ disabled: preferencesLocked }}>
       <View style={[s.rowIcon, { backgroundColor: areaTint(props.tint) }]}><Ionicons name={focusAreaIcon(props.area)} size={16} color={props.tint} /></View><Text style={s.rowLabel}>Focus area</Text><View style={s.rowValue}><Text style={s.rowValueText} numberOfLines={1}>{areaLabel}</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
     </Pressable> : <View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.title} accessibilityRole="header">{props.active ? props.title : areaLabel}</Text></View>}
-    {!props.active && props.onArea && <SubjectSetupRow areas={props.subjects ?? []} areaId={props.areaId ?? null} generalId={generalArea(props.subjects ?? [])?.id} disabled={editLocked} onArea={props.onArea} />}
     {!props.active && <FocusLengthControl compact showLabel={false} seconds={props.seconds} customSeconds={props.customSeconds} disabled={editLocked} onChange={props.onDuration} onCustomSave={props.onCustomDuration} />}
     {!props.active && props.protection}
     </View>
-    {!props.active && <View style={s.suggestionRow} testID="focus-card-suggestion">
+    {!props.active && !props.leadRow && <View style={s.suggestionRow} testID="focus-card-suggestion">
       <Ionicons name={suggested ? "bulb-outline" : "leaf-outline"} size={15} color={suggested ? colors.accent : colors.secondary} />
       <Text style={s.suggestion} numberOfLines={2} accessibilityLabel={suggested ? `Suggested: ${props.title}. ${props.instruction}` : "Free focus. Choose your own activity."}>{suggested ? `Suggested: ${props.title}` : "Free focus · One thing at a time."}</Text>
     </View>}
@@ -112,8 +115,8 @@ const s = StyleSheet.create({
   breakLabel: { color: colors.streak, fontWeight: "600" }, breakTime: { color: colors.streak },
   disabled: { opacity: 0.5 }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   cardIdle: { width: "100%", gap: 12 },
-  goalCard: { padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
-  group: { flexDirection: "column", flexWrap: "nowrap", alignItems: "stretch", gap: 0, backgroundColor: colors.surface, borderRadius: radius.card, overflow: "hidden" },
+  goalCard: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
+  group: { ...edge, flexDirection: "column", flexWrap: "nowrap", alignItems: "stretch", gap: 0, backgroundColor: colors.surface, borderRadius: radius.card, overflow: "hidden" },
   rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   rowLabel: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   rowValue: { flex: 1, minWidth: 0, alignItems: "flex-end" },

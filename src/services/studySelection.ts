@@ -17,6 +17,7 @@ export const studySelection = {
   arm(previousSessionId: string | null, at = Date.now()) {
     armed = chosen ? { courseId: chosen, at, previous: previousSessionId } : null;
   },
+  disarm() { armed = null; },
   take(sessionId: string | null, at = Date.now()): string | null {
     if (!armed || !sessionId || sessionId === armed.previous) return null;
     const courseId = at - armed.at <= 20_000 ? armed.courseId : null;

@@ -56,7 +56,7 @@ function GlobalBackHandler() {
       }
 
       // Tabs are root-level destinations. Android back always returns Home.
-      if (pathname === "/study" || pathname === "/progress" || pathname === "/profile") {
+      if (pathname === "/routines" || pathname === "/study" || pathname === "/progress" || pathname === "/profile") {
         router.replace("/");
         return true;
       }

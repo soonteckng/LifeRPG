@@ -51,6 +51,9 @@ async function providerSetup() {
     cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
 
+// Routine is one of the three setup modes; its row or the mode switch opens the chooser.
+async function openRoutines(ui){const row=ui.root().findAllByType('Button').find(node=>['Choose routine','Change routine'].includes(node.props.accessibilityLabel));await ui.press(row?row.props.accessibilityLabel:'Routine. One of your saved routines');}
+
 test('saving and deleting quests update one shared dataset even while older reads are outstanding',async()=>{
   const ui=await providerSetup();
   try{
@@ -185,25 +188,25 @@ test('session quest chooser agrees with Home and quest sheet for old completions
     task({id:4,title:'Repeating today',is_recurring:true,is_completed:true}),task({id:5,title:'Upcoming',is_due_today:false,is_recurring:true})];
   const ui=await pickerSetup(rows);
   try{
-    await ui.press('Choose from routines');
+    await openRoutines(ui);
     const labels=()=>ui.root().findAllByType('Button').map(node=>node.props.accessibilityLabel).filter(value=>value?.startsWith('Choose '));
-    assert.deepEqual(labels(),['Choose focus area','Choose from routines','Choose Due now','Choose Repeating today']);
+    assert.deepEqual(labels(),['Choose routine','Choose Due now','Choose Repeating today']);
     assert.ok(ui.calls.some(call=>Array.isArray(call)&&call[0]==='refresh'&&call[1]),'opening the chooser requests a fresh read');
     const lists=load('src/utils/questLists.ts').questLists(rows);
     assert.deepEqual(lists.today.map(row=>row.id),[1,4]);assert.ok(lists.available.some(row=>row.id===5),'All quests still includes legitimate upcoming tasks');
     await ui.press('Choose Due now');
-    await ui.press('Switch to free session');
-    await ui.press('Choose from routines');
-    assert.deepEqual(labels(),['Choose focus area','Choose from routines','Choose Due now','Choose Repeating today']);
+    await ui.press('Focus. Any activity in a focus area');
+    await openRoutines(ui);
+    assert.deepEqual(labels(),['Choose routine','Choose Due now','Choose Repeating today']);
     await ui.update([task({id:6,title:'New saved suggestion'})]);
-    assert.deepEqual(labels(),['Choose focus area','Choose from routines','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
+    assert.deepEqual(labels(),['Choose routine','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
   }finally{await ui.cleanup();}
 });
 
 test('a linked quest that becomes completed before Start cannot start another session',async()=>{
   const ui=await pickerSetup([task()]);
   try{
-    await ui.press('Choose from routines');await ui.press('Choose Current quest');
+    await openRoutines(ui);await ui.press('Choose Current quest');
     await ui.update([task({is_completed:true})]);
     const start=ui.root().findAllByType('Button').find(node=>node.props.accessibilityLabel==='Start');
     assert.ok(start);assert.equal(start.props.disabled,true);

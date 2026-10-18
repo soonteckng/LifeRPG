@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import { Text } from "./AppText";
 import { Meter } from "./PersonalUI";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
 import { focusAreaIcon, focusAreaTitle } from "../utils/focusAreas";
@@ -78,11 +78,11 @@ const s = StyleSheet.create({
   title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "600", letterSpacing: -0.5 },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   body: { paddingHorizontal: 20, paddingBottom: 20, gap: 12 },
-  card: { gap: 10, padding: 16, borderRadius: 20, backgroundColor: colors.sheetCard },
+  card: { ...edge, gap: 10, padding: 16, borderRadius: 20, backgroundColor: colors.sheetCard },
   between: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" },
   label: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   stats: { flexDirection: "row", gap: 10 },
-  stat: { flex: 1, gap: 2, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 18, backgroundColor: colors.sheetCard },
+  stat: { ...edge, flex: 1, gap: 2, paddingVertical: 14, paddingHorizontal: 12, borderRadius: 18, backgroundColor: colors.sheetCard },
   statValue: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
   bars: { flexDirection: "row", gap: 8, height: 92 },
   barColumn: { flex: 1, alignItems: "center", gap: 6 },
@@ -92,7 +92,7 @@ const s = StyleSheet.create({
   today: { color: colors.text, fontWeight: "600" },
   future: { opacity: 0.45 },
   section: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", paddingTop: 6 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.sheetCard },
+  row: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 12, paddingHorizontal: 16, borderRadius: 18, backgroundColor: colors.sheetCard },
   footer: { paddingHorizontal: 20, paddingTop: 12, backgroundColor: colors.surfaceRaised },
   start: { minHeight: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 28, backgroundColor: colors.primary },
   play: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },

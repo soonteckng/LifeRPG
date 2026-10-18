@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { studySelection } from "../services/studySelection";
+import { setupMode } from "../services/setupMode";
 import { AppState, Platform } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
@@ -314,9 +315,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setDraft(next); setHiddenSavedId(record?.state === "completed" ? record.clientSessionId : null); setViewedSummaryId(null);
     const startSetup: JournalSetup = { targetSeconds: seconds, activityType: next.activityType,
       taskId: next.taskId, subjectId: next.subjectId, notes: next.notes, title: title ?? readSuggestedFocus(next.notes)?.title ?? null };
-    // Whatever screen started it, the session counts toward the picked subject
-    // when its area matches; StudyLifecycle checks that once the id exists.
-    studySelection.arm(record?.clientSessionId ?? null);
+    // A Study start counts toward the picked subject when its area matches;
+    // StudyLifecycle checks that once the new session id exists.
+    if (setupMode.get() === "study") studySelection.arm(record?.clientSessionId ?? null); else studySelection.disarm();
     try {
       const protectedSession = await prepareProtectedSession(JSON.stringify([backendId, ownerId]));
       if (controllerRef.current !== controller || authRef.current.admissionEpoch !== auth.admissionEpoch) return false;

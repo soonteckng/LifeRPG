@@ -585,3 +585,30 @@ test('read-only activity and area cannot publish a second setup path or change a
  const ui=await render(Card,{owner:'owner',subjects:[{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:2717,disabled:false,onStarted(){}});
  try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose focus area'),false);assert.equal(ui.tree.root.findByProps({testID:'focus-card-suggestion'}).props.onPress,undefined);assert.match(text(ui.tree.root),/Review your notes/);await ui.press('Start session');assert.deepEqual(calls,[['review-topic',2,2717]]);}finally{await ui.cleanup();}
 });
+
+test('Home sets up Focus, Routine and Study sessions in the same card with one switch',async()=>{
+ const Home=load('src/app/(tabs)/index.tsx',mocks({
+  'react-native':{...Native,useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
+  '../../components/AppText':{Text:host('Text')},'expo-haptics':{},'expo-router':{useRouter:()=>({navigate(){}})},
+  'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
+  '../../components/GoalRing':host('OldRing'),'../../components/ProgressRing':host('ProgressRing'),'../../components/GuidedFocusCard':host('GuidedCard'),'../../components/GuidedPreferenceSheet':()=>null,'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,'../../components/QuestSheet':host('Quests'),
+  '../../components/RoutineSetupRow':props=>React.createElement('RoutineRow',props),'../../components/SubjectSetupRow':props=>React.createElement('SubjectRow',props),
+  '../../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,error:false,value:{enabled:false,invited:true},retry(){},save:async()=>true})},
+  '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon',daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
+  '../../context/TimerContext':{useTimer:()=>({duration:1800,timeLeft:1800,hasOpenSession:false})},
+  '../../context/QuestContext':{useQuests:()=>({tasks:[],subjects:[{id:1,title:'General'},{id:2,title:'Learning'}],loading:false,refresh:async()=>{}})},
+  '../../services/progressService':{getLastFreeSession:async()=>null,getFocusStreak:async()=>0},'../../services/dailyProgressService':{getTodayProgress:async()=>null},'../../hooks/useHomeLifecycle':{useHomeLifecycle:()=>12},
+ })).default;
+ const ui=await render(Home);
+ const count=type=>ui.tree.root.findAllByType(type).length;
+ const switches=()=>ui.tree.root.findAll(node=>node.props.testID==='setup-mode-switch'&&typeof node.type==='string').length;
+ try {
+  assert.equal(switches(),1);assert.equal(count('RoutineRow'),0);assert.equal(count('SubjectRow'),0);
+  await ui.press('Routine. One of your saved routines');
+  assert.equal(switches(),1,'the switch stays in the same card');assert.equal(count('RoutineRow'),1);assert.equal(count('SubjectRow'),0);
+  await ui.press('Study. A subject, counted toward its exams');
+  assert.equal(count('RoutineRow'),0);assert.equal(ui.tree.root.findByType('SubjectRow').props.learningId,2,'study time counts toward Learning');
+  await ui.press('Focus. Any activity in a focus area');
+  assert.equal(count('RoutineRow')+count('SubjectRow'),0);assert.equal(switches(),1);
+ }finally{await ui.cleanup();}
+});

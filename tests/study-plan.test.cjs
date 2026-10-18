@@ -155,3 +155,29 @@ test('exams saved before times existed load with no time and reminders on', asyn
   const exam = again.store.snapshot(scope).exams[0];
   assert.equal(exam.examMinute, null); assert.equal(exam.remind, true);
 });
+test('a subject named on an exam card is reused by name or created once, ready to pick at once', async () => {
+  const f = fixture();
+  const first = await f.store.ensureCourse(scope, '  further   maths ', 2);
+  assert.ok(first); assert.deepEqual(f.store.snapshot(scope).courses.map(c => [c.id, c.name, c.focusAreaId]), [[first, 'further maths', 2]]);
+  assert.equal(await f.store.ensureCourse(scope, 'Further Maths', 2), first, 'the same name in another case is the same subject');
+  assert.equal(f.store.snapshot(scope).courses.length, 1);
+  assert.equal(await f.store.ensureCourse(scope, '   ', 2), null);
+  const again = fixture(f.existing); await again.store.load(scope);
+  assert.equal(again.store.snapshot(scope).courses[0].id, first, 'the new subject survives a restart with the same id');
+});
+test('the subject catalog offers common subjects you have not added, filtered by what you type', () => {
+  const all = domain.subjectSuggestions('', [], 500);
+  assert.ok(all.length >= 40); assert.equal(new Set(all.map(n => n.toLowerCase())).size, all.length, 'no duplicates');
+  for (const name of domain.QUICK_SUBJECTS) assert.ok(all.includes(name), name);
+  assert.equal(domain.subjectSuggestions('', ['mathematics']).includes('Mathematics'), false, 'yours are not offered again');
+  assert.ok(domain.subjectSuggestions('chem', []).every(n => n.toLowerCase().includes('chem')));
+  assert.equal(domain.subjectSuggestions('', [], 5).length, 5);
+});
+test('the shared setup mode is one value every setup reads and only announces real changes', () => {
+  const { setupMode } = load('src/services/setupMode.ts'); let heard = 0;
+  const stop = setupMode.subscribe(() => heard++);
+  assert.equal(setupMode.get(), 'focus');
+  setupMode.choose('study'); setupMode.choose('study'); setupMode.chooseRoutine('saved:1'); setupMode.chooseRoutine('saved:1');
+  assert.equal(setupMode.get(), 'study'); assert.equal(setupMode.routine(), 'saved:1'); assert.equal(heard, 2);
+  stop(); setupMode.choose('focus'); assert.equal(heard, 2);
+});

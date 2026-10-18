@@ -1,5 +1,5 @@
 import { tapHaptic } from "../../utils/tapHaptics";
-import { generalArea } from "../../utils/focusAreas";
+import { generalArea, suggestedArea } from "../../utils/focusAreas";
 import FreeFocusCard from "../../components/FreeFocusCard";
 import GuidedFocusCard from "../../components/GuidedFocusCard";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
@@ -25,16 +25,25 @@ import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
-import NextExamCard from "../../components/NextExamCard";
+import HomeStudyStrip from "../../components/HomeStudyStrip";
+import SetupModeSwitch, { useSetupMode } from "../../components/SetupModeSwitch";
+import SubjectSetupRow from "../../components/SubjectSetupRow";
+import RoutineSetupRow from "../../components/RoutineSetupRow";
+import { setupMode } from "../../services/setupMode";
+import { studySelection } from "../../services/studySelection";
+import { useStudyPlan } from "../../hooks/useStudyPlan";
+import { useSavedRoutines } from "../../hooks/useSavedRoutines";
+import { routinePresentation } from "../../utils/routinePresentation";
+import { courseArea, courseColor } from "../../utils/studyPlan";
 import SessionProtectionControl from "../../components/SessionProtectionControl";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
-import { colors, radius } from "../../constants/theme";
+import { colors, radius, edge } from "../../constants/theme";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
 import { useWindowDimensions, StyleSheet, View } from "react-native";
 import {
@@ -82,10 +91,23 @@ export default function HomeScreen() {
     if (accessMode !== "online") { setGuidedSettings(false); setGoalSettings(false); setTiersOpen(false); }
   }
   const useGuidance = guided.ready && guided.value.enabled;
+  const mode = useSetupMode();
+  const study = useStudyPlan(), savedRoutines = useSavedRoutines();
+  const chosenCourseId = useSyncExternalStore(studySelection.subscribe, studySelection.get, studySelection.get);
+  const routineKey = useSyncExternalStore(setupMode.subscribe, setupMode.routine, setupMode.routine);
+  const [setupPicker, setSetupPicker] = useState<"subject" | "routine" | null>(null);
+  const [routineSeconds, setRoutineSeconds] = useState<{ key: string; seconds: number } | null>(null);
+  const routineEntries = routinePresentation(savedRoutines.ready ? savedRoutines.routines : [], tasks).entries;
+  const chosenRoutine = routineEntries.find(entry => entry.key === routineKey) ?? null;
+  const course = study.courses.find(item => item.id === chosenCourseId) ?? null;
+  const learning = suggestedArea(subjects, "learning");
   const general = generalArea(subjects);
+  const studyAreaId = course ? courseArea(course, general?.id) : learning?.id ?? null;
+  const modeSwitch = <SetupModeSwitch value={mode} disabled={quickStarting} onChange={() => setSetupPicker(null)} />;
   const quickArea = guided.value.areaId !== undefined ? subjects.find(area => area.id === guided.value.areaId) ?? general : general;
   const retainedAttempt = (quickError || quickStarting) && attempt?.owner === owner ? attempt : null;
   const quickSeconds = retainedAttempt?.seconds ?? durationPreference.selectedSeconds;
+  const routineSecondsNow = chosenRoutine ? routineSeconds?.key === chosenRoutine.key ? routineSeconds.seconds : chosenRoutine.seconds : quickSeconds;
   const quickAreaId = retainedAttempt ? retainedAttempt.areaId : quickArea?.id ?? null;
   const quickTitle = retainedAttempt?.title ?? quickArea?.title ?? "General";
   const activeSubject = subjects.find(area => area.id === timer.targetAttributeId);
@@ -196,19 +218,30 @@ export default function HomeScreen() {
     void durationPreference.choose(seconds, custom);
     setQuickError(false); setAttempt(null);
   };
-  const startFreeSession = async () => {
+  const startFreeSession = async (seconds = quickSeconds, areaId = quickAreaId, title = quickTitle, routineName?: string) => {
     if (hasOpenSession) { openSession(); return; }
     if (quickLock.current || blocked || areasLoading || questsError || guided.busy || !durationPreference.ready) return;
     quickLock.current = true;
-    setAttempt({ owner, seconds: quickSeconds, areaId: quickAreaId, title: quickTitle });
+    setAttempt({ owner, seconds, areaId, title });
     setQuickStarting(true);
     setQuickError(false);
     try {
-      const request = timer.startFreeTimer(quickSeconds, quickAreaId);
+      const request = timer.startFreeTimer(seconds, areaId, routineName);
       openSession();
       if (!await request) setQuickError(true);
     } catch { setQuickError(true); }
     finally { quickLock.current = false; setQuickStarting(false); }
+  };
+  // One setup, three kinds of session. Routine and Study start here directly;
+  // with nothing picked yet, Start opens the picker instead.
+  const startStudySession = () => {
+    if (!course) { setSetupPicker("subject"); return; }
+    void startFreeSession(quickSeconds, studyAreaId, course.name);
+  };
+  const startRoutineSession = () => {
+    if (!chosenRoutine) { setSetupPicker("routine"); return; }
+    if (chosenRoutine.kind === "legacy") { openQuestSession(chosenRoutine.task); return; }
+    void startFreeSession(routineSecondsNow, chosenRoutine.areaId, chosenRoutine.name, chosenRoutine.name);
   };
   const openFocusPreferences = () => {
     if (hapticsEnabled) tapHaptic();
@@ -269,7 +302,22 @@ export default function HomeScreen() {
             {hasOpenSession && <TouchableOpacity onPress={openSession} accessibilityRole="button" style={styles.primaryButton}><Text style={styles.primaryButtonText}>Continue session</Text></TouchableOpacity>}
             {(guided.error || durationPreference.error) && <TouchableOpacity onPress={() => { void guided.retry(); void durationPreference.retry(); }} accessibilityRole="button" style={styles.changeButton}><Text style={styles.link}>Retry loading preferences</Text></TouchableOpacity>}
             {!hasOpenSession && <TouchableOpacity onPress={openFocusPreferences} accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose a focus area or free focus" style={styles.changeButton}><Text style={styles.link}>Change direction</Text></TouchableOpacity>}
-          </View> : useGuidance ? <GuidedFocusCard key={owner} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))} dimmed={startUnavailable}
+          </View> : !hasOpenSession && mode !== "focus" ? <FreeFocusCard key={`${owner}:${mode}`}
+            seconds={mode === "routine" ? routineSecondsNow : quickSeconds} area={mode === "routine" ? chosenRoutine?.name ?? "Routine" : course?.name ?? "Study"}
+            areaId={mode === "routine" ? chosenRoutine?.areaId ?? null : studyAreaId} subjects={subjects} label={mode === "routine" ? "Routine" : "Study"}
+            tint={mode === "routine" ? lifeAreaColor(chosenRoutine?.areaId ?? null, subjects.find(area => area.id === chosenRoutine?.areaId)?.color_code) : course ? courseColor(course.id) : colors.accent}
+            active={false} running={false} dimmed={startUnavailable} starting={quickStarting} restoring={!!timer.isRestoring}
+            disabled={blocked || areasLoading || questsError} changeDisabled={quickStarting || !!timer.actionBusy || areasLoading || questsError}
+            failed={quickError} error={timer.actionError ?? undefined} onChange={() => {}} onStart={() => void (mode === "routine" ? startRoutineSession() : startStudySession())}
+            goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} modeSwitch={modeSwitch}
+            onDuration={seconds => mode === "routine" ? chosenRoutine && setRoutineSeconds({ key: chosenRoutine.key, seconds }) : chooseDuration(seconds)}
+            customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => mode === "routine" ? chosenRoutine && setRoutineSeconds({ key: chosenRoutine.key, seconds }) : chooseDuration(seconds, true)}
+            leadRow={mode === "routine"
+              ? <RoutineSetupRow entries={routineEntries} selected={chosenRoutine} areas={subjects} disabled={quickStarting} open={setupPicker === "routine"}
+                onOpenChange={open => setSetupPicker(open ? "routine" : null)} onSelect={entry => { setupMode.chooseRoutine(entry.key); setRoutineSeconds(null); }} />
+              : <SubjectSetupRow areas={subjects} areaId={studyAreaId} generalId={general?.id} learningId={learning?.id} disabled={quickStarting} onArea={() => {}}
+                open={setupPicker === "subject"} onOpenChange={open => setSetupPicker(open ? "subject" : null)} />} />
+          : useGuidance ? <GuidedFocusCard key={owner} modeSwitch={modeSwitch} owner={owner} subjects={subjects} activeTitle={tasks.find(task => task.id === timer.linkedTaskId)?.title} disabled={blocked || (!hasOpenSession && (areasLoading || questsError))} dimmed={startUnavailable}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onStarted={openSession} onPreferences={openFocusPreferences} selectedSeconds={quickSeconds}
             onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)} /> : <FreeFocusCard key={owner}
             seconds={hasOpenSession ? timer.finishing ? 0 : timer.timeLeft : quickSeconds} duration={hasOpenSession ? timer.duration : undefined}
@@ -279,7 +327,7 @@ export default function HomeScreen() {
             disabled={blocked || (!hasOpenSession && (areasLoading || questsError)) || guided.busy} changeDisabled={quickStarting || !!timer.actionBusy || areasLoading || questsError || guided.busy} restoring={!!timer.isRestoring}
             failed={quickError} error={timer.actionError ?? undefined} setupError={guided.error ? "Couldn’t save your focus area. Your previous choice is still selected. Try again." : undefined} onChange={id => void changeArea(id)} onStart={() => void startFreeSession()}
             goal={goalSummary} protection={<SessionProtectionControl activeSurface={accessMode === "online"} />} onPreferences={openFocusPreferences} onDuration={chooseDuration} customSeconds={durationPreference.value.customSeconds} onCustomDuration={seconds => chooseDuration(seconds, true)}
-          />}
+            modeSwitch={modeSwitch} />}
           {durationPreference.ready && durationPreference.error && <View>
             <Text style={styles.retryText} accessibilityRole="alert">Your time is selected, but couldn’t be remembered on this phone.</Text>
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry remembering time" style={styles.retry}
@@ -289,8 +337,9 @@ export default function HomeScreen() {
             <Text style={styles.primaryButtonText}>Review saved session</Text>
           </TouchableOpacity>}
           </View></TourAnchor>
-          <NextExamCard />
-          <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} initialSeconds={quickSeconds} initialAreaId={quickAreaId} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession} /></TourAnchor>
+          <HomeStudyStrip />
+          <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} initialSeconds={quickSeconds} initialAreaId={quickAreaId} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
+            limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} /></TourAnchor>
         </View>
         </ContentReveal>
       </TourScrollView>
@@ -323,7 +372,7 @@ const styles = StyleSheet.create({
   levelText: { color: colors.level, fontSize: 13, lineHeight: 18, fontWeight: "600" },
   avatarFrame: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
   avatarDisc: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
-  focusCard: { width: "100%", borderRadius: radius.card, backgroundColor: colors.surface, padding: 14, gap: 12 },
+  focusCard: { ...edge, width: "100%", borderRadius: radius.card, backgroundColor: colors.surface, padding: 14, gap: 12 },
   focusHeading: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
   changeButton: { minHeight: 44, paddingHorizontal: 10, borderRadius: 12, backgroundColor: colors.accentSoft, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5 },
   primaryButton: { backgroundColor: colors.primary, width: "100%", alignSelf: "stretch", minHeight: 52, borderRadius: 26, flexDirection: "row", gap: 10, alignItems: "center", justifyContent: "center", padding: 14 },

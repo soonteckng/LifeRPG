@@ -24,7 +24,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
-import { colors, radius } from "../../constants/theme";
+import { colors, radius, edge } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
@@ -914,7 +914,7 @@ const s = StyleSheet.create({
     minHeight: 44,
   },
   link: { color: colors.accent, fontSize: 15, fontWeight: "500" },
-  card: {
+  card: { ...edge,
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: radius.card,

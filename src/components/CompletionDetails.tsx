@@ -1,7 +1,7 @@
 import { focusAreaTitle } from "../utils/focusAreas";
 import { Ionicons } from "@expo/vector-icons";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { durationLabel } from "../utils/sessionSetup";
 import { Text } from "./AppText";
@@ -73,7 +73,7 @@ const s = StyleSheet.create({
   caption: {...type.secondary, flexShrink:1},
   time: {...type.hero, textAlign:"center", letterSpacing:-1},
   quest: {...type.body, textAlign:"center"},
-  rows: {paddingHorizontal:16, paddingVertical:6, borderRadius:20, backgroundColor:colors.sheetCard, gap:0},
+  rows: { ...edge,paddingHorizontal:16, paddingVertical:6, borderRadius:20, backgroundColor:colors.sheetCard, gap:0},
   row: {minHeight:52, paddingVertical:8, flexDirection:"row", alignItems:"center", justifyContent:"space-between", gap:12},
   compactRow: {minHeight:40, paddingVertical:8, flexDirection:"row", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:8},
   continuity: {paddingVertical:8, gap:4},

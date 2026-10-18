@@ -11,7 +11,7 @@ import FocusAreaPicker from "./FocusAreaPicker";
 import SheetHeader from "./SheetHeader";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { useUser } from "../context/UserContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
@@ -131,9 +131,9 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
 }
 const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, label: { ...type.label, paddingHorizontal: 4, marginTop: 4 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
-  body: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, input: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
+  body: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, input: { ...edge, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
 
-  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footerArea: { paddingHorizontal: 16, paddingTop: 12, gap: 10, backgroundColor: colors.surfaceRaised }, footer: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 }, footerError: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 }, inputError: { borderWidth: 1, borderColor: colors.danger },
+  time: { flexDirection: "row", gap: 12 }, reminder: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footerArea: { paddingHorizontal: 16, paddingTop: 12, gap: 10, backgroundColor: colors.surfaceRaised }, footer: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 }, footerError: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 }, inputError: { borderWidth: 1, borderColor: colors.danger },
   permission: { padding: 14, borderRadius: 14, backgroundColor: colors.accentSoft, gap: 8 }, permissionAction: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.selection }, permissionActionText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 }, primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },

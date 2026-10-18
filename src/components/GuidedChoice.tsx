@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import { FOCUS_AREAS } from "../utils/focusAreas";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { areaTint } from "../utils/lifeAreaColor";
 import { FOCUS_DIRECTIONS, focusDirection, focusOptions } from "../constants/guidedQuests";
@@ -100,11 +100,11 @@ const s = StyleSheet.create({
   group: { gap: 22 }, directions: { gap: 6 }, section: { gap: 8 },
   heading: { ...type.label, paddingHorizontal: 4 },
   directionGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: "transparent", flexDirection: "row", alignItems: "center", gap: 10 },
+  directionTile: { flexBasis: "47%", flexGrow: 1, minWidth: 0, minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: colors.line, flexDirection: "row", alignItems: "center", gap: 10 },
   tileIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   tileTitle: { flex: 1, minWidth: 0, color: colors.neutral, fontSize: 15, lineHeight: 20, fontWeight: "500" }, selectedTitle: { color: colors.text, fontWeight: "600" },
   row: { paddingHorizontal: 12, paddingVertical: 12, minHeight: 56, borderRadius: 14, gap: 12, flexDirection: "row", alignItems: "center" }, compactRow: { paddingVertical: 9, minHeight: 58 },
-  list: { borderRadius: 16, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  list: { ...edge, borderRadius: 16, backgroundColor: colors.sheetCard, overflow: "hidden" },
   promptRow: { minHeight: 60, paddingHorizontal: 16, paddingVertical: 10, gap: 12, flexDirection: "row", alignItems: "center" },
   promptDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   promptTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, promptChosen: { fontWeight: "600" },

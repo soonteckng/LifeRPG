@@ -168,7 +168,21 @@ export function monthGrid(year: number, month: number): (string | null)[][] {
   return Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7));
 }
 export function addDays(key: string, days: number): string { const date = localDate(key); date.setDate(date.getDate() + days); return dateKey(date); }
-export const STARTER_SUBJECTS = ["Maths", "English", "Science", "History", "Languages", "Coding"] as const;
+/** Common school, college and university subjects; anything else can be typed. */
+export const SUBJECT_CATALOG = [
+  "Mathematics", "Additional Mathematics", "Physics", "Chemistry", "Biology", "Science", "English", "Bahasa Melayu", "Chinese", "Tamil",
+  "History", "Geography", "Economics", "Accounting", "Business Studies", "Commerce", "Computer Science", "Programming", "Information Technology",
+  "Statistics", "Calculus", "Further Mathematics", "Psychology", "Sociology", "Law", "Literature", "Art & Design", "Music", "Moral Education",
+  "Marketing", "Finance", "Management", "Engineering Mathematics", "Data Structures", "Databases", "Networking", "Web Development",
+  "Human Biology", "Anatomy", "Pharmacology", "Architecture", "Media Studies", "Communication",
+] as const;
+/** The first few, offered as one-tap chips. */
+export const QUICK_SUBJECTS = ["Mathematics", "English", "Physics", "Chemistry", "Biology", "Bahasa Melayu", "History", "Computer Science"] as const;
+/** Catalog names (and a typed name) matching a search, leaving out subjects you already have. */
+export function subjectSuggestions(query: string, mine: string[], limit = 18): string[] {
+  const q = query.trim().toLowerCase(), have = new Set(mine.map(name => name.toLowerCase()));
+  return SUBJECT_CATALOG.filter(name => !have.has(name.toLowerCase()) && (!q || name.toLowerCase().includes(q))).slice(0, limit);
+}
 /** The focus area a subject's time counts toward; no area means Everyday focus. */
 export function courseArea(course: Pick<StudyCourse, "focusAreaId">, generalId: number | null | undefined): number | null {
   return course.focusAreaId ?? generalId ?? null;

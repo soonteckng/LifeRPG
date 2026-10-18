@@ -32,7 +32,7 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
     writes.set(key, request); void request.finally(() => { if (writes.get(key) === request) writes.delete(key); }).catch(() => {});
     return request;
   }
-  async function enqueue(scope: JournalScope, kind: "course" | "exam", draft: StudyCourseDraft | StudyExamDraft, id: string | undefined, deleted: boolean) {
+  async function enqueue(scope: JournalScope, kind: "course" | "exam", draft: StudyCourseDraft | StudyExamDraft, id: string | undefined, deleted: boolean, createId?: string) {
     if (id !== undefined && !isJournalUuid(id) || (kind === "course" ? !validCourseDraft(draft) : !validExamDraft(draft))) return false;
     await store.load(scope); const key = studyStorageKey(scope);
     return serial(key, async () => {
@@ -44,7 +44,7 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
         publish(key, { error: before.pending.length >= STUDY_QUEUE_LIMIT ? "Reconnect to save your queued changes before making more." : full ? conflictMessage.limit : "This was removed. Refresh and try again." });
         return false;
       }
-      const itemId = id ?? newId(), operationId = newId();
+      const itemId = id ?? createId ?? newId(), operationId = newId();
       if (!isJournalUuid(itemId) || !isJournalUuid(operationId)) return false;
       const clean = kind === "course" ? { name: (draft as StudyCourseDraft).name, focusAreaId: (draft as StudyCourseDraft).focusAreaId }
         : { title: (draft as StudyExamDraft).title, courseId: (draft as StudyExamDraft).courseId, examDate: (draft as StudyExamDraft).examDate,
@@ -77,6 +77,16 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
       reads.set(key, request); return request;
     },
     saveCourse: (scope: JournalScope, draft: StudyCourseDraft, id?: string) => enqueue(scope, "course", draft, id, false),
+    /** Finds a subject by name (any case) or adds it, and returns its id. */
+    async ensureCourse(scope: JournalScope, name: string, focusAreaId: number | null): Promise<string | null> {
+      const clean = name.trim().replace(/\s+/g, " ").slice(0, 60);
+      if (!validCourseDraft({ name: clean, focusAreaId })) return null;
+      await store.load(scope);
+      const existing = store.snapshot(scope).courses.find(course => course.name.toLowerCase() === clean.toLowerCase());
+      if (existing) return existing.id;
+      const id = newId();
+      return await enqueue(scope, "course", { name: clean, focusAreaId }, undefined, false, id) ? id : null;
+    },
     saveExam: (scope: JournalScope, draft: StudyExamDraft, id?: string) => enqueue(scope, "exam", draft, id, false),
     async remove(scope: JournalScope, kind: "course" | "exam", id: string): Promise<boolean> {
       await store.load(scope); const snapshot = store.snapshot(scope);

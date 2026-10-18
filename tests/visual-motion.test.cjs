@@ -113,7 +113,7 @@ test('Tab crossfade respects reduced motion without changing route identities or
     assert.equal(tabs().screenOptions.animation,'fade');
     assert.equal(tabs().screenOptions.transitionSpec.config.duration,180);
     assert.equal(tabs().backBehavior,'initialRoute');
-    assert.deepEqual(routes.map(node=>node.props.name),['index','study','progress','profile','tasks','timer']);
+    assert.deepEqual(routes.map(node=>node.props.name),['index','routines','study','progress','profile','tasks','timer']);
     reduced=true;await act(async()=>tree.update(React.createElement(Layout)));
     assert.equal(tabs().screenOptions.animation,'none');
     assert.equal(tabs().screenOptions.transitionSpec.config.duration,0);

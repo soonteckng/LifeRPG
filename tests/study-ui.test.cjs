@@ -35,17 +35,33 @@ const presses = (root, label) => root.findAllByType('Press').filter(x => x.props
 const byText = (root, text) => root.findAllByType('Press').find(x => x.findAllByType('Text').some(t => t.props.children === text));
 const texts = root => root.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
 
-test('exam sheet asks for a name, saves the trimmed exam with its subject and confirms removal', async () => {
-  const Sheet = load('src/components/StudyExamSheet.tsx', base()).default;
-  const saved = [], removed = []; let closed = 0, ui;
-  await act(async () => { ui = create(React.createElement(Sheet, { visible: true, exam: null, courses: [course], onSave: async (...a) => { saved.push(a); return true; }, onRemove: async () => true, onClose: () => closed++ })); });
+test('exam sheet asks for a name, picks any subject, creates a typed one only on save and confirms removal', async () => {
+  const Sheet = load('src/components/StudyExamSheet.tsx', { ...base(), '/SheetTouchable': host('Press') }).default;
+  const saved = [], removed = [], ensured = []; let closed = 0, ui;
+  const props = { visible: true, exam: null, courses: [course], onSave: async (...a) => { saved.push(a); return true; }, onEnsureSubject: async name => { ensured.push(name); return id(9); }, onRemove: async () => true, onClose: () => closed++ };
+  await act(async () => { ui = create(React.createElement(Sheet, props)); });
+  const subject = () => presses(ui.root, 'Choose subject')[0];
   await act(async () => byText(ui.root, 'Save exam').props.onPress());
   assert.ok(texts(ui.root).includes('Give your exam a name first.')); assert.equal(saved.length, 0);
   await act(async () => ui.root.findByType('Input').props.onChangeText('  Calculus final  '));
+  await act(async () => subject().props.onPress());
+  assert.equal(presses(ui.root, 'Save exam').length + texts(ui.root).filter(t => t === 'Save exam').length, 0, 'picking hides the footer');
+  assert.ok(presses(ui.root, 'Mathematics').length, 'common subjects are offered beside yours');
   await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
+  assert.equal(subject().props.accessibilityValue.text, 'Maths');
   await act(async () => byText(ui.root, 'Save exam').props.onPress());
   assert.deepEqual(saved[0], [{ title: 'Calculus final', courseId: id(1), examDate: inDays(14), examMinute: null, remind: true }, undefined]); assert.equal(closed, 1);
-  await act(async () => ui.update(React.createElement(Sheet, { visible: true, exam, courses: [course], onSave: async () => true, onRemove: async x => { removed.push(x); return true; }, onClose: () => closed++ })));
+  assert.deepEqual(ensured, [], 'an existing subject is reused');
+  // A typed subject names an untitled exam and is only created when the exam is saved.
+  await act(async () => ui.update(React.createElement(Sheet, { ...props, visible: false })));
+  await act(async () => ui.update(React.createElement(Sheet, props)));
+  await act(async () => subject().props.onPress());
+  await act(async () => ui.root.findByType('Input').props.onChangeText('Quantum Mechanics'));
+  await act(async () => presses(ui.root, 'Add “Quantum Mechanics”')[0].props.onPress());
+  assert.equal(ui.root.findByType('Input').props.value, 'Quantum Mechanics exam'); assert.deepEqual(ensured, []);
+  await act(async () => byText(ui.root, 'Save exam').props.onPress());
+  assert.deepEqual(ensured, ['Quantum Mechanics']); assert.equal(saved[1][0].courseId, id(9)); assert.equal(saved[1][0].title, 'Quantum Mechanics exam');
+  await act(async () => ui.update(React.createElement(Sheet, { ...props, exam, onRemove: async x => { removed.push(x); return true; } })));
   await act(async () => presses(ui.root, 'Remove exam')[0].props.onPress());
   assert.equal(removed.length, 0, 'removal asks first');
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
@@ -77,7 +93,7 @@ function studyScreen(plan, timer = {}) {
   const Screen = load('src/app/(tabs)/study.tsx', {
     ...base(), 'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
     'expo-router/js-tabs': { useBottomTabBarHeight: () => 80 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
-    '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: host('Page') },
+    '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: props => React.createElement('Page', props, props.action, props.children) },
     '/StudyExamSheet': host('ExamSheet'), '/StudySubjectSheet': { __esModule: true, default: host('SubjectSheet'), ExamTile: host('Tile') },
     '/StudyLifecycle': { requestStudySync: () => {} }, '/QuestContext': { useQuests: () => ({ subjects: areas }) },
     '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => calls.push('notes'), setLinkedTaskId: () => {}, setTargetAttributeId: v => calls.push(['area', v]), ...timer }) },
@@ -85,52 +101,98 @@ function studyScreen(plan, timer = {}) {
     '/useSquads': { useSquads: () => ({ ready: true, squads: plan.squads ?? [], online: true, refresh: async () => {}, join: async () => null, create: async () => null, leave: async () => null, remove: async () => null }) },
     '/SquadSheets': { SquadFace: host('Face'), SquadSheet: host('SquadSheet'), SquadJoinSheet: host('JoinSheet') },
     '/floatingTabInset': { floatingTabInset: () => 100 }, '/studySelection': { studySelection: { choose: v => calls.push(['subject', v]) } },
+    '/setupMode': { setupMode: { choose: v => calls.push(['mode', v]) } }, '/SheetTouchable': host('Press'),
   }).default;
   return { Screen, calls };
 }
 
-test('an empty Study tab offers an exam card, one-tap subjects and how it works', async () => {
-  const { Screen, calls } = studyScreen({}); let ui;
+test('an empty Study tab keeps My Exams, My Subjects and how it works; a subject chip adds it with an exam to date', async () => {
+  const ensured = [];
+  const { Screen } = studyScreen({ ensureCourse: async (name, area) => { ensured.push([name, area]); return id(5); } }); let ui;
   await act(async () => { ui = create(React.createElement(Screen)); });
-  assert.ok(texts(ui.root).includes('Got an exam coming up?')); assert.ok(texts(ui.root).includes('How it works'));
-  await act(async () => presses(ui.root, 'Add Maths')[0].props.onPress());
-  assert.deepEqual(calls.find(c => c[0] === 'course'), ['course', { name: 'Maths', focusAreaId: 2 }]);
+  for (const title of ['My Exams', 'Got an exam coming up?', 'My Subjects', 'Squads']) assert.ok(texts(ui.root).includes(title), title);
+  const sheet = label => ui.root.findAllByType('Sheet').find(x => x.props.label === label);
+  await act(async () => presses(ui.root, 'How Study works')[0].props.onPress());
+  assert.equal(sheet('how study works').props.visible, true); assert.ok(texts(ui.root).includes('Add your exams'));
+  await act(async () => presses(ui.root, 'Add Mathematics')[0].props.onPress());
+  assert.deepEqual(ensured, [['Mathematics', 2]], 'a new subject counts toward Learning without asking');
+  const exams = ui.root.findByType('ExamSheet').props;
+  assert.equal(exams.visible, true); assert.equal(exams.initialCourseId, id(5)); assert.equal(exams.initialTitle, 'Mathematics exam');
   await act(async () => byText(ui.root, 'Add an exam').props.onPress());
-  assert.equal(ui.root.findByType('ExamSheet').props.visible, true);
+  assert.equal(ui.root.findByType('ExamSheet').props.initialCourseId, null);
   await act(async () => ui.unmount());
 });
 
-test('with an exam, the hero counts down and Study picks the subject and opens a session', async () => {
-  const { Screen, calls } = studyScreen({ courses: [course], exams: [exam] }); let ui;
+test('every exam gets its own countdown card, and Study sets up a Study session for its subject', async () => {
+  const physics = { ...course, id: id(3), name: 'Physics' }, mock = { ...exam, id: id(4), title: 'Physics mock', courseId: id(3), examDate: inDays(30) };
+  const { Screen, calls } = studyScreen({ courses: [course, physics], exams: [exam, mock] }); let ui;
   await act(async () => { ui = create(React.createElement(Screen)); });
-  assert.ok(texts(ui.root).includes('12')); assert.ok(texts(ui.root).includes('Calculus final'));
-  assert.equal(texts(ui.root).includes('How it works'), false);
+  assert.equal(ui.root.findAll(x => x.props.testID === 'study-exam-card' && typeof x.type === 'string').length, 2);
+  assert.ok(texts(ui.root).includes('12')); assert.ok(texts(ui.root).includes('Calculus final')); assert.ok(texts(ui.root).includes('Physics mock'));
+  assert.equal(presses(ui.root, 'How Study works').length, 1, 'help stays available once exams exist');
+  assert.ok(texts(ui.root).includes('My Subjects'));
   await act(async () => presses(ui.root, 'Study Maths')[0].props.onPress());
-  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['area', 2], ['subject', id(1)], ['nav', '/session']]);
+  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['area', 2], ['subject', id(1)], ['mode', 'study'], ['nav', '/session']]);
   await act(async () => ui.unmount());
 });
 
-test('the shared Subject row hides without subjects, shows the next exam and sets the subject area', async () => {
-  const selection = { value: null, listeners: new Set() };
-  const plan = { ready: true, courses: [course], exams: [exam] };
+test('the shared Subject row always shows, picks or creates any subject and moves the session to Learning', async () => {
+  const selection = { value: null, listeners: new Set() }, ensured = [];
+  const plan = { ready: true, courses: [course], exams: [exam], ensureCourse: async (name, area) => { ensured.push([name, area]); return id(7); } };
   const Row = load('src/components/SubjectSetupRow.tsx', { ...base(), '/SheetHeader': host('Header'), '/SheetTouchable': host('Press'),
     '/useStudyPlan': { useStudyPlan: () => plan },
     '/studySelection': { studySelection: { get: () => selection.value, subscribe: fn => { selection.listeners.add(fn); return () => selection.listeners.delete(fn); }, choose: v => { selection.value = v; selection.listeners.forEach(fn => fn()); } } },
   }).default;
-  const areasSeen = []; let ui;
-  await act(async () => { ui = create(React.createElement(Row, { areas, areaId: 1, generalId: 1, onArea: id => areasSeen.push(id) })); });
+  const areasSeen = [], props = { areas, areaId: 1, generalId: 1, learningId: 2, onArea: id => areasSeen.push(id) }; let ui;
+  await act(async () => { ui = create(React.createElement(Row, props)); });
   const row = () => presses(ui.root, 'Choose subject')[0];
-  assert.equal(row().props.accessibilityValue.text, 'None');
+  assert.equal(row().props.accessibilityValue.text, 'None'); assert.ok(texts(ui.root).includes('Choose'));
   await act(async () => row().props.onPress());
   await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
-  assert.deepEqual(areasSeen, [2], 'picking Maths moves the session to Learning');
-  await act(async () => ui.update(React.createElement(Row, { areas, areaId: 2, generalId: 1, onArea: () => {} })));
+  assert.deepEqual(areasSeen, [2], 'picking Maths moves the session to Learning'); assert.equal(selection.value, id(1));
+  await act(async () => ui.update(React.createElement(Row, { ...props, areaId: 2 })));
   assert.equal(row().props.accessibilityValue.text, 'Maths, Calculus final in 12 days');
   assert.ok(texts(ui.root).includes('Calculus final in 12 days'));
-  await act(async () => ui.update(React.createElement(Row, { areas, areaId: 1, generalId: 1, onArea: () => {} })));
-  assert.equal(row().props.accessibilityValue.text, 'None', 'another area shows no subject');
-  plan.courses = [];
-  await act(async () => ui.update(React.createElement(Row, { areas, areaId: 2, generalId: 1, onArea: () => {} })));
-  assert.equal(presses(ui.root, 'Choose subject').length, 0);
+  await act(async () => row().props.onPress());
+  await act(async () => ui.root.findByType('Input').props.onChangeText('Quantum Mechanics'));
+  await act(async () => presses(ui.root, 'Add “Quantum Mechanics”')[0].props.onPress());
+  assert.deepEqual(ensured, [['Quantum Mechanics', 2]], 'a typed subject joins My Subjects under Learning'); assert.equal(selection.value, id(7));
+  plan.courses = []; selection.value = null;
+  await act(async () => ui.update(React.createElement(Row, { ...props, areaId: 2 })));
+  assert.equal(presses(ui.root, 'Choose subject').length, 1, 'the row stays even before any subject exists');
+  await act(async () => ui.unmount());
+});
+
+test('Home shows My Exams before any exist, one card per exam, and your squad', async () => {
+  const plan = { exams: [], courses: [course] }, squads = { squads: [] }, nav = [];
+  const Strip = load('src/components/HomeStudyStrip.tsx', { ...base(), 'react-native': { ...rn, useWindowDimensions: () => ({ width: 390, height: 800 }) },
+    'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
+    '/SquadSheets': { SquadFace: host('Face') } }).default;
+  let ui; await act(async () => { ui = create(React.createElement(Strip)); });
+  const cards = () => ui.root.findAll(x => x.props.testID === 'home-exam-card' && x.type === 'Press');
+  assert.ok(texts(ui.root).includes('My Exams')); assert.ok(texts(ui.root).includes('Got an exam coming up?')); assert.equal(cards().length, 0);
+  await act(async () => presses(ui.root, 'Add an exam in Study')[0].props.onPress()); assert.deepEqual(nav, ['/study']);
+  plan.exams = [exam, { ...exam, id: id(4), title: 'Physics mock', examDate: inDays(30) }];
+  squads.squads = [{ id: id(8), name: 'Library crew', members: [{ id: id(9), name: 'Aina', weekSeconds: 3600, focusingNow: true }] }];
+  await act(async () => ui.update(React.createElement(Strip)));
+  assert.equal(cards().length, 2, 'every exam is equally important'); assert.equal(texts(ui.root).includes('Got an exam coming up?'), false);
+  assert.equal(ui.root.findAll(x => x.props.testID === 'home-squad' && x.type === 'Press').length, 1);
+  await act(async () => ui.unmount());
+});
+
+test('the Routines tab lists every routine and starts old routines the same way Home does', async () => {
+  const calls = [];
+  const Screen = load('src/app/(tabs)/routines.tsx', { ...base(), 'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
+    'expo-router/js-tabs': { useBottomTabBarHeight: () => 80 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
+    '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: host('Page') }, '/SavedRoutinesCard': host('Routines'),
+    '/AuthContext': { useAuth: () => ({ accessMode: 'online' }) }, '/QuestContext': { useQuests: () => ({ tasks: [{ id: 5 }], subjects: areas, refresh: async () => {} }) },
+    '/floatingTabInset': { floatingTabInset: () => 100 },
+    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => {}, setLinkedTaskId: v => calls.push(['quest', v]), setDurationInMinutes: v => calls.push(['minutes', v]), setTargetAttributeId: v => calls.push(['area', v]) }) },
+  }).default;
+  let ui; await act(async () => { ui = create(React.createElement(Screen)); });
+  const card = ui.root.findByType('Routines').props;
+  assert.equal(ui.root.findByType('Page').props.title, 'Routines'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
+  await act(async () => card.onStartLegacy({ id: 5, target_minutes: 25, subject_id: 2 }));
+  assert.deepEqual(calls, [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
   await act(async () => ui.unmount());
 });

@@ -9,7 +9,7 @@ import { Text } from "./AppText";
 import { useUser } from "../context/UserContext";
 import { getDailyGoalSettings, missingGoalAPI, scheduleDailyGoal, type DailyGoalSettings } from "../services/dailyGoalService";
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 
 // The last reading per account, so the sheet opens with real numbers at once.
 // A fresh read still follows every open; the server stays the authority.
@@ -117,7 +117,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
 // Plain style objects keep this sheet free of extra native imports.
 const g = {
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 16 },
-  stepperCard: { paddingTop: 16, paddingHorizontal: 16, paddingBottom: 12, gap: 14, borderRadius: 22, backgroundColor: colors.sheetCard },
+  stepperCard: { ...edge, paddingTop: 16, paddingHorizontal: 16, paddingBottom: 12, gap: 14, borderRadius: 22, backgroundColor: colors.sheetCard },
   stepper: { flexDirection: "row" as const, alignItems: "center" as const, justifyContent: "space-between" as const, gap: 12 },
   stepButton: { width: 44, height: 44, borderRadius: 22, alignItems: "center" as const, justifyContent: "center" as const, backgroundColor: colors.accentSoft },
   value: { flex: 1, alignItems: "center" as const },

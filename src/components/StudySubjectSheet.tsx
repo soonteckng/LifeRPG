@@ -5,12 +5,11 @@ import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import SheetConfirmation from "./SheetConfirmation";
-import FocusAreaPicker from "./FocusAreaPicker";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
-import { focusAreaChoices, focusAreaKind, focusAreaTitle } from "../utils/focusAreas";
+import { focusAreaTitle } from "../utils/focusAreas";
 import { countdownLabel, courseColor, daysUntil, examDateLabel, studyDays, studyTime, upcomingExams, validCourseDraft } from "../utils/studyPlan";
 import type { Subject } from "../services/taskService";
 import type { StudyCourse, StudyCourseDraft, StudyExam, StudyRecent } from "../types/studyPlan";
@@ -55,11 +54,9 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
   const week = days.reduce((sum, value) => sum + value, 0), peak = Math.max(...days, 1);
   const letters = days.map((_, index) => DAY_LETTERS[(new Date().getDay() + 1 + index) % 7]);
   const courseExams = course ? upcomingExams(exams).filter(item => item.courseId === course.id) : [];
-  const general = areas.find(item => focusAreaKind(item.title) === "general");
-  const areaChoices = [{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...focusAreaChoices(areas, draft.focusAreaId).filter(item => item.id !== general?.id)];
   return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} floating compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="subject"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
-    header={<SheetHeader title={editing ? course ? "Edit subject" : "New subject" : course?.name ?? ""} subtitle={editing ? "Track the time you give it." : focusAreaTitle(area?.title)}
+    header={<SheetHeader title={editing ? course ? "Edit subject" : "New subject" : course?.name ?? ""} subtitle={editing ? "Its study time counts toward Learning." : focusAreaTitle(area?.title)}
       onClose={close} closeLabel={editing && course ? "Stop editing" : "Close subject"} />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? `Remove ${course?.name ?? "this subject"}?` : "Discard your changes?"}
       message={confirm === "remove" ? "Your focus sessions stay saved. Exams for it stay, without a subject." : "Your previous details stay as they were."}
@@ -70,8 +67,6 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
         <BottomSheetTextInput value={draft.name} maxLength={60} editable={!busy} placeholder="For example, Maths" placeholderTextColor={colors.secondary}
           accessibilityLabel="Subject name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
           onChangeText={name => { setDraft(current => ({ ...current, name })); setError(""); }} />
-        <Text style={s.label}>Counts toward</Text>
-        <FocusAreaPicker disabled={busy} selectedId={draft.focusAreaId ?? general?.id ?? null} areas={areaChoices} onSelect={focusAreaId => setDraft(current => ({ ...current, focusAreaId }))} />
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
         <View style={s.actions}>
           {course && <Pressable disabled={busy} onPress={() => setConfirm("remove")} accessibilityRole="button" accessibilityLabel="Remove subject" style={s.remove}><Ionicons name="trash-outline" size={21} color={colors.danger} /></Pressable>}
@@ -120,16 +115,16 @@ export function ExamTile({ date, tint = colors.danger }: { date: string; tint?: 
 
 const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 }, flex: { flex: 1, minWidth: 0 }, wide: { flex: 2 },
-  input: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
+  input: { ...edge, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
   inputError: { borderWidth: 1, borderColor: colors.danger },
   label: { ...type.label, paddingHorizontal: 4 }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },
-  card: { borderRadius: 22, backgroundColor: colors.sheetCard, padding: 16, gap: 12 },
+  card: { ...edge, borderRadius: 22, backgroundColor: colors.sheetCard, padding: 16, gap: 12 },
   statHead: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12 },
   big: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: "800", paddingHorizontal: 4, fontVariant: ["tabular-nums"] },
   bars: { flexDirection: "row", gap: 10, alignItems: "flex-end" }, barCell: { flex: 1, alignItems: "stretch", gap: 6 },
   bar: { borderRadius: 5 }, barLabel: { color: colors.tertiary, fontSize: 12, lineHeight: 16, textAlign: "center" },
-  list: { borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  list: { ...edge, borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 9 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },

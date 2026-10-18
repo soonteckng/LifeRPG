@@ -9,13 +9,14 @@ import { useTimer } from "../context/TimerContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { pinSavedRoutine, routineWidgetsSupported } from "../services/routineWidgetService";
 import { resolveSavedRoutine } from "../services/savedRoutineService";
+import { setupMode } from "../services/setupMode";
 import { focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { routineDuration } from "../utils/savedRoutine";
 import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
 import type { SavedRoutine } from "../types/savedRoutine";
 import type { Subject, Task } from "../services/taskService";
-import { colors, radius } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
@@ -32,7 +33,13 @@ const ROUTINE_TEMPLATES: RoutineTemplate[] = [
   { name: "Plan tomorrow", minutes: 15, area: "personal" },
 ];
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy }: { subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void }) {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll }: {
+  subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
+  /** How many routines show before "See all"; the Routines tab shows them all. */
+  limit?: number; suggestions?: boolean;
+  /** Home hands "See all" to the Routines tab instead of opening a sheet. */
+  onSeeAll?: () => void;
+}) {
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
@@ -68,6 +75,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const start = async (routine: SavedRoutine) => {
     if (blocked || locked.current || !routines.scope) return;
     const scope = routines.scope, operation = {}; locked.current = operation; setMessage(""); feedback();
+    setupMode.choose("routine");
     try {
       const latest = await resolveSavedRoutine(scope, routine.id);
       if (!latest || currentSurface.current !== surfaceKey || latestLegacy.current.blocked) return;
@@ -105,7 +113,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       const latest = current.tasks.find(item => item.id === task.id);
       if (latest && latest.is_due_today && !latest.is_completed_today && (latest.is_recurring || !latest.is_completed)) current.start?.(latest);
     };
-    const operation = {}; locked.current = operation; feedback();
+    const operation = {}; locked.current = operation; feedback(); setupMode.choose("routine");
     try {
       if (manage || confirm) { afterManageDismiss.current = { surfaceKey, open }; setLeaving(true); setManage(false); setConfirm(null); }
       else await open();
@@ -171,7 +179,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const homeRow = (entry: RoutineEntry) => <SwipeRow key={entry.key} enabled={active && (entry.kind === "saved" || routines.online)} label={entry.name}
     onEdit={() => entry.kind === "saved" ? edit(entry.routine) : editLegacy(entry.task)}
     onRemove={entry.kind === "saved" ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined}>{row(entry)}</SwipeRow>;
-  const visibleEntries = entries.slice(0, 3);
+  const visibleEntries = entries.slice(0, limit);
   const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
   const suggestions = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
@@ -183,7 +191,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <View style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>Your routines</Text>
           {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}</View>
         <View style={s.headingActions}>
-          {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); setShowDone(false); setManage(true); }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{entries.length > 3 ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
+          {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); if (onSeeAll) onSeeAll(); else { setShowDone(false); setManage(true); } }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{onSeeAll ? entries.length > limit ? `See all ${entries.length}` : "Routines" : entries.length > limit ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
           <Pressable disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="New routine" style={s.add}><Ionicons name="add" size={20} color={colors.accent} /></Pressable>
         </View>
       </View>
@@ -193,7 +201,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
       {/* Ready-made starting points stay offered until each one is saved. */}
-      {routines.ready && !!suggestions.length && <View style={s.suggested}>
+      {offerSuggestions && routines.ready && !!suggestions.length && <View style={s.suggested}>
         <Text style={s.sectionLabel}>Suggested routines</Text>
         <View style={s.group}>
         {suggestions.map((template, index) => {
@@ -273,7 +281,7 @@ const s = StyleSheet.create({
   headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
   add: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
-  group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
@@ -289,7 +297,7 @@ const s = StyleSheet.create({
   confirmStartText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   confirmPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   confirmCancel: { minHeight: 50, alignItems: "center", justifyContent: "center" }, confirmDisabled: { opacity: 0.5 }, cancelText: { color: colors.text, fontSize: 16, fontWeight: "500" },
-  menuGroup: { borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden", marginBottom: 4 },
+  menuGroup: { ...edge, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden", marginBottom: 4 },
   menuRow: { minHeight: 52, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   menuDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   menuText: { color: colors.text, fontSize: 16, lineHeight: 22 }, danger: { color: colors.danger },
@@ -299,5 +307,5 @@ const s = StyleSheet.create({
   swipeAction: { width: 76, alignItems: "center", justifyContent: "center", gap: 3 },
   swipeEdit: { backgroundColor: colors.selection }, swipeRemove: { backgroundColor: "#D93D35" },
   swipeText: { color: colors.text, fontSize: 13, fontWeight: "600" },
-  sheetRow: { backgroundColor: colors.sheetCard, borderRadius: radius.row },
+  sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },
 });

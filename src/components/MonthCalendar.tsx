@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { monthGrid } from "../utils/studyPlan";
 
 const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
@@ -38,7 +38,7 @@ export default function MonthCalendar({ value, min, max, today, onChange }: { va
   </View>;
 }
 const s = StyleSheet.create({
-  card: { borderRadius: 22, backgroundColor: colors.sheetCard, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 6 },
+  card: { ...edge, borderRadius: 22, backgroundColor: colors.sheetCard, paddingHorizontal: 10, paddingTop: 10, paddingBottom: 6 },
   head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 6, paddingBottom: 6 },
   month: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   nav: { flexDirection: "row", gap: 6 },

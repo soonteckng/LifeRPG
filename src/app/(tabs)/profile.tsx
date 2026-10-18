@@ -37,6 +37,7 @@ import { useCharacterData } from "../../hooks/useCharacterData";
 import { earnedMilestones, profileFocusAreaGrowth } from "../../utils/characterGrowth";
 import { durationLabel } from "../../utils/progressAnalytics";
 import { useStudyPlan } from "../../hooks/useStudyPlan";
+import { setupMode } from "../../services/setupMode";
 import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from "../../utils/studyPlan";
 
 import CharacterLookPicker from "../../components/CharacterLookPicker";
@@ -84,7 +85,7 @@ export default function ProfileScreen() {
     if (!selectedArea) return;
     // Existing sessions and unresolved completion/restoration always win, as on Home.
     if (!timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !timer.sessionSummary)) {
-      timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id);
+      timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id); setupMode.choose("focus");
     }
     afterArea.current = () => { timer.reviewSummary?.(); router.navigate("/session"); };
     setLeavingArea(true); setAreaOpen(false);

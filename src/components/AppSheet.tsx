@@ -1,4 +1,4 @@
-import { colors, radius } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import BottomSheet, {
   BottomSheetBackdrop,
   BottomSheetFooter,
@@ -360,7 +360,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.sheet,
   },
   floating: { marginHorizontal: 8 },
-  floatingSurface: { backgroundColor: colors.surfaceRaised, borderRadius: radius.sheet },
+  floatingSurface: { ...edge, backgroundColor: colors.surfaceRaised, borderRadius: radius.sheet },
   handleTarget: { height: 28, alignItems: "center", justifyContent: "center" },
   handle: {
     width: 36,

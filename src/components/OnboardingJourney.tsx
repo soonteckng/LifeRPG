@@ -12,11 +12,10 @@ import { FocusDirectionPicker } from "./GuidedChoice";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { saveOnboardingProfile, finishOnboarding } from "../services/onboardingService";
 import { useUser } from "../context/UserContext";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
 import { INTRO_PAGES, ONBOARDING_NAME_LIMIT } from "../constants/onboarding";
 import { useSessionProtection } from "../context/SessionProtectionContext";
-import Segmented from "./Segmented";
 
 const TITLES = ["Find your rhythm.", "Make it yours.", "What should we call you?", "A little time for you.", "Keep distractions aside."];
 // Steps: 0–3 setup, 4 app protection (Android only), 5–7 intro pages.
@@ -41,7 +40,6 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [celebrating, setCelebrating] = useState(false), [confirmed, setConfirmed] = useState(false);
   const protection = useSessionProtection();
-  const [protectMode, setProtectMode] = useState<"essentials" | "allow-list">(protection.selection.mode === "allow-list" ? "allow-list" : "essentials");
   const caps = protection.capabilities;
   const refreshProtection = protection.refresh;
   // Permissions are granted in Android Settings; re-read them on return.
@@ -71,7 +69,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     }
     if (step === 3) { const validation = validateDailyGoal(goal); if (validation) { setError(validation); return; } }
     if (step === 3 && !protection.supported) { changeStep(FIRST_INTRO); return; }
-    if (step === PROTECTION_STEP && caps?.usage && caps.overlay && caps.notifications) await protection.choose(protectMode).catch(() => false);
+    if (step === PROTECTION_STEP && caps?.usage && caps.overlay && caps.notifications) await protection.choose("allow-list", protection.selection.mode === "allow-list" ? protection.selection.allowed : []).catch(() => false);
     if (step < LAST_STEP) { changeStep(step + 1); return; }
     if (!savedFinish.current && (!name.trim() || name.trim().length > ONBOARDING_NAME_LIMIT)) {
       setStep(2); setError(`Choose a name between 1 and ${ONBOARDING_NAME_LIMIT} characters.`); return;
@@ -108,7 +106,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     direction.enabled ? "Choose where you’d like to begin. You can change your suggestion on Home anytime." : "Choose your own duration and Focus area. Add personal quests whenever you want a little structure.",
     "A name for your journey. You can personalise your character in Profile later.",
     "Choose a starting daily goal. Short sessions count too. There’s no need to do it all at once.",
-    "During a session, LifeRPG can cover the apps that pull you away. Optional, and you can change it on Home anytime.",
+    "During a session, this app can cover the apps that pull you away. Optional, and you can change it later.",
   ];
   return <OnboardingFrame step={step + 1 - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={skipped ? 7 : 8} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
     busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
@@ -122,28 +120,26 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
     {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>Change your daily goal in Settings once every seven days. Changes start the next day. A quiet day never takes earned growth away.</Text></View>}
     {step === PROTECTION_STEP && <View style={s.choices}>
-      <Segmented value={protectMode} onChange={setProtectMode} track={colors.surface}
-        options={[{ value: "essentials", label: "Block apps" }, { value: "allow-list", label: "Allow list" }]} />
-      <Text style={s.hint}>{protectMode === "essentials" ? "Pick the apps to cover when you start a session. Everything else stays open." : "Only the tools you choose stay open. Everything else is covered."}</Text>
+      <Text style={s.hint}>During a session, only the apps you allow stay open and everything else is covered. You can choose your allowed apps any time from Protection on Home. You can change this later.</Text>
       <View style={s.permissionList}>{permissionRows.map((row, index) => <View key={row.kind} style={[s.permissionRow, index > 0 && s.permissionDivider]}>
         <Ionicons name={row.icon} size={20} color={row.granted ? colors.accent : colors.secondary} />
         <View style={s.permissionCopy}><Text style={s.permissionTitle}>{row.title}</Text><Text style={s.hint}>{row.hint}</Text></View>
         {row.granted ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} accessibilityLabel={`${row.title} allowed`} />
           : <Pressable onPress={() => void row.allow()} accessibilityRole="button" accessibilityLabel={`Allow ${row.title}`} style={s.allow}><Text style={s.allowText}>Allow</Text></Pressable>}
       </View>)}</View>
-      <Text style={s.hint}>Calls, Settings and LifeRPG always stay available. Calls and emergencies are never covered.</Text>
+      <Text style={s.hint}>Phone and emergency calls, Settings and this app can never be blocked. They always stay open for your safety.</Text>
     </View>}
     {intro && <><View style={s.illustration}><View style={s.symbol}><Ionicons name={intro.icon} size={44} color={colors.accent} /></View></View><View style={s.note}><Text style={s.noteBody}>{intro.detail}</Text></View></>}
   </OnboardingFrame>;
 }
 const s = StyleSheet.create({
-  permissionList: { borderRadius: 20, backgroundColor: colors.surface, overflow: "hidden" },
+  permissionList: { ...edge, borderRadius: 20, backgroundColor: colors.surface, overflow: "hidden" },
   permissionRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 16, paddingVertical: 10 },
   permissionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   permissionCopy: { flex: 1, minWidth: 0, gap: 2 }, permissionTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   allow: { minHeight: 36, paddingHorizontal: 16, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   allowText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
-  choices: { gap: 12 }, note: { padding: 22, borderRadius: 22, backgroundColor: colors.surface, gap: 12 }, noteTitle: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: "500" }, noteBody: { color: colors.secondary, fontSize: 17, lineHeight: 22 },
+  choices: { gap: 12 }, note: { ...edge, padding: 22, borderRadius: 22, backgroundColor: colors.surface, gap: 12 }, noteTitle: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: "500" }, noteBody: { color: colors.secondary, fontSize: 17, lineHeight: 22 },
   inputError: { color: colors.danger, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   input: { minHeight: 60, borderRadius: 16, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 16, color: colors.text, fontSize: 20 }, hint: { color: colors.secondary, fontSize: 15, lineHeight: 20 }, goals: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   goal: { flexGrow: 1, flexBasis: "45%", borderRadius: 18, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, padding: 18, gap: 6 }, selected: { borderColor: colors.accent, backgroundColor: colors.accentSoft }, goalNumber: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "500" },

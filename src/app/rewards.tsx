@@ -14,7 +14,7 @@ import {
   p,
   type PersonalIcon,
 } from "../components/PersonalUI";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
 import { useCharacterData } from "../hooks/useCharacterData";
@@ -345,5 +345,5 @@ const styles = StyleSheet.create({
   milestoneRow: { paddingVertical: 10, gap: 8, minHeight: 56 },
   dailyCard: { marginBottom: 8 },
   goalPlaceholder: { minHeight: 44, justifyContent: "center" },
-  loadingCollection: { minHeight: 360, padding: 18, gap: 12, backgroundColor: colors.surface, borderRadius: 20 },
+  loadingCollection: { ...edge, minHeight: 360, padding: 18, gap: 12, backgroundColor: colors.surface, borderRadius: 20 },
 });

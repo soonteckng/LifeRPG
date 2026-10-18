@@ -8,7 +8,7 @@ import Segmented from "./Segmented";
 import CharacterPortrait from "./CharacterPortrait";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { cleanSquadCode, focusingCount, ranked, SQUAD_CODE_LENGTH, SQUAD_GOALS, squadTotal, validSquadName } from "../utils/squads";
 import ProgressRing from "./ProgressRing";
 import { studyTime } from "../utils/studyPlan";
@@ -144,17 +144,17 @@ const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 }, flex: { flex: 1, minWidth: 0 },
   face: { overflow: "hidden", backgroundColor: colors.selection, alignItems: "center", justifyContent: "center" },
   live: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
-  total: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 22, backgroundColor: colors.sheetCard, paddingHorizontal: 16, paddingVertical: 14 },
+  total: { ...edge, flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 22, backgroundColor: colors.sheetCard, paddingHorizontal: 16, paddingVertical: 14 },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
   chipOn: { backgroundColor: colors.accentSoft }, chipText: { color: colors.text, fontSize: 15, fontWeight: "600" }, chipTextOn: { color: colors.accent },
-  codeRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard },
+  codeRow: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   note: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   footerLinks: { flexDirection: "row", justifyContent: "center", gap: 24 },
   label: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
   big: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  list: { borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  list: { ...edge, borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rank: { width: 18, textAlign: "center", color: colors.secondary, fontSize: 15, fontWeight: "700" },
@@ -175,5 +175,5 @@ const s = StyleSheet.create({
   box: { flex: 1, height: 56, borderRadius: 14, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: "transparent" },
   boxActive: { borderColor: colors.accent }, boxText: { color: colors.text, fontSize: 24, fontWeight: "800" },
   hiddenInput: { position: "absolute", left: 0, right: 0, top: 0, height: 56, opacity: 0.02, color: "transparent" },
-  input: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
+  input: { ...edge, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
 });

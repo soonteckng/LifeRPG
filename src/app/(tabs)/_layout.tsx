@@ -43,6 +43,16 @@ export default function TabsLayout() {
       />
 
       <Tabs.Screen
+        name="routines"
+        options={{
+          title: "Routines",
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon focused={focused} name="repeat-outline" size={22} color={color} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
         name="study"
         options={{
           title: "Study",
@@ -113,7 +123,7 @@ const styles = StyleSheet.create({
   },
 
   tabLabel: {
-    fontSize: 12,
+    fontSize: 11,
     fontFamily: Platform.OS === "ios" ? "System" : undefined,
     fontWeight: "500",
     marginTop: 1,

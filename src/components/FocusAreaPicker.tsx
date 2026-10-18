@@ -30,7 +30,7 @@ export default function FocusAreaPicker({ areas, selectedId, disabled = false, o
 const s = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   cell: { flexBasis: "47%", flexGrow: 1 },
-  tile: { minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: "transparent" },
+  tile: { minHeight: 56, paddingHorizontal: 12, paddingVertical: 10, flexDirection: "row", alignItems: "center", gap: 10, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: colors.line },
   icon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   name: { flex: 1, color: colors.neutral, fontSize: 15, lineHeight: 20, fontWeight: "500" },
   selectedName: { color: colors.text, fontWeight: "600" },
