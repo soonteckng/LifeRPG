@@ -80,6 +80,8 @@ function studyScreen(plan, timer = {}) {
     '/StudyLifecycle': { requestStudySync: () => {} }, '/QuestContext': { useQuests: () => ({ subjects: areas }) },
     '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => calls.push('notes'), setLinkedTaskId: () => {}, setTargetAttributeId: v => calls.push(['area', v]), ...timer }) },
     '/useStudyPlan': { useStudyPlan: () => ({ ready: true, error: null, courses: [], exams: [], recent: [], saveCourse: async d => { calls.push(['course', d]); return true; }, saveExam: async () => true, remove: async () => true, ...plan }) },
+    '/useSquads': { useSquads: () => ({ ready: true, squads: plan.squads ?? [], online: true, refresh: async () => {}, join: async () => null, create: async () => null, leave: async () => null, remove: async () => null }) },
+    '/SquadSheets': { SquadFace: host('Face'), SquadSheet: host('SquadSheet'), SquadJoinSheet: host('JoinSheet') },
     '/floatingTabInset': { floatingTabInset: () => 100 }, '/studySelection': { studySelection: { choose: v => calls.push(['subject', v]) } },
   }).default;
   return { Screen, calls };

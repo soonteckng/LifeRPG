@@ -11,6 +11,9 @@ import { Text } from "../../components/AppText";
 import StudyExamSheet from "../../components/StudyExamSheet";
 import StudySubjectSheet, { ExamTile } from "../../components/StudySubjectSheet";
 import { requestStudySync } from "../../components/StudyLifecycle";
+import { SquadFace, SquadJoinSheet, SquadSheet } from "../../components/SquadSheets";
+import { useSquads } from "../../hooks/useSquads";
+import { focusingCount, squadTotal } from "../../utils/squads";
 import { colors, radius } from "../../constants/theme";
 import { type } from "../../constants/typography";
 import { useQuests } from "../../context/QuestContext";
@@ -22,7 +25,7 @@ import { focusAreaTitle, generalArea, suggestedArea } from "../../utils/focusAre
 import { countdownLabel, courseColor, daysUntil, examDateLabel, STARTER_SUBJECTS, studyTime, upcomingExams, weekSeconds } from "../../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../../types/studyPlan";
 
-type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null } | { kind: "subject"; course: StudyCourse | null } | null;
+type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null } | { kind: "subject"; course: StudyCourse | null } | { kind: "squad"; id: string } | { kind: "join" } | null;
 
 export default function StudyScreen() {
   const router = useRouter();
@@ -31,10 +34,12 @@ export default function StudyScreen() {
   const bottomInset = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { subjects = [] } = useQuests();
   const plan = useStudyPlan();
+  const squads = useSquads();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [open, setOpen] = useState(false);
   const afterClose = useRef<(() => void) | null>(null);
-  useFocusEffect(useCallback(() => { requestStudySync(); }, []));
+  const refreshSquads = squads.refresh;
+  useFocusEffect(useCallback(() => { requestStudySync(); void refreshSquads(); }, [refreshSquads]));
 
   const exams = upcomingExams(plan.exams), next = exams[0], rest = exams.slice(1);
   const courseFor = (id: string | null) => plan.courses.find(item => item.id === id) ?? null;
@@ -100,6 +105,31 @@ export default function StudyScreen() {
       </View>}
 
       <View style={s.section}>
+        <SectionHead title="Squads" addLabel="Join or create a squad" onAdd={() => show({ kind: "join" })} />
+        {squads.squads.length ? <>
+          <View style={s.group}>{squads.squads.map((squad, index) => {
+            const live = focusingCount(squad);
+            return <Pressable key={squad.id} onPress={() => show({ kind: "squad", id: squad.id })} accessibilityRole="button"
+              accessibilityLabel={`${squad.name}, ${squad.members.length} members${live ? `, ${live} focusing now` : ""}, ${studyTime(squadTotal(squad))} together this week. Open squad`} style={[s.row, index > 0 && s.line]}>
+              <View style={s.faces}>{squad.members.slice(0, 3).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={{ ...member, focusingNow: false }} size={30} /></View>)}</View>
+              <View style={s.flex}><Text style={s.rowTitle} numberOfLines={1}>{squad.name}</Text>
+                {live ? <View style={s.liveRow}><View style={s.liveDot} /><Text style={s.liveText} numberOfLines={1}>{live} focusing now</Text></View>
+                  : <Text style={s.caption}>{squad.members.length} {squad.members.length === 1 ? "member" : "members"}</Text>}</View>
+              <Text style={s.after}>{studyTime(squadTotal(squad))}</Text>
+              <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+            </Pressable>;
+          })}</View>
+          <Text style={s.hint}>Time each squad focused together this week.</Text>
+        </> : <View style={[s.group, s.starter]}>
+          <Text style={s.caption}>{squads.error && !squads.ready ? squads.error : "Study with friends. See each other's focus time each week, and who's focusing right now."}</Text>
+          <View style={s.chips}>
+            <Pressable onPress={() => show({ kind: "join" })} accessibilityRole="button" accessibilityLabel="Join or create a squad" style={s.chip}>
+              <Ionicons name="people-outline" size={15} color={colors.accent} /><Text style={s.chipText}>Join or create a squad</Text></Pressable>
+          </View>
+        </View>}
+      </View>
+
+      <View style={s.section}>
         <SectionHead title="Subjects" addLabel="New subject" onAdd={() => show({ kind: "subject", course: null })} />
         {plan.courses.length ? <>
           <View style={s.group}>{plan.courses.map((course, index) => <Pressable key={course.id} onPress={() => show({ kind: "subject", course })} accessibilityRole="button"
@@ -128,6 +158,9 @@ export default function StudyScreen() {
 
     <StudyExamSheet visible={open && sheet?.kind === "exam"} exam={sheet?.kind === "exam" ? sheet.exam : null} courses={plan.courses}
       initialCourseId={sheet?.kind === "exam" ? sheet.courseId : null} onSave={plan.saveExam} onRemove={id => plan.remove("exam", id)} onClose={() => close()} onDismiss={dismissed} />
+    <SquadSheet visible={open && sheet?.kind === "squad"} squad={sheet?.kind === "squad" ? squads.squads.find(item => item.id === sheet.id) ?? null : null}
+      onClose={() => close()} onLeave={squads.leave} onRemove={squads.remove} />
+    <SquadJoinSheet visible={open && sheet?.kind === "join"} online={squads.online} onClose={() => close()} onJoin={squads.join} onCreate={squads.create} />
     <StudySubjectSheet visible={open && sheet?.kind === "subject"} course={sheet?.kind === "subject" && sheet.course ? courseFor(sheet.course.id) ?? sheet.course : null}
       areas={subjects} defaultAreaId={learning?.id ?? null} recent={plan.recent} exams={plan.exams} sessionOpen={timer.hasOpenSession}
       onSave={plan.saveCourse} onRemove={id => plan.remove("course", id)} onClose={() => close()} onDismiss={dismissed}
@@ -174,6 +207,11 @@ const s = StyleSheet.create({
   starter: { padding: 16, gap: 12 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.sheetCard },
   chipText: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  faces: { flexDirection: "row", alignItems: "center" },
+  faceSlot: { borderRadius: 17, borderWidth: 2, borderColor: colors.surface },
+  liveRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
+  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
+  liveText: { color: colors.success, fontSize: 14, lineHeight: 20, fontWeight: "600" },
   step: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   stepText: { color: colors.accent, fontSize: 13, fontWeight: "700" },
 });
