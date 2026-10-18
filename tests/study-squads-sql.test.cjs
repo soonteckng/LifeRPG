@@ -90,3 +90,33 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
     await assert.rejects(list(db, friend), /permission denied/);
   }));
 }
+
+if (process.env.SESSION_SQL_PGLITE_ROOT) {
+  let moduleRoot = process.env.SESSION_SQL_PGLITE_ROOT;
+  if (!fs.existsSync(path.join(moduleRoot, 'package.json'))) moduleRoot = path.join(moduleRoot, '@electric-sql', 'pglite');
+  const { PGlite } = require(moduleRoot);
+  test('SQL squad extras: only the owner renames, sets a goal or gets a new code', async () => {
+    const db = new PGlite();
+    try {
+      await db.exec(fs.readFileSync(path.join(root, 'tests/sql/progression-bootstrap.sql'), 'utf8'));
+      await db.exec(`alter table public.activity_sessions add column if not exists client_session_id uuid; insert into auth.users(id) values('${me}'),('${friend}');`);
+      await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261018120000_study_plan.sql'), 'utf8'));
+      await db.exec(migration);
+      await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261018140000_study_squads.sql').replace('20261018140000_study_squads', '20261018160000_study_extras'), 'utf8'));
+      await db.exec(`set role authenticated;set request.jwt.claim.sub='${me}'`);
+      const q = async (sql, args) => (await db.query(`select ${sql} as r`, args)).rows[0].r;
+      const made = await q(`public.create_squad_v1($1::uuid,'Crew',$2::uuid,now())`, [rid(1), me]);
+      assert.equal(made.squad.goalMinutes, null);
+      const updated = await q(`public.update_squad_v1($1::uuid,'Calc crew',600,$2::uuid,now())`, [made.squad.id, me]);
+      assert.equal(updated.squad.name, 'Calc crew'); assert.equal(updated.squad.goalMinutes, 600);
+      await assert.rejects(q(`public.update_squad_v1($1::uuid,'Crew',30,$2::uuid,now())`, [made.squad.id, me]), /Invalid squad settings/);
+      const fresh = await q(`public.new_squad_code_v1($1::uuid,$2::uuid,now())`, [made.squad.id, me]);
+      assert.notEqual(fresh.squad.code, made.squad.code);
+      await db.exec(`set request.jwt.claim.sub='${friend}'`);
+      assert.equal((await q(`public.join_squad_v1($1,$2::uuid,now())`, [made.squad.code, friend])).status, 'not_found', 'the old code stops working');
+      await q(`public.join_squad_v1($1,$2::uuid,now())`, [fresh.squad.code, friend]);
+      assert.equal((await q(`public.update_squad_v1($1::uuid,'Mine',null,$2::uuid,now())`, [made.squad.id, friend])).status, 'not_owner');
+      assert.equal((await q(`public.new_squad_code_v1($1::uuid,$2::uuid,now())`, [made.squad.id, friend])).status, 'not_owner');
+    } finally { await db.close(); }
+  });
+}

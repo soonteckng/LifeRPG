@@ -1,7 +1,7 @@
 /**
- * The subject picked for the next focus session. Session setup sets it, the
- * Study tab presets it, and StudyLifecycle counts the session that starts
- * right after it is armed. Nothing here outlives the app process.
+ * The subject picked for focus sessions, shared by every session setup. It
+ * stays picked, like the focus area, until changed. Each start arms it, and
+ * StudyLifecycle counts that one new session. It lasts until the app closes.
  */
 type Listener = () => void;
 let chosen: string | null = null;
@@ -20,7 +20,7 @@ export const studySelection = {
   take(sessionId: string | null, at = Date.now()): string | null {
     if (!armed || !sessionId || sessionId === armed.previous) return null;
     const courseId = at - armed.at <= 20_000 ? armed.courseId : null;
-    armed = null; if (courseId) studySelection.choose(null);
+    armed = null;
     return courseId;
   },
 };

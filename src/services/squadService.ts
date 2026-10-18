@@ -25,5 +25,7 @@ export function createSquadTransport(scope: JournalScope, verifyOwner: () => Pro
     join: (code, since) => call("join_squad_v1", { p_code: code, p_since: iso(since) }),
     leave: squadId => call("leave_squad_v1", { p_squad_id: squadId }),
     remove: (squadId, memberId) => call("remove_squad_member_v1", { p_squad_id: squadId, p_member: memberId }),
+    update: (squadId, name, goalMinutes, since) => call("update_squad_v1", { p_squad_id: squadId, p_name: name, p_goal_minutes: goalMinutes, p_since: iso(since) }),
+    newCode: (squadId, since) => call("new_squad_code_v1", { p_squad_id: squadId, p_since: iso(since) }),
   };
 }

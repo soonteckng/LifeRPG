@@ -1,7 +1,7 @@
 import type { JournalScope } from "../types/sessionJournal";
 import type { StudyCourseDraft, StudyEnvelope, StudyExamDraft, StudyOperation, StudyReply, StudyState, StudyTransport } from "../types/studyPlan";
 import { COURSE_LIMIT, EXAM_LIMIT, normaliseCourse, normaliseExam, parseStudyEnvelope, STUDY_QUEUE_LIMIT, STUDY_TAG_LIMIT, studyStorageKey,
-  studyWindowStart, upcomingExams, validCourseDraft, validExamDraft, validRecent, visibleStudy } from "../utils/studyPlan";
+  studyListSince, upcomingExams, validCourseDraft, validExamDraft, validRecent, visibleStudy } from "../utils/studyPlan";
 import { isJournalUuid } from "../utils/sessionJournalSchema";
 
 interface Storage { getItem: (key: string) => Promise<string | null>; setItem: (key: string, value: string) => Promise<void> }
@@ -47,7 +47,8 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
       const itemId = id ?? newId(), operationId = newId();
       if (!isJournalUuid(itemId) || !isJournalUuid(operationId)) return false;
       const clean = kind === "course" ? { name: (draft as StudyCourseDraft).name, focusAreaId: (draft as StudyCourseDraft).focusAreaId }
-        : { title: (draft as StudyExamDraft).title, courseId: (draft as StudyExamDraft).courseId, examDate: (draft as StudyExamDraft).examDate };
+        : { title: (draft as StudyExamDraft).title, courseId: (draft as StudyExamDraft).courseId, examDate: (draft as StudyExamDraft).examDate,
+          examMinute: (draft as StudyExamDraft).examMinute ?? null, remind: (draft as StudyExamDraft).remind ?? true };
       const operation = { operationId, kind, itemId, expectedRevision: current?.revision ?? 0, draft: clean, deleted } as StudyOperation;
       try { await commit(key, { ...before, pending: [...before.pending, operation] }); return true; }
       catch { publish(key, { error: "Couldn't save this on your phone. Please try again." }); return false; }
@@ -81,7 +82,7 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
       await store.load(scope); const snapshot = store.snapshot(scope);
       const current = kind === "course" ? snapshot.courses.find(item => item.id === id) : snapshot.exams.find(item => item.id === id);
       if (!current) return false;
-      const draft = current.kind === "course" ? { name: current.name, focusAreaId: current.focusAreaId } : { title: current.title, courseId: current.courseId, examDate: current.examDate };
+      const draft = current.kind === "course" ? { name: current.name, focusAreaId: current.focusAreaId } : { title: current.title, courseId: current.courseId, examDate: current.examDate, examMinute: current.examMinute ?? null, remind: current.remind ?? true };
       return enqueue(scope, kind, draft, id, true);
     },
     /** Counts a focus session toward a subject; a null subject clears it. */
@@ -134,7 +135,7 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
             });
           }
           if (!active()) return;
-          const remote = await transport.list(studyWindowStart(now()));
+          const remote = await transport.list(studyListSince(now()));
           if (!active()) return;
           const courses = Array.isArray(remote?.courses) ? remote.courses.map(normaliseCourse) : null;
           const exams = Array.isArray(remote?.exams) ? remote.exams.map(normaliseExam) : null;

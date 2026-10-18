@@ -84,3 +84,28 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
     await assert.rejects(list(db, other), /permission denied/);
   }));
 }
+
+if (process.env.SESSION_SQL_PGLITE_ROOT) {
+  let moduleRoot = process.env.SESSION_SQL_PGLITE_ROOT;
+  if (!fs.existsSync(path.join(moduleRoot, 'package.json'))) moduleRoot = path.join(moduleRoot, '@electric-sql', 'pglite');
+  const { PGlite } = require(moduleRoot);
+  const extras = fs.readFileSync(path.join(root, 'supabase/migrations/20261018160000_study_extras.sql'), 'utf8');
+  test('SQL study extras: exams keep an optional time and reminder; older drafts still save', async () => {
+    const db = new PGlite();
+    try {
+      await db.exec(fs.readFileSync(path.join(root, 'tests/sql/progression-bootstrap.sql'), 'utf8'));
+      await db.exec(`alter table public.activity_sessions add column if not exists client_session_id uuid; insert into auth.users(id) values('${owner}');`);
+      await db.exec(migration);
+      await db.exec(fs.readFileSync(path.join(root, 'supabase/migrations/20261018140000_study_squads.sql'), 'utf8'));
+      await db.exec(extras);
+      await db.exec(`set role authenticated;set request.jwt.claim.sub='${owner}'`);
+      const change = async (op, item, draft) => (await db.query('select public.change_study_item_v1($1::uuid,$2,$3::uuid,0,$4::jsonb,false,$5::uuid) as r', [id(op), 'exam', id(item), JSON.stringify(draft), owner])).rows[0].r;
+      const old = await change(1, 1, { title: 'Final', courseId: null, examDate: day(5) });
+      assert.equal(old.item.examMinute, null); assert.equal(old.item.remind, true);
+      const timed = await change(2, 2, { title: 'Paper 2', courseId: null, examDate: day(6), examMinute: 9 * 60 + 30, remind: false });
+      assert.equal(timed.item.examMinute, 570); assert.equal(timed.item.remind, false);
+      await assert.rejects(change(3, 3, { title: 'X', courseId: null, examDate: day(6), examMinute: 1440 }), /Invalid study settings/);
+      await assert.rejects(change(4, 4, { title: 'X', courseId: null, examDate: day(6), remind: 'yes' }), /Invalid study settings/);
+    } finally { await db.close(); }
+  });
+}

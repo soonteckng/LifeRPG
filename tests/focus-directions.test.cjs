@@ -13,6 +13,7 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function('require', 'module', 'exports', code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (name.endsWith('/MotionPressable')) return host('Button');
+    { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
     if (!name.startsWith('.')) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const ext = ['', '.ts', '.tsx'].find(ext => fs.existsSync(target + ext));

@@ -13,6 +13,7 @@ function load(file,mocks={},cache=new Map()){
   if(name.endsWith('/AppText'))return {Text:host('Text')};
   if(name.endsWith('/SlidingSelection'))return ()=>null;
   if(name.endsWith('/SheetConfirmation'))return ()=>null;
+  { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
   if(!name.startsWith('.'))return require(name);
   const target=path.resolve(path.dirname(filename),name),extension=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));
   return load(path.relative(path.resolve(__dirname,'..'),target+extension),mocks,cache);

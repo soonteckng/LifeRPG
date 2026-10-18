@@ -4,6 +4,8 @@ const plan = { ready: true, busy: false, error: null, scope: null, online: true,
   saveCourse: async () => false, saveExam: async () => false, remove: async () => false };
 module.exports = name => {
   if (name.endsWith('/useStudyPlan')) return { __esModule: true, useStudyPlan: () => plan };
+  // The Subject row has its own tests; elsewhere it stays out of the way.
+  if (name.endsWith('/SubjectSetupRow')) return { __esModule: true, default: () => null };
   if (name.endsWith('/StudyLifecycle')) return { __esModule: true, default: () => null, requestStudySync() {} };
   return undefined;
 };

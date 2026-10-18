@@ -36,6 +36,8 @@ import { useUser } from "../../context/UserContext";
 import { useCharacterData } from "../../hooks/useCharacterData";
 import { earnedMilestones, profileFocusAreaGrowth } from "../../utils/characterGrowth";
 import { durationLabel } from "../../utils/progressAnalytics";
+import { useStudyPlan } from "../../hooks/useStudyPlan";
+import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from "../../utils/studyPlan";
 
 import CharacterLookPicker from "../../components/CharacterLookPicker";
 import { characterLook } from "../../utils/characterAppearance";
@@ -53,6 +55,7 @@ export default function ProfileScreen() {
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { profile, updateProfile, reloadProfile } = useUser();
   const { data, loading, error, refresh } = useCharacterData();
+  const study = useStudyPlan();
   const nameScroll = useRef<BottomSheetScrollViewMethods>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
@@ -156,6 +159,20 @@ export default function ProfileScreen() {
           {data && !areas.length && <Text style={p.body}>Your overall level still grows. Focus areas will appear here when available.</Text>}
           <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
+        {study.courses.length > 0 && <View style={s.areasCard} testID="profile-subjects">
+          <View style={s.areaHeading}><Text style={s.sectionTitle}>Your subjects</Text><Text style={p.caption}>All the time you’ve given each one.</Text></View>
+          <View style={s.subjects}>{study.courses.map((course, index) => {
+            const exam = upcomingExams(study.exams).find(item => item.courseId === course.id);
+            return <Pressable key={course.id} onPress={() => router.navigate("/study")} accessibilityRole="button"
+              accessibilityLabel={`${course.name}, ${studyTime(course.totalSeconds)} in total${exam ? `, ${exam.title} ${countdownLabel(daysUntil(exam.examDate))}` : ""}. Open Study`} style={[s.subjectRow, index > 0 && s.subjectLine]}>
+              <View style={[s.subjectDot, { backgroundColor: courseColor(course.id) }]} />
+              <View style={s.detail}><Text style={p.rowTitle} numberOfLines={1}>{course.name}</Text>
+                {exam && <Text style={s.history} numberOfLines={1}>{exam.title} · {countdownLabel(daysUntil(exam.examDate))}</Text>}</View>
+              <Text style={s.subjectTime}>{studyTime(course.totalSeconds)}</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
+            </Pressable>;
+          })}</View>
+        </View>}
       </View></ContentReveal>
       <FocusAreaDetailSheet visible={areaOpen} area={selectedArea && { ...selectedArea, color: lifeAreaColor(selectedArea.id, selectedArea.color_code) }} detail={areaDetail}
         timeZone={profile.timezone} sessionOpen={timer.hasOpenSession} onFocus={focusArea} onClose={() => setAreaOpen(false)} leaving={leavingArea}
@@ -187,5 +204,10 @@ const s = StyleSheet.create({
   levelBlock: { gap: 8 }, levelRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, levelPill: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 14, borderRadius: 22, backgroundColor: colors.levelSoft }, levelText: { color: colors.level, fontSize: 14, lineHeight: 20, fontWeight: "600" }, growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   milestones: { flexDirection: "row", alignItems: "center", gap: 14, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   areasCard: { gap: 12, paddingHorizontal: 2 }, areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, tileLevel: { position: "absolute", top: 14, right: 14, color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] }, tileIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" }, areaHeading: { gap: 5, paddingBottom: 8 }, sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3 }, areaRow: { flexGrow: 1, flexBasis: "46%", minWidth: 140, padding: 14, gap: 10, borderRadius: radius.tile, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, areaLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
+  subjects: { borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
+  subjectRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
+  subjectLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  subjectDot: { width: 10, height: 10, borderRadius: 5 },
+  subjectTime: { color: colors.secondary, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] },
   preview: { flexDirection: "row", alignItems: "center", minHeight: 132, gap: 14, paddingVertical: 4 },
 });

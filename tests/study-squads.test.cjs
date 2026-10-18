@@ -58,7 +58,7 @@ const rn = { View: host('View'), StyleSheet: { create: v => v, hairlineWidth: 1 
 const sheets = () => load('src/components/SquadSheets.tsx', {
   'react-native': rn, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.overlay) : null,
-  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'),
+  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/ProgressRing': host('Ring'),
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
 
@@ -99,5 +99,28 @@ test('join waits for a full code; create needs a clean name; errors stay in the 
   assert.deepEqual(calls.at(-1), ['create', 'Calc crew']);
   await act(async () => ui.update(React.createElement(SquadJoinSheet, { visible: true, online: false, onClose: () => {}, onJoin: async () => null, onCreate: async () => null })));
   assert.equal(submit().props.disabled, true, 'offline cannot join or create');
+  await act(async () => ui.unmount());
+});
+
+test('owners rename, set a weekly goal and get a new code; the goal shows as a ring', async () => {
+  const { SquadSheet } = sheets(); const calls = []; let ui;
+  const props = { visible: true, squad: { ...squad(), goalMinutes: 60 }, onClose: () => {}, onLeave: async () => null, onRemove: async () => null,
+    onUpdate: async (id, change) => { calls.push(change); return null; } };
+  await act(async () => { ui = create(React.createElement(SquadSheet, props)); });
+  assert.equal(ui.root.findAllByType('Ring').length, 1);
+  assert.ok(ui.root.findAllByType('Text').some(t => t.props.children === 'of a 1h squad goal'));
+  const byText = label => ui.root.findAllByType('Press').find(x => x.findAllByType('Text').some(t => t.props.children === label));
+  await act(async () => byText('Edit squad').props.onPress());
+  await act(async () => ui.root.findByType('Input').props.onChangeText('  Calc crew 2 '));
+  await act(async () => ui.root.findAllByType('Press').find(x => x.props.accessibilityLabel === '10 hours a week').props.onPress());
+  await act(async () => byText('Save').props.onPress());
+  assert.deepEqual(calls[0], { name: 'Calc crew 2', goalMinutes: 600 });
+  await act(async () => byText('Edit squad').props.onPress());
+  await act(async () => byText('New code').props.onPress());
+  assert.equal(ui.root.findByType('Confirm').props.title, 'Get a new invite code?');
+  await act(async () => ui.root.findByType('Confirm').props.onConfirm());
+  assert.equal(calls[1], 'code');
+  await act(async () => ui.update(React.createElement(SquadSheet, { ...props, squad: { ...squad(), ownerIsYou: false, goalMinutes: null } })));
+  assert.equal(byText('Edit squad'), undefined, 'members cannot edit'); assert.equal(ui.root.findAllByType('Ring').length, 0);
   await act(async () => ui.unmount());
 });

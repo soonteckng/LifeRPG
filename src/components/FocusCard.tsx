@@ -1,4 +1,5 @@
-import { focusAreaIcon, focusAreaTitle } from "../utils/focusAreas";
+import { focusAreaIcon, focusAreaTitle, generalArea } from "../utils/focusAreas";
+import SubjectSetupRow from "./SubjectSetupRow";
 import { areaTint } from "../utils/lifeAreaColor";
 import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
@@ -46,6 +47,7 @@ export default function FocusCard(props: FocusCardProps) {
       accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose your focus area and a suggested activity, or free focus." accessibilityState={{ disabled: preferencesLocked }}>
       <View style={[s.rowIcon, { backgroundColor: areaTint(props.tint) }]}><Ionicons name={focusAreaIcon(props.area)} size={16} color={props.tint} /></View><Text style={s.rowLabel}>Focus area</Text><View style={s.rowValue}><Text style={s.rowValueText} numberOfLines={1}>{areaLabel}</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
     </Pressable> : <View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.title} accessibilityRole="header">{props.active ? props.title : areaLabel}</Text></View>}
+    {!props.active && props.onArea && <SubjectSetupRow areas={props.subjects ?? []} areaId={props.areaId ?? null} generalId={generalArea(props.subjects ?? [])?.id} disabled={editLocked} onArea={props.onArea} />}
     {!props.active && <FocusLengthControl compact showLabel={false} seconds={props.seconds} customSeconds={props.customSeconds} disabled={editLocked} onChange={props.onDuration} onCustomSave={props.onCustomDuration} />}
     {!props.active && props.protection}
     </View>

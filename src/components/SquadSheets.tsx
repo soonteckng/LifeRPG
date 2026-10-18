@@ -9,7 +9,8 @@ import CharacterPortrait from "./CharacterPortrait";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
-import { cleanSquadCode, focusingCount, ranked, SQUAD_CODE_LENGTH, squadTotal, validSquadName } from "../utils/squads";
+import { cleanSquadCode, focusingCount, ranked, SQUAD_CODE_LENGTH, SQUAD_GOALS, squadTotal, validSquadName } from "../utils/squads";
+import ProgressRing from "./ProgressRing";
 import { studyTime } from "../utils/studyPlan";
 import type { Squad, SquadMember } from "../types/squads";
 
@@ -21,13 +22,15 @@ export function SquadFace({ member, size = 36, ring = colors.surface }: { member
 }
 
 /** This week in one squad: who focused most, who is focusing now, and the invite. */
-export function SquadSheet({ squad, visible, onClose, onLeave, onRemove }: {
+export function SquadSheet({ squad, visible, onClose, onLeave, onRemove, onUpdate }: {
   squad: Squad | null; visible: boolean; onClose: () => void; onLeave: (id: string) => Promise<string | null>; onRemove: (id: string, member: string) => Promise<string | null>;
+  onUpdate: (id: string, change: { name: string; goalMinutes: number | null } | "code") => Promise<string | null>;
 }) {
-  const [confirm, setConfirm] = useState<{ kind: "leave" } | { kind: "remove"; member: SquadMember } | null>(null);
+  const [confirm, setConfirm] = useState<{ kind: "leave" } | { kind: "code" } | { kind: "remove"; member: SquadMember } | null>(null);
   const [error, setError] = useState(""), [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState<{ name: string; goalMinutes: number | null } | null>(null);
   const [wasVisible, setWasVisible] = useState(visible);
-  if (wasVisible !== visible) { setWasVisible(visible); if (visible) { setConfirm(null); setError(""); setBusy(false); } }
+  if (wasVisible !== visible) { setWasVisible(visible); if (visible) { setConfirm(null); setError(""); setBusy(false); setEditing(null); } }
   if (!squad) return null;
   const members = ranked(squad), top = Math.max(1, members[0]?.weekSeconds ?? 0), live = focusingCount(squad);
   const run = async (work: () => Promise<string | null>, after?: () => void) => {
@@ -35,16 +38,42 @@ export function SquadSheet({ squad, visible, onClose, onLeave, onRemove }: {
     try { const failed = await work(); setConfirm(null); if (failed) setError(failed); else after?.(); } finally { setBusy(false); }
   };
   const share = () => { void Share.share({ message: `Join my study squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
-  return <AppSheet visible={visible} onRequestClose={onClose} floating compact maxHeightRatio={0.9} label="squad" motionMode="timed"
-    header={<SheetHeader title={squad.name} subtitle={`${squad.members.length} ${squad.members.length === 1 ? "member" : "members"}${live ? ` · ${live} focusing now` : ""}`} onClose={onClose} closeLabel="Close squad" />}
-    overlay={confirm && <SheetConfirmation title={confirm.kind === "leave" ? `Leave ${squad.name}?` : `Remove ${confirm.member.name}?`}
-      message={confirm.kind === "leave" ? squad.ownerIsYou && squad.members.length > 1 ? "The longest-standing member will look after the squad." : "You can join again with the code." : "They can join again with the code."}
-      confirmLabel={confirm.kind === "leave" ? "Leave squad" : "Remove"} cancelLabel="Stay" onCancel={() => setConfirm(null)}
-      onConfirm={() => void (confirm.kind === "leave" ? run(() => onLeave(squad.id), onClose) : run(() => onRemove(squad.id, confirm.member.id)))} />}>
-    <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-      <View style={s.total} accessible accessibilityLabel={`Together this week, ${studyTime(squadTotal(squad))}`}>
-        <Text style={s.label}>Together this week</Text>
-        <Text style={s.big}>{studyTime(squadTotal(squad))}</Text>
+  const goal = squad.goalMinutes ? squad.goalMinutes * 60 : 0, total = squadTotal(squad);
+  const saveEdit = () => { if (!editing) return; const name = editing.name.trim(); if (!validSquadName(name)) { setError("Give your squad a name, up to 40 characters."); return; }
+    Keyboard.dismiss(); void run(() => onUpdate(squad.id, { name, goalMinutes: editing.goalMinutes }), () => setEditing(null)); };
+  return <AppSheet visible={visible} onRequestClose={() => { if (editing) setEditing(null); else onClose(); }} floating compact maxHeightRatio={0.9} label="squad" motionMode="timed"
+    keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan"
+    header={<SheetHeader title={editing ? "Edit squad" : squad.name} subtitle={`${squad.members.length} ${squad.members.length === 1 ? "member" : "members"}${live ? ` · ${live} focusing now` : ""}`} onClose={() => { if (editing) setEditing(null); else onClose(); }} closeLabel={editing ? "Stop editing" : "Close squad"} />}
+    overlay={confirm && <SheetConfirmation title={confirm.kind === "leave" ? `Leave ${squad.name}?` : confirm.kind === "code" ? "Get a new invite code?" : `Remove ${confirm.member.name}?`}
+      message={confirm.kind === "leave" ? squad.ownerIsYou && squad.members.length > 1 ? "The longest-standing member will look after the squad." : "You can join again with the code."
+        : confirm.kind === "code" ? "The old code stops working. Everyone already in the squad stays." : "They can join again with the code."}
+      confirmLabel={confirm.kind === "leave" ? "Leave squad" : confirm.kind === "code" ? "New code" : "Remove"} cancelLabel={confirm.kind === "code" ? "Keep this code" : "Stay"} onCancel={() => setConfirm(null)}
+      onConfirm={() => void (confirm.kind === "leave" ? run(() => onLeave(squad.id), onClose) : confirm.kind === "code" ? run(() => onUpdate(squad.id, "code")) : run(() => onRemove(squad.id, confirm.member.id)))} />}>
+    <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      {editing ? <>
+        <BottomSheetTextInput value={editing.name} maxLength={40} editable={!busy} accessibilityLabel="Squad name" returnKeyType="done" style={s.input}
+          onChangeText={name => { setEditing(current => current && { ...current, name }); setError(""); }} />
+        <Text style={s.label}>Weekly goal together</Text>
+        <View style={s.chips}>{[null, ...SQUAD_GOALS].map(minutes => {
+          const selected = editing.goalMinutes === minutes;
+          return <Pressable key={minutes ?? "none"} disabled={busy} onPress={() => setEditing(current => current && { ...current, goalMinutes: minutes })} accessibilityRole="radio"
+            accessibilityState={{ checked: selected }} accessibilityLabel={minutes ? `${minutes / 60} hours a week` : "No goal"} style={[s.chip, selected && s.chipOn]}>
+            <Text style={[s.chipText, selected && s.chipTextOn]}>{minutes ? `${minutes / 60}h` : "No goal"}</Text></Pressable>;
+        })}</View>
+        <Pressable disabled={busy} onPress={() => setConfirm({ kind: "code" })} accessibilityRole="button" style={s.codeRow}>
+          <View style={s.flex}><Text style={s.rowTitle}>Invite code · {squad.code}</Text><Text style={s.note}>Get a new one if the old code was shared too widely.</Text></View>
+          <Text style={s.link}>New code</Text>
+        </Pressable>
+        {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
+        <Pressable disabled={busy} onPress={saveEdit} accessibilityRole="button" style={s.primary}><Text style={s.primaryText}>{busy ? "Saving…" : "Save"}</Text></Pressable>
+      </> : <>
+      <View style={s.total} accessible accessibilityLabel={`Together this week, ${studyTime(total)}${goal ? ` of a ${squad.goalMinutes! / 60} hour goal` : ""}`}>
+        {goal > 0 && <ProgressRing size={56} stroke={7} progress={total / goal} color={total >= goal ? colors.success : colors.accent} track={colors.accentSoft} />}
+        <View style={s.flex}>
+          <Text style={s.label}>Together this week</Text>
+          <Text style={s.big}>{studyTime(total)}</Text>
+          {goal > 0 && <Text style={s.note}>{total >= goal ? "Squad goal reached" : `of a ${squad.goalMinutes! / 60}h squad goal`}</Text>}
+        </View>
       </View>
       <View style={s.list}>{members.map((member, index) => {
         const row = <>
@@ -66,7 +95,11 @@ export function SquadSheet({ squad, visible, onClose, onLeave, onRemove }: {
         <View style={s.flex}><View style={s.code} accessible accessibilityLabel={`Invite code ${squad.code.split("").join(" ")}`}><Text style={s.codeLabel}>Invite code</Text><Text style={s.codeText}>{squad.code}</Text></View></View>
         <View style={s.flex}><Pressable onPress={share} accessibilityRole="button" accessibilityLabel="Share invite" style={s.primary}><Text style={s.primaryText}>Share invite</Text></Pressable></View>
       </View>
-      <Pressable disabled={busy} onPress={() => setConfirm({ kind: "leave" })} accessibilityRole="button" style={s.leave}><Text style={s.leaveText}>Leave squad</Text></Pressable>
+      <View style={s.footerLinks}>
+        {squad.ownerIsYou && <Pressable disabled={busy} onPress={() => { setError(""); setEditing({ name: squad.name, goalMinutes: squad.goalMinutes }); }} accessibilityRole="button" style={s.leave}><Text style={s.link}>Edit squad</Text></Pressable>}
+        <Pressable disabled={busy} onPress={() => setConfirm({ kind: "leave" })} accessibilityRole="button" style={s.leave}><Text style={s.leaveText}>Leave squad</Text></Pressable>
+      </View>
+      </>}
     </BottomSheetScrollView>
   </AppSheet>;
 }
@@ -111,7 +144,14 @@ const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 }, flex: { flex: 1, minWidth: 0 },
   face: { overflow: "hidden", backgroundColor: colors.selection, alignItems: "center", justifyContent: "center" },
   live: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
-  total: { borderRadius: 22, backgroundColor: colors.sheetCard, paddingHorizontal: 16, paddingVertical: 14, gap: 2 },
+  total: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: 22, backgroundColor: colors.sheetCard, paddingHorizontal: 16, paddingVertical: 14 },
+  chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
+  chipOn: { backgroundColor: colors.accentSoft }, chipText: { color: colors.text, fontSize: 15, fontWeight: "600" }, chipTextOn: { color: colors.accent },
+  codeRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard },
+  rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  note: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  footerLinks: { flexDirection: "row", justifyContent: "center", gap: 24 },
   label: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
   big: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "800", fontVariant: ["tabular-nums"] },
   list: { borderRadius: 22, backgroundColor: colors.sheetCard, overflow: "hidden" },

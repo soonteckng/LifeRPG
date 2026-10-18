@@ -22,12 +22,14 @@ const inDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return k
 const areas = [{ id: 1, title: 'General', color_code: null }, { id: 2, title: 'Learning', color_code: null }];
 const course = { kind: 'course', id: id(1), revision: 1, name: 'Maths', focusAreaId: 2, deletedAt: null, totalSeconds: 4000 };
 const exam = { kind: 'exam', id: id(2), revision: 1, title: 'Calculus final', courseId: id(1), examDate: inDays(12), deletedAt: null };
-const rn = { View: host('View'), StyleSheet: { create: v => v, hairlineWidth: 1 }, Platform: { OS: 'android' }, Keyboard: { dismiss: () => {} } };
+const rn = { View: host('View'), ScrollView: host('HScroll'), Switch: host('Switch'), StyleSheet: { create: v => v, hairlineWidth: 1 }, Platform: { OS: 'android' }, Keyboard: { dismiss: () => {} } };
 const base = () => ({
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') },
   '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/MotionPressable': host('Press'), '/SheetConfirmation': host('Confirm'),
-  '/AppSheet': props => React.createElement('Sheet', props, props.header, props.children, props.overlay),
+  '/AppSheet': props => React.createElement('Sheet', props, props.header, props.children, props.footer, props.overlay),
+  '/notificationPermissionService': { readNotificationPermission: async () => ({ granted: true }), enableNotifications: async () => ({ granted: true }) },
+  '/tapHaptics': { tapHaptic: () => {}, tapHapticsEnabled: () => false },
 });
 const presses = (root, label) => root.findAllByType('Press').filter(x => x.props.accessibilityLabel === label);
 const byText = (root, text) => root.findAllByType('Press').find(x => x.findAllByType('Text').some(t => t.props.children === text));
@@ -42,7 +44,7 @@ test('exam sheet asks for a name, saves the trimmed exam with its subject and co
   await act(async () => ui.root.findByType('Input').props.onChangeText('  Calculus final  '));
   await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
   await act(async () => byText(ui.root, 'Save exam').props.onPress());
-  assert.deepEqual(saved[0], [{ title: 'Calculus final', courseId: id(1), examDate: inDays(14) }, undefined]); assert.equal(closed, 1);
+  assert.deepEqual(saved[0], [{ title: 'Calculus final', courseId: id(1), examDate: inDays(14), examMinute: null, remind: true }, undefined]); assert.equal(closed, 1);
   await act(async () => ui.update(React.createElement(Sheet, { visible: true, exam, courses: [course], onSave: async () => true, onRemove: async x => { removed.push(x); return true; }, onClose: () => closed++ })));
   await act(async () => presses(ui.root, 'Remove exam')[0].props.onPress());
   assert.equal(removed.length, 0, 'removal asks first');
@@ -105,5 +107,30 @@ test('with an exam, the hero counts down and Study picks the subject and opens a
   assert.equal(texts(ui.root).includes('How it works'), false);
   await act(async () => presses(ui.root, 'Study Maths')[0].props.onPress());
   assert.deepEqual(calls.filter(c => Array.isArray(c)), [['area', 2], ['subject', id(1)], ['nav', '/session']]);
+  await act(async () => ui.unmount());
+});
+
+test('the shared Subject row hides without subjects, shows the next exam and sets the subject area', async () => {
+  const selection = { value: null, listeners: new Set() };
+  const plan = { ready: true, courses: [course], exams: [exam] };
+  const Row = load('src/components/SubjectSetupRow.tsx', { ...base(), '/SheetHeader': host('Header'), '/SheetTouchable': host('Press'),
+    '/useStudyPlan': { useStudyPlan: () => plan },
+    '/studySelection': { studySelection: { get: () => selection.value, subscribe: fn => { selection.listeners.add(fn); return () => selection.listeners.delete(fn); }, choose: v => { selection.value = v; selection.listeners.forEach(fn => fn()); } } },
+  }).default;
+  const areasSeen = []; let ui;
+  await act(async () => { ui = create(React.createElement(Row, { areas, areaId: 1, generalId: 1, onArea: id => areasSeen.push(id) })); });
+  const row = () => presses(ui.root, 'Choose subject')[0];
+  assert.equal(row().props.accessibilityValue.text, 'None');
+  await act(async () => row().props.onPress());
+  await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
+  assert.deepEqual(areasSeen, [2], 'picking Maths moves the session to Learning');
+  await act(async () => ui.update(React.createElement(Row, { areas, areaId: 2, generalId: 1, onArea: () => {} })));
+  assert.equal(row().props.accessibilityValue.text, 'Maths, Calculus final in 12 days');
+  assert.ok(texts(ui.root).includes('Calculus final in 12 days'));
+  await act(async () => ui.update(React.createElement(Row, { areas, areaId: 1, generalId: 1, onArea: () => {} })));
+  assert.equal(row().props.accessibilityValue.text, 'None', 'another area shows no subject');
+  plan.courses = [];
+  await act(async () => ui.update(React.createElement(Row, { areas, areaId: 2, generalId: 1, onArea: () => {} })));
+  assert.equal(presses(ui.root, 'Choose subject').length, 0);
   await act(async () => ui.unmount());
 });

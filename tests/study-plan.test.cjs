@@ -99,14 +99,59 @@ test('replies after leaving the account never touch the cache', async () => {
   await f.store.sync(scope, { ...r.transport, apply: async op => { active = false; return r.transport.apply(op); } }, () => active);
   assert.equal(f.existing.get(domain.studyStorageKey(scope)), before);
 });
-test('the picked subject goes only to the session that starts right after Start', () => {
+test('a start counts only its own new session toward the picked subject', () => {
   studySelection.choose(id(1)); studySelection.arm(id(80), 1000);
   assert.equal(studySelection.take(id(80), 2000), null, 'the old session is not tagged');
   assert.equal(studySelection.take(id(81), 3000), id(1));
-  assert.equal(studySelection.get(), null);
-  assert.equal(studySelection.take(id(82), 4000), null, 'used once');
+  assert.equal(studySelection.get(), id(1), 'the subject stays picked for the next session');
+  assert.equal(studySelection.take(id(82), 4000), null, 'one start tags one session');
   studySelection.choose(id(2)); studySelection.arm(null, 0);
   assert.equal(studySelection.take(id(83), 30_000), null, 'too late to belong to that Start');
   studySelection.choose(null); studySelection.arm(null, 0);
   assert.equal(studySelection.take(id(84), 10), null, 'nothing armed without a subject');
+});
+
+test('exam reminders: a week before, the evening before and the morning of, never in the past', () => {
+  const { examReminderPlan } = load('src/services/examReminders.ts');
+  const courses = [{ kind: 'course', id: id(1), revision: 1, name: 'Maths', focusAreaId: 1, deletedAt: null, totalSeconds: 0 }];
+  const exam = { kind: 'exam', id: id(2), revision: 1, title: 'Calculus final', courseId: id(1), examDate: '2026-10-30', examMinute: 8 * 60, remind: true, deletedAt: null };
+  const plan = examReminderPlan([exam], courses, now.getTime());
+  assert.deepEqual(plan.map(r => new Date(r.at).toString().slice(4, 21)), ['Oct 23 2026 19:00', 'Oct 29 2026 19:00', 'Oct 30 2026 07:00']);
+  assert.equal(plan[0].body, 'A little Maths each day adds up.'); assert.equal(plan[2].title, 'Calculus final is today at 8:00 AM');
+  assert.deepEqual(examReminderPlan([{ ...exam, remind: false }], courses, now.getTime()), []);
+  assert.equal(examReminderPlan([{ ...exam, examDate: '2026-10-21', examMinute: null }], courses, now.getTime()).length, 2, 'the week-before reminder already passed');
+  assert.ok(plan.every(r => !/LifeRPG/i.test(r.title + r.body)), 'no app name in reminders');
+});
+test('exam reminders reconcile: stale ones are cancelled, missing ones scheduled once, none without permission', async () => {
+  const { createExamReminderCoordinator, examReminderPlan } = load('src/services/examReminders.ts');
+  const scheduled = new Map(); let n = 0, allowed = true;
+  const coordinator = createExamReminderCoordinator({ allowed: async () => allowed, list: async () => [...scheduled.entries()].map(([i, v]) => ({ id: i, ...v })),
+    cancel: async i => { scheduled.delete(i); }, schedule: async (scopeKey, r) => { const i = `n${++n}`; scheduled.set(i, { scopeKey, key: r.key }); return i; } });
+  const exam = { kind: 'exam', id: id(2), revision: 1, title: 'Final', courseId: null, examDate: '2026-10-30', examMinute: null, remind: true, deletedAt: null };
+  await coordinator.update(scope, examReminderPlan([exam], [], now.getTime()));
+  assert.equal(scheduled.size, 3);
+  await coordinator.update(scope, examReminderPlan([exam], [], now.getTime()));
+  assert.equal(n, 3, 'nothing is scheduled twice');
+  await coordinator.update(scope, examReminderPlan([{ ...exam, title: 'Paper 1' }], [], now.getTime()));
+  assert.equal(scheduled.size, 3); assert.ok([...scheduled.values()].every(v => v.key.includes('Paper 1')));
+  allowed = false; await coordinator.update(scope, examReminderPlan([exam], [], now.getTime()));
+  assert.equal(scheduled.size, 0);
+});
+test('subject totals follow the period and the fetch covers this week and month', () => {
+  const courses = [{ kind: 'course', id: id(1), revision: 1, name: 'Maths', focusAreaId: 1, deletedAt: null, totalSeconds: 0 }, { kind: 'course', id: id(2), revision: 1, name: 'Art', focusAreaId: 1, deletedAt: null, totalSeconds: 0 }];
+  const recent = [{ courseId: id(1), completedAt: at(2026, 10, 14).getTime(), seconds: 600 }, { courseId: id(1), completedAt: at(2026, 10, 2).getTime(), seconds: 300 }, { courseId: id(2), completedAt: at(2026, 10, 18).getTime(), seconds: 60 }];
+  const rows = domain.subjectTotals(recent, courses, ms => domain.dateKey(new Date(ms)), '2026-10-12', '2026-10-18');
+  assert.deepEqual(rows.map(r => [r.course.name, r.seconds]), [['Maths', 600], ['Art', 60]]);
+  assert.equal(new Date(domain.studyListSince(now)).getDate(), 1, 'October 1 is the earliest day needed on 18 October');
+  assert.equal(domain.subjectForArea(courses, id(1), 2, 9), null, 'a subject from another area does not apply');
+  assert.equal(domain.subjectForArea([{ ...courses[0], focusAreaId: null }], id(1), null, 9)?.name, 'Maths', 'no area means Everyday focus');
+  assert.equal(domain.examTimeLabel(570), '9:30 AM'); assert.equal(domain.examTimeLabel(12 * 60), '12:00 PM');
+});
+test('exams saved before times existed load with no time and reminders on', async () => {
+  const f = fixture(); await f.store.load(scope);
+  const key = domain.studyStorageKey(scope);
+  f.existing.set(key, JSON.stringify({ version: 1, scope, courses: [], exams: [{ kind: 'exam', id: id(5), revision: 1, title: 'Old', courseId: null, examDate: '2026-10-30', deletedAt: null }], recent: [], pending: [], tags: [] }));
+  const again = fixture(f.existing); await again.store.load(scope);
+  const exam = again.store.snapshot(scope).exams[0];
+  assert.equal(exam.examMinute, null); assert.equal(exam.remind, true);
 });

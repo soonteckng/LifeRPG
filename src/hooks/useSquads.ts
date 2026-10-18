@@ -30,5 +30,6 @@ export function useSquads() {
     join: (code: string) => run((s, t) => squadStore.join(s, t, code), offline as string | null),
     leave: (id: string) => run((s, t) => squadStore.leave(s, t, id), offline as string | null),
     remove: (id: string, member: string) => run((s, t) => squadStore.remove(s, t, id, member), offline as string | null),
+    update: (id: string, change: { name: string; goalMinutes: number | null } | "code") => run((s, t) => squadStore.update(s, t, id, change), offline as string | null),
   };
 }

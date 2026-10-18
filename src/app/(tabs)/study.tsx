@@ -159,7 +159,7 @@ export default function StudyScreen() {
     <StudyExamSheet visible={open && sheet?.kind === "exam"} exam={sheet?.kind === "exam" ? sheet.exam : null} courses={plan.courses}
       initialCourseId={sheet?.kind === "exam" ? sheet.courseId : null} onSave={plan.saveExam} onRemove={id => plan.remove("exam", id)} onClose={() => close()} onDismiss={dismissed} />
     <SquadSheet visible={open && sheet?.kind === "squad"} squad={sheet?.kind === "squad" ? squads.squads.find(item => item.id === sheet.id) ?? null : null}
-      onClose={() => close()} onLeave={squads.leave} onRemove={squads.remove} />
+      onClose={() => close()} onLeave={squads.leave} onRemove={squads.remove} onUpdate={squads.update} />
     <SquadJoinSheet visible={open && sheet?.kind === "join"} online={squads.online} onClose={() => close()} onJoin={squads.join} onCreate={squads.create} />
     <StudySubjectSheet visible={open && sheet?.kind === "subject"} course={sheet?.kind === "subject" && sheet.course ? courseFor(sheet.course.id) ?? sheet.course : null}
       areas={subjects} defaultAreaId={learning?.id ?? null} recent={plan.recent} exams={plan.exams} sessionOpen={timer.hasOpenSession}

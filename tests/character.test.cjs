@@ -41,6 +41,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
       if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
+      { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
       if (!name.startsWith(".")) return require(name);
       const target = path.resolve(path.dirname(filename), name);
       const ext = ["", ".ts", ".tsx"].find((e) => fs.existsSync(target + e));

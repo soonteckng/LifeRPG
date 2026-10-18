@@ -28,6 +28,8 @@ import { colors, radius } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
+import { useStudyPlan } from "../../hooks/useStudyPlan";
+import { courseColor, subjectTotals } from "../../utils/studyPlan";
 import type { ProgressSession } from "../../services/progressService";
 import {
   buildProgress,
@@ -263,6 +265,9 @@ export default function ProgressScreen() {
   // A current period with nothing yet gets one welcoming card, not a page of empty sections.
   const freshPeriod = !!analytics && currentPeriod && !analytics.sessions.length;
   const leadArea = analytics && analytics.areas.length > 1 ? analytics.areas[0] : undefined;
+  const study = useStudyPlan();
+  const subjectRows = useMemo(() => subjectTotals(study.recent, study.courses, ms => dateKey(new Date(ms), timeZone), period.start, period.end).slice(0, 6),
+    [study.recent, study.courses, timeZone, period.start, period.end]);
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
@@ -555,6 +560,21 @@ export default function ProgressScreen() {
                   />
                 )}
               </View>
+              {currentPeriod && study.courses.length > 0 && <>
+                <Section title="By subject" subtitle={`This ${mode}`} />
+                <View style={s.card} testID="progress-subjects">
+                  <View style={s.areaSummary}>
+                    {subjectRows.map(({ course, seconds }, index) => <Pressable key={course.id} onPress={() => router.navigate("/study")} accessibilityRole="button"
+                      accessibilityLabel={`${course.name}, ${durationLabel(seconds)} this ${mode}. Open Study`} style={[s.areaSummaryItem, index > 0 && s.areaRowDivider]}>
+                      <View style={[s.areaDot, { backgroundColor: courseColor(course.id) }]} />
+                      <Text style={s.areaRowTitle} numberOfLines={1}>{course.name}</Text>
+                      <Text style={s.areaRowValue}>{seconds ? durationLabel(seconds) : "—"}</Text>
+                      <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+                    </Pressable>)}
+                  </View>
+                  {!subjectRows.some(row => row.seconds) && <Text style={s.caption}>Pick a subject when you set up a session and its time shows here.</Text>}
+                </View>
+              </>}
               <Section title="Sessions" subtitle={sessionScope === "period"
                 ? `${listedSessions.length} completed this ${mode}`
                 : `${heroDay ? calendarLabel(heroDay.key, { weekday: "long", month: "short", day: "numeric" }) : "Selected day"} · ${listedSessions.length} completed`} />

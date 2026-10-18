@@ -511,9 +511,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "../context/AuthContext":{useAuth:()=>({accessMode:state.accessMode ?? 'online',user:{id:state.ownerId ?? 'owner-a'},
       localOwner:{id:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},admissionEpoch:state.admissionEpoch ?? 1})},
     "../hooks/useSavedRoutines":{useSavedRoutines:()=>savedRoutines},
-    "../hooks/useStudyPlan":{useStudyPlan:()=>({scope:{ownerId:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},ready:true,courses:questOverrides.courses ?? []})},
-    "../services/studySelection":{studySelection:{get:()=>studyChoice.value,subscribe:fn=>{studyChoice.listeners.add(fn);return()=>studyChoice.listeners.delete(fn);},
-      choose:v=>{if(studyChoice.value===v)return;studyChoice.value=v;calls.push(["subject",v]);studyChoice.listeners.forEach(fn=>fn());},arm:previous=>calls.push(["arm",previous])}},
+    "./SubjectSetupRow":p=>React.createElement("SubjectRow",p),
     "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
   }, cache).default;
   let renderer;
@@ -1999,22 +1997,18 @@ test("display-only countdown keeps its node and exact digits across minute bound
  }finally{await act(async()=>renderer.unmount());}
 });
 
-test("the Subject row appears with subjects, sets the subject's area and arms the subject at Start",async()=>{
-  const maths={kind:"course",id:"cccccccc-cccc-4ccc-8ccc-000000000001",revision:1,name:"Maths",focusAreaId:2,deletedAt:null,totalSeconds:0};
-  const none=await screenSetup();
-  assert.equal(none.button("Choose subject"),undefined,"no subjects, no row");
-  await none.cleanup();
-  const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Learning"}],courses:[maths]});
-  assert.equal(ui.button("Choose subject").props.accessibilityValue.text,"None");
-  await ui.press("Choose subject");
-  await ui.press("Maths");
-  assert.deepEqual(ui.calls.slice(-2),[["subject",maths.id],["area",2]]);
-  await ui.update({targetAttributeId:2});
-  assert.equal(ui.button("Choose subject").props.accessibilityValue.text,"Maths");
-  await ui.press("Start");
-  assert.deepEqual(ui.calls.slice(-2).map(c=>c[0]),["arm","start"]);
-  await ui.press("Choose focus area");
-  await ui.press("Everyday focus");
-  assert.deepEqual(ui.calls.filter(c=>c[0]==="subject").at(-1),["subject",null],"another area clears the subject");
+test("free setup includes the shared Subject row wired to the session's area; quest setup leaves it out",async()=>{
+  const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Learning"}]});
+  const row=ui.root().findByType("SubjectRow");
+  assert.equal(row.props.generalId,1); assert.equal(row.props.disabled,false);
+  await act(async()=>row.props.onArea(2));
+  assert.deepEqual(ui.calls.at(-1),["area",2]);
+  await ui.update({linkedTaskId:7});
+  assert.equal(ui.root().findAllByType("SubjectRow").length,0);
   await ui.cleanup();
+});
+test("every start arms the picked subject in one place, the timer, before the session exists",()=>{
+  const source=fs.readFileSync(path.join(__dirname,"../src/context/JournalTimerProvider.tsx"),"utf8");
+  assert.match(source,/studySelection\.arm\(record\?\.clientSessionId \?\? null\);\s*try \{\s*const protectedSession/);
+  assert.doesNotMatch(fs.readFileSync(path.join(__dirname,"../src/components/SessionScreen.tsx"),"utf8"),/studySelection\.arm/);
 });

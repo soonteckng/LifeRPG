@@ -25,7 +25,9 @@ export function validCourseDraft(value: unknown): value is StudyCourseDraft {
   return object(value) && cleanText(value.name, 60) && (value.focusAreaId === null || integer(value.focusAreaId, 1, Number.MAX_SAFE_INTEGER));
 }
 export function validExamDraft(value: unknown): value is StudyExamDraft {
-  return object(value) && cleanText(value.title, 80) && (value.courseId === null || isJournalUuid(value.courseId)) && validDateKey(value.examDate);
+  // Exams saved before times and reminders existed have neither field.
+  return object(value) && cleanText(value.title, 80) && (value.courseId === null || isJournalUuid(value.courseId)) && validDateKey(value.examDate)
+    && (value.examMinute === undefined || value.examMinute === null || integer(value.examMinute, 0, 1439)) && (value.remind === undefined || typeof value.remind === "boolean");
 }
 const validMeta = (value: Record<string, unknown>) => isJournalUuid(value.id) && integer(value.revision, 0, Number.MAX_SAFE_INTEGER)
   && (value.deletedAt === null || integer(value.deletedAt, 0, Number.MAX_SAFE_INTEGER));
@@ -54,7 +56,8 @@ export function normaliseCourse(value: unknown): StudyCourse | null {
 }
 export function normaliseExam(value: unknown): StudyExam | null {
   if (!object(value)) return null;
-  const exam = { kind: value.kind, id: value.id, revision: value.revision, title: value.title, courseId: value.courseId, examDate: value.examDate, deletedAt: value.deletedAt };
+  const exam = { kind: value.kind, id: value.id, revision: value.revision, title: value.title, courseId: value.courseId, examDate: value.examDate,
+    examMinute: value.examMinute ?? null, remind: value.remind ?? true, deletedAt: value.deletedAt };
   return validExam(exam) ? exam : null;
 }
 
@@ -78,8 +81,18 @@ export function parseStudyEnvelope(raw: string | null, scope: JournalScope): Stu
     || !Array.isArray(value.recent) || value.recent.length > 500 || !value.recent.every(validRecent)
     || !Array.isArray(value.pending) || value.pending.length > STUDY_QUEUE_LIMIT || !value.pending.every(validStudyOperation) || !unique(value.pending, item => item.operationId)
     || !Array.isArray(value.tags) || value.tags.length > STUDY_TAG_LIMIT || !value.tags.every(validStudyTag) || !exact(value, ["version", "scope", "courses", "exams", "recent", "pending", "tags"])) throw new Error(broken);
-  return value as unknown as StudyEnvelope;
+  const envelope = value as unknown as StudyEnvelope;
+  return { ...envelope, exams: envelope.exams.map(withExamDefaults),
+    pending: envelope.pending.map(op => op.kind === "exam" ? { ...op, draft: withExamDefaults(op.draft) } : op) };
 }
+export function withExamDefaults<T extends StudyExamDraft>(exam: T): T {
+  return { ...exam, examMinute: exam.examMinute ?? null, remind: exam.remind ?? true };
+}
+export function examTimeLabel(minute: number): string {
+  const h = Math.floor(minute / 60), m = minute % 60;
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
 /** Server state with this phone's queued edits laid on top. */
 export function visibleStudy(envelope: StudyEnvelope): { courses: StudyCourse[]; exams: StudyExam[] } {
   const courses = new Map(envelope.courses.map(item => [item.id, item])), exams = new Map(envelope.exams.map(item => [item.id, item]));
@@ -156,3 +169,23 @@ export function monthGrid(year: number, month: number): (string | null)[][] {
 }
 export function addDays(key: string, days: number): string { const date = localDate(key); date.setDate(date.getDate() + days); return dateKey(date); }
 export const STARTER_SUBJECTS = ["Maths", "English", "Science", "History", "Languages", "Coding"] as const;
+/** The focus area a subject's time counts toward; no area means Everyday focus. */
+export function courseArea(course: Pick<StudyCourse, "focusAreaId">, generalId: number | null | undefined): number | null {
+  return course.focusAreaId ?? generalId ?? null;
+}
+/** A picked subject applies only while the session is set to that subject's area. */
+export function subjectForArea(courses: StudyCourse[], chosenId: string | null, areaId: number | null, generalId: number | null | undefined): StudyCourse | null {
+  const course = chosenId ? courses.find(item => item.id === chosenId) : undefined;
+  return course && courseArea(course, generalId) === (areaId ?? generalId ?? null) ? course : null;
+}
+/** How far back tagged sessions are fetched: this week, this month and the last 7 days. */
+export function studyListSince(now = new Date()): number {
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate()); monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
+  return Math.min(studyWindowStart(now), monday.getTime(), new Date(now.getFullYear(), now.getMonth(), 1).getTime());
+}
+/** Seconds per subject for sessions whose day key falls in [start, end], most first. */
+export function subjectTotals(recent: StudyRecent[], courses: StudyCourse[], dayOf: (ms: number) => string, start: string, end: string) {
+  const totals = new Map<string, number>();
+  for (const item of recent) { const day = dayOf(item.completedAt); if (day >= start && day <= end) totals.set(item.courseId, (totals.get(item.courseId) ?? 0) + item.seconds); }
+  return courses.map(course => ({ course, seconds: totals.get(course.id) ?? 0 })).sort((a, b) => b.seconds - a.seconds || a.course.name.localeCompare(b.course.name));
+}

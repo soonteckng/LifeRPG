@@ -1,7 +1,8 @@
 import type { JournalScope } from "./sessionJournal";
 
 export interface StudyCourseDraft { name: string; focusAreaId: number | null }
-export interface StudyExamDraft { title: string; courseId: string | null; examDate: string }
+/** examMinute is minutes after midnight, or null for no time. */
+export interface StudyExamDraft { title: string; courseId: string | null; examDate: string; examMinute: number | null; remind: boolean }
 export interface StudyCourse extends StudyCourseDraft { kind: "course"; id: string; revision: number; deletedAt: number | null; totalSeconds: number }
 export interface StudyExam extends StudyExamDraft { kind: "exam"; id: string; revision: number; deletedAt: number | null }
 export type StudyItem = StudyCourse | StudyExam;

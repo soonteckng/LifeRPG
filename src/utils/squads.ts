@@ -11,7 +11,8 @@ export function validSquadMember(value: unknown): value is SquadMember {
 }
 export function validSquad(value: unknown): value is Squad {
   return object(value) && anyUuid(value.id) && typeof value.name === "string" && value.name.length <= 40 && typeof value.code === "string" && /^[A-HJ-NP-Z2-9]{6}$/.test(value.code)
-    && typeof value.ownerIsYou === "boolean" && Array.isArray(value.members) && value.members.length <= 8 && value.members.every(validSquadMember);
+    && typeof value.ownerIsYou === "boolean" && (value.goalMinutes === undefined || value.goalMinutes === null || typeof value.goalMinutes === "number" && Number.isSafeInteger(value.goalMinutes) && value.goalMinutes >= 60 && value.goalMinutes <= 6000)
+    && Array.isArray(value.members) && value.members.length <= 8 && value.members.every(validSquadMember);
 }
 /** Codes are typed loosely; keep only the characters a code can contain. */
 export function cleanSquadCode(input: string): string {
@@ -26,6 +27,7 @@ export function weekStart(now = new Date()): number {
   start.setDate(start.getDate() - (start.getDay() + 6) % 7);
   return start.getTime();
 }
+export const SQUAD_GOALS = [300, 600, 900, 1200, 1800] as const;
 export function squadTotal(squad: Squad): number { return squad.members.reduce((sum, member) => sum + member.weekSeconds, 0); }
 export function focusingCount(squad: Squad): number { return squad.members.filter(member => member.focusingNow).length; }
 /** Most focus first; ties keep join order. */

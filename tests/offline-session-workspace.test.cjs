@@ -14,6 +14,7 @@ function load(file, mocks, modules = new Map()) {
     if(name.endsWith('/FeatureTour')) return {useFeatureTour:()=>null};
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
     if(name.endsWith('/SessionProtectionContext')) return {SessionProtectionProvider:props=>props.children};
+    { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
     if (!name.startsWith('.')) return require(name);
     const target = path.resolve(path.dirname(filename), name), ext = ['', '.ts', '.tsx'].find(ext => fs.existsSync(target + ext));
     return load(path.relative(path.resolve(__dirname, '..'), target + ext), mocks, modules);
