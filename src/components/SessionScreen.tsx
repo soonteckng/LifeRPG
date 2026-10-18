@@ -9,7 +9,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import SheetButton from "./SheetTouchable";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
@@ -38,8 +38,11 @@ import { routinePresentation, type RoutineEntry } from "../utils/routinePresenta
 import { encodeRoutineSession, readRoutineSession } from "../utils/routineSession";
 import { routineDuration } from "../utils/savedRoutine";
 import SessionProtectionControl from "./SessionProtectionControl";
+import { useStudyPlan } from "../hooks/useStudyPlan";
+import { studySelection } from "../services/studySelection";
+import { courseColor } from "../utils/studyPlan";
 
-type Picker = "duration" | "quest" | "area" | null;
+type Picker = "duration" | "quest" | "area" | "subject" | null;
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
@@ -75,6 +78,8 @@ export default function SessionScreen() {
   const { sessionSummary, rewardsVisible } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const routines = useSavedRoutines();
+  const study = useStudyPlan();
+  const chosenCourseId = useSyncExternalStore(studySelection.subscribe, studySelection.get, studySelection.get);
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
   const { width, height, fontScale } = useWindowDimensions();
@@ -158,6 +163,9 @@ export default function SessionScreen() {
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
   const compactSetup = phase === "setup" && !isQuest;
   const areaColor = lifeAreaColor(timer.targetAttributeId, area?.color_code);
+  const studyScopeMatches = study.scope?.ownerId === ownerId && study.scope?.backendId === backendId;
+  const courses = studyScopeMatches && study.ready ? study.courses : [];
+  const course = courses.find(item => item.id === chosenCourseId) ?? null;
   const pickerState = useRef({ scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general });
   useLayoutEffect(() => { pickerState.current = { scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general }; },
     [presentationScope, locked, selectableRoutines, timer, subjects, general]);
@@ -325,12 +333,13 @@ export default function SessionScreen() {
   const start = () => {
     if (locked || missingQuest || timer.restoreError || picker || !validSessionSeconds(timer.duration)) return;
     Keyboard.dismiss();
+    if (course && !isQuest) studySelection.arm(timer.protectionSessionId);
     void timer.startTimer(timer.duration, task?.title ?? routineName ?? undefined);
   };
   const switchToFree = () => {
     if (locked) return;
     timer.setLinkedTaskId(null); timer.setNotes(""); timer.setTargetAttributeId(general?.id ?? null);
-    setSelectedRoutineKey(null);
+    setSelectedRoutineKey(null); if (chosenCourseId) studySelection.choose(null);
     selectMinutes(30);
   };
   const selectRoutine = (choice: RoutineEntry) => {
@@ -343,7 +352,9 @@ export default function SessionScreen() {
       if (notes === null || entry.areaId !== null && !current.subjects.some(item => item.id === entry.areaId)) return;
       current.timer.setLinkedTaskId(null); current.timer.setTargetAttributeId(entry.areaId);
       current.timer.setNotes(notes); current.timer.setDurationInSeconds(entry.seconds); setSelectedRoutineKey(entry.key);
+      if (course && course.focusAreaId !== entry.areaId) studySelection.choose(null);
     } else {
+      if (chosenCourseId) studySelection.choose(null);
       current.timer.setNotes(""); current.timer.setLinkedTaskId(entry.task.id);
       current.timer.setTargetAttributeId(entry.areaId ?? current.general?.id ?? null);
       current.timer.setDurationInMinutes(entry.seconds / 60); setSelectedRoutineKey(null);
@@ -428,6 +439,11 @@ export default function SessionScreen() {
                   <Text style={styles.rowLabel}>Focus area</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
                   <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>}
+                {!isQuest && courses.length > 0 && <TouchableOpacity disabled={locked} onPress={() => setPicker("subject")} accessibilityRole="button" accessibilityLabel="Choose subject" accessibilityValue={{ text: course?.name ?? "None" }} style={styles.setupRow}>
+                  <View style={[styles.rowIcon, course && { backgroundColor: areaTint(courseColor(course.id)) }]}><Ionicons name="school-outline" size={16} color={course ? courseColor(course.id) : colors.secondary} /></View>
+                  <Text style={styles.rowLabel}>Subject</Text><Text style={[styles.rowValue, !!course && styles.rowValueChosen]} numberOfLines={1}>{course?.name ?? "None"}</Text>
+                  <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+                </TouchableOpacity>}
                 {!isQuest && <FocusLengthControl compact showLabel={false} seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
                 <SessionProtectionControl activeSurface={onlineSurfaces} />
                 <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose from routines"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : undefined} style={[styles.setupRow, styles.lastRow]}>
@@ -459,11 +475,25 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact floating maxHeightRatio={0.82}
-        header={<SheetHeader title={picker === "quest" ? "Choose a routine" : "Focus area"} subtitle={picker === "quest" ? undefined : "Where should this block count?"} onClose={() => setPicker(null)} />}>
+      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area" || picker === "subject")} onRequestClose={() => setPicker(null)} label="session choices" compact floating maxHeightRatio={0.82}
+        header={<SheetHeader title={picker === "quest" ? "Choose a routine" : picker === "subject" ? "Subject" : "Focus area"} subtitle={picker === "quest" ? undefined : picker === "subject" ? "Count this session toward a subject." : "Where should this block count?"} onClose={() => setPicker(null)} />}>
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <FocusAreaPicker selectedId={timer.targetAttributeId} disabled={locked} areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...selectableAreas.filter(item => item.id !== general?.id)]}
-            onSelect={id => { timer.setTargetAttributeId(id); setPicker(null); }} />}
+            onSelect={id => { timer.setTargetAttributeId(id); if (course && (course.focusAreaId ?? general?.id ?? null) !== id) studySelection.choose(null); setPicker(null); }} />}
+          {picker === "subject" && [...courses, null].map(item => {
+            const selected = (item?.id ?? null) === (course?.id ?? null), tint = item ? courseColor(item.id) : colors.secondary;
+            const itemArea = item && subjects.find(entry => entry.id === item.focusAreaId);
+            return <SheetButton key={item?.id ?? "none"} style={[styles.questPickerCard, styles.subjectChoice, selected && styles.questPickerSelected]} accessibilityRole="radio"
+              accessibilityLabel={item ? item.name : "No subject"} accessibilityState={{ checked: selected }} disabled={locked}
+              onPress={() => { studySelection.choose(item?.id ?? null); if (item) timer.setTargetAttributeId(itemArea?.id ?? general?.id ?? null); setPicker(null); }}>
+              <View style={[styles.questPickerIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={item ? "school-outline" : "remove"} size={19} color={tint} /></View>
+              <View style={styles.selectedQuestContent}>
+                <Text style={styles.questPickerTitle}>{item ? item.name : "No subject"}</Text>
+                {item && <Text style={styles.questPickerMeta}>{focusAreaTitle(itemArea?.title)}</Text>}
+              </View>
+              {selected && <Ionicons name="checkmark-circle" size={20} color={colors.accent} />}
+            </SheetButton>;
+          })}
           {picker === "quest" && selectableRoutines.map((item) => {
             const questArea = subjects.find(subject => subject.id === item.areaId);
             const tint = lifeAreaColor(item.areaId, questArea?.color_code);
@@ -535,6 +565,7 @@ const styles = StyleSheet.create({
   questPickerBody: { gap: 8 },
   questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, padding: 12, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: "transparent" },
   questPickerSelected: { borderColor: colors.accent },
+  subjectChoice: { marginBottom: 8 },
   questPickerIcon: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "500" },
   questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },

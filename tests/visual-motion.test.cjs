@@ -11,6 +11,7 @@ function load(file,mocks,cache=new Map()) {
   const code=ts.transpileModule(fs.readFileSync(target,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
+    { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
     if(!name.startsWith('.'))return require(name);
     const filename=path.resolve(path.dirname(target),name);
     const ext=['.ts','.tsx'].find(ext=>fs.existsSync(filename+ext));
@@ -112,7 +113,7 @@ test('Tab crossfade respects reduced motion without changing route identities or
     assert.equal(tabs().screenOptions.animation,'fade');
     assert.equal(tabs().screenOptions.transitionSpec.config.duration,180);
     assert.equal(tabs().backBehavior,'initialRoute');
-    assert.deepEqual(routes.map(node=>node.props.name),['index','progress','profile','tasks','timer']);
+    assert.deepEqual(routes.map(node=>node.props.name),['index','study','progress','profile','tasks','timer']);
     reduced=true;await act(async()=>tree.update(React.createElement(Layout)));
     assert.equal(tabs().screenOptions.animation,'none');
     assert.equal(tabs().screenOptions.transitionSpec.config.duration,0);

@@ -13,6 +13,7 @@ import LaunchIntro from "../components/LaunchIntro";
 import GlobalRewardListener from "../components/GlobalRewardListener";
 import SessionConnectionContent from "../components/SessionConnectionContent";
 import RoutineLifecycle from "../components/RoutineLifecycle";
+import StudyLifecycle from "../components/StudyLifecycle";
 import RoutineWidgetLifecycle from "../components/RoutineWidgetLifecycle";
 import { SessionProtectionProvider } from "../context/SessionProtectionContext";
 import { AuthProvider, useAuth } from "../context/AuthContext";
@@ -55,7 +56,7 @@ function GlobalBackHandler() {
       }
 
       // Tabs are root-level destinations. Android back always returns Home.
-      if (pathname === "/progress" || pathname === "/profile") {
+      if (pathname === "/study" || pathname === "/progress" || pathname === "/profile") {
         router.replace("/");
         return true;
       }
@@ -117,6 +118,7 @@ function AppContent() {
         <SessionProtectionProvider>
         <FeatureTourProvider>
         <RoutineLifecycle />
+        <StudyLifecycle />
         <RoutineWidgetLifecycle />
         <GlobalBackHandler />
         <SessionConnectionContent>

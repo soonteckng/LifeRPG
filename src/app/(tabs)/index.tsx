@@ -30,6 +30,7 @@ import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
+import NextExamCard from "../../components/NextExamCard";
 import SessionProtectionControl from "../../components/SessionProtectionControl";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
@@ -288,6 +289,7 @@ export default function HomeScreen() {
             <Text style={styles.primaryButtonText}>Review saved session</Text>
           </TouchableOpacity>}
           </View></TourAnchor>
+          <NextExamCard />
           <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} initialSeconds={quickSeconds} initialAreaId={quickAreaId} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession} /></TourAnchor>
         </View>
         </ContentReveal>

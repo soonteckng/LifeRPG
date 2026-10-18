@@ -34,6 +34,7 @@ function load(relativePath, mocks, cache = new Map()) {
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
+    { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const extension = ["", ".ts", ".tsx"].find((ext) => fs.existsSync(target + ext));
@@ -476,6 +477,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   const router = {canGoBack:()=>true,goBack:()=>calls.push(["dismiss"]),getState:()=>({routes:[{},{}]}),addListener:()=>()=>{}};
   const quests = {tasks:[{id:7,title:"A long quest title worth finishing",target_minutes:30,subject_id:1,is_due_today:true,is_completed_today:false}],
     subjects:[{id:1,title:"General"}],loading:false,error:false,refresh:async()=>{},...questOverrides};
+  const studyChoice={value:questOverrides.studyChoice ?? null,listeners:new Set()};
   let savedRoutines={scope:{ownerId:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},ready:true,routines:[],...questOverrides.savedRoutines};
   const Screen=load("src/components/SessionScreen.tsx",{
     "react-native-svg":{__esModule:true,default:host("Svg"),Circle:host("Circle")},
@@ -509,6 +511,9 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "../context/AuthContext":{useAuth:()=>({accessMode:state.accessMode ?? 'online',user:{id:state.ownerId ?? 'owner-a'},
       localOwner:{id:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},admissionEpoch:state.admissionEpoch ?? 1})},
     "../hooks/useSavedRoutines":{useSavedRoutines:()=>savedRoutines},
+    "../hooks/useStudyPlan":{useStudyPlan:()=>({scope:{ownerId:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},ready:true,courses:questOverrides.courses ?? []})},
+    "../services/studySelection":{studySelection:{get:()=>studyChoice.value,subscribe:fn=>{studyChoice.listeners.add(fn);return()=>studyChoice.listeners.delete(fn);},
+      choose:v=>{if(studyChoice.value===v)return;studyChoice.value=v;calls.push(["subject",v]);studyChoice.listeners.forEach(fn=>fn());},arm:previous=>calls.push(["arm",previous])}},
     "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
   }, cache).default;
   let renderer;
@@ -1992,4 +1997,24 @@ test("display-only countdown keeps its node and exact digits across minute bound
   }
   assert.equal(renderer.root.findAllByType("Button").length,0);assert.equal(renderer.root.findAllByType("Input").length,0);
  }finally{await act(async()=>renderer.unmount());}
+});
+
+test("the Subject row appears with subjects, sets the subject's area and arms the subject at Start",async()=>{
+  const maths={kind:"course",id:"cccccccc-cccc-4ccc-8ccc-000000000001",revision:1,name:"Maths",focusAreaId:2,deletedAt:null,totalSeconds:0};
+  const none=await screenSetup();
+  assert.equal(none.button("Choose subject"),undefined,"no subjects, no row");
+  await none.cleanup();
+  const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Learning"}],courses:[maths]});
+  assert.equal(ui.button("Choose subject").props.accessibilityValue.text,"None");
+  await ui.press("Choose subject");
+  await ui.press("Maths");
+  assert.deepEqual(ui.calls.slice(-2),[["subject",maths.id],["area",2]]);
+  await ui.update({targetAttributeId:2});
+  assert.equal(ui.button("Choose subject").props.accessibilityValue.text,"Maths");
+  await ui.press("Start");
+  assert.deepEqual(ui.calls.slice(-2).map(c=>c[0]),["arm","start"]);
+  await ui.press("Choose focus area");
+  await ui.press("Everyday focus");
+  assert.deepEqual(ui.calls.filter(c=>c[0]==="subject").at(-1),["subject",null],"another area clears the subject");
+  await ui.cleanup();
 });

@@ -44,6 +44,7 @@ function load(relativePath, mocks, cache = new Map()) {
     if (name === "@gorhom/bottom-sheet") return {BottomSheetScrollView:host("ScrollView"),BottomSheetTextInput:Input,TouchableOpacity:mocks["react-native"]?.Pressable || host("Pressable")};
     if (name.endsWith("/ContentReveal")) return props=>props.children;
     if (name.endsWith("/AppSheet")) return props=>props.visible?React.createElement("Sheet",props,props.header,props.children,props.footer):null;
+    { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const extension = ["", ".ts", ".tsx"].find((ext) => fs.existsSync(target + ext));
