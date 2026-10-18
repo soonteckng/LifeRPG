@@ -1,12 +1,13 @@
 /**
- * Which kind of session the shared setup is preparing: free focus, a routine
- * or study, plus the routine picked for Routine. Home's card and the session
- * screen read the same values; the Study and Routines tabs set them before
- * opening setup. Nothing here outlives the app process.
+ * Which kind of session the shared setup is preparing: a routine (any activity
+ * in a category, or one of your saved routines) or study, plus the routine
+ * picked for Routine. Home's card and the session screen read the same values;
+ * the Study and Routines tabs set them before opening setup. Nothing here
+ * outlives the app process.
  */
-export type SetupMode = "focus" | "routine" | "study";
+export type SetupMode = "routine" | "study";
 type Listener = () => void;
-let mode: SetupMode = "focus";
+let mode: SetupMode = "routine";
 let routineKey: string | null = null;
 const listeners = new Set<Listener>();
 const emit = () => listeners.forEach(listener => listener());

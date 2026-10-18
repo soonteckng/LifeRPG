@@ -24,6 +24,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
+import SquadsSection from "../../components/SquadsSection";
 import { colors, radius, edge } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
@@ -282,6 +283,7 @@ export default function ProgressScreen() {
           />
         }
       >
+        <SquadsSection />
         <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
@@ -536,7 +538,7 @@ export default function ProgressScreen() {
                 </View>
               </View>}
               {!freshPeriod && <>
-              <Section title="By focus area" />
+              <Section title="By category" />
               <View style={s.card}>
                 {analytics.areas.length > 0 && <View style={s.areaShare}>
                   {analytics.areas.map(area => <View key={area.key} style={{ flex: area.seconds, backgroundColor: area.color }} />)}

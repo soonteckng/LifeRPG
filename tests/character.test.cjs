@@ -884,7 +884,7 @@ async function profileScreen(overrides = {}) {
 test("Profile displays saved Life areas directly and keeps Save outside the scrolling editor", async () => {
   const ui = await profileScreen();
   try {
-    assert.match(ui.text(), /Your focus areas/);
+    assert.match(ui.text(), /Your categories/);
     assert.match(ui.text(), /LearningLv 2/);
     assert.doesNotMatch(
       ui.text(),
@@ -1197,7 +1197,7 @@ test("Profile has one milestone collection entry instead of a badge shortcut gri
  const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
  try{
   const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,1);
-  await act(async()=>entries[0].props.onPress());assert.deepEqual(routes,['/rewards']);assert.match(ui.text(),/Your focus areas/);
+  await act(async()=>entries[0].props.onPress());assert.deepEqual(routes,['/rewards']);assert.match(ui.text(),/Your categories/);
  }finally{await ui.cleanup();}
 });
 

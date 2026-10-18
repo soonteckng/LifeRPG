@@ -34,10 +34,23 @@ export function focusingCount(squad: Squad): number { return squad.members.filte
 export function ranked(squad: Squad): SquadMember[] {
   return squad.members.map((member, index) => ({ member, index })).sort((a, b) => b.member.weekSeconds - a.member.weekSeconds || a.index - b.index).map(item => item.member);
 }
+/** Free limits, also enforced by the server: lead one squad, belong to three. */
+export const SQUAD_LIMITS = { lead: 1, member: 3 } as const;
+/** Weekly goal progress, 0 to 1, or null without a goal. */
+export function goalProgress(squad: Squad): number | null {
+  return squad.goalMinutes ? Math.min(1, squadTotal(squad) / (squad.goalMinutes * 60)) : null;
+}
+/** What leaving does, said before it happens. */
+export function leaveOutcome(squad: Squad): string {
+  if (squad.members.length <= 1) return "You're the only member, so the squad closes and its invite code stops working.";
+  if (squad.ownerIsYou) return "The member who's been here longest becomes the leader. You can rejoin with the code.";
+  return "You can join again with the code.";
+}
 export const squadMessage: Record<string, string> = {
-  limit: "You're in 5 squads already. Leave one to join another.",
+  limit: `You can be in up to ${SQUAD_LIMITS.member} squads. Leave one to join another.`,
+  lead_limit: "You already lead a squad. Leave it before starting a new one.",
   full: "That squad is full. Squads hold up to 8 people.",
   not_found: "No squad has that code. Check it with your friend.",
   slow_down: "Too many tries. Wait a while before trying another code.",
-  not_owner: "Only the squad's owner can do that.",
+  not_owner: "Only the squad's leader can do that.",
 };

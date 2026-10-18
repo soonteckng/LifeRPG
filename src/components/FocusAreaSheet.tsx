@@ -14,7 +14,7 @@ export default function FocusAreaSheet({ visible, subjects, selectedId, disabled
 }) {
   const choices = subjects.length ? focusAreaChoices(subjects, selectedId) : [{ id: null, title: "Everyday focus", color_code: null }];
   return <AppSheet visible={visible} onRequestClose={onClose} compact motionMode="timed" label="focus area"
-    header={<View style={s.header}><Text style={s.title}>Choose a focus area</Text><Text style={s.body}>Where would you like this block to count?</Text></View>}>
+    header={<View style={s.header}><Text style={s.title}>Choose a category</Text><Text style={s.body}>Where would you like this block to count?</Text></View>}>
     <BottomSheetScrollView contentContainerStyle={s.bodyContainer} showsVerticalScrollIndicator={false}>
       {choices.map(area => <TouchableOpacity key={area.id ?? "general"} disabled={disabled} onPress={() => { onSelect(area.id); onClose(); }}
         accessibilityRole="radio" accessibilityLabel={`Choose ${focusAreaTitle(area.title)}`} accessibilityState={{ checked: selectedId === area.id, disabled }} style={s.row}>

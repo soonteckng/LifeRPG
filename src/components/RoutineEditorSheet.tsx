@@ -87,7 +87,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     const next = { ...current, name: current.name.trim() };
     if (!next.name) { setError("Give your routine a name first."); return; }
     if (!validRoutineDraft(next) || (next.reminder.enabled && (!/^\d{1,2}$/.test(hour) || !/^\d{1,2}$/.test(minute)))) { setError("Add a name and choose a valid reminder time, from 00:00 to 23:59."); return; }
-    if (next.focusAreaId !== null && !subjects.some(item => item.id === next.focusAreaId)) { setError("Choose an available focus area before saving."); return; }
+    if (next.focusAreaId !== null && !subjects.some(item => item.id === next.focusAreaId)) { setError("Choose an available category before saving."); return; }
     lock.current = true; setBusy(true); const epoch = generation.current;
     try { const saved = await routines.save(next, routine?.id); if (epoch !== generation.current) return; if (saved) { feedback(); onSaved?.(next); onClose(); } else setError("Couldn't save this routine. Your previous settings are still here."); }
     catch { if (epoch === generation.current) setError("Couldn't save this routine. Your previous settings are still here."); }
@@ -113,7 +113,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
       <Text style={s.label}>Routine name</Text>
       <BottomSheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
-      <Text style={s.label}>Focus area</Text>
+      <Text style={s.label}>Category</Text>
       <FocusAreaPicker disabled={busy} selectedId={generalSelected ? general?.id ?? null : draft.focusAreaId}
         areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...focusAreaChoices(subjects, draft.focusAreaId).filter(item => focusAreaTitle(item.title) !== "Everyday focus")]}
         onSelect={focusAreaId => { feedback(); setDraft(previous => ({ ...previous, focusAreaId })); }} />

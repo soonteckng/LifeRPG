@@ -449,7 +449,7 @@ test('both idle focus modes open preferences in the card without starting or cha
   const suggestion=guided.tree.root.findAllByType('View').find(node=>node.props.testID==='focus-card-suggestion');
   assert.equal(text(suggestion),'Suggested: Review your notes');assert.equal(suggestion.props.onPress,undefined);
   const title=suggestion.findByType('Text');assert.equal(title.props.numberOfLines,2);assert.notEqual(title.props.allowFontScaling,false);
-  assert.equal(guided.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose focus area'),false);
+  assert.equal(guided.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);
   assert.deepEqual(calls,[['preferences','free'],['preferences','guided']]);
   assert.match(text(free.tree.root),/Work & projects/);assert.match(text(guided.tree.root),/Learning/);
  }finally{await free.cleanup();await guided.cleanup();}
@@ -518,7 +518,7 @@ test('switching focus modes changes the prompt while retaining the chosen timer 
   assert.match(text(ui.tree.root),/Soon Teck/);await setTenMinuteCustom(ui);
   preference={...preference,enabled:true};await ui.update({});assert.match(text(ui.tree.root),/A short review/);assert.equal(selectedCustomDuration(ui),'10 min');
   await ui.press('Use 30 minutes');preference={...preference,templateId:'practice-question',need:'practice'};await ui.update({});assert.equal(selectedCustomDuration(ui),'30 min');
-  preference={...preference,enabled:false};await ui.update({});assert.match(text(ui.tree.root),/One thing at a time/);await ui.press('Start session');assert.deepEqual(startCalls,[1800]);
+  preference={...preference,enabled:false};await ui.update({});assert.match(text(ui.tree.root),/RoutineAny/);assert.doesNotMatch(text(ui.tree.root),/Suggested:/);await ui.press('Start session');assert.deepEqual(startCalls,[1800]);
  }finally{await ui.cleanup();}
 });
 
@@ -533,7 +533,7 @@ test('one Change action leaves the exact selected timer and confirmed setup inta
  const calls=[];let opened=0;
  const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus,id]);return true;}})}})).default;
  const ui=await render(Card,{owner:'owner',subjects:[{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:1859,disabled:false,onStarted(){},onPreferences:()=>opened++});
- try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose focus area'),false);await ui.press('Change focus direction');assert.equal(opened,1);assert.equal(calls.length,0);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');assert.match(text(ui.tree.root),/Learning/);await ui.press('Start session');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],2);}finally{await ui.cleanup();}
+ try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);await ui.press('Change focus direction');assert.equal(opened,1);assert.equal(calls.length,0);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');assert.match(text(ui.tree.root),/Learning/);await ui.press('Start session');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],2);}finally{await ui.cleanup();}
 });
 
 test('the single Home chooser saves direction and free focus without losing exact time, including save failures and Profile navigation',async()=>{
@@ -562,14 +562,14 @@ test('the single Home chooser saves direction and free focus without losing exac
   await ui.press('Creativity');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/A little room to create/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,undefined);
   await ui.press('Change focus direction');await ui.press('Free focus');await ui.press('Save preferences');
-  assert.match(text(ui.tree.root),/Free focus/);assert.match(text(ui.tree.root),/Everyday focus/);
+  assert.match(text(ui.tree.root),/RoutineAny/);assert.doesNotMatch(text(ui.tree.root),/Suggested:/);assert.match(text(ui.tree.root),/Everyday focus/);
   assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,null);
   assert.equal(api.parseGuidedPreference(db.values.get('liferpg:guided:v1:owner')).areaId,null);
   assert.equal(selectedCustomDuration(ui),'10 min');
   await ui.press('Change focus direction');await ui.press('Learning');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/A short review/);
   await ui.press('Change focus direction');await ui.press('Free focus');await ui.press('Save preferences');
-  assert.match(text(ui.tree.root),/Free focus/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
+  assert.match(text(ui.tree.root),/RoutineAny/);assert.doesNotMatch(text(ui.tree.root),/Suggested:/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);
   db.api.setItem=async()=>{throw Error('Offline');};await ui.press('Change focus direction');await ui.press('Work & projects');await ui.press('Save preferences');
   assert.match(text(ui.tree.root),/Couldn’t save or load your suggestion preferences/);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.enabled,false);assert.equal(api.guidedPreferenceStore.snapshot('owner').value.areaId,null);
   await act(async()=>ui.tree.root.findByType('Sheet').props.onRequestClose());
@@ -583,10 +583,10 @@ test('read-only activity and area cannot publish a second setup path or change a
  const calls=[],preference={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
  const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,value:preference,busy:false,error:false,save:async()=>false})},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus.templateId,id,focus.seconds]);return true;}})}})).default;
  const ui=await render(Card,{owner:'owner',subjects:[{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:2717,disabled:false,onStarted(){}});
- try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose focus area'),false);assert.equal(ui.tree.root.findByProps({testID:'focus-card-suggestion'}).props.onPress,undefined);assert.match(text(ui.tree.root),/Review your notes/);await ui.press('Start session');assert.deepEqual(calls,[['review-topic',2,2717]]);}finally{await ui.cleanup();}
+ try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);assert.equal(ui.tree.root.findByProps({testID:'focus-card-suggestion'}).props.onPress,undefined);assert.match(text(ui.tree.root),/Review your notes/);await ui.press('Start session');assert.deepEqual(calls,[['review-topic',2,2717]]);}finally{await ui.cleanup();}
 });
 
-test('Home sets up Focus, Routine and Study sessions in the same card with one switch',async()=>{
+test('Home sets up Routine and Study sessions in the same card with one switch',async()=>{
  const Home=load('src/app/(tabs)/index.tsx',mocks({
   'react-native':{...Native,useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
   '../../components/AppText':{Text:host('Text')},'expo-haptics':{},'expo-router':{useRouter:()=>({navigate(){}})},
@@ -603,12 +603,14 @@ test('Home sets up Focus, Routine and Study sessions in the same card with one s
  const count=type=>ui.tree.root.findAllByType(type).length;
  const switches=()=>ui.tree.root.findAll(node=>node.props.testID==='setup-mode-switch'&&typeof node.type==='string').length;
  try {
-  assert.equal(switches(),1);assert.equal(count('RoutineRow'),0);assert.equal(count('SubjectRow'),0);
-  await ui.press('Routine. One of your saved routines');
-  assert.equal(switches(),1,'the switch stays in the same card');assert.equal(count('RoutineRow'),1);assert.equal(count('SubjectRow'),0);
+  // Routine is the default: a category, then an optional routine.
+  assert.equal(switches(),1);assert.equal(count('RoutineRow'),1);assert.equal(count('SubjectRow'),0);
+  assert.equal(ui.tree.root.findByType('RoutineRow').props.selected,null,'Any activity until a routine is picked');
+  assert.ok(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Change focus direction'),'the category row stays');
   await ui.press('Study. A subject, counted toward its exams');
+  assert.equal(switches(),1,'the switch stays in the same card');
   assert.equal(count('RoutineRow'),0);assert.equal(ui.tree.root.findByType('SubjectRow').props.learningId,2,'study time counts toward Learning');
-  await ui.press('Focus. Any activity in a focus area');
-  assert.equal(count('RoutineRow')+count('SubjectRow'),0);assert.equal(switches(),1);
+  await ui.press('Routine. Any activity in a category, or one of your routines');
+  assert.equal(count('RoutineRow'),1);assert.equal(count('SubjectRow'),0);assert.equal(switches(),1);
  }finally{await ui.cleanup();}
 });

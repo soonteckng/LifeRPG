@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -11,18 +11,14 @@ import { Text } from "../../components/AppText";
 import StudyExamSheet from "../../components/StudyExamSheet";
 import StudySubjectSheet from "../../components/StudySubjectSheet";
 import { requestStudySync } from "../../components/StudyLifecycle";
-import { SquadFace, SquadJoinSheet, SquadSheet } from "../../components/SquadSheets";
-import { useSquads } from "../../hooks/useSquads";
-import { focusingCount, squadTotal } from "../../utils/squads";
 import { colors, radius, edge } from "../../constants/theme";
-import { type } from "../../constants/typography";
 import { useQuests } from "../../context/QuestContext";
 import { useTimer } from "../../context/TimerContext";
 import { useStudyPlan } from "../../hooks/useStudyPlan";
 import { studySelection } from "../../services/studySelection";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { generalArea, suggestedArea } from "../../utils/focusAreas";
-import { countdownLabel, courseColor, daysUntil, examDateLabel, examTimeLabel, QUICK_SUBJECTS, studyTime, subjectSuggestions, upcomingExams, weekSeconds } from "../../utils/studyPlan";
+import { countdownLabel, courseColor, daysUntil, examDateLabel, QUICK_SUBJECTS, studyTime, subjectSuggestions, upcomingExams, weekSeconds } from "../../utils/studyPlan";
 import { areaTint } from "../../utils/lifeAreaColor";
 import { setupMode } from "../../services/setupMode";
 import AppSheet from "../../components/AppSheet";
@@ -32,7 +28,7 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import type { StudyCourse, StudyExam } from "../../types/studyPlan";
 
 type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null; title?: string } | { kind: "subject"; course: StudyCourse | null }
-  | { kind: "squad"; id: string } | { kind: "join" } | { kind: "add" } | { kind: "how" } | null;
+  | { kind: "add" } | { kind: "how" } | null;
 
 export default function StudyScreen() {
   const router = useRouter();
@@ -41,12 +37,13 @@ export default function StudyScreen() {
   const bottomInset = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const { subjects = [] } = useQuests();
   const plan = useStudyPlan();
-  const squads = useSquads();
   const [sheet, setSheet] = useState<Sheet>(null);
   const [open, setOpen] = useState(false);
   const afterClose = useRef<(() => void) | null>(null);
-  const refreshSquads = squads.refresh;
-  useFocusEffect(useCallback(() => { requestStudySync(); void refreshSquads(); }, [refreshSquads]));
+  useFocusEffect(useCallback(() => { requestStudySync(); }, []));
+  // A subject added with one tap says so in place, with an optional exam, then fades.
+  const [added, setAdded] = useState<{ id: string; name: string } | null>(null);
+  useEffect(() => { if (!added) return; const timer = setTimeout(() => setAdded(null), 6000); return () => clearTimeout(timer); }, [added]);
 
   const exams = upcomingExams(plan.exams);
   const courseFor = (id: string | null) => plan.courses.find(item => item.id === id) ?? null;
@@ -64,10 +61,10 @@ export default function StudyScreen() {
     studySelection.choose(course.id); setupMode.choose("study");
     timer.reviewSummary?.(); router.navigate("/session");
   };
-  // A new subject arrives with an exam card ready to date, which can simply be closed.
+  // Adding a subject only adds it; an exam is one tap away but never forced.
   const addSubject = async (name: string, courseId: string | null) => {
     const id = courseId ?? await plan.ensureCourse(name, learning?.id ?? null);
-    if (id) show({ kind: "exam", exam: null, courseId: id, title: `${name} exam` });
+    if (id) setAdded({ id, name });
   };
   const ensureSubject = (name: string) => plan.ensureCourse(name, learning?.id ?? null);
 
@@ -90,7 +87,7 @@ export default function StudyScreen() {
               <View style={s.flex}>
                 <Text style={s.heroTitle} numberOfLines={2}>{exam.title}</Text>
                 <View style={s.metaRow}>{course && <View style={[s.dot, { backgroundColor: courseColor(course.id) }]} />}
-                  <Text style={s.caption} numberOfLines={1}>{[course?.name, examDateLabel(exam.examDate), exam.examMinute != null ? examTimeLabel(exam.examMinute) : null].filter(Boolean).join(" · ")}</Text></View>
+                  <Text style={s.caption} numberOfLines={1}>{[course?.name, examDateLabel(exam.examDate)].filter(Boolean).join(" · ")}</Text></View>
               </View>
             </Pressable>
             {course && <View style={s.heroFoot}>
@@ -130,41 +127,19 @@ export default function StudyScreen() {
           <Pressable disabled={!plan.ready} onPress={() => show({ kind: "add" })} accessibilityRole="button" accessibilityLabel="More subjects" style={s.chip}>
             <Ionicons name="search" size={14} color={colors.accent} /><Text style={s.chipText}>More</Text></Pressable>
         </View>
-        <Text style={s.hint}>Tap a subject to add it. Your study time counts toward Learning.</Text>
+        {added ? <View style={s.added} accessibilityLiveRegion="polite" testID="subject-added">
+          <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+          <Text style={[s.body, s.flex]} numberOfLines={1}>{added.name} added</Text>
+          <Pressable onPress={() => { const subject = added; setAdded(null); show({ kind: "exam", exam: null, courseId: subject.id, title: `${subject.name} exam` }); }}
+            accessibilityRole="button" accessibilityLabel={`Add an exam for ${added.name}`} style={s.pill}><Text style={s.pillText}>Add exam</Text></Pressable>
+        </View> : <Text style={s.hint}>Tap + to add a subject. Add an exam any time from its card. Study time counts toward Learning.</Text>}
       </View>
 
-      <View style={s.section}>
-        <SectionHead title="Squads" addLabel="Join or create a squad" onAdd={() => show({ kind: "join" })} />
-        {squads.squads.length ? <>
-          <View style={s.group}>{squads.squads.map((squad, index) => {
-            const live = focusingCount(squad);
-            return <Pressable key={squad.id} onPress={() => show({ kind: "squad", id: squad.id })} accessibilityRole="button"
-              accessibilityLabel={`${squad.name}, ${squad.members.length} members${live ? `, ${live} focusing now` : ""}, ${studyTime(squadTotal(squad))} together this week. Open squad`} style={[s.row, index > 0 && s.line]}>
-              <View style={s.faces}>{squad.members.slice(0, 3).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={{ ...member, focusingNow: false }} size={30} /></View>)}</View>
-              <View style={s.flex}><Text style={s.rowTitle} numberOfLines={1}>{squad.name}</Text>
-                {live ? <View style={s.liveRow}><View style={s.liveDot} /><Text style={s.liveText} numberOfLines={1}>{live} focusing now</Text></View>
-                  : <Text style={s.caption}>{squad.members.length} {squad.members.length === 1 ? "member" : "members"}</Text>}</View>
-              <Text style={s.after}>{studyTime(squadTotal(squad))}</Text>
-              <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
-            </Pressable>;
-          })}</View>
-          <Text style={s.hint}>Time each squad focused together this week.</Text>
-        </> : <View style={[s.group, s.starter]}>
-          <Text style={s.caption}>{squads.error && !squads.ready ? squads.error : "Study with friends. See each other's focus time each week, and who's focusing right now."}</Text>
-          <View style={s.chips}>
-            <Pressable onPress={() => show({ kind: "join" })} accessibilityRole="button" accessibilityLabel="Join or create a squad" style={s.chip}>
-              <Ionicons name="people-outline" size={15} color={colors.accent} /><Text style={s.chipText}>Join or create a squad</Text></Pressable>
-          </View>
-        </View>}
-      </View>
     </View></ContentReveal>
 
     <StudyExamSheet visible={open && sheet?.kind === "exam"} exam={sheet?.kind === "exam" ? sheet.exam : null} courses={plan.courses}
       initialCourseId={sheet?.kind === "exam" ? sheet.courseId : null} initialTitle={sheet?.kind === "exam" ? sheet.title ?? "" : ""}
       onSave={plan.saveExam} onEnsureSubject={ensureSubject} onRemove={id => plan.remove("exam", id)} onClose={() => close()} onDismiss={dismissed} />
-    <SquadSheet visible={open && sheet?.kind === "squad"} squad={sheet?.kind === "squad" ? squads.squads.find(item => item.id === sheet.id) ?? null : null}
-      onClose={() => close()} onLeave={squads.leave} onRemove={squads.remove} onUpdate={squads.update} />
-    <SquadJoinSheet visible={open && sheet?.kind === "join"} online={squads.online} onClose={() => close()} onJoin={squads.join} onCreate={squads.create} />
     <StudySubjectSheet visible={open && sheet?.kind === "subject"} course={sheet?.kind === "subject" && sheet.course ? courseFor(sheet.course.id) ?? sheet.course : null}
       areas={subjects} defaultAreaId={learning?.id ?? null} recent={plan.recent} exams={plan.exams} sessionOpen={timer.hasOpenSession}
       onSave={plan.saveCourse} onRemove={id => plan.remove("course", id)} onClose={() => close()} onDismiss={dismissed}
@@ -194,7 +169,7 @@ const HOW_IT_WORKS = [
   ["Add your exams", "Each one gets its own countdown, here and on Home, with reminders if you want them."],
   ["Pick a subject when you focus", "Choose Study when you set up a session, or tap Study on an exam."],
   ["See where your time went", "Time per subject shows here, in Progress and on your Profile."],
-  ["Study with friends", "Join a squad with a code to see each other's week."],
+  ["Keep each other going", "Squads live in Progress. Everyone's focus time counts, study and routines."],
 ] as const;
 
 function SectionHead({ title, addLabel, onAdd }: { title: string; addLabel: string; onAdd: () => void }) {
@@ -212,8 +187,7 @@ const s = StyleSheet.create({
   bigDays: { width: 72, height: 72, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)", paddingHorizontal: 6 },
   bigNumber: { color: colors.danger, fontSize: 30, lineHeight: 34, fontWeight: "800", fontVariant: ["tabular-nums"] },
   bigToday: { color: colors.danger, fontSize: 20, lineHeight: 24, fontWeight: "800" },
-  bigUnit: { color: colors.danger, fontSize: 12, lineHeight: 16, fontWeight: "600" },
-  label: { ...type.label }, heroTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  bigUnit: { color: colors.danger, fontSize: 12, lineHeight: 16, fontWeight: "600" }, heroTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, body: { color: colors.text, fontSize: 15, lineHeight: 20 },
   heroFoot: { flexDirection: "row", alignItems: "center", gap: 12, paddingTop: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   pill: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, borderRadius: 19, backgroundColor: colors.accentSoft },
@@ -230,24 +204,16 @@ const s = StyleSheet.create({
   emptyIcon: { width: 52, height: 52, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
   primary: { minHeight: 50, alignItems: "center", justifyContent: "center", borderRadius: 25, backgroundColor: colors.primary },
   primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
+  added: { ...edge, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 50, paddingLeft: 14, paddingRight: 6, borderRadius: 25, backgroundColor: colors.surface },
   sectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 4 },
   sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3, paddingHorizontal: 4 },
   add: { ...edge, width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
-  group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
-  row: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
-  after: { color: colors.secondary, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] },
   dot: { width: 10, height: 10, borderRadius: 5 },
-  hint: { color: colors.tertiary, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
-  starter: { padding: 16, gap: 12 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  hint: { color: colors.tertiary, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 }, chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { ...edge, minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.sheetCard },
   chipText: { color: colors.text, fontSize: 15, fontWeight: "500" },
-  faces: { flexDirection: "row", alignItems: "center" },
-  faceSlot: { borderRadius: 17, borderWidth: 2, borderColor: colors.surface },
-  liveRow: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
-  liveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.success },
-  liveText: { color: colors.success, fontSize: 14, lineHeight: 20, fontWeight: "600" },
   step: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   stepText: { color: colors.accent, fontSize: 13, fontWeight: "700" },
 });

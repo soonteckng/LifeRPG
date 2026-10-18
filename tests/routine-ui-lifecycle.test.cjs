@@ -51,19 +51,18 @@ async function pendingCard() {
   const load = loader({ ...base(),
     'expo-router': { useRouter: () => ({ push: route => calls.push(['route', route]) }) },
     '../hooks/useSavedRoutines': { useSavedRoutines: () => state },
-    '../context/TimerContext': { useTimer: () => ({ ...timer, startFreeTimer: async (...args) => { calls.push(['start', ...args]); return true; } }) },
+    '../context/TimerContext': { useTimer: () => ({ ...timer, setLinkedTaskId: v => calls.push(['task', v]), setTargetAttributeId: v => calls.push(['area', v]),
+      setNotes: v => calls.push(['notes', v]), setDurationInSeconds: v => calls.push(['seconds', v]), reviewSummary() {} }) },
     '../services/savedRoutineService': { resolveSavedRoutine: () => new Promise(resolve => pending.push(resolve)) },
   });
   const Card = load('src/components/SavedRoutinesCard.tsx').default;
   let tree; await act(async () => { tree = create(React.createElement(Card, props)); });
   return { calls, pending,
     output: () => tree.root.findAllByType('Text').map(node => node.children.filter(child => typeof child === 'string').join('')).join(' '),
-    // The play button asks first; the confirmation sheet owns the Start.
+    // Play reads the latest routine, then opens the setup screen filled in with it.
     start: async () => {
       await act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start routine Review notes').props.onPress(); });
-      await act(async () => { tree.root.findAllByType('Press').find(n => n.props.accessibilityLabel === 'Start Review notes now').props.onPress(); });
     },
-    dismiss: async () => act(async () => { tree.root.findAllByType('Sheet').find(n => n.props.label === 'start routine').props.onDismiss(); }),
     update: async change => { state = { ...state, ...change.state }; props = { ...props, ...change.props }; timer = { ...timer, ...change.timer };
       await act(async () => tree.update(React.createElement(Card, props))); },
     release: async index => act(async () => { pending[index](routine); }),
@@ -89,15 +88,15 @@ test('a delayed routine read cannot restart after a surface, account, admission 
   }
 });
 
-test('an old routine read cannot unlock a newer pending Start or submit a duplicate', async () => {
+test('an old routine read cannot unlock a newer pending play or open setup twice', async () => {
   const ui = await pendingCard();
   try {
     await ui.start();
     await ui.update({ props: { active: false } }); await ui.update({ props: { active: true } });
     await ui.start(); assert.equal(ui.pending.length, 2);
     await ui.release(0); await ui.start(); assert.equal(ui.pending.length, 2);
-    await ui.release(1); await ui.dismiss();
-    assert.deepEqual(ui.calls, [['start', 75, 2, 'Review notes'], ['route', '/session']]);
+    await ui.release(1);
+    assert.deepEqual(ui.calls, [['task', null], ['area', 2], ['notes', 'liferpg:routine:v1:{"name":"Review notes"}'], ['seconds', 75], ['route', '/session']]);
   } finally { await ui.cleanup(); }
 });
 

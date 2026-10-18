@@ -27,10 +27,12 @@ export interface FocusCardProps {
   goal?: ReactNode;
   protection?: ReactNode;
   subjects?: Subject[]; areaId?: number | null; onArea?: (id: number | null) => void; onStart: () => void;
-  /** Focus · Routine · Study, shown above the rows before a session starts. */
+  /** Routine · Study, shown above the rows before a session starts. */
   modeSwitch?: ReactNode;
-  /** Routine and Study replace the Focus area row with their own first row. */
+  /** Study replaces the Category row with its own first row. */
   leadRow?: ReactNode;
+  /** Routine adds its Routine row under the Category row. */
+  afterArea?: ReactNode;
 }
 export default function FocusCard(props: FocusCardProps) {
   const areaLabel = focusAreaTitle(props.area);
@@ -48,13 +50,14 @@ export default function FocusCard(props: FocusCardProps) {
     <View style={[s.heading, props.active ? s.fieldsRow : s.group]}>
     {!props.active && props.modeSwitch}
     {!props.active && props.leadRow ? props.leadRow : !props.active && props.onPreferences ? <Pressable testID={props.preferencesID ?? "focus-card-preferences"} onPress={openPreferences} disabled={preferencesLocked} style={[s.areaButton, preferencesLocked && s.disabled]}
-      accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose your focus area and a suggested activity, or free focus." accessibilityState={{ disabled: preferencesLocked }}>
-      <View style={[s.rowIcon, { backgroundColor: areaTint(props.tint) }]}><Ionicons name={focusAreaIcon(props.area)} size={16} color={props.tint} /></View><Text style={s.rowLabel}>Focus area</Text><View style={s.rowValue}><Text style={s.rowValueText} numberOfLines={1}>{areaLabel}</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+      accessibilityRole="button" accessibilityLabel="Change focus direction" accessibilityHint="Choose a category and a suggested activity, or free focus." accessibilityState={{ disabled: preferencesLocked }}>
+      <View style={[s.rowIcon, { backgroundColor: areaTint(props.tint) }]}><Ionicons name={focusAreaIcon(props.area)} size={16} color={props.tint} /></View><Text style={s.rowLabel}>Category</Text><View style={s.rowValue}><Text style={s.rowValueText} numberOfLines={1}>{areaLabel}</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
     </Pressable> : <View style={s.areaValue}><View style={[s.dot, { backgroundColor: props.tint }]} /><Text style={s.title} accessibilityRole="header">{props.active ? props.title : areaLabel}</Text></View>}
+    {!props.active && !props.leadRow && props.afterArea}
     {!props.active && <FocusLengthControl compact showLabel={false} seconds={props.seconds} customSeconds={props.customSeconds} disabled={editLocked} onChange={props.onDuration} onCustomSave={props.onCustomDuration} />}
     {!props.active && props.protection}
     </View>
-    {!props.active && !props.leadRow && <View style={s.suggestionRow} testID="focus-card-suggestion">
+    {!props.active && !props.leadRow && (suggested || !props.afterArea) && <View style={s.suggestionRow} testID="focus-card-suggestion">
       <Ionicons name={suggested ? "bulb-outline" : "leaf-outline"} size={15} color={suggested ? colors.accent : colors.secondary} />
       <Text style={s.suggestion} numberOfLines={2} accessibilityLabel={suggested ? `Suggested: ${props.title}. ${props.instruction}` : "Free focus. Choose your own activity."}>{suggested ? `Suggested: ${props.title}` : "Free focus · One thing at a time."}</Text>
     </View>}

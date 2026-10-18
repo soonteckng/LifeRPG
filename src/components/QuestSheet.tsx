@@ -287,7 +287,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
               </View> : <Text style={styles.helper}>{editor.draft.repeat === "once" ? "Available today and stays available until completed." : "A fresh start, every day."}</Text>}
             </View>
             <View style={styles.field}>
-              <Text style={styles.label}>Focus area</Text>
+              <Text style={styles.label}>Category</Text>
 
               <View style={styles.options}>
                 <Choice label={focusAreaTitle()} selected={editor.draft.subjectId === null || focusAreaKind(subjects.find((subject) => subject.id === editor.draft.subjectId)?.title) === "general"}

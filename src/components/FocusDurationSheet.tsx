@@ -44,7 +44,7 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><BottomSheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><BottomSheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
       </View>
-      <Text style={p.caption}>Up to 8 hours. Your suggestion and Focus area stay the same.</Text>
+      <Text style={p.caption}>Up to 8 hours. Your suggestion and category stay the same.</Text>
       {!!error && <Text accessibilityRole="alert" style={p.error}>{error}</Text>}
     </BottomSheetScrollView>
   </AppSheet>;

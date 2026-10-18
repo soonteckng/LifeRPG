@@ -176,8 +176,8 @@ test('the subject catalog offers common subjects you have not added, filtered by
 test('the shared setup mode is one value every setup reads and only announces real changes', () => {
   const { setupMode } = load('src/services/setupMode.ts'); let heard = 0;
   const stop = setupMode.subscribe(() => heard++);
-  assert.equal(setupMode.get(), 'focus');
+  assert.equal(setupMode.get(), 'routine', 'Routine, with any activity, is where everyone starts'); assert.equal(setupMode.routine(), null);
   setupMode.choose('study'); setupMode.choose('study'); setupMode.chooseRoutine('saved:1'); setupMode.chooseRoutine('saved:1');
   assert.equal(setupMode.get(), 'study'); assert.equal(setupMode.routine(), 'saved:1'); assert.equal(heard, 2);
-  stop(); setupMode.choose('focus'); assert.equal(heard, 2);
+  stop(); setupMode.choose('routine'); assert.equal(heard, 2);
 });

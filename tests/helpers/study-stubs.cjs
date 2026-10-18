@@ -10,6 +10,8 @@ module.exports = name => {
   if (name.endsWith('/SlidingSelection')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('View', props) }; }
   if (name.endsWith('/useSavedRoutines')) return { __esModule: true, useSavedRoutines: () => ({ ready: true, routines: [], scope: null, online: true, pendingCount: 0, conflicts: [] }) };
   if (name.endsWith('/HomeStudyStrip')) return { __esModule: true, default: () => null };
+  // Squads have their own tests; Progress renders them above its charts.
+  if (name.endsWith('/SquadsSection')) return { __esModule: true, default: () => null, SquadSummary: () => null, daysLeftInWeek: () => 3 };
   if (name.endsWith('/useSquads')) return { __esModule: true, useSquads: () => ({ ready: true, squads: [], online: true, refresh: async () => {} }) };
   if (name.endsWith('/StudyLifecycle')) return { __esModule: true, default: () => null, requestStudySync() {} };
   return undefined;

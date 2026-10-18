@@ -601,7 +601,7 @@ test("empty Progress welcomes a fresh week instead of a page of empty sections",
     assert.match(ui.text(), /A fresh week/);
     assert.match(ui.text(), /Even 15 minutes counts/);
     assert.ok(ui.renderer.root.findAllByType("Button").some(b => b.props.accessibilityLabel === "Start a session from Home"));
-    assert.doesNotMatch(ui.text(), /Room to grow|No completed sessions|By focus area/);
+    assert.doesNotMatch(ui.text(), /Room to grow|No completed sessions|By category/);
     assert.equal(ui.historyCalls(), 0);
   } finally {
     await ui.cleanup();
@@ -633,8 +633,8 @@ test("compact Progress keeps the chart before allocation and opens area drilldow
   try {
     const text=ui.text();
     assert.ok(text.indexOf("30s") < text.indexOf("Dot · active day"));
-    assert.ok(text.indexOf("Dot · active day") < text.indexOf("By focus area"));
-    assert.ok(text.indexOf("By focus area") < text.indexOf("Sessions"));
+    assert.ok(text.indexOf("Dot · active day") < text.indexOf("By category"));
+    assert.ok(text.indexOf("By category") < text.indexOf("Sessions"));
     const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
     assert.ok(area);
     await act(async()=>area.props.onPress());
@@ -678,7 +678,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
     assert.equal(rows.length, 2);
   } finally { await ui.cleanup(); }
 });
-test("Month By focus area opens both legacy Wellbeing sessions from one combined row", async () => {
+test("Month By category opens both legacy Wellbeing sessions from one combined row", async () => {
   const stamp = new Date(Date.now() - 1000).toISOString();
   const ui = await screenHarness({
     sessionRows: [session("grooming", 60, stamp, 2), session("fitness", 900, stamp, 3)],

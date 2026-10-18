@@ -764,7 +764,7 @@ test("rejected completion never renders duplicate reward controls on the session
 test("quest setup is compact, keeps its association during loading, and never starts automatically",async()=>{
   const ui=await screenSetup({linkedTaskId:7,duration:2700,timeLeft:2700});
   assert.match(ui.output(),/A long quest title/);
-  assert.equal(ui.button("Choose focus area"),undefined);
+  assert.ok(ui.button("Choose category"),"a routine shows its category; changing it returns to Any activity");
   assert.equal(ui.button("15 minutes"),undefined);
   assert.ok(ui.button("Change routine"));
   assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
@@ -892,10 +892,12 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   assert.equal(completed.detail,"Review session");
 });
 
-test("free setup lists the same switch and rows as Home",async()=>{
+test("Routine setup lists the same switch and rows as Home: category, optional routine, length",async()=>{
   const ui=await screenSetup();
-  assert.ok(ui.button("Routine. One of your saved routines"),"Routine is one of the three setup modes");
-  assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Everyday focus");
+  assert.ok(ui.button("Routine. Any activity in a category, or one of your routines"),"Routine is one of the two setup modes");
+  assert.ok(ui.button("Study. A subject, counted toward its exams"));
+  assert.equal(ui.button("Choose category").props.accessibilityValue.text,"Everyday focus");
+  assert.equal(ui.button("Choose routine").props.accessibilityHint,"Any activity in this category","a routine is optional");
   assert.ok(ui.button("Set a custom focus duration"));
   assert.equal(ui.button("Choose activity"),undefined);
   await openRoutines(ui);
@@ -1395,11 +1397,11 @@ test("saved completion carries independent XP banks and server goal credit witho
 
 test("the focus area row selects the saved Life area without touching quest or duration", async()=>{
   const ui=await screenSetup({}, {subjects:[{id:1,title:"General"},{id:2,title:"Study",color_code:"#25C9B8"}]});
-  await ui.press("Choose focus area");
+  await ui.press("Choose category");
   await ui.press("Learning");
   assert.deepEqual(ui.calls,[["area",2]]);
   await ui.update({targetAttributeId:2});
-  assert.equal(ui.button("Choose focus area").props.accessibilityValue.text,"Learning");
+  assert.equal(ui.button("Choose category").props.accessibilityValue.text,"Learning");
   await ui.press("Use 60 minutes");
   assert.deepEqual(ui.calls.at(-1),["seconds",3600]);
   await ui.update({duration:3600,timeLeft:3600});
@@ -1411,11 +1413,11 @@ test("the focus area row selects the saved Life area without touching quest or d
 test("Session area choices share canonical labels and preserve a selected legacy ID without duplicates", async()=>{
   const ui=await screenSetup({targetAttributeId:3}, {subjects:[{id:1,title:"General"},{id:2,title:"Fitness & Health"},{id:3,title:"Grooming & Vitality"},{id:4,title:"Work"},{id:5,title:"Creative practice"}]});
   try {
-    await ui.press("Choose focus area");
+    await ui.press("Choose category");
     const choices=ui.root().findAllByType("Button").filter(node=>node.props.accessibilityLabel==="Wellbeing");
     assert.equal(choices.length,1);assert.equal(choices[0].props.accessibilityState.checked,true);
     await ui.press("Wellbeing");assert.deepEqual(ui.calls,[["area",3]]);
-    await ui.press("Choose focus area");
+    await ui.press("Choose category");
     assert.ok(ui.button("Work & projects"));assert.ok(ui.button("Creativity"));
   } finally {await ui.cleanup();}
 });
@@ -1428,13 +1430,13 @@ test("the completed route does not render an additional area reward below the sh
 test("every Life area is reachable from one focus area sheet",async()=>{
   const subjects=Array.from({length:5},(_,i)=>({id:i+1,title:i===0?"General":`Area ${i+1}`}));
   const ui=await screenSetup({}, {subjects});
-  await ui.press("Choose focus area");
+  await ui.press("Choose category");
   for(const area of subjects) assert.ok(ui.button(area.title === "General" ? "Everyday focus" : area.title));
   await ui.press("Area 5");
   assert.deepEqual(ui.calls.at(-1),["area",5]);
   await ui.cleanup();
   const extra=await screenSetup({}, {subjects:[...subjects,{id:6,title:"Six"},{id:7,title:"Seven"}]});
-  await extra.press("Choose focus area");
+  await extra.press("Choose category");
   await extra.press("Seven");
   assert.deepEqual(extra.calls.at(-1),["area",7]);
   await extra.cleanup();
@@ -1850,14 +1852,15 @@ test("choosing a legacy routine clears saved metadata but keeps its numeric task
   }finally{await ui.cleanup();}
 });
 
-test("free session clears both routine metadata and the legacy link",async()=>{
+test("Any activity clears both routine metadata and the legacy link",async()=>{
   const metadata=load('src/utils/routineSession.ts',{});
   for(const initial of [{linkedTaskId:7,notes:'legacy notes'},
     {linkedTaskId:null,notes:metadata.encodeRoutineSession('Saved preset')}]) {
     const ui=await screenSetup({...initial,duration:91});
     try {
-      await ui.press('Focus. Any activity in a focus area');
-      assert.deepEqual(ui.calls,[['task',null],['notes',''],['area',1],['seconds',1800]]);
+      await openRoutines(ui); await ui.press('Choose Any activity');
+      const changes=ui.calls.filter(call=>['task','notes','area','seconds'].includes(call[0]));
+      assert.deepEqual(changes,initial.linkedTaskId?[['task',null],['notes',''],['seconds',1800]]:[['task',null],['notes','']],'the category stays; only the routine goes');
       assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
     }finally{await ui.cleanup();}
   }

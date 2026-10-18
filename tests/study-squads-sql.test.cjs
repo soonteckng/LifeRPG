@@ -1,6 +1,7 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const migration = fs.readFileSync(path.join(root, 'supabase/migrations/20261018140000_study_squads.sql'), 'utf8');
+const limits = fs.readFileSync(path.join(root, 'supabase/migrations/20261018200000_squad_limits.sql'), 'utf8');
 const users = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', ...Array.from({ length: 9 }, (_, i) => `3333333${i}-3333-4333-8333-333333333333`)];
 const [me, friend] = users;
 const rid = n => `dddddddd-dddd-4ddd-8ddd-${String(n).padStart(12, '0')}`;
@@ -24,6 +25,7 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
       await db.exec(`insert into auth.users(id) values ${users.map(u => `('${u}')`).join(',')};
         insert into public.profiles(id, username, avatar) values ${users.map((u, i) => `('${u}', 'User ${i}', '🌱')`).join(',')} on conflict (id) do update set username = excluded.username;`);
       await db.exec(migration);
+      await db.exec(limits);
       await db.exec(`set role authenticated;set request.jwt.claim.sub='${me}'`);
       await fn(db);
     } finally { await db.close(); }
@@ -53,7 +55,7 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
     await as(db, me);
     assert.equal((await list(db, me))[0].members.length, 2);
   }));
-  test('SQL squads: wrong codes slow down, squads fill at 8 and people at 5 squads', () => withDb(async db => {
+  test('SQL squads: wrong codes slow down, squads fill at 8, you lead one and belong to three', () => withDb(async db => {
     const made = await create(db, me);
     await as(db, friend);
     for (let n = 0; n < 10; n++) assert.equal((await join(db, friend, 'AAAAAA')).status, 'not_found');
@@ -61,8 +63,14 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
     for (const user of users.slice(2, 9)) { await as(db, user); assert.equal((await join(db, user, made.squad.code)).status, 'saved'); }
     await as(db, users[9]); assert.equal((await join(db, users[9], made.squad.code)).status, 'full');
     await as(db, me);
-    for (let n = 2; n <= 5; n++) assert.equal((await create(db, me, `Squad ${n}`, n)).status, 'saved');
-    assert.equal((await create(db, me, 'Sixth', 6)).status, 'limit');
+    assert.equal((await create(db, me, 'Second', 2)).status, 'lead_limit', 'you lead one squad at a time');
+    const codes = [];
+    for (const [n, user] of users.slice(2, 5).entries()) { await as(db, user); await call(db, `public.leave_squad_v1($1::uuid, $2::uuid)`, [made.squad.id, user]); codes.push((await create(db, user, `Theirs ${n}`, 10 + n)).squad.code); }
+    await as(db, me);
+    assert.equal((await join(db, me, codes[0])).status, 'saved'); assert.equal((await join(db, me, codes[1])).status, 'saved');
+    assert.equal((await join(db, me, codes[2])).status, 'limit', 'three squads at most, counting your own');
+    await call(db, `public.leave_squad_v1($1::uuid, $2::uuid)`, [made.squad.id, me]);
+    assert.equal((await create(db, me, 'Fresh start', 3)).status, 'saved', 'leaving your squad lets you start another');
     await assert.rejects(create(db, me, ' spaced', 7), /Invalid squad name/);
   }));
   test('SQL squads: owners remove members; leaving passes ownership on and an empty squad ends', () => withDb(async db => {

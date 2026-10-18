@@ -578,6 +578,34 @@ for (const platform of ["ios", "android"]) {
   });
 }
 
+test("a sheet whose close callback never arrives still finishes closing, so nothing invisible blocks the screen", async () => {
+  let sheetProps, didDismiss = 0;
+  const BottomSheet = React.forwardRef((props, ref) => {
+    sheetProps = props;
+    React.useImperativeHandle(ref, () => ({ close() {} })); // the callback is swallowed, as some keyboards do
+    return React.createElement("Panel", props, props.children);
+  });
+  const AppSheet = load("src/components/AppSheet.tsx", {
+    "@gorhom/bottom-sheet": { __esModule: true, default: BottomSheet, useBottomSheetSpringConfigs:c=>c,useBottomSheetTimingConfigs:c=>c, BottomSheetBackdrop: host("Backdrop"), BottomSheetFooter: host("SheetFooter") },
+    "react-native": { ...native, Modal: host("Modal"), Platform: { OS: "android" }, PanResponder: { create: (handlers) => ({ panHandlers: handlers }) }, useWindowDimensions: () => ({ height: 800 }) },
+    "react-native-gesture-handler": { GestureHandlerRootView: host("GestureRoot") },
+    "react-native-reanimated": { Easing:{out:fn=>fn,cubic:v=>v}, ReduceMotion: { System: "system" } },
+    "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 44, bottom: 34 }) },
+  }).default;
+  const props = { visible: true, label: "squad", header: null, onDismiss: () => { didDismiss++; }, onRequestClose: () => {} };
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(AppSheet, props)); });
+  await act(async () => renderer.update(React.createElement(AppSheet, { ...props, visible: false })));
+  assert.equal(renderer.root.findByType("Modal").props.visible, true, "the slide-out still gets its moment");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 1000)); });
+  assert.equal(renderer.root.findByType("Modal").props.visible, false);
+  assert.equal(didDismiss, 1);
+  await act(async () => renderer.update(React.createElement(AppSheet, props)));
+  assert.equal(renderer.root.findByType("Modal").props.visible, true, "it opens again on the next tap");
+  assert.ok(sheetProps);
+  await act(async () => renderer.unmount());
+});
+
 test("upcoming-only quests link to All without hiding Add", async () => {
   const ui = await setup([task({ is_due_today: false, repeat_rule: "Fri", is_recurring: true })]);
   assert.match(ui.output(), /Nothing scheduled for today/);

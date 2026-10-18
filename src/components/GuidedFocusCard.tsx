@@ -8,11 +8,11 @@ import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { preferenceForFocusArea } from "../utils/focusPreference";
 import { useTimer } from "../context/TimerContext";
 import type { Subject } from "../services/taskService";
-export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled, dimmed, onStarted, selectedSeconds, customSeconds, onDuration, onCustomDuration, onPreferences, goal, protection, modeSwitch }: {
+export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled, dimmed, onStarted, selectedSeconds, customSeconds, onDuration, onCustomDuration, onPreferences, goal, protection, modeSwitch, afterArea }: {
   owner: string; subjects: Subject[]; activeTitle?: string; disabled: boolean; dimmed?: boolean; onStarted: () => void; selectedSeconds?: number; onDuration?: (seconds: number) => void;
   customSeconds?: number | null; onCustomDuration?: (seconds: number) => void;
   onPreferences?: () => void;
-  goal?: ReactNode; protection?: ReactNode; modeSwitch?: ReactNode;
+  goal?: ReactNode; protection?: ReactNode; modeSwitch?: ReactNode; afterArea?: ReactNode;
 }) {
   const preference = useGuidedPreference(owner), timer = useTimer();
   const [selection, setSelection] = useState<number | null>(null);
@@ -67,5 +67,5 @@ export default function GuidedFocusCard({ owner, subjects, activeTitle, disabled
     tint={lifeAreaColor(active ? timer.targetAttributeId : areaId, (active ? activeArea : area)?.color_code)}
     active={active} running={!!timer.isRunning} awaitingStart={timer.awaitingStart} finishing={active && timer.finishing} breakSeconds={active ? timer.breakSecondsLeft : 0} dimmed={dimmed} busy={busy} disabled={locked} editDisabled={locked}
     setupDisabled={busy || areaChanging || !!timer.actionBusy || preference.busy} restoring={!!timer.isRestoring} failed={!active && !!keptFailure} error={!active && keptFailure ? timer.actionError ?? "Couldn’t start. Your suggestion is kept for retry." : areaError ? "Couldn’t change your focus area. Your previous choice is still selected. Try again." : preference.error ? "Couldn’t load your preferences. Tap Change to try again." : undefined}
-    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} customSeconds={customSeconds} onCustomDuration={next => chooseDuration(next, true)} onArea={id => void chooseArea(id)} onStart={() => void start()} onPreferences={onPreferences} goal={goal} protection={protection} modeSwitch={modeSwitch} />;
+    subjects={subjects} areaId={active ? timer.targetAttributeId : areaId} onDuration={chooseDuration} customSeconds={customSeconds} onCustomDuration={next => chooseDuration(next, true)} onArea={id => void chooseArea(id)} onStart={() => void start()} onPreferences={onPreferences} goal={goal} protection={protection} modeSwitch={modeSwitch} afterArea={afterArea} />;
 }

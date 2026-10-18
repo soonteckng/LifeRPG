@@ -164,6 +164,11 @@ export default function SessionScreen() {
   const missingQuest = isQuest && (!task || !locked && !selectableQuests.some(item => item.id === timer.linkedTaskId));
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
   const compactSetup = phase === "setup" && !isQuest;
+  // Setup sits in the middle of the free space instead of leaving a gap above Start.
+  const [setupFit, setSetupFit] = useState({ view: 0, content: 0 });
+  const [setupTop, setSetupTop] = useState(0);
+  const fitTop = compactSetup ? Math.max(0, Math.min(200, Math.round((setupFit.view + setupTop - setupFit.content) / 2) - 12)) : 0;
+  if (Math.abs(fitTop - setupTop) > 2) setSetupTop(fitTop);
   const areaColor = lifeAreaColor(timer.targetAttributeId, area?.color_code);
   const learning = suggestedArea(subjects, "learning");
   const storedMode = useSetupMode();
@@ -337,23 +342,25 @@ export default function SessionScreen() {
   };
   const start = () => {
     if (locked || missingQuest || timer.restoreError || picker || !validSessionSeconds(timer.duration)) return;
-    // Routine and Study need their pick first; Start opens the picker instead.
-    if (sessionMode === "routine" && !isRoutine) { setPicker("quest"); return; }
+    // Study needs a subject first; Start opens the subject picker instead.
     if (sessionMode === "study" && !chosenCourse) { setSubjectPicker(true); return; }
     Keyboard.dismiss();
     void timer.startTimer(timer.duration, task?.title ?? routineName ?? undefined);
   };
   const chooseMode = (next: SetupMode) => {
     if (locked) return;
-    if (next !== "routine" && isRoutine) switchToFree();
-    if (next === "routine" && !isRoutine) setPicker("quest");
-    if (next === "study") { const subjectArea = chosenCourse ? courseArea(chosenCourse, general?.id) : learning?.id ?? null; if (subjectArea !== null) timer.setTargetAttributeId(subjectArea); }
+    if (next === "study") {
+      if (isRoutine) clearRoutine();
+      const subjectArea = chosenCourse ? courseArea(chosenCourse, general?.id) : learning?.id ?? null;
+      if (subjectArea !== null) timer.setTargetAttributeId(subjectArea);
+    }
   };
-  const switchToFree = () => {
+  // Back to any activity: the category stays, the routine's link and name go.
+  const clearRoutine = () => {
     if (locked) return;
-    timer.setLinkedTaskId(null); timer.setNotes(""); timer.setTargetAttributeId(general?.id ?? null);
-    setSelectedRoutineKey(null);
-    selectMinutes(30);
+    timer.setLinkedTaskId(null); timer.setNotes("");
+    setSelectedRoutineKey(null); setupMode.chooseRoutine(null);
+    if (isQuest) selectMinutes(30);
   };
   const selectRoutine = (choice: RoutineEntry) => {
     const current = pickerState.current;
@@ -364,11 +371,11 @@ export default function SessionScreen() {
       const notes = encodeRoutineSession(entry.name);
       if (notes === null || entry.areaId !== null && !current.subjects.some(item => item.id === entry.areaId)) return;
       current.timer.setLinkedTaskId(null); current.timer.setTargetAttributeId(entry.areaId);
-      current.timer.setNotes(notes); current.timer.setDurationInSeconds(entry.seconds); setSelectedRoutineKey(entry.key); setupMode.choose("routine");
+      current.timer.setNotes(notes); current.timer.setDurationInSeconds(entry.seconds); setSelectedRoutineKey(entry.key); setupMode.choose("routine"); setupMode.chooseRoutine(entry.key);
     } else {
       current.timer.setNotes(""); current.timer.setLinkedTaskId(entry.task.id);
       current.timer.setTargetAttributeId(entry.areaId ?? current.general?.id ?? null);
-      current.timer.setDurationInMinutes(entry.seconds / 60); setSelectedRoutineKey(null); setupMode.choose("routine");
+      current.timer.setDurationInMinutes(entry.seconds / 60); setSelectedRoutineKey(null); setupMode.choose("routine"); setupMode.chooseRoutine(entry.key);
     }
     setPicker(null);
   };
@@ -412,7 +419,7 @@ export default function SessionScreen() {
         <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
           importantForAccessibility={timer.isCompleted ? "no-hide-descendants" : "auto"}
           testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor,
-            compactSetup ? { height: rowHeight + 24, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, timer.isCompleted && {opacity:0}]}>
+            compactSetup ? { height: rowHeight + 24 + setupTop, paddingTop: setupTop, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, timer.isCompleted && {opacity:0}]}>
           {/* While setting up, only the digits row shows; the full stage sits above
             it unseen, so starting glides the same digits into the ring. */}
           <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
@@ -431,7 +438,9 @@ export default function SessionScreen() {
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
           </Animated.View>
         </View>
-        <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
+        <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled"
+          onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
+          onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
           {breakActive && <Text style={styles.activeTitle} accessibilityRole="timer">Break · {sessionTime(timer.breakSecondsLeft)} left. Apps unlock now and protection returns automatically.</Text>}
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.awaitingStart ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
@@ -440,22 +449,22 @@ export default function SessionScreen() {
             {phase === "setup" && <View style={styles.setupStack}>
               {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
-                <Text style={styles.secondary}>{missingQuest ? task ? "This routine is already done or isn’t scheduled for today. Choose another routine or switch to a free session." : "Your routine is still linked. Reload its details before starting, or switch to a free session." : "Couldn’t load your choices."}</Text>
+                <Text style={styles.secondary}>{missingQuest ? task ? "This routine is already done or isn’t scheduled for today. Choose another routine, or Any activity." : "Your routine is still linked. Reload its details before starting, or choose Any activity." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
               </View>}
               {/* The same switch and rows as Home, so every session is set up one way. */}
               <View style={styles.setup}>
                 <SetupModeSwitch value={sessionMode} disabled={locked} onChange={chooseMode} />
-                {sessionMode === "focus" && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose focus area" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
+                {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose category" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
                   <View style={[styles.rowIcon, { backgroundColor: areaTint(areaColor) }]}><Ionicons name={focusAreaIcon(area?.title ?? "")} size={16} color={areaColor} /></View>
-                  <Text style={styles.rowLabel}>Focus area</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
+                  <Text style={styles.rowLabel}>Category</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
                   <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>}
                 {sessionMode === "study" && <SubjectSetupRow areas={subjects} areaId={timer.targetAttributeId} generalId={general?.id} learningId={learning?.id} disabled={locked}
                   onArea={id => timer.setTargetAttributeId(id)} open={subjectPicker} onOpenChange={setSubjectPicker} />}
-                {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose routine"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : undefined} style={styles.setupRow}>
-                  <View style={[styles.rowIcon, isRoutine && { backgroundColor: areaTint(areaColor) }]}><Ionicons name="repeat" size={16} color={isRoutine ? areaColor : colors.accent} /></View>
-                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine ? styles.rowValueChosen : styles.rowValuePrompt]} numberOfLines={1}>{isRoutine ? title : "Choose"}</Text>
+                {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose routine"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : "Any activity in this category"} style={styles.setupRow}>
+                  <View style={[styles.rowIcon, isRoutine && { backgroundColor: areaTint(areaColor) }]}><Ionicons name="repeat" size={16} color={isRoutine ? areaColor : colors.secondary} /></View>
+                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine && styles.rowValueChosen]} numberOfLines={1}>{isRoutine ? title : "Any"}</Text>
                   <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>}
                 {!isQuest && <FocusLengthControl compact showLabel={false} seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
@@ -484,10 +493,16 @@ export default function SessionScreen() {
         </Animated.View>
       </KeyboardAvoidingView>
       <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact floating maxHeightRatio={0.82}
-        header={<SheetHeader title={picker === "quest" ? "Choose a routine" : "Focus area"} subtitle={picker === "quest" ? undefined : "Where should this block count?"} onClose={() => setPicker(null)} />}>
+        header={<SheetHeader title={picker === "quest" ? "Routine" : "Category"} subtitle={picker === "quest" ? "Pick one, or just focus in your category." : "Where should this block count?"} onClose={() => setPicker(null)} />}>
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <FocusAreaPicker selectedId={timer.targetAttributeId} disabled={locked} areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...selectableAreas.filter(item => item.id !== general?.id)]}
-            onSelect={id => { timer.setTargetAttributeId(id); setPicker(null); }} />}
+            onSelect={id => { if (isRoutine) clearRoutine(); timer.setTargetAttributeId(id); setPicker(null); }} />}
+          {picker === "quest" && <SheetButton style={[styles.questPickerCard, !isRoutine && styles.questPickerSelected]} accessibilityRole="button" accessibilityLabel="Choose Any activity" accessibilityState={{ selected: !isRoutine }}
+            disabled={locked} onPress={() => { clearRoutine(); setPicker(null); }}>
+            <View style={[styles.questPickerIcon, { backgroundColor: colors.accentSoft }]}><Ionicons name="sparkles-outline" size={19} color={colors.accent} /></View>
+            <View style={styles.selectedQuestContent}><Text style={styles.questPickerTitle}>Any activity</Text><Text style={styles.questPickerMeta}>Just focus in {focusAreaTitle(area?.title)}</Text></View>
+            <Ionicons name={!isRoutine ? "checkmark-circle" : "chevron-forward"} size={20} color={!isRoutine ? colors.accent : colors.secondary} />
+          </SheetButton>}
           {picker === "quest" && selectableRoutines.map((item) => {
             const questArea = subjects.find(subject => subject.id === item.areaId);
             const tint = lifeAreaColor(item.areaId, questArea?.color_code);
@@ -507,7 +522,7 @@ export default function SessionScreen() {
           {picker === "quest" && selectableRoutines.length === 0 && <View style={styles.questPickerEmpty}>
             <Ionicons name="flag-outline" size={28} color={colors.accent} />
             <Text style={styles.questPickerTitle}>{loading || !routines.ready ? "Loading routines…" : "No routines yet"}</Text>
-            {!loading && <Text style={styles.secondary}>You can still start a free session.</Text>}
+            {!loading && <Text style={styles.secondary}>Make one in the Routines tab. You can still focus on any activity.</Text>}
           </View>}
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
@@ -552,7 +567,7 @@ const styles = StyleSheet.create({
   rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   rowLabel: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   rowValue: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 16, lineHeight: 22 },
-  rowValueChosen: { color: colors.text }, rowValuePrompt: { color: colors.accent, fontWeight: "600" },
+  rowValueChosen: { color: colors.text },
   protectionStatus: { marginTop: 10, alignItems: "center" },
   label: { color: colors.text, fontSize: 17, flexShrink: 1 },
   link: { color: colors.accent, fontSize: 16, fontWeight: "500" },

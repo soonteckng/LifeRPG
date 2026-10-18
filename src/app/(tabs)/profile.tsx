@@ -85,7 +85,7 @@ export default function ProfileScreen() {
     if (!selectedArea) return;
     // Existing sessions and unresolved completion/restoration always win, as on Home.
     if (!timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !timer.sessionSummary)) {
-      timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id); setupMode.choose("focus");
+      timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id); setupMode.choose("routine"); setupMode.chooseRoutine(null);
     }
     afterArea.current = () => { timer.reviewSummary?.(); router.navigate("/session"); };
     setLeavingArea(true); setAreaOpen(false);
@@ -151,13 +151,13 @@ export default function ProfileScreen() {
           <Ionicons name="chevron-forward" size={18} color={colors.secondary} />
         </Pressable>
         <View style={s.areasCard}>
-          <View style={s.areaHeading}><Text style={s.sectionTitle}>Your focus areas</Text><Text style={p.caption}>Where you make time for what matters.</Text></View>
+          <View style={s.areaHeading}><Text style={s.sectionTitle}>Your categories</Text><Text style={p.caption}>Where you make time for what matters.</Text></View>
           {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
           <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaRow}>
             <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={19} color={lifeAreaColor(area.id, area.color_code)} /></View>
             <Text style={p.rowTitle} numberOfLines={2}>{focusAreaTitle(area.title)}</Text><Text style={s.tileLevel}>Lv {area.level}</Text><Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={6} />
           </Pressable>)}</View>
-          {data && !areas.length && <Text style={p.body}>Your overall level still grows. Focus areas will appear here when available.</Text>}
+          {data && !areas.length && <Text style={p.body}>Your overall level still grows. Categories will appear here when available.</Text>}
           <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
         {study.courses.length > 0 && <View style={s.areasCard} testID="profile-subjects">

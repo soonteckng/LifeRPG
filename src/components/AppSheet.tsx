@@ -242,11 +242,17 @@ export default function AppSheet({
 
   const latestFinishClose = useRef(finishClose);
   useLayoutEffect(() => { latestFinishClose.current = finishClose; });
+  const visibleRef = useRef(visible);
+  useLayoutEffect(() => { visibleRef.current = visible; }, [visible]);
   useEffect(() => {
     if (!visible && mounted) {
       Keyboard.dismiss();
-      if (closeInstantly) latestFinishClose.current();
-      else ref.current?.close();
+      if (closeInstantly) { latestFinishClose.current(); return; }
+      ref.current?.close();
+      // Some Android keyboards swallow the sheet's close callback, which would
+      // leave an invisible modal over the screen. Finish the close regardless.
+      const fallback = setTimeout(() => { if (!visibleRef.current && mountedRef.current) latestFinishClose.current(); }, 900);
+      return () => clearTimeout(fallback);
     }
     // Only a visibility change closes; re-renders must not restart the slide.
     // eslint-disable-next-line react-hooks/exhaustive-deps

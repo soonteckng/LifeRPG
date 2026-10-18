@@ -10,6 +10,7 @@ import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { pinSavedRoutine, routineWidgetsSupported } from "../services/routineWidgetService";
 import { resolveSavedRoutine } from "../services/savedRoutineService";
 import { setupMode } from "../services/setupMode";
+import { encodeRoutineSession } from "../utils/routineSession";
 import { focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { routineDuration } from "../utils/savedRoutine";
@@ -79,18 +80,24 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     try {
       const latest = await resolveSavedRoutine(scope, routine.id);
       if (!latest || currentSurface.current !== surfaceKey || latestLegacy.current.blocked) return;
-      if (latest.focusAreaId !== null && !latestLegacy.current.subjects.some(item => item.id === latest.focusAreaId)) { setMessage("Choose an available focus area in Edit routine before starting."); return; }
-      const request = timer.startFreeTimer(latest.durationSeconds, latest.focusAreaId, latest.name);
-      // Present the controller's starting state immediately, just like Home's
-      // quick start. A server reply must not delay opening the timer.
-      const open = () => { if (onStarted) onStarted(); else if (routines.online) router.push("/session"); };
+      if (latest.focusAreaId !== null && !latestLegacy.current.subjects.some(item => item.id === latest.focusAreaId)) { setMessage("Choose an available category in Edit routine before starting."); return; }
+      if (!routines.online) {
+        // Offline, the session runs here in the workspace; there's no setup screen to open.
+        const started = await timer.startFreeTimer(latest.durationSeconds, latest.focusAreaId, latest.name);
+        if (currentSurface.current === surfaceKey && !started) setMessage(timer.actionError ?? "Couldn't start this routine. Your saved settings are still here.");
+        return;
+      }
+      const notes = encodeRoutineSession(latest.name);
+      if (notes === null) return;
+      // Every start goes through the same setup screen, filled in with this routine.
+      timer.setLinkedTaskId(null); timer.setTargetAttributeId(latest.focusAreaId);
+      timer.setNotes(notes); timer.setDurationInSeconds(latest.durationSeconds);
+      setupMode.chooseRoutine(`routine:${latest.id}`); timer.reviewSummary?.();
+      const open = () => { if (onStarted) onStarted(); else router.push("/session"); };
       if (manage || confirm) {
-        if (onStarted || routines.online) { afterManageDismiss.current = { surfaceKey, open }; setLeaving(true); }
+        afterManageDismiss.current = { surfaceKey, open }; setLeaving(true);
         setManage(false); setConfirm(null);
       } else open();
-      const started = await request;
-      if (currentSurface.current !== surfaceKey) return;
-      if (!started) setMessage(timer.actionError ?? "Couldn't start this routine. Your saved settings are still here.");
     } catch {
       if (currentSurface.current === surfaceKey) setMessage("Couldn't start this routine. Your saved settings are still here.");
     } finally { if (locked.current === operation) locked.current = null; }
@@ -143,7 +150,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       if (nextLegacyEditor.current && active && routines.online) { setLegacyEditor(nextLegacyEditor.current); nextLegacyEditor.current = null; return; }
       if (nextEditor.current !== undefined && active) { setEditor({ routine: nextEditor.current }); nextEditor.current = undefined; }
   };
-  const ask = (entry: RoutineEntry) => { if (blocked) return; feedback(); setMessage(""); setConfirm(entry); };
+  // Play opens the session setup with this routine filled in; Start is pressed there.
+  const ask = (entry: RoutineEntry) => { if (blocked) return; setMessage(""); if (entry.kind === "saved") void start(entry.routine); else void startLegacy(entry.task); };
   const areaOf = (id: number | null | undefined) => subjects.find(area => area.id === id);
   const savedEntry = (routine: SavedRoutine): RoutineEntry => ({ kind: "saved", key: `routine:${routine.id}`, name: routine.name, seconds: routine.durationSeconds, areaId: routine.focusAreaId, routine });
   const legacyEntry = (task: Task): RoutineEntry => ({ kind: "legacy", key: `task:${task.id}`, name: task.title, seconds: (task.target_minutes || 30) * 60, areaId: task.subject_id, task });
@@ -188,17 +196,17 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   return <>
     <View style={s.card} testID="saved-routines-card">
       <View style={s.heading}>
-        <View style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>Your routines</Text>
+        <View style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>My Routines</Text>
           {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}</View>
         <View style={s.headingActions}>
-          {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); if (onSeeAll) onSeeAll(); else { setShowDone(false); setManage(true); } }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{onSeeAll ? entries.length > limit ? `See all ${entries.length}` : "Routines" : entries.length > limit ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
-          <Pressable disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="New routine" style={s.add}><Ionicons name="add" size={20} color={colors.accent} /></Pressable>
+          {!!(onSeeAll || entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); if (onSeeAll) onSeeAll(); else { setShowDone(false); setManage(true); } }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{onSeeAll ? entries.length > limit ? `See all ${entries.length}` : "Routines" : entries.length > limit ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
+          {!onSeeAll && <Pressable disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="New routine" style={s.add}><Ionicons name="add" size={20} color={colors.accent} /></Pressable>}
         </View>
       </View>
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.group}>
         {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
       </View> : <View style={s.group}>
-        <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
+        <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
       {/* Ready-made starting points stay offered until each one is saved. */}
       {offerSuggestions && routines.ready && !!suggestions.length && <View style={s.suggested}>
@@ -219,7 +227,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
       {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
     </View>
-    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title="Your routines" subtitle="Start here again without setting everything up." onClose={() => setManage(false)} />}>
+    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title="My Routines" subtitle="Start here again without setting everything up." onClose={() => setManage(false)} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}>
         {showDone ? done.map(task => legacyRow(task, true, true)) : entries.map(entry => row(entry, true))}
         {!!done.length && <Pressable accessibilityRole="button" onPress={() => { feedback(); setShowDone(value => !value); }} style={s.manage}><Text style={s.link}>{showDone ? "Back to your routines" : `Done today (${done.length})`}</Text></Pressable>}
@@ -236,7 +244,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <View style={s.confirmMeta}><View style={[s.areaDot, { backgroundColor: lifeAreaColor(menu.entry.areaId, menuArea?.color_code) }]} /><Text style={s.caption}>{menu.mode === "remove" ? "Your recorded sessions and progress stay saved." : `${routineDuration(menu.entry.seconds)} · ${focusAreaTitle(menuArea?.title)}`}</Text></View></View> : null}>
       <BottomSheetScrollView contentContainerStyle={s.confirmBody}>
         {menu?.mode === "options" ? <View style={s.menuGroup}>
-          <MenuAction first icon="play" label="Start now" onPress={startMenu} disabled={blocked || (menu.entry.kind === "legacy" && (!menu.entry.task.is_due_today || !onStartLegacy || !routines.online))} />
+          <MenuAction first icon="play" label="Start" onPress={startMenu} disabled={blocked || (menu.entry.kind === "legacy" && (!menu.entry.task.is_due_today || !onStartLegacy || !routines.online))} />
           <MenuAction icon="create-outline" label="Edit routine" onPress={() => menu.entry.kind === "saved" ? edit(menu.entry.routine) : editLegacy(menu.entry.task)} />
           {menuRoutine && widget && <MenuAction icon="grid-outline" label="Add widget" onPress={() => { setMenu(null); void pin(menuRoutine); }} />}
           {menuRoutine && <MenuAction danger icon="trash-outline" label="Remove routine" onPress={() => { feedback(); setMenu({ entry: menu.entry, mode: "remove" }); }} />}

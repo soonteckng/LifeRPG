@@ -106,16 +106,20 @@ function studyScreen(plan, timer = {}) {
   return { Screen, calls };
 }
 
-test('an empty Study tab keeps My Exams, My Subjects and how it works; a subject chip adds it with an exam to date', async () => {
+test('an empty Study tab keeps My Exams, My Subjects and how it works; a subject chip just adds it, with an exam one tap away', async () => {
   const ensured = [];
   const { Screen } = studyScreen({ ensureCourse: async (name, area) => { ensured.push([name, area]); return id(5); } }); let ui;
   await act(async () => { ui = create(React.createElement(Screen)); });
-  for (const title of ['My Exams', 'Got an exam coming up?', 'My Subjects', 'Squads']) assert.ok(texts(ui.root).includes(title), title);
+  for (const title of ['My Exams', 'Got an exam coming up?', 'My Subjects']) assert.ok(texts(ui.root).includes(title), title);
+  assert.equal(texts(ui.root).includes('Squads'), false, 'squads live in Progress now');
   const sheet = label => ui.root.findAllByType('Sheet').find(x => x.props.label === label);
   await act(async () => presses(ui.root, 'How Study works')[0].props.onPress());
   assert.equal(sheet('how study works').props.visible, true); assert.ok(texts(ui.root).includes('Add your exams'));
   await act(async () => presses(ui.root, 'Add Mathematics')[0].props.onPress());
   assert.deepEqual(ensured, [['Mathematics', 2]], 'a new subject counts toward Learning without asking');
+  assert.equal(ui.root.findByType('ExamSheet').props.visible, false, 'adding a subject never forces an exam');
+  assert.ok(texts(ui.root).includes('Mathematics added'));
+  await act(async () => presses(ui.root, 'Add an exam for Mathematics')[0].props.onPress());
   const exams = ui.root.findByType('ExamSheet').props;
   assert.equal(exams.visible, true); assert.equal(exams.initialCourseId, id(5)); assert.equal(exams.initialTitle, 'Mathematics exam');
   await act(async () => byText(ui.root, 'Add an exam').props.onPress());
@@ -186,13 +190,44 @@ test('the Routines tab lists every routine and starts old routines the same way 
     'expo-router/js-tabs': { useBottomTabBarHeight: () => 80 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: host('Page') }, '/SavedRoutinesCard': host('Routines'),
     '/AuthContext': { useAuth: () => ({ accessMode: 'online' }) }, '/QuestContext': { useQuests: () => ({ tasks: [{ id: 5 }], subjects: areas, refresh: async () => {} }) },
+    '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'Asia/Kuala_Lumpur' } }) }, '/SheetTouchable': host('Press'),
+    '/useProgressData': { useProgressData: () => ({ data: { sessions: [
+      { id: 'a', subject_id: 2, task_id: null, notes: 'liferpg:routine:v1:{"name":"Read"}', duration_seconds: 1200, completed_at: new Date().toISOString() },
+      { id: 'b', subject_id: 1, task_id: null, notes: null, duration_seconds: 600, completed_at: new Date().toISOString() }] } }) },
     '/floatingTabInset': { floatingTabInset: () => 100 },
     '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => {}, setLinkedTaskId: v => calls.push(['quest', v]), setDurationInMinutes: v => calls.push(['minutes', v]), setTargetAttributeId: v => calls.push(['area', v]) }) },
   }).default;
   let ui; await act(async () => { ui = create(React.createElement(Screen)); });
   const card = ui.root.findByType('Routines').props;
   assert.equal(ui.root.findByType('Page').props.title, 'Routines'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
+  assert.ok(texts(ui.root).includes('20m'), 'only routines count toward the week total');
+  assert.ok(texts(ui.root).includes('1 routine done'));
   await act(async () => card.onStartLegacy({ id: 5, target_minutes: 25, subject_id: 2 }));
   assert.deepEqual(calls, [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
+  calls.length = 0;
+  await act(async () => presses(ui.root, 'Focus on Everyday focus, 10m this week. Set up a session')[0].props.onPress());
+  assert.deepEqual(calls, [['quest', null], ['area', 1], ['nav', '/session']], 'a category opens setup with any activity');
+  await act(async () => ui.unmount());
+});
+
+test('the exam name follows the subject until it is edited, and a typed subject stays pickable', async () => {
+  const Sheet = load('src/components/StudyExamSheet.tsx', { ...base(), '/SheetTouchable': host('Press') }).default;
+  let ui;
+  await act(async () => { ui = create(React.createElement(Sheet, { visible: true, exam: null, courses: [course], onSave: async () => true, onEnsureSubject: async () => id(9), onRemove: async () => true, onClose: () => {} })); });
+  const name = () => ui.root.findAllByType('Input').find(x => x.props.accessibilityLabel === 'Exam name').props.value;
+  const pickSubject = async label => { await act(async () => presses(ui.root, 'Choose subject')[0].props.onPress()); await act(async () => presses(ui.root, label)[0].props.onPress()); };
+  assert.equal(ui.root.findAllByType('Press').some(x => /AM$|PM$|No time/.test(x.props.accessibilityLabel ?? '')), false, 'no time to pick, just the day');
+  await pickSubject('Maths'); assert.equal(name(), 'Maths exam');
+  assert.ok(texts(ui.root).includes('Named after the subject. Tap the name to change it.'));
+  await pickSubject('Mathematics'); assert.equal(name(), 'Mathematics exam', 'changing the subject renames an untouched exam');
+  await act(async () => presses(ui.root, 'Choose subject')[0].props.onPress());
+  await act(async () => ui.root.findByType('Input').props.onChangeText('Quantum Mechanics'));
+  await act(async () => presses(ui.root, 'Add “Quantum Mechanics”')[0].props.onPress());
+  assert.equal(name(), 'Quantum Mechanics exam');
+  await act(async () => presses(ui.root, 'Choose subject')[0].props.onPress());
+  assert.equal(presses(ui.root, 'Quantum Mechanics · new').length, 1, 'the subject you typed is listed under My subjects');
+  await act(async () => presses(ui.root, 'Maths')[0].props.onPress());
+  await act(async () => ui.root.findAllByType('Input').find(x => x.props.accessibilityLabel === 'Exam name').props.onChangeText('Paper 2'));
+  await pickSubject('Mathematics'); assert.equal(name(), 'Paper 2', 'a name you typed is kept');
   await act(async () => ui.unmount());
 });
