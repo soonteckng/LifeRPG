@@ -151,3 +151,14 @@ test('a nameless routine says so right above Save',async()=>{
   assert.equal(ui.root.findByType('Scroll').findAllByType('Text').includes(alert),false,'the message sits with Save, outside the scrolling form');
  }finally{await act(async()=>ui.unmount());}
 });
+test('suggested routines stay offered after other routines exist; a saved one leaves the list',async()=>{
+ const state={ready:true,scope,online:true,routines:[{...routine,name:'Read before bed'}],pendingCount:0,conflicts:[]};
+ const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
+ try{
+  const labels=ui.root.findAllByType('Press').map(x=>x.props.accessibilityLabel);
+  assert.ok(labels.includes('Add Review today’s notes, 30 minutes'));assert.ok(labels.includes('Add Plan tomorrow, 15 minutes'));
+  assert.equal(labels.some(label=>label?.startsWith('Add Read before bed')),false);
+  assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Suggested routines'));
+ }finally{await act(async()=>ui.unmount());}
+});

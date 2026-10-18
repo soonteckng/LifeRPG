@@ -63,7 +63,7 @@ async function goalSheet(read,write) {
   let closes=0,saves=0,tree;
   const Sheet=props=>React.createElement('Sheet',props,props.header,props.children,props.footer);
   const Component=load('src/components/DailyGoalSheet.tsx',{
-    'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
+    'react-native':{View:host('View'),Keyboard:{addListener:()=>({remove(){}})}},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':Sheet,'./PersonalUI':{p:{}},'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':props=>React.createElement('Header',props),
     '../context/UserContext':{useUser:()=>({profile:{id:'owner',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},
     '../services/dailyGoalService':{getDailyGoalSettings:read,scheduleDailyGoal:write,missingGoalAPI:()=>false},
@@ -141,7 +141,7 @@ test('the goal sheet reads quietly while closed, then opens filled in and still 
   let reads=0,tree;const later=defer();
   const Sheet=props=>React.createElement('Sheet',props,props.header,props.children,props.footer);
   const Component=load('src/components/DailyGoalSheet.tsx',{
-    'react-native':{View:host('View')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
+    'react-native':{View:host('View'),Keyboard:{addListener:()=>({remove(){}})}},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
     './AppSheet':Sheet,'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':props=>React.createElement('Header',props),
     '../context/UserContext':{useUser:()=>({profile:{id:'prefetch-owner',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},
     '../services/dailyGoalService':{getDailyGoalSettings:async()=>++reads===1?{...goal,user_id:'prefetch-owner',next_goal_minutes:75}:later.promise,scheduleDailyGoal:async()=>{throw Error('no write');},missingGoalAPI:()=>false},

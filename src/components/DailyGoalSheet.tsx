@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { View } from "react-native";
+import { Keyboard, View } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import TouchableOpacity from "./SheetTouchable";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,6 +25,13 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
   const [needsCheck, setNeedsCheck] = useState(false);
   const generation = useRef(0), lock = useRef(false), edited = useRef(false);
   const [unavailable, setUnavailable] = useState(false);
+  // While typing, the rules step aside so Save stays above the keyboard.
+  const [typing, setTyping] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setTyping(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setTyping(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const show = useCallback((next: DailyGoalSettings) => { setData(next); if (!edited.current) setDraft(String(next.next_goal_minutes)); }, []);
   const load = useCallback(async () => {
     const current = ++generation.current; setError(""); setUnavailable(false);
@@ -95,10 +102,10 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
         </View>
         {editable && <View style={g.presets}>{[30, 60, 90, 120].map(value => <View key={value} style={g.presetCell}><TouchableOpacity accessibilityRole="button" accessibilityLabel={`Set daily goal to ${value} minutes`} accessibilityState={{ selected: selected === value }} disabled={busy} onPress={() => change(String(value))} style={[g.preset, selected === value && g.presetSelected]}><Text style={[g.presetText, selected === value && g.presetTextSelected]}>{value}</Text></TouchableOpacity></View>)}</View>}
       </View>
-      <View style={g.rules}>
+      {!typing && <View style={g.rules}>
         <View style={g.rule}><Ionicons name="calendar-outline" size={16} color={colors.tertiary} style={g.ruleIcon} /><Text style={g.ruleText}>A new goal starts tomorrow, so today’s progress stays intact.</Text></View>
         <View style={g.rule}><Ionicons name="time-outline" size={16} color={colors.tertiary} style={g.ruleIcon} /><Text style={g.ruleText}>Choose 30–480 minutes. You can change it once every 7 days.</Text></View>
-      </View>
+      </View>}
       {checking ? <Text style={g.caption}>Checking your goal…</Text> : !!status && <Text style={g.caption}>{status}</Text>}
       {!!error && <><Text style={g.error} accessibilityRole="alert">{error}</Text>{!unavailable && <TouchableOpacity accessibilityRole="button" disabled={busy} onPress={() => void load()}><Text style={g.link}>Retry goal check</Text></TouchableOpacity>}</>}
       <TouchableOpacity accessibilityRole="button" accessibilityState={{ disabled: busy || !canSave, busy: busy || checking }} disabled={busy || !canSave} onPress={() => void save()} style={[g.button, (busy || !canSave) && g.buttonQuiet]}>

@@ -16,6 +16,7 @@ import { routinePresentation, type RoutineEntry } from "../utils/routinePresenta
 import type { SavedRoutine } from "../types/savedRoutine";
 import type { Subject, Task } from "../services/taskService";
 import { colors, radius } from "../constants/theme";
+import { type } from "../constants/typography";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import AppSheet from "./AppSheet";
@@ -28,6 +29,7 @@ type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind };
 const ROUTINE_TEMPLATES: RoutineTemplate[] = [
   { name: "Review today’s notes", minutes: 30, area: "learning" },
   { name: "Read before bed", minutes: 20, area: "wellbeing" },
+  { name: "Plan tomorrow", minutes: 15, area: "personal" },
 ];
 
 export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy }: { subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void }) {
@@ -170,13 +172,16 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     onEdit={() => entry.kind === "saved" ? edit(entry.routine) : editLegacy(entry.task)}
     onRemove={entry.kind === "saved" ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined}>{row(entry)}</SwipeRow>;
   const visibleEntries = entries.slice(0, 3);
+  const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
+  const suggestions = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
   const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
   const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
   return <>
     <View style={s.card} testID="saved-routines-card">
       <View style={s.heading}>
-        <Text accessibilityRole="header" style={s.title}>Your routines</Text>
+        <View style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>Your routines</Text>
+          {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}</View>
         <View style={s.headingActions}>
           {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); setShowDone(false); setManage(true); }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{entries.length > 3 ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
           <Pressable disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="New routine" style={s.add}><Ionicons name="add" size={20} color={colors.accent} /></Pressable>
@@ -186,17 +191,21 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
       </View> : <View style={s.group}>
         <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
-        {/* Two ready-made starting points, so a first routine is one tap away. */}
-        {ROUTINE_TEMPLATES.map(template => {
+      </View>}
+      {/* Ready-made starting points stay offered until each one is saved. */}
+      {routines.ready && !!suggestions.length && <View style={s.suggested}>
+        <Text style={s.sectionLabel}>Suggested routines</Text>
+        <View style={s.group}>
+        {suggestions.map((template, index) => {
           const area = suggestedArea(subjects as Subject[], template.area);
-          return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button" accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes`} style={[s.row, s.divider]}>
+          return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button" accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes`} style={[s.row, index > 0 && s.divider]}>
             <View style={[s.areaDot, { backgroundColor: lifeAreaColor(area?.id, area?.color_code) }]} />
             <View style={s.detail}><Text style={s.name}>{template.name}</Text><Text style={s.caption}>{template.minutes} min · {focusAreaTitle(area?.title)}</Text></View>
             <View style={s.play}><Ionicons name="add" size={18} color={colors.accent} /></View>
           </Pressable>;
         })}
+        </View>
       </View>}
-      {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}
       {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
       {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
@@ -258,6 +267,9 @@ function SwipeRow({ enabled, label, onEdit, onRemove, children }: { enabled: boo
 const s = StyleSheet.create({
   card: { gap: 10 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  headingCopy: { flex: 1, minWidth: 0, gap: 1 },
+  suggested: { gap: 8, marginTop: 6 },
+  sectionLabel: { ...type.label, paddingHorizontal: 4 },
   headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
   add: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
@@ -266,7 +278,7 @@ const s = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
   name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  hint: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
+  hint: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   play: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
   icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
