@@ -85,6 +85,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
   const save = async () => {
     if (lock.current) return;
     const next = { ...current, name: current.name.trim() };
+    if (!next.name) { setError("Give your routine a name first."); return; }
     if (!validRoutineDraft(next) || (next.reminder.enabled && (!/^\d{1,2}$/.test(hour) || !/^\d{1,2}$/.test(minute)))) { setError("Add a name and choose a valid reminder time, from 00:00 to 23:59."); return; }
     if (next.focusAreaId !== null && !subjects.some(item => item.id === next.focusAreaId)) { setError("Choose an available focus area before saving."); return; }
     lock.current = true; setBusy(true); const epoch = generation.current;
@@ -102,13 +103,16 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={<SheetHeader title={routine ? "Edit routine" : "New routine"} subtitle="A saved starting point for something that matters." onClose={close} closeLabel="Close routine editor" />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? "Remove this routine?" : "Discard your changes?"} message={confirm === "remove" ? "Your recorded sessions and progress stay saved." : "Your previous routine stays saved."} confirmLabel={confirm === "remove" ? "Remove routine" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)} onConfirm={() => { if (confirm === "remove") void remove(); else { setConfirm(null); onClose(); } }} />}
-    footer={<View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+    footer={<View style={[s.footerArea, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
+      {/* Problems show right above Save, so they are never half hidden below the fold. */}
+      {!!error && <Text accessibilityRole="alert" style={s.footerError}>{error}</Text>}
+      <View style={s.footer}>
       {routine && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Remove routine" onPress={() => setConfirm("remove")} style={s.remove}><Ionicons name="trash-outline" size={21} color={colors.danger} /></TouchableOpacity>}
       <View style={s.saveCell}><TouchableOpacity accessibilityRole="button" disabled={busy || !routines.ready} onPress={() => void save()} style={s.primary}><Text style={s.primaryText}>{busy ? "Saving…" : "Save routine"}</Text></TouchableOpacity></View>
-    </View>}>
+    </View></View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
       <Text style={s.label}>Routine name</Text>
-      <BottomSheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={s.input} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
+      <BottomSheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
       <Text style={s.label}>Focus area</Text>
       <FocusAreaPicker disabled={busy} selectedId={generalSelected ? general?.id ?? null : draft.focusAreaId}
         areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...focusAreaChoices(subjects, draft.focusAreaId).filter(item => focusAreaTitle(item.title) !== "Everyday focus")]}
@@ -122,7 +126,6 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
           {!permission?.granted && <Text style={s.caption}>You can save this reminder now. It can notify you after notifications are allowed.</Text>}
           <Text style={s.caption}>Your phone may delay reminders to save battery.</Text>
         </View></>}
-      {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
     </BottomSheetScrollView>
   </AppSheet>;
 }
@@ -130,7 +133,7 @@ const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, label: { ...type.label, paddingHorizontal: 4, marginTop: 4 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   body: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, input: { minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
 
-  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footer: { flexDirection: "row", gap: 10, paddingHorizontal: 16, paddingTop: 12, backgroundColor: colors.surfaceRaised }, saveCell: { flex: 1 },
+  time: { flexDirection: "row", gap: 12 }, reminder: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footerArea: { paddingHorizontal: 16, paddingTop: 12, gap: 10, backgroundColor: colors.surfaceRaised }, footer: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 }, footerError: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 }, inputError: { borderWidth: 1, borderColor: colors.danger },
   permission: { padding: 14, borderRadius: 14, backgroundColor: colors.accentSoft, gap: 8 }, permissionAction: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.selection }, permissionActionText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 }, primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },

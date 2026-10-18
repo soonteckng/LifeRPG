@@ -129,3 +129,25 @@ test('swiping a routine reveals Edit and Remove; Remove still confirms',async()=
   assert.equal(h.ui.root.findByType('Editor').props.visible,true);
  }finally{await h.cleanup();}
 });
+test('an empty list offers two ready-made routines that open the editor prefilled',async()=>{
+ const state={ready:true,scope,online:true,routines:[],pendingCount:0,conflicts:[]};
+ const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,initialSeconds:1800,initialAreaId:1}));});
+ try{
+  await act(async()=>press(ui.root,'Add Review today’s notes, 30 minutes'));
+  const editor=ui.root.findByType('Editor').props;
+  assert.equal(editor.visible,true);assert.equal(editor.initialName,'Review today’s notes');assert.equal(editor.initialSeconds,1800);assert.equal(editor.initialAreaId,2,'the Learning area');
+ }finally{await act(async()=>ui.unmount());}
+});
+test('a nameless routine says so right above Save',async()=>{
+ const saved=[];const Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async d=>{saved.push(d);return true;}})}}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:null,visible:true,onClose(){}}));});
+ try{
+  const sheet=()=>ui.root.findByType('Sheet');
+  await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());
+  assert.equal(saved.length,0);
+  const alert=ui.root.findAllByType('Text').find(x=>x.props.accessibilityRole==='alert');
+  assert.equal(alert.props.children,'Give your routine a name first.');
+  assert.equal(ui.root.findByType('Scroll').findAllByType('Text').includes(alert),false,'the message sits with Save, outside the scrolling form');
+ }finally{await act(async()=>ui.unmount());}
+});

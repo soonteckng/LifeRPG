@@ -9,7 +9,7 @@ import { useTimer } from "../context/TimerContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { pinSavedRoutine, routineWidgetsSupported } from "../services/routineWidgetService";
 import { resolveSavedRoutine } from "../services/savedRoutineService";
-import { focusAreaTitle } from "../utils/focusAreas";
+import { focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { routineDuration } from "../utils/savedRoutine";
 import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
@@ -24,9 +24,15 @@ import QuestSheet from "./QuestSheet";
 import SheetHeader from "./SheetHeader";
 import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
 
+type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind };
+const ROUTINE_TEMPLATES: RoutineTemplate[] = [
+  { name: "Review today’s notes", minutes: 30, area: "learning" },
+  { name: "Read before bed", minutes: 20, area: "wellbeing" },
+];
+
 export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy }: { subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void }) {
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
-  const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
+  const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
   // Play asks before starting; holding a row offers its other actions; the
   // row itself opens its editor. One small card carries all three.
@@ -178,7 +184,18 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       </View>
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.group}>
         {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
-      </View> : <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>}
+      </View> : <View style={s.group}>
+        <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
+        {/* Two ready-made starting points, so a first routine is one tap away. */}
+        {ROUTINE_TEMPLATES.map(template => {
+          const area = suggestedArea(subjects as Subject[], template.area);
+          return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button" accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes`} style={[s.row, s.divider]}>
+            <View style={[s.areaDot, { backgroundColor: lifeAreaColor(area?.id, area?.color_code) }]} />
+            <View style={s.detail}><Text style={s.name}>{template.name}</Text><Text style={s.caption}>{template.minutes} min · {focusAreaTitle(area?.title)}</Text></View>
+            <View style={s.play}><Ionicons name="add" size={18} color={colors.accent} /></View>
+          </Pressable>;
+        })}
+      </View>}
       {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}
       {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
       {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
@@ -217,7 +234,9 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         </>}
       </BottomSheetScrollView>
     </AppSheet>
-    <RoutineEditorSheet key={`edit:${surfaceKey}`} visible={!!editor && active} onClose={() => setEditor(null)} routine={editor?.routine} subjects={subjects} initialAreaId={initialAreaId} initialSeconds={initialSeconds} />
+    <RoutineEditorSheet key={`edit:${surfaceKey}`} visible={!!editor && active} onClose={() => setEditor(null)} routine={editor?.routine} subjects={subjects}
+      initialAreaId={editor?.template ? suggestedArea(subjects as Subject[], editor.template.area)?.id ?? initialAreaId : initialAreaId}
+      initialSeconds={editor?.template ? editor.template.minutes * 60 : initialSeconds} initialName={editor?.template?.name} />
     {legacyEditor && active && <QuestSheet key={`legacy:${scopeKey}:${legacyEditor.id}`} visible onClose={() => setLegacyEditor(null)} editorOnly initialTask={legacyEditor} expectedOwnerId={profile?.id} routineLanguage />}
   </>;
 }
@@ -250,7 +269,7 @@ const s = StyleSheet.create({
   hint: { color: colors.muted, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
   play: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
   icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
-  empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
+  empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   sheetHeading: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 }, list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 }, addRow: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 25, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
   confirmTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 }, confirmMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   confirmBody: { paddingHorizontal: 16, paddingBottom: 12, gap: 4 },
