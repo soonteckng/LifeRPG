@@ -1,109 +1,216 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
+import AppSheet from "./AppSheet";
+import SheetHeader from "./SheetHeader";
 import ExamRow from "./ExamRow";
+import MoreMenu, { type MoreOption } from "./MoreMenu";
+import SectionHeader from "./SectionHeader";
+import MilestonesRow from "./MilestonesRow";
+import StudyExamSheet from "./StudyExamSheet";
+import { SquadFace, SquadJoinSheet } from "./SquadSheets";
 import { SquadSummary } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { useStudyPlan } from "../hooks/useStudyPlan";
+import { useStudyLauncher } from "../hooks/useStudyLauncher";
 import { useSquads } from "../hooks/useSquads";
 import { useProgressData } from "../hooks/useProgressData";
+import { useQuests } from "../context/QuestContext";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
-import { upcomingExams, studyTime } from "../utils/studyPlan";
-import { squadTotal } from "../utils/squads";
+import { squadSelection } from "../services/squadSelection";
+import { suggestedArea } from "../utils/focusAreas";
+import { daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
+import { ranked, squadTotal } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
+import type { StudyExam } from "../types/studyPlan";
 
-// Home is a summary: each section shows a little and opens its own tab.
-function Head({ title, link, label, onPress }: { title: string; link: string; label: string; onPress: () => void }) {
-  return <View style={s.head}>
-    <Text style={s.title} accessibilityRole="header">{title}</Text>
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={8}><Text style={s.link}>{link}</Text></Pressable>
-  </View>;
-}
-const HOME_EXAMS = 3;
+// Home is a summary: each section shows what matters now and opens a card
+// with more. Its ••• menu holds the rest, including Rearrange Home.
+type SectionProps = { rearrange: () => void };
+const rearrangeOption = (rearrange: () => void): MoreOption => ({ label: "Rearrange Home", icon: "swap-vertical", onPress: rearrange });
+const WEEK = 7;
 
-/** The next few exams as short rows; the rest are a tap away in Study. */
-export function HomeExams() {
-  const router = useRouter(), { exams, courses } = useStudyPlan();
-  const coming = upcomingExams(exams), openStudy = () => router.navigate("/study");
+/** Exams within the next week (up to three), or the next one if none are that close. Tapping one starts studying it. */
+export function HomeExams({ rearrange }: SectionProps) {
+  const router = useRouter(), plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), { subjects = [] } = useQuests();
+  const [sheet, setSheet] = useState<"all" | "add" | null>(null);
+  const [editing, setEditing] = useState<StudyExam | null>(null);
+  const coming = upcomingExams(plan.exams), soon = coming.filter(exam => daysUntil(exam.examDate) <= WEEK);
+  const shown = soon.length ? soon.slice(0, 3) : coming.slice(0, 1);
+  const courseFor = (id: string | null) => plan.courses.find(item => item.id === id) ?? null;
+  const open = (exam: StudyExam) => { const course = courseFor(exam.courseId); if (course) launcher.study(course); else { setEditing(exam); setSheet("add"); } };
+  const learning = suggestedArea(subjects, "learning")?.id ?? null;
+  const subtitle = soon.length ? `${soon.length} in the next 7 days${soon.length > 3 ? " · nearest 3" : ""}` : coming.length ? `Next one in ${daysUntil(coming[0].examDate)} days` : "Nothing scheduled";
+  const options: MoreOption[] = [
+    ...(coming.length ? [{ label: `See all exams (${coming.length})`, icon: "list-outline" as const, onPress: () => setSheet("all") }] : []),
+    { label: "Add an exam", icon: "add-circle-outline", onPress: () => { setEditing(null); setSheet("add"); } },
+    { label: "Open Study", icon: "school-outline", onPress: () => router.navigate("/study") },
+    rearrangeOption(rearrange),
+  ];
   return <View style={s.section} testID="home-exams">
-    <Head title="My Exams" link={coming.length > HOME_EXAMS ? `See all ${coming.length}` : "Study"} label="Open Study" onPress={openStudy} />
-    {coming.length ? <View style={s.group}>{coming.slice(0, HOME_EXAMS).map((exam, index) =>
-      <ExamRow key={exam.id} exam={exam} course={courses.find(item => item.id === exam.courseId) ?? null} first={index === 0} onPress={openStudy} />)}</View>
-      : <Pressable onPress={openStudy} accessibilityRole="button" accessibilityLabel="Add an exam in Study" style={[s.card, s.row]}>
+    <SectionHeader title="Upcoming Exams" subtitle={subtitle} onLongPress={rearrange} right={<MoreMenu options={options} label="Exam options" />} />
+    {shown.length ? <View style={s.group}>{shown.map((exam, index) => <ExamRow key={exam.id} exam={exam} course={courseFor(exam.courseId)} first={index === 0}
+      onPress={() => open(exam)} label={courseFor(exam.courseId) ? "Start studying" : "Edit exam"} />)}</View>
+      : <Pressable onPress={() => { setEditing(null); setSheet("add"); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
-        <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+        <Ionicons name="add-circle" size={24} color={colors.accent} />
       </Pressable>}
+    <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} floating compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
+      header={<SheetHeader title="My Exams" subtitle="Tap one to start studying it." onClose={() => setSheet(null)} />}>
+      <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
+        <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => <ExamRow key={exam.id} exam={exam} course={courseFor(exam.courseId)} first={index === 0} inSheet
+          onPress={() => { setSheet(null); setTimeout(() => open(exam), 250); }} label={courseFor(exam.courseId) ? "Start studying" : "Edit exam"} />)}</View>
+      </BottomSheetScrollView>
+    </AppSheet>
+    <StudyExamSheet visible={sheet === "add"} exam={editing} courses={plan.courses} initialCourseId={editing?.courseId ?? null}
+      onSave={plan.saveExam} onEnsureSubject={name => plan.ensureCourse(name, learning)} onRemove={id => plan.remove("exam", id)}
+      onClose={() => setSheet(null)} onDismiss={() => setEditing(null)} />
   </View>;
 }
 
-/** Your first squad; tapping it opens that squad's own page. */
-export function HomeSquad() {
-  const router = useRouter(), squads = useSquads(), squad = squads.squads[0];
-  const openSquads = () => router.navigate("/squads");
+/** Your squad's week. Tapping it peeks at the leaderboard; the Squads tab has the whole squad. */
+export function HomeSquad({ rearrange }: SectionProps) {
+  const router = useRouter(), squads = useSquads();
+  const chosen = squadSelection.get();
+  const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
+  const [peek, setPeek] = useState(false), [joining, setJoining] = useState(false);
+  const openSquads = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
+  const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
+  const options: MoreOption[] = squad ? [{ label: "Open My Squads", icon: "people-outline", onPress: openSquads },
+    { label: "Share invite", icon: "share-outline", onPress: share }, rearrangeOption(rearrange)]
+    : [{ label: "Join or start a squad", icon: "add-circle-outline", onPress: () => setJoining(true) }, rearrangeOption(rearrange)];
+  const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
-    <Head title="My Squad" link={squads.squads.length > 1 ? `All ${squads.squads.length}` : "Squads"} label="Open Squads" onPress={openSquads} />
-    {squad ? <Pressable onPress={() => router.push({ pathname: "/squad/[id]", params: { id: squad.id } })} accessibilityRole="button" testID="home-squad"
-      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Open squad`} style={s.card}>
+    <SectionHeader title="My Squad" subtitle={squad ? squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : "This week together" : "Focus with friends"} onLongPress={rearrange}
+      right={<MoreMenu options={options} label="Squad options" />} />
+    {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
+      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
       <SquadSummary squad={squad} />
-    </Pressable> : <Pressable onPress={openSquads} accessibilityRole="button" accessibilityLabel="Focus with friends. Join or start a squad" testID="home-squad-empty" style={[s.card, s.row]}>
+    </Pressable> : <Pressable onPress={() => setJoining(true)} accessibilityRole="button" accessibilityLabel="Focus with friends. Join or start a squad" testID="home-squad-empty" style={[s.card, s.row]}>
       <View style={[s.icon, { backgroundColor: colors.accentSoft }]}><Ionicons name="people-outline" size={20} color={colors.accent} /></View>
       <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>Start a squad and keep each other going.</Text></View>
-      <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+      <Ionicons name="add-circle" size={24} color={colors.accent} />
     </Pressable>}
+    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} floating compact label="squad peek" motionMode="timed"
+      header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
+      <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
+        <View style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></View>
+        <View style={[s.group, s.sheetGroup]}>{top.map((member, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
+          accessibilityLabel={`${index + 1}. ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)}`}>
+          <Text style={[s.rank, index === 0 && member.weekSeconds > 0 && { color: colors.level }]}>{index + 1}</Text>
+          <SquadFace member={member} size={32} ring={colors.sheetCard} />
+          <Text style={[s.name, s.flex]} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
+          <Text style={s.time}>{studyTime(member.weekSeconds)}</Text>
+        </View>)}</View>
+        <Pressable onPress={() => { setPeek(false); setTimeout(openSquads, 220); }} accessibilityRole="button" accessibilityLabel="See the whole squad" style={s.primary}>
+          <Text style={s.primaryText}>See the whole squad</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
+      </BottomSheetScrollView>
+    </AppSheet>}
+    <SquadJoinSheet visible={joining} online={squads.online} leading={squads.squads.find(item => item.ownerIsYou)?.name ?? null} memberships={squads.squads.length}
+      onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
   </View>;
 }
 
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
-/** This week in one line and seven small bars. Progress has the detail. */
-export function HomeWeek() {
-  const router = useRouter(), { profile } = useUser(), { sessionSummary } = useTimer();
+/** This week's progress, shared by the week card and Today's card. */
+export function useWeekProgress() {
+  const { profile } = useUser(), { sessionSummary } = useTimer();
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [now] = useState(() => new Date());
   const period = useMemo(() => periodFor("week", dateKey(now, timeZone), timeZone, now), [now, timeZone]);
   const { data } = useProgressData(period, timeZone, sessionSummary, profile?.id ?? "");
   const week = useMemo(() => data ? buildProgress(period, data.sessions, data.goals, timeZone, data.areas, now) : null, [data, period, timeZone, now]);
+  return { week, period };
+}
+export function WeekBars({ height = 44, wide = false }: { height?: number; wide?: boolean }) {
+  const { week, period } = useWeekProgress();
   const top = Math.max(1, ...(week?.days.map(day => day.seconds) ?? [0]));
+  return <View style={[s.bars, wide && s.barsWide]} importantForAccessibility="no-hide-descendants">{(week?.days ?? DAYS.map(() => ({ seconds: 0, key: "", goal: undefined }))).map((day, index) =>
+    <View key={index} style={[s.barColumn, wide && s.barColumnWide]}>
+      <View style={[s.barTrack, wide && s.barTrackWide, { height }]}><View style={[s.bar, wide && s.barWide, { height: `${day.seconds ? Math.max(10, Math.round(100 * day.seconds / top)) : 0}%` }, day.key === period.today && s.barToday]} /></View>
+      <Text style={[s.day, day.key === period.today && s.dayToday]}>{DAYS[index]}</Text>
+      {wide && <View style={[s.goalDot, day.goal?.goal_completed && s.goalDotOn]} />}
+    </View>)}</View>;
+}
+
+/** This week in one line and seven small bars. Tapping it opens the week by category. */
+export function HomeWeek({ rearrange }: SectionProps) {
+  const router = useRouter(), { week } = useWeekProgress();
+  const [open, setOpen] = useState(false);
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
+  const options: MoreOption[] = [{ label: "Open Progress", icon: "stats-chart-outline", onPress: () => router.navigate("/progress") }, rearrangeOption(rearrange)];
+  const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
   return <View style={s.section} testID="home-week">
-    <Head title="This week" link="Progress" label="Open Progress" onPress={() => router.navigate("/progress")} />
-    <Pressable onPress={() => router.navigate("/progress")} accessibilityRole="button"
-      accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Open Progress`} style={[s.card, s.week]}>
+    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onLongPress={rearrange} right={<MoreMenu options={options} label="Week options" />} />
+    <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
       <View style={s.flex}>
         <Text style={s.total}>{durationLabel(week?.seconds ?? 0)}</Text>
         <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>
-          {change === null ? `${week?.activeDays ?? 0} of 7 days with focus` : change >= 0 ? `${durationLabel(change)} more than last week so far` : `${durationLabel(-change)} behind last week so far`}</Text>
+          {change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`}</Text>
       </View>
-      <View style={s.bars} importantForAccessibility="no-hide-descendants">{(week?.days ?? DAYS.map(() => ({ seconds: 0, key: "", future: true }))).map((day, index) =>
-        <View key={index} style={s.barColumn}>
-          <View style={s.barTrack}><View style={[s.bar, { height: `${day.seconds ? Math.max(10, Math.round(100 * day.seconds / top)) : 0}%` }, day.key === period.today && s.barToday]} /></View>
-          <Text style={[s.day, day.key === period.today && s.dayToday]}>{DAYS[index]}</Text>
-        </View>)}</View>
+      <WeekBars />
     </Pressable>
+    <AppSheet visible={open} onRequestClose={() => setOpen(false)} floating compact maxHeightRatio={0.86} label="this week" motionMode="timed"
+      header={<SheetHeader title="This Week" subtitle={`${durationLabel(week?.seconds ?? 0)} · ${week?.sessions.length ?? 0} sessions`} onClose={() => setOpen(false)} />}>
+      <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
+        <View style={[s.card, s.sheetCard]}><WeekBars height={72} wide /><Text style={s.caption}>A green dot marks a day you reached your goal.</Text></View>
+        <View style={[s.group, s.sheetGroup]}>{week?.areas.length ? week.areas.map((area, index) => <View key={area.key} style={[s.areaRow, index > 0 && s.line]} accessible accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}`}>
+          <View style={[s.dot, { backgroundColor: area.color }]} />
+          <Text style={s.areaName} numberOfLines={1}>{area.title}</Text>
+          <View style={s.areaTrack}><View style={[s.areaFill, { width: `${Math.max(4, Math.round(100 * area.seconds / top))}%`, backgroundColor: area.color }]} /></View>
+          <Text style={s.time}>{durationLabel(area.seconds)}</Text>
+        </View>) : <Text style={[s.caption, s.pad]}>Finish a session and your categories show here.</Text>}</View>
+        <Pressable onPress={() => { setOpen(false); setTimeout(() => router.navigate("/progress"), 220); }} accessibilityRole="button" accessibilityLabel="Open Progress" style={s.primary}>
+          <Text style={s.primaryText}>Open Progress</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
+      </BottomSheetScrollView>
+    </AppSheet>
+  </View>;
+}
+
+/** Your nearest milestone; the whole collection opens as a card. */
+export function HomeMilestones({ rearrange }: SectionProps) {
+  const [open, setOpen] = useState(false);
+  return <View style={s.section} testID="home-milestones">
+    <SectionHeader title="My Milestones" subtitle="Your next one to earn" onLongPress={rearrange}
+      right={<MoreMenu label="Milestone options" options={[{ label: "See all milestones", icon: "ribbon-outline", onPress: () => setOpen(true) }, rearrangeOption(rearrange)]} />} />
+    <MilestonesRow open={open} onOpenChange={setOpen} />
   </View>;
 }
 
 const s = StyleSheet.create({
   section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
-  head: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", paddingHorizontal: 4 },
-  title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
-  link: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  sheetGroup: { backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
+  sheetCard: { backgroundColor: colors.sheetCard, borderRadius: 20, gap: 10 },
+  sheetBody: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
   icon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   examIcon: { backgroundColor: "rgba(255,105,97,0.14)" },
   name: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
-  caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, pad: { padding: 14 },
   week: { flexDirection: "row", alignItems: "center", gap: 16 },
   total: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -0.5 },
-  bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" },
-  barColumn: { width: 12, alignItems: "center", gap: 4 },
-  barTrack: { width: 12, height: 44, justifyContent: "flex-end", borderRadius: 4, backgroundColor: "rgba(255,255,255,0.05)" },
-  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(99,230,190,0.45)" }, barToday: { backgroundColor: colors.accent },
+  bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" }, barsWide: { justifyContent: "space-between", gap: 0 },
+  barColumn: { width: 12, alignItems: "center", gap: 4 }, barColumnWide: { width: 28 },
+  barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: "rgba(255,255,255,0.05)" }, barTrackWide: { width: 22, borderRadius: 6 },
+  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(99,230,190,0.45)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.accent },
   day: { color: colors.tertiary, fontSize: 10, fontWeight: "600" }, dayToday: { color: colors.text },
+  goalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "transparent" }, goalDotOn: { backgroundColor: colors.success },
+  rankRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
+  line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  rank: { width: 16, textAlign: "center", color: colors.secondary, fontSize: 15, fontWeight: "700" },
+  time: { color: colors.secondary, fontSize: 14, fontWeight: "600", fontVariant: ["tabular-nums"], minWidth: 52, textAlign: "right" },
+  areaRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14 },
+  dot: { width: 9, height: 9, borderRadius: 5 },
+  areaName: { width: "32%", color: colors.text, fontSize: 15, fontWeight: "500" },
+  areaTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, areaFill: { height: 6, borderRadius: 3 },
+  primary: { minHeight: 52, flexDirection: "row", gap: 8, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  primaryText: { color: colors.primaryText, fontSize: 16, fontWeight: "600" },
 });

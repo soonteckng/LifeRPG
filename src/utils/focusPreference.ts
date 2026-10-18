@@ -19,7 +19,7 @@ export function preferenceForFocusArea(value: GuidedPreference, areaId: number |
   const kind = focusAreaKind(title);
   if (!kind || kind === "general") return { ...value, enabled: false, invited: true, areaId };
   if (suggestedFocusAreaKey(value.templateId) === kind) return { ...value, areaId };
-  const needs: Record<Exclude<typeof kind, "general">, FocusNeed> = { learning: "revision", work: "work", creative: "creative", wellbeing: "restore", personal: "life-admin" };
+  const needs: Record<Exclude<typeof kind, "general">, FocusNeed> = { learning: "revision", revision: "revision", work: "work", creative: "creative", wellbeing: "restore", personal: "life-admin" };
   const need = needs[kind];
   return { ...value, need, templateId: defaultFocusId(need), smaller: false, invited: true, areaId };
 }

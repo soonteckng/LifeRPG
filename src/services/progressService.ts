@@ -13,6 +13,8 @@ export interface ProgressSession {
   xp_earned: number;
   gold_earned: number;
   completed_at: string | null;
+  /** The phone's id for the session; it links a study session to its subject. */
+  client_session_id?: string | null;
   credit_version?: number | null;
   credit_result?: { area_xp_earned?: number | null; character_remainder_seconds?: number; area_remainder_seconds?: number | null; credited_date?: string } | null;
 }

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "./AppText";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { useAuth } from "../context/AuthContext";
 import { useUser } from "../context/UserContext";
@@ -140,7 +140,7 @@ const styles = StyleSheet.create({
   heading: { ...type.pageTitle, fontSize: 30, lineHeight: 38 },
   body: { ...type.body, color: colors.secondary },
   caption: { ...type.secondary },
-  card: { padding: 20, gap: 18, borderRadius: 24, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  card: { padding: 20, gap: 18, borderRadius: 24, backgroundColor: colors.surface, ...edge },
   statusTitle: { ...type.pageTitle, fontSize: 22, lineHeight: 28 },
   time: { gap: 20, paddingVertical: 12, alignItems: "flex-start" },
   unit: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 8 },

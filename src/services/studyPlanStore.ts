@@ -1,7 +1,7 @@
 import type { JournalScope } from "../types/sessionJournal";
 import type { StudyCourseDraft, StudyEnvelope, StudyExamDraft, StudyOperation, StudyReply, StudyState, StudyTransport } from "../types/studyPlan";
-import { COURSE_LIMIT, EXAM_LIMIT, normaliseCourse, normaliseExam, parseStudyEnvelope, STUDY_QUEUE_LIMIT, STUDY_TAG_LIMIT, studyStorageKey,
-  studyListSince, upcomingExams, validCourseDraft, validExamDraft, validRecent, visibleStudy } from "../utils/studyPlan";
+import { COURSE_LIMIT, EXAM_LIMIT, normaliseCourse, normaliseExam, parseStudyEnvelope, REMOVED_LIMIT, STUDY_QUEUE_LIMIT, STUDY_TAG_LIMIT, studyStorageKey,
+  studyListSince, upcomingExams, validCourseDraft, validExamDraft, validRecent, validRemoved, visibleStudy } from "../utils/studyPlan";
 import { isJournalUuid } from "../utils/sessionJournalSchema";
 
 interface Storage { getItem: (key: string) => Promise<string | null>; setItem: (key: string, value: string) => Promise<void> }
@@ -77,13 +77,35 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
       reads.set(key, request); return request;
     },
     saveCourse: (scope: JournalScope, draft: StudyCourseDraft, id?: string) => enqueue(scope, "course", draft, id, false),
-    /** Finds a subject by name (any case) or adds it, and returns its id. */
+    /**
+     * Finds a subject by name (any case) or adds it, and returns its id. A
+     * subject removed earlier comes back with the same id, so its minutes do.
+     */
     async ensureCourse(scope: JournalScope, name: string, focusAreaId: number | null): Promise<string | null> {
       const clean = name.trim().replace(/\s+/g, " ").slice(0, 60);
       if (!validCourseDraft({ name: clean, focusAreaId })) return null;
       await store.load(scope);
       const existing = store.snapshot(scope).courses.find(course => course.name.toLowerCase() === clean.toLowerCase());
       if (existing) return existing.id;
+      const key = studyStorageKey(scope), same = (value: string) => value.toLowerCase() === clean.toLowerCase();
+      const revived = await serial(key, async () => {
+        const before = envelopes.get(key); if (!before) return null;
+        // Removed on this phone but not synced yet: just drop the removal.
+        const queued = before.pending.find(op => op.kind === "course" && op.deleted && same(op.draft.name));
+        if (queued) {
+          try { await commit(key, { ...before, pending: before.pending.filter(op => op.itemId !== queued.itemId || !op.deleted) }); return queued.itemId; } catch { return null; }
+        }
+        const removed = (before.removed ?? []).find(item => same(item.name));
+        if (!removed || visibleStudy(before).courses.length >= COURSE_LIMIT) return null;
+        // Shown straight away; the server restores it, minutes and all, on the next sync.
+        const course = { kind: "course" as const, id: removed.id, revision: removed.revision + 1, name: removed.name, focusAreaId, deletedAt: null, totalSeconds: 0 };
+        try {
+          await commit(key, { ...before, courses: [...before.courses.filter(item => item.id !== removed.id), course],
+            removed: (before.removed ?? []).filter(item => item.id !== removed.id), restores: [...(before.restores ?? []).filter(id => id !== removed.id), removed.id] });
+          return removed.id;
+        } catch { return null; }
+      });
+      if (revived) return revived;
       const id = newId();
       return await enqueue(scope, "course", { name: clean, focusAreaId }, undefined, false, id) ? id : null;
     },
@@ -113,6 +135,22 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
         publish(key, { busy: true });
         let notice: string | null = null;
         try {
+          // Restores go first, so edits and exams can point at the restored subject.
+          for (let count = 0; count < COURSE_LIMIT && active(); count++) {
+            const restoreId = envelopes.get(key)?.restores?.[0]; if (!restoreId) break;
+            const reply = await transport.restore(restoreId);
+            if (!active()) return;
+            const item = reply?.item ? normaliseCourse(reply.item) : null;
+            if (reply?.status !== "saved" && reply?.status !== "conflict" || reply.status === "saved" && (!item || item.id !== restoreId || item.deletedAt !== null)) throw new Error("Invalid restore reply");
+            await serial(key, async () => {
+              const before = envelopes.get(key)!;
+              if (before.restores?.[0] !== restoreId) return;
+              if (reply.status !== "saved") notice = conflictMessage[reply.reason ?? ""] ?? "Couldn't bring that subject back. Add it again.";
+              const courses = before.courses.filter(course => course.id !== restoreId);
+              await commit(key, { ...before, restores: before.restores.slice(1), courses: reply.status === "saved" && item ? [...courses, item] : courses,
+                pending: reply.status === "saved" ? before.pending : before.pending.filter(op => op.itemId !== restoreId) });
+            });
+          }
           for (let count = 0; count < STUDY_QUEUE_LIMIT && active(); count++) {
             const operation = envelopes.get(key)?.pending[0]; if (!operation) break;
             const reply = await transport.apply(JSON.parse(JSON.stringify(operation)));
@@ -149,11 +187,18 @@ export function createStudyPlanStore(storage: Storage, newId: () => string, now:
           if (!active()) return;
           const courses = Array.isArray(remote?.courses) ? remote.courses.map(normaliseCourse) : null;
           const exams = Array.isArray(remote?.exams) ? remote.exams.map(normaliseExam) : null;
+          // Servers without restore support send no removed list; that is fine.
+          const removed = Array.isArray(remote?.removed) ? remote.removed.filter(validRemoved).slice(0, REMOVED_LIMIT) : [];
           if (!courses || !exams || !Array.isArray(remote.recent) || courses.length > COURSE_LIMIT || exams.length > 2 * EXAM_LIMIT || remote.recent.length > 500
             || courses.some(item => !item) || exams.some(item => !item) || !remote.recent.every(validRecent)) throw new Error("Invalid study list");
           await serial(key, async () => {
             if (!active()) return;
-            await commit(key, { ...envelopes.get(key)!, courses: courses as NonNullable<typeof courses[number]>[], exams: exams as NonNullable<typeof exams[number]>[], recent: remote.recent });
+            const before = envelopes.get(key)!;
+            // A restore queued while the list was in flight keeps its subject on screen.
+            const waiting = new Set(before.restores ?? []);
+            const live = courses as NonNullable<typeof courses[number]>[];
+            await commit(key, { ...before, courses: [...live.filter(item => !waiting.has(item.id)), ...before.courses.filter(item => waiting.has(item.id))],
+              exams: exams as NonNullable<typeof exams[number]>[], recent: remote.recent, removed: removed.filter(item => !waiting.has(item.id)) });
           });
         } catch { if (active()) notice = "Saved on this phone. We'll sync your study plan when the connection returns."; }
         finally { publish(key, { busy: false, ...(notice && active() ? { error: notice } : {}) }); }

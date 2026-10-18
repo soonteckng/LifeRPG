@@ -106,33 +106,28 @@ test('an unavailable scheduler never tells an onboarded user to finish setup',as
   try{assert.match(ui.output(),/temporarily unavailable/);assert.doesNotMatch(ui.output(),/Finish setup/);assert.equal(ui.button('Save daily goal').props.disabled,true);}finally{await ui.cleanup();}
 });
 
-test('Settings immediately blocks another write while its lost-reply status check is pending and offers read-only retry',async()=>{
+test('Settings › Daily goal immediately blocks another write while its lost-reply status check is pending and offers read-only retry',async()=>{
   let reads=0,writes=0,tree;const check=defer();
   const Button=({title,...props})=>React.createElement('Button',props,title);
-  const Row=({title,subtitle,...props})=>React.createElement('Button',props,title,subtitle);
-  const Component=load('src/app/settings.tsx',{
-    'react-native':{View:host('View'),Switch:host('Switch'),Platform:{OS:'android'},AppState:{addEventListener:()=>({remove(){}})}},
-    'expo-router':{useRouter:()=>({navigate(){}})},'../components/PersonalUI':{PersonalPage:host('Page'),PersonalButton:Button,PersonalRow:Row,p:{}},
-    '../components/AppSheet':props=>React.createElement('Sheet',props,props.header,props.children),
-    '@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input')},
-    '../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Hero',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'},setHapticsEnabled(){}})},
-    '../context/AuthContext':{useAuth:()=>({user:{email:'synthetic@example.com'},signOut:async()=>({error:null})})},
-    '../context/TimerContext':{useTimer:()=>({})},'../utils/afterTransition':{afterTransition:work=>{work();return()=>{};}},
-    '../services/notificationPermissionService':{readNotificationPermission:async()=>({label:'Allowed'}),enableNotifications:async()=>({label:'Allowed'}),openAlarmSettings:async()=>{},openNotificationSettings:async()=>{}},
+  const Component=load('src/app/settings-goal.tsx',{
+    'react-native':{View:host('View'),TextInput:host('Input'),Platform:{OS:'android'},AppState:{addEventListener:()=>({remove(){}})}},
+    '../components/PersonalUI':{PersonalPage:host('Page'),PersonalButton:Button,p:{}},
+    '../components/SettingsList':{SettingsGroup:({title,footer,children})=>React.createElement('Group',null,title,children,footer),SettingsRow:({title,value})=>React.createElement('Row',null,title,value)},
+    '../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Hero',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},
+    '../utils/afterTransition':{afterTransition:work=>{work();return()=>{};}},
     '../services/dailyProgressService':{getTodayProgress:async()=>null},
-    '../services/dailyGoalService':{getDailyGoalSettings:async()=>++reads<=2?goal:check.promise,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{writes++;throw Error('Lost reply');}},
+    '../services/dailyGoalService':{getDailyGoalSettings:async()=>++reads<=1?goal:check.promise,missingGoalAPI:()=>false,scheduleDailyGoal:async()=>{writes++;throw Error('Lost reply');}},
   }).default;
   await act(async()=>{tree=create(React.createElement(Component));});
   const button=label=>tree.root.findAllByType('Button').find(node=>text(node)===label);
   try{
-    await act(async()=>button('Daily goalToday: 60 min').props.onPress());
     await act(async()=>tree.root.findByType('Input').props.onChangeText('90'));
     await act(async()=>button('Save daily goal').props.onPress());
     assert.equal(writes,1);assert.equal(button('Save daily goal'),undefined);
-    assert.ok(button('Retry goal check'));assert.equal(tree.root.findByType('Sheet').props.guardDismiss,false);
+    assert.ok(button('Retry goal check'));
     assert.match(text(tree.root),/delayed change may still arrive/);
     await act(async()=>check.resolve(pending));
-    assert.equal(button('Save daily goal'),undefined);assert.match(text(tree.root),/90 min from 2026-10-13/);
+    assert.equal(button('Save daily goal'),undefined);assert.match(text(tree.root),/From 2026-10-1390 min/);
     assert.equal(writes,1);
   }finally{await act(async()=>tree.unmount());}
 });

@@ -1,5 +1,5 @@
 import type { JournalScope } from "../types/sessionJournal";
-import type { StudyCourse, StudyCourseDraft, StudyEnvelope, StudyExam, StudyExamDraft, StudyOperation, StudyRecent, StudyTag } from "../types/studyPlan";
+import type { StudyCourse, StudyCourseDraft, StudyEnvelope, StudyExam, StudyExamDraft, StudyOperation, StudyRecent, StudyRemoved, StudyTag } from "../types/studyPlan";
 import { isJournalUuid, validateJournalScope } from "./sessionJournalSchema";
 
 export const COURSE_LIMIT = 24;
@@ -44,6 +44,10 @@ export function validStudyOperation(value: unknown): value is StudyOperation {
   return object(value) && isJournalUuid(value.operationId) && isJournalUuid(value.itemId) && integer(value.expectedRevision, 0, Number.MAX_SAFE_INTEGER)
     && typeof value.deleted === "boolean" && (value.kind === "course" ? validCourseDraft(value.draft) : value.kind === "exam" && validExamDraft(value.draft));
 }
+export const REMOVED_LIMIT = 48;
+export function validRemoved(value: unknown): value is StudyRemoved {
+  return object(value) && exact(value, ["id", "revision", "name"]) && isJournalUuid(value.id) && integer(value.revision, 1, Number.MAX_SAFE_INTEGER) && cleanText(value.name, 60);
+}
 export function validStudyTag(value: unknown): value is StudyTag {
   return object(value) && isJournalUuid(value.clientSessionId) && (value.courseId === null || isJournalUuid(value.courseId));
 }
@@ -80,7 +84,10 @@ export function parseStudyEnvelope(raw: string | null, scope: JournalScope): Stu
     || !Array.isArray(value.exams) || value.exams.length > 2 * EXAM_LIMIT + STUDY_QUEUE_LIMIT || !value.exams.every(validExam) || !unique(value.exams, item => item.id)
     || !Array.isArray(value.recent) || value.recent.length > 500 || !value.recent.every(validRecent)
     || !Array.isArray(value.pending) || value.pending.length > STUDY_QUEUE_LIMIT || !value.pending.every(validStudyOperation) || !unique(value.pending, item => item.operationId)
-    || !Array.isArray(value.tags) || value.tags.length > STUDY_TAG_LIMIT || !value.tags.every(validStudyTag) || !exact(value, ["version", "scope", "courses", "exams", "recent", "pending", "tags"])) throw new Error(broken);
+    || !Array.isArray(value.tags) || value.tags.length > STUDY_TAG_LIMIT || !value.tags.every(validStudyTag)
+    || value.removed !== undefined && (!Array.isArray(value.removed) || value.removed.length > REMOVED_LIMIT || !value.removed.every(validRemoved))
+    || value.restores !== undefined && (!Array.isArray(value.restores) || value.restores.length > COURSE_LIMIT || !value.restores.every(isJournalUuid))
+    || !exact(value, ["version", "scope", "courses", "exams", "recent", "pending", "tags", "removed", "restores"])) throw new Error(broken);
   const envelope = value as unknown as StudyEnvelope;
   return { ...envelope, exams: envelope.exams.map(withExamDefaults),
     pending: envelope.pending.map(op => op.kind === "exam" ? { ...op, draft: withExamDefaults(op.draft) } : op) };
@@ -128,8 +135,9 @@ export function examDateLabel(examDate: string, withWeekday = true): string {
   const day = `${date.getDate()} ${date.toLocaleDateString("en-GB", { month: "short" })}`;
   return withWeekday ? `${weekday} ${day}` : day;
 }
+/** Exams from today on, soonest first; one just added on this phone takes its place by date. */
 export function upcomingExams(exams: StudyExam[], now = new Date()): StudyExam[] {
-  return exams.filter(item => daysUntil(item.examDate, now) >= 0);
+  return exams.filter(item => daysUntil(item.examDate, now) >= 0).sort((a, b) => a.examDate.localeCompare(b.examDate) || a.title.localeCompare(b.title));
 }
 /** Start of the local 7-day window that ends today. */
 export function studyWindowStart(now = new Date()): number {
@@ -187,19 +195,36 @@ export function subjectSuggestions(query: string, mine: string[], limit = 18): s
 export function courseArea(course: Pick<StudyCourse, "focusAreaId">, generalId: number | null | undefined): number | null {
   return course.focusAreaId ?? generalId ?? null;
 }
-/** A picked subject applies only while the session is set to that subject's area. */
-export function subjectForArea(courses: StudyCourse[], chosenId: string | null, areaId: number | null, generalId: number | null | undefined): StudyCourse | null {
+/** Whether a subject has an exam today or later. */
+export function hasUpcomingExam(courseId: string, exams: StudyExam[], now = new Date()): boolean {
+  return upcomingExams(exams, now).some(exam => exam.courseId === courseId);
+}
+/**
+ * Where a study session's time counts, decided as it starts: Revision while
+ * the subject has an exam coming up, otherwise the subject's own area
+ * (Learning by default). Without a Revision area it falls back to that area.
+ */
+export function studyAreaFor(course: Pick<StudyCourse, "id" | "focusAreaId">, exams: StudyExam[], revisionId: number | null | undefined,
+  generalId: number | null | undefined, now = new Date()): number | null {
+  return revisionId != null && hasUpcomingExam(course.id, exams, now) ? revisionId : courseArea(course, generalId);
+}
+/** A picked subject applies only while the session is set to that subject's area, or to Revision. */
+export function subjectForArea(courses: StudyCourse[], chosenId: string | null, areaId: number | null, generalId: number | null | undefined,
+  revisionId?: number | null): StudyCourse | null {
   const course = chosenId ? courses.find(item => item.id === chosenId) : undefined;
-  return course && courseArea(course, generalId) === (areaId ?? generalId ?? null) ? course : null;
+  const area = areaId ?? generalId ?? null;
+  return course && (courseArea(course, generalId) === area || revisionId != null && area === revisionId) ? course : null;
+}
+/** Subjects with an exam first (soonest first), then the rest in the order they were added. */
+export function sortCoursesByExam(courses: StudyCourse[], exams: StudyExam[], now = new Date()): StudyCourse[] {
+  const next = new Map<string, string>();
+  for (const exam of upcomingExams(exams, now)) if (exam.courseId && (!next.has(exam.courseId) || exam.examDate < next.get(exam.courseId)!)) next.set(exam.courseId, exam.examDate);
+  return courses.map((course, index) => ({ course, index, date: next.get(course.id) }))
+    .sort((a, b) => a.date && b.date ? a.date.localeCompare(b.date) || a.index - b.index : a.date ? -1 : b.date ? 1 : a.index - b.index)
+    .map(item => item.course);
 }
 /** How far back tagged sessions are fetched: this week, this month and the last 7 days. */
 export function studyListSince(now = new Date()): number {
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate()); monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
   return Math.min(studyWindowStart(now), monday.getTime(), new Date(now.getFullYear(), now.getMonth(), 1).getTime());
-}
-/** Seconds per subject for sessions whose day key falls in [start, end], most first. */
-export function subjectTotals(recent: StudyRecent[], courses: StudyCourse[], dayOf: (ms: number) => string, start: string, end: string) {
-  const totals = new Map<string, number>();
-  for (const item of recent) { const day = dayOf(item.completedAt); if (day >= start && day <= end) totals.set(item.courseId, (totals.get(item.courseId) ?? 0) + item.seconds); }
-  return courses.map(course => ({ course, seconds: totals.get(course.id) ?? 0 })).sort((a, b) => b.seconds - a.seconds || a.course.name.localeCompare(b.course.name));
 }

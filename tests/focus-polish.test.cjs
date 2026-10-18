@@ -57,9 +57,9 @@ test('area choices reconcile duplicate cached names without losing the selected 
  const api=load('src/utils/focusAreas.ts'),draft=load('src/utils/questDraft.ts');
  const areas=[{id:1,title:'General'},{id:2,title:'Fitness & Health'},{id:3,title:'Grooming & Vitality'},{id:4,title:'Knowledge'}];
  assert.deepEqual(api.focusAreaChoices(areas,3).map(area=>[area.id,api.focusAreaTitle(area.title)]),[[1,'Everyday focus'],[4,'Learning'],[3,'Wellbeing']]);assert.equal(areas.length,4);
- const canonical=api.FOCUS_AREAS.map((area,index)=>({...area,id:index+10}));assert.equal(api.focusAreaChoices(canonical).length,6);
+ const canonical=api.FOCUS_AREAS.map((area,index)=>({...area,id:index+10}));assert.equal(api.focusAreaChoices(canonical).length,6,'Revision is never offered');
  assert.equal(draft.questParams(draft.makeQuestDraft(),canonical,null).subjectId,10);
- const directions=load('src/constants/guidedQuests.ts').FOCUS_DIRECTIONS.map(direction=>direction.title);assert.deepEqual(directions,api.FOCUS_AREAS.slice(1).map(area=>area.title));
+ const directions=load('src/constants/guidedQuests.ts').FOCUS_DIRECTIONS.map(direction=>direction.title);assert.deepEqual(directions,api.FOCUS_AREAS.slice(1).filter(area=>area.kind!=='revision').map(area=>area.title));
 });
 
 test('quest scope switches give haptics and custom minutes are revealed after keyboard and content layout changes',async()=>{

@@ -651,7 +651,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "react-native-svg": {__esModule:true, default:host("Svg"), Circle:host("Circle")},
     "react-native": { ...native, Animated: {createAnimatedComponent:c=>c, Value:class {constructor(value){this.value=value;} setValue(value){this.value=value;} stopAnimation(){} interpolate(config){return {source:this,config};}}}, ScrollView: host("ScrollView"), TouchableOpacity: host("Pressable"), useWindowDimensions: () => ({ height: 640, width: 320, fontScale: 2 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
-    "expo-haptics": {}, "expo-router": { useRouter: () => ({ navigate: route => sessionCalls.push(["navigate",route]) }) },
+    "expo-haptics": {}, "expo-router": { useRouter: () => ({ navigate: route => sessionCalls.push(["navigate",route]) }), useFocusEffect: () => {} },
     "react-native-safe-area-context": { SafeAreaView: host("View"), useSafeAreaInsets: () => ({ top: 24, bottom: 24 }) },
     "../../components/QuestSheet": host("QuestPreviewSheet"),
     "../../components/ContentReveal": ({ children }) => children,
@@ -665,7 +665,8 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   }).default;
   let renderer;
   await act(async () => { renderer = create(React.createElement(Home)); });
-  const output = () => JSON.stringify(renderer.toJSON());
+  // Elements passed as props (such as a section's ••• menu) are left out of the text.
+  const output = () => JSON.stringify(renderer.toJSON(), (key, value) => value && value.$$typeof && value.$$typeof !== Symbol.for('react.test.json') ? undefined : value);
   const retry = () => renderer.root.findAllByType("Pressable").find((node) => node.props.accessibilityLabel === "Retry loading Home");
   homeTasks = [task({id: 12, title: "Completed earlier", is_completed: true}), task({id: 13, title: "Tomorrow", is_due_today: false}), task({id: 14, title: "Finished today", is_completed_today: true}), task({id: 15, title: "Read now"}), task({id: 16, title: "Repeat today", is_recurring: true, is_completed: true}), task({id: 17, title: "Third quest"}), task({id: 18, title: "Fourth quest"})];
   await act(async () => renderer.update(React.createElement(Home)));
@@ -1239,5 +1240,32 @@ test('Home level button opens and dismisses the tier path without changing its t
   const popup=()=>ui.renderer.root.findByType('TierSheet');assert.equal(popup().props.visible,true);
   await act(async()=>popup().props.onClose());assert.equal(popup().props.visible,false);
   assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
+ }finally{await ui.cleanup();}
+});
+
+test('Home: the goal ring opens Today, its ••• changes the goal, Settings sits by the avatar and sections can be rearranged',async()=>{
+ const ui=await quickHomeSetup();
+ try{
+  const find=type=>ui.renderer.root.findAllByType(type);
+  const menu=testID=>find('MoreMenu').find(node=>node.props.testID===testID);
+  await act(async()=>ui.button('home-compact-goal').props.onPress());
+  assert.equal(find('TodaySheet')[0].props.visible,true,'tapping the ring shows today up close');
+  assert.equal(find('GoalSheet')[0].props.visible,false,'it never jumps straight to editing the goal');
+  await act(async()=>find('TodaySheet')[0].props.onClose());
+  assert.deepEqual(menu('home-today-menu').props.options.map(option=>option.label),['Change daily goal','Open Progress']);
+  await act(async()=>menu('home-today-menu').props.options[0].onPress());
+  assert.equal(find('GoalSheet')[0].props.visible,true);
+  await act(async()=>ui.button('home-settings').props.onPress());
+  assert.deepEqual(ui.calls.filter(call=>call[0]==='navigate').at(-1),['navigate','/settings']);
+  // Every section's ••• offers Rearrange Home; Routines is the first section by default.
+  const rearrange=()=>find('SavedRoutines')[0].props.headerRight.props.options.find(option=>option.label==='Rearrange Home');
+  await act(async()=>rearrange().onPress());
+  const arranger=find('HomeArranger')[0];
+  assert.deepEqual(arranger.props.order,['routines','exams','squad','week','milestones']);
+  await act(async()=>{await arranger.props.onChange(['week','routines','exams','squad','milestones']);});
+  await act(async()=>ui.renderer.root.findAllByType('Pressable').find(node=>node.props.accessibilityLabel==='Done rearranging').props.onPress());
+  assert.equal(find('HomeArranger').length,0);
+  await act(async()=>rearrange().onPress());
+  assert.deepEqual(find('HomeArranger')[0].props.order,['week','routines','exams','squad','milestones'],'the new order is kept');
  }finally{await ui.cleanup();}
 });

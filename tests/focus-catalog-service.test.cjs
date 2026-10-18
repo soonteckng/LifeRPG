@@ -43,12 +43,13 @@ test('complete catalogues load owned real IDs without repair or changing earned 
   const rows = [...full, { id: 90, title: 'My ceramics', level: 3, current_xp: 17 }];
   const before = JSON.stringify(rows), { api, calls } = service(rows);
   const result = await api.getSubjects();
-  assert.equal(result.length, 7); assert.equal(result.at(-1).id, 90);
+  assert.equal(result.length, catalogue.FOCUS_AREAS.length + 1); assert.equal(result.at(-1).id, 90);
   assert.equal(result.at(-1).current_xp, 17); assert.equal(JSON.stringify(rows), before);
   assert.deepEqual(calls, [['from', 'subjects'], ['filter', 'user_id', 'account-a']]);
 });
 test('legacy four-area accounts request only the scoped repair and retain their IDs and balances', async () => {
-  const repaired = [...legacy, full[2], full[3]];
+  // Repair adds the missing categories, Revision included.
+  const repaired = [...legacy, ...full.filter(area => ['Work & projects', 'Creativity', 'Revision'].includes(area.title))];
   const { api, calls } = service(legacy, { repaired });
   const result = await api.getSubjects();
   assert.equal(catalogue.missingFocusAreas(result).length, 0);
@@ -57,10 +58,13 @@ test('legacy four-area accounts request only the scoped repair and retain their 
   assert.deepEqual(result.map(area => catalogue.focusAreaTitle(area.title)), full.map(area => area.title));
 });
 test('aliases share canonical labels and count as existing areas instead of creating duplicates', () => {
-  const aliases = ['General', 'Study', 'Projects', 'Creative practice', 'Personal life', 'Health'];
+  const aliases = ['General', 'Study', 'Revision', 'Projects', 'Creative practice', 'Personal life', 'Health'];
   assert.deepEqual(aliases.map(catalogue.focusAreaTitle), full.map(area => area.title));
   assert.equal(catalogue.missingFocusAreas(aliases.map(title => ({ title }))).length, 0);
-  assert.deepEqual(catalogue.missingFocusAreas(legacy).map(area => area.title), ['Work & projects', 'Creativity']);
+  assert.deepEqual(catalogue.missingFocusAreas(legacy).map(area => area.title), ['Revision', 'Work & projects', 'Creativity']);
+  // Revision is the app's own: no picker offers it.
+  assert.equal(catalogue.focusAreaChoices(full).some(area => area.title === 'Revision'), false);
+  assert.equal(catalogue.revisionArea(full).title, 'Revision');
 });
 test('an unavailable repair or incomplete result cannot silently attribute a missing category to General', async () => {
   await assert.rejects(service(legacy, { error: { code: 'PGRST202' } }).api.getSubjects(), /complete focus area list/);

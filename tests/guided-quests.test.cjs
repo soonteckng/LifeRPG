@@ -210,7 +210,7 @@ test('Home stays a dashboard when suggestions were on: no suggestion card, and o
   '@react-native-async-storage/async-storage':db.api,
   'react-native':{...Native,useWindowDimensions:()=>({height:800,width:390,fontScale:1})},
   '../../components/AppText':{Text:host('Text')},
-  'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:route=>routes.push(route)})},
+  'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:route=>routes.push(route)}),useFocusEffect:()=>{}},
   'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
   '../../components/ProgressRing':host('ProgressRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon',level:1,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
@@ -225,7 +225,9 @@ test('Home stays a dashboard when suggestions were on: no suggestion card, and o
   const routines=ui.tree.root.findByType('SavedRoutinesCard');assert.deepEqual(routines.props.legacyTasks,[quest]);assert.equal(routines.props.suggestions,false);assert.equal(routines.props.limit,2);
   await act(async()=>routines.props.onStartLegacy(quest));assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.deepEqual(routes,['/session']);
   await act(async()=>routines.props.onSeeAll());assert.equal(routes.at(-1),'/routines');
-  await ui.press('Open Profile');assert.equal(routes.at(-1),'/profile');
+  // Profile grows out of the avatar once its position is known (or after a short wait).
+  await ui.press('Open Profile');await act(()=>new Promise(resolve=>setTimeout(resolve,150)));assert.equal(routes.at(-1),'/profile');
+  await ui.press('Open Settings');assert.equal(routes.at(-1),'/settings');
  }finally{await ui.cleanup();}
 });
 test('an older matching record or old quest receipt cannot mark a newly completed suggestion as a saved routine',async()=>{

@@ -11,7 +11,7 @@ import FocusCard from "./FocusCard";
 import SessionProtectionControl from "./SessionProtectionControl";
 import GuidedPreferenceSheet from "./GuidedPreferenceSheet";
 import SheetConfirmation from "./SheetConfirmation";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { suggestedFocus, suggestedFocusAreaKey, readSuggestedFocus } from "../constants/guidedQuests";
 import { useTimer } from "../context/TimerContext";
@@ -173,9 +173,9 @@ const s = StyleSheet.create({
   badge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 14, backgroundColor: colors.accentSoft },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent }, badgeText: { ...type.caption, color: colors.accent },
   heading: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "500", letterSpacing: -0.6, marginTop: 2 }, body: { ...type.body, color: colors.secondary }, caption: { ...type.secondary },
-  card: { padding: 16, gap: 12, borderRadius: 24, backgroundColor: colors.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border },
+  card: { padding: 16, gap: 12, borderRadius: 24, backgroundColor: colors.surfaceRaised, ...edge },
   offlineGoal: { flexDirection: "row", alignItems: "center", gap: 12 }, offlineGoalCopy: { flex: 1, minWidth: 0, gap: 2 }, goalText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" },
-  pinned: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, width: "100%", maxWidth: 600, alignSelf: "center" }, retry: { minHeight: 48, padding: 12, borderRadius: 16, alignItems: "center", justifyContent: "center", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 16 },
+  pinned: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 8, width: "100%", maxWidth: 600, alignSelf: "center" }, retry: { minHeight: 48, padding: 12, borderRadius: 16, alignItems: "center", justifyContent: "center", ...edge }, localCaption: { color: colors.secondary, fontSize: 12, lineHeight: 16 },
   cardHeading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   change: { minHeight: 44, minWidth: 68, paddingHorizontal: 4, paddingVertical: 8, alignItems: "flex-end", justifyContent: "center" },
   changeText: { color: colors.accent, fontSize: 14, lineHeight: 20, fontWeight: "500" }, suggestionRow: { flexDirection: "row", alignItems: "flex-start", gap: 7, marginTop: 8 },
@@ -184,7 +184,7 @@ const s = StyleSheet.create({
   areaValue: { flexDirection: "row", alignItems: "center", gap: 8 },
   timer: { alignItems: "center", gap: 24 }, time: { color: colors.text, fontSize: 54, lineHeight: 68, fontWeight: "600", fontVariant: ["tabular-nums"] },
   controls: { width: "100%", flexDirection: "row", gap: 10 }, grow: { flex: 1 }, disabled: { opacity: 0.5 },
-  button: { minHeight: 56, padding: 14, borderRadius: 20, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
+  button: { minHeight: 56, padding: 14, borderRadius: 20, backgroundColor: colors.surface, ...edge, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 },
   buttonText: { ...type.body, fontWeight: "600", color: colors.text }, secondary: { minHeight: 56, minWidth: 64, padding: 12, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   link: { ...type.body, fontWeight: "600", color: colors.accent }, error: { ...type.body, color: colors.danger },
 });

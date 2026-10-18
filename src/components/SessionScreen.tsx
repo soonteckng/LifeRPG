@@ -381,7 +381,8 @@ export default function SessionScreen() {
   const contextExam = chosenCourse ? upcomingExams(study.exams).find(exam => exam.courseId === chosenCourse.id) : undefined;
   const contextTitle = sessionMode === "study" ? chosenCourse?.name ?? "Choose a subject" : isRoutine ? title : focusAreaTitle(area?.title);
   const contextDetail = sessionMode === "study"
-    ? chosenCourse ? [contextExam ? `${contextExam.title} ${countdownLabel(daysUntil(contextExam.examDate)).toLowerCase()}` : null, `${studyTime(weekSeconds(study.recent, chosenCourse.id))} studied this week`].filter(Boolean).join(" · ") : "Its time counts toward Learning and its exams."
+    ? chosenCourse ? [contextExam ? `${contextExam.title} ${countdownLabel(daysUntil(contextExam.examDate)).toLowerCase()}` : null, `${studyTime(weekSeconds(study.recent, chosenCourse.id))} this week`,
+      contextExam ? "Counts as Revision" : "Counts as Learning"].filter(Boolean).join(" · ") : "Revision when an exam is near, otherwise Learning."
     : isRoutine ? focusAreaTitle(area?.title) : focusAreaHint(area?.title ?? "") || "Any activity you choose.";
   const status = phase === "ended" ? "Session ended" : timer.isRestoring ? "Restoring your session…" : timer.awaitingStart ? "Checking your saved start…"
     : timer.endingSession ? "Session ended"

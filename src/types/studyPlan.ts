@@ -12,12 +12,19 @@ export type StudyOperation =
 /** A finished-or-running focus session counted toward a subject. */
 export interface StudyTag { clientSessionId: string; courseId: string | null }
 export interface StudyRecent { courseId: string; completedAt: number; seconds: number }
-export interface StudyEnvelope { version: 1; scope: JournalScope; courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; pending: StudyOperation[]; tags: StudyTag[] }
+/** A removed subject the server still remembers, so adding it back restores its minutes. */
+export interface StudyRemoved { id: string; revision: number; name: string }
+export interface StudyEnvelope { version: 1; scope: JournalScope; courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; pending: StudyOperation[]; tags: StudyTag[];
+  /** Older phones' copies have neither field. */
+  removed?: StudyRemoved[]; restores?: string[] }
 export interface StudyState { ready: boolean; busy: boolean; error: string | null; courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; pendingCount: number }
 export interface StudyReply { status: "saved" | "conflict"; item: StudyItem | null; reason?: "limit" | "area" | "course" | "date" }
-export interface StudyList { courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[] }
+export interface StudyList { courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; removed?: StudyRemoved[] }
 export interface StudyTransport {
   list: (since: number) => Promise<StudyList>;
   apply: (operation: StudyOperation) => Promise<StudyReply>;
   tag: (tag: StudyTag) => Promise<{ status: "saved" | "conflict"; reason?: string }>;
+  restore: (courseId: string) => Promise<StudyReply>;
 }
+/** Which subject a study session was for, from the server, for Progress. */
+export interface StudySessionCourse { clientSessionId: string; courseId: string; name: string }

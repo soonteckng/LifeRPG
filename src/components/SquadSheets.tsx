@@ -103,7 +103,7 @@ const s = StyleSheet.create({
   face: { overflow: "hidden", backgroundColor: colors.selection, alignItems: "center", justifyContent: "center" },
   live: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  chip: { minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
+  chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
   chipOn: { backgroundColor: colors.accentSoft }, chipText: { color: colors.text, fontSize: 15, fontWeight: "600" }, chipTextOn: { color: colors.accent },
   label: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 0.4, textTransform: "uppercase" },
   hint: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },

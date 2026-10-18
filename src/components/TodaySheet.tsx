@@ -1,0 +1,71 @@
+import { StyleSheet, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import AppSheet from "./AppSheet";
+import Pressable from "./MotionPressable";
+import ProgressRing from "./ProgressRing";
+import MoreMenu from "./MoreMenu";
+import { Text } from "./AppText";
+import { useWeekProgress, WeekBars } from "./HomeSections";
+import { colors, edge } from "../constants/theme";
+import { durationLabel } from "../utils/progressAnalytics";
+
+/**
+ * Today's goal up close: how far along you are, your streak and this week's
+ * rhythm. The goal itself is changed from the ••• menu, not by tapping here.
+ */
+export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, complete, onChangeGoal, onOpenProgress }: {
+  visible: boolean; onClose: () => void; completedSeconds: number; goalMinutes: number; streak: number; complete: boolean;
+  onChangeGoal: () => void; onOpenProgress: () => void;
+}) {
+  const { week } = useWeekProgress();
+  const goal = goalMinutes * 60, left = Math.max(0, goal - completedSeconds), share = Math.min(1, completedSeconds / Math.max(1, goal));
+  const after = (work: () => void) => { onClose(); setTimeout(work, 240); };
+  return <AppSheet visible={visible} onRequestClose={onClose} floating compact maxHeightRatio={0.9} label="today" motionMode="timed"
+    header={<View style={s.header}>
+      <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
+      <MoreMenu label="Goal options" options={[
+        { label: "Change daily goal", icon: "flag-outline", onPress: () => after(onChangeGoal) },
+        { label: "Open Progress", icon: "stats-chart-outline", onPress: () => after(onOpenProgress) },
+      ]} />
+      <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={s.close}><Ionicons name="close" size={18} color={colors.secondary} /></Pressable>
+    </View>}>
+    <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      <View style={[s.card, s.hero]} accessible accessibilityLabel={`${Math.floor(completedSeconds / 60)} of ${goalMinutes} minutes today`}>
+        <ProgressRing size={148} stroke={14} progress={share} color={complete ? colors.success : colors.accent} track={colors.accentSoft}>
+          <Text style={s.ringValue}>{Math.floor(completedSeconds / 60)}</Text><Text style={s.caption}>of {goalMinutes} min</Text>
+        </ProgressRing>
+        <Text style={s.headline}>{complete ? "Nicely done today" : completedSeconds ? "Keep it going" : "A fresh start"}</Text>
+      </View>
+      <View style={s.stats}>
+        <Stat icon="flame" tint={colors.streak} value={`${streak}`} label="day streak" />
+        <Stat icon="time-outline" tint="#64D2FF" value={durationLabel(week?.seconds ?? 0)} label="this week" />
+        <Stat icon="checkmark-circle-outline" tint={colors.success} value={`${week?.goalDays ?? 0}/7`} label="goal days" />
+      </View>
+      <View style={s.card}><Text style={s.label}>This week</Text><WeekBars height={64} wide /><Text style={s.caption}>A green dot marks a day you reached your goal.</Text></View>
+      <Text style={s.note}>A new goal starts tomorrow, so today’s target and your streak never shift under you.</Text>
+    </BottomSheetScrollView>
+  </AppSheet>;
+}
+function Stat({ icon, tint, value, label }: { icon: React.ComponentProps<typeof Ionicons>["name"]; tint: string; value: string; label: string }) {
+  return <View style={[s.card, s.stat]} accessible accessibilityLabel={`${value} ${label}`}>
+    <Ionicons name={icon} size={18} color={tint} /><Text style={s.statValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text><Text style={s.caption} numberOfLines={1}>{label}</Text>
+  </View>;
+}
+const s = StyleSheet.create({
+  header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20, paddingBottom: 12 },
+  flex: { flex: 1, minWidth: 0, gap: 2 },
+  title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 },
+  close: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  body: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
+  card: { ...edge, padding: 14, gap: 10, borderRadius: 20, backgroundColor: colors.sheetCard },
+  hero: { alignItems: "center", paddingVertical: 20, gap: 14 },
+  ringValue: { color: colors.text, fontSize: 40, lineHeight: 44, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -1 },
+  headline: { color: colors.text, fontSize: 18, lineHeight: 23, fontWeight: "700" },
+  stats: { flexDirection: "row", gap: 10 },
+  stat: { flex: 1, gap: 4, paddingVertical: 12 },
+  statValue: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  label: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.8, textTransform: "uppercase" },
+  caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  note: { color: colors.tertiary, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
+});

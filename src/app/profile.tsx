@@ -1,6 +1,5 @@
-import { focusAreaTitle, focusAreaIcon } from "../utils/focusAreas";
+import { focusAreaTitle, focusAreaIcon, focusAreaKind } from "../utils/focusAreas";
 import { PROFILE_NAME_LIMIT, profileNameError } from "../constants/profile";
-import { rememberSettingsOrigin } from "../utils/settingsOrigin";
 import Pressable from "../components/MotionPressable";
 import { useTimer } from "../context/TimerContext";
 import { Text } from "../components/AppText";
@@ -14,9 +13,15 @@ import {
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Keyboard, StyleSheet, View } from "react-native";
+import { Keyboard, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { requiredCharacterXP } from "../utils/levelTiers";
+import { levelTierProgress, requiredCharacterXP } from "../utils/levelTiers";
+import ProgressRing from "../components/ProgressRing";
+import MilestonesSheet, { useMilestones } from "../components/MilestonesSheet";
+import SubjectBreakdown from "../components/SubjectBreakdown";
+import SectionHeader from "../components/SectionHeader";
+import MoreMenu from "../components/MoreMenu";
+import { durationLabel } from "../utils/progressAnalytics";
 import LevelTierSheet from "../components/LevelTierSheet";
 import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
 import { focusAreaDetail } from "../utils/focusAreaDetail";
@@ -29,7 +34,7 @@ import {
   PersonalPage,
   p,
 } from "../components/PersonalUI";
-import { colors, radius } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useCharacterData } from "../hooks/useCharacterData";
 import { profileFocusAreaGrowth } from "../utils/characterGrowth";
@@ -41,13 +46,9 @@ import CharacterLookPicker from "../components/CharacterLookPicker";
 import { characterLook } from "../utils/characterAppearance";
 export default function ProfileScreen() {
   const router = useRouter();
-  const settingsIcon = useRef<View>(null);
-  const openSettings = () => {
-    let opened = false;
-    const open = () => { if (!opened) { opened = true; router.navigate("/settings"); } };
-    const fallback = setTimeout(open, 100);
-    settingsIcon.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
-  };
+  const milestones = useMilestones();
+  const [openedAt] = useState(() => Date.now());
+  const [badgesOpen, setBadgesOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const { profile, updateProfile, reloadProfile } = useUser();
@@ -76,8 +77,14 @@ export default function ProfileScreen() {
   const required = requiredCharacterXP(profile.level);
   const selectedArea = areas.find(area => area.id === areaId) ?? null;
   const areaDetail = selectedArea && data ? focusAreaDetail(selectedArea, data.areas, data.sessions, profile.timezone) : null;
+  const selectedKind = focusAreaKind(selectedArea?.title);
+  // Learning and Revision show which subjects their time went to, over the last six weeks.
+  const recentAreaSessions = selectedArea && data && (selectedKind === "learning" || selectedKind === "revision")
+    ? data.sessions.filter(session => session.subject_id === selectedArea.id && Date.parse(session.completed_at ?? "") > openedAt - 44 * 86_400_000) : [];
   const focusArea = () => {
     if (!selectedArea) return;
+    // Revision only comes from studying a subject with an exam.
+    if (selectedKind === "revision") { afterArea.current = () => router.navigate("/study"); setLeavingArea(true); setAreaOpen(false); return; }
     // Existing sessions and unresolved completion/restoration always win, as on Home.
     if (!timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !(timer.isCompleted && !timer.sessionSummary)) {
       timer.setNotes(""); timer.setLinkedTaskId(null); timer.setTargetAttributeId(selectedArea.id); setupMode.choose("routine"); setupMode.chooseRoutine(null);
@@ -128,20 +135,54 @@ export default function ProfileScreen() {
     }
   };
   const chooseLook = useCallback((next: string) => { Keyboard.dismiss(); setAvatar(next); setSaveError(""); }, []);
+  const tier = levelTierProgress(profile.level, profile.current_xp).current;
   const savedLook = characterLook(profile.avatar), draftLook = characterLook(avatar || profile.avatar);
   return (
-    <PersonalPage title="Profile" subtitle="" compact back animateTransition fallback="/"
-      action={<View ref={settingsIcon} collapsable={false}><Pressable accessibilityRole="button" accessibilityLabel="Open Settings" onPress={openSettings} style={p.back}><Ionicons name="settings-outline" size={23} color={colors.accent} /></Pressable></View>}>
+    <PersonalPage title="Profile" subtitle="" compact back animateTransition expandFromIcon fallback="/">
       <ContentReveal><View style={s.stack}>
         <View style={s.hero} testID="profile-companion-card">
-          <View style={s.heroHead}><View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={112} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen} greetOnFocus /></View>
-          <View style={s.identity}><Text style={s.companionLabel}>YOUR COMPANION</Text><Text style={s.username} numberOfLines={2}>{profile.username}</Text><Text style={[p.caption, s.centerText]}>{savedLook.title}</Text></View></View>
-          <View style={s.levelBlock}><View style={s.levelRow}><Pressable style={s.levelPill} onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}. View level tiers`}><Ionicons name="sparkles" size={14} color={colors.level} /><Text style={s.levelText}>Level {profile.level}</Text><Ionicons name="chevron-forward" size={12} color={colors.level} /></Pressable><Text style={p.caption}>{profile.current_xp} / {required} XP</Text></View><Meter value={profile.current_xp / required} height={8} color={colors.level} /><Text style={s.growthHint}>Your next level grows with the effort you record.</Text></View>
-          <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.personalise}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.personaliseText}>Personalise</Text></Pressable>
+          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={s.portrait}>
+            <ProgressRing size={150} stroke={5} progress={profile.current_xp / required} color={colors.level} track={colors.levelSoft}>
+              <View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={112} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} greetOnFocus /></View>
+            </ProgressRing>
+            <View style={s.levelBadge}><Text style={s.levelBadgeText}>LV {profile.level}</Text></View>
+          </Pressable>
+          <View style={s.identity}>
+            <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
+            <Text style={s.tier} numberOfLines={1}>{tier.title} · {savedLook.title}</Text>
+          </View>
+          <View style={s.xpBlock}>
+            <Meter value={profile.current_xp / required} height={6} color={colors.level} />
+            <View style={s.xpRow}><Text style={p.caption}>{profile.current_xp} / {required} XP</Text><Text style={p.caption}>{required - profile.current_xp} XP to level {profile.level + 1}</Text></View>
+          </View>
+          <View style={s.heroActions}>
+            <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
+            <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={s.heroButton}><Ionicons name="sparkles-outline" size={17} color={colors.level} /><Text style={s.heroButtonText}>Level journey</Text></Pressable>
+          </View>
+        </View>
+        <View style={s.statsRow}>
+          {[["time-outline", durationLabel(milestones.totals.seconds), "focused", "#64D2FF"], ["calendar-outline", String(milestones.totals.days), milestones.totals.days === 1 ? "focus day" : "focus days", colors.accent],
+            ["flame", `${milestones.totals.bestStreak}`, "best streak", colors.streak]].map(([icon, value, label, tint]) =>
+            <View key={label} style={s.stat} accessible accessibilityLabel={`${value} ${label}`}>
+              <Ionicons name={icon as never} size={17} color={tint} /><Text style={s.statValue} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "—"}</Text><Text style={p.caption} numberOfLines={1}>{label}</Text>
+            </View>)}
+        </View>
+        <View style={s.section} testID="profile-badges">
+          <SectionHeader title="My Badges" subtitle={milestones.ready ? `${milestones.earned.length} of ${milestones.totals.milestones.length} earned` : "Getting your badges…"}
+            right={<MoreMenu label="Badge options" options={[{ label: "See all milestones", icon: "ribbon-outline", onPress: () => setBadgesOpen(true) }]} />} />
+          {milestones.earned.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.badges}>
+            {milestones.earned.map(badge => <Pressable key={badge.id} onPress={() => setBadgesOpen(true)} accessibilityRole="button" accessibilityLabel={`${badge.title}, earned`} style={s.badge}>
+              <View style={s.badgeIcon}><Ionicons name={badge.icon as never} size={22} color={colors.level} /></View>
+              <Text style={s.badgeText} numberOfLines={2}>{badge.title}</Text>
+            </Pressable>)}
+          </ScrollView> : <Pressable onPress={() => setBadgesOpen(true)} accessibilityRole="button" accessibilityLabel="See all milestones" style={s.emptyBadges}>
+            <View style={s.badgeIcon}><Ionicons name="ribbon-outline" size={22} color={colors.level} /></View>
+            <View style={s.detail}><Text style={p.rowTitle}>Your first badge is one session away</Text><Text style={p.caption}>{milestones.next ? milestones.next.description : "Every completed session counts."}</Text></View>
+          </Pressable>}
         </View>
         {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
         <View style={s.areasCard}>
-          <View style={s.areaHeading}><Text style={s.sectionTitle}>My Categories</Text><Text style={p.caption}>Each grows with the time you give it. Tap one for its story.</Text></View>
+          <SectionHeader title="My Categories" subtitle="Each grows with the time you give it. Revision grows from study with an exam near." />
           {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
           <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaRow}>
             <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={19} color={lifeAreaColor(area.id, area.color_code)} /></View>
@@ -151,23 +192,25 @@ export default function ProfileScreen() {
           <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
         {study.courses.length > 0 && <View style={s.areasCard} testID="profile-subjects">
-          <View style={s.areaHeading}><Text style={s.sectionTitle}>My Subjects</Text><Text style={p.caption}>All the time you’ve given each one.</Text></View>
+          <SectionHeader title="My Subjects" subtitle="All the time you’ve given each one." />
           <View style={s.subjects}>{study.courses.map((course, index) => {
             const exam = upcomingExams(study.exams).find(item => item.courseId === course.id);
-            return <Pressable key={course.id} onPress={() => router.navigate("/study")} accessibilityRole="button"
-              accessibilityLabel={`${course.name}, ${studyTime(course.totalSeconds)} in total${exam ? `, ${exam.title} ${countdownLabel(daysUntil(exam.examDate))}` : ""}. Open Study`} style={[s.subjectRow, index > 0 && s.subjectLine]}>
+            return <View key={course.id} accessible
+              accessibilityLabel={`${course.name}, ${studyTime(course.totalSeconds)} in total${exam ? `, ${exam.title} ${countdownLabel(daysUntil(exam.examDate))}` : ""}`} style={[s.subjectRow, index > 0 && s.subjectLine]}>
               <View style={[s.subjectDot, { backgroundColor: courseColor(course.id) }]} />
               <View style={s.detail}><Text style={p.rowTitle} numberOfLines={1}>{course.name}</Text>
                 {exam && <Text style={s.history} numberOfLines={1}>{exam.title} · {countdownLabel(daysUntil(exam.examDate))}</Text>}</View>
               <Text style={s.subjectTime}>{studyTime(course.totalSeconds)}</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.secondary} />
-            </Pressable>;
+            </View>;
           })}</View>
         </View>}
       </View></ContentReveal>
       <FocusAreaDetailSheet visible={areaOpen} area={selectedArea && { ...selectedArea, color: lifeAreaColor(selectedArea.id, selectedArea.color_code) }} detail={areaDetail}
         timeZone={profile.timezone} sessionOpen={timer.hasOpenSession} onFocus={focusArea} onClose={() => setAreaOpen(false)} leaving={leavingArea}
+        focusLabel={selectedKind === "revision" ? "Open Study" : undefined}
+        extra={recentAreaSessions.length ? <SubjectBreakdown owner={profile.id} sessions={recentAreaSessions} /> : null}
         onDismiss={() => { const next = afterArea.current; afterArea.current = null; setLeavingArea(false); next?.(); }} />
+      <MilestonesSheet visible={badgesOpen} onClose={() => setBadgesOpen(false)} />
       <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         expanded motionMode="timed" keyboardBehavior="fillParent" label="Personalise profile"
@@ -190,12 +233,30 @@ export default function ProfileScreen() {
   );
 }
 const s = StyleSheet.create({
-  stack: { gap: 24 }, hero: { padding: 18, gap: 16, borderRadius: radius.card, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder },
-  heroHead: { alignItems: "center", gap: 10 }, personalise: { alignSelf: "center", minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.accentSoft }, personaliseText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600" }, glow: { width: 136, height: 136, borderRadius: 68, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, centerText: { textAlign: "center" }, identity: { alignItems: "center", gap: 5 }, companionLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "500", letterSpacing: 1.4, textAlign: "center" }, username: { color: colors.text, fontSize: 30, lineHeight: 36, textAlign: "center", fontWeight: "600", letterSpacing: -0.4 },
-  levelBlock: { gap: 8 }, levelRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }, levelPill: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 5, paddingHorizontal: 14, borderRadius: 22, backgroundColor: colors.levelSoft }, levelText: { color: colors.level, fontSize: 14, lineHeight: 20, fontWeight: "600" }, growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  stack: { gap: 24 }, section: { gap: 10 },
+  hero: { ...edge, paddingVertical: 22, paddingHorizontal: 18, gap: 14, borderRadius: radius.card, backgroundColor: colors.surface, alignItems: "stretch" },
+  portrait: { alignSelf: "center", alignItems: "center" },
+  levelBadge: { marginTop: -14, paddingHorizontal: 12, minHeight: 26, borderRadius: 13, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
+  levelBadgeText: { color: "#2B2200", fontSize: 12, fontWeight: "800", letterSpacing: 0.6 },
+  tier: { color: colors.level, fontSize: 14, lineHeight: 19, fontWeight: "600", textAlign: "center" },
+  xpBlock: { gap: 6 }, xpRow: { flexDirection: "row", justifyContent: "space-between", gap: 8 },
+  heroActions: { flexDirection: "row", gap: 10 },
+  heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.sheetCard },
+  heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
+  statsRow: { flexDirection: "row", gap: 10 },
+  stat: { ...edge, flex: 1, padding: 12, gap: 3, borderRadius: radius.tile, backgroundColor: colors.surface },
+  statValue: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  badges: { gap: 10, paddingRight: 8 },
+  badge: { ...edge, width: 112, minHeight: 108, padding: 12, gap: 8, borderRadius: radius.tile, backgroundColor: colors.surface },
+  badgeIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft },
+  badgeText: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: "600" },
+  emptyBadges: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.card, backgroundColor: colors.surface },
+  glow: { width: 128, height: 128, borderRadius: 64, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, identity: { alignItems: "center", gap: 4 },
+  username: { color: colors.text, fontSize: 28, lineHeight: 34, textAlign: "center", fontWeight: "700", letterSpacing: -0.5 },
+  growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  areasCard: { gap: 12, paddingHorizontal: 2 }, areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, tileLevel: { position: "absolute", top: 14, right: 14, color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] }, tileIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" }, areaHeading: { gap: 5, paddingBottom: 8 }, sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "600", letterSpacing: -0.3 }, areaRow: { flexGrow: 1, flexBasis: "46%", minWidth: 140, padding: 14, gap: 10, borderRadius: radius.tile, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line }, areaLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  subjects: { borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
+  areasCard: { gap: 12, paddingHorizontal: 2 }, areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, tileLevel: { position: "absolute", top: 14, right: 14, color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] }, tileIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" }, areaRow: { flexGrow: 1, flexBasis: "46%", minWidth: 140, padding: 14, gap: 10, borderRadius: radius.tile, backgroundColor: colors.surface, ...edge },
+  subjects: { borderRadius: radius.card, backgroundColor: colors.surface, ...edge, overflow: "hidden" },
   subjectRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
   subjectLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   subjectDot: { width: 10, height: 10, borderRadius: 5 },

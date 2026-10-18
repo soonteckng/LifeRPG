@@ -131,11 +131,16 @@ const sheets = {
   "../components/AppSheet": ({ header, children, ...props }) => React.createElement("Sheet", props, header, children),
   "@gorhom/bottom-sheet": { BottomSheetScrollView: host("SheetScroll"), BottomSheetTextInput: host("Input") },
 };
-async function settings(options = {}) {
+// Settings is a list of pages now: the main list, Daily goal and Notifications.
+async function settings(options = {}, file = "src/app/settings.tsx") {
   let foreground, saveCalls = 0, signOutCalls = 0, enableCalls = 0, reads = 0, phoneCalls = 0;
-  const navigate = [];
-  const ui = await screen("src/app/settings.tsx", {
+  const navigate = [], updates = [];
+  const ui = await screen(file, {
     ...sheets,
+    "../hooks/useAppPreferences": { useAppPreferences: () => ({ reduceMotion: false, examReminders: true, homeOrder: options.homeOrder ?? {} }) },
+    "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; }, setHomeOrder: async (owner, order) => { updates.push({ owner, order }); return true; } } },
+    "../hooks/useFocusDurationPreference": { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, choose: async () => {} }) },
+    "../components/CharacterMark": host("Mark"),
     "react-native": { ...Native, AppState: { addEventListener: (_, fn) => { foreground = fn; return { remove() {} }; } },
       Linking: { openSettings: async () => { phoneCalls++; } } },
     "expo-router": { useRouter: () => ({ navigate: path => navigate.push(path) }) },
@@ -160,7 +165,9 @@ async function settings(options = {}) {
     },
     "../services/dailyProgressService": { getTodayProgress: async () => options.savedGoal ? { goal_minutes: options.savedGoal } : null },
   });
-  return { ...ui, calls: () => ({ saveCalls, signOutCalls, enableCalls, reads, phoneCalls, navigate }),
+  return { ...ui, calls: () => ({ saveCalls, signOutCalls, enableCalls, reads, phoneCalls, navigate, updates }),
+    // A sheet's buttons come after the rows, so the last match is the sheet's.
+    pressTitle: async title => act(async () => ui.renderer.root.findAllByType("Button").filter(n => text(n) === title).at(-1).props.onPress()),
     foreground: async () => act(async () => foreground("active")) };
 }
 test("shared goal validation rejects fractional, empty and out-of-range targets", () => {
@@ -168,25 +175,39 @@ test("shared goal validation rejects fractional, empty and out-of-range targets"
   for (const value of [0, 1, 14, 15, 29, 481, NaN, 1.5]) assert.ok(goals.validateDailyGoal(value));
   for (const value of [30, 60, 90, 120, 480]) assert.equal(goals.validateDailyGoal(value), "");
 });
-test("Settings starts with identity, separates logout and contains no inert Motion row", async () => {
+test("Settings groups its rows and every row opens its own page", async () => {
   const ui = await settings();
   try {
-    const labels = ui.renderer.root.findAllByType("Text").map(n => text(n));
-    assert.equal(labels[0], "Account");
-    assert.match(ui.text(), /test@example.com/);
-    assert.match(ui.text(), /Session access/);
-    assert.doesNotMatch(ui.text(), /Edit profile/);
-    assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction/);
-    assert.doesNotMatch(ui.text(), /Motion|EAS|Expo Go|native build|widgets/);
-    await ui.press("How LifeRPG worksSessions, growth, goals and consistency");
-    assert.deepEqual(ui.calls().navigate, ["./guide"]);
+    assert.match(ui.text(), /Hero/); assert.match(ui.text(), /test@example.com/);
+    for (const group of ["Focus", "Home & feel", "Notifications", "Help"]) assert.match(ui.text(), new RegExp(group));
+    assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction|EAS|Expo Go|native build|widgets/);
+    await ui.press("Daily goal60 min");
+    await ui.press("Sessions30 min");
+    await ui.press("NotificationsNot allowed");
+    await ui.press("How LifeRPG works");
+    assert.deepEqual(ui.calls().navigate, ["/settings-goal", "/settings-sessions", "/settings-notifications", "/guide"]);
+    const toggle = label => ui.renderer.root.findAllByType("Switch").find(n => n.props.accessibilityLabel === label);
+    await act(async () => toggle("Reduce motion").props.onValueChange(true));
+    await act(async () => toggle("Exam reminders").props.onValueChange(false));
+    assert.deepEqual(ui.calls().updates, [{ reduceMotion: true }, { examReminders: false }]);
   } finally { await ui.cleanup(); }
 });
+test("Rearrange Home asks Home to open in edit mode; Reset only appears useful once there is a layout", async () => {
+  const ui = await settings({ homeOrder: { account: ["week", "routines", "exams", "squad", "milestones"] } });
+  try {
+    await ui.press("Rearrange Home");
+    assert.deepEqual(ui.calls().navigate, ["/"]);
+    assert.equal(load("src/services/homeEditRequest.ts").homeEditRequest.take(), false, "each load has its own request store");
+    await ui.press("Reset Home layout");
+    await ui.pressTitle("Reset layout");
+    assert.deepEqual(ui.calls().updates.at(-1), { owner: "account", order: null });
+  } finally { await ui.cleanup(); }
+});
+const goalPage = options => settings(options, "src/app/settings-goal.tsx");
 test("goal editor validates, submits once and explains next-local-day without changing today's target", async () => {
   const wait = defer();
-  const ui = await settings({ wait: wait.promise });
+  const ui = await goalPage({ wait: wait.promise });
   try {
-    await ui.press("Daily goalToday: 60 min");
     await ui.input("Daily goal in minutes", "0");
     await ui.press("Save daily goal");
     assert.equal(ui.calls().saveCalls, 0);
@@ -199,15 +220,14 @@ test("goal editor validates, submits once and explains next-local-day without ch
     assert.equal(ui.calls().saveCalls, 1);
     await act(async () => { wait.resolve(); await first; });
     assert.match(ui.text(), /2026-10-04/);
-    assert.match(ui.text(), /Today: 60 min/);
+    assert.match(ui.text(), /Today60 min/);
     assert.match(ui.text(), /Your 30-minute goal starts/);
     assert.match(ui.text(), /change your goal again/);
   } finally { await ui.cleanup(); }
 });
 test("goal save failure preserves the draft and exposes retry without a successful outcome", async () => {
-  const ui = await settings({ saveError: true });
+  const ui = await goalPage({ saveError: true });
   try {
-    await ui.press("Daily goalToday: 60 min");
     await ui.input("Daily goal in minutes", "45");
     await ui.press("Save daily goal");
     assert.match(ui.text(), /Could not schedule/);
@@ -217,25 +237,19 @@ test("goal save failure preserves the draft and exposes retry without a successf
 });
 test("missing or unconfirmed goal capability stays read-only without a broken editor", async () => {
   for (const options of [{ loadError: true }, { noCapability: true }, { goal: { weekly_limit_available: false } }]) {
-    const ui = await settings(options);
+    const ui = await goalPage(options);
     try {
-      const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily goalToday: 60 min");
-      assert.equal(typeof row.props.onPress, "function");
       assert.match(ui.text(), /temporarily unavailable/);
-      assert.doesNotMatch(ui.text(), /Retry goal loading|Save daily goal/);
-      assert.equal(ui.calls().saveCalls, 0);
+      assert.doesNotMatch(ui.text(), /Save daily goal/);
+      assert.equal(ui.renderer.root.findAllByType("Input").length, 0);
       await ui.foreground();
       assert.equal(ui.calls().saveCalls, 0);
     } finally { await ui.cleanup(); }
   }
 });
-
 test("weekly cooldown prevents editing and displays the server's next allowed time", async () => {
-  const ui = await settings({ goal: { can_change_goal: false, next_change_at: "2026-10-10T10:00:00Z" } });
+  const ui = await goalPage({ goal: { can_change_goal: false, next_change_at: "2026-10-10T10:00:00Z" } });
   try {
-    const row = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Daily goalToday: 60 min");
-    assert.equal(typeof row.props.onPress, "function");
-    await act(async () => row.props.onPress());
     assert.equal(ui.renderer.root.findAllByType("Input").length, 0);
     assert.match(ui.text(), /change your goal again/);
     assert.equal(ui.calls().saveCalls, 0);
@@ -275,36 +289,34 @@ test("older goal APIs fail closed for weekly editing while legacy daily targets 
   assert.equal(result.can_change_goal, false);
   await assert.rejects(() => api.scheduleDailyGoal(29), /30/);
 });
-test("Settings keeps the saved target for today when goal editing is unavailable", async () => {
-  const ui = await settings({ loadError: true, savedGoal: 90 });
+test("Daily goal keeps the saved target for today when goal editing is unavailable", async () => {
+  const ui = await goalPage({ loadError: true, savedGoal: 90 });
   try {
-    assert.match(ui.text(), /Today: 90 min/);
+    assert.match(ui.text(), /Today90 min/);
     assert.match(ui.text(), /temporarily unavailable/);
     assert.equal(ui.calls().saveCalls, 0);
   } finally { await ui.cleanup(); }
 });
+const notificationPage = options => settings(options, "src/app/settings-notifications.tsx");
 test("notifications enable explicitly and refresh real status on return from phone settings", async () => {
-  const ui = await settings({ permission: reads => reads > 2 ? { label: "Denied after phone settings", action: "settings", supported: true } : { label: "Not allowed", action: "enable", supported: true } });
+  const ui = await notificationPage({ permission: reads => reads > 1 ? { label: "Denied after phone settings", action: "settings", supported: true } : { label: "Not allowed", action: "enable", supported: true } });
   try {
-    await ui.press("NotificationsNot allowed");
-    await ui.press("Enable notifications");
+    assert.match(ui.text(), /Not allowed/);
+    await ui.pressTitle("Enable notifications");
     assert.equal(ui.calls().enableCalls, 1);
     assert.match(ui.text(), /Allowed on this device/);
-    await ui.press("Open phone settings");
+    await ui.pressTitle("Open phone settings");
     assert.equal(ui.calls().phoneCalls, 1);
     await ui.foreground();
     assert.match(ui.text(), /Denied after phone settings/);
-    assert.ok(ui.calls().reads >= 3);
+    assert.ok(ui.calls().reads >= 2);
   } finally { await ui.cleanup(); }
 });
 test("Expo Go notifications offer phone settings without a misleading enable action", async () => {
-  const ui = await settings({ permission: () => ({ label: "Notifications unavailable here", action: null, supported: false }) });
+  const ui = await notificationPage({ permission: () => ({ label: "Notifications unavailable here", action: null, supported: false }) });
   try {
-    await ui.press("NotificationsNotifications unavailable here");
-    assert.equal(ui.renderer.root.findByType("Sheet").props.compact, true, "notification content has one fitted snap point");
     assert.doesNotMatch(ui.text(), /Enable notifications/);
-    assert.match(ui.text(), /Notification settings/);
-    await ui.press("Notification settings");
+    await ui.press("Phone notification settings");
     assert.equal(ui.calls().phoneCalls, 1);
     assert.equal(ui.calls().enableCalls, 0);
   } finally { await ui.cleanup(); }
@@ -313,17 +325,18 @@ test("busy/active/paused/restoring/failed sessions block logout; failure remains
   for (const timer of [{ hasOpenSession: true }, { isRestoring: true }, { restoreError: true }, { actionBusy: true }]) {
     const ui = await settings({ timer });
     try {
-      await ui.press("Sign outFinish or end your session first");
+      assert.match(ui.text(), /Finish or end your session before signing out/);
       await ui.press("Sign out");
+      await ui.pressTitle("Sign out");
       assert.equal(ui.calls().signOutCalls, 0);
     } finally { await ui.cleanup(); }
   }
   const ui = await settings({ logoutError: Error("Offline") });
   try {
-    await ui.press("Sign outYour saved progress stays with your account");
     await ui.press("Sign out");
+    await ui.pressTitle("Sign out");
     assert.match(ui.text(), /Could not sign out/);
-    await ui.press("Sign out");
+    await ui.pressTitle("Sign out");
     assert.equal(ui.calls().signOutCalls, 2);
   } finally { await ui.cleanup(); }
 });
@@ -331,27 +344,27 @@ test("a pending completed session warns about this phone and account but allows 
   const ui = await settings({ timer: { hasOpenSession: false, isRestoring: false, restoreError: false, actionBusy: false,
     isCompleted: true, syncStatus: "waiting", unsyncedSessionCount: 1 } });
   try {
-    await ui.press("Sign outYour saved progress stays with your account");
+    await ui.press("Sign out");
     assert.match(ui.text(), /1 session is not confirmed yet\./);
     assert.match(ui.text(), /Unconfirmed sessions stay on this phone for this account\./);
     assert.match(ui.text(), /reconnect while signed in to this same account/);
     assert.match(ui.text(), /If you sign out, sign back into this account first\./);
     const warning = ui.renderer.root.findAllByType("Text").find(n => text(n).includes("1 session is not confirmed yet."));
     assert.equal(warning.props.accessibilityRole, "alert");
-    const button = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Sign out");
+    const button = ui.renderer.root.findAllByType("Button").filter(n => text(n) === "Sign out").at(-1);
     assert.equal(button.props.disabled, false);
-    await ui.press("Sign out");
+    await ui.pressTitle("Sign out");
     assert.equal(ui.calls().signOutCalls, 1);
   } finally { await ui.cleanup(); }
 });
 test("signout explains all unconfirmed sessions without weakening active-session protection", async () => {
   const ui = await settings({ timer: { hasOpenSession: true, unsyncedSessionCount: 3 } });
   try {
-    await ui.press("Sign outFinish or end your session first");
-    assert.match(ui.text(), /3 sessions are not confirmed yet\./);
-    const button = ui.renderer.root.findAllByType("Button").find(n => text(n) === "Sign out");
-    assert.equal(button.props.disabled, true);
     await ui.press("Sign out");
+    assert.match(ui.text(), /3 sessions are not confirmed yet\./);
+    const button = ui.renderer.root.findAllByType("Button").filter(n => text(n) === "Sign out").at(-1);
+    assert.equal(button.props.disabled, true);
+    await ui.pressTitle("Sign out");
     assert.equal(ui.calls().signOutCalls, 0);
   } finally { await ui.cleanup(); }
 });
@@ -359,13 +372,13 @@ test("fully saved sessions keep the ordinary signout confirmation without a pend
   const ui = await settings({ timer: { hasOpenSession: false, isRestoring: false, restoreError: false, actionBusy: false,
     isCompleted: true, syncStatus: "saved", unsyncedSessionCount: 0 } });
   try {
-    await ui.press("Sign outYour saved progress stays with your account");
+    await ui.press("Sign out");
     assert.match(ui.text(), /Your character, routines and saved sessions remain with your account\. Sign in again to continue\./);
     assert.doesNotMatch(ui.text(), /not confirmed yet|Unconfirmed sessions|sign back into this account first/);
-    await ui.press("Keep me signed in");
+    await ui.pressTitle("Keep me signed in");
     assert.equal(ui.calls().signOutCalls, 0);
-    await ui.press("Sign outYour saved progress stays with your account");
     await ui.press("Sign out");
+    await ui.pressTitle("Sign out");
     assert.equal(ui.calls().signOutCalls, 1);
   } finally { await ui.cleanup(); }
 });

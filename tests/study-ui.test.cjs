@@ -97,30 +97,39 @@ test('subject sheet shows the week and studies; a new subject opens straight int
   await act(async () => ui.unmount());
 });
 
+// Study has no setup form now: subjects (a shelf), then exams (one card).
+class AnimatedValue { constructor(value) { this.value = value; } setValue(value) { this.value = value; } stopAnimation() {} interpolate(config) { return { source: this, config }; } }
+const animatedRn = { ...rn, Animated: { View: host('Animated'), Value: AnimatedValue, timing: () => ({}), sequence: () => ({}), loop: () => ({ start() {}, stop() {} }), spring: () => ({ start() {} }) },
+  Easing: { inOut: f => f, quad: x => x }, useWindowDimensions: () => ({ width: 390, height: 800 }) };
+const withRevision = [...areas, { id: 3, title: 'Revision', color_code: null }];
 function studyScreen(plan, timer = {}) {
   const calls = [];
   const Screen = load('src/app/(tabs)/study.tsx', {
-    ...base(), ...quickStartMocks(calls), '/SubjectSetupRow': props => React.createElement('SubjectRow', props),
+    ...base(), 'react-native': animatedRn, '/useReducedMotion': { useReducedMotion: () => true }, '/useTabDockInset': { useTabDockInset: () => 100 },
+    '/SwipeRow': props => props.children, '/MoreMenu': props => React.createElement('Menu', props),
     'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
-    'expo-router/js-tabs': { useBottomTabBarHeight: () => 80 }, 'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: props => React.createElement('Page', props, props.action, props.children) },
-    '/StudyExamSheet': host('ExamSheet'), '/StudySubjectSheet': { __esModule: true, default: host('SubjectSheet'), ExamTile: host('Tile') },
-    '/StudyLifecycle': { requestStudySync: () => {} }, '/QuestContext': { useQuests: () => ({ subjects: areas }) },
-    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => calls.push('notes'), setLinkedTaskId: () => {}, setTargetAttributeId: v => calls.push(['area', v]), startFreeTimer: async (...a) => { calls.push(a); return true; }, ...timer }) },
-    '/useStudyPlan': { useStudyPlan: () => ({ ready: true, error: null, courses: [], exams: [], recent: [], saveCourse: async d => { calls.push(['course', d]); return true; }, saveExam: async () => true, remove: async () => true, ...plan }) },
-    '/studySelection': { studySelection: { get: () => plan.chosen ?? null, subscribe: () => () => {}, choose: v => calls.push(['subject', v]) } },
+    '/StudyExamSheet': host('ExamSheet'), '/StudySubjectSheet': { __esModule: true, default: host('SubjectSheet') }, '/SubjectPicker': host('Picker'), '/SheetHeader': host('Header'),
+    '/StudyLifecycle': { requestStudySync: () => {} }, '/QuestContext': { useQuests: () => ({ subjects: withRevision }) },
+    '/TimerContext': { useTimer: () => ({ hasOpenSession: false, setNotes: () => calls.push('notes'), setLinkedTaskId: () => {}, setTargetAttributeId: v => calls.push(['area', v]), ...timer }) },
+    '/useStudyPlan': { useStudyPlan: () => ({ ready: true, error: null, courses: [], exams: [], recent: [], saveCourse: async d => { calls.push(['course', d]); return true; }, saveExam: async () => true,
+      remove: async (kind, removed) => { calls.push(['remove', kind, removed]); return true; }, ...plan }) },
+    '/studySelection': { studySelection: { get: () => null, subscribe: () => () => {}, choose: v => calls.push(['subject', v]) } },
     '/setupMode': { setupMode: { choose: v => calls.push(['mode', v]) } }, '/SheetTouchable': host('Press'),
   }).default;
   return { Screen, calls };
 }
+const within = (root, testID) => root.findAll(x => x.props.testID === testID && typeof x.type === 'string')[0];
 
-test('an empty Study tab keeps My Exams, My Subjects and how it works; a subject chip just adds it, with an exam one tap away', async () => {
+test('a new Study tab starts with My Subjects, then My Exams; a subject chip just adds it, with an exam one tap away', async () => {
   const ensured = [];
   const { Screen } = studyScreen({ ensureCourse: async (name, area) => { ensured.push([name, area]); return id(5); } }); let ui;
   await act(async () => { ui = create(React.createElement(Screen)); });
-  for (const title of ['My Exams', 'Got an exam coming up?', 'My Subjects']) assert.ok(texts(ui.root).includes(title), title);
-  assert.equal(texts(ui.root).includes('Squads'), false, 'squads have their own tab');
-  assert.ok(ui.root.findByType('SubjectRow'), 'Study starts with its subject, then length and Start');
+  const all = texts(ui.root);
+  for (const title of ['My Subjects', 'Your study space', 'My Exams', 'Got an exam coming up?']) assert.ok(all.includes(title), title);
+  assert.ok(all.indexOf('My Subjects') < all.indexOf('My Exams'), 'subjects come first');
+  assert.equal(ui.root.findAll(x => x.props.testID === 'home-start-focus').length, 0, 'no setup form or pinned Start here');
+  assert.ok(presses(ui.root, 'Add a subject').length && presses(ui.root, 'New exam').length, 'both sections add with the same + button');
   const sheet = label => ui.root.findAllByType('Sheet').find(x => x.props.label === label);
   await act(async () => presses(ui.root, 'How Study works')[0].props.onPress());
   assert.equal(sheet('how study works').props.visible, true); assert.ok(texts(ui.root).includes('Add your exams'));
@@ -135,40 +144,43 @@ test('an empty Study tab keeps My Exams, My Subjects and how it works; a subject
   assert.equal(ui.root.findByType('ExamSheet').props.initialCourseId, null);
   await act(async () => ui.unmount());
 });
-
-test('exams are short rows, the rest one tap away; Study on an exam sets up a Study session for its subject', async () => {
-  const physics = { ...course, id: id(3), name: 'Physics' };
-  const extra = [5, 6, 7].map(n => ({ ...exam, id: id(n), title: `Paper ${n}`, courseId: id(3), examDate: inDays(30 + n) }));
-  const { Screen, calls } = studyScreen({ courses: [course, physics], exams: [exam, { ...exam, id: id(4), title: 'Physics mock', courseId: id(3), examDate: inDays(30) }, ...extra] }); let ui;
+test('subjects with an exam come first, soonest first; exams share one card; studying a subject with an exam counts as Revision', async () => {
+  const art = { ...course, id: id(3), name: 'Art' }, physics = { ...course, id: id(4), name: 'Physics' };
+  const physicsExam = { ...exam, id: id(5), title: 'Physics mock', courseId: id(4), examDate: inDays(5) };
+  const extra = [6, 7, 8].map(n => ({ ...exam, id: id(n), title: `Paper ${n}`, courseId: id(1), examDate: inDays(20 + n) }));
+  const { Screen, calls } = studyScreen({ courses: [art, course, physics], exams: [exam, ...extra, physicsExam] }); let ui;
   await act(async () => { ui = create(React.createElement(Screen)); });
-  const rows = () => ui.root.findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string');
-  const sheetRows = () => ui.root.findAllByType('Sheet').find(x => x.props.label === 'all exams').findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string');
-  assert.equal(rows().length - sheetRows().length, 3, 'exam season never makes the page endless');
-  assert.ok(texts(ui.root).includes('12')); assert.ok(texts(ui.root).includes('Calculus final')); assert.ok(texts(ui.root).includes('Physics mock'));
-  assert.equal(ui.root.findAllByType('Sheet').find(x => x.props.label === 'all exams').props.visible, false);
-  assert.equal(presses(ui.root, 'How Study works').length, 1, 'help stays available once exams exist');
-  await act(async () => presses(ui.root, 'See all 5 exams')[0].props.onPress());
-  const all = ui.root.findAllByType('Sheet').find(x => x.props.label === 'all exams');
-  assert.equal(all.props.visible, true); assert.equal(all.findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string').length, 5);
-  assert.ok(texts(ui.root).includes('My Subjects'));
-  await act(async () => presses(ui.root, 'Study Maths')[0].props.onPress());
-  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['area', 2], ['subject', id(1)], ['mode', 'study'], ['nav', '/session']]);
+  const shelf = within(ui.root, 'subject-shelf');
+  const order = shelf.findAllByType('Press').map(x => x.props.accessibilityLabel).filter(label => /Open subject$/.test(label ?? '')).map(label => label.split(',')[0]);
+  assert.deepEqual(order, ['Physics', 'Maths', 'Art'], 'nearest exam first, then the rest as added');
+  const card = within(ui.root, 'exams-card');
+  const rows = card.findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string');
+  assert.equal(rows.length, 5); assert.ok(card.props.style.some(style => style && style.height > 0), 'a long list scrolls inside its card');
+  assert.match(rows[0].findAllByType('Press')[0].props.accessibilityLabel, /^Physics mock/, 'soonest exam first');
+  await act(async () => card.findAllByType('Press').find(x => x.props.accessibilityLabel === 'Study Physics').props.onPress());
+  assert.deepEqual(calls.filter(c => Array.isArray(c)), [['area', 3], ['subject', id(4)], ['mode', 'study'], ['nav', '/session']], 'an exam coming up makes it Revision');
+  calls.length = 0;
+  await act(async () => shelf.findAllByType('Press').find(x => x.props.accessibilityLabel === 'Study Art').props.onPress());
+  assert.deepEqual(calls.filter(c => Array.isArray(c))[0], ['area', 2], 'no exam, so Learning');
   await act(async () => ui.unmount());
 });
 
-test('Study starts with its subject: no subject opens the picker, a chosen one starts a study session', async () => {
-  const plan = { courses: [course], exams: [] };
-  const { Screen, calls } = studyScreen(plan); let ui;
+test('hold a subject to edit them all: each shows −, removing asks first and says its minutes stay', async () => {
+  const art = { ...course, id: id(3), name: 'Art' };
+  const { Screen, calls } = studyScreen({ courses: [course, art], exams: [] }); let ui;
   await act(async () => { ui = create(React.createElement(Screen)); });
-  const start = () => ui.root.findAll(x => x.props.testID === 'home-start-focus' && x.type === 'Press')[0];
-  await act(async () => start().props.onPress());
-  assert.equal(ui.root.findByType('SubjectRow').props.open, true, 'Start asks for a subject first');
-  assert.equal(calls.filter(c => Array.isArray(c) && typeof c[0] === 'number').length, 0);
-  plan.chosen = id(1);
-  await act(async () => ui.update(React.createElement(Screen)));
-  await act(async () => start().props.onPress());
-  assert.deepEqual(calls.filter(c => Array.isArray(c) && c[0] === 'mode'), [['mode', 'study']]);
-  assert.deepEqual(calls.find(c => Array.isArray(c) && typeof c[0] === 'number'), [1800, 2, undefined], 'study time counts toward the subject’s category');
+  const tile = name => within(ui.root, 'subject-shelf').findAllByType('Press').find(x => x.props.accessibilityLabel?.startsWith(`${name},`));
+  await act(async () => tile('Art').props.onLongPress());
+  assert.equal(presses(ui.root, 'Remove Maths').length + presses(ui.root, 'Remove Art').length, 2, 'every card can be removed');
+  assert.equal(presses(ui.root, 'Study Art').length, 0, 'editing hides the play buttons');
+  await act(async () => presses(ui.root, 'Remove Art')[0].props.onPress());
+  const confirm = ui.root.findByType('Confirm').props;
+  assert.equal(confirm.title, 'Remove Art?'); assert.match(confirm.message, /minutes stay saved/);
+  assert.equal(calls.filter(c => c[0] === 'remove').length, 0, 'nothing is removed before you confirm');
+  await act(async () => confirm.onConfirm());
+  assert.deepEqual(calls.filter(c => c[0] === 'remove'), [['remove', 'course', id(3)]]);
+  await act(async () => presses(ui.root, 'Done editing subjects')[0].props.onPress());
+  assert.equal(presses(ui.root, 'Remove Maths').length, 0);
   await act(async () => ui.unmount());
 });
 test('the shared Subject row always shows, picks or creates any subject and moves the session to Learning', async () => {
@@ -198,28 +210,47 @@ test('the shared Subject row always shows, picks or creates any subject and move
   await act(async () => ui.unmount());
 });
 
-test('Home shows the next exams as rows, your squad opens its own page, and the week links to Progress', async () => {
-  const plan = { exams: [], courses: [course] }, squads = { squads: [] }, nav = [];
+test('Home shows exams within a week, opens a study session straight from one, and peeks at your squad before its tab', async () => {
+  const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [] }, nav = [], timer = [];
   const sections = load('src/components/HomeSections.tsx', { ...base(),
-    'expo-router': { useRouter: () => ({ navigate: to => nav.push(to), push: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
-    '/SquadsSection': { SquadSummary: host('Summary') }, '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) }, '/TimerContext': { useTimer: () => ({ sessionSummary: null }) },
+    'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
+    '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'),
+    '/SquadsSection': { SquadSummary: host('Summary') }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') }, '/SheetHeader': host('Header'),
+    '/QuestContext': { useQuests: () => ({ subjects: withRevision }) }, '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) },
+    '/TimerContext': { useTimer: () => ({ sessionSummary: null, setNotes() {}, setLinkedTaskId() {}, setTargetAttributeId: v => timer.push(v) }) },
     '/useProgressData': { useProgressData: () => ({ data: null }) } });
-  const home = () => React.createElement('Home', null, React.createElement(sections.HomeExams), React.createElement(sections.HomeSquad), React.createElement(sections.HomeWeek));
+  const rearranged = [];
+  const home = () => React.createElement('Home', null, ...['HomeExams', 'HomeSquad', 'HomeWeek'].map(name => React.createElement(sections[name], { key: name, rearrange: () => rearranged.push(name) })));
   let ui; await act(async () => { ui = create(home()); });
   const rerender = () => act(async () => ui.update(home()));
-  const rows = () => ui.root.findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string');
-  for (const title of ['My Exams', 'Got an exam coming up?', 'My Squad', 'Focus with friends', 'This week']) assert.ok(texts(ui.root).includes(title), title);
-  assert.equal(rows().length, 0);
-  await act(async () => presses(ui.root, 'Add an exam in Study')[0].props.onPress()); assert.deepEqual(nav, ['/study']);
-  await act(async () => presses(ui.root, 'Focus with friends. Join or start a squad')[0].props.onPress()); assert.equal(nav.at(-1), '/squads');
-  plan.exams = [exam, ...[4, 5, 6].map(n => ({ ...exam, id: id(n), title: `Paper ${n}`, examDate: inDays(20 + n) }))];
-  squads.squads = [{ id: id(8), name: 'Library crew', goalMinutes: null, members: [{ id: id(9), name: 'Aina', weekSeconds: 3600, focusingNow: true }] }];
+  const section = testID => within(ui.root, testID);
+  // The test sheet stub draws even while closed, so rows inside sheets are left out.
+  const inSheet = node => { for (let at = node.parent; at; at = at.parent) if (at.type === 'Sheet') return true; return false; };
+  const rows = () => section('home-exams').findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string').filter(row => !inSheet(row));
+  const options = testID => section(testID).findAllByType('Menu')[0].props.options;
+  for (const title of ['Upcoming Exams', 'Got an exam coming up?', 'My Squad', 'Focus with friends', 'This Week']) assert.ok(texts(ui.root).includes(title), title);
+  assert.equal(texts(ui.root).some(t => /^(Study|Squads|Progress)$/.test(t)), false, 'no green text links; each section has a ••• menu');
+  await act(async () => presses(ui.root, 'Add an exam')[0].props.onPress());
+  assert.equal(section('home-exams').findByType('ExamSheet').props.visible, true, 'adding an exam happens right here');
+  plan.exams = [exam, ...[2, 3, 5, 6].map(n => ({ ...exam, id: id(10 + n), title: `Paper ${n}`, examDate: inDays(n) }))];
+  squads.squads = [{ id: id(8), name: 'Library crew', code: 'K7Q4PX', goalMinutes: null, members: [{ id: id(9), name: 'Aina', weekSeconds: 3600, focusingNow: true, isYou: false, level: 2 }] }];
   await rerender();
-  assert.equal(rows().length, 3, 'Home shows the next three'); assert.ok(texts(ui.root).includes('See all 4'));
-  assert.equal(texts(ui.root).includes('Got an exam coming up?'), false);
-  await act(async () => ui.root.findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
-  assert.deepEqual(nav.at(-1), { pathname: '/squad/[id]', params: { id: id(8) } }, 'tapping My Squad opens that squad');
-  await act(async () => presses(ui.root, 'Open Progress')[0].props.onPress()); assert.equal(nav.at(-1), '/progress');
+  assert.equal(rows().length, 3, 'the nearest three within a week');
+  assert.match(rows()[0].findAllByType('Press')[0].props.accessibilityLabel, /^Paper 2/);
+  await act(async () => rows()[0].findAllByType('Press')[0].props.onPress());
+  assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'straight to the study session');
+  const seeAll = options('home-exams').find(option => /^See all exams/.test(option.label));
+  assert.equal(seeAll.label, 'See all exams (5)');
+  await act(async () => seeAll.onPress());
+  assert.equal(section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'all exams').props.visible, true, 'the full list opens here, not in Study');
+  assert.ok(options('home-exams').some(option => option.label === 'Rearrange Home'));
+  await act(async () => section('home-squad-section').findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
+  const peek = section('home-squad-section').findAllByType('Sheet').find(x => x.props.label === 'squad peek');
+  assert.equal(peek.props.visible, true, 'a tap peeks at the leaderboard');
+  await act(async () => { presses(peek, 'See the whole squad')[0].props.onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(nav.at(-1), '/squads');
+  await act(async () => presses(section('home-week'), 'This week, 0m. Show by category')[0].props.onPress());
+  assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());
 });
 test('the Routines tab holds quick focus and every routine, and starts old routines the same way Home does', async () => {
@@ -265,23 +296,23 @@ test('the exam name follows the subject until it is edited, and a typed subject 
   await act(async () => ui.unmount());
 });
 
-test('My Milestones in Progress counts what is earned, shows the nearest next one and opens the collection', async () => {
-  const nav = []; let data = null;
-  const Row = load('src/components/MilestonesRow.tsx', { ...base(), 'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) },
-    '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) }, '/useCharacterData': { useCharacterData: () => ({ data }) } }).default;
-  const growth = load('src/utils/characterGrowth.ts', {});
+test('My Milestones shows the nearest one and opens the whole collection as a sheet', async () => {
+  let state = { ready: false, totals: { milestones: Array(18) }, earned: [], next: null };
+  const Row = load('src/components/MilestonesRow.tsx', { ...base(),
+    '/MilestonesSheet': { __esModule: true, default: host('Collection'), useMilestones: () => state, milestoneProgressLabel: m => `${m.value} of ${m.target}` } }).default;
   let ui; await act(async () => { ui = create(React.createElement(Row)); });
   const row = () => ui.root.findAll(x => x.props.testID === 'milestones-entry' && x.type === 'Press')[0];
   assert.equal(row().props.accessibilityLabel, 'My Milestones', 'still loading never shows a wrong count');
-  data = { sessions: [{ id: 's1', duration_seconds: 1800, completed_at: new Date().toISOString(), started_at: new Date(Date.now() - 1800000).toISOString() }] };
+  state = { ready: true, totals: { milestones: Array(18) }, earned: [{ id: 'first' }], next: { title: 'An hour invested', icon: 'time-outline', value: 30, target: 60, progress: 0.5 } };
   await act(async () => ui.update(React.createElement(Row)));
-  const totals = growth.earnedMilestones(data.sessions, 'UTC'), earned = totals.milestones.filter(m => m.unlocked).length, next = growth.nextMilestone(totals.milestones);
-  assert.ok(texts(ui.root).includes(`${earned} of ${totals.milestones.length} earned`));
-  if (next) assert.match(row().props.accessibilityLabel, new RegExp(`Next: ${next.title}`));
-  await act(async () => row().props.onPress()); assert.deepEqual(nav, ['/rewards']);
+  assert.equal(row().props.accessibilityLabel, 'My Milestones, 1 of 18 earned. Next: An hour invested');
+  assert.ok(texts(ui.root).includes('1/18')); assert.ok(texts(ui.root).includes('30 of 60'));
+  await act(async () => row().props.onPress());
+  assert.equal(ui.root.findByType('Collection').props.visible, true, 'a sheet, not a separate page');
+  await act(async () => ui.root.findByType('Collection').props.onClose());
+  assert.equal(ui.root.findByType('Collection').props.visible, false);
   await act(async () => ui.unmount());
 });
-
 test('every category explains where its time goes, Everyday focus first, in one shared list', () => {
   const areasApi = load('src/utils/focusAreas.ts', {});
   const sheet = load('src/components/CategorySheet.tsx', { ...base(), '/SheetHeader': host('Header'), '/FocusAreaPicker': host('Areas') });
@@ -290,4 +321,32 @@ test('every category explains where its time goes, Everyday focus first, in one 
   assert.equal(choices[0].title, 'Everyday focus'); assert.equal(choices[0].id, 1);
   assert.equal(choices.filter(c => areasApi.focusAreaTitle(c.title) === 'Everyday focus').length, 1, 'no duplicate Everyday focus');
   for (const choice of choices) assert.ok(areasApi.focusAreaHint(choice.title).length > 10, `${choice.title} has a description`);
+});
+
+test('a saved Home order drops unknown sections, keeps each once and adds new ones at the end', () => {
+  const prefs = load('src/services/appPreferences.ts', { '@react-native-async-storage/async-storage': { getItem: async () => null, setItem: async () => {} } });
+  assert.deepEqual(prefs.cleanHomeOrder(null), ['routines', 'exams', 'squad', 'week', 'milestones'], 'routines come before exams by default');
+  assert.deepEqual(prefs.cleanHomeOrder(['week', 'bogus', 'week', 'squad']), ['week', 'squad', 'routines', 'exams', 'milestones']);
+});
+
+test('Revision and Learning break down by subject; untagged time is Other and sits last', () => {
+  const { subjectSeconds } = load('src/components/SubjectBreakdown.tsx', { ...base(), '/studyPlanService': { listSessionCourses: async () => [] } });
+  const sessions = [{ client_session_id: 'a', duration_seconds: 600 }, { client_session_id: 'b', duration_seconds: 1800 }, { client_session_id: 'c', duration_seconds: 300 }, { client_session_id: null, duration_seconds: 900 }];
+  const rows = subjectSeconds(sessions, [{ clientSessionId: 'a', courseId: id(1), name: 'Maths' }, { clientSessionId: 'b', courseId: id(2), name: 'Physics' }, { clientSessionId: 'c', courseId: id(1), name: 'Maths' }]);
+  assert.deepEqual(rows.map(row => [row.name, row.seconds]), [['Physics', 1800], ['Maths', 900], ['Other', 900]]);
+});
+
+test('Today’s card shows the goal up close; changing it lives in its ••• menu', async () => {
+  const calls = [];
+  const Sheet = load('src/components/TodaySheet.tsx', { ...base(), '/MoreMenu': props => React.createElement('Menu', props), '/ProgressRing': host('Ring'),
+    '/HomeSections': { useWeekProgress: () => ({ week: { seconds: 5400, goalDays: 2 } }), WeekBars: host('Bars') } }).default;
+  let ui; await act(async () => { ui = create(React.createElement(Sheet, { visible: true, onClose: () => calls.push('close'), completedSeconds: 1500, goalMinutes: 60, streak: 4, complete: false,
+    onChangeGoal: () => calls.push('goal'), onOpenProgress: () => calls.push('progress') })); });
+  for (const value of ['25', '4', '1h 30m', '2/7']) assert.ok(texts(ui.root).includes(value), value);
+  assert.ok(texts(ui.root).includes('35 min to your goal'));
+  const options = ui.root.findByType('Menu').props.options;
+  assert.deepEqual(options.map(option => option.label), ['Change daily goal', 'Open Progress']);
+  await act(async () => { options[0].onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.deepEqual(calls, ['close', 'goal'], 'the card closes before the goal editor opens');
+  await act(async () => ui.unmount());
 });

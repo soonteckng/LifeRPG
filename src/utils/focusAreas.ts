@@ -1,7 +1,7 @@
 import type { Subject } from "../services/taskService";
-export type FocusAreaKind = "learning" | "work" | "creative" | "wellbeing" | "personal" | "general";
+export type FocusAreaKind = "learning" | "revision" | "work" | "creative" | "wellbeing" | "personal" | "general";
 // Direction cards use this order, with the neutral Free focus choice last.
-export const FOCUS_AREA_PRESENTATION_ORDER: readonly FocusAreaKind[] = ["learning", "work", "creative", "personal", "wellbeing", "general"];
+export const FOCUS_AREA_PRESENTATION_ORDER: readonly FocusAreaKind[] = ["learning", "revision", "work", "creative", "personal", "wellbeing", "general"];
 const labels: Record<string, string> = {
   general: "Everyday focus", knowledge: "Learning", "fitness & health": "Wellbeing",
   "grooming & vitality": "Wellbeing", "life admin": "Everyday life",
@@ -13,7 +13,7 @@ export function focusAreaTitle(title?: string | null) {
   return kind ? FOCUS_AREAS.find(area => area.kind === kind)!.title : clean ? labels[clean.toLowerCase()] ?? clean : "Everyday focus";
 }
 const aliases: Record<FocusAreaKind, string[]> = {
-  learning: ["learning", "knowledge", "study"], work: ["work & projects", "work", "career", "projects"],
+  learning: ["learning", "knowledge", "study"], revision: ["revision"], work: ["work & projects", "work", "career", "projects"],
   creative: ["creative", "creativity", "creative practice"],
   wellbeing: ["wellbeing", "fitness & health", "grooming & vitality", "health"],
   personal: ["life admin", "personal life", "everyday life"], general: ["general", "everyday focus"],
@@ -21,6 +21,8 @@ const aliases: Record<FocusAreaKind, string[]> = {
 export const FOCUS_AREAS = [
   { kind: "general", title: "Everyday focus", hint: "Anything you want to give your attention to.", color: "#5E5CE6" },
   { kind: "learning", title: "Learning", hint: "Reading, studying and building knowledge.", color: "#64D2FF" },
+  // Set by the app, never picked: study for a subject with an exam coming up.
+  { kind: "revision", title: "Revision", hint: "Study for subjects with an exam coming up.", color: "#FF6961" },
   { kind: "work", title: "Work & projects", hint: "Work tasks and projects you want to move forward.", color: "#BF5AF2" },
   { kind: "creative", title: "Creativity", hint: "Writing, art, music and practising your craft.", color: "#FF6482" },
   { kind: "personal", title: "Everyday life", hint: "Planning, organising and taking care of life tasks.", color: "#30D158" },
@@ -51,6 +53,8 @@ export function focusAreaChoices<T extends { id: number; title: string }>(areas:
   const choices = new Map<string, T>();
   for (const area of orderFocusAreas(areas)) {
     const key = focusAreaKind(area.title) ?? `custom:${area.id}`;
+    // Revision is the app's own: study time lands there when an exam is near.
+    if (key === "revision") continue;
     const previous = choices.get(key);
     if (!previous || area.id === selectedId || (previous.id !== selectedId && area.title === focusAreaTitle(area.title))) choices.set(key, area);
   }
@@ -63,12 +67,17 @@ export function focusAreaKind(title?: string | null): FocusAreaKind | null {
   const clean = title?.trim().toLowerCase();
   return (Object.keys(aliases) as FocusAreaKind[]).find(kind => aliases[kind].includes(clean ?? "")) ?? null;
 }
+/** The app-only Revision area, once the account has it. */
+export function revisionArea<T extends { title: string }>(subjects: T[]): T | undefined {
+  return subjects.find(area => aliases.revision.includes(area.title.trim().toLowerCase()));
+}
 export function suggestedArea(subjects: Subject[], kind: FocusAreaKind): Subject | undefined {
   return subjects.find(area => aliases[kind].includes(area.title.trim().toLowerCase()))
     ?? generalArea(subjects);
 }
-export function focusAreaIcon(title: string): "book-outline" | "leaf-outline" | "heart-outline" | "briefcase-outline" | "brush-outline" | "albums-outline" {
+export function focusAreaIcon(title: string): "document-text-outline" | "book-outline" | "leaf-outline" | "heart-outline" | "briefcase-outline" | "brush-outline" | "albums-outline" {
   const name = focusAreaTitle(title).toLowerCase();
+  if (name === "revision") return "document-text-outline";
   if (/learning|study|knowledge/.test(name)) return "book-outline";
   if (/wellbeing|health|fitness/.test(name)) return "leaf-outline";
   if (/personal care|grooming/.test(name)) return "heart-outline";

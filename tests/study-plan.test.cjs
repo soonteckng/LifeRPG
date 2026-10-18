@@ -33,7 +33,15 @@ function remote() {
     async tag(t) { tags.set(t.clientSessionId, t.courseId); return { status: 'saved' }; },
     async list() {
       const live = [...rows.values()].filter(row => row.deletedAt === null);
-      return { courses: live.filter(row => row.kind === 'course').map(row => ({ ...row, totalSeconds: 600 })), exams: live.filter(row => row.kind === 'exam'), recent: [{ courseId: id(1), completedAt: now.getTime(), seconds: 600 }] };
+      return { courses: live.filter(row => row.kind === 'course').map(row => ({ ...row, totalSeconds: 600 })), exams: live.filter(row => row.kind === 'exam'), recent: [{ courseId: id(1), completedAt: now.getTime(), seconds: 600 }],
+        removed: [...rows.values()].filter(row => row.kind === 'course' && row.deletedAt !== null).map(row => ({ id: row.id, revision: row.revision, name: row.name })) };
+    },
+    async restore(courseId) {
+      calls.push({ restore: courseId });
+      const row = rows.get(courseId);
+      if (!row) return { status: 'conflict', reason: 'course', item: null };
+      const item = { ...row, revision: row.deletedAt === null ? row.revision : row.revision + 1, deletedAt: null };
+      rows.set(courseId, item); return { status: 'saved', item: { ...item, totalSeconds: 1800 } };
     },
   } };
 }
@@ -137,12 +145,10 @@ test('exam reminders reconcile: stale ones are cancelled, missing ones scheduled
   allowed = false; await coordinator.update(scope, examReminderPlan([exam], [], now.getTime()));
   assert.equal(scheduled.size, 0);
 });
-test('subject totals follow the period and the fetch covers this week and month', () => {
+test('the fetch covers this week and month, and a subject applies only in its own area or Revision', () => {
   const courses = [{ kind: 'course', id: id(1), revision: 1, name: 'Maths', focusAreaId: 1, deletedAt: null, totalSeconds: 0 }, { kind: 'course', id: id(2), revision: 1, name: 'Art', focusAreaId: 1, deletedAt: null, totalSeconds: 0 }];
-  const recent = [{ courseId: id(1), completedAt: at(2026, 10, 14).getTime(), seconds: 600 }, { courseId: id(1), completedAt: at(2026, 10, 2).getTime(), seconds: 300 }, { courseId: id(2), completedAt: at(2026, 10, 18).getTime(), seconds: 60 }];
-  const rows = domain.subjectTotals(recent, courses, ms => domain.dateKey(new Date(ms)), '2026-10-12', '2026-10-18');
-  assert.deepEqual(rows.map(r => [r.course.name, r.seconds]), [['Maths', 600], ['Art', 60]]);
   assert.equal(new Date(domain.studyListSince(now)).getDate(), 1, 'October 1 is the earliest day needed on 18 October');
+  assert.equal(domain.subjectForArea(courses, id(1), 7, 9, 7)?.name, 'Maths', 'a Revision session keeps its subject');
   assert.equal(domain.subjectForArea(courses, id(1), 2, 9), null, 'a subject from another area does not apply');
   assert.equal(domain.subjectForArea([{ ...courses[0], focusAreaId: null }], id(1), null, 9)?.name, 'Maths', 'no area means Everyday focus');
   assert.equal(domain.examTimeLabel(570), '9:30 AM'); assert.equal(domain.examTimeLabel(12 * 60), '12:00 PM');
@@ -180,4 +186,51 @@ test('the shared setup mode is one value every setup reads and only announces re
   setupMode.choose('study'); setupMode.choose('study'); setupMode.chooseRoutine('saved:1'); setupMode.chooseRoutine('saved:1');
   assert.equal(setupMode.get(), 'study'); assert.equal(setupMode.routine(), 'saved:1'); assert.equal(heard, 2);
   stop(); setupMode.choose('routine'); assert.equal(heard, 2);
+});
+
+test('study time counts as Revision while a subject has an exam coming up, otherwise its own area', () => {
+  const maths = { id: id(1), focusAreaId: 2 }, exam = date => ({ kind: 'exam', id: id(9), revision: 1, title: 'Final', courseId: id(1), examDate: date, examMinute: null, remind: true, deletedAt: null });
+  const today = new Date(2026, 9, 18, 9);
+  assert.equal(domain.studyAreaFor(maths, [exam('2026-10-25')], 7, 1, today), 7, 'an exam next week makes it Revision');
+  assert.equal(domain.studyAreaFor(maths, [exam('2026-10-18')], 7, 1, today), 7, 'the day of the exam still counts as Revision');
+  assert.equal(domain.studyAreaFor(maths, [exam('2026-10-17')], 7, 1, today), 2, 'a past exam no longer does');
+  assert.equal(domain.studyAreaFor(maths, [], 7, 1, today), 2, 'no exam means Learning');
+  assert.equal(domain.studyAreaFor({ id: id(1), focusAreaId: null }, [], 7, 1, today), 1, 'no area means Everyday focus');
+  assert.equal(domain.studyAreaFor(maths, [exam('2026-10-25')], undefined, 1, today), 2, 'before Revision exists, it falls back');
+});
+test('subjects with an exam come first, soonest first; the rest keep the order they were added', () => {
+  const course = n => ({ kind: 'course', id: id(n), revision: 1, name: `S${n}`, focusAreaId: 1, deletedAt: null, totalSeconds: 0 });
+  const exam = (n, courseId, date) => ({ kind: 'exam', id: id(100 + n), revision: 1, title: `E${n}`, courseId, examDate: date, examMinute: null, remind: true, deletedAt: null });
+  const today = new Date(2026, 9, 18, 9);
+  const sorted = domain.sortCoursesByExam([course(1), course(2), course(3), course(4)], [exam(1, id(3), '2026-11-01'), exam(2, id(2), '2026-10-20'), exam(3, id(4), '2026-10-01')], today);
+  assert.deepEqual(sorted.map(item => item.name), ['S2', 'S3', 'S1', 'S4'], 'a past exam does not move a subject up');
+});
+test('a removed subject comes back by name with the same id and its minutes, on any phone', async () => {
+  const f = fixture(), r = remote();
+  await f.store.load(scope);
+  const first = await f.store.ensureCourse(scope, 'Maths', 1);
+  await f.store.sync(scope, r.transport, () => true);
+  assert.equal(await f.store.remove(scope, 'course', first), true);
+  await f.store.sync(scope, r.transport, () => true);
+  assert.deepEqual(f.store.snapshot(scope).courses, []);
+  // A fresh phone learns about the removed subject from the server's list.
+  const phone = fixture(); await phone.store.load(scope); await phone.store.sync(scope, r.transport, () => true);
+  const again = await phone.store.ensureCourse(scope, 'maths', 1);
+  assert.equal(again, first, 'the same subject, not a new one');
+  assert.deepEqual(phone.store.snapshot(scope).courses.map(course => course.name), ['Maths'], 'shown straight away');
+  await phone.store.sync(scope, r.transport, () => true);
+  assert.deepEqual(r.calls.filter(call => call.restore), [{ restore: first }]);
+  assert.equal(phone.store.snapshot(scope).courses[0].totalSeconds, 600, 'its minutes are back');
+  assert.equal(phone.store.snapshot(scope).courses[0].deletedAt, null);
+});
+test('removing and re-adding before a sync just cancels the removal', async () => {
+  const f = fixture(), r = remote();
+  await f.store.load(scope);
+  const first = await f.store.ensureCourse(scope, 'Physics', 1);
+  await f.store.sync(scope, r.transport, () => true);
+  await f.store.remove(scope, 'course', first);
+  assert.equal(await f.store.ensureCourse(scope, 'Physics', 1), first);
+  await f.store.sync(scope, r.transport, () => true);
+  assert.equal(r.calls.filter(call => call.deleted).length, 0, 'the removal never reached the server');
+  assert.deepEqual(f.store.snapshot(scope).courses.map(course => course.name), ['Physics']);
 });

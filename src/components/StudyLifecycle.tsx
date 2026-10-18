@@ -9,7 +9,8 @@ import { useStudyPlan } from "../hooks/useStudyPlan";
 import { createStudyTransport, studyPlanStore } from "../services/studyPlanService";
 import { studySelection } from "../services/studySelection";
 import { useQuests } from "../context/QuestContext";
-import { generalArea } from "../utils/focusAreas";
+import { useAppPreferences } from "../hooks/useAppPreferences";
+import { generalArea, revisionArea } from "../utils/focusAreas";
 import { subjectForArea } from "../utils/studyPlan";
 
 const examReminders = createExamReminderCoordinator({
@@ -43,7 +44,8 @@ export default function StudyLifecycle() {
   const { scope, ready, pendingCount, courses, exams } = useStudyPlan();
   const { protectionSessionId, isCompleted, targetAttributeId } = useTimer();
   const { subjects = [] } = useQuests();
-  const generalId = generalArea(subjects)?.id;
+  const generalId = generalArea(subjects)?.id, revisionAreaId = revisionArea(subjects)?.id;
+  const examRemindersOn = useAppPreferences().examReminders;
   const ownerVerifier = useRef(verifyCurrentOwner);
   useLayoutEffect(() => { ownerVerifier.current = verifyCurrentOwner; }, [verifyCurrentOwner]);
   const syncNow = useRef<(() => void) | null>(null);
@@ -64,22 +66,23 @@ export default function StudyLifecycle() {
   // A finished session changes subject totals; refresh once it is recorded.
   useEffect(() => { if (isCompleted) syncNow.current?.(); }, [isCompleted]);
   // Read the latest setup without re-running the tag effect when it changes.
-  const setup = useRef({ courses, targetAttributeId, generalId });
-  useLayoutEffect(() => { setup.current = { courses, targetAttributeId, generalId }; }, [courses, targetAttributeId, generalId]);
+  const setup = useRef({ courses, targetAttributeId, generalId, revisionAreaId });
+  useLayoutEffect(() => { setup.current = { courses, targetAttributeId, generalId, revisionAreaId }; }, [courses, targetAttributeId, generalId, revisionAreaId]);
   useEffect(() => {
     const courseId = studySelection.take(protectionSessionId);
-    const { courses: list, targetAttributeId: area, generalId: general } = setup.current;
-    const course = courseId ? subjectForArea(list, courseId, area, general) : null;
+    const { courses: list, targetAttributeId: area, generalId: general, revisionAreaId: revisionId } = setup.current;
+    const course = courseId ? subjectForArea(list, courseId, area, general, revisionId) : null;
     if (course && scope && protectionSessionId) void studyPlanStore.tagSession(scope, protectionSessionId, course.id);
   }, [protectionSessionId, scope]);
   // Exam reminders follow the saved exams; signing out clears them.
   useEffect(() => {
-    const reconcile = () => { void examReminders.update(ready ? scope : null, examReminderPlan(exams, courses)).catch(() => {}); };
+    // The Exam reminders switch in Settings turns all of them off at once.
+    const reconcile = () => { void examReminders.update(ready ? scope : null, examRemindersOn ? examReminderPlan(exams, courses) : []).catch(() => {}); };
     reconcile();
     const unsubscribe = subscribeNotificationPermissionChanges(reconcile);
     const foreground = AppState.addEventListener("change", state => { if (state === "active") reconcile(); });
     return () => { unsubscribe(); foreground.remove(); };
-  }, [ready, scope, exams, courses]);
+  }, [ready, scope, exams, courses, examRemindersOn]);
   useEffect(() => () => { void examReminders.update(null, []).catch(() => {}); }, []);
   return null;
 }

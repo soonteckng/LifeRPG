@@ -360,7 +360,10 @@ export default function AppSheet({
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  // Every sheet carries the same hairline edge as the cards, attached or floating.
   surface: {
+    ...edge,
+    borderBottomWidth: 0,
     backgroundColor: colors.surfaceRaised,
     borderTopLeftRadius: radius.sheet,
     borderTopRightRadius: radius.sheet,

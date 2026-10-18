@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { ActivityIndicator, Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
@@ -420,13 +420,13 @@ const styles = StyleSheet.create({
   form: { gap: 14, paddingTop: 12 },
   field: { gap: 8 },
   label: { color: colors.text, fontSize: 14, fontWeight: "500" },
-  input: { color: colors.text, backgroundColor: "rgba(255,255,255,0.04)", borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, borderRadius: 12, minHeight: 50, padding: 14, fontSize: 16, textAlignVertical: "top" },
+  input: { color: colors.text, backgroundColor: "rgba(255,255,255,0.04)", ...edge, borderRadius: 12, minHeight: 50, padding: 14, fontSize: 16, textAlignVertical: "top" },
   daysRow: { flexDirection: "row", gap: 4 },
   dayContainer: { flex: 1, minWidth: 0 },
-  day: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, alignItems: "center", justifyContent: "center" },
+  day: { minHeight: 44, borderRadius: 10, ...edge, alignItems: "center", justifyContent: "center" },
   dayText: { color: colors.secondary, fontSize: 14, fontWeight: "500" },
   options: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  choice: { minHeight: 44, minWidth: 46, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, justifyContent: "center", alignItems: "center" },
+  choice: { minHeight: 44, minWidth: 46, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, ...edge, justifyContent: "center", alignItems: "center" },
   choiceSelected: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   choiceText: { color: colors.secondary, fontSize: 15 },
   choiceTextSelected: { color: colors.accent, fontWeight: "500" },

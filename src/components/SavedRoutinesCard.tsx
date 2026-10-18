@@ -25,7 +25,8 @@ import AppSheet from "./AppSheet";
 import RoutineEditorSheet from "./RoutineEditorSheet";
 import QuestSheet from "./QuestSheet";
 import SheetHeader from "./SheetHeader";
-import Swipeable from "react-native-gesture-handler/ReanimatedSwipeable";
+import SwipeRow from "./SwipeRow";
+import { CircleButton } from "./SectionHeader";
 
 type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind };
 const ROUTINE_TEMPLATES: RoutineTemplate[] = [
@@ -34,12 +35,14 @@ const ROUTINE_TEMPLATES: RoutineTemplate[] = [
   { name: "Plan tomorrow", minutes: 15, area: "personal" },
 ];
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, headerRight, onHeaderLongPress }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
+  /** Home's ••• menu, in place of the Edit link and +. */
+  headerRight?: ReactNode; onHeaderLongPress?: () => void;
 }) {
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -196,12 +199,12 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   return <>
     <View style={s.card} testID="saved-routines-card">
       <View style={s.heading}>
-        <View style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>My Routines</Text>
-          {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}</View>
-        <View style={s.headingActions}>
+        <Pressable onLongPress={onHeaderLongPress} disabled={!onHeaderLongPress} delayLongPress={450} style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>My Routines</Text>
+          {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}</Pressable>
+        {headerRight ?? <View style={s.headingActions}>
           {!!(onSeeAll || entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); if (onSeeAll) onSeeAll(); else { setShowDone(false); setManage(true); } }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{onSeeAll ? entries.length > limit ? `See all ${entries.length}` : "Routines" : entries.length > limit ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
-          {!onSeeAll && <Pressable disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="New routine" style={s.add}><Ionicons name="add" size={20} color={colors.accent} /></Pressable>}
-        </View>
+          {!onSeeAll && <CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />}
+        </View>}
       </View>
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.group}>
         {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
@@ -272,14 +275,6 @@ function MenuAction({ icon, label, onPress, danger = false, disabled = false, fi
   </Pressable>;
 }
 
-function SwipeRow({ enabled, label, onEdit, onRemove, children }: { enabled: boolean; label: string; onEdit: () => void; onRemove?: () => void; children: ReactNode }) {
-  if (!enabled) return <>{children}</>;
-  return <Swipeable friction={1.6} rightThreshold={56} overshootRight={false} dragOffsetFromRightEdge={12}
-    renderRightActions={(_progress, _translation, methods) => <View style={s.swipeActions}>
-      <Pressable onPress={() => { methods.close(); onEdit(); }} accessibilityRole="button" accessibilityLabel={`Edit ${label}`} style={[s.swipeAction, s.swipeEdit]}><Ionicons name="create-outline" size={19} color={colors.text} /><Text style={s.swipeText}>Edit</Text></Pressable>
-      {onRemove && <Pressable onPress={() => { methods.close(); onRemove(); }} accessibilityRole="button" accessibilityLabel={`Remove ${label}`} style={[s.swipeAction, s.swipeRemove]}><Ionicons name="trash-outline" size={19} color={colors.text} /><Text style={s.swipeText}>Remove</Text></Pressable>}
-    </View>}>{children}</Swipeable>;
-}
 const s = StyleSheet.create({
   card: { gap: 10 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
@@ -288,17 +283,16 @@ const s = StyleSheet.create({
   sectionLabel: { ...type.label, paddingHorizontal: 4 },
   headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  add: { width: 36, height: 36, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
   name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   hint: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  play: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
-  icon: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
+  play: { ...edge, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
+  icon: { ...edge, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
-  sheetHeading: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 }, list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 }, addRow: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 25, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
+  sheetHeading: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 }, list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 }, addRow: { ...edge, minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 25, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
   confirmTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 }, confirmMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
   confirmBody: { paddingHorizontal: 16, paddingBottom: 12, gap: 4 },
   confirmStart: { minHeight: 60, paddingLeft: 22, paddingRight: 9, borderRadius: 30, flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.primary },
@@ -311,9 +305,5 @@ const s = StyleSheet.create({
   menuText: { color: colors.text, fontSize: 16, lineHeight: 22 }, danger: { color: colors.danger },
   removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
-  swipeActions: { flexDirection: "row" },
-  swipeAction: { width: 76, alignItems: "center", justifyContent: "center", gap: 3 },
-  swipeEdit: { backgroundColor: colors.selection }, swipeRemove: { backgroundColor: "#D93D35" },
-  swipeText: { color: colors.text, fontSize: 13, fontWeight: "600" },
   sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },
 });

@@ -56,10 +56,10 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
   const courseExams = course ? upcomingExams(exams).filter(item => item.courseId === course.id) : [];
   return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} floating compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="subject"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
-    header={<SheetHeader title={editing ? course ? "Edit subject" : "New subject" : course?.name ?? ""} subtitle={editing ? "Its study time counts toward Learning." : focusAreaTitle(area?.title)}
+    header={<SheetHeader title={editing ? course ? "Edit subject" : "New subject" : course?.name ?? ""} subtitle={editing ? "Revision while an exam is coming up, otherwise Learning." : courseExams.length ? "Counts as Revision · exam coming up" : `Counts as ${focusAreaTitle(area?.title)}`}
       onClose={close} closeLabel={editing && course ? "Stop editing" : "Close subject"} />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? `Remove ${course?.name ?? "this subject"}?` : "Discard your changes?"}
-      message={confirm === "remove" ? "Your focus sessions stay saved. Exams for it stay, without a subject." : "Your previous details stay as they were."}
+      message={confirm === "remove" ? "Its minutes stay saved. Add it back any time and they return. Its exams stay, without a subject." : "Your previous details stay as they were."}
       confirmLabel={confirm === "remove" ? "Remove subject" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)}
       onConfirm={() => { if (confirm === "remove" && course) void run(() => onRemove(course.id), "Couldn't remove this subject. Try again.", onClose); else { setConfirm(null); if (course) { setDraft(makeDraft()); setEditing(false); } else onClose(); } }} />}>
     <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
@@ -135,7 +135,7 @@ const s = StyleSheet.create({
   actions: { flexDirection: "row", gap: 10 },
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", paddingHorizontal: 16, backgroundColor: colors.primary, borderRadius: 27 },
   primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
-  secondary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard, borderRadius: 27 },
+  secondary: { ...edge, minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard, borderRadius: 27 },
   secondaryText: { color: colors.text, fontSize: 16, fontWeight: "600" },
   disabled: { opacity: 0.5 },
   remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },

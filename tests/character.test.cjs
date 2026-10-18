@@ -521,157 +521,62 @@ const sheetMocks = {
     TouchableOpacity: host("Button"),
   },
 };
+// Milestones open as a sheet from Home and Progress, no longer as their own page.
 async function rewardsHarness(options = {}) {
   const calls = [];
-  let growth = {
+  const growth = {
     data: { areas: [], sessions: [session("s", "2026-10-01", 30)] },
     loading: false,
     error: false,
-    refresh: async () => {
-      calls.push("milestones-refresh");
-    },
+    refresh: async () => { calls.push("milestones-refresh"); },
     ...options.growth,
   };
-  const ui = await screen("src/app/rewards.tsx", {
-    ...sheetMocks,
-    "../components/AppSheet": (props) =>
-      React.createElement("Sheet", props, props.header, props.children),
-    "expo-router": { useFocusEffect: (fn) => React.useEffect(fn, [fn]) },
-    "../context/UserContext": {
-      useUser: () => ({
-        profile: {
-          id: "a",
-          timezone: "Asia/Kuala_Lumpur",
-          daily_goal_minutes: 60,
-          gold: 500,
-        },
-      }),
-    },
-    "../context/TimerContext": { useTimer: () => ({ sessionSummary: null }) },
+  const Sheet = load("src/components/MilestonesSheet.tsx", {
+    "react-native": Native, "@expo/vector-icons": { Ionicons: host("Icon") },
+    "@gorhom/bottom-sheet": sheetMocks["@gorhom/bottom-sheet"],
+    "./AppSheet": (props) => React.createElement("Sheet", props, props.header, props.children),
+    "./SheetHeader": ({ title, subtitle }) => React.createElement("Header", null, title, subtitle),
+    "./AppText": { Text: host("Text") },
+    "./MotionPressable": host("Button"),
+    "../context/UserContext": { useUser: () => ({ profile: { id: "a", timezone: "Asia/Kuala_Lumpur", daily_goal_minutes: 60, gold: 500 } }) },
     "../hooks/useCharacterData": { useCharacterData: () => growth },
-    "../services/rewardService": new Proxy(
-      {},
-      {
-        get() {
-          throw Error("Milestones must not call the reward shop");
-        },
-      },
-    ),
-    "../services/dailyProgressService": {
-      getTodayProgress:
-        options.getTodayProgress ??
-        (async () => ({
-          completed_minutes: 0,
-          goal_minutes: 60,
-          goal_completed: false,
-        })),
-    },
-  });
-  return { ...ui, calls };
+    "../services/rewardService": new Proxy({}, { get() { throw Error("Milestones must not call the reward shop"); } }),
+  }).default;
+  let renderer;
+  await act(async () => { renderer = create(React.createElement(Sheet, { visible: true, onClose: () => calls.push("close") })); });
+  return { renderer, calls, text: () => text(renderer.root),
+    press: async label => act(async () => renderer.root.findAllByType("Button").find(n => n.props.accessibilityLabel === label || text(n) === label).props.onPress()),
+    cleanup: async () => act(async () => renderer.unmount()) };
 }
 test("milestones unlock automatically without personal reward creation, prices or claims", async () => {
   const ui = await rewardsHarness();
   try {
-    assert.match(ui.text(), /Your collection/);
+    assert.match(ui.text(), /My Milestones/);
     assert.match(ui.text(), /First step/);
-    assert.match(ui.text(), /Earned · Yours to keep/);
-    assert.doesNotMatch(
-      ui.text(),
-      /Add a personal reward|Personal rewards|Gold|Claim daily bonus|Redeem/,
-    );
+    assert.match(ui.text(), /Earned/);
+    assert.doesNotMatch(ui.text(), /Add a personal reward|Personal rewards|Gold|Claim daily bonus|Redeem/);
     assert.equal(ui.calls.length, 0);
-  } finally {
-    await ui.cleanup();
-  }
+  } finally { await ui.cleanup(); }
 });
-test("a sub-minute completed session earns a milestone before the independent daily goal", async () => {
+test("a sub-minute completed session earns a milestone, and a path milestone opens in place", async () => {
   const ui = await rewardsHarness();
   try {
-    const first = ui.renderer.root
-      .findAllByType("Button")
-      .find((n) => n.props.accessibilityLabel?.startsWith("First step,"));
-    assert.match(first.props.accessibilityLabel, /earned/);
-    assert.match(ui.text(), /0m \/ 60 min/);
-    assert.doesNotMatch(ui.text(), /Daily goal achieved/);
-    await act(async () => first.props.onPress());
-    assert.match(ui.text(), /Earned automatically/);
-  } finally {
-    await ui.cleanup();
-  }
-});
-test("milestone details stay mounted through dismissal and re-entry waits for native dismissal", async () => {
-  const ui = await rewardsHarness();
-  try {
-    const rows = ui.renderer.root
-      .findAllByType("Button")
-      .filter((n) => n.props.accessibilityLabel?.includes("View milestone"));
-    await act(async () => rows[0].props.onPress());
-    const title =
-      ui.renderer.root.findByType("Sheet").props.header.props.children.props
-        .children;
-    await act(async () =>
-      ui.renderer.root.findByType("Sheet").props.onRequestClose(),
-    );
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
-    assert.equal(
-      ui.renderer.root.findByType("Sheet").props.header.props.children.props
-        .children,
-      title,
-    );
-    assert.match(ui.text(), /Earned automatically/);
-    await act(async () => rows[1].props.onPress());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
-    await act(async () =>
-      ui.renderer.root.findByType("Sheet").props.onDismiss(),
-    );
-    await act(async () => rows[1].props.onPress());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
-    assert.match(ui.text(), /You’re making progress/);
-  } finally {
-    await ui.cleanup();
-  }
-});
-test("daily-goal read failure is retryable and does not hide earned milestones", async () => {
-  let attempts = 0;
-  const ui = await rewardsHarness({
-    getTodayProgress: async () => {
-      if (++attempts === 1) throw Error("Offline");
-      return { completed_minutes: 60, goal_minutes: 60, goal_completed: true };
-    },
-  });
-  try {
-    assert.match(ui.text(), /Couldn’t refresh today’s goal/);
-    assert.match(ui.text(), /First step/);
-    await ui.press("Retry today’s goal");
-    assert.equal(attempts, 2);
-    assert.match(ui.text(), /Daily goal achieved/);
-    assert.doesNotMatch(ui.text(), /Couldn’t refresh today’s goal/);
-  } finally {
-    await ui.cleanup();
-  }
-});
-test("a new day with no saved goal row shows the user's goal without inventing an achievement", async () => {
-  const ui = await rewardsHarness({ getTodayProgress: async () => null });
-  try {
-    assert.match(ui.text(), /0m \/ 60 min/);
-    assert.doesNotMatch(
-      ui.text(),
-      /Daily goal achieved|Couldn’t refresh today’s goal/,
-    );
-  } finally {
-    await ui.cleanup();
-  }
+    const first = ui.renderer.root.findAll(n => n.props.accessibilityLabel === "First step, earned");
+    assert.ok(first.length > 0);
+    const next = ui.renderer.root.findAllByType("Button").find(n => n.props.accessibilityState?.expanded === false && /of/.test(n.props.accessibilityLabel ?? ""));
+    await act(async () => next.props.onPress());
+    assert.match(ui.text(), /earned automatically when you get there/);
+    assert.equal(ui.renderer.root.findAllByType("Sheet").length, 1, "details open in place, not in a second sheet");
+  } finally { await ui.cleanup(); }
 });
 test("milestone refresh failure preserves the already-loaded collection with Retry", async () => {
   const ui = await rewardsHarness({ growth: { error: true } });
   try {
-    assert.match(ui.text(), /previously loaded achievements/);
+    assert.match(ui.text(), /Couldn’t refresh milestones/);
     assert.match(ui.text(), /First step/);
-    await ui.press("Retry milestones");
+    await ui.press("Couldn’t refresh milestones. Tap to try again.");
     assert.deepEqual(ui.calls, ["milestones-refresh"]);
-  } finally {
-    await ui.cleanup();
-  }
+  } finally { await ui.cleanup(); }
 });
 test("Settings prevents logout while a session is running, paused or unresolved", async () => {
   for (const timer of [
@@ -708,9 +613,10 @@ test("Settings prevents logout while a session is running, paused or unresolved"
         .findAllByType("Button")
         .find((b) => text(b).startsWith("Sign out"));
       await act(async () => row.props.onPress());
+      // The row and the sheet's button share a label; the sheet's comes last.
       const confirm = ui.renderer.root
         .findAllByType("Button")
-        .find((b) => text(b) === "Sign out");
+        .filter((b) => text(b) === "Sign out").at(-1);
       assert.equal(confirm.props.disabled, true);
       await act(async () => confirm.props.onPress());
       assert.equal(calls, 0);
@@ -837,8 +743,14 @@ async function profileScreen(overrides = {}) {
       useSafeAreaInsets: () => ({ bottom: 34 }),
     },
     "../../components/PersonalUI": UI,
+    "../../components/MoreMenu": (props) => React.createElement("Menu", props),
     "../../components/CharacterPortrait": host("Portrait"),
     "../../components/SheetConfirmation": host("Confirm"),
+    // Badges and subject breakdowns have their own tests.
+    "../../components/MilestonesSheet": { __esModule: true, default: host("MilestonesSheet"), useMilestones: () => ({ ready: true, error: false, retry: async () => {},
+      totals: { seconds: 5400, days: 3, bestStreak: 2, sessions: 4, milestones: [{ id: "first" }, { id: "ten" }] }, earned: [{ id: "first", title: "First step", icon: "footsteps-outline" }], next: null }) },
+    "../../components/SubjectBreakdown": { __esModule: true, default: host("SubjectBreakdown") },
+    "../../components/ProgressRing": ({ children }) => React.createElement("Ring", null, children),
     "../../components/AppSheet": (props) =>
       React.createElement(
         "Sheet",
@@ -1195,10 +1107,14 @@ test("onboarding profile validation rejects too-long names before the RPC and pr
  await api.saveOnboardingProfile('  Soon Teck  ','⭐','Scholar',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_username,'Soon Teck');
 });
 
-test("Profile leaves milestones to Progress and keeps My Categories and My Subjects",async()=>{
+test("Profile shows its stats and badges, opens every milestone as a card, and keeps My Categories",async()=>{
  const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
  try{
-  const entries=ui.renderer.root.findAllByType('Button').filter(b=>/milestone/i.test(b.props.accessibilityLabel??''));assert.equal(entries.length,0);
+  assert.match(ui.text(),/1h 30m/);assert.match(ui.text(),/focus days/);assert.match(ui.text(),/best streak/);
+  assert.match(ui.text(),/My Badges/);assert.match(ui.text(),/1 of 2 earned/);assert.match(ui.text(),/First step/);
+  const sheet=()=>ui.renderer.root.findByType('MilestonesSheet');assert.equal(sheet().props.visible,false);
+  const badges=ui.renderer.root.findAllByType('Menu').find(node=>node.props.label==='Badge options');
+  await act(async()=>badges.props.options.find(option=>option.label==='See all milestones').onPress());assert.equal(sheet().props.visible,true);assert.deepEqual(routes,[],'milestones open as a card, not a page');
   assert.match(ui.text(),/My Categories/);assert.doesNotMatch(ui.text(),/Your categories/);
  }finally{await ui.cleanup();}
 });

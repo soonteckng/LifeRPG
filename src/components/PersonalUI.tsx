@@ -17,7 +17,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { type } from "../constants/typography";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { TourScrollView } from "./FeatureTour";
@@ -50,7 +50,7 @@ export function PersonalPage({
   bottomContentInset?: number;
   expandFromIcon?: boolean;
   /** Where Back goes when there is nothing to go back to. */
-  fallback?: "/profile" | "/squads" | "/";
+  fallback?: "/profile" | "/settings" | "/";
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -289,8 +289,7 @@ export const p = StyleSheet.create({
     padding: 20,
     backgroundColor: colors.surface,
     borderRadius: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
+    ...edge,
     gap: 12,
   },
   title: {
@@ -346,8 +345,7 @@ export const p = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     backgroundColor: colors.background,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.line,
+    ...edge,
     color: colors.text,
     fontSize: 16,
   },

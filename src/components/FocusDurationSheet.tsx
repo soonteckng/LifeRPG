@@ -6,7 +6,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import { Text } from "./AppText";
-import { colors } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { parseDurationFields } from "../utils/sessionSetup";
 
 export default function FocusDurationSheet({ seconds, visible, disabled, onClose, onSave }: {
@@ -51,12 +51,12 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
 }
 
 const p = StyleSheet.create({
- presets: { flexDirection: "row", gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.sheetCard }, presetCell: { flex: 1 },
+ presets: { ...edge, flexDirection: "row", gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.sheetCard }, presetCell: { flex: 1 },
  preset: { minHeight: 40, borderRadius: 10, alignItems: "center", justifyContent: "center" }, presetChosen: { backgroundColor: colors.selection },
  presetText: { color: colors.secondary, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] }, presetTextChosen: { color: colors.text },
  caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
  sheetBody: { paddingHorizontal: 16, gap: 16 }, rowTitle: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontWeight: "500" },
- input: { minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: colors.sheetCard, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
+ input: { ...edge, minHeight: 58, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: colors.sheetCard, color: colors.text, fontSize: 24, fontVariant: ["tabular-nums"] },
  button: { minHeight: 54, padding: 14, borderRadius: 27, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
  buttonText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
 });

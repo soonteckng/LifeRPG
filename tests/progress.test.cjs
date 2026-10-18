@@ -650,7 +650,8 @@ test("Progress chart uses a compact first-screen layout budget", async()=>{
     const s=ui.styles();
     // Structural budget for default text, not a native layout/animation measurement.
     // Includes two comparison lines on a narrow phone.
-    const aboveChart = s.page.paddingTop + Math.ceil(s.title.fontSize * 1.3) + s.header.marginBottom
+    // The shared 64pt AppHeader sits above the page.
+    const aboveChart = s.page.paddingTop + 64
       + s.segmentButton.minHeight + s.card.paddingVertical + s.story.paddingTop + s.storyLabel.lineHeight
       + s.storyValue.lineHeight + s.storyLine.lineHeight * 2 + s.story.paddingBottom;
     const chart = s.chart.paddingTop + s.barTrack.height + s.barTrack.marginBottom + Math.ceil(s.dayLabel.fontSize * 1.3)

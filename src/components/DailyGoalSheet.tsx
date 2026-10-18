@@ -124,7 +124,7 @@ const g = {
   input: { minWidth: 110, color: colors.text, fontSize: 46, lineHeight: 54, fontWeight: "700" as const, textAlign: "center" as const, paddingVertical: 0, fontVariant: ["tabular-nums" as const] },
   number: { color: colors.text, fontSize: 46, lineHeight: 54, fontWeight: "700" as const, textAlign: "center" as const, fontVariant: ["tabular-nums" as const] },
   unit: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
-  presets: { flexDirection: "row" as const, gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.surfaceRaised },
+  presets: { ...edge, flexDirection: "row" as const, gap: 4, padding: 4, borderRadius: 14, backgroundColor: colors.surfaceRaised },
   // Sheet touchables wrap their style in an inner view on Android, so the cell takes the width.
   presetCell: { flex: 1 },
   preset: { minHeight: 36, borderRadius: 10, alignItems: "center" as const, justifyContent: "center" as const },

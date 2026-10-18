@@ -8,8 +8,9 @@ import FreeFocusCard from "../../components/FreeFocusCard";
 import CategorySheet from "../../components/CategorySheet";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
 import SessionProtectionControl from "../../components/SessionProtectionControl";
+import SectionHeader from "../../components/SectionHeader";
 import { PinnedRoute } from "../../components/PinnedAction";
-import { colors } from "../../constants/theme";
+import { colors, edge } from "../../constants/theme";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
 import { useTimer } from "../../context/TimerContext";
@@ -36,8 +37,7 @@ function Routines() {
   return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}>
     <ContentReveal><View style={s.stack}>
       <View style={s.section}>
-        <View style={s.head}><Text style={s.title} accessibilityRole="header">{open ? "Now" : "Quick focus"}</Text>
-          {!open && <Text style={s.caption}>Any activity, counted toward a category.</Text>}</View>
+        <SectionHeader title={open ? "Now" : "Quick focus"} subtitle={open ? "Your session is open." : "Any activity, counted toward a category."} />
         {!quick.ready ? <View style={s.loading} testID="routines-preference-loading"><Text style={s.caption}>{quick.preference.error || quick.duration.error ? "Your focus settings need a retry." : "Getting your focus ready…"}</Text></View>
           : <FreeFocusCard label="Quick focus"
           seconds={open ? timer.finishing ? 0 : timer.timeLeft : quick.seconds} duration={open ? timer.duration : undefined}
@@ -61,9 +61,7 @@ function Routines() {
   </PersonalPage>;
 }
 const s = StyleSheet.create({
-  stack: { gap: 28 }, section: { gap: 10 },
-  head: { gap: 2, paddingHorizontal: 4 },
-  title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  stack: { gap: 26 }, section: { gap: 10 },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  loading: { minHeight: 120, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: colors.surface },
+  loading: { ...edge, minHeight: 120, alignItems: "center", justifyContent: "center", borderRadius: 24, backgroundColor: colors.surface },
 });

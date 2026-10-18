@@ -14,13 +14,21 @@ import { levelTierProgress, requiredCharacterXP } from "../../utils/levelTiers";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
-import { HomeExams, HomeSquad, HomeWeek } from "../../components/HomeSections";
+import { HomeExams, HomeMilestones, HomeSquad, HomeWeek } from "../../components/HomeSections";
+import HomeArranger from "../../components/HomeArranger";
+import TodaySheet from "../../components/TodaySheet";
+import MoreMenu from "../../components/MoreMenu";
+import { CircleButton } from "../../components/SectionHeader";
+import { appPreferences, type HomeSection } from "../../services/appPreferences";
+import { homeEditRequest } from "../../services/homeEditRequest";
+import { useAppPreferences } from "../../hooks/useAppPreferences";
+import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
 import { colors, radius, edge } from "../../constants/theme";
@@ -49,15 +57,31 @@ export default function HomeScreen() {
   const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
   const dockHeight = useFloatingDockHeight(floatingDockKey(bannerVisible, insets.bottom, width, fontScale), dockEstimate);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
+  const owner = profile?.id ?? "";
   const { hasOpenSession, sessionSummary } = timer;
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
-  const owner = profile?.id ?? "";
   const [goalSettings, setGoalSettings] = useState(false);
+  const [todayOpen, setTodayOpen] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
+  // Sections in the order this account chose; Rearrange Home edits it in place.
+  useAppPreferences();
+  const order = appPreferences.homeOrder(owner);
+  const [arranging, setArranging] = useState(false);
+  // Settings › Rearrange Home asks before returning here; leaving Home ends the edit.
+  useFocusEffect(useCallback(() => { if (homeEditRequest.take()) setArranging(true); return () => setArranging(false); }, []));
+  const rearrange = () => setArranging(true);
+  const avatar = useRef<View>(null);
+  const openProfile = () => {
+    // Profile grows out of the avatar, then shrinks back into it.
+    let opened = false;
+    const open = () => { if (!opened) { opened = true; router.navigate("/profile"); } };
+    const fallback = setTimeout(open, 100);
+    avatar.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
+  };
   const [surfaceMode, setSurfaceMode] = useState(accessMode);
   if (surfaceMode !== accessMode) {
     setSurfaceMode(accessMode);
-    if (accessMode !== "online") { setGoalSettings(false); setTiersOpen(false); }
+    if (accessMode !== "online") { setGoalSettings(false); setTiersOpen(false); setTodayOpen(false); setArranging(false); }
   }
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
@@ -142,6 +166,17 @@ export default function HomeScreen() {
   const needsReview = !!(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary));
   const goalShare = Math.min(1, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60));
 
+  const sections: Record<HomeSection, React.ReactNode> = {
+    routines: <TourAnchor key="routines" id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
+      limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} onHeaderLongPress={rearrange}
+      headerRight={<MoreMenu label="Routine options" options={[{ label: "Open Routines", icon: "repeat", onPress: () => router.navigate("/routines") },
+        { label: "Rearrange Home", icon: "swap-vertical", onPress: rearrange }]} />} /></TourAnchor>,
+    exams: <HomeExams key="exams" rearrange={rearrange} />,
+    squad: <HomeSquad key="squad" rearrange={rearrange} />,
+    week: <HomeWeek key="week" rearrange={rearrange} />,
+    milestones: <HomeMilestones key="milestones" rearrange={rearrange} />,
+  };
+
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
       <TourScrollView testID="home-viewport" tourRoute="/" tourBottomInset={dockHeight} style={styles.viewport} showsVerticalScrollIndicator={false}
@@ -163,11 +198,16 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={13} color={colors.level} />
               </TouchableOpacity>
             </View>
-            <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={() => router.navigate("/profile")} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="Your companion, level, categories and subjects">
-              <ProgressRing size={60} stroke={3} progress={levelShare / 100} color={colors.level} track={colors.levelSoft}>
-                <View style={styles.avatarDisc}><CharacterMark size={40} avatar={profile?.avatar ?? "🌱"} /></View>
-              </ProgressRing>
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              <CircleButton icon="settings-outline" size={40} label="Open Settings" onPress={() => router.navigate("/settings")} testID="home-settings" />
+              <View ref={avatar} collapsable={false}>
+                <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="Your companion, level, badges and categories">
+                  <ProgressRing size={60} stroke={3} progress={levelShare / 100} color={colors.level} track={colors.levelSoft}>
+                    <View style={styles.avatarDisc}><CharacterMark size={40} avatar={profile?.avatar ?? "🌱"} /></View>
+                  </ProgressRing>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View></TourAnchor>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
@@ -175,15 +215,19 @@ export default function HomeScreen() {
           </TouchableOpacity>}
 
           <TourAnchor id="home-focus"><View style={styles.today} testID="home-today">
-            <TouchableOpacity testID="home-compact-goal" onPress={() => setGoalSettings(true)} style={styles.goalRow} accessibilityRole="button"
-              accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Change your goal`}>
+            <View style={styles.todayMenu}><MoreMenu label="Today options" testID="home-today-menu" options={[
+              { label: "Change daily goal", icon: "flag-outline", onPress: () => setGoalSettings(true) },
+              { label: "Open Progress", icon: "stats-chart-outline", onPress: () => router.navigate("/progress") },
+            ]} /></View>
+            <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalRow} accessibilityRole="button"
+              accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
               <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
                 <ProgressRing size={92} stroke={11} progress={goalShare} color={isGoalComplete ? colors.success : colors.accent} track={colors.accentSoft}>
                   <Text style={styles.ringValue} numberOfLines={1} adjustsFontSizeToFit>{Math.floor(safeCompletedSeconds / 60)}</Text>
                   <Text style={styles.ringUnit}>of {dailyGoalMinutes} min</Text>
                 </ProgressRing>
               </View>
-              <View style={styles.goalCopy}>
+              <View style={[styles.goalCopy, styles.todayCopy]}>
                 <Text style={styles.goalLabel}>{isGoalComplete ? "Goal reached" : "Today"}</Text>
                 <Text style={styles.goalHeadline} numberOfLines={2}>{isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
                 <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text></View>
@@ -201,15 +245,20 @@ export default function HomeScreen() {
             </View>}
           </View></TourAnchor>
 
-          <HomeExams />
-          <HomeSquad />
-          <HomeWeek />
-          <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
-            limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} /></TourAnchor>
+          {arranging ? <View style={styles.arrange} testID="home-arrange">
+            <View style={styles.arrangeHead}>
+              <View style={styles.goalCopy}><Text style={styles.arrangeTitle} accessibilityRole="header">Rearrange Home</Text>
+                <Text style={styles.streakText}>Drag ≡ to move a section.</Text></View>
+              <TouchableOpacity onPress={() => setArranging(false)} accessibilityRole="button" accessibilityLabel="Done rearranging" style={styles.done}><Text style={styles.doneText}>Done</Text></TouchableOpacity>
+            </View>
+            <HomeArranger order={order} onChange={next => void appPreferences.setHomeOrder(owner, next)} />
+          </View> : order.map(key => sections[key])}
         </View>
         </ContentReveal>
       </TourScrollView>
       <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
+      <TodaySheet visible={todayOpen} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
+        streak={streakDays} complete={isGoalComplete} onChangeGoal={() => setGoalSettings(true)} onOpenProgress={() => router.navigate("/progress")} />
       <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
     </SafeAreaView>
   );
@@ -229,8 +278,16 @@ const styles = StyleSheet.create({
   levelTitle: { flexShrink: 1, color: colors.level, fontSize: 14, lineHeight: 18, fontWeight: "700" },
   levelTrack: { width: 40, height: 5, borderRadius: 3, backgroundColor: "rgba(255,214,10,0.22)", overflow: "hidden" },
   levelFill: { height: 5, borderRadius: 3, backgroundColor: colors.level },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 10 },
   avatarFrame: { width: 64, height: 64, alignItems: "center", justifyContent: "center" },
-  avatarDisc: { width: 50, height: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  todayCopy: { paddingRight: 30 },
+  todayMenu: { position: "absolute", top: 12, right: 12, zIndex: 2 },
+  arrange: { gap: 14 },
+  arrangeHead: { flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 4 },
+  arrangeTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  done: { minHeight: 36, paddingHorizontal: 18, borderRadius: 18, justifyContent: "center", backgroundColor: colors.primary },
+  doneText: { color: colors.primaryText, fontSize: 15, fontWeight: "700" },
+  avatarDisc: { ...edge, width: 50, height: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   today: { ...edge, padding: 16, gap: 16, borderRadius: radius.card, backgroundColor: colors.surface },
   goalRow: { flexDirection: "row", alignItems: "center", gap: 18 },
   goalCopy: { flex: 1, minWidth: 0, gap: 4 },
@@ -241,7 +298,7 @@ const styles = StyleSheet.create({
   ringValue: { color: colors.text, fontSize: 28, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
   ringUnit: { color: colors.secondary, fontSize: 11, lineHeight: 15 },
   starts: { flexDirection: "row", gap: 10 },
-  startButton: { flex: 1, minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10, borderRadius: 16, backgroundColor: colors.sheetCard },
+  startButton: { ...edge, flex: 1, minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingHorizontal: 10, borderRadius: 16, backgroundColor: colors.sheetCard },
   startText: { flexShrink: 1, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   primaryButton: { backgroundColor: colors.primary, minHeight: 50, borderRadius: 25, alignItems: "center", justifyContent: "center", padding: 14 },
   primaryButtonText: { color: colors.primaryText, fontSize: 16, lineHeight: 22, fontWeight: "600", textAlign: "center" },

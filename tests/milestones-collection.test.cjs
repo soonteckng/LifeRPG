@@ -64,75 +64,62 @@ test("closest milestone uses progress across tracks and avoids recommending an a
 
 const host = name => ({ children, ...props }) => React.createElement(name, props, children);
 const text = node => typeof node === "string" ? node : (node.children ?? []).map(text).join("");
+// The collection is a sheet now, opened from Progress, Home and Profile.
 async function collection() {
   let profile = { id: "owner", timezone: "UTC", daily_goal_minutes: 60 };
   let data = { userId: "owner", areas: [], sessions: [session("first", "2026-09-01T04:00:00Z", 60)] };
   let error = false;
-  const Screen = load("src/app/rewards.tsx", {
-    "react-native": { View: host("View"), StyleSheet: { create: value => value, hairlineWidth: 1 }, AppState: { addEventListener: () => ({ remove() {} }) } },
+  const Sheet = load("src/components/MilestonesSheet.tsx", {
+    "react-native": { View: host("View"), StyleSheet: { create: value => value, hairlineWidth: 1 } },
     "@expo/vector-icons": { Ionicons: host("Icon") },
-    "expo-router": { useFocusEffect: callback => React.useEffect(callback, [callback]) },
     "@gorhom/bottom-sheet": { BottomSheetScrollView: host("SheetScroll") },
-    "../components/AppText": { Text: host("Text") },
-    "../components/MotionPressable": host("Button"),
-    "../components/AppSheet": props => React.createElement("Sheet", props, props.header, props.children),
-    "../components/PersonalUI": { PersonalPage: host("Page"), PersonalButton: ({ title, ...props }) => React.createElement("Button", props, title), Meter: host("Meter"), p: {} },
+    "./AppText": { Text: host("Text") }, "./MotionPressable": host("Button"), "./SheetHeader": host("Header"),
+    "./AppSheet": props => React.createElement("Sheet", props, props.header, props.children),
     "../context/UserContext": { useUser: () => ({ profile }) },
-    "../context/TimerContext": { useTimer: () => ({ sessionSummary: null }) },
     "../hooks/useCharacterData": { useCharacterData: () => ({ data: data?.userId === profile.id ? data : null, error, loading: false, refresh: async () => {} }) },
-    "../services/dailyProgressService": { getTodayProgress: async () => null },
   }).default;
-  let renderer; await act(async () => { renderer = create(React.createElement(Screen)); });
-  return { renderer, text: () => text(renderer.root), update: async update => act(async () => { if (update.profile) profile = update.profile; if ("data" in update) data = update.data; if ("error" in update) error = update.error; renderer.update(React.createElement(Screen)); }), cleanup: async () => act(async () => renderer.unmount()) };
+  const element = () => React.createElement(Sheet, { visible: true, onClose() {} });
+  let renderer; await act(async () => { renderer = create(element()); });
+  return { renderer, text: () => text(renderer.root), update: async update => act(async () => { if (update.profile) profile = update.profile; if ("data" in update) data = update.data; if ("error" in update) error = update.error; renderer.update(element()); }), cleanup: async () => act(async () => renderer.unmount()) };
 }
+const rows = ui => ui.renderer.root.findAllByType("Button").filter(node => node.props.accessibilityState && "expanded" in node.props.accessibilityState && node.props.accessibilityLabel?.includes(","));
+const press = (ui, label) => act(async () => ui.renderer.root.findAllByType("Button").find(node => text(node) === label || node.props.accessibilityLabel?.startsWith(label)).props.onPress());
 
-test("collection starts with one next milestone per track and expands intentionally without duplicating earned badges", async () => {
+test("the milestone sheet starts with one next milestone per track and expands intentionally without duplicating earned badges", async () => {
   const ui = await collection();
-  const rows = () => ui.renderer.root.findAllByType("Button").filter(node => node.props.accessibilityLabel?.includes("View milestone"));
   try {
-    assert.equal(rows().length, 6, "one earned tile and five upcoming tracks");
-    assert.match(ui.text(), /WITHIN REACH/); assert.match(ui.text(), /1 of 18 earned/);
-    await act(async () => ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel === "Show all milestones").props.onPress());
-    assert.equal(rows().length, 18); assert.equal(rows().filter(node => node.props.accessibilityLabel.startsWith("First step,")).length, 1);
-    await act(async () => ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel === "Show next milestones").props.onPress());
-    assert.equal(rows().length, 6);
+    assert.equal(rows(ui).length, 5, "one next milestone for each unfinished track");
+    assert.match(ui.text(), /Within reach/); assert.equal(ui.renderer.root.findByType("Header").props.subtitle, "1 of 18 earned");
+    assert.equal(ui.renderer.root.findAll(node => node.props.accessibilityLabel === "First step, earned").length > 0, true, "earned ones show as badges");
+    await press(ui, "Show all");
+    assert.equal(rows(ui).length, 17, "every milestone still to earn"); assert.equal(rows(ui).some(node => node.props.accessibilityLabel.startsWith("First step,")), false);
+    await press(ui, "Show next");
+    assert.equal(rows(ui).length, 5);
   } finally { await ui.cleanup(); }
 });
 
-test("open milestone details update from refreshed history and survive failed refresh until dismissal", async () => {
+test("a milestone opens in place, follows refreshed history and keeps the collection through a failed refresh", async () => {
   const ui = await collection();
   try {
-    const row = ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel?.startsWith("An hour invested,"));
-    await act(async () => row.props.onPress()); assert.match(text(ui.renderer.root.findByType("Sheet")), /You’re making progress/);
+    await press(ui, "An hour invested,");
+    assert.match(ui.text(), /It’s earned automatically when you get there/);
     await ui.update({ data: { userId: "owner", areas: [], sessions: [session("hour", "2026-09-01T04:00:00Z", 3600)] } });
-    assert.match(text(ui.renderer.root.findByType("Sheet")), /Earned automatically/);
-    await ui.update({ error: true }); assert.match(text(ui.renderer.root.findByType("Sheet")), /Earned automatically/);
-    await act(async () => ui.renderer.root.findByType("Sheet").props.onRequestClose());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false); assert.match(text(ui.renderer.root.findByType("Sheet")), /Earned automatically/);
+    assert.ok(ui.renderer.root.findAll(node => node.props.accessibilityLabel === "An hour invested, earned").length > 0, "it moves to the earned badges");
+    await ui.update({ error: true });
+    assert.match(ui.text(), /Couldn’t refresh milestones/); assert.ok(ui.renderer.root.findAll(node => node.props.accessibilityLabel === "An hour invested, earned").length > 0);
   } finally { await ui.cleanup(); }
 });
 
-test("changing accounts clears collection expansion and prior account milestone details", async () => {
+test("changing accounts folds the collection and drops the prior account's milestones", async () => {
   const ui = await collection();
   try {
-    await act(async () => ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel?.startsWith("First step,")).props.onPress());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+    await press(ui, "Show all"); await press(ui, "An hour invested,");
     await ui.update({ profile: { id: "other", timezone: "UTC", daily_goal_minutes: 30 } });
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false); assert.doesNotMatch(ui.text(), /First step|Earned automatically\. Yours to keep/);
+    assert.equal(ui.renderer.root.findByType("Header").props.subtitle, "Getting your collection ready…");
+    assert.doesNotMatch(ui.text(), /First step|It’s earned automatically when you get there/);
+    await ui.update({ data: { userId: "other", areas: [], sessions: [] } });
+    assert.equal(rows(ui).length, 5, "the other account starts folded");
   } finally { await ui.cleanup(); }
-});
-
-test("today's goal remains the first card before and after milestone history arrives",async()=>{
- const ui=await collection();
- try{
-  await ui.update({data:null});
-  const page=ui.renderer.root.findByType('Page');
-  const first=page.findAllByType('View').find(node=>node.props.testID==='milestones-daily-goal');
-  assert.ok(first);assert.ok(ui.text().indexOf('TODAY’S GOAL')<ui.text().indexOf('Getting your collection ready'));
-  await ui.update({data:{userId:'owner',areas:[],sessions:[session('hour','2026-09-01T04:00:00Z',3600)]}});
-  assert.equal(page.findAllByType('View').find(node=>node.props.testID==='milestones-daily-goal'),first);
-  assert.ok(ui.text().indexOf('TODAY’S GOAL')<ui.text().indexOf('WITHIN REACH'));
- }finally{await ui.cleanup();}
 });
 
 test('Profile history is immediately reused by Milestones, refreshed after a new session, and stays account-scoped',async()=>{

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
@@ -16,9 +17,13 @@ import type { FocusAreaDetail } from "../utils/focusAreaDetail";
 type Area = { id: number; title: string; level: number; current: number; required: number; color: string };
 const WEEKDAY = ["S", "M", "T", "W", "T", "F", "S"];
 
-export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, sessionOpen, leaving = false, onFocus, onClose, onDismiss }: {
+export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, sessionOpen, leaving = false, onFocus, onClose, onDismiss, focusLabel, extra }: {
   visible: boolean; area: Area | null; detail: FocusAreaDetail | null; timeZone: string; sessionOpen: boolean; leaving?: boolean;
   onFocus: () => void; onClose: () => void; onDismiss: () => void;
+  /** Revision is studied from Study, so its button says so. */
+  focusLabel?: string;
+  /** More about this category, such as its subjects. */
+  extra?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const title = focusAreaTitle(area?.title);
@@ -30,9 +35,9 @@ export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, 
       <View style={s.headerText}><Text style={s.title} numberOfLines={1}>{title}</Text><Text style={s.caption}>Level {area.level}</Text></View>
     </View>}
     footer={area && <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel={sessionOpen ? "Return to your session" : `Start a session in ${title}`} onPress={onFocus} style={s.start}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel={sessionOpen ? "Return to your session" : focusLabel ?? `Start a session in ${title}`} onPress={onFocus} style={s.start}>
         <View style={s.play}><Ionicons name={sessionOpen ? "arrow-forward" : "play"} size={14} color={colors.primary} /></View>
-        <Text style={s.startText}>{sessionOpen ? "Return to your session" : `Focus on ${title}`}</Text>
+        <Text style={s.startText}>{sessionOpen ? "Return to your session" : focusLabel ?? `Focus on ${title}`}</Text>
       </TouchableOpacity>
     </View>}>
     {area && detail && <BottomSheetScrollView enableFooterMarginAdjustment showsVerticalScrollIndicator={false} contentContainerStyle={s.body}>
@@ -45,6 +50,7 @@ export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, 
         {[["This week", durationLabel(detail.weekSeconds)], ["All time", durationLabel(detail.seconds)], ["Sessions", String(detail.sessions)]].map(([label, value]) =>
           <View key={label} style={s.stat} accessible accessibilityLabel={`${label}, ${value}`}><Text style={s.statValue}>{value}</Text><Text style={s.caption}>{label}</Text></View>)}
       </View>
+      {extra}
       <View style={s.card}>
         <View style={s.between}><Text style={s.label}>Day by day</Text>
           {detail.lastWeekByNow > 0 && <Text style={s.caption}>This point last week: {durationLabel(detail.lastWeekByNow)}</Text>}</View>

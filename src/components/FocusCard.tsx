@@ -96,7 +96,7 @@ export default function FocusCard(props: FocusCardProps) {
   </View>;
 }
 const s = StyleSheet.create({
-  card: { width: "100%", padding: 20, borderRadius: radius.card, gap: 16, backgroundColor: colors.focusSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.focusBorder }, fieldsRow: { flexWrap: "nowrap", alignItems: "stretch" },
+  card: { width: "100%", padding: 20, borderRadius: radius.card, gap: 16, backgroundColor: colors.focusSurface, ...edge }, fieldsRow: { flexWrap: "nowrap", alignItems: "stretch" },
   tourCard: { gap: 12 }, goal: { paddingBottom: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 },
   label: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500", flexShrink: 1 },
@@ -128,7 +128,7 @@ const s = StyleSheet.create({
   startText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   startDim: { backgroundColor: colors.sheetCard }, startTextDim: { color: colors.secondary }, playDim: { backgroundColor: colors.selection },
   playCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  sessionCard: { padding: 16, gap: 10, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line },
+  sessionCard: { padding: 16, gap: 10, borderRadius: radius.card, backgroundColor: colors.surface, ...edge },
   startCopy: { flex: 1, minWidth: 0 },
   banner: { minHeight: 60, paddingLeft: 22, paddingRight: 9, paddingVertical: 8, borderRadius: 30, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },

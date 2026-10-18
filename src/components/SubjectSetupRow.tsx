@@ -11,11 +11,12 @@ import { colors } from "../constants/theme";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { studySelection } from "../services/studySelection";
 import { areaTint } from "../utils/lifeAreaColor";
-import { countdownLabel, courseArea, courseColor, daysUntil, upcomingExams } from "../utils/studyPlan";
+import { countdownLabel, courseColor, daysUntil, studyAreaFor, upcomingExams } from "../utils/studyPlan";
+import { revisionArea } from "../utils/focusAreas";
 import type { Subject } from "../services/taskService";
 
 /**
- * Study's first row, shared by Home and the session screen. Any subject can be
+ * The study session's subject row. Any subject can be
  * picked or typed; a new one is added to My Subjects. Picking one also moves
  * the session to that subject's focus area.
  */
@@ -37,7 +38,8 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
     if (!id) { setError("Couldn't add that subject. Try again."); return; }
     setError(""); studySelection.choose(id);
     const picked = plan.courses.find(item => item.id === id);
-    const area = picked ? courseArea(picked, generalId) : learningId ?? generalId ?? null;
+    // An exam coming up makes it Revision; otherwise the subject's own area.
+    const area = picked ? studyAreaFor(picked, plan.exams, revisionArea(areas)?.id, generalId) : learningId ?? generalId ?? null;
     if (area !== areaId && areas.some(item => item.id === area)) onArea(area);
     setOpen(false);
   };
@@ -51,7 +53,7 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
     </Pressable>
     <AppSheet visible={open} onRequestClose={() => setOpen(false)} floating compact maxHeightRatio={0.85} label="subject choices"
       keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
-      header={<SheetHeader title="Subject" subtitle="Pick one or type your own. It counts toward Learning." onClose={() => setOpen(false)} />}>
+      header={<SheetHeader title="Subject" subtitle="Counts as Revision when an exam is coming up, otherwise Learning." onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list} showsVerticalScrollIndicator={false}>
         <SubjectPicker courses={plan.courses} selectedName={course?.name ?? null} onPick={choice => void pick(choice)} />
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}

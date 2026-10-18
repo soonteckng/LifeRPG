@@ -1,5 +1,5 @@
 import { tapHaptic } from "../../utils/tapHaptics";
-import { focusAreaTitle } from "../../utils/focusAreas";
+import { focusAreaKind, focusAreaTitle } from "../../utils/focusAreas";
 import { TourScrollView } from "../../components/FeatureTour";
 import { readSuggestedFocus } from "../../constants/guidedQuests";
 import { readRoutineSession } from "../../utils/routineSession";
@@ -29,8 +29,7 @@ import { colors, radius, edge } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
-import { useStudyPlan } from "../../hooks/useStudyPlan";
-import { courseColor, subjectTotals } from "../../utils/studyPlan";
+import SubjectBreakdown from "../../components/SubjectBreakdown";
 import type { ProgressSession } from "../../services/progressService";
 import {
   buildProgress,
@@ -109,12 +108,14 @@ function SessionRow({
   areas,
   timeZone,
   inSheet = false,
+  last = false,
   onPress,
 }: {
   session: ProgressSession;
   areas: { id: number; title: string }[];
   timeZone: string;
   inSheet?: boolean;
+  last?: boolean;
   onPress: () => void;
 }) {
   const Button = inSheet ? SheetButton : Pressable;
@@ -130,7 +131,7 @@ function SessionRow({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${durationLabel(session.duration_seconds)}, ${calendarLabel(key)}, ${time}. View session`}
-      style={s.sessionRow}
+      style={[s.sessionRow, last && s.lastRow]}
     >
       <View style={s.sessionIcon}>
         <Ionicons name="checkmark" size={18} color={green} />
@@ -266,9 +267,6 @@ export default function ProgressScreen() {
   // A current period with nothing yet gets one welcoming card, not a page of empty sections.
   const freshPeriod = !!analytics && currentPeriod && !analytics.sessions.length;
   const leadArea = analytics && analytics.areas.length > 1 ? analytics.areas[0] : undefined;
-  const study = useStudyPlan();
-  const subjectRows = useMemo(() => subjectTotals(study.recent, study.courses, ms => dateKey(new Date(ms), timeZone), period.start, period.end).slice(0, 6),
-    [study.recent, study.courses, timeZone, period.start, period.end]);
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
@@ -561,21 +559,6 @@ export default function ProgressScreen() {
                   />
                 )}
               </View>
-              {currentPeriod && study.courses.length > 0 && <>
-                <Section title="By subject" subtitle={`This ${mode}`} />
-                <View style={s.card} testID="progress-subjects">
-                  <View style={s.areaSummary}>
-                    {subjectRows.map(({ course, seconds }, index) => <Pressable key={course.id} onPress={() => router.navigate("/study")} accessibilityRole="button"
-                      accessibilityLabel={`${course.name}, ${durationLabel(seconds)} this ${mode}. Open Study`} style={[s.areaSummaryItem, index > 0 && s.areaRowDivider]}>
-                      <View style={[s.areaDot, { backgroundColor: courseColor(course.id) }]} />
-                      <Text style={s.areaRowTitle} numberOfLines={1}>{course.name}</Text>
-                      <Text style={s.areaRowValue}>{seconds ? durationLabel(seconds) : "—"}</Text>
-                      <Ionicons name="chevron-forward" size={16} color={colors.muted} />
-                    </Pressable>)}
-                  </View>
-                  {!subjectRows.some(row => row.seconds) && <Text style={s.caption}>Pick a subject when you set up a session and its time shows here.</Text>}
-                </View>
-              </>}
               <Section title="Sessions" subtitle={sessionScope === "period"
                 ? `${listedSessions.length} completed this ${mode}`
                 : `${heroDay ? calendarLabel(heroDay.key, { weekday: "long", month: "short", day: "numeric" }) : "Selected day"} · ${listedSessions.length} completed`} />
@@ -706,7 +689,8 @@ export default function ProgressScreen() {
                   {sessionCategory(selectedSession, data?.areas ?? [])}
                 </Text>
               </View>
-              <View style={s.detailRow}>
+              <View style={s.sheetGroup}>
+              <View style={[s.detailRow, s.firstRow]}>
                 <Text style={s.caption}>Completed</Text>
                 <Text style={[s.rowTitle, s.detailValue]}>
                   {new Intl.DateTimeFormat(undefined, {
@@ -725,6 +709,7 @@ export default function ProgressScreen() {
                     : ` · +${selectedSession.gold_earned ?? 0} gold`}
                 </Text>
               </View>
+              </View>
               <Text style={s.footnote}>
                 This session is already saved. Viewing it doesn’t award rewards
                 again.
@@ -741,10 +726,12 @@ export default function ProgressScreen() {
                 <Text style={s.summaryValue}>{data?.streak ?? 0} days</Text>
                 <Text style={s.rowTitle}>Current streak</Text>
               </View>
-              <View style={s.detailRow}><Text style={s.caption}>Longest streak</Text><Text style={s.rowTitle}>{data?.longestStreak ?? 0} days</Text></View>
+              <View style={s.sheetGroup}>
+              <View style={[s.detailRow, s.firstRow]}><Text style={s.caption}>Longest streak</Text><Text style={s.rowTitle}>{data?.longestStreak ?? 0} days</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Sessions</Text><Text style={s.rowTitle}>{analytics?.sessions.length ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Active days this {mode}</Text><Text style={s.rowTitle}>{analytics?.activeDays ?? 0}</Text></View>
               <View style={s.detailRow}><Text style={s.caption}>Goal days this {mode}</Text><Text style={s.rowTitle}>{analytics?.goalDays ?? 0}</Text></View>
+              </View>
               <Text style={s.explainTitle}>Showing up counts</Text>
               <Text style={s.explain}>
                 Complete any session to mark an active day. A 30-second session
@@ -803,16 +790,18 @@ export default function ProgressScreen() {
                   )}
                 </>
               )}
-              {detailSessions.map((session) => (
+              {activeArea && ["learning", "revision"].includes(focusAreaKind(activeArea.title) ?? "") && <SubjectBreakdown owner={profile?.id ?? ""} sessions={detailSessions} />}
+              {!!detailSessions.length && <View style={s.sheetGroup}>{detailSessions.map((session, index) => (
                 <SessionRow
                   key={session.id}
                   session={session}
                   areas={data?.areas ?? []}
                   timeZone={timeZone}
                   inSheet
+                  last={index === detailSessions.length - 1}
                   onPress={() => setSelectedSession(session)}
                 />
-              ))}
+              ))}</View>}
               {!detailSessions.length && (
                   <Empty
                     icon="time-outline"
@@ -844,13 +833,6 @@ const s = StyleSheet.create({
   historyEntrance: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 50 },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },
-  header: { marginBottom: 8 },
-  title: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: "500",
-    letterSpacing: -1,
-  },
   segment: {
     position: "relative",
     minHeight: 44,
@@ -970,7 +952,7 @@ const s = StyleSheet.create({
     padding: 14,
     borderRadius: radius.card,
     backgroundColor: colors.surface,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line,
+    ...edge,
   },
   streakIcon: {
     width: 52,
@@ -1068,12 +1050,6 @@ const s = StyleSheet.create({
     textAlign: "center",
     maxWidth: 290,
   },
-  milestonePreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingVertical: 20,
-  },
   footnote: {
     color: colors.muted,
     fontSize: 14,
@@ -1082,6 +1058,7 @@ const s = StyleSheet.create({
     textAlign: "center",
   },
   error: {
+    ...edge,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
@@ -1107,7 +1084,10 @@ const s = StyleSheet.create({
     minHeight: 44,
     marginBottom: 4,
   },
-  sheetContent: { paddingHorizontal: 20 },
+  sheetContent: { paddingHorizontal: 16, gap: 12 },
+  // Lists and details inside the sheet sit on bordered cards, like every other sheet.
+  sheetGroup: { ...edge, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  lastRow: { borderBottomWidth: 0 }, firstRow: { borderTopWidth: 0 },
   summary: { alignItems: "center", gap: 10, paddingVertical: 24 },
   summaryValue: {
     color: colors.text,
@@ -1146,22 +1126,9 @@ const s = StyleSheet.create({
     marginBottom: 8,
   },
   explain: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  historySpinner: { marginVertical: 20 },
-  errorText: {
-    color: colors.secondary,
-    marginVertical: 16,
-    textAlign: "center",
-  },
-  loadMore: {
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
-    marginTop: 14,
-    borderRadius: 14,
-    backgroundColor: colors.accentSoft,
-  },
+
   areaRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20 },
   areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
-  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: colors.line, overflow: "hidden" },
+  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, ...edge, overflow: "hidden" },
 });
