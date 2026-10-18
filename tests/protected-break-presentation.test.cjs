@@ -21,10 +21,3 @@ test('a protected break shows as its own state with the break countdown, not as 
   assert.equal(sessionDockState({ ...base, isCompleted: true, sessionSummary: {}, breakSecondsLeft: 30 }).label, 'Session saved');
 });
 
-test('the protection service warns a minute before a break ends and only announces a natural end', () => {
-  const source = fs.readFileSync(path.resolve(__dirname, '..', 'modules/focus-protection-spike/android/src/main/java/expo/modules/focusprotection/ProtectionService.kt'), 'utf8');
-  assert.match(source, /BREAK_WARNING_MS = 60_000L/);
-  assert.match(source, /onBreak && breakMs <= BREAK_WARNING_MS && !breakWarned/);
-  assert.match(source, /wasOnBreak && !onBreak && lastBreakMs <= 1500/);
-  assert.match(source, /IMPORTANCE_HIGH/);
-});

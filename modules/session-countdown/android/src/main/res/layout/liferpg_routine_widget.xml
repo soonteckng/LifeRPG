@@ -7,20 +7,20 @@
     <TextView android:id="@+id/liferpg_widget_area"
         android:layout_width="match_parent" android:layout_height="wrap_content"
         android:text="LIFERPG" android:textSize="12sp" android:textStyle="bold"
-        android:textColor="#63E6BE" android:maxLines="1" android:ellipsize="end" />
+        android:textColor="#BBB5FF" android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/liferpg_widget_name"
         android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
         android:layout_marginTop="6dp" android:gravity="center_vertical"
         android:text="Make room for what matters" android:textSize="18sp" android:textStyle="bold"
-        android:textColor="#FFFFFF" android:maxLines="2" android:ellipsize="end" />
+        android:textColor="#F3F1FA" android:maxLines="2" android:ellipsize="end" />
     <TextView android:id="@+id/liferpg_widget_duration"
         android:layout_width="match_parent" android:layout_height="wrap_content"
-        android:text="Your next step, close by" android:textSize="14sp" android:textColor="#98989F"
+        android:text="Your next step, close by" android:textSize="14sp" android:textColor="#C5C1D2"
         android:maxLines="1" android:ellipsize="end" />
     <TextView android:id="@+id/liferpg_widget_start"
         android:layout_width="match_parent" android:layout_height="40dp" android:layout_marginTop="8dp"
         android:background="@drawable/liferpg_widget_button" android:gravity="center"
         android:text="Open LifeRPG  ›" android:textSize="14sp" android:textStyle="bold"
-        android:textColor="#00140D" android:maxLines="1" android:ellipsize="end"
+        android:textColor="#15131C" android:maxLines="1" android:ellipsize="end"
         android:contentDescription="Open LifeRPG to choose a routine" />
 </LinearLayout>

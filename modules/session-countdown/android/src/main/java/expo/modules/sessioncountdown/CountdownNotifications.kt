@@ -123,7 +123,7 @@ internal class CountdownNotifications(private val context: Context) {
       .setContentTitle("LifeRPG session").setContentText(if (paused) "Paused" else "Session in progress")
       .setSilent(true).setOngoing(true).setOnlyAlertOnce(true)
     val builder = NotificationCompat.Builder(context, ONGOING_CHANNEL).setSmallIcon(icon()).setContentTitle(title)
-      .setContentText(content).setColor(0xFF63E6BE.toInt()).setOngoing(true).setOnlyAlertOnce(true).setSilent(true)
+      .setContentText(content).setColor(0xFFAAB3FF.toInt()).setOngoing(true).setOnlyAlertOnce(true).setSilent(true)
       .setCategory(Notification.CATEGORY_PROGRESS).setVisibility(Notification.VISIBILITY_PRIVATE)
     openIntent()?.let { builder.setContentIntent(it) }
     if (!paused) {
@@ -159,7 +159,7 @@ internal class CountdownNotifications(private val context: Context) {
       .setContentTitle("Time well spent").setContentText("Your session is finished. Open LifeRPG to see your progress.").build()
     val builder = NotificationCompat.Builder(context, channelId(state.preferences)).setSmallIcon(icon())
       .setContentTitle("Time well spent").setContentText("Your session is finished. Open LifeRPG to see your progress.")
-      .setColor(0xFF63E6BE.toInt()).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE)
+      .setColor(0xFFAAB3FF.toInt()).setAutoCancel(true).setOnlyAlertOnce(true).setVisibility(Notification.VISIBILITY_PRIVATE)
       .setPublicVersion(public).setCategory(Notification.CATEGORY_REMINDER).setPriority(NotificationCompat.PRIORITY_HIGH)
     openIntent()?.let { builder.setContentIntent(it) }
     if (Build.VERSION.SDK_INT < 26) {

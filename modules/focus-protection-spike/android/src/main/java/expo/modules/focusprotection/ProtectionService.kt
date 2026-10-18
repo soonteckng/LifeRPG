@@ -25,9 +25,6 @@ class ProtectionService : Service() {
     private const val NOTIFICATION = 84103
     private const val TRACE_TAG = "LifeRPGProtection"
     private const val FADE_MS = 140L
-    private const val ALERT_CHANNEL = "liferpg_break_alerts"
-    private const val BREAK_ALERT = 84105
-    private const val BREAK_WARNING_MS = 60_000L
     private var instance: ProtectionService? = null
     fun canStart() = instance == null
     fun stop(context: Context, id: String, reason: String) {
@@ -47,8 +44,6 @@ class ProtectionService : Service() {
   private var remainingText: TextView? = null
   private var foreground = ProtectionForegroundTracker(emptySet())
   private var wasOnBreak = false
-  private var breakWarned = false
-  private var lastBreakMs = 0L
   private var lastQuery = 0L
   private var userApps: Set<String> = emptySet()
   private var essentials: Set<String> = emptySet()
@@ -100,22 +95,6 @@ class ProtectionService : Service() {
     } catch (_: Exception) { finish(lease.id, "interrupted") }
     return START_NOT_STICKY
   }
-  private fun alertBreak(id: String, warning: Boolean) {
-    if (ProtectionRuntime.current?.id != id) return
-    try {
-      val manager = getSystemService(NotificationManager::class.java)
-      manager.createNotificationChannel(NotificationChannel(ALERT_CHANNEL, "Break reminders", NotificationManager.IMPORTANCE_HIGH).apply {
-        description = "A heads-up before your break ends and when protection returns"
-        enableVibration(true); vibrationPattern = longArrayOf(0, 250, 150, 250)
-      })
-      val open = PendingIntent.getActivity(this, 84106, appIntent(), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-      manager.notify(BREAK_ALERT, Notification.Builder(this, ALERT_CHANNEL).setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-        .setContentTitle(if (warning) "1 minute left on your break" else "Break's over")
-        .setContentText(if (warning) "Protected apps lock again in a minute. Wrap up what you're doing." else "Protection is back on. Your session carries on from here.")
-        .setCategory(Notification.CATEGORY_REMINDER).setAutoCancel(true).setContentIntent(open)
-        .apply { if (warning) setTimeoutAfter(BREAK_WARNING_MS + 5000) }.build())
-    } catch (_: Exception) { /* A reminder is a courtesy; protection never depends on it. */ }
-  }
   private val tick = object : Runnable {
     override fun run() {
       val lease = ProtectionRuntime.current
@@ -124,13 +103,7 @@ class ProtectionService : Service() {
         val elapsed = SystemClock.elapsedRealtime()
         if (lease.remaining(elapsed) <= 0) { finish(lease.id, "finished"); return }
         if (!ProtectionRuntime.ready(this@ProtectionService)) { finish(lease.id, "permission-lost"); return }
-        val breakMs = lease.breakRemaining(elapsed)
-        val onBreak = breakMs > 0
-        // Warn a minute ahead, then say when protection is back. Ending the
-        // break early from the app is the person's own choice and stays quiet.
-        if (onBreak && breakMs <= BREAK_WARNING_MS && !breakWarned) { breakWarned = true; handler.post { alertBreak(lease.id, true) } }
-        if (wasOnBreak && !onBreak && lastBreakMs <= 1500) handler.post { alertBreak(lease.id, false) }
-        lastBreakMs = breakMs
+        val onBreak = lease.breakRemaining(elapsed) > 0
         if (wasOnBreak != onBreak) handler.post {
           if (ProtectionRuntime.current?.id == lease.id) {
             val manager = getSystemService(NotificationManager::class.java)
@@ -188,7 +161,7 @@ class ProtectionService : Service() {
     lastQuery = now
   }
   private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
-  private fun text(copy: String, size: Float, color: String = "#FFFFFF") = TextView(this).apply {
+  private fun text(copy: String, size: Float, color: String = "#F5F6FA") = TextView(this).apply {
     text = copy; textSize = size; setTextColor(Color.parseColor(color)); gravity = Gravity.CENTER
     setPadding(0, dp(10), 0, dp(10))
   }
@@ -217,24 +190,24 @@ class ProtectionService : Service() {
         if (Log.isLoggable(TRACE_TAG, Log.DEBUG)) Log.d(TRACE_TAG, "overlay detached")
         super.onDetachedFromWindow()
       }
-    }.apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#000000")) }
+    }.apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.parseColor("#080809")) }
     val scroll = ScrollView(this).apply { isFillViewport = true }
     val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(dp(24), dp(36), dp(24), dp(36)) }
-    column.addView(text("SESSION PROTECTED", 14f, "#63E6BE"))
+    column.addView(text("SESSION PROTECTED", 14f, "#21C6B7"))
     column.addView(text("Stay with your intention.", 28f).apply { setTypeface(typeface, Typeface.BOLD) })
     column.addView(text(lease.title, 19f))
-    remainingText = text("", 24f, "#63E6BE"); column.addView(remainingText)
-    column.addView(text("You chose to keep this app aside until your session ends.", 16f, "#98989F"))
+    remainingText = text("", 24f, "#AAB3FF"); column.addView(remainingText)
+    column.addView(text("You chose to keep this app aside until your session ends.", 16f, "#ADB2C0"))
     fun button(parent: LinearLayout, label: String, primary: Boolean, action: () -> Unit) {
       parent.addView(Button(this).apply {
         text = label; isAllCaps = false; textSize = 16f; minHeight = dp(52)
-        setTextColor(Color.parseColor(if (primary) "#00140D" else "#63E6BE"))
-        background = GradientDrawable().apply { setColor(Color.parseColor(if (primary) "#63E6BE" else "#1C1C1E")); cornerRadius = dp(26).toFloat() }
+        setTextColor(Color.parseColor(if (primary) "#11131B" else "#AAB3FF"))
+        background = GradientDrawable().apply { setColor(Color.parseColor(if (primary) "#DDE1FF" else "#1E1E21")); cornerRadius = dp(16).toFloat() }
         setOnClickListener { action() }
       }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
     }
     button(column, "Back to my session", true) { openDestination(appIntent()) }
-    column.addView(text("Calls, emergency access, Settings and LifeRPG stay available. Ending your session is always available in LifeRPG.", 14f, "#98989F"))
+    column.addView(text("Calls, emergency access, Settings and LifeRPG stay available. Ending your session is always available in LifeRPG.", 14f, "#ADB2C0"))
     scroll.addView(column, FrameLayout.LayoutParams(-1, -1))
     root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
     // Exit and dialler controls remain outside scrolling copy, including large text.
@@ -290,8 +263,6 @@ class ProtectionService : Service() {
     if (id != leaseId && !ProtectionPolicy.sameLease(ProtectionRuntime.current, id)) return
     ProtectionRuntime.finish(id, reason)
     if (id == leaseId) {
-      // A session ending mid-break drops its pending "1 minute left" heads-up.
-      if (lastBreakMs > 0) try { getSystemService(NotificationManager::class.java).cancel(BREAK_ALERT) } catch (_: Exception) {}
       monitor.removeCallbacks(tick); hideOverlay(immediate = true); leaseId = null
       stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
     }
