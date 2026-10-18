@@ -1521,10 +1521,10 @@ test("completion message shows saved exact duration and awards; Done only closes
 
 test("floating dock reserves the safe area and only visible banners",()=>{
   const {floatingTabInset}=load("src/utils/floatingTabInset.ts",{});
-  assert.equal(floatingTabInset(66,34,{}),108);
-  assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),142);
-  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),142);
-  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),86);
+  assert.equal(floatingTabInset(66,34,{}),110);
+  assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),158);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),158);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),88);
 });
 
 test('switching offline suppresses online pickers and End confirmation without losing the active session',async()=>{

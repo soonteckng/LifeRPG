@@ -168,9 +168,7 @@ export default function HomeScreen() {
 
   const sections: Record<HomeSection, React.ReactNode> = {
     routines: <TourAnchor key="routines" id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
-      limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} onHeaderLongPress={rearrange}
-      headerRight={<MoreMenu label="Routine options" options={[{ label: "Open Routines", icon: "repeat", onPress: () => router.navigate("/routines") },
-        { label: "Rearrange Home", icon: "swap-vertical", onPress: rearrange }]} />} /></TourAnchor>,
+      limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} onHeaderLongPress={rearrange} /></TourAnchor>,
     exams: <HomeExams key="exams" rearrange={rearrange} />,
     squad: <HomeSquad key="squad" rearrange={rearrange} />,
     week: <HomeWeek key="week" rearrange={rearrange} />,

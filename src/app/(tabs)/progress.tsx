@@ -30,6 +30,8 @@ import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useProgressData } from "../../hooks/useProgressData";
 import SubjectBreakdown from "../../components/SubjectBreakdown";
+import OneTimeHint from "../../components/OneTimeHint";
+import { appPreferences } from "../../services/appPreferences";
 import type { ProgressSession } from "../../services/progressService";
 import {
   buildProgress,
@@ -245,7 +247,7 @@ export default function ProgressScreen() {
     ? { kind: "day", key: heroDay.key } : { kind: "period" };
   const selectDay = (key: string) => {
     setSessionScope("day");
-    if (key === heroDay?.key) open({ kind: "day", key });
+    if (key === heroDay?.key) { open({ kind: "day", key }); void appPreferences.retireHint("progress-day"); }
     else {
       tick();
       setSelectedDayKey(key);
@@ -432,8 +434,8 @@ export default function ProgressScreen() {
                     >
                       <View style={[s.barTrack, {height: chartHeight + 4}]}>
                         <View testID={`focus-bar-${day.key}`} style={[s.bar, {
-                          height: day.seconds ? Math.max(5, (day.seconds / peak) * chartHeight) : 3,
-                          backgroundColor: day.future ? colors.surfaceRaised : colors.selection,
+                          height: day.seconds ? Math.max(6, (day.seconds / peak) * chartHeight) : 3,
+                          backgroundColor: day.future || !day.seconds ? colors.line : colors.selection,
                         }]}>
                           {sessionAreaSegments(day.sessions, data.areas).map(segment => (
                             <View key={segment.key} testID={`focus-segment-${day.key}-${segment.key}`}
@@ -452,22 +454,15 @@ export default function ProgressScreen() {
                         )}
                       </Text>
                       <View style={s.dayStatus}>
-                        {day.goal?.goal_completed ? <View style={s.goalCheck}><Ionicons name="checkmark" size={12} color={colors.background} /></View>
-                          : <View style={[s.goalDot, { backgroundColor: day.sessions.length ? colors.accent : colors.line }]} />}
+                        {day.goal?.goal_completed && <View style={s.goalCheck}><Ionicons name="checkmark" size={12} color={colors.background} /></View>}
                       </View>
                     </Pressable>
                   ))}
                 </ScrollView>
                 <View style={s.legend}>
                   <View style={s.legendItem}>
-                    <View
-                      style={[s.legendDot, { backgroundColor: colors.accent }]}
-                    />
-                    <Text style={s.caption}>Dot · active day</Text>
-                  </View>
-                  <View style={s.legendItem}>
-                    <View style={[s.legendDot, { backgroundColor: green }]} />
-                    <Text style={s.caption}>Check · goal reached</Text>
+                    <View style={[s.goalCheck, s.goalCheckSmall]}><Ionicons name="checkmark" size={9} color={colors.background} /></View>
+                    <Text style={s.caption}>Goal reached</Text>
                   </View>
                   {mode === "month" && <Text style={s.caption}>Swipe for more →</Text>}
                 </View>
@@ -477,7 +472,7 @@ export default function ProgressScreen() {
                     <Text style={s.dayDetailValue}>{durationLabel(heroDay?.seconds ?? 0)}</Text>
                   </View>
                   <Text style={s.caption}>{dayMessage}</Text>
-                  <Text style={s.chartHint}>Tap a day to see it here. Tap it again for its sessions.</Text>
+                  <OneTimeHint id="progress-day" text="Tap a day to see it here. Tap it again for its sessions." />
                 </View>
               </View>
               {mode === "month" && <View style={[s.card, s.calendarCard]}>
@@ -915,13 +910,14 @@ const s = StyleSheet.create({
     alignItems: "center",
     marginBottom: 4,
   },
+  // Rounded tops and flat bottoms, so bars stand on the baseline.
   bar: {
-    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 30, borderRadius: 9 },
+    overflow: "hidden", flexDirection: "column-reverse", width: "100%", maxWidth: 30, borderTopLeftRadius: 10, borderTopRightRadius: 10, borderBottomLeftRadius: 3, borderBottomRightRadius: 3 },
   dayLabel: { color: colors.secondary, fontSize: 14 },
   todayLabel: { color: colors.accent, fontWeight: "500" },
-  goalDot: { width: 7, height: 7, borderRadius: 4 },
   dayStatus: { height: 24, justifyContent: "center", alignItems: "center", marginTop: 4 },
   goalCheck: { width: 18, height: 18, borderRadius: 9, justifyContent: "center", alignItems: "center", backgroundColor: colors.success },
+  goalCheckSmall: { width: 14, height: 14, borderRadius: 7 },
   legend: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -930,8 +926,6 @@ const s = StyleSheet.create({
     marginTop: 4,
   },
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 6, height: 6, borderRadius: 3 },
-  chartHint: { color: colors.muted, fontSize: 12, lineHeight: 16, marginTop: 2 },
   story: { paddingTop: 8, paddingBottom: 4, gap: 2 },
   storyLabel: { ...type.label },
   storyValue: { color: colors.text, fontSize: 40, lineHeight: 46, fontWeight: "700", letterSpacing: -1, fontVariant: ["tabular-nums"] },
@@ -1086,7 +1080,7 @@ const s = StyleSheet.create({
   },
   sheetContent: { paddingHorizontal: 16, gap: 12 },
   // Lists and details inside the sheet sit on bordered cards, like every other sheet.
-  sheetGroup: { ...edge, paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  sheetGroup: { paddingHorizontal: 14, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden" },
   lastRow: { borderBottomWidth: 0 }, firstRow: { borderTopWidth: 0 },
   summary: { alignItems: "center", gap: 10, paddingVertical: 24 },
   summaryValue: {
@@ -1130,5 +1124,5 @@ const s = StyleSheet.create({
   areaRowDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   areaRowTitle: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15, lineHeight: 20 },
   areaRowValue: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontVariant: ["tabular-nums"] },
-  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, ...edge, overflow: "hidden" },
+  sessionsCard: { marginTop: 12, paddingHorizontal: 14, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
 });

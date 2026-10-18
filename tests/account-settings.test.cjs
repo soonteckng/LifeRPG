@@ -183,7 +183,7 @@ test("Settings groups its rows and every row opens its own page", async () => {
     assert.doesNotMatch(ui.text(), /Progress time zone|Completion sound|Replay the introduction|EAS|Expo Go|native build|widgets/);
     await ui.press("Daily goal60 min");
     await ui.press("Sessions30 min");
-    await ui.press("NotificationsNot allowed");
+    await ui.press("NotificationsOff");
     await ui.press("How LifeRPG works");
     assert.deepEqual(ui.calls().navigate, ["/settings-goal", "/settings-sessions", "/settings-notifications", "/guide"]);
     const toggle = label => ui.renderer.root.findAllByType("Switch").find(n => n.props.accessibilityLabel === label);

@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import ExamRow from "./ExamRow";
 import SwipeRow from "./SwipeRow";
 import ItemActionSheet from "./ItemActionSheet";
-import { colors, edge, radius } from "../constants/theme";
+import { colors, radius } from "../constants/theme";
 import { countdownLabel, courseColor, daysUntil, examDateLabel } from "../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../types/studyPlan";
 
@@ -50,5 +50,5 @@ export default function ExamsCard({ exams, courses, onEdit, onStudy, onRemove }:
   </>;
 }
 const s = StyleSheet.create({
-  card: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  card: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
 });

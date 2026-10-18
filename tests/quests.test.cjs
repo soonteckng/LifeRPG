@@ -686,7 +686,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   const initialMargin = viewportMargin();
   openSession = true;
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.equal(viewportMargin(), initialMargin + 56);
+  assert.equal(viewportMargin(), initialMargin + 70);
   await act(async () => routines().props.onStartLegacy(record(16)));
   assert.deepEqual(sessionCalls, [["navigate","/session"]]);
   sessionCalls.length = 0;
@@ -1243,7 +1243,7 @@ test('Home level button opens and dismisses the tier path without changing its t
  }finally{await ui.cleanup();}
 });
 
-test('Home: the goal ring opens Today, its ••• changes the goal, Settings sits by the avatar and sections can be rearranged',async()=>{
+test('Home: the goal ring opens Today, its ••• changes the goal, Settings sits by the avatar and holding a title rearranges sections',async()=>{
  const ui=await quickHomeSetup();
  try{
   const find=type=>ui.renderer.root.findAllByType(type);
@@ -1257,8 +1257,8 @@ test('Home: the goal ring opens Today, its ••• changes the goal, Settings 
   assert.equal(find('GoalSheet')[0].props.visible,true);
   await act(async()=>ui.button('home-settings').props.onPress());
   assert.deepEqual(ui.calls.filter(call=>call[0]==='navigate').at(-1),['navigate','/settings']);
-  // Every section's ••• offers Rearrange Home; Routines is the first section by default.
-  const rearrange=()=>find('SavedRoutines')[0].props.headerRight.props.options.find(option=>option.label==='Rearrange Home');
+  // Holding any section's title rearranges Home; Routines is the first section by default.
+  const rearrange=()=>({onPress:find('SavedRoutines')[0].props.onHeaderLongPress});
   await act(async()=>rearrange().onPress());
   const arranger=find('HomeArranger')[0];
   assert.deepEqual(arranger.props.order,['routines','exams','squad','week','milestones']);

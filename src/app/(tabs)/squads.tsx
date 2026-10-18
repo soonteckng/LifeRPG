@@ -15,7 +15,7 @@ import { colors, edge, radius } from "../../constants/theme";
 import { useSquads } from "../../hooks/useSquads";
 import { useTabDockInset } from "../../hooks/useTabDockInset";
 import { squadSelection } from "../../services/squadSelection";
-import { leaveOutcome, SQUAD_LIMITS } from "../../utils/squads";
+import { leaveOutcome } from "../../utils/squads";
 import type { SquadMember } from "../../types/squads";
 
 type Confirm = { kind: "leave" } | { kind: "code" } | { kind: "remove"; member: SquadMember } | null;
@@ -64,7 +64,6 @@ export default function SquadsScreen() {
             <Pressable onPress={() => setJoining(true)} accessibilityRole="button" accessibilityLabel="Join or start a squad" style={s.primary}><Text style={s.primaryText}>Join or start a squad</Text></Pressable>
           </View>}
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
-        {squad && <Text style={s.hint}>You can lead {SQUAD_LIMITS.lead} squad and be in up to {SQUAD_LIMITS.member}.</Text>}
       </View></ContentReveal>
       <SquadJoinSheet visible={joining} online={squads.online} leading={leading} memberships={squads.squads.length}
         onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
@@ -86,7 +85,6 @@ const s = StyleSheet.create({
   tabOn: { backgroundColor: colors.accentSoft, borderColor: "rgba(99,230,190,0.4)" },
   tabText: { color: colors.secondary, fontSize: 15, fontWeight: "600" }, tabTextOn: { color: colors.accent },
   card: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, padding: 16 },
-  hint: { color: colors.tertiary, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },
   empty: { alignItems: "center", gap: 10, paddingVertical: 28, paddingHorizontal: 24 },
   emptyIcon: { width: 56, height: 56, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 4 },

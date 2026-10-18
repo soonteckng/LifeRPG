@@ -6,5 +6,5 @@ export function floatingTabInset(pillHeight: number, safeBottom: number, timer: 
   summaryViewed?: boolean;
 }) {
   const bannerVisible = timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed);
-  return pillHeight + Math.max(safeBottom, 12) + 8 + (bannerVisible ? 56 : 0);
+  return pillHeight + Math.max(safeBottom, 12) + 10 + (bannerVisible ? 70 : 0);
 }

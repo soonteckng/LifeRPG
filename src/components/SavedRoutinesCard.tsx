@@ -1,5 +1,5 @@
 import { tapHaptic } from "../utils/tapHaptics";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
@@ -26,7 +26,9 @@ import RoutineEditorSheet from "./RoutineEditorSheet";
 import QuestSheet from "./QuestSheet";
 import SheetHeader from "./SheetHeader";
 import SwipeRow from "./SwipeRow";
-import { CircleButton } from "./SectionHeader";
+import SectionHeader, { CircleButton } from "./SectionHeader";
+import OneTimeHint from "./OneTimeHint";
+import { appPreferences } from "../services/appPreferences";
 
 type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind };
 const ROUTINE_TEMPLATES: RoutineTemplate[] = [
@@ -35,14 +37,14 @@ const ROUTINE_TEMPLATES: RoutineTemplate[] = [
   { name: "Plan tomorrow", minutes: 15, area: "personal" },
 ];
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, headerRight, onHeaderLongPress }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, onHeaderLongPress }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
-  /** Home's ••• menu, in place of the Edit link and +. */
-  headerRight?: ReactNode; onHeaderLongPress?: () => void;
+  /** Home rearranges its sections when the title is held. */
+  onHeaderLongPress?: () => void;
 }) {
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -143,7 +145,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     catch { if (currentSurface.current === surfaceKey) { setMenu(null); setMessage("Couldn't remove this routine. Try again."); } }
     finally { if (locked.current === operation) locked.current = null; }
   };
-  const hold = (entry: RoutineEntry) => { if (!active) return; feedback(); setMessage(""); setMenu({ entry, mode: "options" }); };
+  const hold = (entry: RoutineEntry) => { if (!active) return; feedback(); setMessage(""); setMenu({ entry, mode: "options" }); void appPreferences.retireHint("routine-hold"); };
   const afterSheetDismiss = () => {
       setLeaving(false);
       if (currentSurface.current !== surfaceKey) return;
@@ -198,14 +200,14 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
   return <>
     <View style={s.card} testID="saved-routines-card">
-      <View style={s.heading}>
-        <Pressable onLongPress={onHeaderLongPress} disabled={!onHeaderLongPress} delayLongPress={450} style={s.headingCopy}><Text accessibilityRole="header" style={s.title}>My Routines</Text>
-          {!!visibleEntries.length && <Text style={s.hint}>Hold or swipe a routine for more</Text>}</Pressable>
-        {headerRight ?? <View style={s.headingActions}>
-          {!!(onSeeAll || entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); if (onSeeAll) onSeeAll(); else { setShowDone(false); setManage(true); } }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>{onSeeAll ? entries.length > limit ? `See all ${entries.length}` : "Routines" : entries.length > limit ? `See all ${entries.length}` : "Edit"}</Text></Pressable>}
-          {!onSeeAll && <CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />}
-        </View>}
-      </View>
+      {/* On Home the title opens Routines; in Routines it sits beside Edit and +. */}
+      {onSeeAll ? <SectionHeader title="My Routines" subtitle={entries.length > limit ? `${limit} of ${entries.length}` : undefined} onPress={() => { feedback(); onSeeAll(); }}
+        onLongPress={onHeaderLongPress} pressLabel="My Routines. Open Routines" />
+        : <SectionHeader title="My Routines" right={<View style={s.headingActions}>
+          {!!(entries.length || done.length) && <Pressable disabled={!active || !routines.ready} onPress={() => { feedback(); setShowDone(false); setManage(true); }} accessibilityRole="button" accessibilityLabel="Manage your routines" style={s.manage}><Text style={s.link}>Edit</Text></Pressable>}
+          <CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />
+        </View>} />}
+      <OneTimeHint id="routine-hold" text="Hold or swipe a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.group}>
         {visibleEntries.map((entry, index) => <View key={entry.key} style={index > 0 && s.divider}>{homeRow(entry)}</View>)}
       </View> : <View style={s.group}>
@@ -277,18 +279,16 @@ function MenuAction({ icon, label, onPress, danger = false, disabled = false, fi
 
 const s = StyleSheet.create({
   card: { gap: 10 },
-  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 }, title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
-  headingCopy: { flex: 1, minWidth: 0, gap: 1 },
+  heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 },
   suggested: { gap: 8, marginTop: 6 },
   sectionLabel: { ...type.label, paddingHorizontal: 4 },
   headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
   name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  hint: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   play: { ...edge, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
   icon: { ...edge, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },

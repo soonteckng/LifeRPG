@@ -5,14 +5,25 @@ import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
 
-/** A section's title, an optional line under it, and one control on the right. */
-export default function SectionHeader({ title, subtitle, right, onLongPress }: { title: string; subtitle?: string; right?: ReactNode; onLongPress?: () => void }) {
+/**
+ * A section's title, an optional line under it, and one control on the right.
+ * With onPress the title reads "Title ›" and opens the section in full;
+ * holding it runs onLongPress (Home uses that to rearrange).
+ */
+export default function SectionHeader({ title, subtitle, right, onPress, onLongPress, pressLabel }: {
+  title: string; subtitle?: string; right?: ReactNode; onPress?: () => void; onLongPress?: () => void; pressLabel?: string;
+}) {
   const copy = <View style={s.copy}>
-    <Text style={s.title} accessibilityRole="header" numberOfLines={1}>{title}</Text>
+    <View style={s.titleRow}>
+      <Text style={s.title} accessibilityRole="header" numberOfLines={1}>{title}</Text>
+      {onPress && <Ionicons name="chevron-forward" size={18} color={colors.secondary} style={s.chevron} />}
+    </View>
     {!!subtitle && <Text style={s.subtitle} numberOfLines={1}>{subtitle}</Text>}
   </View>;
   return <View style={s.head}>
-    {onLongPress ? <Pressable onLongPress={onLongPress} delayLongPress={450} accessibilityActions={[{ name: "longpress", label: "Rearrange Home" }]}
+    {onPress || onLongPress ? <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={450} disabled={!onPress && !onLongPress}
+      accessibilityRole={onPress ? "button" : undefined} accessibilityLabel={onPress ? pressLabel ?? `${title}${subtitle ? `, ${subtitle}` : ""}. Show all` : undefined}
+      accessibilityActions={onLongPress ? [{ name: "longpress", label: "Rearrange Home" }] : undefined}
       onAccessibilityAction={onLongPress} style={s.copy}>{copy}</Pressable> : copy}
     {right}
   </View>;
@@ -30,7 +41,8 @@ export function CircleButton({ icon = "add", label, onPress, disabled = false, s
 const s = StyleSheet.create({
   head: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingLeft: 4 },
   copy: { flex: 1, minWidth: 0, gap: 1 },
-  title: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 2, minWidth: 0 }, chevron: { marginTop: 2 },
+  title: { flexShrink: 1, color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
   subtitle: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   circle: { ...edge, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   disabled: { opacity: 0.4 },

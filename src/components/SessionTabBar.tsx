@@ -58,7 +58,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
 }
 const FADE = 48;
 const styles = StyleSheet.create({
-  dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 8, gap: 6 },
+  dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 10, gap: 10 },
   // A fixed-height fade reads the same on every tab, whatever sits in the dock.
   fade: { position: "absolute", top: -FADE, left: 0, right: 0, height: FADE },
   scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.9)" },

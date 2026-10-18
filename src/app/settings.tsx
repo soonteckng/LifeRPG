@@ -71,7 +71,7 @@ export default function SettingsScreen() {
         {Platform.OS === "android" && <SettingsRow icon="shield-checkmark-outline" tint="#30D158" title="Session protection" onPress={() => router.navigate("/protection")} />}
       </SettingsGroup>
 
-      <SettingsGroup title="Home & feel" footer={preferenceError ?? "Saved for your account on this phone."}>
+      <SettingsGroup title="Home & feel" footer={preferenceError ?? undefined}>
         <SettingsRow first icon="apps-outline" tint="#BF5AF2" title="Rearrange Home" onPress={rearrange} />
         <SettingsRow icon="refresh" tint="#BF5AF2" title="Reset Home layout" disabled={!preferences.homeOrder[profile.id]} onPress={() => setReset(true)} />
         <SettingsRow icon="phone-portrait-outline" tint="#FF9F0A" title="Haptic feedback"
@@ -81,7 +81,7 @@ export default function SettingsScreen() {
       </SettingsGroup>
 
       <SettingsGroup title="Notifications">
-        <SettingsRow first icon="notifications-outline" tint="#FF6961" title="Notifications" value={permission?.label ?? ""} onPress={() => router.navigate("/settings-notifications")} />
+        <SettingsRow first icon="notifications-outline" tint="#FF6961" title="Notifications" value={permission ? !permission.supported ? "Unavailable" : permission.granted ? "On" : "Off" : ""} onPress={() => router.navigate("/settings-notifications")} />
         <SettingsRow icon="calendar-outline" tint="#FF6961" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
       </SettingsGroup>
 

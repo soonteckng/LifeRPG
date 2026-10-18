@@ -11,9 +11,11 @@ export interface AppPreferences {
   reduceMotion: boolean;
   examReminders: boolean;
   homeOrder: Record<string, HomeSection[]>;
+  /** One-time tips already shown and dismissed or acted on. */
+  hints: string[];
 }
 const KEY = "liferpg:app-preferences:v1";
-const DEFAULTS: AppPreferences = { reduceMotion: false, examReminders: true, homeOrder: {} };
+const DEFAULTS: AppPreferences = { reduceMotion: false, examReminders: true, homeOrder: {}, hints: [] };
 let value: AppPreferences = DEFAULTS;
 let loaded: Promise<void> | null = null;
 const listeners = new Set<() => void>();
@@ -32,7 +34,8 @@ function parse(raw: string | null): AppPreferences {
     if (data.homeOrder && typeof data.homeOrder === "object") {
       for (const [owner, order] of Object.entries(data.homeOrder).slice(0, 8)) if (owner.length <= 64) homeOrder[owner] = cleanHomeOrder(order);
     }
-    return { reduceMotion: data.reduceMotion === true, examReminders: data.examReminders !== false, homeOrder };
+    const hints = Array.isArray(data.hints) ? data.hints.filter((item): item is string => typeof item === "string" && item.length <= 32).slice(0, 32) : [];
+    return { reduceMotion: data.reduceMotion === true, examReminders: data.examReminders !== false, homeOrder, hints };
   } catch { return DEFAULTS; }
 }
 export const appPreferences = {
@@ -48,6 +51,8 @@ export const appPreferences = {
     try { await AsyncStorage.setItem(KEY, JSON.stringify(value)); return true; } catch { return false; }
   },
   homeOrder: (owner: string) => cleanHomeOrder(value.homeOrder[owner]),
+  /** A tip is retired once it has been dismissed or its gesture used. */
+  retireHint: (id: string) => value.hints.includes(id) ? Promise.resolve(true) : appPreferences.update({ hints: [...value.hints, id] }),
   setHomeOrder: (owner: string, order: HomeSection[] | null) => {
     const next = { ...value.homeOrder };
     if (order) next[owner] = cleanHomeOrder(order); else delete next[owner];

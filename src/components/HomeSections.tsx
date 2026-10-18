@@ -8,7 +8,6 @@ import { Text } from "./AppText";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import ExamRow from "./ExamRow";
-import MoreMenu, { type MoreOption } from "./MoreMenu";
 import SectionHeader from "./SectionHeader";
 import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
@@ -29,10 +28,9 @@ import { ranked, squadTotal } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
 import type { StudyExam } from "../types/studyPlan";
 
-// Home is a summary: each section shows what matters now and opens a card
-// with more. Its ••• menu holds the rest, including Rearrange Home.
+// Home is a summary: each section shows what matters now. Its title (with ›)
+// opens the section in full; holding the title rearranges Home.
 type SectionProps = { rearrange: () => void };
-const rearrangeOption = (rearrange: () => void): MoreOption => ({ label: "Rearrange Home", icon: "swap-vertical", onPress: rearrange });
 const WEEK = 7;
 
 /** Exams within the next week (up to three), or the next one if none are that close. Tapping one starts studying it. */
@@ -46,17 +44,13 @@ export function HomeExams({ rearrange }: SectionProps) {
   const open = (exam: StudyExam) => { const course = courseFor(exam.courseId); if (course) launcher.study(course); else { setEditing(exam); setSheet("add"); } };
   const learning = suggestedArea(subjects, "learning")?.id ?? null;
   const subtitle = soon.length ? `${soon.length} in the next 7 days${soon.length > 3 ? " · nearest 3" : ""}` : coming.length ? `Next one in ${daysUntil(coming[0].examDate)} days` : "Nothing scheduled";
-  const options: MoreOption[] = [
-    ...(coming.length ? [{ label: `See all exams (${coming.length})`, icon: "list-outline" as const, onPress: () => setSheet("all") }] : []),
-    { label: "Add an exam", icon: "add-circle-outline", onPress: () => { setEditing(null); setSheet("add"); } },
-    { label: "Open Study", icon: "school-outline", onPress: () => router.navigate("/study") },
-    rearrangeOption(rearrange),
-  ];
+  const add = () => { setEditing(null); setSheet("add"); };
   return <View style={s.section} testID="home-exams">
-    <SectionHeader title="Upcoming Exams" subtitle={subtitle} onLongPress={rearrange} right={<MoreMenu options={options} label="Exam options" />} />
+    <SectionHeader title="Upcoming Exams" subtitle={subtitle} onLongPress={rearrange} onPress={coming.length ? () => setSheet("all") : add}
+      pressLabel={coming.length ? `Upcoming Exams, ${subtitle}. See all ${coming.length} exams` : "Upcoming Exams. Add an exam"} />
     {shown.length ? <View style={s.group}>{shown.map((exam, index) => <ExamRow key={exam.id} exam={exam} course={courseFor(exam.courseId)} first={index === 0}
       onPress={() => open(exam)} label={courseFor(exam.courseId) ? "Start studying" : "Edit exam"} />)}</View>
-      : <Pressable onPress={() => { setEditing(null); setSheet("add"); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
+      : <Pressable onPress={add} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
         <Ionicons name="add-circle" size={24} color={colors.accent} />
@@ -66,6 +60,10 @@ export function HomeExams({ rearrange }: SectionProps) {
       <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
         <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => <ExamRow key={exam.id} exam={exam} course={courseFor(exam.courseId)} first={index === 0} inSheet
           onPress={() => { setSheet(null); setTimeout(() => open(exam), 250); }} label={courseFor(exam.courseId) ? "Start studying" : "Edit exam"} />)}</View>
+        <Pressable onPress={() => { setSheet(null); setTimeout(add, 250); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={s.secondary}>
+          <Ionicons name="add" size={18} color={colors.accent} /><Text style={s.secondaryText}>Add an exam</Text></Pressable>
+        <Pressable onPress={() => { setSheet(null); setTimeout(() => router.navigate("/study"), 220); }} accessibilityRole="button" accessibilityLabel="Open Study" style={s.quiet}>
+          <Text style={s.quietText}>Open Study</Text></Pressable>
       </BottomSheetScrollView>
     </AppSheet>
     <StudyExamSheet visible={sheet === "add"} exam={editing} courses={plan.courses} initialCourseId={editing?.courseId ?? null}
@@ -82,13 +80,10 @@ export function HomeSquad({ rearrange }: SectionProps) {
   const [peek, setPeek] = useState(false), [joining, setJoining] = useState(false);
   const openSquads = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
-  const options: MoreOption[] = squad ? [{ label: "Open My Squads", icon: "people-outline", onPress: openSquads },
-    { label: "Share invite", icon: "share-outline", onPress: share }, rearrangeOption(rearrange)]
-    : [{ label: "Join or start a squad", icon: "add-circle-outline", onPress: () => setJoining(true) }, rearrangeOption(rearrange)];
   const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
-    <SectionHeader title="My Squad" subtitle={squad ? squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : "This week together" : "Focus with friends"} onLongPress={rearrange}
-      right={<MoreMenu options={options} label="Squad options" />} />
+    <SectionHeader title="My Squad" subtitle={squad ? squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined : undefined} onLongPress={rearrange}
+      onPress={squad ? openSquads : () => setJoining(true)} pressLabel={squad ? "My Squad. Open Squads" : "My Squad. Join or start a squad"} />
     {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
       accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
       <SquadSummary squad={squad} />
@@ -110,6 +105,8 @@ export function HomeSquad({ rearrange }: SectionProps) {
         </View>)}</View>
         <Pressable onPress={() => { setPeek(false); setTimeout(openSquads, 220); }} accessibilityRole="button" accessibilityLabel="See the whole squad" style={s.primary}>
           <Text style={s.primaryText}>See the whole squad</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
+        <Pressable onPress={share} accessibilityRole="button" accessibilityLabel="Share invite" style={s.quiet}>
+          <Ionicons name="share-outline" size={16} color={colors.accent} /><Text style={s.quietText}>Share invite</Text></Pressable>
       </BottomSheetScrollView>
     </AppSheet>}
     <SquadJoinSheet visible={joining} online={squads.online} leading={squads.squads.find(item => item.ownerIsYou)?.name ?? null} memberships={squads.squads.length}
@@ -144,15 +141,14 @@ export function HomeWeek({ rearrange }: SectionProps) {
   const router = useRouter(), { week } = useWeekProgress();
   const [open, setOpen] = useState(false);
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
-  const options: MoreOption[] = [{ label: "Open Progress", icon: "stats-chart-outline", onPress: () => router.navigate("/progress") }, rearrangeOption(rearrange)];
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
   return <View style={s.section} testID="home-week">
-    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onLongPress={rearrange} right={<MoreMenu options={options} label="Week options" />} />
+    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onLongPress={rearrange} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
     <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
       <View style={s.flex}>
         <Text style={s.total}>{durationLabel(week?.seconds ?? 0)}</Text>
         <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>
-          {change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`}</Text>
+          {!week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`}</Text>
       </View>
       <WeekBars />
     </Pressable>
@@ -177,15 +173,14 @@ export function HomeWeek({ rearrange }: SectionProps) {
 export function HomeMilestones({ rearrange }: SectionProps) {
   const [open, setOpen] = useState(false);
   return <View style={s.section} testID="home-milestones">
-    <SectionHeader title="My Milestones" subtitle="Your next one to earn" onLongPress={rearrange}
-      right={<MoreMenu label="Milestone options" options={[{ label: "See all milestones", icon: "ribbon-outline", onPress: () => setOpen(true) }, rearrangeOption(rearrange)]} />} />
+    <SectionHeader title="My Milestones" onLongPress={rearrange} onPress={() => setOpen(true)} pressLabel="My Milestones. See all milestones" />
     <MilestonesRow open={open} onOpenChange={setOpen} />
   </View>;
 }
 
 const s = StyleSheet.create({
   section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
-  group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  group: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   sheetGroup: { backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
   sheetCard: { backgroundColor: colors.sheetCard, borderRadius: 20, gap: 10 },
@@ -213,4 +208,8 @@ const s = StyleSheet.create({
   areaTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, areaFill: { height: 6, borderRadius: 3 },
   primary: { minHeight: 52, flexDirection: "row", gap: 8, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   primaryText: { color: colors.primaryText, fontSize: 16, fontWeight: "600" },
+  secondary: { ...edge, minHeight: 50, flexDirection: "row", gap: 6, borderRadius: 25, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  secondaryText: { color: colors.accent, fontSize: 16, fontWeight: "600" },
+  quiet: { minHeight: 44, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center" },
+  quietText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
 });

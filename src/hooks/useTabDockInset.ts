@@ -12,5 +12,5 @@ export function useTabDockInset(route: string) {
   const estimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const banner = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
   const pinned = usePinnedActionPresent(route);
-  return useFloatingDockHeight(floatingDockKey(banner, insets.bottom, width, fontScale, pinned), estimate + (pinned ? 66 : 0));
+  return useFloatingDockHeight(floatingDockKey(banner, insets.bottom, width, fontScale, pinned), estimate + (pinned ? 70 : 0));
 }

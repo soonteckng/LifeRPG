@@ -227,7 +227,6 @@ test('Home shows exams within a week, opens a study session straight from one, a
   // The test sheet stub draws even while closed, so rows inside sheets are left out.
   const inSheet = node => { for (let at = node.parent; at; at = at.parent) if (at.type === 'Sheet') return true; return false; };
   const rows = () => section('home-exams').findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string').filter(row => !inSheet(row));
-  const options = testID => section(testID).findAllByType('Menu')[0].props.options;
   for (const title of ['Upcoming Exams', 'Got an exam coming up?', 'My Squad', 'Focus with friends', 'This Week']) assert.ok(texts(ui.root).includes(title), title);
   assert.equal(texts(ui.root).some(t => /^(Study|Squads|Progress)$/.test(t)), false, 'no green text links; each section has a ••• menu');
   await act(async () => presses(ui.root, 'Add an exam')[0].props.onPress());
@@ -239,11 +238,14 @@ test('Home shows exams within a week, opens a study session straight from one, a
   assert.match(rows()[0].findAllByType('Press')[0].props.accessibilityLabel, /^Paper 2/);
   await act(async () => rows()[0].findAllByType('Press')[0].props.onPress());
   assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'straight to the study session');
-  const seeAll = options('home-exams').find(option => /^See all exams/.test(option.label));
-  assert.equal(seeAll.label, 'See all exams (5)');
-  await act(async () => seeAll.onPress());
+  // The title reads "Upcoming Exams ›": tapping it lists them all, holding it rearranges Home.
+  const title = section('home-exams').findAllByType('Press').find(x => /See all 5 exams$/.test(x.props.accessibilityLabel ?? ''));
+  assert.equal(title.props.accessibilityLabel, 'Upcoming Exams, 4 in the next 7 days · nearest 3. See all 5 exams');
+  await act(async () => title.props.onPress());
   assert.equal(section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'all exams').props.visible, true, 'the full list opens here, not in Study');
-  assert.ok(options('home-exams').some(option => option.label === 'Rearrange Home'));
+  await act(async () => title.props.onLongPress());
+  assert.deepEqual(rearranged, ['HomeExams']);
+  assert.equal(ui.root.findAllByType('Menu').length, 0, 'no ••• on Home sections');
   await act(async () => section('home-squad-section').findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
   const peek = section('home-squad-section').findAllByType('Sheet').find(x => x.props.label === 'squad peek');
   assert.equal(peek.props.visible, true, 'a tap peeks at the leaderboard');
@@ -264,7 +266,7 @@ test('the Routines tab holds quick focus and every routine, and starts old routi
   let ui; await act(async () => { ui = create(React.createElement(Screen)); });
   const card = ui.root.findByType('Routines').props;
   assert.equal(ui.root.findByType('Page').props.title, 'Routines'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
-  assert.ok(texts(ui.root).includes('Quick focus')); assert.ok(texts(ui.root).includes('Any activity, counted toward a category.'));
+  assert.ok(texts(ui.root).includes('Quick focus')); assert.equal(texts(ui.root).includes('Any activity, counted toward a category.'), false, 'no permanent instructions under titles');
   await act(async () => card.onStartLegacy({ id: 5, target_minutes: 25, subject_id: 2 }));
   assert.deepEqual(calls, [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
   calls.length = 0;
@@ -348,5 +350,20 @@ test('Today’s card shows the goal up close; changing it lives in its •••
   assert.deepEqual(options.map(option => option.label), ['Change daily goal', 'Open Progress']);
   await act(async () => { options[0].onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.deepEqual(calls, ['close', 'goal'], 'the card closes before the goal editor opens');
+  await act(async () => ui.unmount());
+});
+
+test('a one-time tip shows until it is dismissed or its gesture is used, then never again', async () => {
+  const store = { values: new Map() };
+  const prefs = load('src/services/appPreferences.ts', { '@react-native-async-storage/async-storage': { getItem: async key => store.values.get(key) ?? null, setItem: async (key, value) => { store.values.set(key, value); } } });
+  const cache = new Map([[require('node:path').resolve(__dirname, '..', 'src/services/appPreferences.ts'), { exports: prefs }]]);
+  const Hint = load('src/components/OneTimeHint.tsx', { ...base() }, cache).default;
+  let ui; await act(async () => { ui = create(React.createElement(Hint, { id: 'subject-hold', text: 'Hold a subject to remove subjects.' })); });
+  assert.ok(texts(ui.root).includes('Hold a subject to remove subjects.'));
+  await act(async () => presses(ui.root, 'Got it')[0].props.onPress());
+  assert.equal(ui.root.findAllByType('Text').length, 0, 'dismissed for good');
+  assert.deepEqual(JSON.parse(store.values.get('liferpg:app-preferences:v1')).hints, ['subject-hold']);
+  await act(async () => { await prefs.appPreferences.retireHint('routine-hold'); await prefs.appPreferences.retireHint('routine-hold'); });
+  assert.deepEqual(prefs.appPreferences.get().hints, ['subject-hold', 'routine-hold'], 'using the gesture retires a tip once');
   await act(async () => ui.unmount());
 });

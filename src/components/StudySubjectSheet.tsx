@@ -88,7 +88,7 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
             accessibilityLabel={`${exam.title}, ${examDateLabel(exam.examDate)}, ${countdownLabel(daysUntil(exam.examDate))}. Edit exam`} style={[s.row, index > 0 && s.rowLine]}>
             <ExamTile date={exam.examDate} />
             <View style={s.flex}><Text style={s.rowTitle} numberOfLines={1}>{exam.title}</Text><Text style={s.caption}>{examDateLabel(exam.examDate)}</Text></View>
-            <Text style={s.countdown}>{countdownLabel(daysUntil(exam.examDate))}</Text>
+            <Text style={[s.countdown, daysUntil(exam.examDate) <= 7 && s.countdownSoon]}>{countdownLabel(daysUntil(exam.examDate))}</Text>
           </Pressable>)}
           <Pressable onPress={() => onAddExam(course)} accessibilityRole="button" accessibilityLabel={`Add an exam for ${course.name}`} style={[s.row, courseExams.length > 0 && s.rowLine]}>
             <View style={[s.tile, { backgroundColor: colors.accentSoft }]}><Ionicons name="add" size={20} color={colors.accent} /></View>
@@ -128,7 +128,7 @@ const s = StyleSheet.create({
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 9 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
-  countdown: { color: colors.danger, fontSize: 15, fontWeight: "600" },
+  countdown: { color: colors.secondary, fontSize: 15, fontWeight: "600" }, countdownSoon: { color: "#FFB4AE" },
   tile: { width: 44, height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   tileMonth: { fontSize: 10, lineHeight: 12, fontWeight: "700", letterSpacing: 0.6 },
   tileDay: { color: colors.text, fontSize: 20, lineHeight: 23, fontWeight: "800", fontVariant: ["tabular-nums"] },

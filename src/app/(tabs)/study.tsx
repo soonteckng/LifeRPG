@@ -13,6 +13,8 @@ import { requestStudySync } from "../../components/StudyLifecycle";
 import SectionHeader, { CircleButton } from "../../components/SectionHeader";
 import SubjectShelf from "../../components/SubjectShelf";
 import ExamsCard from "../../components/ExamsCard";
+import OneTimeHint from "../../components/OneTimeHint";
+import { appPreferences } from "../../services/appPreferences";
 import SheetConfirmation from "../../components/SheetConfirmation";
 import AppSheet from "../../components/AppSheet";
 import SheetHeader from "../../components/SheetHeader";
@@ -43,6 +45,7 @@ export default function StudyScreen() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  useEffect(() => { if (editing) void appPreferences.retireHint("subject-hold"); }, [editing]);
   const [removing, setRemoving] = useState<StudyCourse | null>(null);
   const afterClose = useRef<(() => void) | null>(null);
   useFocusEffect(useCallback(() => { requestStudySync(); return () => setEditing(false); }, []));
@@ -83,7 +86,7 @@ export default function StudyScreen() {
       {!!plan.error && <Text style={s.notice} accessibilityLiveRegion="polite">{plan.error}</Text>}
 
       <View style={s.section}>
-        <SectionHeader title="My Subjects" subtitle={editing ? "Tap − to remove. Their minutes stay saved." : courses.length ? "Nearest exam first. Hold one to edit." : "Start with what you’re taking."}
+        <SectionHeader title="My Subjects" subtitle={editing ? "Tap − to remove. Their minutes stay saved." : undefined}
           right={editing ? <Pressable onPress={() => setEditing(false)} accessibilityRole="button" accessibilityLabel="Done editing subjects" hitSlop={8} style={s.done}><Text style={s.doneText}>Done</Text></Pressable>
             : <CircleButton label="Add a subject" disabled={!plan.ready} onPress={() => show({ kind: "add" })} />} />
         {fresh ? <View style={s.welcome} testID="study-welcome">
@@ -93,6 +96,7 @@ export default function StudyScreen() {
           {chips}
         </View> : courses.length ? <SubjectShelf courses={courses} exams={plan.exams} recent={plan.recent} editing={editing} onEditingChange={setEditing}
           onOpen={course => show({ kind: "subject", course })} onStudy={launcher.study} onRemove={setRemoving} /> : null}
+        <OneTimeHint id="subject-hold" text="Hold a subject to remove subjects." show={!editing && courses.length > 1} />
         {!fresh && courses.length < 3 && !editing && chips}
         {added && <View style={s.added} accessibilityLiveRegion="polite" testID="subject-added">
           <Ionicons name="checkmark-circle" size={18} color={colors.accent} />

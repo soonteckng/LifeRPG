@@ -37,7 +37,7 @@ function Routines() {
   return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}>
     <ContentReveal><View style={s.stack}>
       <View style={s.section}>
-        <SectionHeader title={open ? "Now" : "Quick focus"} subtitle={open ? "Your session is open." : "Any activity, counted toward a category."} />
+        <SectionHeader title={open ? "Now" : "Quick focus"} subtitle={open ? "Your session is open." : undefined} />
         {!quick.ready ? <View style={s.loading} testID="routines-preference-loading"><Text style={s.caption}>{quick.preference.error || quick.duration.error ? "Your focus settings need a retry." : "Getting your focus ready…"}</Text></View>
           : <FreeFocusCard label="Quick focus"
           seconds={open ? timer.finishing ? 0 : timer.timeLeft : quick.seconds} duration={open ? timer.duration : undefined}

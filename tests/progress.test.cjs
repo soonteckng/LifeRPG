@@ -632,8 +632,8 @@ test("compact Progress keeps the chart before allocation and opens area drilldow
   const ui=await screenHarness();
   try {
     const text=ui.text();
-    assert.ok(text.indexOf("30s") < text.indexOf("Dot · active day"));
-    assert.ok(text.indexOf("Dot · active day") < text.indexOf("By category"));
+    assert.ok(text.indexOf("30s") < text.indexOf("Goal reached"));
+    assert.ok(text.indexOf("Goal reached") < text.indexOf("By category"));
     assert.ok(text.indexOf("By category") < text.indexOf("Sessions"));
     const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
     assert.ok(area);

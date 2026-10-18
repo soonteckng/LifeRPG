@@ -3,6 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { SquadFace } from "./SquadSheets";
+import OneTimeHint from "./OneTimeHint";
 import { daysLeftInWeek } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { focusingCount, goalProgress, ranked, squadTotal } from "../utils/squads";
@@ -36,7 +37,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
       <Text style={s.label}>Together this week</Text>
       <View style={s.bigRow}><Text style={s.big}>{studyTime(total)}</Text>{goal > 0 && <Text style={s.of}>of {squad.goalMinutes! / 60}h goal</Text>}</View>
       {progress !== null && <View style={s.track}><View style={[s.fill, { width: `${Math.max(progress > 0 ? 3 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
-      <Text style={s.caption}>{progress !== null && progress >= 1 ? "Goal reached. Nice work, everyone." : goal ? `${studyTime(goal - total)} to go · ${left} ${left === 1 ? "day" : "days"} left` : `Resets on Monday · ${left} ${left === 1 ? "day" : "days"} left`}</Text>
+      <Text style={s.caption}>{!total ? `Nobody has focused yet this week. Be the first · ${left} ${left === 1 ? "day" : "days"} left` : progress !== null && progress >= 1 ? "Goal reached. Nice work, everyone." : goal ? `${studyTime(goal - total)} to go · ${left} ${left === 1 ? "day" : "days"} left` : `Resets on Monday · ${left} ${left === 1 ? "day" : "days"} left`}</Text>
       {squad.ownerIsYou && !goal && <Pressable onPress={onSetGoal} accessibilityRole="button" hitSlop={8}><Text style={s.link}>Set a weekly goal</Text></Pressable>}
     </View>
 
@@ -69,14 +70,13 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
           accessibilityHint="Hold to remove from the squad" style={[s.row, index > 0 && s.line]}>{row}</Pressable>
           : <View key={member.id} accessible accessibilityLabel={label(member, place)} style={[s.row, index > 0 && s.line]}>{row}</View>;
       })}</View>}
-      {!anyTime && <Text style={s.hint}>No focus time yet this week. The first session puts someone on the podium.</Text>}
     </View>
 
     <View style={s.invite}>
       <View style={s.code} accessible accessibilityLabel={`Invite code ${squad.code.split("").join(" ")}`}><Text style={s.codeLabel}>Invite code</Text><Text style={s.codeText}>{squad.code}</Text></View>
       <Pressable onPress={onInvite} accessibilityRole="button" accessibilityLabel="Invite friends" style={s.primary}><Ionicons name="share-outline" size={17} color={colors.primaryText} /><Text style={s.primaryText}>Invite friends</Text></Pressable>
     </View>
-    <Text style={s.hint}>{squad.ownerIsYou && squad.members.length > 1 ? "Hold someone to remove them. " : ""}Only members see each other’s time. All focus counts, routines and study alike.</Text>
+    <OneTimeHint id="squad-hold" text="Hold someone to remove them from the squad." show={squad.ownerIsYou && squad.members.length > 1} />
   </View>;
 }
 const s = StyleSheet.create({
@@ -93,7 +93,7 @@ const s = StyleSheet.create({
   section: { gap: 10, marginTop: 6 },
   sectionHead: { gap: 1, paddingHorizontal: 4 },
   sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
-  podium: { ...edge, flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 10, paddingTop: 18, paddingHorizontal: 12, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  podium: { flexDirection: "row", alignItems: "flex-end", justifyContent: "center", gap: 10, paddingTop: 18, paddingHorizontal: 12, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   podiumSlot: { flex: 1, maxWidth: 120, alignItems: "center", gap: 4 },
   medal: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", marginBottom: 2 },
   medalText: { color: "#1C1C1E", fontSize: 12, fontWeight: "800" },
@@ -101,7 +101,7 @@ const s = StyleSheet.create({
   podiumTime: { color: colors.secondary, fontSize: 13, lineHeight: 17, fontVariant: ["tabular-nums"] },
   pillar: { alignSelf: "stretch", marginTop: 6, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: colors.sheetCard },
   pillarFirst: { backgroundColor: "rgba(255,214,10,0.18)" },
-  list: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
+  list: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rank: { width: 18, textAlign: "center", color: colors.secondary, fontSize: 15, fontWeight: "700" },
@@ -115,5 +115,4 @@ const s = StyleSheet.create({
   codeLabel: { color: colors.secondary, fontSize: 12, lineHeight: 15 }, codeText: { color: colors.text, fontSize: 17, lineHeight: 21, fontWeight: "700", letterSpacing: 2 },
   primary: { flex: 1, minHeight: 54, borderRadius: 27, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
-  hint: { color: colors.tertiary, fontSize: 13, lineHeight: 18, paddingHorizontal: 4 },
 });

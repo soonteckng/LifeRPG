@@ -725,7 +725,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
       .findAllByType("Button")
       .find((b) => text(b).startsWith("Notifications"));
     await act(async () => row.props.onPress());
-    assert.match(ui.text(), /unavailable here/);
+    assert.match(ui.text(), /NotificationsUnavailable/);
   } finally {
     await ui.cleanup();
   }
@@ -1113,8 +1113,9 @@ test("Profile shows its stats and badges, opens every milestone as a card, and k
   assert.match(ui.text(),/1h 30m/);assert.match(ui.text(),/focus days/);assert.match(ui.text(),/best streak/);
   assert.match(ui.text(),/My Badges/);assert.match(ui.text(),/1 of 2 earned/);assert.match(ui.text(),/First step/);
   const sheet=()=>ui.renderer.root.findByType('MilestonesSheet');assert.equal(sheet().props.visible,false);
-  const badges=ui.renderer.root.findAllByType('Menu').find(node=>node.props.label==='Badge options');
-  await act(async()=>badges.props.options.find(option=>option.label==='See all milestones').onPress());assert.equal(sheet().props.visible,true);assert.deepEqual(routes,[],'milestones open as a card, not a page');
+  // The section title (My Badges ›) opens the whole collection.
+  const badges=ui.renderer.root.findAll(node=>node.props.accessibilityLabel==='My Badges. See all milestones'&&typeof node.props.onPress==='function')[0];
+  await act(async()=>badges.props.onPress());assert.equal(sheet().props.visible,true);assert.deepEqual(routes,[],'milestones open as a card, not a page');
   assert.match(ui.text(),/My Categories/);assert.doesNotMatch(ui.text(),/Your categories/);
  }finally{await ui.cleanup();}
 });

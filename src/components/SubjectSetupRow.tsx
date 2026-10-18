@@ -47,7 +47,7 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
     <Pressable disabled={disabled} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Choose subject"
       accessibilityValue={{ text: course ? `${course.name}${nextExam ? `, ${nextExam.title} ${countdownLabel(daysUntil(nextExam.examDate))}` : ""}` : "None" }} style={[s.row, style]}>
       <View style={[s.icon, { backgroundColor: areaTint(tint) }]}><Ionicons name="school-outline" size={16} color={tint} /></View>
-      <View style={s.labelColumn}><Text style={s.label}>Subject</Text>{!!nextExam && <Text style={s.exam} numberOfLines={1}>{nextExam.title} {countdownLabel(daysUntil(nextExam.examDate)).toLowerCase()}</Text>}</View>
+      <View style={s.labelColumn}><Text style={s.label}>Subject</Text>{!!nextExam && <Text style={[s.exam, daysUntil(nextExam.examDate) <= 7 && s.examSoon]} numberOfLines={1}>{nextExam.title} {countdownLabel(daysUntil(nextExam.examDate)).toLowerCase()}</Text>}</View>
       <Text style={[s.value, course ? s.chosen : s.prompt]} numberOfLines={1}>{course?.name ?? "Choose"}</Text>
       <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
     </Pressable>
@@ -65,7 +65,7 @@ const s = StyleSheet.create({
   row: { minHeight: 52, paddingVertical: 11, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   icon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   label: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
-  labelColumn: { flexShrink: 1, minWidth: 0 }, exam: { color: colors.danger, fontSize: 13, lineHeight: 17 },
+  labelColumn: { flexShrink: 1, minWidth: 0 }, exam: { color: colors.secondary, fontSize: 13, lineHeight: 17 }, examSoon: { color: "#FFB4AE" },
   value: { flex: 1, textAlign: "right", fontSize: 16, lineHeight: 22 }, chosen: { color: colors.text }, prompt: { color: colors.accent, fontWeight: "600" },
   list: { paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },

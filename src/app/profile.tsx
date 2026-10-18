@@ -20,7 +20,6 @@ import ProgressRing from "../components/ProgressRing";
 import MilestonesSheet, { useMilestones } from "../components/MilestonesSheet";
 import SubjectBreakdown from "../components/SubjectBreakdown";
 import SectionHeader from "../components/SectionHeader";
-import MoreMenu from "../components/MoreMenu";
 import { durationLabel } from "../utils/progressAnalytics";
 import LevelTierSheet from "../components/LevelTierSheet";
 import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
@@ -162,14 +161,14 @@ export default function ProfileScreen() {
         </View>
         <View style={s.statsRow}>
           {[["time-outline", durationLabel(milestones.totals.seconds), "focused", "#64D2FF"], ["calendar-outline", String(milestones.totals.days), milestones.totals.days === 1 ? "focus day" : "focus days", colors.accent],
-            ["flame", `${milestones.totals.bestStreak}`, "best streak", colors.streak]].map(([icon, value, label, tint]) =>
-            <View key={label} style={s.stat} accessible accessibilityLabel={`${value} ${label}`}>
+            ["flame", `${milestones.totals.bestStreak}`, "best streak", colors.streak]].map(([icon, value, label, tint], index) =>
+            <View key={label} style={[s.stat, index > 0 && s.statLine]} accessible accessibilityLabel={`${value} ${label}`}>
               <Ionicons name={icon as never} size={17} color={tint} /><Text style={s.statValue} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "—"}</Text><Text style={p.caption} numberOfLines={1}>{label}</Text>
             </View>)}
         </View>
         <View style={s.section} testID="profile-badges">
           <SectionHeader title="My Badges" subtitle={milestones.ready ? `${milestones.earned.length} of ${milestones.totals.milestones.length} earned` : "Getting your badges…"}
-            right={<MoreMenu label="Badge options" options={[{ label: "See all milestones", icon: "ribbon-outline", onPress: () => setBadgesOpen(true) }]} />} />
+            onPress={() => setBadgesOpen(true)} pressLabel="My Badges. See all milestones" />
           {milestones.earned.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.badges}>
             {milestones.earned.map(badge => <Pressable key={badge.id} onPress={() => setBadgesOpen(true)} accessibilityRole="button" accessibilityLabel={`${badge.title}, earned`} style={s.badge}>
               <View style={s.badgeIcon}><Ionicons name={badge.icon as never} size={22} color={colors.level} /></View>
@@ -182,14 +181,18 @@ export default function ProfileScreen() {
         </View>
         {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
         <View style={s.areasCard}>
-          <SectionHeader title="My Categories" subtitle="Each grows with the time you give it. Revision grows from study with an exam near." />
+          <SectionHeader title="My Categories" />
           {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
-          <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaRow}>
-            <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={19} color={lifeAreaColor(area.id, area.color_code)} /></View>
-            <Text style={p.rowTitle} numberOfLines={2}>{focusAreaTitle(area.title)}</Text><Text style={s.tileLevel}>Lv {area.level}</Text><Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={6} />
-          </Pressable>)}</View>
+          {/* One compact list: name, level and progress to the next level on a line each. */}
+          {!!areas.length && <View style={s.subjects}>{areas.map((area, index) => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={[s.areaRow, index > 0 && s.subjectLine]}>
+            <View style={s.tileIcon}><Ionicons name={focusAreaIcon(area.title)} size={17} color={lifeAreaColor(area.id, area.color_code)} /></View>
+            <View style={s.detail}>
+              <View style={s.areaHead}><Text style={[p.rowTitle, s.flex]} numberOfLines={1}>{focusAreaTitle(area.title)}</Text><Text style={s.tileLevel}>Lv {area.level}</Text></View>
+              <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={5} />
+            </View>
+            <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+          </Pressable>)}</View>}
           {data && !areas.length && <Text style={p.body}>Your overall level still grows. Categories will appear here when available.</Text>}
-          <Text style={s.growthHint}>Levels reflect the effort you’ve recorded.</Text>
         </View>
         {study.courses.length > 0 && <View style={s.areasCard} testID="profile-subjects">
           <SectionHeader title="My Subjects" subtitle="All the time you’ve given each one." />
@@ -243,8 +246,10 @@ const s = StyleSheet.create({
   heroActions: { flexDirection: "row", gap: 10 },
   heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.sheetCard },
   heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  statsRow: { flexDirection: "row", gap: 10 },
-  stat: { ...edge, flex: 1, padding: 12, gap: 3, borderRadius: radius.tile, backgroundColor: colors.surface },
+  // Three numbers in one strip, not three boxes.
+  statsRow: { flexDirection: "row", borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
+  stat: { flex: 1, padding: 12, gap: 3 },
+  statLine: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.line },
   statValue: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "800", fontVariant: ["tabular-nums"] },
   badges: { gap: 10, paddingRight: 8 },
   badge: { ...edge, width: 112, minHeight: 108, padding: 12, gap: 8, borderRadius: radius.tile, backgroundColor: colors.surface },
@@ -255,8 +260,12 @@ const s = StyleSheet.create({
   username: { color: colors.text, fontSize: 28, lineHeight: 34, textAlign: "center", fontWeight: "700", letterSpacing: -0.5 },
   growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  areasCard: { gap: 12, paddingHorizontal: 2 }, areaGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 }, tileLevel: { position: "absolute", top: 14, right: 14, color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] }, tileIcon: { width: 38, height: 38, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" }, areaRow: { flexGrow: 1, flexBasis: "46%", minWidth: 140, padding: 14, gap: 10, borderRadius: radius.tile, backgroundColor: colors.surface, ...edge },
-  subjects: { borderRadius: radius.card, backgroundColor: colors.surface, ...edge, overflow: "hidden" },
+  areasCard: { gap: 12, paddingHorizontal: 2 }, flex: { flex: 1, minWidth: 0 },
+  areaRow: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  areaHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  tileLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
+  tileIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
+  subjects: { borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   subjectRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
   subjectLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   subjectDot: { width: 10, height: 10, borderRadius: 5 },

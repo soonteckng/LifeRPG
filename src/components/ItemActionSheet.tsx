@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
-import { colors, edge } from "../constants/theme";
+import { colors } from "../constants/theme";
 
 export type ItemAction = { label: string; icon: React.ComponentProps<typeof Ionicons>["name"]; onPress: () => void; danger?: boolean; disabled?: boolean };
 
@@ -38,7 +38,7 @@ const s = StyleSheet.create({
   meta: { flexDirection: "row", alignItems: "center", gap: 8 }, dot: { width: 10, height: 10, borderRadius: 5 },
   caption: { flexShrink: 1, color: colors.secondary, fontSize: 14, lineHeight: 20 },
   body: { paddingHorizontal: 16, paddingBottom: 12, gap: 4 },
-  group: { ...edge, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden", marginBottom: 4 },
+  group: { borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden", marginBottom: 4 },
   row: { minHeight: 52, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowText: { color: colors.text, fontSize: 16, lineHeight: 22 }, danger: { color: colors.danger }, disabled: { opacity: 0.5 },
