@@ -1012,7 +1012,7 @@ test("viewed completion hides its dock without hiding a running session",async()
     "react-native":{View:host("View"),Text:host("Text"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s},useWindowDimensions:()=>({width:390,fontScale:1})},
     "expo-router":{useRouter:()=>({navigate:()=>{}})},"expo-router/js-tabs":{BottomTabBar:host("Tabs")},
     "@expo/vector-icons":{Ionicons:host("Icon")},"react-native-safe-area-context":{useSafeAreaInsets:()=>({bottom:0})},"react-native-svg":{__esModule:true,default:host("Svg"),Defs:host("Defs"),LinearGradient:host("Gradient"),Rect:host("Rect"),Stop:host("Stop")},
-    "../context/TimerContext":{useTimer:()=>timer},
+    "../context/TimerContext":{useTimer:()=>timer},"./OfflineStatus":host("OfflineStatus"),
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);

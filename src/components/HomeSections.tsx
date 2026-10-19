@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -79,32 +79,25 @@ export function HomeSquad() {
   const chosen = squadSelection.get();
   const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
   const [peek, setPeek] = useState(false), [joining, setJoining] = useState(false);
-  const [onlineView, setOnlineView] = useState({ online: squads.online });
-  if (onlineView.online !== squads.online) {
-    setOnlineView({ online: squads.online });
-    if (!squads.online) { setPeek(false); setJoining(false); }
-  }
-  const currentView = useRef<typeof onlineView | null>(onlineView);
-  useLayoutEffect(() => {
-    currentView.current = onlineView;
-    return () => { currentView.current = null; };
-  }, [onlineView]);
-  const isCurrent = () => onlineView.online && currentView.current === onlineView;
-  const openSquads = () => { if (!isCurrent()) return; if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
+  // Offline the last saved squad stays readable; joining or starting needs the server.
+  const [wasOnline, setWasOnline] = useState(squads.online);
+  if (wasOnline !== squads.online) { setWasOnline(squads.online); if (!squads.online) setJoining(false); }
+  const openSquads = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
-    <SectionHeader title="My Squad" subtitle={squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
+    <SectionHeader title="My Squad" subtitle={!squads.online ? squad ? "Offline · last saved" : undefined : squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
       right={squad ? <SeeAll onPress={openSquads} accessibilityLabel="My Squad. Open Squads" /> : undefined} />
-    {squad ? <Pressable onPress={() => { if (isCurrent()) setPeek(true); }} accessibilityRole="button" testID="home-squad"
+    {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
       accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
       <SquadSummary squad={squad} />
-    </Pressable> : <Pressable onPress={() => { if (isCurrent()) setJoining(true); }} accessibilityRole="button" accessibilityLabel="Focus with friends. Join or start a squad" testID="home-squad-empty" style={[s.card, s.row]}>
+    </Pressable> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
+      accessibilityLabel={squads.online ? "Focus with friends. Join or start a squad" : "Focus with friends. Needs internet"} testID="home-squad-empty" style={[s.card, s.row]}>
       <View style={[s.icon, { backgroundColor: colors.accentSoft }]}><Ionicons name="people-outline" size={20} color={colors.accent} /></View>
-      <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>Start a squad and keep each other going.</Text></View>
-      <Ionicons name="add-circle" size={24} color={colors.accent} />
+      <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>{squads.online ? "Start a squad and keep each other going." : "Needs internet to start or join a squad."}</Text></View>
+      {squads.online && <Ionicons name="add-circle" size={24} color={colors.accent} />}
     </Pressable>}
-    {squad && <AppSheet visible={squads.online && peek} onRequestClose={() => setPeek(false)} floating compact label="squad peek" motionMode="timed"
+    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} floating compact label="squad peek" motionMode="timed"
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
         <View style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></View>

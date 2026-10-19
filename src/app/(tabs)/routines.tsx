@@ -44,7 +44,7 @@ export default function RoutinesScreen() {
           <Text style={s.caption}>{open ? timer.isRunning ? "In progress. Tap to return" : "Paused. Tap to return" : "Any activity, your time"}</Text></View>
         <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={16} color={colors.primaryText} /></View>
       </Pressable>
-      <SavedRoutinesCard subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={startLegacy} />
+      <SavedRoutinesCard subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
     </View></ContentReveal>
   </PersonalPage>;
 }

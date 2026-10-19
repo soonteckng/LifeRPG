@@ -70,6 +70,7 @@ function Squads() {
       action={squads.online && (squad ? <MoreMenu options={options} label="Squad options" size={36} testID="squad-options" />
         : <CircleButton size={36} label="Join or start a squad" onPress={() => setJoining(true)} />)}>
       <ContentReveal><View style={s.stack}>
+        {!squads.online && <Text style={s.offline} testID="squads-offline">{squad ? "Offline · showing your squad as last saved. Changes need internet." : "Offline · squads need internet."}</Text>}
         {squads.squads.length > 1 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.switcher} accessibilityRole="tablist">
           {squads.squads.map(item => {
             const selected = item.id === squad?.id;
@@ -77,12 +78,13 @@ function Squads() {
               style={[s.tab, selected && s.tabOn]}><Text style={[s.tabText, selected && s.tabTextOn]} numberOfLines={1}>{item.name}</Text></Pressable>;
           })}
         </ScrollView>}
-        {squad ? <SquadBoard squad={squad} busy={busy} onSetGoal={() => setEditing(true)} onRemove={member => setConfirm({ kind: "remove", member })} onInvite={share} />
+        {squad ? <SquadBoard squad={squad} busy={busy} onSetGoal={() => setEditing(true)} onRemove={member => { if (squads.online) setConfirm({ kind: "remove", member }); }} onInvite={share} />
           : <View style={[s.card, s.empty]} testID="squads-empty">
             <View style={s.emptyIcon}><Ionicons name="people" size={26} color={colors.accent} /></View>
             <Text style={s.emptyTitle}>Focus with friends</Text>
             <Text style={s.emptyBody}>{squads.error && !squads.ready ? squads.error : "Start a squad, share its code, and see each other’s focus time on a weekly leaderboard. Up to 8 people, and only members can see it."}</Text>
-            <Pressable onPress={() => setJoining(true)} accessibilityRole="button" accessibilityLabel="Join or start a squad" style={s.primary}><Text style={s.primaryText}>Join or start a squad</Text></Pressable>
+            <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }} accessibilityLabel="Join or start a squad"
+              style={[s.primary, !squads.online && s.dim]}><Text style={s.primaryText}>{squads.online ? "Join or start a squad" : "Needs internet"}</Text></Pressable>
           </View>}
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       </View></ContentReveal>
@@ -107,6 +109,7 @@ const s = StyleSheet.create({
   tabText: { color: colors.secondary, fontSize: 15, fontWeight: "600" }, tabTextOn: { color: colors.accent },
   card: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, padding: 16 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },
+  offline: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 }, dim: { opacity: 0.5 },
   empty: { alignItems: "center", gap: 10, paddingVertical: 28, paddingHorizontal: 24 },
   emptyIcon: { width: 56, height: 56, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 4 },
   emptyTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700" },

@@ -1,7 +1,7 @@
 import { colors } from "../constants/theme";
 import { Text } from "../components/AppText";
 import { Stack, usePathname, useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BackHandler, Platform, ActivityIndicator, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
@@ -88,7 +88,8 @@ function AppContent() {
   const pathname = usePathname();
   const router = useRouter();
   const { profile } = useUser();
-  const { accessMode } = useAuth();
+  const { accessMode, localOwner } = useAuth();
+  const offlineScope = useMemo(() => localOwner ? { ownerId: localOwner.id, backendId: localOwner.backendId } : null, [localOwner]);
 
   useEffect(() => {
     traceSession("runtime/motion", {
@@ -114,7 +115,7 @@ function AppContent() {
 
   return (
     <TimerProvider>
-      <QuestProvider online={accessMode === "online"}>
+      <QuestProvider online={accessMode === "online"} offlineScope={offlineScope}>
         <SessionProtectionProvider>
         <FeatureTourProvider>
         <RoutineLifecycle />

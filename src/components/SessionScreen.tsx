@@ -30,6 +30,8 @@ import { useReducedMotion } from "../hooks/useReducedMotion";
 import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
 import { afterTransition } from "../utils/afterTransition";
+import { offlineAppAvailable } from "../utils/offlineApp";
+import OfflineStatus from "./OfflineStatus";
 import { navigationTiming } from "../utils/navigationMotion";
 import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
@@ -50,7 +52,10 @@ type Picker = "duration" | "quest" | "area" | null;
 export default function SessionScreen() {
   const liveTimer = useTimer();
   const auth = useAuth();
-  const onlineSurfaces = auth.accessMode !== "local-only";
+  // This screen is on show online, and offline too unless saved work needs
+  // the separate recovery screen; sheets and pickers close when it is hidden.
+  const online = auth.accessMode !== "local-only";
+  const onlineSurfaces = online || offlineAppAvailable(liveTimer);
   const ownerId = auth.user?.id ?? auth.localOwner?.id;
   const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
@@ -423,6 +428,7 @@ export default function SessionScreen() {
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      {!online && <View style={styles.offline}><OfflineStatus /></View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
           importantForAccessibility={timer.isCompleted ? "no-hide-descendants" : "auto"}
@@ -573,7 +579,7 @@ const styles = StyleSheet.create({
   hiddenStatus: { position:"absolute", width:1, height:1, overflow:"hidden", color:colors.background },
   body: { paddingHorizontal: 20, paddingBottom: 20 },
   secondary: { color: colors.secondary, fontSize: 16, lineHeight: 22 },
-  setupStack: { gap: 8 }, setupSpinner: { position: "absolute", top: 4, right: 4 },
+  offline: { paddingBottom: 6 }, setupStack: { gap: 8 }, setupSpinner: { position: "absolute", top: 4, right: 4 },
   context: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingBottom: 12 },
   contextTitle: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "700", letterSpacing: -0.3, textAlign: "center" },
   contextDetail: { color: colors.secondary, fontSize: 14, lineHeight: 19, textAlign: "center" },

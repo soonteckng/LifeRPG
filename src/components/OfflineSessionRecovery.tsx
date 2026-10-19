@@ -91,7 +91,8 @@ export default function OfflineSessionRecovery({ active = true }: { active?: boo
     active: active && !workspaceAvailable, blocked: timer.actionBusy || timer.isRestoring, reconnect: run,
   });
   const checking = reconnect.checking || timer.actionBusy || timer.isRestoring;
-  if (workspaceAvailable) return <OfflineSessionWorkspace active={active} />;
+  // Leaving the screen keeps showing recovery, so nothing flashes as it fades.
+  if (workspaceAvailable && active) return <OfflineSessionWorkspace active={active} />;
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} style={styles.page} testID="offline-session-recovery">
     <ScrollView style={styles.viewport} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.content}>

@@ -212,8 +212,10 @@ test('valid quest setup, running timer and pending result routes survive reconne
 });
 
 test('restoration holds the outgoing surface until a durable result decides whether to close the route', async () => {
-  const ui = await connection({ timer: { isRestoring: true } });
+  // The recovery screen was showing; then the journal re-reads as the phone reconnects.
+  const ui = await connection();
   try {
+    await ui.update({ timer: { isRestoring: true } });
     await ui.update({ accessMode: 'online' });
     assert.deepEqual(ui.calls, []);
     assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'none');
@@ -224,8 +226,9 @@ test('restoration holds the outgoing surface until a durable result decides whet
     assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
     assert.equal(ui.root().findAllByType('Recovery').length, 0);
   } finally { await ui.cleanup(); }
-  const empty = await connection({ timer: { isRestoring: true } });
+  const empty = await connection();
   try {
+    await empty.update({ timer: { isRestoring: true } });
     await empty.update({ accessMode: 'online' }); await empty.update({ timer: { isRestoring: false } });
     assert.deepEqual(empty.calls, ['/']);
     assert.equal(empty.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'none');
@@ -445,13 +448,14 @@ async function questProvider(options = {}) {
   const module = load('src/context/QuestContext.tsx', {
     'react-native': { AppState: { addEventListener: (_name, callback) => { foreground = callback; return { remove() {} }; } } },
     './TimerContext': { useTimer: () => timer },
+    '../services/offlineFocusCatalog': { readOfflineFocusAreas: async scope => { calls.push(['saved areas', scope.ownerId]); return options.saved ?? []; } },
     '../services/taskService': {
       getTasks: async () => { calls.push('tasks'); return options.tasks?.() ?? [{ id: 1, title: 'Current quest' }]; },
       getSubjects: async () => { calls.push('areas'); return options.areas?.() ?? [{ id: 7, title: 'Learning' }]; },
     },
   });
   function Capture() { state = module.useQuests(); return null; }
-  const render = () => React.createElement(module.QuestProvider, { online }, React.createElement(Capture));
+  const render = () => React.createElement(module.QuestProvider, { online, offlineScope: options.offlineScope ?? null }, React.createElement(Capture));
   let tree; await act(async () => tree = create(render()));
   return { calls, state: () => state,
     update: async next => {
@@ -492,4 +496,38 @@ test('a pre-disconnect quest response cannot overwrite the retained catalogue af
     assert.equal(ui.state().tasks[0].title, 'New quest');
     assert.equal(ui.state().refreshing, false); assert.equal(ui.state().error, false);
   } finally { await ui.cleanup(); }
+});
+
+test('offline, the app itself stays on screen; only work the server must check first takes over', async () => {
+  const ui = await connection({ pathname: '/', timer: { offlineAvailable: true } });
+  try {
+    const shownApp = () => ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents === 'auto' && ui.root().findAllByType('Recovery').length === 0;
+    assert.equal(shownApp(), true, 'offline with sessions timed on this phone: the normal app');
+    await ui.update({ timer: { awaitingStart: true, interactionKind: 'start' } });
+    assert.equal(shownApp(), true, 'starting a session offline never flashes another screen');
+    await ui.update({ timer: { awaitingStart: false, interactionKind: null, hasOpenSession: true, isRestoring: true } });
+    assert.equal(shownApp(), true, 're-reading saved work keeps what is on screen');
+    await ui.update({ timer: { isRestoring: false, hasOpenSession: false, awaitingStart: true } });
+    await ui.motion.finish();
+    assert.equal(ui.root().findAllByType('Recovery').length, 1, 'a Start whose reply never arrived needs the recovery screen');
+    await ui.update({ timer: { awaitingStart: false } });
+    await ui.motion.finish();
+    assert.equal(shownApp(), true, 'and the app returns once it is settled');
+    await ui.update({ accessMode: 'online' });
+    assert.deepEqual(ui.calls, [], 'reconnecting never moves you off the page you were on');
+  } finally { await ui.cleanup(); }
+});
+
+test('opened offline, categories come from the copy saved last time online, so sessions can still pick one', async () => {
+  const saved = [{ id: 1, title: 'General', color_code: null }, { id: 7, title: 'Learning', color_code: '#0A84FF' }];
+  const ui = await questProvider({ saved, offlineScope: { ownerId: 'owner-a', backendId: 'fixture' } });
+  try {
+    assert.deepEqual(ui.calls, [['saved areas', 'owner-a']], 'no online reads, only the saved copy');
+    assert.deepEqual(ui.state().subjects.map(area => area.title), ['General', 'Learning']);
+    assert.equal(ui.state().loading, false);
+    await ui.update({ online: true });
+    assert.deepEqual(ui.state().subjects.map(area => area.title), ['Learning'], 'online, the server list replaces it');
+  } finally { await ui.cleanup(); }
+  const none = await questProvider({ offlineScope: null });
+  try { assert.deepEqual(none.calls, [], 'without an account there is nothing to read'); } finally { await none.cleanup(); }
 });

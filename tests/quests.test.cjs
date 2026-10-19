@@ -1218,7 +1218,7 @@ test('Home: the goal ring opens Today, its ••• changes the goal, and Setti
  }finally{await ui.cleanup();}
 });
 
-test('Home closes native goal menus offline and refuses delayed outgoing menu actions after reconnect', async()=>{
+test('offline, Home keeps Today and its menu; only changing the goal needs internet, and old menu actions never fire later', async()=>{
  const auth={accessMode:'online',admissionEpoch:1};
  const ui=await quickHomeSetup(null,undefined,null,'src/app/(tabs)/index.tsx',{'../../context/AuthContext':{useAuth:()=>auth}});
  try{
@@ -1226,15 +1226,35 @@ test('Home closes native goal menus offline and refuses delayed outgoing menu ac
   const goal=()=>ui.renderer.root.findByType('GoalSheet');
   const outgoing=menu().props.options;
   await act(async()=>ui.button('home-compact-goal').props.onPress());
-  const today=ui.renderer.root.findByType('TodaySheet').props;
-  auth.accessMode='local-only';await ui.update();
-  assert.equal(menu(),undefined);assert.equal(goal().props.visible,false);
-  assert.equal(ui.renderer.root.findByType('TodaySheet').props.visible,false);
-  await act(async()=>{outgoing.forEach(o=>o.onPress());today.onChangeGoal();today.onOpenProgress();});
-  assert.equal(goal().props.visible,false);assert.equal(ui.calls.some(c=>c[0]==='navigate'),false);
-  auth.accessMode='online';await ui.update();
+  auth.accessMode='local-only';auth.admissionEpoch=2;await ui.update();
+  assert.equal(ui.renderer.root.findByType('TodaySheet').props.visible,true,'Today stays open offline');
+  assert.equal(ui.renderer.root.findByType('TodaySheet').props.canChangeGoal,false);
+  const offline=menu().props.options;
+  assert.equal(offline[0].disabled,true,'changing the goal needs internet');assert.match(offline[0].label,/needs internet/);
+  await act(async()=>offline[0].onPress());assert.equal(goal().props.visible,false);
+  await act(async()=>offline[1].onPress());assert.deepEqual(ui.calls.filter(c=>c[0]==='navigate'),[['navigate','/progress']],'Progress still opens offline');
+  ui.calls.length=0;
+  auth.accessMode='online';auth.admissionEpoch=3;await ui.update();
   await act(async()=>outgoing.forEach(o=>o.onPress()));
-  assert.equal(goal().props.visible,false);assert.equal(ui.calls.some(c=>c[0]==='navigate'),false);
+  assert.equal(goal().props.visible,false);assert.equal(ui.calls.some(c=>c[0]==='navigate'),false,'a menu from before never acts later');
   await act(async()=>menu().props.options[0].onPress());assert.equal(goal().props.visible,true);
  }finally{await ui.cleanup();}
+});
+
+test('offline, Home shows today as last saved with when it was updated, and never yesterday’s minutes', async()=>{
+  const auth={accessMode:'local-only',admissionEpoch:1};
+  const asked=[];
+  const snapshot={day:'today',completedSeconds:1500,goalMinutes:60,goalCompleted:false,streak:8,savedAtMs:new Date(2026,9,19,16,15).getTime()};
+  const ui=await quickHomeSetup(null,undefined,null,'src/app/(tabs)/index.tsx',{'../../context/AuthContext':{useAuth:()=>auth},
+    '../../services/homeSnapshot':{readHomeSnapshot:async(owner,day)=>{asked.push(owner);return snapshot;},saveHomeSnapshot:async()=>{}}});
+  try{
+    await ui.update();
+    const note=ui.renderer.root.findAll(n=>n.props.testID==='home-offline-note'&&n.type==='Text')[0];
+    assert.match([].concat(note.props.children).join(''),/^Updated 4:15/);
+    assert.match(ui.output(),/25/,'the saved minutes show on the ring');
+    assert.match(ui.output(),/8-day streak/);
+    assert.equal(asked.length>0,true);
+    auth.accessMode='online';auth.admissionEpoch=2;await ui.update();
+    assert.equal(ui.renderer.root.findAll(n=>n.props.testID==='home-offline-note').length,0,'online, no note');
+  }finally{await ui.cleanup();}
 });

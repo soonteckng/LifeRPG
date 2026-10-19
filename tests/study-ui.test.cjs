@@ -271,7 +271,7 @@ test('Home shows exams within a week: tap edits, Study starts, hold offers more;
   assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());
 });
-test('Home squad native portals close offline and stale open or delayed navigation callbacks stay fenced', async () => {
+test('offline, the last saved squad stays readable on Home; only joining or starting one needs internet', async () => {
   for (const hasSquad of [false, true]) {
     const squad = { id: id(8), name: 'Library crew', code: 'K7Q4PX', members: [], goalMinutes: null };
     const squads = { squads: hasSquad ? [squad] : [], online: true }, calls = [];
@@ -286,30 +286,26 @@ test('Home squad native portals close offline and stale open or delayed navigati
     });
     let ui; await act(async () => { ui = create(React.createElement(HomeSquad)); });
     const rerender = () => act(async () => ui.update(React.createElement(HomeSquad)));
-    const open = ui.root.findAllByType('Press').find(node => node.props.testID === (hasSquad ? 'home-squad' : 'home-squad-empty')).props.onPress;
-    const visible = () => hasSquad ? ui.root.findAllByType('Sheet').find(node => node.props.label === 'squad peek').props.visible
-      : ui.root.findByType('JoinSheet').props.visible;
-    let delayed;
+    const card = () => ui.root.findAllByType('Press').find(node => node.props.testID === (hasSquad ? 'home-squad' : 'home-squad-empty'));
     try {
-      await act(async () => open()); assert.equal(visible(), true);
-      if (hasSquad) {
-        const originalTimeout = global.setTimeout;
-        global.setTimeout = (work, delay, ...args) => delay === 220 ? (delayed = () => work(...args), 0) : originalTimeout(work, delay, ...args);
-        try { await act(async () => presses(ui.root, 'See the whole squad')[0].props.onPress()); }
-        finally { global.setTimeout = originalTimeout; }
-        assert.equal(typeof delayed, 'function');
+      if (!hasSquad) {
+        await act(async () => card().props.onPress()); assert.equal(ui.root.findByType('JoinSheet').props.visible, true);
+        await act(async () => ui.root.findByType('JoinSheet').props.onClose?.());
       }
       squads.online = false; await rerender();
-      assert.equal(visible(), false, 'the cloud squad portal cannot cover the offline surface');
-      await act(async () => { open(); delayed?.(); });
-      assert.equal(visible(), false); assert.deepEqual(calls, []);
-      squads.online = true; await rerender();
-      assert.equal(visible(), false, 'reconnect cannot replay an old portal');
-      await act(async () => { open(); delayed?.(); });
-      assert.equal(visible(), false, 'callbacks from the outgoing online visit stay invalid after reconnect');
-      assert.deepEqual(calls, [], 'presentation changes never navigate or submit squad changes');
-      const freshOpen = ui.root.findAllByType('Press').find(node => node.props.testID === (hasSquad ? 'home-squad' : 'home-squad-empty')).props.onPress;
-      await act(async () => freshOpen()); assert.equal(visible(), true, 'fresh online controls still work');
+      if (hasSquad) {
+        assert.equal(ui.root.findByType('Section').props.subtitle, 'Offline · last saved');
+        await act(async () => card().props.onPress());
+        assert.equal(ui.root.findAllByType('Sheet').find(node => node.props.label === 'squad peek').props.visible, true, 'the saved leaderboard still opens');
+        await act(async () => ui.root.findByType('Section').props.right.props.onPress());
+        assert.deepEqual(calls, [['choose', id(8)], ['navigate', '/squads']], 'the Squads tab shows the saved squad too');
+      } else {
+        assert.equal(card().props.disabled, true, 'joining or starting needs internet');
+        assert.ok(texts(ui.root).includes('Needs internet to start or join a squad.'));
+        assert.equal(ui.root.findByType('JoinSheet').props.visible, false);
+        squads.online = true; await rerender();
+        assert.equal(card().props.disabled, false);
+      }
     } finally { await act(async () => ui.unmount()); }
   }
 });
@@ -438,4 +434,35 @@ test('a small squad shows open seats that invite, and the invite stays last on t
   await act(async () => ui.update(render([1, 2, 3, 4].map(n => member(n)))));
   assert.equal(seats().length, 0, 'four or more members need no placeholders');
   await act(async () => ui.unmount());
+});
+
+test('offline shows one calm status: saved on this phone, or how many sessions wait to sync; tapping checks the connection', async () => {
+  const auth = { accessMode: 'local-only', admissionEpoch: 1, localOwner: { id: 'me', backendId: 'b' }, retrySessionVerification: async () => { checks++; } };
+  const timer = { unsyncedSessionCount: 0, actionBusy: false, isRestoring: false };
+  let checks = 0, ui;
+  const Status = load('src/components/OfflineStatus.tsx', { ...base(), '/AuthContext': { useAuth: () => auth }, '/TimerContext': { useTimer: () => timer } }).default;
+  await act(async () => { ui = create(React.createElement(Status)); });
+  const pill = () => ui.root.findAll(x => x.props.testID === 'offline-status' && x.type === 'Press')[0];
+  assert.equal(pill().props.accessibilityLabel, 'Offline. Saved on this phone. Check connection');
+  timer.unsyncedSessionCount = 2; await act(async () => ui.update(React.createElement(Status)));
+  assert.ok(texts(ui.root).includes('· 2 sessions to sync'));
+  await act(async () => { await pill().props.onPress(); });
+  assert.equal(checks, 1);
+  await act(async () => { await pill().props.onPress(); });
+  assert.equal(checks, 1, 'at most one check every few seconds');
+  auth.accessMode = 'online'; await act(async () => ui.update(React.createElement(Status)));
+  assert.equal(ui.toJSON(), null, 'nothing shows online');
+  await act(async () => ui.unmount());
+});
+
+test('Home’s saved numbers are only used for the same day and survive bad data', async () => {
+  const store = new Map();
+  const api = load('src/services/homeSnapshot.ts', { '@react-native-async-storage/async-storage': { getItem: async k => store.get(k) ?? null, setItem: async (k, v) => { store.set(k, v); } } });
+  const snap = { day: '2026-10-19', completedSeconds: 1500, goalMinutes: 60, goalCompleted: false, streak: 8, savedAtMs: Date.now() - 1000 };
+  await api.saveHomeSnapshot('me', snap);
+  assert.deepEqual(await api.readHomeSnapshot('me', '2026-10-19'), snap);
+  assert.equal(await api.readHomeSnapshot('me', '2026-10-20'), null, 'yesterday’s minutes never show as today’s');
+  assert.equal(await api.readHomeSnapshot('someone-else', '2026-10-19'), null);
+  store.set('liferpg:home-today:v1:me', '{bad json');
+  assert.equal(await api.readHomeSnapshot('me', '2026-10-19'), null);
 });

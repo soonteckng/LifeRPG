@@ -7,6 +7,7 @@ import { useTimer } from "../context/TimerContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { navigationTiming } from "../utils/navigationMotion";
+import { offlineAppAvailable } from "../utils/offlineApp";
 import { colors, edge } from "../constants/theme";
 import { Text } from "./AppText";
 import ConnectionSurface from "./ConnectionSurface";
@@ -65,18 +66,24 @@ export default function SessionConnectionContent({ children }: { children: React
     && timer.hasOpenSession && !timer.isCompleted && !timer.endingSession;
   if (requestedEnd && !showEnd) setRequestedEnd(null);
   const localOnly = accessMode === "local-only";
-  const [offlineCycle, setOfflineCycle] = useState(localOnly);
-  if (localOnly && !offlineCycle) setOfflineCycle(true);
-  const obsoleteSessionRoute = offlineCycle && !localOnly && (pathname === "/session" || pathname === "/timer")
+  // Offline the app itself stays on screen; only saved work that must be
+  // checked with the server first takes over the screen. While the journal
+  // is being read the last decision holds, so nothing flashes.
+  const [recoveryShown, setRecoveryShown] = useState(false);
+  const recoveryNow = localOnly && (timer.isRestoring ? recoveryShown : !offlineAppAvailable(timer));
+  if (recoveryNow !== recoveryShown) setRecoveryShown(recoveryNow);
+  const [offlineCycle, setOfflineCycle] = useState(recoveryNow);
+  if (recoveryNow && !offlineCycle) setOfflineCycle(true);
+  const obsoleteSessionRoute = offlineCycle && !recoveryNow && (pathname === "/session" || pathname === "/timer")
     && !timer.hasOpenSession && !timer.isCompleted && !timer.endingSession && !timer.sessionEnded
     && !timer.awaitingStart && timer.linkedTaskId === null;
-  const onlineReady = !(offlineCycle && !localOnly && (timer.isRestoring || obsoleteSessionRoute));
-  if (offlineCycle && !localOnly && onlineReady) setOfflineCycle(false);
+  const onlineReady = !(offlineCycle && !recoveryNow && (timer.isRestoring || obsoleteSessionRoute));
+  if (offlineCycle && !recoveryNow && onlineReady) setOfflineCycle(false);
   useLayoutEffect(() => {
-    if (localOnly) return;
+    if (recoveryNow) return;
     if (!offlineCycle || timer.isRestoring) return;
     if (obsoleteSessionRoute) router.replace("/");
-  }, [localOnly, offlineCycle, obsoleteSessionRoute, timer.isRestoring, router]);
+  }, [recoveryNow, offlineCycle, obsoleteSessionRoute, timer.isRestoring, router]);
   const [visitedOffline, setVisitedOffline] = useState({ scope: ownerScope, local: localOnly });
   const [onlineNotice, setOnlineNotice] = useState<string | null>(null);
   const [noticeOpacity] = useState(() => new Animated.Value(1));
@@ -107,7 +114,7 @@ export default function SessionConnectionContent({ children }: { children: React
   // Count includes rejected records. Only an actual pending, busy operation
   // warrants "syncing"; being back online alone never promises a saved result.
   const syncing = timer.syncStatus === "waiting" && timer.actionBusy && !timer.isRestoring && !timer.actionError;
-  return <><ConnectionSurface localOnly={localOnly} onlineReady={onlineReady}
+  return <><ConnectionSurface localOnly={recoveryNow} onlineReady={onlineReady}
     offline={active => <OfflineSessionRecovery active={active} />}>{children}
       {onlineNotice === scope && accessMode === "online" && onlineReady && <Animated.View pointerEvents="none"
         testID="connection-online-notice" style={[styles.notice, { top: insets.top + 8, opacity: noticeOpacity }]}>

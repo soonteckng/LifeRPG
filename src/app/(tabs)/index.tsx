@@ -38,7 +38,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { getFocusStreak } from "../../services/progressService";
-import { DEFAULT_TIMEZONE } from "../../utils/progressAnalytics";
+import { DEFAULT_TIMEZONE, dateKey } from "../../utils/progressAnalytics";
+import { readHomeSnapshot, saveHomeSnapshot } from "../../services/homeSnapshot";
 import { getTodayProgress } from "../../services/dailyProgressService";
 import { prefetchCharacterData } from "../../hooks/useCharacterData";
 import { prefetchProgress } from "../../hooks/useProgressData";
@@ -75,7 +76,8 @@ export default function HomeScreen() {
   const [surfaceMode, setSurfaceMode] = useState(accessMode);
   if (surfaceMode !== accessMode) {
     setSurfaceMode(accessMode);
-    if (accessMode !== "online") { setGoalSettings(false); setTiersOpen(false); setTodayOpen(false); }
+    // Changing the goal needs the server; everything else on Home stays open offline.
+    if (accessMode !== "online") setGoalSettings(false);
   }
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
@@ -94,6 +96,8 @@ export default function HomeScreen() {
   const [todayGoal, setTodayGoal] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  // When today's numbers were last read from the server; shown while offline.
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
   const dataScope = JSON.stringify([owner, accessMode, admissionEpoch, timeZone]);
   const menuView = useMemo(() => ({ dataScope }), [dataScope]);
   const currentMenuView = useRef<typeof menuView | null>(menuView);
@@ -104,7 +108,7 @@ export default function HomeScreen() {
     return () => { currentDataScope.current = null; currentMenuView.current = null; };
   }, [dataScope, menuView]);
   const openGoal = () => { if (accessMode === "online" && currentMenuView.current === menuView) setGoalSettings(true); };
-  const openProgress = () => { if (accessMode === "online" && currentMenuView.current === menuView) router.navigate("/progress"); };
+  const openProgress = () => { if (currentMenuView.current === menuView) router.navigate("/progress"); };
   const loadHomeData = useCallback(async () => {
     if (accessMode !== "online") return;
     const expectedScope = dataScope;
@@ -113,14 +117,30 @@ export default function HomeScreen() {
       const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
       if (currentDataScope.current !== expectedScope) return;
       if (streak !== undefined) setFocusStreak(streak);
+      const seconds = progress ? creditedDailySeconds(progress) : 0, savedAtMs = Date.now();
       setTodayGoal(progress?.goal_minutes ?? null);
-      setCompletedSeconds(progress ? creditedDailySeconds(progress) : 0);
+      setCompletedSeconds(seconds);
       setGoalCompleted(progress?.goal_completed ?? false);
+      setUpdatedAt(savedAtMs);
       setLoadError(profileOK === false || streak === undefined);
+      if (owner) void saveHomeSnapshot(owner, { day: dateKey(new Date(), timeZone), completedSeconds: seconds, goalMinutes: progress?.goal_minutes ?? null,
+        goalCompleted: progress?.goal_completed ?? false, streak: streak ?? null, savedAtMs });
     } catch {
       if (currentDataScope.current === expectedScope) setLoadError(true);
     } finally { if (currentDataScope.current === expectedScope) setRefreshing(false); }
-  }, [reloadProfile, refreshQuests, timeZone, accessMode, dataScope]);
+  }, [reloadProfile, refreshQuests, timeZone, accessMode, dataScope, owner]);
+  // Opened offline: show today's numbers as last saved on this phone.
+  useEffect(() => {
+    if (accessMode === "online" || !owner || updatedAt !== null) return;
+    let live = true;
+    void readHomeSnapshot(owner, dateKey(new Date(), timeZone)).then(snapshot => {
+      if (!live || !snapshot) return;
+      setCompletedSeconds(snapshot.completedSeconds); setTodayGoal(snapshot.goalMinutes); setGoalCompleted(snapshot.goalCompleted);
+      if (snapshot.streak !== null) setFocusStreak(snapshot.streak);
+      setUpdatedAt(snapshot.savedAtMs);
+    });
+    return () => { live = false; };
+  }, [accessMode, owner, timeZone, updatedAt]);
   // singleFlight stores this callback; it only invokes it from lifecycle events, never during render.
   // eslint-disable-next-line react-hooks/refs
   const loadData = useMemo(() => singleFlight(loadHomeData), [loadHomeData]);
@@ -211,10 +231,10 @@ export default function HomeScreen() {
           </TouchableOpacity>}
 
           <TourAnchor id="home-focus"><View style={styles.today} testID="home-today">
-            <View style={styles.todayMenu}>{accessMode === "online" && <MoreMenu label="Today options" testID="home-today-menu" options={[
-              { label: "Change daily goal", icon: "flag-outline", onPress: openGoal },
+            <View style={styles.todayMenu}><MoreMenu label="Today options" testID="home-today-menu" options={[
+              { label: accessMode === "online" ? "Change daily goal" : "Change goal · needs internet", icon: "flag-outline", onPress: openGoal, disabled: accessMode !== "online" },
               { label: "Open Progress", icon: "stats-chart-outline", onPress: openProgress },
-            ]} />}</View>
+            ]} /></View>
             <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalRow} accessibilityRole="button"
               accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
               <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
@@ -227,6 +247,7 @@ export default function HomeScreen() {
                 <Text style={styles.goalLabel}>{isGoalComplete ? "Goal reached" : "Today"}</Text>
                 <Text style={styles.goalHeadline} numberOfLines={2}>{isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
                 <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text></View>
+                {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
               </View>
             </TouchableOpacity>
             {needsReview ? <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
@@ -244,7 +265,7 @@ export default function HomeScreen() {
             </View>}
           </View></TourAnchor>
 
-          <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online"} legacyTasks={tasks} onStartLegacy={openQuestSession}
+          <TourAnchor id="home-quests"><SavedRoutinesCard subjects={subjects} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={openQuestSession}
             limit={2} suggestions={false} onSeeAll={() => router.navigate("/routines")} /></TourAnchor>
           <HomeExams />
           <HomeSquad />
@@ -254,7 +275,7 @@ export default function HomeScreen() {
         </ContentReveal>
       </TourScrollView>
       <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
-      <TodaySheet visible={accessMode === "online" && todayOpen} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
+      <TodaySheet visible={todayOpen} canChangeGoal={accessMode === "online"} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
         streak={streakDays} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
       <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={accessMode === "online" && goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
     </SafeAreaView>
@@ -286,6 +307,7 @@ const styles = StyleSheet.create({
   goalLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.9, textTransform: "uppercase" },
   goalHeadline: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
   streakRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  offlineNote: { color: colors.tertiary, fontSize: 12, lineHeight: 16 },
   streakText: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   ringValue: { color: colors.text, fontSize: 30, lineHeight: 34, fontWeight: "700", letterSpacing: -0.6, fontVariant: ["tabular-nums"] },
   ringUnit: { maxWidth: 70, color: colors.secondary, fontSize: 12, lineHeight: 16 },
@@ -304,3 +326,5 @@ const styles = StyleSheet.create({
   retry: { paddingVertical: 4 },
   retryText: { color: colors.danger, fontSize: 13 },
 });
+
+const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

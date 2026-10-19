@@ -28,6 +28,7 @@ import MilestonesRow from "../../components/MilestonesRow";
 import { colors, radius, edge } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
+import { useAuth } from "../../context/AuthContext";
 import { useProgressData } from "../../hooks/useProgressData";
 import SubjectBreakdown from "../../components/SubjectBreakdown";
 import OneTimeHint from "../../components/OneTimeHint";
@@ -167,6 +168,7 @@ export default function ProgressScreen() {
     () => periodFor(mode, anchor ?? today, timeZone, clock),
     [mode, anchor, today, timeZone, clock],
   );
+  const offline = useAuth().accessMode === "local-only";
   const { data, error, loading, refresh } = useProgressData(
     period,
     timeZone,
@@ -359,22 +361,22 @@ export default function ProgressScreen() {
           </Pressable>
         </View>
         </View>
-        {error && (
-          <View style={s.error}>
+        {(error || offline && !data) && (
+          <View style={s.error} testID="progress-status">
             <Ionicons
               name="cloud-offline-outline"
               size={20}
               color={colors.secondary}
             />
             <View style={s.flex}>
-              <Text style={s.rowTitle}>Couldn’t refresh Progress</Text>
+              <Text style={s.rowTitle}>{offline ? "Offline" : "Couldn’t refresh Progress"}</Text>
               <Text style={s.caption}>
-                {data
-                  ? "Showing your last loaded data."
-                  : "Your progress is safe. Try again."}
+                {offline
+                  ? data ? "Showing your progress as last loaded. New sessions count once you’re online." : "Progress loads when you’re online. Your sessions are saved."
+                  : data ? "Showing your last loaded data." : "Your progress is safe. Try again."}
               </Text>
             </View>
-            <Pressable
+            {!offline && <Pressable
               onPress={() => void refresh()}
               disabled={loading}
               accessibilityRole="button"
@@ -382,12 +384,12 @@ export default function ProgressScreen() {
               style={s.retry}
             >
               <Text style={s.link}>{loading ? "Retrying…" : "Retry"}</Text>
-            </Pressable>
+            </Pressable>}
           </View>
         )}
         {!data ? (
           <View style={s.loading}>
-            {!error && (
+            {!error && !offline && (
               <>
                 <ActivityIndicator color={colors.accent} />
                 <Text style={s.caption}>Gathering your progress…</Text>

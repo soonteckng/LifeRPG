@@ -442,7 +442,7 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
 
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
-async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false } = {}) {
+async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false, offline = false } = {}) {
   const today = dateKey(new Date(), TZ),
     stamp = new Date(Date.now() - 1000).toISOString();
   let refreshes = 0,
@@ -490,6 +490,7 @@ async function screenHarness({ empty = false, historyFailure = false, sessionRow
         props,
         props.visible ? [props.header, props.children] : null,
       ),
+    "../../context/AuthContext": { useAuth: () => ({ accessMode: offline ? "local-only" : "online" }) },
     "../../context/UserContext": {
       useUser: () => ({
         profile: { timezone: TZ, level: 2 },
@@ -966,4 +967,12 @@ test("colours saved by the previous palette keep their place in the new one", ()
   for (const [previous, next] of pairs) { assert.equal(lifeAreaColor(1, previous), next); assert.equal(lifeAreaColor(1, next.toLowerCase()), next); }
   assert.equal(areaTint("#64D2FF", 0.2), "rgba(100,210,255,0.2)");
   assert.equal(areaTint("not a colour"), "rgba(255,255,255,0.16)");
+});
+
+test("offline, Progress says so calmly instead of offering a retry that cannot work", async () => {
+  const ui = await screenHarness({ offline: true });
+  try {
+    assert.doesNotMatch(ui.text(), /Couldn’t refresh Progress/);
+    assert.equal(ui.renderer.root.findAllByType("Button").some((b) => b.props.accessibilityLabel === "Retry Progress"), false);
+  } finally { await ui.cleanup(); }
 });

@@ -2,6 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useLayoutEffe
 import { AppState } from "react-native";
 import { useTimer } from "./TimerContext";
 import { getSubjects, getTasks, type Subject, type Task } from "../services/taskService";
+import { readOfflineFocusAreas } from "../services/offlineFocusCatalog";
+import type { JournalScope } from "../types/sessionJournal";
 
 interface QuestState {
   tasks: Task[];
@@ -15,7 +17,11 @@ interface QuestState {
 }
 const QuestContext = createContext<QuestState | null>(null);
 
-export function QuestProvider({ children, online = true }: { children: React.ReactNode; online?: boolean }) {
+/**
+ * Routines and categories. Offline, categories come from the copy saved the
+ * last time this phone was online, so sessions can still pick one.
+ */
+export function QuestProvider({ children, online = true, offlineScope = null }: { children: React.ReactNode; online?: boolean; offlineScope?: JournalScope | null }) {
   const { sessionSummary, cloudSaveVersion } = useTimer();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -73,6 +79,18 @@ export function QuestProvider({ children, online = true }: { children: React.Rea
       request.current++; pendingRefresh.current = null; setRefreshing(false);
     } else void refresh();
   }, [online, refresh]);
+  const ownerId = offlineScope?.ownerId, backendId = offlineScope?.backendId;
+  useEffect(() => {
+    if (online || !ownerId || !backendId) return;
+    let live = true;
+    void readOfflineFocusAreas({ ownerId, backendId }).then(areas => {
+      if (!live || !alive.current || !areas.length) return;
+      // Only fills an empty list: categories loaded online stay as they are.
+      setSubjects(current => current.length ? current : areas.map(area => ({ ...area, level: 1, current_xp: 0 })));
+      setLoading(false);
+    });
+    return () => { live = false; };
+  }, [online, ownerId, backendId]);
   const invalidateReads = useCallback(() => {
     // AuthGate keys this provider by owner. Ignore reads from an outgoing account.
     alive.current = false;

@@ -14,9 +14,9 @@ import { durationLabel } from "../utils/progressAnalytics";
  * Today's goal up close: how far along you are, your streak and this week's
  * rhythm. The goal itself is changed from the ••• menu, not by tapping here.
  */
-export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, complete, onChangeGoal, onOpenProgress }: {
+export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, complete, onChangeGoal, onOpenProgress, canChangeGoal = true }: {
   visible: boolean; onClose: () => void; completedSeconds: number; goalMinutes: number; streak: number; complete: boolean;
-  onChangeGoal: () => void; onOpenProgress: () => void;
+  onChangeGoal: () => void; onOpenProgress: () => void; canChangeGoal?: boolean;
 }) {
   const { week } = useWeekProgress();
   const goal = goalMinutes * 60, left = Math.max(0, goal - completedSeconds), share = Math.min(1, completedSeconds / Math.max(1, goal));
@@ -25,7 +25,7 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
     header={<View style={s.header}>
       <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
       {visible && <MoreMenu label="Goal options" options={[
-        { label: "Change daily goal", icon: "flag-outline", onPress: () => after(onChangeGoal) },
+        { label: canChangeGoal ? "Change daily goal" : "Change goal · needs internet", icon: "flag-outline", onPress: () => after(onChangeGoal), disabled: !canChangeGoal },
         { label: "Open Progress", icon: "stats-chart-outline", onPress: () => after(onOpenProgress) },
       ]} />}
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={s.close}><Ionicons name="close" size={18} color={colors.secondary} /></Pressable>

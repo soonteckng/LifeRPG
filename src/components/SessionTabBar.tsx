@@ -12,6 +12,7 @@ import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
 import { sessionDockState } from "../utils/sessionReporting";
 import { PinnedActionHost, usePinnedActionPresent } from "./PinnedAction";
+import OfflineStatus from "./OfflineStatus";
 
 // Float only the pill and session banner over tab content, beneath the root modal.
 // It cannot draw over Session while Session is entering or leaving.
@@ -39,6 +40,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
       <Rect width="1" height="1" fill="url(#dockFade)" />
     </Svg>
     <View pointerEvents="none" style={styles.scrim} />
+    <OfflineStatus />
     {pinned && <PinnedActionHost route={route} />}
     {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : timer.breakSecondsLeft > 0 ? "Expand session on break" : isRunning ? "Expand running session" : "Expand paused session"}>
