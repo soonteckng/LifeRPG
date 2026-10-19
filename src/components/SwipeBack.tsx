@@ -1,15 +1,15 @@
 import { useMemo, type ReactNode } from "react";
-import { useWindowDimensions } from "react-native";
+import { Animated as Native, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { Easing, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
+import Animated, { Easing, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 
 /** A second-level page that follows a rightward drag from anywhere on it and
  * leaves when released far or fast enough, like iOS. Vertical scrolling wins
  * when the drag starts vertically. Runs on the UI thread; JS is only called
  * once the page has left. */
-export default function SwipeBack({ enabled, onBack, children }: { enabled: boolean; onBack: () => void; children: ReactNode }) {
+export default function SwipeBack({ enabled, onBack, offset: shared, children }: { enabled: boolean; onBack: () => void; offset?: SharedValue<number>; children: ReactNode }) {
   const { width } = useWindowDimensions();
-  const offset = useSharedValue(0);
+  const own = useSharedValue(0), offset = shared ?? own;
   const pan = useMemo(() => Gesture.Pan()
     .enabled(enabled)
     .activeOffsetX(16)
@@ -22,4 +22,19 @@ export default function SwipeBack({ enabled, onBack, children }: { enabled: bool
     }), [enabled, offset, onBack, width]);
   const follow = useAnimatedStyle(() => ({ transform: [{ translateX: offset.get() }] }));
   return <GestureDetector gesture={pan}><Animated.View style={[{ flex: 1 }, follow]}>{children}</Animated.View></GestureDetector>;
+}
+
+/** The swipe distance a page shares with the page beneath it. */
+export function useSwipeOffset() { return useSharedValue(0); }
+
+export type PageMotion = { position: Native.Value; swipe: SharedValue<number> };
+// The page beneath travels this share of the width, as in iOS and One UI.
+const SHIFT = 0.3;
+
+/** Moves a page left while the page above slides in, and back as that page is swiped away. */
+export function ParallaxLayer({ above, width, children }: { above: PageMotion | null; width: number; children: ReactNode }) {
+  const idle = useSharedValue(0), swipe = above?.swipe ?? idle;
+  const follow = useAnimatedStyle(() => ({ transform: [{ translateX: swipe.get() * SHIFT }] }));
+  const drift = above ? { transform: [{ translateX: above.position.interpolate({ inputRange: [0, width], outputRange: [-width * SHIFT, 0], extrapolate: "clamp" }) }] } : null;
+  return <Native.View style={[{ flex: 1 }, drift]}><Animated.View style={[{ flex: 1 }, follow]}>{children}</Animated.View></Native.View>;
 }

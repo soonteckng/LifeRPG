@@ -77,3 +77,14 @@ test('the area week agrees with the Progress tab for the same sessions',()=>{
  const detail=focusAreaDetail(areas[0],areas,rows,'Asia/Kuala_Lumpur',NOW);
  assert.equal(detail.weekSeconds,wellbeing.seconds);
 });
+
+test('General and an unassigned session share one Everyday focus row in Progress',()=>{
+ const api=load('src/utils/progressAnalytics.ts');
+ const timeZone='UTC',now=new Date('2026-10-20T12:00:00Z');
+ const period=api.periodFor('week',api.dateKey(now,timeZone),timeZone,now);
+ const at=hour=>`2026-10-20T${String(hour).padStart(2,'0')}:00:00Z`;
+ const sessions=[{id:'a',subject_id:1,activity_type:'other',duration_seconds:60,completed_at:at(8),notes:''},{id:'b',subject_id:null,activity_type:'other',duration_seconds:120,completed_at:at(9),notes:''}];
+ const progress=api.buildProgress(period,sessions,[],timeZone,[{id:1,title:'General',color_code:null}],now);
+ const everyday=progress.areas.filter(group=>group.title==='Everyday focus');
+ assert.equal(everyday.length,1);assert.equal(everyday[0].seconds,180);assert.equal(everyday[0].sessions.length,2);
+});

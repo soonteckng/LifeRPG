@@ -11,7 +11,7 @@ import { Text } from "../../components/AppText";
 import StudyExamSheet from "../../components/StudyExamSheet";
 import StudySubjectSheet from "../../components/StudySubjectSheet";
 import { requestStudySync } from "../../components/StudyLifecycle";
-import SectionHeader, { CircleButton } from "../../components/SectionHeader";
+import SectionHeader, { CircleButton, DoneButton } from "../../components/SectionHeader";
 import SubjectShelf from "../../components/SubjectShelf";
 import ExamsCard from "../../components/ExamsCard";
 import OneTimeHint from "../../components/OneTimeHint";
@@ -30,7 +30,7 @@ import { suggestedArea } from "../../utils/focusAreas";
 import { countdownLabel, daysUntil, QUICK_SUBJECTS, sortCoursesByExam, subjectSuggestions, upcomingExams } from "../../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../../types/studyPlan";
 
-type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null; title?: string } | { kind: "subject"; course: StudyCourse | null }
+type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null; title?: string } | { kind: "subject"; course: StudyCourse | null; edit?: boolean }
   | { kind: "add" } | { kind: "how" } | null;
 
 /**
@@ -45,11 +45,11 @@ export default function StudyScreen() {
   const launcher = useStudyLauncher(plan.exams);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(false), [examEditing, setExamEditing] = useState(false);
   useEffect(() => { if (editing) void appPreferences.retireHint("subject-hold"); }, [editing]);
   const [removing, setRemoving] = useState<StudyCourse | null>(null);
   const afterClose = useRef<(() => void) | null>(null);
-  useFocusEffect(useCallback(() => { requestStudySync(); return () => setEditing(false); }, []));
+  useFocusEffect(useCallback(() => { requestStudySync(); return () => { setEditing(false); setExamEditing(false); }; }, []));
   // A subject added with one tap says so in place, with an optional exam, then fades.
   const [added, setAdded] = useState<{ id: string; name: string } | null>(null);
   useEffect(() => { if (!added) return; const timer = setTimeout(() => setAdded(null), 6000); return () => clearTimeout(timer); }, [added]);
@@ -61,8 +61,9 @@ export default function StudyScreen() {
   const quick = subjectSuggestions("", plan.courses.map(course => course.name), 40).filter(name => (QUICK_SUBJECTS as readonly string[]).includes(name)).slice(0, 5);
   const fresh = plan.ready && !plan.courses.length && !exams.length;
   if (editing && !plan.courses.length) setEditing(false);
+  if (examEditing && !exams.length) setExamEditing(false);
 
-  const show = (value: Sheet) => { setEditing(false); setSheet(value); setOpen(true); };
+  const show = (value: Sheet) => { setEditing(false); setExamEditing(false); setSheet(value); setOpen(true); };
   const close = (then?: () => void) => { afterClose.current = then ?? null; setOpen(false); };
   const dismissed = () => { const then = afterClose.current; afterClose.current = null; setSheet(null); then?.(); };
   // Adding a subject only adds it; an exam is one tap away but never forced.
@@ -87,17 +88,17 @@ export default function StudyScreen() {
       {!!plan.error && <Text style={s.notice} accessibilityLiveRegion="polite">{plan.error}</Text>}
 
       <View style={s.section}>
-        <SectionHeader title="My Subjects" subtitle={editing ? "Tap − to remove. Their minutes stay saved." : undefined}
-          right={editing ? <Pressable onPress={() => setEditing(false)} accessibilityRole="button" accessibilityLabel="Done editing subjects" hitSlop={8} style={s.done}><Text style={s.doneText}>Done</Text></Pressable>
+        <SectionHeader title="My Subjects" subtitle={editing ? "Tap ✎ to edit or − to remove." : undefined}
+          right={editing ? <DoneButton label="Done editing subjects" onPress={() => setEditing(false)} />
             : <CircleButton label="Add a subject" disabled={!plan.ready} onPress={() => show({ kind: "add" })} />} />
         {fresh ? <View style={s.welcome} testID="study-welcome">
           <View style={s.welcomeIcon}><Ionicons name="school" size={24} color={colors.accent} /></View>
           <Text style={s.welcomeTitle}>Your study space</Text>
           <Text style={s.body}>Add the subjects you’re taking. Exams count down here, and time you study counts as Learning, or Revision once an exam is near.</Text>
           {chips}
-        </View> : courses.length ? <SubjectShelf courses={courses} exams={plan.exams} recent={plan.recent} editing={editing} onEditingChange={setEditing}
-          onOpen={course => show({ kind: "subject", course })} onStudy={launcher.study} onRemove={setRemoving} /> : null}
-        <OneTimeHint id="subject-hold" text="Hold a subject to remove subjects." show={!editing && courses.length > 1} />
+        </View> : courses.length ? <SubjectShelf courses={courses} exams={plan.exams} recent={plan.recent} editing={editing} onEditingChange={value => { if (value) setExamEditing(false); setEditing(value); }}
+          onOpen={course => show({ kind: "subject", course })} onEdit={course => show({ kind: "subject", course, edit: true })} onStudy={launcher.study} onRemove={setRemoving} /> : null}
+        <OneTimeHint id="subject-hold" text="Hold a subject to edit or remove it." show={!editing && courses.length > 1} />
         {!fresh && courses.length < 3 && !editing && chips}
         {added && <View style={s.added} accessibilityLiveRegion="polite" testID="subject-added">
           <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
@@ -108,9 +109,9 @@ export default function StudyScreen() {
       </View>
 
       <View style={s.section}>
-        <SectionHeader title="My Exams" subtitle={nearest ? `${exams.length} coming up · next ${countdownLabel(daysUntil(nearest.examDate)).toLowerCase()}` : undefined}
-          right={<CircleButton label="New exam" disabled={!plan.ready} onPress={newExam} />} />
-        {exams.length ? <ExamsCard exams={exams} courses={plan.courses} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)}
+        <SectionHeader title="My Exams" subtitle={examEditing ? "Tap ✎ to edit or − to remove." : nearest ? `${exams.length} coming up · next ${countdownLabel(daysUntil(nearest.examDate)).toLowerCase()}` : undefined}
+          right={examEditing ? <DoneButton label="Done editing exams" onPress={() => setExamEditing(false)} /> : <CircleButton label="New exam" disabled={!plan.ready} onPress={newExam} />} />
+        {exams.length ? <ExamsCard exams={exams} courses={plan.courses} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} editing={examEditing} onEditingChange={value => { if (value) setEditing(false); setExamEditing(value); }}
           onEdit={exam => show({ kind: "exam", exam, courseId: exam.courseId })} />
           : <Pressable onPress={newExam} accessibilityRole="button" accessibilityLabel="Add an exam" testID="study-exam-empty" style={[s.group, s.emptyRow]}>
             <View style={s.emptyIcon}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
@@ -123,7 +124,7 @@ export default function StudyScreen() {
     <StudyExamSheet visible={open && sheet?.kind === "exam"} exam={sheet?.kind === "exam" ? sheet.exam : null} courses={plan.courses}
       initialCourseId={sheet?.kind === "exam" ? sheet.courseId : null} initialTitle={sheet?.kind === "exam" ? sheet.title ?? "" : ""}
       onSave={plan.saveExam} onEnsureSubject={ensureSubject} onRemove={id => plan.remove("exam", id)} onClose={() => close()} onDismiss={dismissed} />
-    <StudySubjectSheet visible={open && sheet?.kind === "subject"} course={sheet?.kind === "subject" && sheet.course ? courseFor(sheet.course.id) ?? sheet.course : null}
+    <StudySubjectSheet visible={open && sheet?.kind === "subject"} startEditing={sheet?.kind === "subject" && !!sheet.edit} course={sheet?.kind === "subject" && sheet.course ? courseFor(sheet.course.id) ?? sheet.course : null}
       areas={subjects} defaultAreaId={learning?.id ?? null} recent={plan.recent} exams={plan.exams} sessionOpen={!!timer.hasOpenSession}
       onSave={plan.saveCourse} onRemove={id => plan.remove("course", id)} onClose={() => close()} onDismiss={dismissed}
       onStudy={course => close(() => launcher.study(course))}
@@ -166,8 +167,6 @@ const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, body: { color: colors.text, fontSize: 15, lineHeight: 21 },
   pill: { minHeight: 38, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 16, borderRadius: 19, backgroundColor: colors.accentSoft },
   pillText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
-  done: { minHeight: 32, paddingHorizontal: 14, borderRadius: 16, justifyContent: "center", backgroundColor: colors.accentSoft },
-  doneText: { color: colors.accent, fontSize: 15, fontWeight: "700" },
   welcome: { ...edge, padding: 18, gap: 10, borderRadius: radius.card, backgroundColor: colors.surface },
   welcomeIcon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 2 },
   welcomeTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },

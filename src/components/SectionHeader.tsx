@@ -38,6 +38,11 @@ export function SeeAll({ label = "See all", count, onPress, accessibilityLabel, 
   </Pressable>;
 }
 
+/** Ends edit mode; it takes the section's right-hand control while cards wiggle. */
+export function DoneButton({ onPress, label }: { onPress: () => void; label: string }) {
+  return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={s.done}><Text style={s.doneText}>Done</Text></Pressable>;
+}
+
 /** The round, bordered + (or other icon) button used next to section titles. */
 export function CircleButton({ icon = "add", label, onPress, disabled = false, size = 32, testID }: {
   icon?: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; disabled?: boolean; size?: number; testID?: string;
@@ -55,6 +60,8 @@ const s = StyleSheet.create({
   subtitle: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   circle: { ...edge, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   disabled: { opacity: 0.4 },
+  done: { minHeight: 32, paddingHorizontal: 14, borderRadius: 16, justifyContent: "center", backgroundColor: colors.accentSoft },
+  doneText: { color: colors.accent, fontSize: 15, fontWeight: "700" },
   seeAll: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: 2, paddingLeft: 8 },
   seeAllText: { color: colors.muted, fontSize: 15, fontWeight: "500" },
   badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, marginLeft: 4, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },

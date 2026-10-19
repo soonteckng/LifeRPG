@@ -11,7 +11,7 @@ function load(file,mocks,cache=new Map()) {const filename=path.resolve(__dirname
 const scope={backendId:'fixture',ownerId:'11111111-1111-4111-8111-111111111111'},routine={id:'bbbbbbbb-bbbb-4bbb-8bbb-000000000001',revision:1,name:'Review notes',durationSeconds:75,focusAreaId:2,reminder:{enabled:false,hour:18,minute:0},deletedAt:null};
 const subjects=[{id:1,title:'General',color_code:null},{id:2,title:'Learning',color_code:null}];
 const rn={View:host('View'),StyleSheet:{create:value=>value,hairlineWidth:1},Platform:{OS:'android'},Keyboard:{dismiss:()=>{}},Switch:host('Switch'),AppState:{addEventListener:()=>({remove(){}})}};
-function base(){return{'react-native':rn,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Press')},'react-native-gesture-handler/ReanimatedSwipeable':{__esModule:true,default:props=>props.children},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'./AppText':{Text:host('Text')},'./AppSheet':props=>React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay),'./MotionPressable':host('Press'),'./FocusLengthControl':host('Duration'),'./SheetConfirmation':host('Confirm'),'./QuestSheet':host('LegacyEditor'),'../services/notificationPermissionService':{readNotificationPermission:async()=>({label:'Not allowed',action:'enable',supported:true,granted:false}),enableNotifications:async()=>({label:'Allowed',action:'settings',supported:true,granted:true}),openNotificationSettings:async()=>{}}};}
+function base(){return{'react-native':rn,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Press')},'react-native-gesture-handler/ReanimatedSwipeable':{__esModule:true,default:props=>props.children},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'./AppText':{Text:host('Text')},'./EditMode':{Wiggle:props=>React.createElement('View',{style:props.style,testID:props.active?'wiggling':undefined},props.children),EditBadges:props=>React.createElement('View',{testID:'edit-badges'},props.onEdit&&React.createElement('Press',{accessibilityLabel:`Edit ${props.name}`,onPress:props.onEdit}),props.onRemove&&React.createElement('Press',{accessibilityLabel:`Remove ${props.name}`,onPress:props.onRemove}))},'./AppSheet':props=>React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay),'./MotionPressable':host('Press'),'./FocusLengthControl':host('Duration'),'./SheetConfirmation':host('Confirm'),'./QuestSheet':host('LegacyEditor'),'../services/notificationPermissionService':{readNotificationPermission:async()=>({label:'Not allowed',action:'enable',supported:true,granted:false}),enableNotifications:async()=>({label:'Allowed',action:'settings',supported:true,granted:true}),openNotificationSettings:async()=>{}}};}
 test('play opens setup with the routine’s exact name, area and seconds; offline starts in its workspace',async()=>{
  for(const online of [true,false]){const calls=[],state={ready:true,scope,online,routines:[routine],pendingCount:0,conflicts:[]};const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>calls.push('haptic')},'expo-router':{useRouter:()=>({push:path=>calls.push(['route',path])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:true})},'../context/TimerContext':{useTimer:()=>prepTimer(calls,{startFreeTimer:async(...args)=>{calls.push(['start',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});try{await act(async()=>press(ui.root,'Start routine Review notes'));const steps=calls.filter(Array.isArray);
   if(online)assert.deepEqual(steps,[['task',null],['area',2],['notes',encoded('Review notes')],['seconds',75],['route','/session']],'nothing starts until Start on the setup screen');
@@ -46,9 +46,10 @@ test('Home See all lists every routine in a sheet: tap a row to edit, play to st
   const labels=sheet.findAllByType('Press').map(x=>x.props.accessibilityLabel);assert.ok(labels.includes('Start routine Review notes'));assert.ok(labels.some(label=>/^Edit Review notes, /.test(label)));assert.ok(labels.includes('Add routine'));assert.deepEqual(h.calls,[]);
   await act(async()=>press(h.ui.root,'Open Routines'));assert.equal(manageSheet(h.ui.root).props.visible,false);await act(async()=>manageSheet(h.ui.root).props.onDismiss());assert.deepEqual(h.calls,['routines tab'],'Open Routines goes to the tab after the sheet closes');}finally{await h.cleanup();}
 });
-test('a deferred Start from the options card is dropped when the account or backend changes before dismissal',async()=>{
- const h=await heldStartCard();try{const row=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Edit Review notes,'));await act(async()=>row.props.onLongPress());
-  await act(async()=>{press(h.ui.root,'Start');});await h.release();const lateDismiss=confirmSheet(h.ui.root).props.onDismiss;assert.equal(h.calls.filter(x=>x[0]==='route').length,0,'it opens only once the card has slid away');
+test('a deferred Start from the See all sheet is dropped when the account or backend changes before dismissal',async()=>{
+ const h=await heldStartCard({onSeeAll:()=>{}});try{await act(async()=>press(h.ui.root,'See all your routines'));
+  const sheet=manageSheet(h.ui.root),start=sheet.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Start routine Review notes');
+  await act(async()=>{start.props.onPress();});await h.release();const lateDismiss=manageSheet(h.ui.root).props.onDismiss;assert.equal(h.calls.filter(x=>x[0]==='route').length,0,'it opens only once the sheet has slid away');
   await h.updateScope({...scope,backendId:'different-backend'});await act(async()=>lateDismiss());assert.equal(h.calls.filter(x=>x[0]==='route').length,0);}finally{await h.cleanup();}
 });
 
@@ -84,14 +85,13 @@ test('legacy routine editing opens the existing record editor only after manager
   assert.equal(editor.props.expectedOwnerId,scope.ownerId);
  }finally{await h.cleanup();}
 });
-test('a linked routine finished elsewhere opens nothing, even from the options card',async()=>{
+test('a linked routine finished elsewhere opens nothing, even from the See all sheet',async()=>{
  const h=await mergedRoutineCard();try {
-  const row=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Edit Same name, 3 minutes'));
-  await act(async()=>row.props.onLongPress());
-  const sheet=h.ui.root.findAllByType('Sheet').find(x=>x.props.label==='routine options');
-  await act(async()=>press(h.ui.root,'Start'));
+  await act(async()=>press(h.ui.root,'See all your routines'));
+  const sheet=manageSheet(h.ui.root),starts=sheet.findAllByType('Press').filter(x=>x.props.accessibilityLabel==='Start routine Same name');
+  await act(async()=>starts[0].props.onPress());
   await h.updateTasks([{...h.legacy,is_completed_today:true}]);
-  await act(async()=>sheet.props.onDismiss());
+  await act(async()=>manageSheet(h.ui.root).props.onDismiss());
   assert.deepEqual(h.calls,[]);
  }finally{await h.cleanup();}
 });
@@ -115,27 +115,24 @@ async function menuCard({ remove = async () => true } = {}) {
  const sheet=()=>ui.root.findAllByType('Sheet').find(x=>['start routine','routine options','remove routine'].includes(x.props.label));
  return {ui,calls,removed,sheet,cleanup:async()=>act(async()=>ui.unmount())};
 }
-test('holding a routine offers Start, Edit and Remove in one small card; Remove asks first',async()=>{
+test('holding a routine wiggles the list into edit mode: ✎ edits, − asks before removing, Done finishes',async()=>{
  const h=await menuCard();try{
   const row=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Edit Review notes,'));
   await act(async()=>row.props.onLongPress());
-  assert.equal(h.sheet().props.label,'routine options');assert.equal(h.sheet().props.visible,true);assert.notEqual(h.sheet().props.floating,false);
-  for(const label of ['Start','Edit routine','Remove routine'])assert.ok(h.ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel===label),label);
-  await act(async()=>press(h.ui.root,'Remove routine'));
-  assert.equal(h.sheet().props.label,'remove routine');assert.deepEqual(h.removed,[],'nothing is removed before confirming');
-  await act(async()=>press(h.ui.root,'Remove routine'));
-  assert.deepEqual(h.removed,[routine.id]);assert.equal(h.sheet().props.visible,false);
- }finally{await h.cleanup();}
-});
-test('swiping a routine reveals Edit and Remove; Remove still confirms',async()=>{
- const h=await menuCard();try{
+  assert.ok(h.ui.root.findAll(x=>x.props.testID==='wiggling').length>0,'every card wiggles');
+  const card=()=>h.ui.root.findAllByType('View').find(x=>x.props.testID==='saved-routines-card');
+  assert.equal(card().findAllByType('Press').some(x=>x.props.accessibilityLabel==='Start routine Review notes'),false,'✎ and − take the place of play');
+  assert.equal(h.ui.root.findAllByType('Sheet').some(x=>x.props.label==='routine options'),false,'no options card any more');
   await act(async()=>press(h.ui.root,'Remove Review notes'));
-  assert.ok(h.calls.includes('close'),'the row slides back once an action is chosen');
-  assert.equal(h.sheet().props.label,'remove routine');assert.deepEqual(h.removed,[]);
-  await act(async()=>press(h.ui.root,'Keep routine'));
-  assert.equal(h.sheet().props.visible,false);assert.deepEqual(h.removed,[]);
+  assert.equal(h.sheet().props.label,'remove routine');assert.equal(h.sheet().props.visible,true);assert.deepEqual(h.removed,[],'nothing is removed before confirming');
+  await act(async()=>press(h.ui.root,'Keep routine'));assert.deepEqual(h.removed,[]);
+  await act(async()=>press(h.ui.root,'Remove Review notes'));await act(async()=>press(h.ui.root,'Remove routine'));
+  assert.deepEqual(h.removed,[routine.id]);
   await act(async()=>press(h.ui.root,'Edit Review notes'));
-  assert.equal(h.ui.root.findByType('Editor').props.visible,true);
+  assert.equal(h.ui.root.findByType('Editor').props.visible,true,'✎ opens the editor and ends edit mode');
+  assert.equal(h.ui.root.findAll(x=>x.props.testID==='wiggling').length,0);
+  await act(async()=>row.props.onLongPress());await act(async()=>press(h.ui.root,'Done editing routines'));
+  assert.equal(h.ui.root.findAll(x=>x.props.testID==='wiggling').length,0,'Done ends edit mode');
  }finally{await h.cleanup();}
 });
 test('an empty list offers two ready-made routines that open the editor prefilled',async()=>{

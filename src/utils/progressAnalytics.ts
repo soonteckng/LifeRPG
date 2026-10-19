@@ -4,7 +4,7 @@ import type {
   ProgressSession,
 } from "../services/progressService";
 import { sessionCategory } from "./sessionReporting";
-import { FOCUS_AREAS, focusAreaKind } from "./focusAreas";
+import { FOCUS_AREAS, focusAreaKind, focusAreaTitle } from "./focusAreas";
 
 export type PeriodMode = "week" | "month";
 export interface ProgressPeriod {
@@ -146,13 +146,17 @@ function progressAreaResolver(areas: { id: number; title: string; color_code?: s
   return (session: ProgressSession) => {
     const area = areas.find(item => item.id === session.subject_id);
     const title = sessionCategory(session, areas);
-    const kind = focusAreaKind(area?.title);
-    const canonical = kind && idsByKind.get(kind)!.size > 1
+    // A session saved with no area shows as Everyday focus, so it joins that
+    // row instead of becoming a second "Everyday focus".
+    const kind = focusAreaKind(area?.title) ?? (!area && title === focusAreaTitle() ? focusAreaKind(title) : null);
+    const canonical = kind && (idsByKind.get(kind)?.size ?? 0) > 1
       ? FOCUS_AREAS.find(item => item.kind === kind) : undefined;
+    // Its colour comes from the account's area of that kind, so the row looks the same either way.
+    const owner = area ?? (kind ? areas.find(item => focusAreaKind(item.title) === kind) : undefined);
     return {
       key: kind ? `kind:${kind}` : area ? `area:${area.id}` : `legacy:${title}`,
       title,
-      color: canonical?.color ?? lifeAreaColor(area?.id, area?.color_code),
+      color: canonical?.color ?? lifeAreaColor(owner?.id, owner?.color_code),
     };
   };
 }

@@ -15,7 +15,6 @@ module.exports = name => {
   // Home's drag-to-rearrange runs on the native gesture system; tests see its props.
   if (name.endsWith('/TodaySheet')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('TodaySheet', props) }; }
   // Swipe actions run on the native gesture system; rows render as they are.
-  if (name.endsWith('/SwipeRow')) return { __esModule: true, default: props => props.children };
   if (name.endsWith('/MoreMenu')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('MoreMenu', props) }; }
   if (name.endsWith('/MilestonesRow')) return { __esModule: true, default: () => null };
   // Which subject each study session was for comes from the server; its own tests cover it.

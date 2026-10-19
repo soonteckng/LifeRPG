@@ -25,8 +25,8 @@ import AppSheet from "./AppSheet";
 import RoutineEditorSheet from "./RoutineEditorSheet";
 import QuestSheet from "./QuestSheet";
 import SheetHeader from "./SheetHeader";
-import SwipeRow from "./SwipeRow";
-import SectionHeader, { CircleButton, SeeAll } from "./SectionHeader";
+import { EditBadges, Wiggle } from "./EditMode";
+import SectionHeader, { CircleButton, DoneButton, SeeAll } from "./SectionHeader";
 import OneTimeHint from "./OneTimeHint";
 import { appPreferences } from "../services/appPreferences";
 
@@ -47,9 +47,10 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
-  // Play asks before starting; holding a row offers its other actions; the
-  // row itself opens its editor. One small card carries all three.
-  const [menu, setMenu] = useState<{ entry: RoutineEntry; mode: "start" | "options" | "remove" } | null>(null);
+  // Tapping a row edits it, play starts it, and removing asks first in one small card.
+  const [menu, setMenu] = useState<{ entry: RoutineEntry; mode: "start" | "remove" } | null>(null);
+  // Holding a routine wiggles every card into edit mode, the same as subjects and exams.
+  const [arranging, setArranging] = useState(false);
   const confirm = menu?.entry ?? null;
   const setConfirm = (entry: RoutineEntry | null) => setMenu(entry ? { entry, mode: "start" } : null);
   // Starting from a sheet opens the session at once rather than after the slide.
@@ -63,7 +64,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const [previousSurface, setPreviousSurface] = useState({ active, scopeKey, admissionEpoch, online: routines.online, generation: 0 });
   if (previousSurface.active !== active || previousSurface.scopeKey !== scopeKey || previousSurface.admissionEpoch !== admissionEpoch || previousSurface.online !== routines.online) {
     setPreviousSurface({ active, scopeKey, admissionEpoch, online: routines.online, generation: previousSurface.generation + 1 });
-    setManage(false); setMenu(null); setLeaving(false); setEditor(null); setLegacyEditor(null); setShowDone(false); setMessage("");
+    setManage(false); setMenu(null); setArranging(false); setLeaving(false); setEditor(null); setLegacyEditor(null); setShowDone(false); setMessage("");
   }
   const surfaceKey = JSON.stringify([scopeKey, admissionEpoch, previousSurface.generation]);
   const currentSurface = useRef(active ? surfaceKey : "");
@@ -143,7 +144,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     catch { if (currentSurface.current === surfaceKey) { setMenu(null); setMessage("Couldn't remove this routine. Try again."); } }
     finally { if (locked.current === operation) locked.current = null; }
   };
-  const hold = (entry: RoutineEntry) => { if (!active) return; feedback(); setMessage(""); setMenu({ entry, mode: "options" }); void appPreferences.retireHint("routine-hold"); };
+  const hold = () => { if (!active) return; feedback(); setMessage(""); setArranging(true); void appPreferences.retireHint("routine-hold"); };
+  const finish = () => { feedback(); setArranging(false); };
   const afterSheetDismiss = () => {
       setLeaving(false);
       if (currentSurface.current !== surfaceKey) return;
@@ -159,35 +161,33 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const savedEntry = (routine: SavedRoutine): RoutineEntry => ({ kind: "saved", key: `routine:${routine.id}`, name: routine.name, seconds: routine.durationSeconds, areaId: routine.focusAreaId, routine });
   const legacyEntry = (task: Task): RoutineEntry => ({ kind: "legacy", key: `task:${task.id}`, name: task.title, seconds: (task.target_minutes || 30) * 60, areaId: task.subject_id, task });
   const savedRow = (routine: SavedRoutine, inSheet = false) => {
-    const area = areaOf(routine.focusAreaId), entry = savedEntry(routine);
+    const area = areaOf(routine.focusAreaId), entry = savedEntry(routine), editingRows = arranging && !inSheet;
     return <View key={`routine:${routine.id}`} style={[s.row, inSheet && s.sheetRow]}>
       <View style={[s.areaDot, { backgroundColor: lifeAreaColor(routine.focusAreaId, area?.color_code) }]} />
-      <Pressable disabled={!active} onPress={() => edit(routine)} onLongPress={inSheet ? undefined : () => hold(entry)} delayLongPress={350}
-        accessibilityRole="button" accessibilityLabel={`Edit ${routine.name}, ${routineDuration(routine.durationSeconds)}`}
-        accessibilityActions={inSheet ? undefined : [{ name: "longpress", label: "More actions" }]} onAccessibilityAction={() => hold(entry)} style={s.detail}>
+      <Pressable disabled={!active} onPress={() => editingRows ? finish() : edit(routine)} onLongPress={inSheet ? undefined : hold} delayLongPress={350}
+        accessibilityRole="button" accessibilityLabel={`${editingRows ? "" : "Edit "}${routine.name}, ${routineDuration(routine.durationSeconds)}${editingRows ? ". Done editing" : ""}`}
+        accessibilityActions={inSheet ? undefined : [{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.detail}>
         <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routineDuration(routine.durationSeconds)} · {focusAreaTitle(area?.title)}{routine.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}</Text>
       </Pressable>
-      <Pressable disabled={blocked} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.play}><Ionicons name="play" size={15} color={blocked ? colors.tertiary : colors.text} /></Pressable>
+      {editingRows ? <EditBadges name={routine.name} onEdit={() => { setArranging(false); edit(routine); }} onRemove={() => { feedback(); setMenu({ entry, mode: "remove" }); }} />
+        : <Pressable disabled={blocked} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.play}><Ionicons name="play" size={15} color={blocked ? colors.tertiary : colors.text} /></Pressable>}
     </View>;
   };
   const legacyRow = (task: Task, completed = false, inSheet = false) => {
     const disabled = blocked || completed || !task.is_due_today || !onStartLegacy || !routines.online;
-    const area = areaOf(task.subject_id), entry = legacyEntry(task);
+    const area = areaOf(task.subject_id), entry = legacyEntry(task), editingRows = arranging && !inSheet && !completed;
     return <View key={`task:${task.id}`} style={[s.row, inSheet && s.sheetRow]}>
       <View style={[s.areaDot, { backgroundColor: completed ? colors.success : lifeAreaColor(task.subject_id, area?.color_code) }]} />
-      <Pressable disabled={!active || !routines.online} onPress={() => editLegacy(task)} onLongPress={inSheet || completed ? undefined : () => hold(entry)} delayLongPress={350}
-        accessibilityRole="button" accessibilityLabel={`Edit ${task.title}, ${task.target_minutes || 30} minutes`} style={s.detail}>
+      <Pressable disabled={!active || !routines.online} onPress={() => editingRows ? finish() : editLegacy(task)} onLongPress={inSheet || completed ? undefined : hold} delayLongPress={350}
+        accessibilityRole="button" accessibilityLabel={`${editingRows ? "" : "Edit "}${task.title}, ${task.target_minutes || 30} minutes${editingRows ? ". Done editing" : ""}`} style={s.detail}>
         <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
         <Text style={s.caption}>{routineDuration((task.target_minutes || 30) * 60)} · {focusAreaTitle(area?.title)}{task.is_recurring ? task.repeat_rule === "daily" ? " · Daily" : ` · ${task.repeat_rule.split(",").join(", ")}` : " · Once"}{completed ? " · Done today" : !task.is_due_today ? " · Upcoming" : ""}</Text>
       </Pressable>
-      <Pressable disabled={disabled} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.play}><Ionicons name="play" size={15} color={disabled ? colors.tertiary : colors.text} /></Pressable>
+      {editingRows ? <EditBadges name={task.title} onEdit={() => { setArranging(false); editLegacy(task); }} />
+        : <Pressable disabled={disabled} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.play}><Ionicons name="play" size={15} color={disabled ? colors.tertiary : colors.text} /></Pressable>}
     </View>;
   };
   const row = (entry: RoutineEntry, inSheet = false) => entry.kind === "saved" ? savedRow(entry.routine, inSheet) : legacyRow(entry.task, false, inSheet);
-  // Home rows also slide left to reveal Edit and Remove, as in Mail or Reminders.
-  const homeRow = (entry: RoutineEntry) => <SwipeRow key={entry.key} enabled={active && (entry.kind === "saved" || routines.online)} label={entry.name}
-    onEdit={() => entry.kind === "saved" ? edit(entry.routine) : editLegacy(entry.task)}
-    onRemove={entry.kind === "saved" ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined}>{row(entry)}</SwipeRow>;
   const visibleEntries = entries.slice(0, limit);
   const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
   const suggestions = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
@@ -199,13 +199,14 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   return <>
     <View style={s.card} testID="saved-routines-card">
       {/* On Home, See all opens every routine in a sheet, like Upcoming Exams; in Routines the header has +. */}
-      {onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
+      {arranging ? <SectionHeader title="My Routines" subtitle="Tap ✎ to edit or − to remove." right={<DoneButton label="Done editing routines" onPress={finish} />} />
+        : onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
           onPress={() => { feedback(); if (active && routines.ready && (entries.length || done.length)) { setShowDone(false); setManage(true); } else onSeeAll(); }} />} />
         : <SectionHeader title="My Routines" right={<CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />} />}
-      <OneTimeHint id="routine-hold" text="Hold or swipe a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
+      <OneTimeHint id="routine-hold" text="Hold a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.stack}>
-        {/* Each routine is its own small card; swipe actions stay inside it. */}
-        {visibleEntries.map(entry => <View key={entry.key} style={s.itemCard}>{homeRow(entry)}</View>)}
+        {/* Each routine is its own small card; in edit mode they wiggle together. */}
+        {visibleEntries.map(entry => <Wiggle key={entry.key} active={arranging} seed={entry.key} degrees={0.4} style={s.itemCard}>{row(entry)}</Wiggle>)}
       </View> : <View style={s.itemCard}>
         <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
@@ -242,16 +243,11 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       </BottomSheetScrollView>
     </AppSheet>
     <AppSheet key={`confirm:${surfaceKey}`} visible={!!menu && active} onRequestClose={() => setMenu(null)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact
-      label={menu?.mode === "options" ? "routine options" : menu?.mode === "remove" ? "remove routine" : "start routine"}
+      label={menu?.mode === "remove" ? "remove routine" : "start routine"}
       header={menu ? <View style={s.sheetHeading}><Text style={s.confirmTitle} numberOfLines={2}>{menu.mode === "start" ? `Start “${menu.entry.name}”?` : menu.mode === "remove" ? `Remove “${menu.entry.name}”?` : menu.entry.name}</Text>
         <View style={s.confirmMeta}><View style={[s.areaDot, { backgroundColor: lifeAreaColor(menu.entry.areaId, menuArea?.color_code) }]} /><Text style={s.caption}>{menu.mode === "remove" ? "Your recorded sessions and progress stay saved." : `${routineDuration(menu.entry.seconds)} · ${focusAreaTitle(menuArea?.title)}`}</Text></View></View> : null}>
       <BottomSheetScrollView contentContainerStyle={s.confirmBody}>
-        {menu?.mode === "options" ? <View style={s.menuGroup}>
-          <MenuAction first icon="play" label="Start" onPress={startMenu} disabled={blocked || (menu.entry.kind === "legacy" && (!menu.entry.task.is_due_today || !onStartLegacy || !routines.online))} />
-          <MenuAction icon="create-outline" label="Edit routine" onPress={() => menu.entry.kind === "saved" ? edit(menu.entry.routine) : editLegacy(menu.entry.task)} />
-          {menuRoutine && widget && <MenuAction icon="grid-outline" label="Add widget" onPress={() => { setMenu(null); void pin(menuRoutine); }} />}
-          {menuRoutine && <MenuAction danger icon="trash-outline" label="Remove routine" onPress={() => { feedback(); setMenu({ entry: menu.entry, mode: "remove" }); }} />}
-        </View> : menu?.mode === "remove" ? <>
+        {menu?.mode === "remove" ? <>
           <Pressable onPress={() => { if (menuRoutine) void remove(menuRoutine); }} accessibilityRole="button" accessibilityLabel="Remove routine" style={s.removeButton}><Text style={s.removeText}>Remove routine</Text></Pressable>
           <Pressable onPress={() => setMenu(null)} accessibilityRole="button" accessibilityLabel="Keep routine" style={s.confirmCancel}><Text style={s.cancelText}>Keep routine</Text></Pressable>
         </> : <>
@@ -264,16 +260,12 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     </AppSheet>
     <RoutineEditorSheet key={`edit:${surfaceKey}`} visible={!!editor && active} onClose={() => setEditor(null)} routine={editor?.routine} subjects={subjects}
       initialAreaId={editor?.template ? suggestedArea(subjects as Subject[], editor.template.area)?.id ?? initialAreaId : initialAreaId}
-      initialSeconds={editor?.template ? editor.template.minutes * 60 : initialSeconds} initialName={editor?.template?.name} />
+      initialSeconds={editor?.template ? editor.template.minutes * 60 : initialSeconds} initialName={editor?.template?.name}
+      onAddWidget={widget && editor?.routine ? () => { const routine = editor.routine; if (routine) void pin(routine); } : undefined} />
     {legacyEditor && active && <QuestSheet key={`legacy:${scopeKey}:${legacyEditor.id}`} visible onClose={() => setLegacyEditor(null)} editorOnly initialTask={legacyEditor} expectedOwnerId={profile?.id} routineLanguage />}
   </>;
 }
 
-function MenuAction({ icon, label, onPress, danger = false, disabled = false, first = false }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label: string; onPress: () => void; danger?: boolean; disabled?: boolean; first?: boolean }) {
-  return <Pressable disabled={disabled} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} style={[s.menuRow, !first && s.menuDivider, disabled && s.confirmDisabled]}>
-    <Text style={[s.menuText, danger && s.danger]}>{label}</Text><Ionicons name={icon} size={19} color={danger ? colors.danger : colors.text} />
-  </Pressable>;
-}
 
 const s = StyleSheet.create({
   card: { gap: 10 },
@@ -298,10 +290,6 @@ const s = StyleSheet.create({
   confirmStartText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   confirmPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   confirmCancel: { minHeight: 50, alignItems: "center", justifyContent: "center" }, confirmDisabled: { opacity: 0.5 }, cancelText: { color: colors.text, fontSize: 16, fontWeight: "500" },
-  menuGroup: { ...edge, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden", marginBottom: 4 },
-  menuRow: { minHeight: 52, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
-  menuDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  menuText: { color: colors.text, fontSize: 16, lineHeight: 22 }, danger: { color: colors.danger },
   removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },

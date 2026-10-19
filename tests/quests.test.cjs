@@ -527,10 +527,13 @@ for (const platform of ["ios", "android"]) {
     assert.equal(sheetProps.enableDynamicSizing, true);
     assert.equal(sheetProps.enablePanDownToClose, true);
     assert.equal(sheetProps.overrideReduceMotion, "system");
+    // Every sheet slides on one calm timed curve by default; spring stays available and never bounces.
+    assert.equal(sheetProps.animationConfigs.duration, 280);
+    await act(async () => renderer.update(React.createElement(AppSheet, {...props, motionMode:"spring"})));
     assert.equal(sheetProps.animationConfigs.damping, 38);
     assert.equal(sheetProps.animationConfigs.overshootClamping, true);
     await act(async () => renderer.update(React.createElement(AppSheet, {...props, motionMode:"timed"})));
-    assert.equal(sheetProps.animationConfigs.duration, 220);
+    assert.equal(sheetProps.animationConfigs.duration, 280);
     assert.equal(sheetProps.overrideReduceMotion, "system");
 
     // Async daily-goal content must not add or move a native snap point.

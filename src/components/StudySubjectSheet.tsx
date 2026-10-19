@@ -19,26 +19,26 @@ type Area = Pick<Subject, "id" | "title" | "color_code">;
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 /** One subject: its week at a glance, its exams, and a way to study it now. New subjects open straight into editing. */
-export default function StudySubjectSheet({ visible, course, areas, defaultAreaId, recent, exams, sessionOpen, onSave, onRemove, onStudy, onAddExam, onEditExam, onClose, onDismiss }: {
-  visible: boolean; course: StudyCourse | null; areas: Area[]; defaultAreaId: number | null; recent: StudyRecent[]; exams: StudyExam[]; sessionOpen: boolean;
+export default function StudySubjectSheet({ visible, course, startEditing = false, areas, defaultAreaId, recent, exams, sessionOpen, onSave, onRemove, onStudy, onAddExam, onEditExam, onClose, onDismiss }: {
+  visible: boolean; course: StudyCourse | null; startEditing?: boolean; areas: Area[]; defaultAreaId: number | null; recent: StudyRecent[]; exams: StudyExam[]; sessionOpen: boolean;
   onSave: (draft: StudyCourseDraft, id?: string) => Promise<boolean>; onRemove: (id: string) => Promise<boolean>;
   onStudy: (course: StudyCourse) => void; onAddExam: (course: StudyCourse) => void; onEditExam: (exam: StudyExam) => void; onClose: () => void; onDismiss?: () => void;
 }) {
   const makeDraft = (): StudyCourseDraft => course ? { name: course.name, focusAreaId: course.focusAreaId } : { name: "", focusAreaId: defaultAreaId };
   const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(makeDraft), [original, setOriginal] = useState(() => JSON.stringify(makeDraft()));
-  const [editing, setEditing] = useState(!course);
+  const [editing, setEditing] = useState(!course || startEditing);
   const [wasVisible, setWasVisible] = useState(visible), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"discard" | "remove" | null>(null);
   if (wasVisible !== visible) {
     setWasVisible(visible);
-    if (visible) { const next = makeDraft(); setDraft(next); setOriginal(JSON.stringify(next)); setEditing(!course); setError(""); setConfirm(null); setBusy(false); }
+    if (visible) { const next = makeDraft(); setDraft(next); setOriginal(JSON.stringify(next)); setEditing(!course || startEditing); setError(""); setConfirm(null); setBusy(false); }
   }
   const lock = useRef(false);
   const dirty = editing && JSON.stringify(draft) !== original;
   const area = areas.find(item => item.id === course?.focusAreaId);
   const tint = courseColor(course?.id);
-  const close = () => { if (busy) return; Keyboard.dismiss(); if (dirty) setConfirm("discard"); else if (editing && course) setEditing(false); else onClose(); };
+  const close = () => { if (busy) return; Keyboard.dismiss(); if (dirty) setConfirm("discard"); else if (editing && course && !startEditing) setEditing(false); else onClose(); };
   const run = async (work: () => Promise<boolean>, failure: string, after: () => void) => {
     if (lock.current) return; lock.current = true; setBusy(true);
     try { if (await work()) { setConfirm(null); after(); } else setError(failure); }
@@ -50,7 +50,7 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
     if (!next.name) { setError("Give your subject a name first."); return; }
     if (!validCourseDraft(next)) { setError("Use up to 60 characters for the name."); return; }
     Keyboard.dismiss();
-    void run(() => onSave(next, course?.id), "Couldn't save this subject. Your details are still here.", () => { if (course) { setOriginal(JSON.stringify(next)); setEditing(false); } else onClose(); });
+    void run(() => onSave(next, course?.id), "Couldn't save this subject. Your details are still here.", () => { if (course && !startEditing) { setOriginal(JSON.stringify(next)); setEditing(false); } else onClose(); });
   };
   const days = course ? studyDays(recent, course.id) : [];
   const week = days.reduce((sum, value) => sum + value, 0), peak = Math.max(...days, 1);

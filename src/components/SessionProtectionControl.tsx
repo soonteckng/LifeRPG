@@ -95,7 +95,7 @@ export function ProtectionSettingsSheet({ visible, onClose }: { visible: boolean
       await protection.refresh();
     } catch { if (currentView.current === expectedView && isCurrent()) setMessage("Open this app’s notification settings to allow its protection notification."); }
   };
-  return <AppSheet visible={visible} onRequestClose={() => { if (locked || !saving) onClose(); }} guardDismiss={!locked && saving} compact maxHeightRatio={0.88} label={locked ? "session protection details" : "session protection"} motionMode="timed"
+  return <AppSheet visible={visible} onRequestClose={() => { if (locked || !saving) onClose(); }} guardDismiss={!locked && saving} attached compact maxHeightRatio={0.88} label={locked ? "session protection details" : "session protection"} motionMode="timed"
     header={<SheetHeader title={locked ? "Your session protection" : "A little space to focus"} subtitle={locked ? "Your app choices stay fixed until this session ends. End session remains available at any time." : "During a session, only the apps you allow stay open. You get one break of up to five minutes."} onClose={() => { if (locked || !saving) onClose(); }} />}
     footer={<View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
       {(!locked || canRestore) && <SheetButton disabled={applyDisabled} onPress={() => void apply()} accessibilityRole="button" style={[s.primary, applyDisabled && s.disabled]}><Text style={s.primaryText}>{saving ? "Saving…" : canRestore ? "Restore protection" : "Save"}</Text></SheetButton>}

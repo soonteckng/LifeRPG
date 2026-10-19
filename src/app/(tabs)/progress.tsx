@@ -643,6 +643,7 @@ export default function ProgressScreen() {
         label="progress details"
         compact
         attached
+        motionMode="timed"
         maxHeightRatio={0.86}
         header={
           <View style={s.sheetHeader}>

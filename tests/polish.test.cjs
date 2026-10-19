@@ -8,7 +8,7 @@ function load(file,mocks={},cache=new Map()){
  const module={exports:{}};cache.set(filename,module);const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
   if(name.endsWith('/AppBuildInfo'))return()=>null;
-  if(name.endsWith('/SwipeBack'))return{__esModule:true,default:props=>props.children};
+  if(name.endsWith('/SwipeBack'))return{__esModule:true,default:props=>props.children,useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children};
   if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvite');if(name==='expo-constants')return {expoConfig:{android:{package:'com.soonteck.liferpg'}}};if(name==='expo')return {isRunningInExpoGo:()=>false};if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvitation');if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
    if(name==='expo-haptics')return {};if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
  },module,module.exports);return module.exports;
@@ -367,7 +367,7 @@ test('Settings origin geometry maps a full page back to its actual icon and expi
  const api=load('src/utils/settingsOrigin.ts');
  const icon={x:326,y:32,width:44,height:44},frame={x:0,y:24,width:390,height:800};
  api.rememberSettingsOrigin(icon);assert.deepEqual(api.readSettingsOrigin(),icon);
- const mapped=api.settingsTransform(icon,frame);assert.equal(frame.x+mapped.x,348);assert.equal(frame.y+mapped.y,54);assert.equal(mapped.scale,.001);
+ const mapped=api.settingsTransform(icon,frame);assert.equal(frame.x+mapped.x,348);assert.equal(frame.y+mapped.y,54);assert.equal(mapped.scale,44/390,'it starts at the button’s own size, not a dot');
  const date=Date.now;try{Date.now=()=>date()+10_001;assert.equal(api.readSettingsOrigin(),null);}finally{Date.now=date;}
 });
 
@@ -409,7 +409,7 @@ test('Settings waits for its frame and smoothly expands and retracts at the meas
    assert.equal(animations.length,0,'no motion until window origin has been measured');
    await act(async()=>tree.root.findByProps({testID:'settings-frame'}).props.onLayout());
    assert.deepEqual(tree.root.findByProps({testID:'personal-page-surface'}).props.style.transformOrigin,[142,178,0]);
-   const enter=animations.find(a=>a.config.toValue===0);assert.equal(enter.config.duration,280);assert.equal(enter.config.useNativeDriver,true);assert.equal(enter.config.spring,undefined);
+   const enter=animations.find(a=>a.config.toValue===0);assert.equal(enter.config.duration,360);assert.equal(enter.config.useNativeDriver,true);assert.equal(enter.config.spring,undefined);
    await act(async()=>tree.root.findByType('Header').props.onBack());assert.equal(dispatch.length,0);
    const exit=animations.find(a=>a.config.toValue===1);assert.equal(exit.config.duration,320,'shrinking back is unhurried');assert.equal(exit.config.useNativeDriver,true);assert.equal(exit.config.spring,undefined);assert.equal(exit.config.velocity,undefined);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
   }finally{await act(async()=>tree.unmount());}

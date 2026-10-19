@@ -8,6 +8,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type ComponentProps,
   type ReactNode,
 } from "react";
@@ -21,9 +22,10 @@ import { colors, edge } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { TourScrollView } from "./FeatureTour";
-import { navigationTiming } from "../utils/navigationMotion";
+import { navigationTiming, zoomTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
-import SwipeBack from "./SwipeBack";
+import SwipeBack, { ParallaxLayer, useSwipeOffset, type PageMotion } from "./SwipeBack";
+import { pageStack } from "../utils/pageStack";
 import { readSettingsOrigin, settingsTransform } from "../utils/settingsOrigin";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
 export function PersonalPage({
@@ -63,6 +65,16 @@ export function PersonalPage({
   const [frame, setFrame] = useState({ x: 0, y: 0, width, height });
   const [frameReady, setFrameReady] = useState(!expandFromIcon);
   const [position] = useState(() => new Animated.Value(controlled ? expandFromIcon ? 1 : width : 0));
+  // Second-level pages join one stack: the page beneath drifts left as the
+  // next one slides in, and follows it back while it is swiped away.
+  const swipe = useSwipeOffset(), slides = controlled && !expandFromIcon;
+  const [stackId] = useState(() => pageStack.reserve());
+  useLayoutEffect(() => {
+    if (!back) return;
+    pageStack.add(stackId, slides ? { position, swipe } : null);
+    return () => pageStack.remove(stackId);
+  }, [back, slides, position, swipe, stackId]);
+  const above = useSyncExternalStore(pageStack.subscribe, () => pageStack.above<PageMotion>(stackId), () => null);
   const origin = settingsTransform(source, frame);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
@@ -74,7 +86,7 @@ export function PersonalPage({
   }, [frameReady]);
   useLayoutEffect(() => {
     if (!controlled || !frameReady || closing.current) return;
-    const animation = Animated.timing(position, { toValue: 0, ...navigationTiming(reduced ? 0 : expandFromIcon ? 280 : 240) });
+    const animation = Animated.timing(position, { toValue: 0, ...(expandFromIcon ? zoomTiming(reduced ? 0 : 360, false) : navigationTiming(reduced ? 0 : 240)) });
     animation.start();
     return () => animation.stop();
   }, [controlled, position, reduced, expandFromIcon, frameReady]);
@@ -90,7 +102,7 @@ export function PersonalPage({
       return;
     }
     closing.current = true;
-    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : expandFromIcon ? 320 : 230) });
+    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...(expandFromIcon ? zoomTiming(reduced ? 0 : 320, true) : navigationTiming(reduced ? 0 : 230)) });
     animation.start(({ finished }) => {
       if (finished) setExitReady(true);
       else {
@@ -117,7 +129,10 @@ export function PersonalPage({
       collapsable={false}
       onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
       style={{ flex: 1 }}
-    ><SwipeBack enabled={controlled && !expandFromIcon && !exitReady} onBack={swiped}><Animated.View
+    >{expandFromIcon && <Animated.View pointerEvents="none" testID="personal-page-dim"
+      style={[StyleSheet.absoluteFill, { backgroundColor: "#000000", opacity: position.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0], extrapolate: "clamp" }) }]} />}
+      {/* Home dims softly behind a page growing out of its button. */}
+      <ParallaxLayer above={above} width={width}><SwipeBack enabled={controlled && !expandFromIcon && !exitReady} onBack={swiped} offset={swipe}><Animated.View
       renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
@@ -160,7 +175,7 @@ export function PersonalPage({
           </View>
         </TourScrollView>
       </SafeAreaView>
-    </Animated.View></SwipeBack></View>
+    </Animated.View></SwipeBack></ParallaxLayer></View>
   );
 }
 export function PersonalRow({

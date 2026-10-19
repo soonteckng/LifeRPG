@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { Animated, Easing, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useRef } from "react";
+import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import { colors, edge, radius } from "../constants/theme";
-import { useReducedMotion } from "../hooks/useReducedMotion";
+import { EditBadges, Wiggle } from "./EditMode";
 import { areaTint } from "../utils/lifeAreaColor";
 import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 import type { StudyCourse, StudyExam, StudyRecent } from "../types/studyPlan";
@@ -14,11 +14,11 @@ const GAP = 10;
 /**
  * My Subjects as a sideways shelf of cards wide enough for full names; the
  * next card peeks in to invite a swipe. Hold any card to edit: every card
- * wiggles and shows a remove button, like arranging apps on a home screen.
+ * wiggles and shows ✎ and −, the same as routines and exams.
  */
-export default function SubjectShelf({ courses, exams, recent, editing, onEditingChange, onOpen, onStudy, onRemove }: {
+export default function SubjectShelf({ courses, exams, recent, editing, onEditingChange, onOpen, onEdit, onStudy, onRemove }: {
   courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; editing: boolean; onEditingChange: (editing: boolean) => void;
-  onOpen: (course: StudyCourse) => void; onStudy: (course: StudyCourse) => void; onRemove: (course: StudyCourse) => void;
+  onOpen: (course: StudyCourse) => void; onEdit: (course: StudyCourse) => void; onStudy: (course: StudyCourse) => void; onRemove: (course: StudyCourse) => void;
 }) {
   const { width } = useWindowDimensions();
   // About one and two-thirds cards show: names fit, and the next one peeks in.
@@ -37,30 +37,18 @@ export default function SubjectShelf({ courses, exams, recent, editing, onEditin
       <SubjectTile course={course} width={tile} editing={editing}
         exam={upcoming.find(item => item.courseId === course.id)} week={weekSeconds(recent, course.id)}
         onPress={() => editing ? onEditingChange(false) : onOpen(course)} onLongPress={() => onEditingChange(true)}
-        onStudy={() => onStudy(course)} onRemove={() => onRemove(course)} />
+        onStudy={() => onStudy(course)} onEdit={() => onEdit(course)} onRemove={() => onRemove(course)} />
     </View>)}
   </ScrollView>;
 }
 
-function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress, onStudy, onRemove }: {
+function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress, onStudy, onEdit, onRemove }: {
   course: StudyCourse; width: number; editing: boolean; exam?: StudyExam; week: number;
-  onPress: () => void; onLongPress: () => void; onStudy: () => void; onRemove: () => void;
+  onPress: () => void; onLongPress: () => void; onStudy: () => void; onEdit: () => void; onRemove: () => void;
 }) {
-  const reduced = useReducedMotion(), tint = courseColor(course.id);
-  const [wiggle] = useState(() => new Animated.Value(0));
-  useEffect(() => {
-    if (!editing || reduced) { wiggle.stopAnimation(); wiggle.setValue(0); return; }
-    // Each card starts at a slightly different point, so they don't move in lockstep.
-    const loop = Animated.loop(Animated.sequence([
-      Animated.timing(wiggle, { toValue: 1, duration: 130, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(wiggle, { toValue: -1, duration: 260, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-      Animated.timing(wiggle, { toValue: 0, duration: 130, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]));
-    const start = setTimeout(() => loop.start(), (course.id.charCodeAt(0) % 5) * 40);
-    return () => { clearTimeout(start); loop.stop(); };
-  }, [editing, reduced, wiggle, course.id]);
+  const tint = courseColor(course.id);
   const days = exam ? daysUntil(exam.examDate) : null;
-  return <Animated.View style={[s.tileFrame, { width, transform: [{ rotate: wiggle.interpolate({ inputRange: [-1, 1], outputRange: ["-1.4deg", "1.4deg"] }) }] }]}>
+  return <Wiggle active={editing} seed={course.id} degrees={0.9} style={[s.tileFrame, { width }]}>
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={400} accessibilityRole="button"
       accessibilityLabel={`${course.name}, ${studyTime(week)} this week${exam ? `, exam ${countdownLabel(days!)}` : ""}. ${editing ? "Done editing" : "Open subject"}`}
       accessibilityActions={[{ name: "longpress", label: "Edit subjects" }]} onAccessibilityAction={onLongPress} style={s.tile}>
@@ -74,9 +62,8 @@ function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress,
     </Pressable>
     {!editing && <Pressable onPress={onStudy} accessibilityRole="button" accessibilityLabel={`Study ${course.name}`} hitSlop={6} style={s.play}>
       <Ionicons name="play" size={13} color={colors.text} /></Pressable>}
-    {editing && <Pressable onPress={onRemove} accessibilityRole="button" accessibilityLabel={`Remove ${course.name}`} hitSlop={8} style={s.remove}>
-      <Ionicons name="remove" size={16} color="#FFFFFF" /></Pressable>}
-  </Animated.View>;
+    {editing && <EditBadges placement="corner" name={course.name} onEdit={onEdit} onRemove={onRemove} />}
+  </Wiggle>;
 }
 /** Days to an exam as a soft pill: red only in the last week, never raw red text. */
 export function ExamPill({ days }: { days: number }) {
@@ -97,6 +84,4 @@ const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18, paddingRight: 36 },
   noExam: { color: colors.muted, fontSize: 12, lineHeight: 17, paddingRight: 36 },
   play: { ...edge, position: "absolute", right: 10, bottom: 10, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
-  remove: { position: "absolute", top: -7, right: -7, width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.danger,
-    borderWidth: 2, borderColor: colors.background },
 });

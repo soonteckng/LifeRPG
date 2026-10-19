@@ -36,7 +36,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "../constants/motion";
 import { registerSheetActivity } from "../utils/sheetActivity";
 
-const listTiming = { duration: 220, easing: Easing.out(Easing.cubic) };
+// Every sheet slides on the same calm curve: quick to start, long soft landing, no bounce.
+const listTiming = { duration: 280, easing: Easing.out(Easing.cubic) };
 
 interface Props {
   visible: boolean;
@@ -75,6 +76,7 @@ const DismissContext = createContext({
   header: null as React.ReactNode,
   footer: null as React.ReactNode,
   label: "sheet",
+  floating: false,
 });
 
 // Keep the handle component's identity stable while typing or saving.
@@ -102,9 +104,10 @@ function SheetHandle() {
 // change. A stable native footer keeps its measured height and animated anchor
 // while pending results settle or an editor updates its actions.
 function SheetFooter(props: BottomSheetFooterProps) {
-  const { footer } = useContext(DismissContext);
+  const { footer, floating } = useContext(DismissContext);
   // The sheet's container already ends above a floating card's bottom inset.
-  return <BottomSheetFooter {...props} bottomInset={0}>{footer}</BottomSheetFooter>;
+  // A floating card's footer follows its rounded corners instead of poking out.
+  return <BottomSheetFooter {...props} bottomInset={0}>{floating ? <View style={styles.floatingFooter}>{footer}</View> : footer}</BottomSheetFooter>;
 }
 
 // Retain the library's native scroll/pan coordination even when dismissal needs
@@ -166,7 +169,7 @@ export default function AppSheet({
   heightRatio = 0.88,
   keyboardBehavior,
   androidKeyboardInputMode = "adjustResize",
-  motionMode = "spring",
+  motionMode = "timed",
   overlay,
   footer,
   label,
@@ -315,6 +318,7 @@ export default function AppSheet({
               header,
               footer,
               label,
+              floating,
             }}
           >
             <BottomSheet
@@ -372,6 +376,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: radius.sheet,
   },
   floating: { marginHorizontal: 8 },
+  floatingFooter: { overflow: "hidden", borderBottomLeftRadius: radius.sheet, borderBottomRightRadius: radius.sheet },
   floatingSurface: { ...edge, backgroundColor: colors.surfaceRaised, borderRadius: radius.sheet },
   handleTarget: { height: 28, alignItems: "center", justifyContent: "center" },
   handle: {

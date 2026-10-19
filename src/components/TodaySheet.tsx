@@ -1,6 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import Pressable from "./MotionPressable";
 import ProgressRing from "./ProgressRing";
@@ -18,10 +19,10 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
   visible: boolean; onClose: () => void; completedSeconds: number; goalMinutes: number; streak: number; complete: boolean;
   onChangeGoal: () => void; onOpenProgress: () => void; canChangeGoal?: boolean;
 }) {
-  const { week } = useWeekProgress();
+  const { week } = useWeekProgress(), insets = useSafeAreaInsets();
   const goal = goalMinutes * 60, left = Math.max(0, goal - completedSeconds), share = Math.min(1, completedSeconds / Math.max(1, goal));
   const after = (work: () => void) => { onClose(); setTimeout(work, 240); };
-  return <AppSheet visible={visible} onRequestClose={onClose} compact maxHeightRatio={0.9} label="today" motionMode="timed"
+  return <AppSheet visible={visible} onRequestClose={onClose} attached compact maxHeightRatio={0.9} label="today" motionMode="timed"
     header={<View style={s.header}>
       <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
       {visible && <MoreMenu label="Goal options" options={[
@@ -30,7 +31,7 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
       ]} />}
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={s.close}><Ionicons name="close" size={18} color={colors.secondary} /></Pressable>
     </View>}>
-    <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+    <BottomSheetScrollView contentContainerStyle={[s.body, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
       <View style={[s.card, s.hero]} accessible accessibilityLabel={`${Math.floor(completedSeconds / 60)} of ${goalMinutes} minutes today`}>
         <ProgressRing size={148} stroke={14} progress={share} color={complete ? colors.success : colors.accent} track={colors.accentSoft}>
           <Text style={s.ringValue}>{Math.floor(completedSeconds / 60)}</Text><Text style={s.caption}>of {goalMinutes} min</Text>

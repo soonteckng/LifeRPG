@@ -10,7 +10,7 @@ import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import ExamRow from "./ExamRow";
 import ExamsCard from "./ExamsCard";
-import SectionHeader, { SeeAll } from "./SectionHeader";
+import SectionHeader, { DoneButton, SeeAll } from "./SectionHeader";
 import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
 import { SquadFace, SquadJoinSheet } from "./SquadSheets";
@@ -30,16 +30,18 @@ import { ranked, squadTotal } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
 import type { StudyExam } from "../types/studyPlan";
 
-// Home is a summary: each section shows what matters now as its own small
-// cards, and a quiet "See all ›" opens the section in full.
+// Home is a summary. One rule for every section: tapping a card opens it as a
+// full-width sheet; "See all" lists everything in a sheet; a title with ›
+// ("My Squad ›", "This Week ›") opens that section's tab.
 const WEEK = 7;
 
 /** Exams within the next week (up to three), or the next one if none are that close. Tapping one starts studying it. */
 export function HomeExams() {
   const router = useRouter(), plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), { subjects = [] } = useQuests(), insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<"all" | "add" | null>(null);
-  const [editing, setEditing] = useState<StudyExam | null>(null);
+  const [editing, setEditing] = useState<StudyExam | null>(null), [arranging, setArranging] = useState(false);
   const coming = upcomingExams(plan.exams), soon = coming.filter(exam => daysUntil(exam.examDate) <= WEEK);
+  if (arranging && !coming.length) setArranging(false);
   const shown = soon.length ? soon.slice(0, 3) : coming.slice(0, 1);
   const courseFor = (id: string | null) => plan.courses.find(item => item.id === id) ?? null;
   // Same as Study and routines: tap to edit, Study to start, hold for more.
@@ -48,9 +50,10 @@ export function HomeExams() {
   const subtitle = soon.length ? `${soon.length} in the next 7 days${soon.length > 3 ? " · nearest 3" : ""}` : coming.length ? `Next one in ${daysUntil(coming[0].examDate)} days` : "Nothing scheduled";
   const add = () => { setEditing(null); setSheet("add"); };
   return <View style={s.section} testID="home-exams">
-    <SectionHeader title="Upcoming Exams" subtitle={subtitle}
-      right={coming.length ? <SeeAll count={coming.length > shown.length ? coming.length : undefined} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
-    {shown.length ? <ExamsCard exams={shown} courses={plan.courses} onEdit={edit} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} />
+    <SectionHeader title="Upcoming Exams" subtitle={arranging ? "Tap ✎ to edit or − to remove." : subtitle}
+      right={arranging ? <DoneButton label="Done editing exams" onPress={() => setArranging(false)} />
+        : coming.length ? <SeeAll count={coming.length > shown.length ? coming.length : undefined} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
+    {shown.length ? <ExamsCard exams={shown} courses={plan.courses} onEdit={edit} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} editing={arranging} onEditingChange={setArranging} />
       : <Pressable onPress={add} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
@@ -79,7 +82,7 @@ export function HomeExams() {
 
 /** Your squad's week. Tapping it peeks at the leaderboard; the Squads tab has the whole squad. */
 export function HomeSquad() {
-  const router = useRouter(), squads = useSquads();
+  const router = useRouter(), squads = useSquads(), insets = useSafeAreaInsets();
   const chosen = squadSelection.get();
   const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
   const [peek, setPeek] = useState(false), [joining, setJoining] = useState(false);
@@ -91,7 +94,7 @@ export function HomeSquad() {
   const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
     <SectionHeader title="My Squad" subtitle={!squads.online ? squad ? "Offline · last saved" : undefined : squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
-      right={squad ? <SeeAll onPress={openSquads} accessibilityLabel="My Squad. Open Squads" /> : undefined} />
+      onPress={squad ? openSquads : undefined} pressLabel="My Squad. Open Squads" />
     {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
       accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
       <SquadSummary squad={squad} />
@@ -101,9 +104,9 @@ export function HomeSquad() {
       <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>{squads.online ? "Start a squad and keep each other going." : "Needs internet to start or join a squad."}</Text></View>
       {squads.online && <Ionicons name="add-circle" size={24} color={colors.accent} />}
     </Pressable>}
-    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} compact label="squad peek" motionMode="timed"
+    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} attached compact maxHeightRatio={0.86} label="squad peek" motionMode="timed"
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
-      <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
+      <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <View style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></View>
         <View style={[s.group, s.sheetGroup]}>{top.map((member, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
           accessibilityLabel={`${index + 1}. ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)}`}>
@@ -147,12 +150,12 @@ export function WeekBars({ height = 44, wide = false }: { height?: number; wide?
 
 /** This week in one line and seven small bars. Tapping it opens the week by category. */
 export function HomeWeek() {
-  const router = useRouter(), { week } = useWeekProgress();
+  const router = useRouter(), { week } = useWeekProgress(), insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
   return <View style={s.section} testID="home-week">
-    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} right={<SeeAll onPress={() => router.navigate("/progress")} accessibilityLabel="This Week. Open Progress" />} />
+    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
     <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
       <View style={s.flex}>
         <Text style={s.total}>{durationLabel(week?.seconds ?? 0)}</Text>
@@ -161,9 +164,9 @@ export function HomeWeek() {
       </View>
       <WeekBars />
     </Pressable>
-    <AppSheet visible={open} onRequestClose={() => setOpen(false)} compact maxHeightRatio={0.86} label="this week" motionMode="timed"
+    <AppSheet visible={open} onRequestClose={() => setOpen(false)} attached compact maxHeightRatio={0.86} label="this week" motionMode="timed"
       header={<SheetHeader title="This Week" subtitle={`${durationLabel(week?.seconds ?? 0)} · ${week?.sessions.length ?? 0} sessions`} onClose={() => setOpen(false)} />}>
-      <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
+      <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
         <View style={[s.card, s.sheetCard]}><WeekBars height={72} wide /><Text style={s.caption}>A green dot marks a day you reached your goal.</Text></View>
         <View style={[s.group, s.sheetGroup]}>{week?.areas.length ? week.areas.map((area, index) => <View key={area.key} style={[s.areaRow, index > 0 && s.line]} accessible accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}`}>
           <View style={[s.dot, { backgroundColor: area.color }]} />

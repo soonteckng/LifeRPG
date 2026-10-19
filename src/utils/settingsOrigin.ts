@@ -10,6 +10,7 @@ export function readSettingsOrigin(): TourRect | null {
 }
 export function settingsTransform(origin: TourRect | null, frame: TourRect) {
   const center = origin ? { x: origin.x + origin.width / 2, y: origin.y + origin.height / 2 } : { x: frame.x + frame.width - 42, y: frame.y + 42 };
-  // A fixed pivot keeps the icon stationary through the spring's overshoot.
-  return { x: center.x - frame.x, y: center.y - frame.y, scale: 0.001 };
+  // It starts at the button's own size rather than a dot, around a fixed pivot.
+  const scale = origin ? Math.min(0.3, Math.max(0.06, origin.width / Math.max(1, frame.width))) : 0.06;
+  return { x: center.x - frame.x, y: center.y - frame.y, scale };
 }

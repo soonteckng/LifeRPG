@@ -26,7 +26,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
-      if (name.endsWith("/SwipeBack")) return {__esModule:true,default:props=>props.children};
+      if (name.endsWith("/SwipeBack")) return {__esModule:true,default:props=>props.children,useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children};
       if (name.endsWith("/FocusAreaDetailSheet")) return props=>React.createElement("AreaSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};

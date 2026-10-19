@@ -21,8 +21,10 @@ import { readNotificationPermission, enableNotifications, openNotificationSettin
 import type { RoutineDraft, SavedRoutine } from "../types/savedRoutine";
 import type { Subject } from "../services/taskService";
 
-export default function RoutineEditorSheet({ visible, onClose, onDismiss, routine, subjects, initialAreaId = null, initialSeconds = 1800, initialName = "", onSaved }: {
+export default function RoutineEditorSheet({ visible, onClose, onDismiss, routine, subjects, initialAreaId = null, initialSeconds = 1800, initialName = "", onSaved, onAddWidget }: {
   visible: boolean; onClose: () => void; onDismiss?: () => void; routine?: SavedRoutine | null; subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialAreaId?: number | null; initialSeconds?: number; initialName?: string; onSaved?: (draft: RoutineDraft) => void;
+  /** Pins this saved routine to the phone's home screen, where the launcher supports it. */
+  onAddWidget?: () => void;
 }) {
   const routines = useSavedRoutines(), { hapticsEnabled } = useUser(), insets = useSafeAreaInsets();
   const makeDraft = (): RoutineDraft => routine ? { name: routine.name, focusAreaId: routine.focusAreaId, durationSeconds: routine.durationSeconds, reminder: { ...routine.reminder } }
@@ -126,6 +128,11 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
           {!permission?.granted && <Text style={s.caption}>You can save this reminder now. It can notify you after notifications are allowed.</Text>}
           <Text style={s.caption}>Your phone may delay reminders to save battery.</Text>
         </View></>}
+      {routine && onAddWidget && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Add widget to your home screen" onPress={onAddWidget} style={s.reminder}>
+        <Ionicons name="grid-outline" size={19} color={colors.accent} />
+        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Start this routine from your phone’s home screen.</Text></View>
+        <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+      </TouchableOpacity>}
     </BottomSheetScrollView>
   </AppSheet>;
 }

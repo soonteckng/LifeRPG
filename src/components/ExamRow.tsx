@@ -1,6 +1,7 @@
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
+import { EditBadges } from "./EditMode";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
 import { countdownLabel, courseColor, daysUntil, examDateLabel, localDate } from "../utils/studyPlan";
@@ -12,8 +13,10 @@ import type { StudyCourse, StudyExam } from "../types/studyPlan";
  * row starts at the same edge; the divider is drawn inside the row, so it
  * never pushes a row sideways.
  */
-export default function ExamRow({ exam, course, first = false, onPress, onLongPress, onStudy, inSheet = false, label }: {
+export default function ExamRow({ exam, course, first = false, onPress, onLongPress, onStudy, inSheet = false, label, editing = false, onEdit, onRemove }: {
   exam: StudyExam; course: StudyCourse | null; first?: boolean; onPress: () => void; onLongPress?: () => void; onStudy?: () => void; inSheet?: boolean;
+  /** In edit mode ✎ and − take the place of Study. */
+  editing?: boolean; onEdit?: () => void; onRemove?: () => void;
   /** What tapping the row does, for screen readers. */
   label?: string;
 }) {
@@ -22,7 +25,7 @@ export default function ExamRow({ exam, course, first = false, onPress, onLongPr
   return <View style={[s.row, { backgroundColor: inSheet ? colors.sheetCard : colors.surface }]} testID="exam-row">
     {!first && <View style={s.line} />}
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={350} accessibilityRole="button"
-      accessibilityLabel={`${exam.title}, ${countdownLabel(days)}, ${examDateLabel(exam.examDate)}${label ? `. ${label}` : ""}`}
+      accessibilityLabel={`${exam.title}, ${countdownLabel(days)}, ${examDateLabel(exam.examDate)}${editing ? ". Done editing" : label ? `. ${label}` : ""}`}
       accessibilityActions={onLongPress ? [{ name: "longpress", label: "More actions" }] : undefined} onAccessibilityAction={onLongPress} style={s.main}>
       {/* A calendar tile: the month over the day, so the number always reads as a date. */}
       <View style={[s.days, inSheet && s.daysInSheet]} testID="exam-date-tile">
@@ -35,9 +38,10 @@ export default function ExamRow({ exam, course, first = false, onPress, onLongPr
           {!!course && <Text style={s.caption} numberOfLines={1}>{course.name} ·</Text>}
           <Text style={[s.left, soon && s.hot]} numberOfLines={1} testID="exam-days-left">{left}</Text></View>
       </View>
-      {!onStudy && <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />}
+      {!onStudy && !editing && <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />}
     </Pressable>
-    {onStudy && <Pressable onPress={onStudy} accessibilityRole="button" accessibilityLabel={`Study ${course?.name ?? exam.title}`} hitSlop={6} style={s.study}>
+    {editing && <EditBadges name={exam.title} onEdit={onEdit} onRemove={onRemove} />}
+    {onStudy && !editing && <Pressable onPress={onStudy} accessibilityRole="button" accessibilityLabel={`Study ${course?.name ?? exam.title}`} hitSlop={6} style={s.study}>
       <Ionicons name="play" size={12} color={colors.accent} /><Text style={s.studyText}>Study</Text></Pressable>}
   </View>;
 }

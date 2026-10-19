@@ -52,7 +52,7 @@ test('a disabled page does not offer the swipe',async()=>{
 test('a swiped Android page leaves at once without running its own exit animation again',async()=>{
  let swipe,prevent,tree;const timings=[],dispatched=[];
  const navigation={canGoBack:()=>true,dispatch:value=>dispatched.push(value),goBack:()=>dispatched.push('back')};
- const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}},timing:(_,config)=>{timings.push(config.toValue);return{start(){},stop(){}};}}},'expo-router':{useRouter:()=>({canGoBack:()=>true}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove:(active,callback)=>{prevent={active,callback};}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;}}});
+ const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}},timing:(_,config)=>{timings.push(config.toValue);return{start(){},stop(){}};}}},'expo-router':{useRouter:()=>({canGoBack:()=>true}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove:(active,callback)=>{prevent={active,callback};}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;},useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children}});
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Milestones',subtitle:'',back:true,animateTransition:true},'Milestones'));});
  try{
   assert.equal(swipe.enabled,true);
@@ -64,9 +64,28 @@ test('a swiped Android page leaves at once without running its own exit animatio
 });
 test('top-level pages and Settings never offer the swipe',async()=>{
  let swipe,tree;
- const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(){return 0;}},timing:()=>({start(){},stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>({})},'expo-router/react-navigation':{usePreventRemove:()=>{}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;}}});
+ const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(){return 0;}},timing:()=>({start(){},stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>({})},'expo-router/react-navigation':{usePreventRemove:()=>{}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;},useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children}});
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Profile',subtitle:''},'Profile'));});
  try{assert.equal(swipe.enabled,false);}finally{await act(async()=>tree.unmount());}
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Settings',subtitle:'',back:true,animateTransition:true,expandFromIcon:true},'Settings'));});
  try{assert.equal(swipe.enabled,false,'Settings returns to its icon instead');}finally{await act(async()=>tree.unmount());}
+});
+
+test('the page beneath follows only the page directly above it, and lets go when that page leaves',()=>{
+ const {pageStack}=load('src/utils/pageStack.ts');
+ const settings=pageStack.reserve(),goal=pageStack.reserve(),seen=[];
+ const stop=pageStack.subscribe(()=>seen.push(pageStack.above(settings)));
+ pageStack.add(settings,null);assert.equal(pageStack.above(settings),null,'nothing above Settings yet');
+ const motion={position:'p',swipe:'s'};pageStack.add(goal,motion);
+ assert.equal(pageStack.above(settings),motion,'Settings follows Daily goal');assert.equal(pageStack.above(goal),null);
+ pageStack.remove(goal);assert.equal(pageStack.above(settings),null,'and lets go once it has left');
+ pageStack.remove(settings);stop();assert.deepEqual(seen,[null,motion,null,null]);
+});
+test('a swipe moves the shared offset, so the page beneath can follow the finger',async()=>{
+ const {pan,mocks}=harness();let tree;
+ const SwipeBack=load('src/components/SwipeBack.tsx',mocks).default;
+ const shared={value:0,get(){return this.value;},set(next){this.value=next;}};
+ await act(async()=>{tree=create(React.createElement(SwipeBack,{enabled:true,onBack:()=>{},offset:shared},React.createElement('Page')));});
+ pan.config.onUpdate({translationX:120});assert.equal(shared.value,120);
+ await act(async()=>tree.unmount());
 });

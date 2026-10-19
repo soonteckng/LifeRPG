@@ -23,7 +23,9 @@ const areas = [{ id: 1, title: 'General', color_code: null }, { id: 2, title: 'L
 const course = { kind: 'course', id: id(1), revision: 1, name: 'Maths', focusAreaId: 2, deletedAt: null, totalSeconds: 4000 };
 const exam = { kind: 'exam', id: id(2), revision: 1, title: 'Calculus final', courseId: id(1), examDate: inDays(12), deletedAt: null };
 const rn = { View: host('View'), ScrollView: host('HScroll'), Switch: host('Switch'), StyleSheet: { create: v => v, hairlineWidth: 1 }, Platform: { OS: 'android' }, Keyboard: { dismiss: () => {} } };
+const editMode = {Wiggle:props=>React.createElement('View',{style:props.style,testID:props.active?'wiggling':undefined},props.children),EditBadges:props=>React.createElement('View',{testID:'edit-badges'},props.onEdit&&React.createElement('Press',{accessibilityLabel:`Edit ${props.name}`,onPress:props.onEdit}),props.onRemove&&React.createElement('Press',{accessibilityLabel:`Remove ${props.name}`,onPress:props.onRemove}))};
 const base = () => ({
+  '/EditMode': editMode,
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') },
   '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/MotionPressable': host('Press'), '/SheetConfirmation': host('Confirm'),
@@ -107,7 +109,7 @@ function studyScreen(plan, timer = {}) {
   const calls = [];
   const Screen = load('src/app/(tabs)/study.tsx', {
     ...base(), 'react-native': animatedRn, '/useReducedMotion': { useReducedMotion: () => true }, '/useTabDockInset': { useTabDockInset: () => 100 },
-    '/SwipeRow': props => props.children, '/MoreMenu': props => React.createElement('Menu', props),
+    '/MoreMenu': props => React.createElement('Menu', props),
     'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
     '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: props => React.createElement('Page', props, props.action, props.children) },
     '/StudyExamSheet': host('ExamSheet'), '/StudySubjectSheet': { __esModule: true, default: host('SubjectSheet') }, '/SubjectPicker': host('Picker'), '/SheetHeader': host('Header'),
@@ -218,11 +220,11 @@ test('the shared Subject row picks or creates any subject and moves the session 
   assert.equal(presses(ui.root, 'Choose subject').length, 1, 'the row stays even before any subject exists');
   await act(async () => ui.unmount());
 });
-test('Home shows exams within a week: tap edits, Study starts, hold offers more; and peeks at your squad before its tab', async () => {
+test('Home shows exams within a week: tap edits, Study starts, hold wiggles into edit mode; and peeks at your squad before its tab', async () => {
   const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [], online: true }, nav = [], timer = [];
   const sections = load('src/components/HomeSections.tsx', { ...base(),
     'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
-    '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'), '/SwipeRow': props => props.children,
+    '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'),
     '/SquadsSection': { SquadSummary: host('Summary') }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') }, '/SheetHeader': host('Header'),
     '/QuestContext': { useQuests: () => ({ subjects: withRevision }) }, '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) },
     '/TimerContext': { useTimer: () => ({ sessionSummary: null, setNotes() {}, setLinkedTaskId() {}, setTargetAttributeId: v => timer.push(v), setDurationInSeconds() {} }) },
@@ -251,10 +253,15 @@ test('Home shows exams within a week: tap edits, Study starts, hold offers more;
   assert.deepEqual(timer, []); assert.equal(nav.length, 0, 'tapping never starts a session');
   await act(async () => editor().onClose());
   await act(async () => main().props.onLongPress());
-  const options = section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'exam options');
-  assert.equal(options.props.visible, true, 'holding an exam offers its actions, like routines');
-  assert.deepEqual(presses(options, 'Edit exam').length + presses(options, 'Remove exam').length, 2);
-  await act(async () => options.props.onRequestClose());
+  // Holding wiggles the list into edit mode, the same as subjects and routines.
+  assert.ok(section('home-exams').findAll(x => x.props.testID === 'wiggling').length > 0, 'holding an exam starts edit mode');
+  assert.equal(presses(rows()[0], 'Study Maths').length, 0, '✎ and − take the place of Study');
+  await act(async () => presses(rows()[0], 'Remove Paper 2')[0].props.onPress());
+  const confirm = section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'remove exam');
+  assert.equal(confirm.props.visible, true, 'removing asks first');
+  await act(async () => confirm.props.onRequestClose());
+  await act(async () => presses(section('home-exams'), 'Done editing exams')[0].props.onPress());
+  assert.equal(section('home-exams').findAll(x => x.props.testID === 'wiggling').length, 0);
   await act(async () => presses(rows()[0], 'Study Maths')[0].props.onPress());
   assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'Study goes straight to the session');
   // A grey "See all ›" with a small count badge beside the title lists them all.
@@ -298,7 +305,7 @@ test('offline, the last saved squad stays readable on Home; only joining or star
         assert.equal(ui.root.findByType('Section').props.subtitle, 'Offline · last saved');
         await act(async () => card().props.onPress());
         assert.equal(ui.root.findAllByType('Sheet').find(node => node.props.label === 'squad peek').props.visible, true, 'the saved leaderboard still opens');
-        await act(async () => ui.root.findByType('Section').props.right.props.onPress());
+        await act(async () => ui.root.findByType('Section').props.onPress());
         assert.deepEqual(calls, [['choose', id(8)], ['navigate', '/squads']], 'the Squads tab shows the saved squad too');
       } else {
         assert.equal(card().props.disabled, true, 'joining or starting needs internet');
@@ -476,13 +483,14 @@ test('one sheet rule: short sheets float, editors and tall lists dock to the scr
   for (const [file, label] of [['src/components/StudyExamSheet.tsx', 'exam editor'], ['src/components/StudySubjectSheet.tsx', 'subject'], ['src/components/MilestonesSheet.tsx', 'milestones']])
     assert.match(read(file), new RegExp(`<AppSheet[^\\n]*attached [^\\n]*label="${label}"`), `${label} docks to the screen edges`);
   // Details and lists can run long: they dock and size to their content, so there is no blank pull-up.
-  for (const [file, label] of [['src/components/FocusAreaDetailSheet.tsx', '${title} focus area'], ['src/app/(tabs)/study.tsx', 'add subject'], ['src/components/SubjectSetupRow.tsx', 'subject choices'], ['src/components/HomeSections.tsx', 'all exams'], ['src/components/SavedRoutinesCard.tsx', 'routines'], ['src/components/MilestonesSheet.tsx', 'milestones']]) {
+  for (const [file, label] of [['src/components/FocusAreaDetailSheet.tsx', '${title} focus area'], ['src/app/(tabs)/study.tsx', 'add subject'], ['src/components/SubjectSetupRow.tsx', 'subject choices'], ['src/components/HomeSections.tsx', 'all exams'], ['src/components/SavedRoutinesCard.tsx', 'routines'], ['src/components/MilestonesSheet.tsx', 'milestones'], ['src/components/HomeSections.tsx', 'squad peek'], ['src/components/HomeSections.tsx', 'this week'], ['src/components/TodaySheet.tsx', 'today'], ['src/components/QuestSheet.tsx', 'quests']]) {
     const tag = read(file).split('<AppSheet').find(part => part.includes(`label="${label}"`) || part.includes(`label={\`${label}\`}`));
     assert.ok(tag && /\battached\b/.test(tag) && /\bcompact\b/.test(tag), `${label} is attached and content-sized`);
   }
+  assert.match(read('src/components/SessionProtectionControl.tsx'), /<AppSheet[^\n]*attached compact[^\n]*session protection/, 'session protection details are attached');
   const progress = read('src/app/(tabs)/progress.tsx').split('<AppSheet')[1];
   assert.match(progress, /label="progress details"\s+compact\s+attached/, 'category details on Progress are attached and content-sized');
-  for (const file of ['src/components/ItemActionSheet.tsx', 'src/components/TodaySheet.tsx', 'src/components/DailyGoalSheet.tsx'])
+  for (const file of ['src/components/ItemActionSheet.tsx', 'src/components/DailyGoalSheet.tsx', 'src/components/FocusDurationSheet.tsx'])
     assert.doesNotMatch(read(file), /\battached\b|\bexpanded\b/, `${file} stays a floating card`);
 });
 
