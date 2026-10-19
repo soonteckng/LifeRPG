@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -79,21 +79,32 @@ export function HomeSquad() {
   const chosen = squadSelection.get();
   const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
   const [peek, setPeek] = useState(false), [joining, setJoining] = useState(false);
-  const openSquads = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
+  const [onlineView, setOnlineView] = useState({ online: squads.online });
+  if (onlineView.online !== squads.online) {
+    setOnlineView({ online: squads.online });
+    if (!squads.online) { setPeek(false); setJoining(false); }
+  }
+  const currentView = useRef<typeof onlineView | null>(onlineView);
+  useLayoutEffect(() => {
+    currentView.current = onlineView;
+    return () => { currentView.current = null; };
+  }, [onlineView]);
+  const isCurrent = () => onlineView.online && currentView.current === onlineView;
+  const openSquads = () => { if (!isCurrent()) return; if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
     <SectionHeader title="My Squad" subtitle={squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
       right={squad ? <SeeAll onPress={openSquads} accessibilityLabel="My Squad. Open Squads" /> : undefined} />
-    {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
+    {squad ? <Pressable onPress={() => { if (isCurrent()) setPeek(true); }} accessibilityRole="button" testID="home-squad"
       accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
       <SquadSummary squad={squad} />
-    </Pressable> : <Pressable onPress={() => setJoining(true)} accessibilityRole="button" accessibilityLabel="Focus with friends. Join or start a squad" testID="home-squad-empty" style={[s.card, s.row]}>
+    </Pressable> : <Pressable onPress={() => { if (isCurrent()) setJoining(true); }} accessibilityRole="button" accessibilityLabel="Focus with friends. Join or start a squad" testID="home-squad-empty" style={[s.card, s.row]}>
       <View style={[s.icon, { backgroundColor: colors.accentSoft }]}><Ionicons name="people-outline" size={20} color={colors.accent} /></View>
       <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>Start a squad and keep each other going.</Text></View>
       <Ionicons name="add-circle" size={24} color={colors.accent} />
     </Pressable>}
-    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} floating compact label="squad peek" motionMode="timed"
+    {squad && <AppSheet visible={squads.online && peek} onRequestClose={() => setPeek(false)} floating compact label="squad peek" motionMode="timed"
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
         <View style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></View>
@@ -110,7 +121,7 @@ export function HomeSquad() {
           <Ionicons name="share-outline" size={16} color={colors.accent} /><Text style={s.quietText}>Share invite</Text></Pressable>
       </BottomSheetScrollView>
     </AppSheet>}
-    <SquadJoinSheet visible={joining} online={squads.online} leading={squads.squads.find(item => item.ownerIsYou)?.name ?? null} memberships={squads.squads.length}
+    <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={squads.squads.find(item => item.ownerIsYou)?.name ?? null} memberships={squads.squads.length}
       onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
   </View>;
 }

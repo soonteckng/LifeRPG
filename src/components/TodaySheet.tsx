@@ -24,10 +24,10 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
   return <AppSheet visible={visible} onRequestClose={onClose} floating compact maxHeightRatio={0.9} label="today" motionMode="timed"
     header={<View style={s.header}>
       <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
-      <MoreMenu label="Goal options" options={[
+      {visible && <MoreMenu label="Goal options" options={[
         { label: "Change daily goal", icon: "flag-outline", onPress: () => after(onChangeGoal) },
         { label: "Open Progress", icon: "stats-chart-outline", onPress: () => after(onOpenProgress) },
-      ]} />
+      ]} />}
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={s.close}><Ionicons name="close" size={18} color={colors.secondary} /></Pressable>
     </View>}>
     <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>

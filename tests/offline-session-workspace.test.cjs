@@ -8,7 +8,7 @@ function load(file, mocks, modules = new Map()) {
   const filename = path.resolve(__dirname, '..', file);
   if (modules.has(filename)) return modules.get(filename).exports;
   const mod = { exports: {} }; modules.set(filename, mod);
-  const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { fileName: filename, compilerOptions: { jsx: ts.JsxEmit.ReactJSX, module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   new Function('require', 'module', 'exports', code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if(name.endsWith('/FeatureTour')) return {useFeatureTour:()=>null};
@@ -31,20 +31,24 @@ async function screen(options = {}) {
     pauseTimer: async () => calls.push(['pause']), resumeTimer: async () => calls.push(['resume']), resetTimer: async () => { calls.push(['end']); return options.endSaved ?? true; },
     clearCompletionModal: () => calls.push(['done']), acknowledgeSummary: () => calls.push(['viewed']), ...options.timer };
   let active = options.active ?? true;
+  let configuredBackend = options.configuredBackend ?? 'workspace';
+  let auth = { localOwner: { id: '11111111-1111-4111-8111-111111111111', backendId: 'workspace' }, admissionEpoch: 1,
+    retrySessionVerification: async () => { calls.push(['verify']); return options.connection?.(); }, ...options.auth };
   let preference = options.preference ?? { version: 1, enabled: true, invited: true, need: 'revision', templateId: 'review-topic', smaller: false };
   const duration = { ready: true, selectedSeconds: 1800, value: { customSeconds: 75, presetSeconds: 1800 }, choose: async (...args) => calls.push(['duration', ...args]) };
   const module = load('src/components/OfflineSessionWorkspace.tsx', {
-    'react-native': { View: host('View'), Pressable: host('Button'), ScrollView: host('Scroll'), StyleSheet: { create: v => v, hairlineWidth: 0.5 }, useWindowDimensions: () => ({ width: 390 }) },
+    'react-native': { View: host('View'), Pressable: host('Button'), ScrollView: host('Scroll'), StyleSheet: { create: v => v, hairlineWidth: 0.5 }, useWindowDimensions: () => ({ width: options.width ?? 390, height: options.height ?? 844, fontScale: options.fontScale ?? 1 }) },
     'react-native-safe-area-context': { SafeAreaView: host('SafeArea'), useSafeAreaInsets: () => ({ bottom: 16 }) }, '@expo/vector-icons': { Ionicons: host('Icon') },
     'expo-haptics': { selectionAsync: async () => calls.push(['haptic']) },
     '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), TouchableOpacity: host('Button') },
     './AppText': { Text: host('Text') }, './ProgressRing': host('Ring'),
     './MotionPressable': host('Button'), './ContentReveal': host('Reveal'), './PersonalUI': { p: {} }, './FocusDurationSheet':host('DurationSheet'),
     './SavedRoutinesCard':host('SavedRoutinesBoundary'),
+    '../utils/sessionBackend': { sessionBackendIdentity: () => configuredBackend ? { backendId: configuredBackend } : null },
     './AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.footer) : null,
     './SheetConfirmation': host('Confirmation'),
-    '../context/TimerContext': { useTimer: () => timer }, '../context/AuthContext': { useAuth: () => ({ localOwner: { id: '11111111-1111-4111-8111-111111111111', backendId: 'workspace' }, retrySessionVerification: async () => calls.push(['verify']) }) },
-    '../context/UserContext': { useUser: () => ({ hapticsEnabled: options.haptics ?? true }) },
+    '../context/TimerContext': { useTimer: () => timer }, '../context/AuthContext': { useAuth: () => auth },
+    '../context/UserContext': { useUser: () => ({ hapticsEnabled: options.haptics ?? true, profile: options.profile }) },
     '../hooks/useFocusDurationPreference': { useFocusDurationPreference: () => duration },
     '../hooks/useGuidedPreference': { useGuidedPreference: () => ({value:preference, ready:true, busy:false, error:false,
       save: async value => { preference = value; calls.push(['preference', value]); return true; }}) },
@@ -60,6 +64,8 @@ async function screen(options = {}) {
     cancelEnd: async () => act(async () => { tree.root.findByType('Confirmation').props.onCancel(); }),
     update: async next => { timer = { ...timer, ...next }; await act(async () => { tree.update(element()); }); },
     setActive: async next => { active = next; await act(async () => tree.update(element())); },
+    auth: async next => { auth = { ...auth, ...next }; await act(async () => tree.update(element())); },
+    backend: async next => { configuredBackend = next; await act(async () => tree.update(element())); },
     cleanup: () => act(async () => tree.unmount()) };
 }
 
@@ -140,10 +146,14 @@ test('expiry closes an obsolete End confirmation and it cannot reopen on the nex
 });
 
 test('pending completion delegates to the global result owner without local duplicate sheets or summary buttons', async () => {
-  const ui = await screen({ timer: { isCompleted: true, actionBusy: true, unsyncedSessionCount: 2 } });
+  const ui = await screen({ width: 360, height: 640, fontScale: 1.3, timer: { isCompleted: true, actionBusy: true, unsyncedSessionCount: 2 } });
   try {
     assert.equal(ui.root().findAllByType('Result').length,0); assert.equal(ui.button('Done'),undefined);
-    assert.ok(!ui.calls.some(call => call[0] === 'verify')); assert.match(text(ui.root()), /2 sessions waiting to sync/); assert.doesNotMatch(text(ui.root()), /View summary|New session|XP|gold/);
+    assert.ok(!ui.calls.some(call => call[0] === 'verify')); assert.match(text(ui.root()), /2 saved sessions not yet confirmed/); assert.doesNotMatch(text(ui.root()), /View summary|New session|XP|gold/);
+    const pendingCopy = ui.root().findByProps({ testID: 'offline-pending-sync' }).findByType('Text');
+    assert.equal(pendingCopy.props.numberOfLines, undefined, 'the longer honest status can wrap instead of truncating');
+    assert.notEqual(pendingCopy.props.allowFontScaling, false);
+    assert.equal(pendingCopy.props.style.flex, 1); assert.equal(pendingCopy.props.style.minWidth, 0);
   } finally { await ui.cleanup(); }
 });
 
@@ -213,4 +223,68 @@ test('offline matches the one in-card direction entry while preserving routines 
 test('rapid offline Starts remain single-flight and active cards keep End instead of direction editing',async()=>{
  let release;const pending=new Promise(resolve=>release=resolve);const calls=[];
  const ui=await screen({timer:{startSuggestedTimer:async()=>{calls.push('start');return pending;}}});try{await act(async()=>{const button=ui.button('Start session');button.props.onPress();button.props.onPress();});assert.deepEqual(calls,['start']);await act(async()=>release(true));await ui.update({hasOpenSession:true,isRunning:true});assert.equal(ui.button('Change focus direction'),undefined);await ui.press('End session');assert.equal(ui.root().findAllByType('Confirmation').length,1);}finally{await ui.cleanup();}
+});
+
+test('H1+ offline setup keeps Start pinned outside the bounded scroll on a small screen with larger text', async () => {
+  const ui = await screen({ width: 360, height: 640, fontScale: 1.3, auth: { cachedProfile: {
+    id: '11111111-1111-4111-8111-111111111111', username: 'Soon Teck', daily_goal_minutes: 60,
+  } } });
+  try {
+    const scroll = ui.root().findByType('Scroll');
+    assert.equal(scroll.props.style.flex, 1); assert.equal(scroll.props.style.minHeight, 0);
+    assert.equal(scroll.findAllByProps({ testID: 'offline-start-session' }).length, 0);
+    assert.ok(ui.button('Start session')); assert.notEqual(ui.button('Start session').props.disabled, true);
+    const pinned = ui.root().findAllByType('View').find(node => node.props.style?.flexShrink === 0 && node.findAllByProps({ testID: 'offline-start-session' }).length);
+    assert.ok(pinned); assert.equal(pinned.props.style.paddingHorizontal, 20);
+    assert.deepEqual(ui.root().findByType('SafeArea').props.edges, ['top', 'bottom', 'left', 'right']);
+    assert.match(text(ui.root()), /Soon Teck|My session/); assert.match(text(ui.root()), /Last saved daily goal60 min/);
+    assert.doesNotMatch(text(ui.root()), /60 min goal today|Today.*min to go|Squad|Exams|Needs internet/);
+    assert.equal(ui.root().findAllByType('Ring').length, 0, 'cached goal is not a fabricated progress ring');
+    assert.ok(ui.root().findByType('SavedRoutinesBoundary'));
+    await ui.update({ isRestoring: true });
+    assert.match(text(ui.button('Retry connection')), /Checking…/);
+    assert.equal(ui.button('Retry connection').props.accessibilityState.busy, true);
+  } finally { await ui.cleanup(); }
+});
+
+test('offline retry is quiet, single-flight, haptic and cooled down for five seconds after a normal failure', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout'] }); let now = 0;
+  t.mock.method(performance, 'now', () => now);
+  const ui = await screen({ connection: async () => { throw Error('private backend error'); } });
+  try {
+    const retry = ui.button('Retry connection');
+    assert.equal(retry.props.testID, 'offline-workspace-retry-connection');
+    await act(async () => { retry.props.onPress(); retry.props.onPress(); });
+    assert.equal(ui.calls.filter(call => call[0] === 'verify').length, 1);
+    assert.equal(retry.props.disabled, true); assert.equal(retry.props.accessibilityState.busy, false);
+    assert.doesNotMatch(text(ui.root()), /Couldn’t save that change|private backend error|Couldn’t reconnect/);
+    assert.match(text(ui.root()), /reconnect automatically/);
+    now = 4999; await act(async () => t.mock.timers.tick(4999)); assert.equal(retry.props.disabled, true);
+    now = 5000; await act(async () => t.mock.timers.tick(1)); assert.equal(retry.props.disabled, false);
+    assert.ok(ui.calls.some(call => call[0] === 'haptic'));
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
+});
+
+test('offline metadata stays steady on the outgoing same-account surface and never follows another account', async () => {
+  const ownerId = '11111111-1111-4111-8111-111111111111';
+  const ui = await screen({ auth: { cachedProfile: { id: ownerId, username: 'Saved Hero', daily_goal_minutes: 90 } } });
+  try {
+    const retry = ui.button('Retry connection');
+    await ui.setActive(false); await ui.auth({ localOwner: null, cachedProfile: null, user: { id: ownerId } });
+    assert.match(text(ui.root()), /Saved Hero/); assert.match(text(ui.root()), /Last saved daily goal90 min/);
+    await act(async () => retry.props.onPress()); assert.equal(ui.calls.filter(call => call[0] === 'verify').length, 0);
+    await ui.backend('another-backend');
+    assert.doesNotMatch(text(ui.root()), /Saved Hero|Last saved daily goal90 min/);
+    await ui.backend('workspace'); await ui.auth({ user: { id: 'another-account' } });
+    assert.doesNotMatch(text(ui.root()), /Saved Hero|Last saved daily goal90 min/);
+  } finally { await ui.cleanup(); }
+});
+
+test('rejected saved work is labeled for review rather than pretending it is stopped or still waiting to upload', async () => {
+  const ui = await screen({ timer: { syncStatus: 'rejected', unsyncedSessionCount: 1 } });
+  try {
+    assert.match(text(ui.root()), /Saved session needs review/); assert.match(text(ui.root()), /1 saved session not yet confirmed/);
+    assert.doesNotMatch(text(ui.root()), /Session stopped|session waiting to sync/);
+    assert.equal(ui.root().findAllByType('Result').length, 0);
+  } finally { await ui.cleanup(); }
 });

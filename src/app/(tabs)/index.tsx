@@ -95,11 +95,16 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const dataScope = JSON.stringify([owner, accessMode, admissionEpoch, timeZone]);
+  const menuView = useMemo(() => ({ dataScope }), [dataScope]);
+  const currentMenuView = useRef<typeof menuView | null>(menuView);
   const currentDataScope = useRef<string | null>(dataScope);
   useLayoutEffect(() => {
+    currentMenuView.current = menuView;
     currentDataScope.current = dataScope;
-    return () => { currentDataScope.current = null; };
-  }, [dataScope]);
+    return () => { currentDataScope.current = null; currentMenuView.current = null; };
+  }, [dataScope, menuView]);
+  const openGoal = () => { if (accessMode === "online" && currentMenuView.current === menuView) setGoalSettings(true); };
+  const openProgress = () => { if (accessMode === "online" && currentMenuView.current === menuView) router.navigate("/progress"); };
   const loadHomeData = useCallback(async () => {
     if (accessMode !== "online") return;
     const expectedScope = dataScope;
@@ -206,10 +211,10 @@ export default function HomeScreen() {
           </TouchableOpacity>}
 
           <TourAnchor id="home-focus"><View style={styles.today} testID="home-today">
-            <View style={styles.todayMenu}><MoreMenu label="Today options" testID="home-today-menu" options={[
-              { label: "Change daily goal", icon: "flag-outline", onPress: () => setGoalSettings(true) },
-              { label: "Open Progress", icon: "stats-chart-outline", onPress: () => router.navigate("/progress") },
-            ]} /></View>
+            <View style={styles.todayMenu}>{accessMode === "online" && <MoreMenu label="Today options" testID="home-today-menu" options={[
+              { label: "Change daily goal", icon: "flag-outline", onPress: openGoal },
+              { label: "Open Progress", icon: "stats-chart-outline", onPress: openProgress },
+            ]} />}</View>
             <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalRow} accessibilityRole="button"
               accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
               <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
@@ -249,9 +254,9 @@ export default function HomeScreen() {
         </ContentReveal>
       </TourScrollView>
       <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
-      <TodaySheet visible={todayOpen} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
-        streak={streakDays} complete={isGoalComplete} onChangeGoal={() => setGoalSettings(true)} onOpenProgress={() => router.navigate("/progress")} />
-      <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
+      <TodaySheet visible={accessMode === "online" && todayOpen} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
+        streak={streakDays} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
+      <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={accessMode === "online" && goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
     </SafeAreaView>
   );
 }

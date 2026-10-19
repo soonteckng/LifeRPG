@@ -10,7 +10,7 @@ function load(file, mocks = {}, modules = new Map()) {
   const filename = path.resolve(__dirname, "..", file);
   if (modules.has(filename)) return modules.get(filename).exports;
   const mod = { exports: {} }; modules.set(filename, mod);
-  const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+  const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), { fileName: filename, compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   new Function("require", "module", "exports", code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (!name.startsWith(".")) return require(name);
@@ -24,6 +24,9 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a, b)
 const cached = { id: "owner", username: "Soon Teck", daily_goal_minutes: 60, level: 2, current_xp: 40, gold: 9 };
 async function screen(options = {}) {
   const calls = [];
+  const haptics = [];
+  let active = options.active ?? true;
+  let configuredBackend = options.configuredBackend ?? "fixture.supabase.co";
   const forbidden = () => { throw Error("Editable offline action called"); };
   let auth = { localOwner: { id: "owner", backendId: "fixture.supabase.co" }, cachedProfile: cached, admissionEpoch: 1,
     retrySessionVerification: async () => { calls.push("connection"); return options.connection?.(); }, ...options.auth };
@@ -37,20 +40,26 @@ async function screen(options = {}) {
     "react-native": { View: host("View"), Pressable: host("Button"), ScrollView: host("Scroll"), StyleSheet: { create: v => v, hairlineWidth: 0.5 },
       useWindowDimensions: () => ({ width: options.width ?? 390, height: 844, fontScale: options.fontScale ?? 1 }) },
     "react-native-safe-area-context": { SafeAreaView: host("SafeArea") }, "./AppText": { Text: host("Text") },
+    "@expo/vector-icons": { Ionicons: host("Icon") },
+    "../utils/tapHaptics": { tapHapticsEnabled: () => options.haptics ?? true, tapHaptic: () => haptics.push("tap") },
+    "../utils/sessionBackend": { sessionBackendIdentity: () => configuredBackend ? { backendId: configuredBackend } : null },
     "../context/AuthContext": { useAuth: () => auth }, "../context/UserContext": { useUser: () => ({ profile: options.profile ?? cached, updateProfile: forbidden }) },
     "../context/TimerContext": { useTimer: () => timer },
     "./OfflineSessionWorkspace": host("OfflineWorkspace"),
   });
-  let tree; await act(async () => { tree = create(React.createElement(module.default)); });
-  return { root: () => tree.root, calls, button: label => tree.root.findAllByType("Button").find(node => node.props.accessibilityLabel === label),
-    update: next => act(async () => { timer = { ...timer, ...next }; tree.update(React.createElement(module.default)); }),
-    auth: next => act(async () => { auth = { ...auth, ...next }; tree.update(React.createElement(module.default)); }),
+  const element = () => React.createElement(module.default, { active });
+  let tree; await act(async () => { tree = create(element()); });
+  return { root: () => tree.root, calls, haptics, button: label => tree.root.findAllByType("Button").find(node => node.props.accessibilityLabel === label),
+    update: next => act(async () => { timer = { ...timer, ...next }; tree.update(element()); }),
+    auth: next => act(async () => { auth = { ...auth, ...next }; tree.update(element()); }),
+    setActive: next => act(async () => { active = next; tree.update(element()); }),
+    backend: next => act(async () => { configuredBackend = next; tree.update(element()); }),
     cleanup: () => act(async () => tree.unmount()) };
 }
 test("running recovery shows cached name/goal and live countdown with no editing controls or reward estimates", async () => {
   const ui = await screen();
   try {
-    assert.match(text(ui.root()), /Welcome back, Soon Teck\./); assert.match(text(ui.root()), /Last saved daily goal: 60 min/);
+    assert.match(text(ui.root()), /Soon Teck/); assert.match(text(ui.root()), /Last saved daily goal: 60 min/);
     const countdown = () => ui.root().findByProps({ testID: "offline-countdown" });
     assert.equal(countdown().props.accessibilityLabel, "Time remaining, 1 minute, 30 seconds");
     await ui.update({ timeLeft: 59 }); assert.equal(countdown().props.accessibilityLabel, "Time remaining, 0 minutes, 59 seconds");
@@ -128,16 +137,20 @@ test("restoring, unreadable and rejected records get distinct guidance with no n
     } finally { await ui.cleanup(); }
   }
 });
-test("connection retry locks repeat taps, exposes busy/disabled state and returns to the ordinary label", async () => {
+test("connection retry locks repeat taps, exposes Checking and returns to its label after the shared cooldown", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] }); let now = 0;
+  t.mock.method(performance, "now", () => now);
   const wait = deferred(), ui = await screen({ timer: {hasOpenSession:false,isRunning:false}, connection: () => wait.promise });
   try {
     const original = ui.button("Retry connection"); await act(async () => { original.props.onPress(); original.props.onPress(); });
     assert.deepEqual(ui.calls, ["connection"]); const busy = ui.button("Retry connection");
-    assert.equal(busy,original); assert.equal(busy.props.disabled, true); assert.deepEqual(busy.props.accessibilityState, { disabled: true, busy: true }); assert.match(text(busy), /Retry connection/);
-    await act(async () => wait.resolve()); assert.equal(ui.button("Retry connection").props.disabled, false);
+    assert.equal(busy,original); assert.equal(busy.props.disabled, true); assert.deepEqual(busy.props.accessibilityState, { disabled: true, busy: true }); assert.match(text(busy), /Checking…/);
+    await act(async () => wait.resolve()); assert.equal(ui.button("Retry connection").props.disabled, true);
+    assert.match(text(busy), /Retry connection/);
+    now = 5000; await act(async () => t.mock.timers.tick(5000)); assert.equal(ui.button("Retry connection").props.disabled, false);
     const message = ui.root().findAllByType("Text").find(node => /We’ll reconnect automatically/.test(text(node)));
     assert.equal(message.props.accessibilityLiveRegion, "polite");
-  } finally { await ui.cleanup(); }
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
 });
 test("one retry reconnects pending work and stays mounted through repeated taps and automatic busy checks", async () => {
   const wait = deferred(), ui = await screen({ timer: { isCompleted: true, timeLeft: 0, syncStatus: "waiting" }, completion: () => wait.promise });
@@ -147,29 +160,30 @@ test("one retry reconnects pending work and stays mounted through repeated taps 
     assert.equal(ui.button("Retry connection").props.accessibilityState.busy, true);
     assert.equal(ui.button("Retry connection").props.disabled, true);
     await act(async () => ui.button("Retry connection").props.onPress()); assert.deepEqual(ui.calls, ["completion"]);
-    await act(async () => wait.resolve()); assert.equal(ui.button("Retry connection").props.disabled, false);
+    await act(async () => wait.resolve()); assert.equal(ui.button("Retry connection").props.disabled, true);
     await ui.update({actionBusy:true,actionError:null}); assert.equal(ui.button("Retry connection"),button); assert.equal(button.props.disabled,true);
-    await ui.update({actionBusy:false,actionError:"Saved on this phone. Waiting to confirm your progress."}); assert.equal(ui.button("Retry connection"),button); assert.equal(button.props.disabled,false);
+    await ui.update({actionBusy:false,actionError:"Saved on this phone. Waiting to confirm your progress."}); assert.equal(ui.button("Retry connection"),button); assert.equal(button.props.disabled,true);
     assert.equal(ui.root().findAllByType("Button").length,1);
   } finally { await ui.cleanup(); }
 });
-test("retry errors are readable, live-announced and do not expose exception contents", async () => {
+test("an ordinary offline retry stays calm and does not expose exception contents or an error banner", async () => {
   const ui = await screen({ timer:{hasOpenSession:false,isRunning:false}, connection: async () => { throw Error("private token and backend response"); } });
   try {
     await act(async () => ui.button("Retry connection").props.onPress());
-    assert.match(text(ui.root()), /Couldn’t reconnect yet/); assert.doesNotMatch(text(ui.root()), /private token/);
-    const error = ui.root().findAllByType("Text").find(node => node.props.accessibilityRole === "alert"); assert.equal(error.props.accessibilityLiveRegion, "polite");
+    assert.match(text(ui.root()), /reconnect automatically/); assert.doesNotMatch(text(ui.root()), /private token|Couldn’t reconnect yet/);
+    assert.equal(ui.root().findAllByType("Text").filter(node => node.props.accessibilityRole === "alert").length, 0);
   } finally { await ui.cleanup(); }
 });
 test("a stalled connection check releases the retry control and safely handles a late rejection", async t => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0; t.mock.method(performance, "now", () => now);
   const wait = deferred(), ui = await screen({ timer:{hasOpenSession:false,isRunning:false}, connection: () => wait.promise });
   try {
     await act(async () => ui.button("Retry connection").props.onPress());
     assert.equal(ui.button("Retry connection").props.disabled, true);
-    await act(async () => { t.mock.timers.tick(8000); });
+    await act(async () => { now = 8000; t.mock.timers.tick(8000); });
     assert.equal(ui.button("Retry connection").props.disabled, false);
-    assert.match(text(ui.root()), /Couldn’t reconnect yet/);
+    assert.match(text(ui.root()), /reconnect automatically/); assert.doesNotMatch(text(ui.root()), /Couldn’t reconnect yet/);
     await act(async () => wait.reject(Error("private late response")));
     assert.doesNotMatch(text(ui.root()), /private late response/);
     assert.equal(ui.button("Retry connection").props.disabled, false);
@@ -189,7 +203,7 @@ test("screen uses all safe areas, scrolls with large text and keeps accessible c
 test("foreign cached profile details cannot leak into the local owner's recovery screen", async () => {
   const foreign = { ...cached, id: "foreign", username: "Someone Else" };
   const ui = await screen({ auth: { cachedProfile: foreign }, profile: foreign });
-  try { assert.match(text(ui.root()), /Welcome back\./); assert.doesNotMatch(text(ui.root()), /Someone Else|Last saved daily goal/); }
+  try { assert.match(text(ui.root()), /Hero/); assert.doesNotMatch(text(ui.root()), /Someone Else|Last saved daily goal/); }
   finally { await ui.cleanup(); }
 });
 
@@ -221,6 +235,8 @@ test("a real unreadable journal keeps its warning through retry and updates only
     await ui.update({ isRestoring: true, restoreError: false, actionError: null, hasOpenSession: false });
     assert.match(text(ui.root()), /Your saved session needs another look|Local saved data could not be read/);
     assert.doesNotMatch(text(ui.root()), /Restoring your session|Your account is on this phone/);
+    assert.match(text(ui.button("Retry connection")), /Checking…/);
+    assert.equal(ui.button("Retry connection").props.accessibilityState.busy, true);
     await ui.update({ isRestoring: false, hasOpenSession: false });
     assert.match(text(ui.root()), /Your account is on this phone/); assert.doesNotMatch(text(ui.root()), /Local saved data/);
   } finally { await ui.cleanup(); }
@@ -244,4 +260,31 @@ test("reload presentation cannot retain the previous owner's countdown or error 
     assert.match(text(ui.root()), /Restoring your session/); assert.doesNotMatch(text(ui.root()), /Your focus is still here|Soon Teck/);
     assert.equal(ui.root().findAllByProps({ testID: "offline-countdown" }).length, 0);
   } finally { await ui.cleanup(); }
+});
+
+test("recovery's outgoing same-account identity does not flash Hero or expose details to another account", async () => {
+  const ui = await screen({ timer: { hasOpenSession: false, isRunning: false } });
+  try {
+    const retry = ui.button("Retry connection");
+    await ui.setActive(false); await ui.auth({ localOwner: null, cachedProfile: null, user: { id: "owner" }, admissionEpoch: 2 });
+    assert.match(text(ui.root()), /Soon Teck/); assert.match(text(ui.root()), /Last saved daily goal: 60 min/);
+    await act(async () => retry.props.onPress()); assert.deepEqual(ui.calls, []);
+    await ui.backend("different-backend.supabase.co");
+    assert.doesNotMatch(text(ui.root()), /Soon Teck|Last saved daily goal/);
+    await ui.backend("fixture.supabase.co"); await ui.auth({ user: { id: "different-owner" } });
+    assert.doesNotMatch(text(ui.root()), /Soon Teck|Last saved daily goal/);
+  } finally { await ui.cleanup(); }
+});
+
+test("recovery retry keeps its role, stable label/test ID and saved haptic choice", async () => {
+  for (const enabled of [true, false]) {
+    const ui = await screen({ haptics: enabled, timer: { hasOpenSession: false, isRunning: false } });
+    try {
+      const retry = ui.button("Retry connection");
+      assert.equal(retry.props.accessibilityRole, "button"); assert.equal(retry.props.testID, "offline-recovery-retry-connection");
+      await act(async () => retry.props.onPress()); assert.equal(ui.haptics.length, enabled ? 1 : 0);
+      assert.deepEqual(ui.calls, ["connection"]);
+      assert.equal(ui.root().findAllByType("Button").length, 1, "no nonfunctional cloud-only controls");
+    } finally { await ui.cleanup(); }
+  }
 });

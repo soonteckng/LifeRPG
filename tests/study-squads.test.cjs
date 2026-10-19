@@ -191,3 +191,38 @@ test('with several squads the tab switches between them, and an empty tab invite
   await act(async () => tab('Calc crew').props.onPress());
   await act(async () => ui.unmount());
 });
+
+test('cloud-only squad sheet portals close offline and do not reopen after reconnect', async () => {
+  for (const [action, label] of [['Edit name and goal', 'edit squad'], ['Join or start a squad', 'join squad']]) {
+    let online = true; const calls = [];
+    const state = () => ({ ready: true, online, squads: [squad()], refresh: async () => {},
+      update: async (...args) => { calls.push(['update', ...args]); return null; },
+      join: async (...args) => { calls.push(['join', ...args]); return null; },
+      create: async (...args) => { calls.push(['create', ...args]); return null; },
+      leave: async () => null, remove: async () => null });
+    const Tab = squadsTab(state); let ui;
+    await act(async () => { ui = create(React.createElement(Tab)); });
+    try {
+      assert.equal(ui.root.findAllByType('Menu').length, 1, 'the normal online squad menu is present');
+      const delayedAction = menu(ui.root).find(option => option.label === action).onPress;
+      await choose(ui.root, action);
+      assert.equal(ui.root.findByType('Sheet').props.label, label);
+      online = false;
+      await act(async () => ui.update(React.createElement(Tab)));
+      assert.equal(ui.root.findAllByType('Sheet').length, 0, `${label} cannot cover the offline workspace`);
+      assert.equal(ui.root.findAllByType('Menu').length, 0, 'the native menu portal unmounts with the cloud-only action');
+      await act(async () => delayedAction());
+      assert.equal(ui.root.findAllByType('Sheet').length, 0, 'an outgoing menu callback cannot open a cloud editor offline');
+      assert.deepEqual(calls, [], 'dismissing a portal does not submit any squad change');
+      online = true;
+      await act(async () => ui.update(React.createElement(Tab)));
+      assert.equal(ui.root.findAllByType('Sheet').length, 0, 'reconnection must not replay a closed sheet');
+      assert.equal(ui.root.findAllByType('Menu').length, 1, 'a fresh menu returns with the online squad page');
+      await act(async () => delayedAction());
+      assert.equal(ui.root.findAllByType('Sheet').length, 0, 'an old online menu callback stays fenced after reconnect');
+      await choose(ui.root, action);
+      assert.equal(ui.root.findByType('Sheet').props.label, label, 'the normal online editor can still be opened');
+      assert.deepEqual(calls, []);
+    } finally { await act(async () => ui.unmount()); }
+  }
+});

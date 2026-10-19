@@ -1,16 +1,27 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useGlobalSearchParams, usePathname, useRouter } from "expo-router";
+import { Animated, StyleSheet, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from "../context/AuthContext";
 import { useTimer } from "../context/TimerContext";
+import { useReducedMotion } from "../hooks/useReducedMotion";
+import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { navigationTiming } from "../utils/navigationMotion";
+import { colors, edge } from "../constants/theme";
+import { Text } from "./AppText";
 import ConnectionSurface from "./ConnectionSurface";
 import OfflineSessionRecovery from "./OfflineSessionRecovery";
 import SheetConfirmation from "./SheetConfirmation";
 
 /** A reconnect may close an obsolete timer route, never rebuild its stack. */
 export default function SessionConnectionContent({ children }: { children: ReactNode }) {
-  const { accessMode, user, localOwner } = useAuth();
+  const { accessMode, user, localOwner, admissionEpoch } = useAuth();
   const timer = useTimer();
   const ownerId = user?.id ?? localOwner?.id;
+  const backendId = localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
+  const ownerScope = JSON.stringify([backendId, ownerId]);
+  const scope = JSON.stringify([backendId, ownerId, admissionEpoch]);
+  const reducedMotion = useReducedMotion(), insets = useSafeAreaInsets();
   const pathname = usePathname(), router = useRouter();
   const params = useGlobalSearchParams<{ countdownAction?: string; protectionEnd?: string; protectionSession?: string }>();
   const handledNotification = useRef<string | null>(null);
@@ -66,8 +77,43 @@ export default function SessionConnectionContent({ children }: { children: React
     if (!offlineCycle || timer.isRestoring) return;
     if (obsoleteSessionRoute) router.replace("/");
   }, [localOnly, offlineCycle, obsoleteSessionRoute, timer.isRestoring, router]);
+  const [visitedOffline, setVisitedOffline] = useState({ scope: ownerScope, local: localOnly });
+  const [onlineNotice, setOnlineNotice] = useState<string | null>(null);
+  const [noticeOpacity] = useState(() => new Animated.Value(1));
+  if (visitedOffline.scope !== ownerScope) {
+    setVisitedOffline({ scope: ownerScope, local: localOnly });
+    if (onlineNotice !== null) setOnlineNotice(null);
+  } else if (localOnly) {
+    if (!visitedOffline.local) setVisitedOffline({ scope: ownerScope, local: true });
+    if (onlineNotice !== null) setOnlineNotice(null);
+  } else if (visitedOffline.local && accessMode === "online" && onlineReady) {
+    setVisitedOffline({ scope: ownerScope, local: false }); setOnlineNotice(scope);
+  }
+  useLayoutEffect(() => { if (onlineNotice !== null) noticeOpacity.setValue(1); }, [onlineNotice, noticeOpacity]);
+  useEffect(() => {
+    if (onlineNotice === null) return;
+    let live = true;
+    let animation: Animated.CompositeAnimation | undefined;
+    const timeout = setTimeout(() => {
+      const clear = () => { if (live) setOnlineNotice(current => current === onlineNotice ? null : current); };
+      if (reducedMotion) clear();
+      else {
+        animation = Animated.timing(noticeOpacity, { toValue: 0, ...navigationTiming(140) });
+        animation.start(({ finished }) => { if (finished) clear(); });
+      }
+    }, 1200);
+    return () => { live = false; clearTimeout(timeout); animation?.stop(); };
+  }, [onlineNotice, noticeOpacity, reducedMotion]);
+  // Count includes rejected records. Only an actual pending, busy operation
+  // warrants "syncing"; being back online alone never promises a saved result.
+  const syncing = timer.syncStatus === "waiting" && timer.actionBusy && !timer.isRestoring && !timer.actionError;
   return <><ConnectionSurface localOnly={localOnly} onlineReady={onlineReady}
-    offline={active => <OfflineSessionRecovery active={active} />}>{children}</ConnectionSurface>
+    offline={active => <OfflineSessionRecovery active={active} />}>{children}
+      {onlineNotice === scope && accessMode === "online" && onlineReady && <Animated.View pointerEvents="none"
+        testID="connection-online-notice" style={[styles.notice, { top: insets.top + 8, opacity: noticeOpacity }]}>
+        <View style={styles.noticeCard}><Text accessibilityLiveRegion="polite" style={styles.noticeText}>{syncing ? "Back online · syncing" : "Back online"}</Text></View>
+      </Animated.View>}
+    </ConnectionSurface>
     {showEnd && <SheetConfirmation title="End this session?"
       message="Ending early stops this session without recorded time or XP."
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setRequestedEnd(null)}
@@ -79,3 +125,8 @@ export default function SessionConnectionContent({ children }: { children: React
         setRequestedEnd(null); void timer.resetTimer();
       }} />}</>;
 }
+const styles = StyleSheet.create({
+  notice: { position: "absolute", left: 20, right: 20, alignItems: "center" },
+  noticeCard: { ...edge, borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 16, paddingVertical: 9 },
+  noticeText: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "500" },
+});

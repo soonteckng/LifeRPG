@@ -12,7 +12,7 @@ import {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { levelTierProgress, requiredCharacterXP } from "../utils/levelTiers";
@@ -35,6 +35,7 @@ import {
 } from "../components/PersonalUI";
 import { colors, radius, edge } from "../constants/theme";
 import { useUser } from "../context/UserContext";
+import { useAuth } from "../context/AuthContext";
 import { useCharacterData } from "../hooks/useCharacterData";
 import { profileFocusAreaGrowth } from "../utils/characterGrowth";
 import { useStudyPlan } from "../hooks/useStudyPlan";
@@ -51,6 +52,14 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const { profile, updateProfile, reloadProfile } = useUser();
+  const { accessMode, admissionEpoch } = useAuth();
+  const online = accessMode === "online";
+  const saveView = useMemo(() => ({ owner: profile.id, accessMode, admissionEpoch }), [profile.id, accessMode, admissionEpoch]);
+  const currentSaveView = useRef<typeof saveView | null>(saveView);
+  useLayoutEffect(() => {
+    currentSaveView.current = saveView;
+    return () => { currentSaveView.current = null; };
+  }, [saveView]);
   const { data, loading, error, refresh } = useCharacterData();
   const study = useStudyPlan();
   const nameScroll = useRef<BottomSheetScrollViewMethods>(null);
@@ -110,7 +119,7 @@ export default function ProfileScreen() {
     }
   };
   const save = async () => {
-    if (lock.current) return;
+    if (lock.current || !online || currentSaveView.current !== saveView) return;
     const nameError = profileNameError(name);
     if (nameError) {
       setSaveError(nameError);
@@ -121,11 +130,12 @@ export default function ProfileScreen() {
     setSaveError("");
     try {
       await updateProfile(name.trim(), avatar, profile.class_title);
+      if (currentSaveView.current !== saveView) return;
       Keyboard.dismiss();
       sheetClosing.current = true;
       setSheetOpen(false);
     } catch {
-      setSaveError(
+      if (currentSaveView.current === saveView) setSaveError(
         "Couldn’t save your changes. Your draft is here. Please try again.",
       );
     } finally {
@@ -214,7 +224,7 @@ export default function ProfileScreen() {
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         expanded motionMode="timed" keyboardBehavior="fillParent" label="Personalise profile"
         header={<View style={p.sheetHeader}><Text style={p.title}>Make it yours</Text><Text style={p.body}>Your name and your companion’s look.</Text></View>}
-        footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(16, insets.bottom), backgroundColor: colors.surfaceRaised }}><PersonalButton title={saving ? "Saving…" : "Save changes"} disabled={saving} onPress={() => void save()} /></View>}
+        footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(16, insets.bottom), backgroundColor: colors.surfaceRaised }}>{!online && <Text testID="profile-save-needs-internet" accessibilityLiveRegion="polite" style={p.caption}>Needs internet</Text>}<PersonalButton title={saving ? "Saving…" : "Save changes"} disabled={saving || !online} accessibilityLabel={online ? "Save changes" : "Save changes. Needs internet"} onPress={() => void save()} /></View>}
         overlay={discard ? <SheetConfirmation title="Discard changes?" message="Your changes haven’t been saved." confirmLabel="Discard changes" cancelLabel="Keep editing"
           onCancel={() => setDiscard(false)} onConfirm={() => { setDiscard(false); Keyboard.dismiss(); sheetClosing.current = true; setSheetOpen(false); }} /> : undefined}>
         <BottomSheetScrollView ref={nameScroll} keyboardShouldPersistTaps="handled" enableFooterMarginAdjustment contentContainerStyle={[p.sheetBody, { paddingBottom: 16 }]}>

@@ -1,4 +1,4 @@
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ScrollView, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
@@ -32,6 +32,18 @@ function Squads() {
   const chosen = useSyncExternalStore(squadSelection.subscribe, squadSelection.get, squadSelection.get);
   const [joining, setJoining] = useState(false), [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  // Native sheet portals sit above the retained online page. Cloud-only
+  // editors close before the offline surface paints, and stay closed on return.
+  const [onlineView, setOnlineView] = useState({ online: squads.online });
+  if (onlineView.online !== squads.online) {
+    setOnlineView({ online: squads.online });
+    if (!squads.online) { setJoining(false); setEditing(false); }
+  }
+  const currentView = useRef<typeof onlineView | null>(onlineView);
+  useLayoutEffect(() => {
+    currentView.current = onlineView;
+    return () => { currentView.current = null; };
+  }, [onlineView]);
   const refresh = squads.refresh;
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0] ?? null;
@@ -42,17 +54,21 @@ function Squads() {
   };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const pick = (id: string) => { setError(""); squadSelection.choose(id); };
-  const options: MoreOption[] = squad ? [
+  const options: MoreOption[] = squad ? ([
     ...(squad.ownerIsYou ? [{ label: "Edit name and goal", icon: "create-outline" as const, onPress: () => setEditing(true) },
       { label: "New invite code", icon: "refresh" as const, onPress: () => setConfirm({ kind: "code" }) }] : []),
     { label: "Share invite", icon: "share-outline" as const, onPress: share },
     { label: "Join or start a squad", icon: "add-circle-outline" as const, onPress: () => setJoining(true) },
     { label: "Leave squad", icon: "exit-outline" as const, danger: true, onPress: () => setConfirm({ kind: "leave" }) },
-  ] : [];
+  ] as MoreOption[]).map(option => ({ ...option, onPress: () => {
+    // MoreMenu dispatches after closing. An outgoing menu must not reopen a
+    // cloud editor after disconnect, reconnect or unmount.
+    if (onlineView.online && currentView.current === onlineView) option.onPress();
+  } })) : [];
   return <View style={s.screen}>
     <PersonalPage title="Squads" subtitle="" compact bottomContentInset={bottomInset}
-      action={squad ? <MoreMenu options={options} label="Squad options" size={36} testID="squad-options" />
-        : <CircleButton size={36} label="Join or start a squad" onPress={() => setJoining(true)} />}>
+      action={squads.online && (squad ? <MoreMenu options={options} label="Squad options" size={36} testID="squad-options" />
+        : <CircleButton size={36} label="Join or start a squad" onPress={() => setJoining(true)} />)}>
       <ContentReveal><View style={s.stack}>
         {squads.squads.length > 1 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.switcher} accessibilityRole="tablist">
           {squads.squads.map(item => {
@@ -70,9 +86,9 @@ function Squads() {
           </View>}
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       </View></ContentReveal>
-      <SquadJoinSheet visible={joining} online={squads.online} leading={leading} memberships={squads.squads.length}
+      <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={leading} memberships={squads.squads.length}
         onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
-      <SquadEditSheet squad={squad} visible={editing} onClose={() => setEditing(false)} onSave={squads.update} />
+      <SquadEditSheet squad={squad} visible={squads.online && editing} onClose={() => setEditing(false)} onSave={squads.update} />
     </PersonalPage>
     {confirm && squad && <SheetConfirmation destructive={confirm.kind !== "code"}
       title={confirm.kind === "leave" ? `Leave ${squad.name}?` : confirm.kind === "code" ? "Get a new invite code?" : `Remove ${confirm.member.name}?`}

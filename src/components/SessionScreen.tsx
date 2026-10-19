@@ -181,6 +181,7 @@ export default function SessionScreen() {
   const chosenCourseId = useSyncExternalStore(studySelection.subscribe, studySelection.get, studySelection.get);
   const chosenCourse = study.courses.find(item => item.id === chosenCourseId) ?? null;
   const [subjectPicker, setSubjectPicker] = useState(false);
+  if (!onlineSurfaces && subjectPicker) setSubjectPicker(false);
   const pickerState = useRef({ scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general });
   useLayoutEffect(() => { pickerState.current = { scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general }; },
     [presentationScope, locked, selectableRoutines, timer, subjects, general]);
@@ -467,8 +468,8 @@ export default function SessionScreen() {
                   <Text style={styles.rowLabel}>Category</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
                   <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>}
-                {sessionMode === "study" && <SubjectSetupRow areas={subjects} areaId={timer.targetAttributeId} generalId={general?.id} learningId={learning?.id} disabled={locked}
-                  onArea={id => timer.setTargetAttributeId(id)} open={subjectPicker} onOpenChange={setSubjectPicker} />}
+                {sessionMode === "study" && <SubjectSetupRow areas={subjects} areaId={timer.targetAttributeId} generalId={general?.id} learningId={learning?.id} disabled={locked || !onlineSurfaces}
+                  onArea={id => timer.setTargetAttributeId(id)} open={onlineSurfaces && subjectPicker} onOpenChange={setSubjectPicker} />}
                 {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose routine"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : "Any activity in this category"} style={styles.setupRow}>
                   <View style={[styles.rowIcon, isRoutine && { backgroundColor: areaTint(areaColor) }]}><Ionicons name="repeat" size={16} color={isRoutine ? areaColor : colors.secondary} /></View>
                   <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine && styles.rowValueChosen]} numberOfLines={1}>{isRoutine ? title : "Any"}</Text>

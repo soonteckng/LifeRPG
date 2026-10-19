@@ -218,7 +218,7 @@ test('the shared Subject row picks or creates any subject and moves the session 
   await act(async () => ui.unmount());
 });
 test('Home shows exams within a week: tap edits, Study starts, hold offers more; and peeks at your squad before its tab', async () => {
-  const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [] }, nav = [], timer = [];
+  const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [], online: true }, nav = [], timer = [];
   const sections = load('src/components/HomeSections.tsx', { ...base(),
     'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
     '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'), '/SwipeRow': props => props.children,
@@ -271,6 +271,49 @@ test('Home shows exams within a week: tap edits, Study starts, hold offers more;
   assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());
 });
+test('Home squad native portals close offline and stale open or delayed navigation callbacks stay fenced', async () => {
+  for (const hasSquad of [false, true]) {
+    const squad = { id: id(8), name: 'Library crew', code: 'K7Q4PX', members: [], goalMinutes: null };
+    const squads = { squads: hasSquad ? [squad] : [], online: true }, calls = [];
+    const { HomeSquad } = load('src/components/HomeSections.tsx', { ...base(),
+      'expo-router': { useRouter: () => ({ navigate: to => calls.push(['navigate', to]) }) },
+      '/useSquads': { useSquads: () => squads }, '/useStudyPlan': {}, '/useStudyLauncher': {}, '/useProgressData': {},
+      '/QuestContext': {}, '/UserContext': {}, '/TimerContext': {}, '/ExamRow': host('Exam'), '/ExamsCard': host('Exams'),
+      '/MilestonesRow': host('Milestones'), '/StudyExamSheet': host('ExamSheet'),
+      '/SquadsSection': { SquadSummary: host('Summary') }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') },
+      '/SheetHeader': host('Header'), '/SectionHeader': { __esModule: true, default: host('Section'), SeeAll: host('SeeAll') },
+      '/squadSelection': { squadSelection: { get: () => null, choose: id => calls.push(['choose', id]) } },
+    });
+    let ui; await act(async () => { ui = create(React.createElement(HomeSquad)); });
+    const rerender = () => act(async () => ui.update(React.createElement(HomeSquad)));
+    const open = ui.root.findAllByType('Press').find(node => node.props.testID === (hasSquad ? 'home-squad' : 'home-squad-empty')).props.onPress;
+    const visible = () => hasSquad ? ui.root.findAllByType('Sheet').find(node => node.props.label === 'squad peek').props.visible
+      : ui.root.findByType('JoinSheet').props.visible;
+    let delayed;
+    try {
+      await act(async () => open()); assert.equal(visible(), true);
+      if (hasSquad) {
+        const originalTimeout = global.setTimeout;
+        global.setTimeout = (work, delay, ...args) => delay === 220 ? (delayed = () => work(...args), 0) : originalTimeout(work, delay, ...args);
+        try { await act(async () => presses(ui.root, 'See the whole squad')[0].props.onPress()); }
+        finally { global.setTimeout = originalTimeout; }
+        assert.equal(typeof delayed, 'function');
+      }
+      squads.online = false; await rerender();
+      assert.equal(visible(), false, 'the cloud squad portal cannot cover the offline surface');
+      await act(async () => { open(); delayed?.(); });
+      assert.equal(visible(), false); assert.deepEqual(calls, []);
+      squads.online = true; await rerender();
+      assert.equal(visible(), false, 'reconnect cannot replay an old portal');
+      await act(async () => { open(); delayed?.(); });
+      assert.equal(visible(), false, 'callbacks from the outgoing online visit stay invalid after reconnect');
+      assert.deepEqual(calls, [], 'presentation changes never navigate or submit squad changes');
+      const freshOpen = ui.root.findAllByType('Press').find(node => node.props.testID === (hasSquad ? 'home-squad' : 'home-squad-empty')).props.onPress;
+      await act(async () => freshOpen()); assert.equal(visible(), true, 'fresh online controls still work');
+    } finally { await act(async () => ui.unmount()); }
+  }
+});
+
 test('the Routines tab starts with Just focus, holds every routine, and starts old routines the same way Home does', async () => {
   const calls = [];
   const Screen = load('src/app/(tabs)/routines.tsx', { ...base(), ...startMocks(calls), 'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
@@ -358,6 +401,9 @@ test('Today’s card shows the goal up close; changing it lives in its •••
   assert.deepEqual(options.map(option => option.label), ['Change daily goal', 'Open Progress']);
   await act(async () => { options[0].onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.deepEqual(calls, ['close', 'goal'], 'the card closes before the goal editor opens');
+  await act(async () => ui.update(React.createElement(Sheet, { visible: false, onClose() {}, completedSeconds: 1500, goalMinutes: 60, streak: 4, complete: false,
+    onChangeGoal() {}, onOpenProgress() {} })));
+  assert.equal(ui.root.findAllByType('Menu').length, 0, 'a closed Today sheet cannot retain a native options menu above the offline surface');
   await act(async () => ui.unmount());
 });
 

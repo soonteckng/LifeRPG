@@ -228,6 +228,7 @@ async function screen(file, mocks) {
           .find((n) => n.props.title === title || n.props.accessibilityLabel === title || text(n) === title)
           .props.onPress(),
       ),
+    update: async () => act(async () => renderer.update(React.createElement(Component))),
     cleanup: async () => act(async () => renderer.unmount()),
   };
 }
@@ -734,6 +735,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
 async function profileScreen(overrides = {}) {
   // Profile is a page beside the tabs now, one folder up from them.
   const mocks = {
+    "../../context/AuthContext": { useAuth: () => ({ accessMode: "online", admissionEpoch: 1 }) },
     "../../context/TimerContext": {useTimer: () => ({})},
     "expo-router": {
       useRouter: () => ({ navigate() {} }),
@@ -1117,6 +1119,27 @@ test("Profile shows its stats and badges, opens every milestone as a card, and k
   const badges=ui.renderer.root.findAll(node=>node.props.accessibilityLabel==='My Badges. See all milestones'&&typeof node.props.onPress==='function')[0];
   await act(async()=>badges.props.onPress());assert.equal(sheet().props.visible,true);assert.deepEqual(routes,[],'milestones open as a card, not a page');
   assert.match(ui.text(),/My Categories/);assert.doesNotMatch(ui.text(),/Your categories/);
+ }finally{await ui.cleanup();}
+});
+
+test('an open profile draft stays editable offline, labels Save as needing internet, and fences stale saves',async()=>{
+ const auth={accessMode:'online',admissionEpoch:1},saves=[];
+ const ui=await profileScreen({'../../context/AuthContext':{useAuth:()=>auth},'../../context/UserContext':{useUser:()=>({
+  profile:{id:'u',username:'Soon',avatar:'⭐',class_title:'Scholar',level:3,current_xp:20,timezone:'UTC'},
+  reloadProfile:async()=>{},updateProfile:async(...args)=>saves.push(args),
+ })}});
+ try{
+  await ui.press('Personalise profile');await ui.input('Profile name','New name');
+  const save=()=>ui.renderer.root.findAllByType('Button').find(n=>text(n)==='Save changes');
+  const outgoing=save().props.onPress;
+  auth.accessMode='local-only';await ui.update();
+  assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);
+  assert.equal(save().props.disabled,true);assert.match(ui.text(),/Needs internet/);
+  assert.equal(ui.renderer.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Profile name').props.value,'New name');
+  await ui.input('Profile name','Kept draft');await act(async()=>outgoing());await ui.press('Save changes');assert.deepEqual(saves,[]);
+  auth.accessMode='online';await ui.update();await act(async()=>outgoing());assert.deepEqual(saves,[]);
+  assert.equal(save().props.disabled,false);await ui.press('Save changes');
+  assert.deepEqual(saves,[['Kept draft','⭐','Scholar']]);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
 });
 

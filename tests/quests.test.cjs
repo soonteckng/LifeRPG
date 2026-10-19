@@ -1217,3 +1217,24 @@ test('Home: the goal ring opens Today, its ••• changes the goal, and Setti
   assert.ok(layout.findAll(node=>node.type==='SavedRoutines').length===1);
  }finally{await ui.cleanup();}
 });
+
+test('Home closes native goal menus offline and refuses delayed outgoing menu actions after reconnect', async()=>{
+ const auth={accessMode:'online',admissionEpoch:1};
+ const ui=await quickHomeSetup(null,undefined,null,'src/app/(tabs)/index.tsx',{'../../context/AuthContext':{useAuth:()=>auth}});
+ try{
+  const menu=()=>ui.renderer.root.findAllByType('MoreMenu').find(n=>n.props.testID==='home-today-menu');
+  const goal=()=>ui.renderer.root.findByType('GoalSheet');
+  const outgoing=menu().props.options;
+  await act(async()=>ui.button('home-compact-goal').props.onPress());
+  const today=ui.renderer.root.findByType('TodaySheet').props;
+  auth.accessMode='local-only';await ui.update();
+  assert.equal(menu(),undefined);assert.equal(goal().props.visible,false);
+  assert.equal(ui.renderer.root.findByType('TodaySheet').props.visible,false);
+  await act(async()=>{outgoing.forEach(o=>o.onPress());today.onChangeGoal();today.onOpenProgress();});
+  assert.equal(goal().props.visible,false);assert.equal(ui.calls.some(c=>c[0]==='navigate'),false);
+  auth.accessMode='online';await ui.update();
+  await act(async()=>outgoing.forEach(o=>o.onPress()));
+  assert.equal(goal().props.visible,false);assert.equal(ui.calls.some(c=>c[0]==='navigate'),false);
+  await act(async()=>menu().props.options[0].onPress());assert.equal(goal().props.visible,true);
+ }finally{await ui.cleanup();}
+});

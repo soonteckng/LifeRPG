@@ -24,7 +24,10 @@ function motionHarness() {
   class Value { constructor(value) { this.value = value; } setValue(value) { this.value = value; } }
   return { transitions, Animated: {
     Value, View: host('AnimatedView'),
-    timing: (value, config) => ({ value, config }),
+    timing: (value, config) => {
+      const transition = { animations: [{ value, config }], stopped: false, callback: null };
+      return { value, config, start(callback) { transition.callback = callback; transitions.push(transition); }, stop() { transition.stopped = true; } };
+    },
     parallel: animations => {
       const transition = { animations, stopped: false, callback: null };
       return {
@@ -34,7 +37,7 @@ function motionHarness() {
     },
   },
   async finish(index = transitions.length - 1) {
-    const transition = transitions[index]; assert.ok(transition);
+    const transition = transitions[index]; if (!transition) return;
     await act(async () => {
       if (!transition.stopped) for (const animation of transition.animations) animation.value.setValue(animation.config.toValue);
       // A queued native callback may arrive after stop; the component must fence it.
@@ -51,7 +54,7 @@ async function surface(options = {}) {
     return React.createElement('Navigation', { token: token.current });
   }
   const Surface = load('src/components/ConnectionSurface.tsx', {
-    'react-native': { View: host('View'), Animated: motion.Animated, StyleSheet: { create: value => value } },
+    'react-native': { View: host('View'), Animated: motion.Animated, Easing: { out: curve => ({ out: curve }), cubic: 'cubic' }, StyleSheet: { create: value => value } },
     '../hooks/useReducedMotion': { useReducedMotion: () => options.reducedMotion ?? false },
   }).default;
   const render = () => React.createElement(Surface, { ...props, offline: active => React.createElement('Offline', { active }) }, React.createElement(Navigation));
@@ -104,27 +107,30 @@ test('an obsolete fade callback cannot remove the active offline surface after a
   } finally { await ui.cleanup(); }
 });
 
-test('reduced motion uses zero-duration fades while preserving the same navigation tree', async () => {
+test('reduced motion switches instantly without scheduling or waiting for a fade', async () => {
   const ui = await surface({ localOnly: true, reducedMotion: true });
   try {
-    await ui.motion.finish(); await ui.update({ localOnly: false }); await ui.motion.finish();
-    assert.ok(ui.motion.transitions.every(transition => transition.animations.every(animation => animation.config.duration === 0)));
+    assert.equal(ui.root().findByProps({testID:'offline-connection-surface'}).props.pointerEvents,'auto');
+    await ui.update({ localOnly: false });
+    assert.equal(ui.motion.transitions.length,0);
     assert.deepEqual(ui.counters, { mounts: 1, unmounts: 0 });
     assert.equal(ui.root().findAllByType('Offline').length, 0);
   } finally { await ui.cleanup(); }
 });
 
-test('the outgoing layout leaves before the incoming layout fades into view in both directions', async () => {
+test('a short ease-out offline fade always has an opaque online page beneath it', async () => {
   const ui = await surface();
   try {
     await ui.motion.finish(); await ui.update({localOnly:true});
-    let [online,offline] = ui.motion.transitions.at(-1).animations;
-    assert.equal(online.config.toValue,0); assert.equal(online.config.delay,0);
-    assert.equal(offline.config.toValue,1); assert.equal(offline.config.delay,online.config.duration);
+    let [offline] = ui.motion.transitions.at(-1).animations;
+    assert.equal(offline.config.toValue,1); assert.equal(offline.config.delay,undefined);
+    assert.equal(offline.config.duration,160); assert.deepEqual(offline.config.easing,{out:'cubic'});
+    assert.equal(ui.root().findByProps({testID:'online-navigation-surface'}).props.style[1].opacity.value,1);
     await ui.motion.finish(); await ui.update({localOnly:false});
-    [online,offline] = ui.motion.transitions.at(-1).animations;
-    assert.equal(offline.config.toValue,0); assert.equal(offline.config.delay,0);
-    assert.equal(online.config.toValue,1); assert.equal(online.config.delay,offline.config.duration);
+    [offline] = ui.motion.transitions.at(-1).animations;
+    assert.equal(offline.config.toValue,0); assert.equal(offline.config.delay,undefined);
+    assert.equal(offline.config.duration,160);
+    assert.equal(ui.root().findByProps({testID:'online-navigation-surface'}).props.style[1].opacity.value,1);
     assert.equal(ui.root().findByType('Offline').props.active,false);
     await ui.motion.finish(); assert.equal(ui.root().findAllByType('Offline').length,0);
   } finally { await ui.cleanup(); }
@@ -134,16 +140,19 @@ async function connection(options = {}) {
   const calls = [], motion = motionHarness();
   let accessMode = options.accessMode ?? 'local-only', pathname = options.pathname ?? '/session';
   let ownerId = options.ownerId ?? 'owner-a', nonce = options.nonce, protectionEnd = options.protectionEnd, protectionSession = options.protectionSession;
+  let admissionEpoch=options.admissionEpoch??1;
   let timer = { hasOpenSession: false, isCompleted: false, endingSession: false, sessionEnded: false,
     awaitingStart: false, linkedTaskId: null, isRestoring: false, actionBusy: false, sessionId: 'session-a',
     consumeNotificationAction: async value => { calls.push(['consume', value]); return options.action ?? 'end'; },
     resetTimer: async () => { calls.push(['end']); return true; }, ...options.timer };
   const router = { replace: route => calls.push(route) };
   const Content = load('src/components/SessionConnectionContent.tsx', {
-    'react-native': { View: host('View'), Animated: motion.Animated, StyleSheet: { create: value => value } },
+    'react-native': { View: host('View'), Text:host('Text'), Animated: motion.Animated, Easing: {out:curve=>({out:curve}),cubic:'cubic'}, StyleSheet: { create: value => value } },
+    'react-native-safe-area-context': {useSafeAreaInsets:()=>({top:24,bottom:0})},
     'expo-router': { usePathname: () => pathname, useRouter: () => router, useGlobalSearchParams: () => ({countdownAction:nonce,protectionEnd,protectionSession}) },
-    '../hooks/useReducedMotion': { useReducedMotion: () => false },
-    '../context/AuthContext': { useAuth: () => ({ accessMode, user: accessMode === 'online' ? {id:ownerId} : null, localOwner:{id:ownerId} }) },
+    '../hooks/useReducedMotion': { useReducedMotion: () => options.reducedMotion ?? false },
+    '../utils/sessionBackend':{sessionBackendIdentity:()=>({backendId:'fixture'})},
+    '../context/AuthContext': { useAuth: () => ({ accessMode, user: accessMode === 'online' ? {id:ownerId} : null, localOwner:accessMode==='local-only'?{id:ownerId,backendId:'fixture'}:null,admissionEpoch }) },
     '../context/TimerContext': { useTimer: () => timer },
     './OfflineSessionRecovery': host('Recovery'),
     './SheetConfirmation': host('Confirmation'),
@@ -155,6 +164,7 @@ async function connection(options = {}) {
       if (next.accessMode !== undefined) accessMode = next.accessMode;
       if (next.pathname !== undefined) pathname = next.pathname;
       if (next.ownerId !== undefined) ownerId = next.ownerId;
+      if (next.admissionEpoch !== undefined) admissionEpoch=next.admissionEpoch;
       if (next.nonce !== undefined) nonce = next.nonce;
       if (next.protectionEnd !== undefined) protectionEnd=next.protectionEnd;
       if (next.protectionSession !== undefined) protectionSession=next.protectionSession;
@@ -231,6 +241,71 @@ test('a normal online setup and non-session destinations do not redirect merely 
       assert.equal(ui.root().findByProps({ testID: 'online-navigation-surface' }).props.pointerEvents, 'auto');
     } finally { await ui.cleanup(); }
   }
+});
+
+test('verified reconnect shows a brief notice and only an actual pending operation says syncing',async()=>{
+  const copy=node=>typeof node==='string'?node:(node.children??[]).map(copy).join('');
+  for(const state of [
+    {syncStatus:'rejected',unsyncedSessionCount:3,actionBusy:false,expected:'Back online'},
+    {syncStatus:'waiting',unsyncedSessionCount:1,actionBusy:false,expected:'Back online'},
+    {syncStatus:'waiting',unsyncedSessionCount:1,actionBusy:true,expected:'Back online · syncing'},
+    {syncStatus:'waiting',unsyncedSessionCount:1,actionBusy:true,actionError:'No connection',expected:'Back online'},
+  ]){
+    const ui=await connection({timer:{hasOpenSession:true,...state}});
+    try{
+      assert.equal(ui.root().findAllByProps({testID:'connection-online-notice'}).length,0);
+      await ui.update({accessMode:'online'});
+      assert.equal(copy(ui.root().findByProps({testID:'connection-online-notice'})),state.expected);
+      await ui.update({timer:{actionBusy:false}});
+      assert.equal(copy(ui.root().findByProps({testID:'connection-online-notice'})),'Back online');
+      await ui.update({accessMode:'local-only'});
+      assert.equal(ui.root().findAllByProps({testID:'connection-online-notice'}).length,0);
+      assert.deepEqual(ui.calls,[],'the notice never retries, starts, ends or changes session authority');
+    }finally{await ui.cleanup();}
+  }
+});
+
+test('ordinary online entry and another account never inherit a reconnect notice',async()=>{
+  const fresh=await connection({accessMode:'online',pathname:'/'});
+  try{assert.equal(fresh.root().findAllByProps({testID:'connection-online-notice'}).length,0);}finally{await fresh.cleanup();}
+  const replacement=await connection({timer:{hasOpenSession:true}});
+  try{
+    await replacement.update({ownerId:'owner-b',accessMode:'online'});
+    assert.equal(replacement.root().findAllByProps({testID:'connection-online-notice'}).length,0);
+  }finally{await replacement.cleanup();}
+});
+
+test('a same-owner re-admission preserves the verified reconnect notice without borrowing another owner',async()=>{
+  const ui=await connection({timer:{hasOpenSession:true}});
+  try{
+    await ui.update({accessMode:'online',admissionEpoch:3});
+    assert.ok(ui.root().findByProps({testID:'connection-online-notice'}));
+    await ui.update({ownerId:'owner-b',admissionEpoch:4});
+    assert.equal(ui.root().findAllByProps({testID:'connection-online-notice'}).length,0);
+  }finally{await ui.cleanup();}
+});
+
+test('the reconnect notice dismisses with timing ease-out and Reduce motion removes it instantly',async()=>{
+  const realTimeout=global.setTimeout,realClear=global.clearTimeout,callbacks=new Map();let serial=0;
+  global.setTimeout=(fn,delay)=>{const id=++serial;callbacks.set(id,{fn,delay});return id;};
+  global.clearTimeout=id=>callbacks.delete(id);
+  try{
+    for(const reducedMotion of [false,true]){
+      const ui=await connection({reducedMotion,timer:{hasOpenSession:true}});
+      try{
+        await ui.update({accessMode:'online'});await ui.motion.finish();
+        const timeout=[...callbacks.values()].find(item=>item.delay===1200);assert.ok(timeout);
+        await act(async()=>timeout.fn());
+        if(reducedMotion){assert.equal(ui.motion.transitions.length,0);}
+        else{
+          const fade=ui.motion.transitions.at(-1).animations[0];
+          assert.equal(fade.config.duration,140);assert.deepEqual(fade.config.easing,{out:'cubic'});
+          await ui.motion.finish();
+        }
+        assert.equal(ui.root().findAllByProps({testID:'connection-online-notice'}).length,0);
+      }finally{await ui.cleanup();callbacks.clear();}
+    }
+  }finally{global.setTimeout=realTimeout;global.clearTimeout=realClear;}
 });
 
 test('account verification keeps the outgoing offline page steady until online content is ready', async () => {

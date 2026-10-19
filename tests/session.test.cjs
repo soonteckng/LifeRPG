@@ -1536,6 +1536,20 @@ test('switching offline suppresses online pickers and End confirmation without l
     assert.ok(ui.button('Pause'));assert.equal(ui.root().findAllByType('CompletionPopup').length,0);
   }finally{await ui.cleanup();}
 });
+test('the retained online Study subject picker closes on disconnect and stays closed on reconnect',async()=>{
+  const ui=await screenSetup();
+  try{
+    await ui.mode('study');
+    await act(async()=>ui.root().findByType('SubjectRow').props.onOpenChange(true));
+    assert.equal(ui.root().findByType('SubjectRow').props.open,true);
+    await ui.update({accessMode:'local-only'});
+    assert.equal(ui.root().findByType('SubjectRow').props.open,false);
+    assert.equal(ui.root().findByType('SubjectRow').props.disabled,true);
+    await ui.update({accessMode:'online'});
+    assert.equal(ui.root().findByType('SubjectRow').props.open,false);
+    assert.equal(ui.calls.some(call=>call[0]==='start'),false);
+  }finally{await ui.cleanup();}
+});
 test("free and quest starts reveal visible controls and settle the same mounted timer stage", async () => {
   for (const linkedTaskId of [null, 7]) {
     const ui = await screenSetup({linkedTaskId}, {}, false, {value:false});

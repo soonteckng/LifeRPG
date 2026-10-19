@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Animated, StyleSheet, View } from "react-native";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { colors } from "../constants/theme";
+import { navigationTiming } from "../utils/navigationMotion";
 
 /** Keep navigation mounted; connectivity changes only the visible surface. */
 export default function ConnectionSurface({ localOnly, onlineReady = true, children, offline }: {
@@ -15,27 +16,32 @@ export default function ConnectionSurface({ localOnly, onlineReady = true, child
     setSurface({ localOnly, onlineReady, retained: toOffline || surface.retained || changesVisibleSurface,
       transitioning: surface.transitioning || changesVisibleSurface });
   }
+  const latest = useRef({ localOnly, onlineReady });
+  useLayoutEffect(() => { latest.current = { localOnly, onlineReady }; }, [localOnly, onlineReady]);
   const initialized = useRef(false);
-  const [onlineOpacity] = useState(() => new Animated.Value(localOnly || !onlineReady ? 0 : 1));
+  const [onlineOpacity] = useState(() => new Animated.Value(1));
   const [offlineOpacity] = useState(() => new Animated.Value(localOnly || !onlineReady ? 1 : 0));
   useLayoutEffect(() => {
     let live = true;
-    // Let the outgoing page leave before the incoming page becomes readable.
-    // Cross-fading two complete layouts made overlapping text look like a jump.
+    // The online page stays opaque underneath. Fade only the offline layer,
+    // so there is never an empty frame between the two complete layouts.
     const instant = reducedMotion || !initialized.current;
     initialized.current = true;
-    const leave = instant ? 0 : 90;
-    const enter = instant ? 0 : 170;
-    const animation = Animated.parallel([
-      Animated.timing(onlineOpacity, { toValue: toOffline ? 0 : 1, duration: toOffline ? leave : enter, delay: toOffline ? 0 : leave, useNativeDriver: true }),
-      Animated.timing(offlineOpacity, { toValue: toOffline ? 1 : 0, duration: toOffline ? enter : leave, delay: toOffline ? leave : 0, useNativeDriver: true }),
-    ]);
-    animation.start(({ finished }) => {
-      if (finished && live) {
-        setSurface(current => (current.localOnly || !current.onlineReady) === toOffline
-          ? { ...current, retained: toOffline, transitioning: false } : current);
-      }
-    });
+    const settle = () => setSurface(current => (current.localOnly || !current.onlineReady) === toOffline
+      && (current.retained !== toOffline || current.transitioning)
+      ? { ...current, retained: toOffline, transitioning: false } : current);
+    if (instant) {
+      onlineOpacity.setValue(1); offlineOpacity.setValue(toOffline ? 1 : 0);
+      // A layout effect can run alongside the render-time prop latch. Commit
+      // the exact incoming props here rather than waiting for an animation.
+      const { localOnly, onlineReady } = latest.current;
+      setSurface(current => current.localOnly === localOnly && current.onlineReady === onlineReady
+        && current.retained === toOffline && !current.transitioning ? current
+        : { localOnly, onlineReady, retained: toOffline, transitioning: false });
+      return;
+    }
+    const animation = Animated.timing(offlineOpacity, { toValue: toOffline ? 1 : 0, ...navigationTiming(160) });
+    animation.start(({ finished }) => { if (finished && live) settle(); });
     return () => { live = false; animation.stop(); };
   }, [toOffline, reducedMotion, onlineOpacity, offlineOpacity]);
   const onlineInteractive = !toOffline && !surface.transitioning;

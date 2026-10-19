@@ -1,13 +1,17 @@
 import { tapHaptic, tapHapticsEnabled } from "../utils/tapHaptics";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
-import { colors, edge } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { useAuth } from "../context/AuthContext";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
+import { useOfflineReconnect } from "../hooks/useOfflineReconnect";
+import { homeWelcome } from "../utils/homeWelcome";
+import { sessionBackendIdentity } from "../utils/sessionBackend";
 import OfflineSessionWorkspace from "./OfflineSessionWorkspace";
 
 function checkConnection(request: Promise<void>): Promise<void> {
@@ -40,15 +44,20 @@ export default function OfflineSessionRecovery({ active = true }: { active?: boo
   const { profile } = useUser();
   const timer = useTimer();
   const { width, fontScale } = useWindowDimensions();
-  const [busy, setBusy] = useState(false);
-  const [feedback, setFeedback] = useState("");
-  const [error, setError] = useState("");
-  const lock = useRef(false);
-  const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const cached = auth.cachedProfile?.id === auth.localOwner?.id ? auth.cachedProfile
-    : profile.id === auth.localOwner?.id ? profile : null;
-  const scope = `${auth.localOwner?.backendId ?? ""}:${auth.localOwner?.id ?? ""}:${auth.admissionEpoch}`;
+  const liveOwner = auth.localOwner;
+  const liveCached = auth.cachedProfile?.id === liveOwner?.id ? auth.cachedProfile : profile?.id === liveOwner?.id ? profile : null;
+  const [lastIdentity, setLastIdentity] = useState(() => liveOwner ? { owner: liveOwner, cached: liveCached, epoch: auth.admissionEpoch } : null);
+  if (liveOwner && (lastIdentity?.owner.id !== liveOwner.id || lastIdentity.owner.backendId !== liveOwner.backendId || lastIdentity.cached !== liveCached || lastIdentity.epoch !== auth.admissionEpoch)) {
+    setLastIdentity({ owner: liveOwner, cached: liveCached, epoch: auth.admissionEpoch });
+  }
+  const configuredBackend = sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
+  const leaving = !active && !liveOwner && !!lastIdentity && auth.user?.id === lastIdentity.owner.id
+    && configuredBackend === lastIdentity.owner.backendId;
+  const owner = leaving ? lastIdentity?.owner : liveOwner;
+  const cached = leaving ? lastIdentity?.cached : liveCached;
+  const name = cached?.username?.trim() || "Hero";
+  const hour = new Date().getHours();
+  const scope = `${owner?.backendId ?? ""}:${owner?.id ?? ""}:${leaving ? lastIdentity?.epoch : auth.admissionEpoch}`;
   const currentState = recoveryState(timer);
   const rawSeconds = currentState.timer === "planned" ? timer.duration : timer.isCompleted ? 0 : timer.timeLeft;
   const currentSeconds = Number.isFinite(rawSeconds) ? Math.max(0, Math.floor(rawSeconds)) : 0;
@@ -67,37 +76,34 @@ export default function OfflineSessionRecovery({ active = true }: { active?: boo
   const seconds = presentation.seconds;
   const minutes = Math.floor(seconds / 60), remainder = seconds % 60;
   const timeLabel = `${state.timer === "planned" ? "Planned focus" : "Time remaining"}, ${minutes} ${minutes === 1 ? "minute" : "minutes"}, ${remainder} ${remainder === 1 ? "second" : "seconds"}`;
-  const disabled = busy || timer.actionBusy || timer.isRestoring;
+  const workspaceAvailable = (timer.offlineAvailable || timer.clientReported) && !timer.restoreError && !timer.awaitingStart
+    && !(timer.endingSession && !timer.clientReported);
   const run = async () => {
-    if (lock.current || timer.actionBusy) return;
-    lock.current = true; setBusy(true); setError(""); setFeedback("");
-    try {
-      // Saved-work retry already verifies the account. Running a separate auth
-      // retry alongside it races admission and repeats the same network check.
-      if (timer.restoreError) timer.retryRestore();
-      else if (timer.isCompleted) await timer.retryCompletion();
-      else if (timer.hasOpenSession || timer.endingSession || timer.awaitingStart) await timer.retryAction();
-      else await checkConnection(auth.retrySessionVerification());
-      if (mounted.current) setFeedback("Your saved session stays on this phone until your account confirms it. We’ll reconnect automatically when the connection returns.");
-    } catch {
-      if (mounted.current) setError("Couldn’t reconnect yet. Check your connection and try again.");
-    } finally {
-      lock.current = false;
-      if (mounted.current) setBusy(false);
-    }
+    // Saved-work retry already verifies the account. Running a separate auth
+    // retry alongside it races admission and repeats the same network check.
+    if (timer.restoreError) timer.retryRestore();
+    else if (timer.isCompleted) await timer.retryCompletion();
+    else if (timer.hasOpenSession || timer.endingSession || timer.awaitingStart) await timer.retryAction();
+    else await checkConnection(auth.retrySessionVerification());
   };
-  if ((timer.offlineAvailable || timer.clientReported) && !timer.restoreError && !timer.awaitingStart
-    && !(timer.endingSession && !timer.clientReported)) return <OfflineSessionWorkspace active={active} />;
+  const reconnect = useOfflineReconnect({
+    scope: liveOwner ? JSON.stringify([liveOwner.backendId, liveOwner.id, auth.admissionEpoch]) : null,
+    active: active && !workspaceAvailable, blocked: timer.actionBusy || timer.isRestoring, reconnect: run,
+  });
+  const checking = reconnect.checking || timer.actionBusy || timer.isRestoring;
+  if (workspaceAvailable) return <OfflineSessionWorkspace active={active} />;
   return <SafeAreaView edges={["top", "bottom", "left", "right"]} style={styles.page} testID="offline-session-recovery">
-    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+    <ScrollView style={styles.viewport} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
       <View style={styles.content}>
-        <View style={styles.badge} accessible accessibilityRole="text" accessibilityLabel="Offline. Working from saved account details on this phone.">
-          <View style={styles.dot} />
-          <Text style={styles.badgeText}>Offline</Text>
+        <View style={styles.identityRow}>
+          <View style={styles.intro}><Text style={styles.greeting}>{homeWelcome(hour < 5 ? 18 : hour, name).split(",")[0]},</Text><Text style={styles.heading} accessibilityRole="header" numberOfLines={1}>{name}</Text></View>
+          <View style={styles.badge} accessible accessibilityRole="text" accessibilityLabel="Offline. Working from saved account details on this phone.">
+            <View style={styles.dot} /><Text style={styles.badgeText}>Offline</Text>
+          </View>
         </View>
-        <View style={styles.intro}>
-          <Text style={styles.heading} accessibilityRole="header">{cached?.username ? `Welcome back, ${cached.username}.` : "Welcome back."}</Text>
-          <Text style={styles.body}>Working from saved account details. We’ll reconnect before making changes.</Text>
+        <View style={styles.localNotice}>
+          <View style={styles.noticeRow}><Ionicons name="cloud-offline-outline" size={20} color={colors.accent} /><Text style={styles.noticeTitle}>Saved on this phone</Text></View>
+          <Text style={styles.caption}>Your saved record stays here while we reconnect.</Text>
           {cached && <Text style={styles.caption}>Last saved daily goal: {cached.daily_goal_minutes} min</Text>}
         </View>
         <View style={styles.card}>
@@ -114,15 +120,14 @@ export default function OfflineSessionRecovery({ active = true }: { active?: boo
             accessibilityRole="alert" accessibilityLiveRegion="polite">{presentation.actionError}</Text>}
         </View>
         <View style={styles.actions}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Retry connection"
-            accessibilityState={{ disabled, busy: busy || timer.actionBusy }} disabled={disabled} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); void run(); }}
+          <Pressable testID="offline-recovery-retry-connection" accessibilityRole="button" accessibilityLabel="Retry connection"
+            accessibilityState={{ disabled: reconnect.disabled, busy: checking }} disabled={reconnect.disabled} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); void reconnect.retry(); }}
             style={styles.button}>
-            <Text style={styles.buttonText}>Retry connection</Text>
+            <Text style={styles.buttonText}>{checking ? "Checking…" : "Retry connection"}</Text><Ionicons name="refresh-outline" size={17} color={colors.accent} />
           </Pressable>
-          {!!feedback && <Text accessibilityLiveRegion="polite" style={styles.caption}>{feedback}</Text>}
-          {!!error && <Text accessibilityLiveRegion="polite" accessibilityRole="alert" style={styles.error}>{error}</Text>}
+          <Text accessibilityLiveRegion="polite" style={styles.caption}>We’ll reconnect automatically when the connection returns.</Text>
         </View>
-        <Text style={styles.caption}>New sessions, session changes and account editing return after your account is verified online.</Text>
+        <Text style={styles.caption}>Your full account returns after online verification.</Text>
       </View>
     </ScrollView>
   </SafeAreaView>;
@@ -130,24 +135,26 @@ export default function OfflineSessionRecovery({ active = true }: { active?: boo
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background },
-  scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 24, paddingBottom: 32 },
-  content: { width: "100%", maxWidth: 560, alignSelf: "center", gap: 24 },
-  badge: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 8,
-    borderRadius: 16, backgroundColor: colors.accentSoft },
+  viewport: { flex: 1, minHeight: 0 }, scroll: { flexGrow: 1, paddingHorizontal: 20, paddingTop: 8, paddingBottom: 24 },
+  content: { width: "100%", maxWidth: 600, alignSelf: "center", gap: 26 },
+  identityRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  badge: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: 14, backgroundColor: colors.accentSoft },
   dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.accent },
   badgeText: { ...type.caption, color: colors.accent },
-  intro: { gap: 12 },
-  heading: { ...type.pageTitle, fontSize: 30, lineHeight: 38 },
+  intro: { flex: 1, minWidth: 0, gap: 2 }, greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
+  heading: { color: colors.text, fontSize: 32, lineHeight: 38, fontWeight: "700", letterSpacing: -0.8 },
+  localNotice: { ...edge, padding: 16, gap: 6, borderRadius: radius.card, backgroundColor: colors.surface }, noticeRow: { flexDirection: "row", alignItems: "center", gap: 10 }, noticeTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   body: { ...type.body, color: colors.secondary },
   caption: { ...type.secondary },
-  card: { padding: 20, gap: 18, borderRadius: 24, backgroundColor: colors.surface, ...edge },
-  statusTitle: { ...type.pageTitle, fontSize: 22, lineHeight: 28 },
-  time: { gap: 20, paddingVertical: 12, alignItems: "flex-start" },
+  card: { padding: 16, gap: 14, borderRadius: radius.card, backgroundColor: colors.surface, ...edge },
+  statusTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  time: { gap: 16, paddingVertical: 8, alignItems: "flex-start" },
   unit: { flexDirection: "row", alignItems: "baseline", flexWrap: "wrap", gap: 8 },
-  number: { fontSize: 48, lineHeight: 58, fontWeight: "600", fontVariant: ["tabular-nums"], color: colors.text },
+  number: { fontSize: 40, lineHeight: 48, fontWeight: "600", fontVariant: ["tabular-nums"], color: colors.text },
   unitLabel: { ...type.body, color: colors.secondary },
-  actions: { gap: 12 },
-  button: { minHeight: 52, paddingHorizontal: 18, paddingVertical: 14, alignItems: "center", justifyContent: "center", borderRadius: 26, backgroundColor: colors.primary },
-  buttonText: { ...type.body, fontWeight: "600", color: colors.primaryText, textAlign: "center" },
+  actions: { gap: 10, alignItems: "stretch" },
+  button: { ...edge, minHeight: 48, paddingHorizontal: 18, paddingVertical: 12, alignItems: "center", justifyContent: "space-between", flexDirection: "row", gap: 8, borderRadius: 24, backgroundColor: colors.sheetCard },
+  buttonText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   error: { ...type.body, color: colors.danger },
 });
