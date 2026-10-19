@@ -197,8 +197,6 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   };
 }
 
-// Routine is one of the three setup modes; its row or the mode switch opens the chooser.
-async function openRoutines(ui){const row=ui.button('Choose routine')||ui.button('Change routine');await ui.press(row?row.props.accessibilityLabel:'Routine. One of your saved routines');}
 
 test("provider blocks repeated starts and preserves an unknown start without reissuing it", async () => {
   const pending = deferred();
@@ -786,9 +784,10 @@ test("rejected completion never renders duplicate reward controls on the session
 test("quest setup is compact, keeps its association during loading, and never starts automatically",async()=>{
   const ui=await screenSetup({linkedTaskId:7,duration:2700,timeLeft:2700});
   assert.match(ui.output(),/A long quest title/);
-  assert.ok(ui.button("Choose category"),"a routine shows its category; changing it returns to Any activity");
+  assert.equal(ui.button("Choose category"),undefined,"a routine brings its own category, so there is nothing to change here");
   assert.equal(ui.button("15 minutes"),undefined);
-  assert.ok(ui.button("Change routine"));
+  assert.ok(ui.root().findAll(node=>node.props.testID==="session-routine").length>0,"the routine is shown as a fixed row");
+  assert.equal(ui.button("Change routine"),undefined);
   assert.equal(ui.root().findByType("DurationControl").props.caption,"Planned focus");
   assert.equal(ui.root().findByType("DurationControl").props.onCommit,undefined);
   assert.equal(ui.root().findByProps({testID:"session-timer-anchor"}).props.style[1].flex,1);
@@ -826,7 +825,7 @@ test("custom picker changes setup only on confirm; Retry uses exact seconds",asy
 
 test("back dismisses keyboard, then picker, then the screen without resetting",async()=>{
   const ui=await screenSetup();
-  await openRoutines(ui);
+  await ui.press("Choose category");
   await ui.keyboard();
   await ui.back();
   assert.equal(ui.root().findAllByType("Sheet").length,1);
@@ -914,7 +913,7 @@ test("dock distinguishes running, paused, saving, failed and completed without c
   assert.equal(completed.detail,"Review session");
 });
 
-test("Routine setup is one mode with no switch: what it is for, then category, optional routine, length",async()=>{
+test("Just focus is one mode with no switch: what it is for, then category and length, with no routine chooser",async()=>{
   const ui=await screenSetup();
   assert.equal(ui.button("Routine. Any activity in a category, or one of your routines"),undefined,"no Routine/Study switch");
   assert.equal(ui.button("Study. A subject, counted toward its exams"),undefined);
@@ -922,11 +921,9 @@ test("Routine setup is one mode with no switch: what it is for, then category, o
   const context=ui.root().findAll(node=>node.props.testID==="session-context"&&typeof node.type==="string")[0];
   assert.match(JSON.stringify(context.findAllByType("Text").map(node=>node.props.children)),/Everyday focus/,"the screen opens with what this time is for");
   assert.equal(ui.button("Choose category").props.accessibilityValue.text,"Everyday focus");
-  assert.equal(ui.button("Choose routine").props.accessibilityHint,"Any activity in this category","a routine is optional");
+  assert.equal(ui.button("Choose routine"),undefined,"a routine starts from its own play button, never inside Just focus");
   assert.ok(ui.button("Set a custom focus duration"));
   assert.equal(ui.button("Choose activity"),undefined);
-  await openRoutines(ui);
-  assert.match(ui.output(),/30 min · Everyday focus/);
   await ui.cleanup();
 });
 
@@ -1848,64 +1845,15 @@ test("global End dismissal retains the running or paused countdown until the rou
     }finally{await ui.cleanup();}
   }
 });
-test("Themed quest picker selects the existing quest settings, closes, and never starts automatically",async()=>{
-  const ui=await screenSetup({}, {tasks:[{id:9,title:"Read and reflect",target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false},{id:10,title:"Tomorrow",target_minutes:15,subject_id:1,is_due_today:false,is_completed_today:false}],subjects:[{id:1,title:"General"},{id:2,title:"Knowledge",color_code:"#2DD4BF"}]});
-  try {
-    await openRoutines(ui);
-    assert.match(ui.output(),/45 min · Learning/);
-    assert.equal(ui.button("Choose Tomorrow"),undefined);
-    await ui.press("Choose Read and reflect");
-    assert.deepEqual(ui.calls,[["notes",""],["task",9],["area",2],["duration",45]]);
-    assert.equal(ui.root().findAllByType("Sheet").length,0);
-    assert.equal(ui.calls.filter(c=>c[0]==="start").length,0);
-  }finally{await ui.cleanup();}
-});
-
-test("routine chooser combines saved presets and eligible linked routines while preserving exact setup and display name",async()=>{
-  const routine={id:'saved-routine',revision:1,deletedAt:null,name:'Review thermodynamics',durationSeconds:91,
-    focusAreaId:2,reminder:{enabled:false,hour:9,minute:0}};
+test("a routine session keeps its routine fixed: no category or routine chooser, and Start keeps its exact setup and name",async()=>{
   const metadata=load('src/utils/routineSession.ts',{});
-  const ui=await screenSetup({notes:'old suggested content'},{
-    tasks:[{id:9,title:'Read and reflect',target_minutes:45,subject_id:2,is_due_today:true,is_completed_today:false}],
-    subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],savedRoutines:{routines:[routine]}});
+  const ui=await screenSetup({notes:metadata.encodeRoutineSession('Review thermodynamics'),targetAttributeId:2,duration:91,timeLeft:91},{subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}]});
   try {
-    await openRoutines(ui);assert.ok(ui.button('Choose Read and reflect'));assert.ok(ui.button('Choose Review thermodynamics'));
-    await ui.press('Choose Review thermodynamics');
-    assert.deepEqual(ui.calls.map(call=>call[0]),['task','area','notes','seconds']);
-    assert.deepEqual(ui.calls[0],['task',null]);assert.deepEqual(ui.calls[1],['area',2]);assert.deepEqual(ui.calls[3],['seconds',91]);
-    const notes=ui.calls.find(call=>call[0]==='notes')[1];assert.equal(metadata.readRoutineSession(notes),routine.name);
-    assert.equal(ui.calls.filter(call=>call[0]==='start').length,0,'choosing is setup only');
-    await ui.update({notes,linkedTaskId:null,targetAttributeId:2,duration:91,timeLeft:91});
-    assert.match(ui.output(),/Review thermodynamics/);assert.ok(ui.button('Change routine'));
-    await ui.press('Start');assert.deepEqual(ui.calls.at(-1),['start',91,routine.name]);
-    await ui.update({hasOpenSession:true,isRunning:true,timeLeft:90});
-    assert.match(ui.output(),/Review thermodynamics/);assert.equal(ui.calls.filter(call=>call[0]==='start').length,1);
+    assert.match(ui.output(),/Review thermodynamics/);
+    assert.ok(ui.root().findAll(node=>node.props.testID==='session-routine').length>0);
+    assert.equal(ui.button('Choose category'),undefined);assert.equal(ui.button('Choose routine'),undefined);assert.equal(ui.button('Change routine'),undefined);
+    await ui.press('Start');assert.deepEqual(ui.calls.at(-1),['start',91,'Review thermodynamics']);
   }finally{await ui.cleanup();}
-});
-
-test("choosing a legacy routine clears saved metadata but keeps its numeric task completion link",async()=>{
-  const metadata=load('src/utils/routineSession.ts',{});
-  const ui=await screenSetup({notes:metadata.encodeRoutineSession('Old preset')},{tasks:[
-    {id:42,title:'Linked homework',target_minutes:1,subject_id:1,is_due_today:true,is_completed_today:false}]});
-  try {
-    await ui.press('Change routine');await ui.press('Choose Linked homework');
-    assert.deepEqual(ui.calls,[['notes',''],['task',42],['area',1],['duration',1]]);
-    assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
-  }finally{await ui.cleanup();}
-});
-
-test("Any activity clears both routine metadata and the legacy link",async()=>{
-  const metadata=load('src/utils/routineSession.ts',{});
-  for(const initial of [{linkedTaskId:7,notes:'legacy notes'},
-    {linkedTaskId:null,notes:metadata.encodeRoutineSession('Saved preset')}]) {
-    const ui=await screenSetup({...initial,duration:91});
-    try {
-      await openRoutines(ui); await ui.press('Choose Any activity');
-      const changes=ui.calls.filter(call=>['task','notes','area','seconds'].includes(call[0]));
-      assert.deepEqual(changes,initial.linkedTaskId?[['task',null],['notes',''],['seconds',1800]]:[['task',null],['notes','']],'the category stays; only the routine goes');
-      assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
-    }finally{await ui.cleanup();}
-  }
 });
 
 test("a saved routine with no focus area keeps null instead of silently claiming the general area",async()=>{
@@ -1913,21 +1861,6 @@ test("a saved routine with no focus area keeps null instead of silently claiming
   const ui=await screenSetup({notes:metadata.encodeRoutineSession('Quiet reading'),targetAttributeId:null,duration:61});
   try {assert.equal(ui.calls.filter(call=>call[0]==='area').length,0);await ui.press('Start');
     assert.deepEqual(ui.calls.at(-1),['start',61,'Quiet reading']);
-  }finally{await ui.cleanup();}
-});
-
-test("routine picker ignores an old account's rows and stale selection callback",async()=>{
-  const routine={id:'old-routine',revision:1,deletedAt:null,name:'Private old preset',durationSeconds:91,
-    focusAreaId:1,reminder:{enabled:false,hour:9,minute:0}};
-  const ui=await screenSetup({},{tasks:[],savedRoutines:{routines:[routine]}});
-  try {
-    await openRoutines(ui);const oldSelect=ui.button('Choose Private old preset').props.onPress;
-    await ui.update({ownerId:'owner-b',admissionEpoch:2});
-    await act(async()=>oldSelect());assert.equal(ui.calls.length,0);
-    await openRoutines(ui);assert.equal(ui.button('Choose Private old preset'),undefined);
-    await ui.updateRoutines({scope:{ownerId:'owner-b',backendId:'test-backend'},routines:[{...routine,id:'new-routine',name:'New account preset'}]});
-    assert.ok(ui.button('Choose New account preset'));await ui.press('Choose New account preset');
-    assert.deepEqual(ui.calls[0],['task',null]);assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
   }finally{await ui.cleanup();}
 });
 

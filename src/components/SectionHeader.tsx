@@ -29,10 +29,12 @@ export default function SectionHeader({ title, subtitle, right, onPress, onLongP
   </View>;
 }
 
-/** A quiet grey "See all ›" link for a section header. */
-export function SeeAll({ label = "See all", onPress, accessibilityLabel, testID }: { label?: string; onPress: () => void; accessibilityLabel?: string; testID?: string }) {
+/** A quiet grey "See all ›" link for a section header; a count shows as a small badge when more are hidden. */
+export function SeeAll({ label = "See all", count, onPress, accessibilityLabel, testID }: { label?: string; count?: number; onPress: () => void; accessibilityLabel?: string; testID?: string }) {
   return <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? label} hitSlop={10} testID={testID} style={s.seeAll}>
-    <Text style={s.seeAllText}>{label}</Text><Ionicons name="chevron-forward" size={15} color={colors.muted} />
+    <Text style={s.seeAllText}>{label}</Text>
+    {!!count && <View style={s.badge} testID="see-all-count"><Text style={s.badgeText}>{count}</Text></View>}
+    <Ionicons name="chevron-forward" size={15} color={colors.muted} />
   </Pressable>;
 }
 
@@ -55,4 +57,6 @@ const s = StyleSheet.create({
   disabled: { opacity: 0.4 },
   seeAll: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: 2, paddingLeft: 8 },
   seeAllText: { color: colors.muted, fontSize: 15, fontWeight: "500" },
+  badge: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, marginLeft: 4, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
+  badgeText: { color: colors.accent, fontSize: 12, lineHeight: 15, fontWeight: "700", fontVariant: ["tabular-nums"] },
 });

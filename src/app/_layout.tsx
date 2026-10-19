@@ -185,13 +185,16 @@ function AppContent() {
                 contentStyle: { backgroundColor: "transparent" },
               }}
             />
-            {/* Profile grows out of the avatar on Home and shrinks back into it. */}
+            {/* Profile and Settings grow out of their buttons on Home and shrink back into them. */}
             <Stack.Screen
               name="profile"
               options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}
             />
-            {/* Settings and its pages slide in from the right, like the phone's own settings. */}
-            <Stack.Screen name="settings" options={secondaryNativeOptions(reducedMotion)} />
+            <Stack.Screen
+              name="settings"
+              options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}
+            />
+            {/* Settings' own pages slide in from the right, like the phone's own settings. */}
             <Stack.Screen name="settings-goal" options={secondaryNativeOptions(reducedMotion)} />
             <Stack.Screen name="settings-notifications" options={secondaryNativeOptions(reducedMotion)} />
             <Stack.Screen name="settings-sessions" options={secondaryNativeOptions(reducedMotion)} />

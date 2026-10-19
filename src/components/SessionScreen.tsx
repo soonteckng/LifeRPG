@@ -35,10 +35,7 @@ import OfflineStatus from "./OfflineStatus";
 import { navigationTiming } from "../utils/navigationMotion";
 import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
-import { useSavedRoutines } from "../hooks/useSavedRoutines";
-import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
-import { encodeRoutineSession, readRoutineSession } from "../utils/routineSession";
-import { routineDuration } from "../utils/savedRoutine";
+import { readRoutineSession } from "../utils/routineSession";
 import SessionProtectionControl from "./SessionProtectionControl";
 import SubjectSetupRow from "./SubjectSetupRow";
 import { useSetupMode } from "../hooks/useSetupMode";
@@ -47,7 +44,7 @@ import { studySelection } from "../services/studySelection";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 
-type Picker = "duration" | "quest" | "area" | null;
+type Picker = "duration" | "area" | null;
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
@@ -85,7 +82,6 @@ export default function SessionScreen() {
   const insets = useSafeAreaInsets();
   const { sessionSummary, rewardsVisible } = timer;
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
-  const routines = useSavedRoutines();
   const study = useStudyPlan();
   const navigation = useNavigation();
   const reducedMotion = useReducedMotion();
@@ -96,9 +92,8 @@ export default function SessionScreen() {
   const ringTop = 12 + labelHeight + rowHeight * 1.5 - ringSize / 2;
   const [picker, setPicker] = useState<Picker>(null);
   const [pickerOwner, setPickerOwner] = useState(presentationScope);
-  const [selectedRoutineKey, setSelectedRoutineKey] = useState<string | null>(null);
   if (pickerOwner !== presentationScope) {
-    setPickerOwner(presentationScope); setPicker(null); setSelectedRoutineKey(null);
+    setPickerOwner(presentationScope); setPicker(null);
   }
   const [confirmEnd, setConfirmEnd] = useState(false);
   if (!onlineSurfaces && (picker !== null || confirmEnd)) { setPicker(null); setConfirmEnd(false); }
@@ -160,9 +155,6 @@ export default function SessionScreen() {
 
   const task = tasks.find((item) => item.id === timer.linkedTaskId);
   const selectableQuests = questLists(tasks).today;
-  const savedScopeMatches = routines.scope?.ownerId === ownerId && routines.scope?.backendId === backendId;
-  const selectableRoutines = routinePresentation(savedScopeMatches && routines.ready ? routines.routines : [], tasks)
-    .entries.filter(entry => entry.kind === "saved" || entry.task.is_due_today);
   const general = generalArea(subjects);
   const selectableAreas = focusAreaChoices(subjects, timer.targetAttributeId);
   const area = subjects.find((item) => item.id === timer.targetAttributeId);
@@ -191,12 +183,8 @@ export default function SessionScreen() {
   const chosenCourse = study.courses.find(item => item.id === chosenCourseId) ?? null;
   const [subjectPicker, setSubjectPicker] = useState(false);
   if (!onlineSurfaces && subjectPicker) setSubjectPicker(false);
-  const pickerState = useRef({ scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general });
-  useLayoutEffect(() => { pickerState.current = { scope: presentationScope, locked, entries: selectableRoutines, timer, subjects, general }; },
-    [presentationScope, locked, selectableRoutines, timer, subjects, general]);
 
   useEffect(() => afterTransition(() => { void refresh(); }), [refresh]);
-  useEffect(() => { if (picker === "quest") void refresh(true); }, [picker, refresh]);
   useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && !routineName && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
@@ -366,25 +354,8 @@ export default function SessionScreen() {
   const clearRoutine = () => {
     if (locked) return;
     timer.setLinkedTaskId(null); timer.setNotes("");
-    setSelectedRoutineKey(null); setupMode.chooseRoutine(null);
+    setupMode.chooseRoutine(null);
     if (isQuest) selectMinutes(30);
-  };
-  const selectRoutine = (choice: RoutineEntry) => {
-    const current = pickerState.current;
-    if (current.scope !== presentationScope || current.locked) return;
-    const entry = current.entries.find(item => item.key === choice.key);
-    if (!entry || !validSessionSeconds(entry.seconds)) return;
-    if (entry.kind === "saved") {
-      const notes = encodeRoutineSession(entry.name);
-      if (notes === null || entry.areaId !== null && !current.subjects.some(item => item.id === entry.areaId)) return;
-      current.timer.setLinkedTaskId(null); current.timer.setTargetAttributeId(entry.areaId);
-      current.timer.setNotes(notes); current.timer.setDurationInSeconds(entry.seconds); setSelectedRoutineKey(entry.key); setupMode.choose("routine"); setupMode.chooseRoutine(entry.key);
-    } else {
-      current.timer.setNotes(""); current.timer.setLinkedTaskId(entry.task.id);
-      current.timer.setTargetAttributeId(entry.areaId ?? current.general?.id ?? null);
-      current.timer.setDurationInMinutes(entry.seconds / 60); setSelectedRoutineKey(null); setupMode.choose("routine"); setupMode.chooseRoutine(entry.key);
-    }
-    setPicker(null);
   };
   const retry = () => {
     if (timer.restoreError) timer.retryRestore();
@@ -474,18 +445,18 @@ export default function SessionScreen() {
               </View>
               {/* A routine session stays a routine and a study session stays study; each tab sets which. */}
               <View style={styles.setup}>
-                {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose category" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
+                {sessionMode === "routine" && !isRoutine && <TouchableOpacity disabled={locked} onPress={() => setPicker("area")} accessibilityRole="button" accessibilityLabel="Choose category" accessibilityValue={{ text: focusAreaTitle(area?.title) }} style={styles.setupRow}>
                   <View style={[styles.rowIcon, { backgroundColor: areaTint(areaColor) }]}><Ionicons name={focusAreaIcon(area?.title ?? "")} size={16} color={areaColor} /></View>
                   <Text style={styles.rowLabel}>Category</Text><Text style={styles.rowValue} numberOfLines={1}>{focusAreaTitle(area?.title)}</Text>
                   <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
                 </TouchableOpacity>}
                 {sessionMode === "study" && <SubjectSetupRow areas={subjects} areaId={timer.targetAttributeId} generalId={general?.id} learningId={learning?.id} disabled={locked || !onlineSurfaces}
                   onArea={id => timer.setTargetAttributeId(id)} open={onlineSurfaces && subjectPicker} onOpenChange={setSubjectPicker} />}
-                {sessionMode === "routine" && <TouchableOpacity disabled={locked} onPress={() => setPicker("quest")} accessibilityRole="button" accessibilityLabel={isRoutine ? "Change routine" : "Choose routine"} accessibilityHint={isRoutine ? `Selected routine: ${title}` : "Any activity in this category"} style={styles.setupRow}>
-                  <View style={[styles.rowIcon, isRoutine && { backgroundColor: areaTint(areaColor) }]}><Ionicons name="repeat" size={16} color={isRoutine ? areaColor : colors.secondary} /></View>
-                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, isRoutine && styles.rowValueChosen]} numberOfLines={1}>{isRoutine ? title : "Any"}</Text>
-                  <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
-                </TouchableOpacity>}
+                {/* A routine brings its own category, so it stays fixed here; Just focus picks a category instead. */}
+                {isRoutine && <View style={styles.setupRow} testID="session-routine" accessible accessibilityLabel={`Routine, ${title}, ${focusAreaTitle(area?.title)}`}>
+                  <View style={[styles.rowIcon, { backgroundColor: areaTint(areaColor) }]}><Ionicons name="repeat" size={16} color={areaColor} /></View>
+                  <Text style={styles.rowLabel}>Routine</Text><Text style={[styles.rowValue, styles.rowValueChosen]} numberOfLines={1}>{title}</Text>
+                </View>}
                 {!isQuest && <FocusLengthControl compact showLabel={false} seconds={timer.duration} disabled={locked} onChange={applyDuration} onCustom={() => setPicker("duration")} />}
                 <SessionProtectionControl activeSurface={onlineSurfaces} />
               </View>
@@ -511,38 +482,11 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
-        header={<SheetHeader title={picker === "quest" ? "Routine" : "Category"} subtitle={picker === "quest" ? "Pick one, or just focus in your category." : "Where should this block count?"} onClose={() => setPicker(null)} />}>
-        <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody]} showsVerticalScrollIndicator={false}>
+      <AppSheet visible={onlineSurfaces && !sessionSummary && picker === "area"} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
+        header={<SheetHeader title="Category" subtitle="Where should this block count?" onClose={() => setPicker(null)} />}>
+        <BottomSheetScrollView contentContainerStyle={styles.pickerBody} showsVerticalScrollIndicator={false}>
           {picker === "area" && <FocusAreaPicker selectedId={timer.targetAttributeId} disabled={locked} areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...selectableAreas.filter(item => item.id !== general?.id)]}
             onSelect={id => { if (isRoutine) clearRoutine(); timer.setTargetAttributeId(id); setPicker(null); }} />}
-          {picker === "quest" && <SheetButton style={[styles.questPickerCard, !isRoutine && styles.questPickerSelected]} accessibilityRole="button" accessibilityLabel="Choose Any activity" accessibilityState={{ selected: !isRoutine }}
-            disabled={locked} onPress={() => { clearRoutine(); setPicker(null); }}>
-            <View style={[styles.questPickerIcon, { backgroundColor: colors.accentSoft }]}><Ionicons name="sparkles-outline" size={19} color={colors.accent} /></View>
-            <View style={styles.selectedQuestContent}><Text style={styles.questPickerTitle}>Any activity</Text><Text style={styles.questPickerMeta}>Just focus in {focusAreaTitle(area?.title)}</Text></View>
-            <Ionicons name={!isRoutine ? "checkmark-circle" : "chevron-forward"} size={20} color={!isRoutine ? colors.accent : colors.secondary} />
-          </SheetButton>}
-          {picker === "quest" && selectableRoutines.map((item) => {
-            const questArea = subjects.find(subject => subject.id === item.areaId);
-            const tint = lifeAreaColor(item.areaId, questArea?.color_code);
-            const selected = item.kind === "legacy" ? timer.linkedTaskId === item.task.id : selectedRoutineKey === item.key && routineName === item.name;
-            return <SheetButton key={item.key} style={[styles.questPickerCard, selected && styles.questPickerSelected]}
-              accessibilityRole="button" accessibilityLabel={`Choose ${item.name}`} accessibilityState={{selected}}
-              disabled={locked || item.kind === "saved" && item.areaId !== null && !subjects.some(area => area.id === item.areaId)}
-              onPress={() => selectRoutine(item)}>
-              <View style={[styles.questPickerIcon, {backgroundColor: areaTint(tint)}]}><Ionicons name="repeat" size={19} color={tint} /></View>
-              <View style={styles.selectedQuestContent}>
-                <Text style={styles.questPickerTitle}>{item.name}</Text>
-                <Text style={styles.questPickerMeta}>{routineDuration(item.seconds)} · {focusAreaTitle(questArea?.title)}</Text>
-              </View>
-              <Ionicons name={selected ? "checkmark-circle" : "chevron-forward"} size={20} color={selected ? colors.accent : colors.secondary} />
-            </SheetButton>;
-          })}
-          {picker === "quest" && selectableRoutines.length === 0 && <View style={styles.questPickerEmpty}>
-            <Ionicons name="flag-outline" size={28} color={colors.accent} />
-            <Text style={styles.questPickerTitle}>{loading || !routines.ready ? "Loading routines…" : "No routines yet"}</Text>
-            {!loading && <Text style={styles.secondary}>Make one in the Routines tab. You can still focus on any activity.</Text>}
-          </View>}
           {choicesError && <SheetChoice label="Couldn’t load choices. Retry" onPress={() => void refresh()} />}
         </BottomSheetScrollView>
       </AppSheet>
@@ -593,14 +537,6 @@ const styles = StyleSheet.create({
   protectionStatus: { marginTop: 10, alignItems: "center" },
   label: { color: colors.text, fontSize: 17, flexShrink: 1 },
   link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  questPickerBody: { gap: 8 },
-  questPickerCard: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, padding: 12, borderRadius: 16, backgroundColor: colors.sheetCard, borderWidth: 1.5, borderColor: colors.line },
-  questPickerSelected: { borderColor: colors.accent },
-  questPickerIcon: { width: 36, height: 36, borderRadius: 11, alignItems: "center", justifyContent: "center" },
-  questPickerTitle: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "500" },
-  questPickerMeta: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  questPickerEmpty: { alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 28 },
-  selectedQuestContent: { flex: 1, minWidth: 0, gap: 5 },
   smallAction: { minHeight: 44, paddingVertical: 10, justifyContent: "center", alignItems: "center" },
   actions: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 12, gap: 4 },
   primary: { minHeight: 56, padding: 14, borderRadius: 28, backgroundColor: colors.primary, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 10 },

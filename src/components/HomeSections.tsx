@@ -3,6 +3,7 @@ import { Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
 import AppSheet from "./AppSheet";
@@ -35,7 +36,7 @@ const WEEK = 7;
 
 /** Exams within the next week (up to three), or the next one if none are that close. Tapping one starts studying it. */
 export function HomeExams() {
-  const router = useRouter(), plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), { subjects = [] } = useQuests();
+  const router = useRouter(), plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), { subjects = [] } = useQuests(), insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<"all" | "add" | null>(null);
   const [editing, setEditing] = useState<StudyExam | null>(null);
   const coming = upcomingExams(plan.exams), soon = coming.filter(exam => daysUntil(exam.examDate) <= WEEK);
@@ -48,16 +49,16 @@ export function HomeExams() {
   const add = () => { setEditing(null); setSheet("add"); };
   return <View style={s.section} testID="home-exams">
     <SectionHeader title="Upcoming Exams" subtitle={subtitle}
-      right={coming.length ? <SeeAll label={coming.length > shown.length ? `See all ${coming.length}` : "See all"} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
+      right={coming.length ? <SeeAll count={coming.length > shown.length ? coming.length : undefined} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
     {shown.length ? <ExamsCard exams={shown} courses={plan.courses} onEdit={edit} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} />
       : <Pressable onPress={add} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
         <Ionicons name="add-circle" size={24} color={colors.accent} />
       </Pressable>}
-    <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
+    <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} attached compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
       header={<SheetHeader title="My Exams" subtitle="Tap one to edit it, or Study to start." onClose={() => setSheet(null)} />}>
-      <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
+      <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
         <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => { const course = courseFor(exam.courseId);
           return <ExamRow key={exam.id} exam={exam} course={course} first={index === 0} inSheet label="Edit exam"
             onPress={() => { setSheet(null); setTimeout(() => edit(exam), 250); }} onStudy={course ? () => { setSheet(null); setTimeout(() => launcher.study(course), 250); } : undefined} />; })}</View>

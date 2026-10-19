@@ -641,6 +641,8 @@ export default function ProgressScreen() {
           setSelectedSession(null);
         }}
         label="progress details"
+        compact
+        attached
         maxHeightRatio={0.86}
         header={
           <View style={s.sheetHeader}>

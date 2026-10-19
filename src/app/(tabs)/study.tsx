@@ -3,6 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Pressable from "../../components/MotionPressable";
 import ContentReveal from "../../components/ContentReveal";
 import { PersonalPage } from "../../components/PersonalUI";
@@ -37,7 +38,7 @@ type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null; ti
  * subject's ▶, its card, or Study on an exam; there is no setup form here.
  */
 export default function StudyScreen() {
-  const timer = useTimer();
+  const timer = useTimer(), insets = useSafeAreaInsets();
   const bottomInset = useTabDockInset("study");
   const { subjects = [] } = useQuests();
   const plan = useStudyPlan();
@@ -128,10 +129,10 @@ export default function StudyScreen() {
       onStudy={course => close(() => launcher.study(course))}
       onAddExam={course => close(() => show({ kind: "exam", exam: null, courseId: course.id, title: `${course.name} exam` }))}
       onEditExam={exam => close(() => show({ kind: "exam", exam, courseId: exam.courseId }))} />
-    <AppSheet visible={open && sheet?.kind === "add"} onRequestClose={() => close()} onDismiss={dismissed} compact maxHeightRatio={0.85} label="add subject"
+    <AppSheet visible={open && sheet?.kind === "add"} onRequestClose={() => close()} onDismiss={dismissed} attached compact maxHeightRatio={0.85} label="add subject"
       keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
       header={<SheetHeader title="Add a subject" subtitle="Pick one or type your own. One you removed comes back with its minutes." onClose={() => close()} />}>
-      <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
+      <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
         <SubjectPicker courses={plan.courses} selectedName={null} onPick={choice => close(() => void addSubject(choice.name, choice.id))} />
       </BottomSheetScrollView>
     </AppSheet>

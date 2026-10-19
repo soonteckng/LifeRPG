@@ -29,7 +29,7 @@ export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, 
   const title = focusAreaTitle(area?.title);
   const peak = Math.max(1, ...(detail?.days.map(day => day.seconds) ?? []));
   const time = (at: string) => new Intl.DateTimeFormat(undefined, { timeZone, hour: "numeric", minute: "2-digit" }).format(new Date(at));
-  return <AppSheet visible={visible && !!area} onRequestClose={onClose} onDismiss={onDismiss} closeInstantly={leaving} label={`${title} focus area`}
+  return <AppSheet visible={visible && !!area} onRequestClose={onClose} onDismiss={onDismiss} closeInstantly={leaving} compact attached label={`${title} focus area`}
     header={area && <View style={s.header}>
       <View style={[s.icon, { backgroundColor: `${area.color}22` }]}><Ionicons name={focusAreaIcon(area.title)} size={24} color={area.color} /></View>
       <View style={s.headerText}><Text style={s.title} numberOfLines={1}>{title}</Text><Text style={s.caption}>Level {area.level}</Text></View>

@@ -1210,6 +1210,7 @@ test('Home: the goal ring opens Today, its ••• changes the goal, and Setti
   await act(async()=>menu('home-today-menu').props.options[0].onPress());
   assert.equal(find('GoalSheet')[0].props.visible,true);
   await act(async()=>ui.button('home-settings').props.onPress());
+  await act(()=>new Promise(resolve=>setTimeout(resolve,150)));
   assert.deepEqual(ui.calls.filter(call=>call[0]==='navigate').at(-1),['navigate','/settings']);
   // Home's sections come in one fixed order; nothing can be rearranged.
   assert.equal(find('HomeArranger').length,0);

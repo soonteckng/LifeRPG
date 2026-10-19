@@ -2,6 +2,7 @@ import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useUser } from "../context/UserContext";
@@ -43,7 +44,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
 }) {
-  const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter();
+  const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
   // Play asks before starting; holding a row offers its other actions; the
@@ -166,8 +167,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         accessibilityActions={inSheet ? undefined : [{ name: "longpress", label: "More actions" }]} onAccessibilityAction={() => hold(entry)} style={s.detail}>
         <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routineDuration(routine.durationSeconds)} · {focusAreaTitle(area?.title)}{routine.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}</Text>
       </Pressable>
-      {inSheet ? <><Pressable onPress={() => edit(routine)} accessibilityRole="button" accessibilityLabel={`Edit ${routine.name}`} style={s.icon}><Ionicons name="create-outline" size={20} color={colors.accent} /></Pressable>{widget && <Pressable onPress={() => void pin(routine)} accessibilityRole="button" accessibilityLabel={`Add ${routine.name} widget`} style={s.icon}><Ionicons name="grid-outline" size={19} color={colors.accent} /></Pressable>}</>
-        : <Pressable disabled={blocked} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.play}><Ionicons name="play" size={15} color={blocked ? colors.tertiary : colors.text} /></Pressable>}
+      <Pressable disabled={blocked} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.play}><Ionicons name="play" size={15} color={blocked ? colors.tertiary : colors.text} /></Pressable>
     </View>;
   };
   const legacyRow = (task: Task, completed = false, inSheet = false) => {
@@ -180,8 +180,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
         <Text style={s.caption}>{routineDuration((task.target_minutes || 30) * 60)} · {focusAreaTitle(area?.title)}{task.is_recurring ? task.repeat_rule === "daily" ? " · Daily" : ` · ${task.repeat_rule.split(",").join(", ")}` : " · Once"}{completed ? " · Done today" : !task.is_due_today ? " · Upcoming" : ""}</Text>
       </Pressable>
-      {inSheet ? <Pressable disabled={!routines.online} onPress={() => editLegacy(task)} accessibilityRole="button" accessibilityLabel={`Edit routine ${task.title}`} style={s.icon}><Ionicons name="create-outline" size={20} color={colors.accent} /></Pressable>
-        : <Pressable disabled={disabled} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.play}><Ionicons name="play" size={15} color={disabled ? colors.tertiary : colors.text} /></Pressable>}
+      <Pressable disabled={disabled} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.play}><Ionicons name="play" size={15} color={disabled ? colors.tertiary : colors.text} /></Pressable>
     </View>;
   };
   const row = (entry: RoutineEntry, inSheet = false) => entry.kind === "saved" ? savedRow(entry.routine, inSheet) : legacyRow(entry.task, false, inSheet);
@@ -194,15 +193,15 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const suggestions = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
   const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
+  // A sync conflict asks which version to keep wherever the routines are listed.
+  const conflictRows = routines.conflicts.map(conflict => <View key={conflict.operation.operationId} style={s.conflict}><Text style={s.name}>{conflict.operation.draft.name}</Text><Text style={s.caption}>{conflict.reason}</Text><View style={s.heading}><Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, false)} style={s.manage}><Text style={s.link}>Use other device’s version</Text></Pressable>{(!conflict.latest || conflict.latest.deletedAt === null) && <Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, true)} style={s.manage}><Text style={s.link}>Keep my changes</Text></Pressable>}</View></View>);
   const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
   return <>
     <View style={s.card} testID="saved-routines-card">
-      {/* On Home, See all opens Routines; in Routines the header has Edit and +. */}
-      {onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll label={entries.length > limit ? `See all ${entries.length}` : "See all"} accessibilityLabel="My Routines. Open Routines" onPress={() => { feedback(); onSeeAll(); }} />} />
-        : <SectionHeader title="My Routines" right={<View style={s.headingActions}>
-          {!!(entries.length || done.length) && active && routines.ready && <SeeAll label="Edit" accessibilityLabel="Manage your routines" onPress={() => { feedback(); setShowDone(false); setManage(true); }} />}
-          <CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />
-        </View>} />}
+      {/* On Home, See all opens every routine in a sheet, like Upcoming Exams; in Routines the header has +. */}
+      {onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
+          onPress={() => { feedback(); if (active && routines.ready && (entries.length || done.length)) { setShowDone(false); setManage(true); } else onSeeAll(); }} />} />
+        : <SectionHeader title="My Routines" right={<CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />} />}
       <OneTimeHint id="routine-hold" text="Hold or swipe a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.stack}>
         {/* Each routine is its own small card; swipe actions stay inside it. */}
@@ -221,18 +220,23 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
           </Pressable>;
         })}</View>
       </View>}
-      {!!done.length && <Text style={s.caption}>{done.length} completed today</Text>}
+      {!!done.length && (onSeeAll ? <Text style={s.caption}>{done.length} completed today</Text>
+        : <Pressable disabled={!active} onPress={() => { feedback(); setShowDone(true); setManage(true); }} accessibilityRole="button" accessibilityLabel={`Done today, ${done.length}`} style={s.manage}><Text style={s.link}>Done today ({done.length})</Text></Pressable>)}
+      {!onSeeAll && routines.ready && conflictRows}
       {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
       {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
     </View>
-    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title="My Routines" subtitle="Start here again without setting everything up." onClose={() => setManage(false)} />}>
-      <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list}>
+    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} attached compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title={showDone ? "Done today" : "My Routines"} subtitle={showDone ? "Finished today. Tap one to edit it." : "Tap one to edit it, or ▶ to start."} onClose={() => setManage(false)} />}>
+      <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         {showDone ? done.map(task => legacyRow(task, true, true)) : entries.map(entry => row(entry, true))}
         {!!done.length && <Pressable accessibilityRole="button" onPress={() => { feedback(); setShowDone(value => !value); }} style={s.manage}><Text style={s.link}>{showDone ? "Back to your routines" : `Done today (${done.length})`}</Text></Pressable>}
-        <Pressable onPress={() => edit(null)} disabled={routines.routines.length >= 32} accessibilityRole="button" style={s.addRow}><Ionicons name="add" size={22} color={colors.accent} /><Text style={s.link}>Add routine</Text></Pressable>
+        {onSeeAll ? <View style={s.halves}>
+          <Pressable onPress={() => edit(null)} disabled={routines.routines.length >= 32} accessibilityRole="button" accessibilityLabel="Add routine" style={[s.addRow, s.half]}><Ionicons name="add" size={20} color={colors.accent} /><Text style={s.link}>Add routine</Text></Pressable>
+          <Pressable onPress={() => { feedback(); afterManageDismiss.current = { surfaceKey, open: onSeeAll }; setManage(false); }} accessibilityRole="button" accessibilityLabel="Open Routines" style={[s.addRow, s.half, s.plain]}><Ionicons name="repeat" size={18} color={colors.text} /><Text style={s.plainText}>Open Routines</Text></Pressable>
+        </View> : <Pressable onPress={() => edit(null)} disabled={routines.routines.length >= 32} accessibilityRole="button" style={s.addRow}><Ionicons name="add" size={22} color={colors.accent} /><Text style={s.link}>Add routine</Text></Pressable>}
         {Platform.OS === "android" && !widget && <Text style={s.caption}>Routine widgets need the updated Android app. Saved routines already work here.</Text>}
-        {routines.conflicts.map(conflict => <View key={conflict.operation.operationId} style={s.conflict}><Text style={s.name}>{conflict.operation.draft.name}</Text><Text style={s.caption}>{conflict.reason}</Text><View style={s.heading}><Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, false)} style={s.manage}><Text style={s.link}>Use other device’s version</Text></Pressable>{(!conflict.latest || conflict.latest.deletedAt === null) && <Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, true)} style={s.manage}><Text style={s.link}>Keep my changes</Text></Pressable>}</View></View>)}
+        {conflictRows}
         {!!routines.error && <Text accessibilityRole="alert" style={s.caption}>{routines.error}</Text>}
         {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       </BottomSheetScrollView>
@@ -280,13 +284,12 @@ const s = StyleSheet.create({
   ideaText: { color: colors.text, fontSize: 15, fontWeight: "500" },
   stack: { gap: 8 },
   itemCard: { ...edge, borderRadius: 18, backgroundColor: colors.surface, overflow: "hidden" },
-  headingActions: { flexDirection: "row", alignItems: "center", gap: 4 },
+  halves: { flexDirection: "row", gap: 10 }, half: { flex: 1 }, plain: { backgroundColor: colors.sheetCard }, plainText: { color: colors.text, fontSize: 16, fontWeight: "500" },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
   row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
   name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
   play: { ...edge, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
-  icon: { ...edge, width: 44, height: 44, borderRadius: 22, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" },
   empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   sheetHeading: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 }, list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 }, addRow: { ...edge, minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 25, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
   confirmTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 }, confirmMeta: { flexDirection: "row", alignItems: "center", gap: 8 },

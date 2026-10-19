@@ -257,9 +257,9 @@ test('Home shows exams within a week: tap edits, Study starts, hold offers more;
   await act(async () => options.props.onRequestClose());
   await act(async () => presses(rows()[0], 'Study Maths')[0].props.onPress());
   assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'Study goes straight to the session');
-  // A grey "See all 5 ›" beside the title lists them all.
+  // A grey "See all ›" with a small count badge beside the title lists them all.
   const seeAll = presses(section('home-exams'), 'See all 5 exams')[0];
-  assert.ok(texts(seeAll).includes('See all 5'));
+  assert.ok(texts(seeAll).includes('See all'));assert.ok(texts(seeAll).some(t => String(t) === '5'), 'the hidden count shows as a badge');
   await act(async () => seeAll.props.onPress());
   assert.equal(section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'all exams').props.visible, true, 'the full list opens here, not in Study');
   assert.equal(ui.root.findAllByType('Menu').length, 0, 'no ••• on Home sections');
@@ -475,6 +475,30 @@ test('one sheet rule: short sheets float, editors and tall lists dock to the scr
   assert.match(sheet, /const floating = !attached;/);
   for (const [file, label] of [['src/components/StudyExamSheet.tsx', 'exam editor'], ['src/components/StudySubjectSheet.tsx', 'subject'], ['src/components/MilestonesSheet.tsx', 'milestones']])
     assert.match(read(file), new RegExp(`<AppSheet[^\\n]*attached [^\\n]*label="${label}"`), `${label} docks to the screen edges`);
+  // Details and lists can run long: they dock and size to their content, so there is no blank pull-up.
+  for (const [file, label] of [['src/components/FocusAreaDetailSheet.tsx', '${title} focus area'], ['src/app/(tabs)/study.tsx', 'add subject'], ['src/components/SubjectSetupRow.tsx', 'subject choices'], ['src/components/HomeSections.tsx', 'all exams'], ['src/components/SavedRoutinesCard.tsx', 'routines'], ['src/components/MilestonesSheet.tsx', 'milestones']]) {
+    const tag = read(file).split('<AppSheet').find(part => part.includes(`label="${label}"`) || part.includes(`label={\`${label}\`}`));
+    assert.ok(tag && /\battached\b/.test(tag) && /\bcompact\b/.test(tag), `${label} is attached and content-sized`);
+  }
+  const progress = read('src/app/(tabs)/progress.tsx').split('<AppSheet')[1];
+  assert.match(progress, /label="progress details"\s+compact\s+attached/, 'category details on Progress are attached and content-sized');
   for (const file of ['src/components/ItemActionSheet.tsx', 'src/components/TodaySheet.tsx', 'src/components/DailyGoalSheet.tsx'])
     assert.doesNotMatch(read(file), /\battached\b|\bexpanded\b/, `${file} stays a floating card`);
+});
+
+test('an exam row shows its date as a calendar tile and the days left in words, so the number never reads as a date', async () => {
+  const Row = load('src/components/ExamRow.tsx', base()).default;
+  const date = new Date(); date.setDate(date.getDate() + 13);
+  let ui; await act(async () => { ui = create(React.createElement(Row, { exam: { ...exam, examDate: inDays(13) }, course, onPress: () => {} })); });
+  try {
+    const textOf = node => node.findAllByType('Text').map(t => [].concat(t.props.children).join(''));
+    const tile = ui.root.findAll(n => n.props.testID === 'exam-date-tile' && typeof n.type === 'string')[0];
+    assert.deepEqual(textOf(tile), [date.toLocaleDateString('en-GB', { month: 'short' }).toUpperCase(), String(date.getDate())]);
+    const left = ui.root.findAll(n => n.props.testID === 'exam-days-left' && n.type === 'Text')[0];
+    assert.equal(left.props.children, '13 days left');
+  } finally { await act(async () => ui.unmount()); }
+  for (const [days, words] of [[0, 'Today'], [1, 'Tomorrow']]) {
+    let row; await act(async () => { row = create(React.createElement(Row, { exam: { ...exam, examDate: inDays(days) }, course, onPress: () => {} })); });
+    try { assert.equal(row.root.findAll(n => n.props.testID === 'exam-days-left' && n.type === 'Text')[0].props.children, words); } finally { await act(async () => row.unmount()); }
+  }
 });

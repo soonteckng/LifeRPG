@@ -57,7 +57,7 @@ export default function SettingsScreen() {
   };
   const goalValue = goal && goal.owner === profile.id ? `${goal.today} min${goal.next ? ` → ${goal.next}` : ""}` : `${profile.daily_goal_minutes} min`;
   return (
-    <PersonalPage title="Settings" subtitle="" back animateTransition fallback="/">
+    <PersonalPage title="Settings" subtitle="" back animateTransition expandFromIcon fallback="/">
       <View style={s.account} accessible accessibilityLabel={`${profile.username}, ${user?.email ?? "signed in"}`}>
         <View style={s.avatar}><CharacterMark size={34} avatar={profile.avatar ?? "🌱"} /></View>
         <View style={p.flex}><Text style={s.name} numberOfLines={1}>{profile.username}</Text><Text style={p.caption} numberOfLines={1}>{user?.email ?? "Signed in"}</Text></View>

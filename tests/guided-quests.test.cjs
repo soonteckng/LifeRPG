@@ -227,7 +227,7 @@ test('Home stays a dashboard when suggestions were on: no suggestion card, and o
   await act(async()=>routines.props.onSeeAll());assert.equal(routes.at(-1),'/routines');
   // Profile grows out of the avatar once its position is known (or after a short wait).
   await ui.press('Open Profile');await act(()=>new Promise(resolve=>setTimeout(resolve,150)));assert.equal(routes.at(-1),'/profile');
-  await ui.press('Open Settings');assert.equal(routes.at(-1),'/settings');
+  await ui.press('Open Settings');await act(()=>new Promise(resolve=>setTimeout(resolve,150)));assert.equal(routes.at(-1),'/settings','Settings grows out of its button too');
  }finally{await ui.cleanup();}
 });
 test('an older matching record or old quest receipt cannot mark a newly completed suggestion as a saved routine',async()=>{

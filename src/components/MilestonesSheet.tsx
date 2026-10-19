@@ -49,7 +49,7 @@ export default function MilestonesSheet({ visible, onClose }: { visible: boolean
       {expanded && <Text style={s.caption}>{milestone.unlocked ? "Earned automatically. Yours to keep, even after a missed day." : `${milestoneProgressLabel(milestone)}. It’s earned automatically when you get there.`}</Text>}
     </Pressable>;
   };
-  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={() => setOpen(null)} attached maxHeightRatio={0.9} label="milestones" motionMode="timed"
+  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={() => setOpen(null)} attached compact maxHeightRatio={0.9} label="milestones" motionMode="timed"
     header={<SheetHeader title="My Milestones" subtitle={ready ? `${earned.length} of ${totals.milestones.length} earned` : "Getting your collection ready…"} onClose={onClose} />}>
     <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
       {error && <Pressable onPress={() => void retry()} accessibilityRole="button" style={s.card}><Text style={s.error}>Couldn’t refresh milestones. Tap to try again.</Text></Pressable>}

@@ -411,7 +411,7 @@ test('Settings waits for its frame and smoothly expands and retracts at the meas
    assert.deepEqual(tree.root.findByProps({testID:'personal-page-surface'}).props.style.transformOrigin,[142,178,0]);
    const enter=animations.find(a=>a.config.toValue===0);assert.equal(enter.config.duration,280);assert.equal(enter.config.useNativeDriver,true);assert.equal(enter.config.spring,undefined);
    await act(async()=>tree.root.findByType('Header').props.onBack());assert.equal(dispatch.length,0);
-   const exit=animations.find(a=>a.config.toValue===1);assert.equal(exit.config.duration,220);assert.equal(exit.config.useNativeDriver,true);assert.equal(exit.config.spring,undefined);assert.equal(exit.config.velocity,undefined);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
+   const exit=animations.find(a=>a.config.toValue===1);assert.equal(exit.config.duration,320,'shrinking back is unhurried');assert.equal(exit.config.useNativeDriver,true);assert.equal(exit.config.spring,undefined);assert.equal(exit.config.velocity,undefined);await act(async()=>exit.callback({finished:true}));assert.deepEqual(dispatch,['back']);
   }finally{await act(async()=>tree.unmount());}
  }
 });

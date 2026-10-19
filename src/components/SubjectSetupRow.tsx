@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from "react";
 import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import Pressable from "./MotionPressable";
@@ -25,7 +26,7 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
   areas: Pick<Subject, "id" | "title">[]; areaId: number | null; generalId: number | null | undefined; learningId: number | null | undefined;
   disabled?: boolean; onArea: (id: number | null) => void; open?: boolean; onOpenChange?: (open: boolean) => void; style?: StyleProp<ViewStyle>;
 }) {
-  const plan = useStudyPlan();
+  const plan = useStudyPlan(), insets = useSafeAreaInsets();
   const chosen = useSyncExternalStore(studySelection.subscribe, studySelection.get, studySelection.get);
   const [ownOpen, setOwnOpen] = useState(false);
   const open = openProp ?? ownOpen;
@@ -55,10 +56,10 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
     {course ? <View accessible accessibilityLabel="Subject" accessibilityValue={{ text: value }} testID="session-subject" style={[s.row, style]}>{content}</View>
       : <Pressable disabled={disabled} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Choose subject"
         accessibilityValue={{ text: value }} style={[s.row, style]}>{content}</Pressable>}
-    <AppSheet visible={open} onRequestClose={() => setOpen(false)} compact maxHeightRatio={0.85} label="subject choices"
+    <AppSheet visible={open} onRequestClose={() => setOpen(false)} attached compact maxHeightRatio={0.85} label="subject choices"
       keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
       header={<SheetHeader title="Subject" subtitle="Counts as Revision when an exam is coming up, otherwise Learning." onClose={() => setOpen(false)} />}>
-      <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list} showsVerticalScrollIndicator={false}>
+      <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
         <SubjectPicker courses={plan.courses} selectedName={course?.name ?? null} onPick={choice => void pick(choice)} />
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       </BottomSheetScrollView>

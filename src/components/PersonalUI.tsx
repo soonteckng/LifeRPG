@@ -90,7 +90,7 @@ export function PersonalPage({
       return;
     }
     closing.current = true;
-    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : expandFromIcon ? 220 : 230) });
+    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...navigationTiming(reduced ? 0 : expandFromIcon ? 320 : 230) });
     animation.start(({ finished }) => {
       if (finished) setExitReady(true);
       else {

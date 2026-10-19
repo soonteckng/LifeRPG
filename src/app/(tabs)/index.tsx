@@ -15,7 +15,7 @@ import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
@@ -65,14 +65,15 @@ export default function HomeScreen() {
   const [todayOpen, setTodayOpen] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
   const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus();
-  const avatar = useRef<View>(null);
-  const openProfile = () => {
-    // Profile grows out of the avatar, then shrinks back into it.
+  const avatar = useRef<View>(null), settingsIcon = useRef<View>(null);
+  // Profile and Settings grow out of their button, then shrink back into it.
+  const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings") => {
     let opened = false;
-    const open = () => { if (!opened) { opened = true; router.navigate("/profile"); } };
+    const open = () => { if (!opened) { opened = true; router.navigate(path); } };
     const fallback = setTimeout(open, 100);
-    avatar.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
+    source.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
   };
+  const openProfile = () => openFrom(avatar, "/profile");
   const [surfaceMode, setSurfaceMode] = useState(accessMode);
   if (surfaceMode !== accessMode) {
     setSurfaceMode(accessMode);
@@ -215,7 +216,7 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.headerActions}>
-              <CircleButton icon="settings-outline" size={40} label="Open Settings" onPress={() => router.navigate("/settings")} testID="home-settings" />
+              <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={40} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
               <View ref={avatar} collapsable={false}>
                 <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="Your companion, level, badges and categories">
                   <ProgressRing size={60} stroke={3} progress={levelShare / 100} color={colors.level} track={colors.levelSoft}>

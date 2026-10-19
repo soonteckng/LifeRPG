@@ -51,8 +51,6 @@ async function providerSetup() {
     cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
 
-// Routine is one of the three setup modes; its row or the mode switch opens the chooser.
-async function openRoutines(ui){const row=ui.root().findAllByType('Button').find(node=>['Choose routine','Change routine'].includes(node.props.accessibilityLabel));await ui.press(row?row.props.accessibilityLabel:'Routine. One of your saved routines');}
 
 test('saving and deleting quests update one shared dataset even while older reads are outstanding',async()=>{
   const ui=await providerSetup();
@@ -142,7 +140,7 @@ test('persisted old one-off quests remain in history while a prior-day recurring
   assert.deepEqual(lists.today.map(row=>row.id),[2]);assert.deepEqual(lists.done.map(row=>row.id),[3]);
 });
 
-async function pickerSetup(rows){
+async function pickerSetup(rows,initial={}){
   const calls=[];let timer={duration:1800,timeLeft:1800,isRunning:false,isCompleted:false,hasOpenSession:false,
     endingSession:false,isRestoring:false,restoreError:false,actionBusy:false,actionError:null,rewardsVisible:false,
     awaitingStart:false,syncStatus:'idle',linkedTaskId:null,targetAttributeId:1,activityType:'other',sessionSummary:null,
@@ -150,7 +148,7 @@ async function pickerSetup(rows){
     setLinkedTaskId:id=>{timer={...timer,linkedTaskId:id};},setTargetAttributeId:id=>{timer={...timer,targetAttributeId:id};},
     setDurationInMinutes:minutes=>{timer={...timer,duration:minutes*60};},setDurationInSeconds:seconds=>{timer={...timer,duration:seconds};},
     startTimer:async()=>calls.push('start'),pauseTimer:async()=>{},resumeTimer:async()=>{},resetTimer:async()=>{},
-    retryAction:async()=>{},retryRestore(){},retryCompletion:async()=>{},notes:'',
+    retryAction:async()=>{},retryRestore(){},retryCompletion:async()=>{},notes:'',...initial,
   };
   const navigation={getState:()=>({routes:[{},{}]}),canGoBack:()=>true,goBack(){},addListener:()=>()=>{}};
   const native={View:host('View'),ScrollView:host('Scroll'),KeyboardAvoidingView:host('KeyboardView'),ActivityIndicator:host('Spinner'),
@@ -182,31 +180,21 @@ async function pickerSetup(rows){
   return{calls,press,root:()=>renderer.root,update:async next=>{rows=next;await act(async()=>renderer.update(React.createElement(Screen)));},cleanup:async()=>act(async()=>renderer.unmount())};
 }
 
-test('session quest chooser agrees with Home and quest sheet for old completions, recurring and upcoming tasks',async()=>{
+test('Just focus has no routine chooser, and the quest lists still agree with Home for old completions, recurring and upcoming tasks',async()=>{
   const rows=[task({id:1,title:'Due now'}),task({id:2,title:'Completed yesterday',is_completed:true}),
     task({id:3,title:'Done today',is_completed:true,is_completed_today:true}),
     task({id:4,title:'Repeating today',is_recurring:true,is_completed:true}),task({id:5,title:'Upcoming',is_due_today:false,is_recurring:true})];
   const ui=await pickerSetup(rows);
   try{
-    await openRoutines(ui);
     const labels=()=>ui.root().findAllByType('Button').map(node=>node.props.accessibilityLabel).filter(value=>value?.startsWith('Choose '));
-    assert.deepEqual(labels(),['Choose category','Choose routine','Choose Any activity','Choose Due now','Choose Repeating today']);
-    assert.ok(ui.calls.some(call=>Array.isArray(call)&&call[0]==='refresh'&&call[1]),'opening the chooser requests a fresh read');
+    assert.deepEqual(labels(),['Choose category'],'a routine is started from its own play button, never picked inside Just focus');
     const lists=load('src/utils/questLists.ts').questLists(rows);
     assert.deepEqual(lists.today.map(row=>row.id),[1,4]);assert.ok(lists.available.some(row=>row.id===5),'All quests still includes legitimate upcoming tasks');
-    await ui.press('Choose Due now');
-    await openRoutines(ui); await ui.press('Choose Any activity');
-    await openRoutines(ui);
-    assert.deepEqual(labels(),['Choose category','Choose routine','Choose Any activity','Choose Due now','Choose Repeating today']);
-    await ui.update([task({id:6,title:'New saved suggestion'})]);
-    assert.deepEqual(labels(),['Choose category','Choose routine','Choose Any activity','Choose New saved suggestion'],'the open chooser observes shared mutation updates');
   }finally{await ui.cleanup();}
 });
-
 test('a linked quest that becomes completed before Start cannot start another session',async()=>{
-  const ui=await pickerSetup([task()]);
+  const ui=await pickerSetup([task()],{linkedTaskId:1});
   try{
-    await openRoutines(ui);await ui.press('Choose Current quest');
     await ui.update([task({is_completed:true})]);
     const start=ui.root().findAllByType('Button').find(node=>node.props.accessibilityLabel==='Start');
     assert.ok(start);assert.equal(start.props.disabled,true);

@@ -30,18 +30,21 @@ test('routine editor preloads exact settings and saves an editable name without 
 test('routine editor keeps invalid reminder errors visible and removal requires confirmation',async()=>{
  const saved=[],removed=[];const Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async d=>{saved.push(d);return true;},remove:async id=>{removed.push(id);return true;}})}}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,reminder:{enabled:true,hour:18,minute:0}},visible:true,onClose:()=>{}}));});try{await act(async()=>ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Reminder hour').props.onChangeText('24'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());assert.equal(saved.length,0);assert.ok(ui.root.findAllByType('Text').some(x=>x.props.accessibilityRole==='alert'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Remove routine').props.onPress());assert.equal(removed.length,0);assert.equal(ui.root.findByType('Confirm').props.title,'Remove this routine?');await act(async()=>ui.root.findByType('Confirm').props.onConfirm());assert.deepEqual(removed,[routine.id]);}finally{await act(async()=>ui.unmount());}
 });
-async function heldStartCard() {
+async function heldStartCard(extra={}) {
  const calls=[];let release;const read=new Promise(resolve=>{release=resolve;});let state={ready:true,scope,online:true,routines:[routine],pendingCount:0,conflicts:[]};
  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>prepTimer(calls)},'../services/savedRoutineService':{resolveSavedRoutine:()=>read},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
- let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,...extra}));});
  return { ui,calls,release:async()=>act(async()=>{release(routine);await read;}), updateScope:async next=>{state={...state,scope:next};await act(async()=>ui.update(React.createElement(Component,{subjects})));},cleanup:async()=>act(async()=>ui.unmount()) };
 }
 test('rapid taps on play prepare one setup and open it once',async()=>{
  const h=await heldStartCard();try{const button=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Start routine Review notes');await act(async()=>{button.props.onPress();button.props.onPress();});assert.deepEqual(h.calls,[],'nothing changes before the routine is read');await h.release();
   assert.equal(h.calls.filter(x=>x[0]==='notes').length,1);assert.deepEqual(h.calls.filter(x=>x[0]==='route'),[['route','/session']]);}finally{await h.cleanup();}
 });
-test('Manage shows edit controls only in its sheet; Home rows keep their play buttons',async()=>{
- const h=await heldStartCard();try{await act(async()=>press(h.ui.root,'Manage your routines'));const sheet=manageSheet(h.ui.root);assert.equal(sheet.props.visible,true);const card=h.ui.root.findAllByType('View').find(x=>x.props.testID==='saved-routines-card');const labels=node=>node.findAllByType('Press').map(x=>x.props.accessibilityLabel);assert.ok(labels(card).includes('Start routine Review notes'));assert.ok(!labels(card).includes('Edit Review notes'));assert.ok(labels(sheet).includes('Edit Review notes'));assert.ok(!labels(sheet).includes('Start routine Review notes'));assert.deepEqual(h.calls,[]);}finally{await h.cleanup();}
+test('Home See all lists every routine in a sheet: tap a row to edit, play to start; Routines has no Edit link',async()=>{
+ const plain=await heldStartCard();try{assert.equal(plain.ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel==='Manage your routines'),false,'no Edit link beside +');}finally{await plain.cleanup();}
+ const h=await heldStartCard({onSeeAll:()=>h.calls.push('routines tab')});try{await act(async()=>press(h.ui.root,'See all your routines'));const sheet=manageSheet(h.ui.root);assert.equal(sheet.props.visible,true,'See all opens a sheet like Upcoming Exams');
+  const labels=sheet.findAllByType('Press').map(x=>x.props.accessibilityLabel);assert.ok(labels.includes('Start routine Review notes'));assert.ok(labels.some(label=>/^Edit Review notes, /.test(label)));assert.ok(labels.includes('Add routine'));assert.deepEqual(h.calls,[]);
+  await act(async()=>press(h.ui.root,'Open Routines'));assert.equal(manageSheet(h.ui.root).props.visible,false);await act(async()=>manageSheet(h.ui.root).props.onDismiss());assert.deepEqual(h.calls,['routines tab'],'Open Routines goes to the tab after the sheet closes');}finally{await h.cleanup();}
 });
 test('a deferred Start from the options card is dropped when the account or backend changes before dismissal',async()=>{
  const h=await heldStartCard();try{const row=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Edit Review notes,'));await act(async()=>row.props.onLongPress());
@@ -53,7 +56,7 @@ async function mergedRoutineCard() {
  const calls=[],legacy={id:42,title:'Same name',target_minutes:3,subject_id:2,is_completed_today:false,is_completed:false,is_recurring:true,repeat_rule:'Mon,Wed',is_due_today:true};
  let tasks=[legacy],state={ready:true,scope,online:true,routines:[{...routine,name:'Same name'}],pendingCount:0,conflicts:[]};
  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{id:scope.ownerId}})},'../context/TimerContext':{useTimer:()=>({startFreeTimer:async(...args)=>{calls.push(['free',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
- const props=()=>({subjects,legacyTasks:tasks,onStartLegacy:item=>calls.push(['linked',item])});let ui;
+ const props=()=>({subjects,legacyTasks:tasks,onStartLegacy:item=>calls.push(['linked',item]),onSeeAll:()=>{}});let ui;
  await act(async()=>{ui=create(React.createElement(Component,props()));});
  return {ui,calls,legacy,updateTasks:async next=>{tasks=next;await act(async()=>ui.update(React.createElement(Component,props())));},cleanup:async()=>act(async()=>ui.unmount())};
 }
@@ -68,9 +71,9 @@ test('merged routines retain linked task starts alongside separately stored save
 });
 test('legacy routine editing opens the existing record editor only after manager dismissal',async()=>{
  const h=await mergedRoutineCard();try {
-  await act(async()=>h.ui.root.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Manage your routines').props.onPress());
+  await act(async()=>h.ui.root.findAllByType('Press').find(item=>item.props.accessibilityLabel==='See all your routines').props.onPress());
   const sheet=manageSheet(h.ui.root);
-  await act(async()=>sheet.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Edit routine Same name').props.onPress());
+  await act(async()=>sheet.findAllByType('Press').find(item=>item.props.accessibilityLabel==='Edit Same name, 3 minutes').props.onPress());
   assert.equal(sheet.props.visible,false);
   assert.equal(h.ui.root.findAllByType('LegacyEditor').length,0);
   await act(async()=>sheet.props.onDismiss());

@@ -120,7 +120,7 @@ export function visibleStudy(envelope: StudyEnvelope): { courses: StudyCourse[];
 export function dateKey(at: Date): string {
   return `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
 }
-function localDate(key: string): Date { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d); }
+export function localDate(key: string): Date { const [y, m, d] = key.split("-").map(Number); return new Date(y, m - 1, d); }
 /** Whole calendar days from today to the exam (0 = today, negative = past). */
 export function daysUntil(examDate: string, now = new Date()): number {
   const today = localDate(dateKey(now));
