@@ -16,7 +16,7 @@ import { Text } from "./AppText";
 import { PersonalButton, p } from "./PersonalUI";
 
 export default function NotificationOnboardingPrompt({ tourActive, revision = 0 }: { tourActive: boolean; revision?: number }) {
-  const auth = useAuth(), { profile } = useUser(), timer = useTimer(), pathname = usePathname();
+  const auth = useAuth(), { profile } = useUser(), timer = useTimer({ live: false }), pathname = usePathname();
   const insets = useSafeAreaInsets();
   const [activityId] = useState(() => Symbol("notification-invitation"));
   const otherSheets = useActiveSheetCount(activityId);

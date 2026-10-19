@@ -1,7 +1,8 @@
-import { useRef } from "react";
-import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useState } from "react";
+import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
+import StartButton from "./StartButton";
 import { Text } from "./AppText";
 import { colors, edge, radius } from "../constants/theme";
 import { EditBadges, Wiggle } from "./EditMode";
@@ -12,34 +13,26 @@ import type { StudyCourse, StudyExam, StudyRecent } from "../types/studyPlan";
 const GAP = 10;
 
 /**
- * My Subjects as a sideways shelf of cards wide enough for full names; the
- * next card peeks in to invite a swipe. Hold any card to edit: every card
- * wiggles and shows ✎ and −, the same as routines and exams.
+ * My Subjects as a two-column grid, so every subject shows at once and the
+ * page never looks empty. ▶ studies it (as Revision when its exam is near).
+ * Hold any card to edit: every card wiggles and shows ✎ and −, the same as
+ * routines and exams.
  */
 export default function SubjectShelf({ courses, exams, recent, editing, onEditingChange, onOpen, onEdit, onStudy, onRemove }: {
   courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; editing: boolean; onEditingChange: (editing: boolean) => void;
   onOpen: (course: StudyCourse) => void; onEdit: (course: StudyCourse) => void; onStudy: (course: StudyCourse) => void; onRemove: (course: StudyCourse) => void;
 }) {
   const { width } = useWindowDimensions();
-  // About one and two-thirds cards show: names fit, and the next one peeks in.
-  const tile = Math.max(160, Math.min(240, Math.round((Math.min(width, 600) - 40 - GAP) / 1.65)));
-  // Removing a card near the end must not leave an empty gap past the last one.
-  const scroll = useRef<ScrollView>(null), offset = useRef(0), view = useRef(0);
-  const settle = (contentWidth: number) => {
-    const max = Math.max(0, contentWidth - view.current);
-    if (offset.current > max + 1) { offset.current = max; scroll.current?.scrollTo({ x: max, animated: true }); }
-  };
+  const [box, setBox] = useState(0);
+  // Two equal columns of the measured width; before layout, the page's usual width.
+  const tile = Math.floor(((box || Math.min(width, 600) - 40) - GAP) / 2);
   const upcoming = upcomingExams(exams);
-  return <ScrollView ref={scroll} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.shelf} testID="subject-shelf"
-    onLayout={event => { view.current = event.nativeEvent.layout.width; }} onContentSizeChange={contentWidth => settle(contentWidth)}
-    onScroll={event => { offset.current = event.nativeEvent.contentOffset.x; }} scrollEventThrottle={32}>
-    {courses.map((course, index) => <View key={course.id} style={index > 0 && { marginLeft: GAP }}>
-      <SubjectTile course={course} width={tile} editing={editing}
-        exam={upcoming.find(item => item.courseId === course.id)} week={weekSeconds(recent, course.id)}
-        onPress={() => editing ? onEditingChange(false) : onOpen(course)} onLongPress={() => onEditingChange(true)}
-        onStudy={() => onStudy(course)} onEdit={() => onEdit(course)} onRemove={() => onRemove(course)} />
-    </View>)}
-  </ScrollView>;
+  return <View style={s.grid} testID="subject-shelf" onLayout={event => setBox(event.nativeEvent.layout.width)}>
+    {courses.map(course => <SubjectTile key={course.id} course={course} width={tile} editing={editing}
+      exam={upcoming.find(item => item.courseId === course.id)} week={weekSeconds(recent, course.id)}
+      onPress={() => editing ? onEditingChange(false) : onOpen(course)} onLongPress={() => onEditingChange(true)}
+      onStudy={() => onStudy(course)} onEdit={() => onEdit(course)} onRemove={() => onRemove(course)} />)}
+  </View>;
 }
 
 function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress, onStudy, onEdit, onRemove }: {
@@ -60,8 +53,7 @@ function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress,
       <Text style={s.caption} numberOfLines={1}>{studyTime(week)} this week</Text>
       {!exam && <Text style={s.noExam} numberOfLines={1}>No exam yet</Text>}
     </Pressable>
-    {!editing && <Pressable onPress={onStudy} accessibilityRole="button" accessibilityLabel={`Study ${course.name}`} hitSlop={6} style={s.play}>
-      <Ionicons name="play" size={13} color={colors.text} /></Pressable>}
+    {!editing && <StartButton label={`Study ${course.name}`} onPress={onStudy} size={34} style={s.play} />}
     {editing && <EditBadges placement="corner" name={course.name} onEdit={onEdit} onRemove={onRemove} />}
   </Wiggle>;
 }
@@ -71,8 +63,8 @@ export function ExamPill({ days }: { days: number }) {
   return <View style={[s.badge, soon && s.badgeSoon]}><Text style={[s.badgeText, soon && s.badgeTextSoon]}>{days === 0 ? "Today" : days === 1 ? "Tomorrow" : `${days} days`}</Text></View>;
 }
 const s = StyleSheet.create({
-  shelf: { paddingTop: 8, paddingRight: 8, paddingLeft: 2 },
-  tileFrame: { position: "relative", flex: 1 },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP, paddingTop: 8 },
+  tileFrame: { position: "relative" },
   tile: { ...edge, flex: 1, minHeight: 120, padding: 12, gap: 3, borderRadius: radius.tile, backgroundColor: colors.surface },
   tileTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   icon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
@@ -83,5 +75,5 @@ const s = StyleSheet.create({
   // The last lines leave room for the ▶ in the corner.
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18, paddingRight: 36 },
   noExam: { color: colors.muted, fontSize: 12, lineHeight: 17, paddingRight: 36 },
-  play: { ...edge, position: "absolute", right: 10, bottom: 10, width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  play: { position: "absolute", right: 10, bottom: 10 },
 });

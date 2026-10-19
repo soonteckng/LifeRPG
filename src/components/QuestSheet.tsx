@@ -39,7 +39,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
 }: Props) {
   const { tasks, subjects, loading, refreshing, error, refresh, upsert, remove } = useQuests();
   const { hapticsEnabled, profile } = useUser();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [scope, setScope] = useState(initialScope);

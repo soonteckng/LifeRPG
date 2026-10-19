@@ -17,7 +17,7 @@ import SheetConfirmation from "./SheetConfirmation";
 /** A reconnect may close an obsolete timer route, never rebuild its stack. */
 export default function SessionConnectionContent({ children }: { children: ReactNode }) {
   const { accessMode, user, localOwner, admissionEpoch } = useAuth();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const ownerId = user?.id ?? localOwner?.id;
   const backendId = localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const ownerScope = JSON.stringify([backendId, ownerId]);

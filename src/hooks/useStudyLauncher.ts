@@ -16,7 +16,7 @@ import type { StudyCourse, StudyExam } from "../types/studyPlan";
  * subject has an exam coming up, otherwise as Learning.
  */
 export function useStudyLauncher(exams: StudyExam[]) {
-  const router = useRouter(), timer = useTimer(), { subjects = [] } = useQuests(), { profile } = useUser();
+  const router = useRouter(), timer = useTimer({ live: false }), { subjects = [] } = useQuests(), { profile } = useUser();
   const duration = useFocusDurationPreference(profile?.id ?? "");
   const blocked = !!(timer.hasOpenSession || timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !timer.sessionSummary));
   const areaFor = (course: Pick<StudyCourse, "id" | "focusAreaId">) => {

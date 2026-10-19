@@ -89,3 +89,16 @@ test('a swipe moves the shared offset, so the page beneath can follow the finger
  pan.config.onUpdate({translationX:120});assert.equal(shared.value,120);
  await act(async()=>tree.unmount());
 });
+test('the page beneath always has a drift value, so it returns to rest after the page above is swiped away',async()=>{
+ const {mocks}=harness();let tree;
+ class Value{constructor(value){this.value=value;}interpolate(config){return {source:this.value,...config};}}
+ mocks['react-native']={...mocks['react-native'],Animated:{View:host('Native'),Value}};
+ const {ParallaxLayer}=load('src/components/SwipeBack.tsx',mocks);
+ const drift=()=>tree.root.findByType('Native').props.style.flat().find(style=>style&&style.transform).transform[0].translateX;
+ const motion={position:new Value(0),swipe:{value:0,get(){return this.value;},set(next){this.value=next;}}};
+ await act(async()=>{tree=create(React.createElement(ParallaxLayer,{above:motion,width:400},React.createElement('Page')));});
+ assert.equal(drift().source,0,'follows the page above while it is there');assert.deepEqual(drift().outputRange,[-120,0]);
+ await act(async()=>tree.update(React.createElement(ParallaxLayer,{above:null,width:400},React.createElement('Page'))));
+ assert.equal(drift().source,1,'a resting value, never a removed transform');assert.deepEqual(drift().outputRange,[-120,0]);
+ await act(async()=>tree.unmount());
+});

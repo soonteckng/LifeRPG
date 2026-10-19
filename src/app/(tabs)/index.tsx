@@ -53,7 +53,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const { width, fontScale } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const dockEstimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
   const dockHeight = useFloatingDockHeight(floatingDockKey(bannerVisible, insets.bottom, width, fontScale), dockEstimate);

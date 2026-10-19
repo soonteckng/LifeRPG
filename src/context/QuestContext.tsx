@@ -22,7 +22,7 @@ const QuestContext = createContext<QuestState | null>(null);
  * last time this phone was online, so sessions can still pick one.
  */
 export function QuestProvider({ children, online = true, offlineScope = null }: { children: React.ReactNode; online?: boolean; offlineScope?: JournalScope | null }) {
-  const { sessionSummary, cloudSaveVersion } = useTimer();
+  const { sessionSummary, cloudSaveVersion } = useTimer({ live: false });
   const [tasks, setTasks] = useState<Task[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);

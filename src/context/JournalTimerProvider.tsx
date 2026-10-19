@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { studySelection } from "../services/studySelection";
 import { setupMode } from "../services/setupMode";
 import { AppState, Platform } from "react-native";
@@ -67,7 +67,26 @@ interface TimerContextType {
   completedLevelUp: { leveledUp: boolean; newLevel: number } | null; clearCompletionModal: () => void;
   consumeNotificationAction: (nonce: string) => Promise<"end" | null>;
 }
-const TimerContext = createContext<TimerContextType | undefined>(undefined);
+// The countdown changes every second; everything else changes rarely. Ticks go
+// to this small store, so only screens that show the time re-render each
+// second, and the rest of the app (every tab, Home's cards) stays still.
+type ClockReading = { timeLeft: number; displayTimeLeft: number | null; interactionTimeLeft: number | null; breakSecondsLeft: number };
+function createClockStore() {
+  let value: ClockReading = { timeLeft: 0, displayTimeLeft: null, interactionTimeLeft: null, breakSecondsLeft: 0 };
+  const listeners = new Set<() => void>();
+  return {
+    get: () => value,
+    set(next: ClockReading) {
+      if (next.timeLeft === value.timeLeft && next.displayTimeLeft === value.displayTimeLeft
+        && next.interactionTimeLeft === value.interactionTimeLeft && next.breakSecondsLeft === value.breakSecondsLeft) return;
+      value = next; listeners.forEach(listener => listener());
+    },
+    subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
+  };
+}
+type ClockStore = ReturnType<typeof createClockStore>;
+type TimerContextValue = TimerContextType & { clock: ClockStore; liveTime: (reading: ClockReading) => { timeLeft: number; breakSecondsLeft: number } };
+const TimerContext = createContext<TimerContextValue | undefined>(undefined);
 const initialRuntime: SessionTimerControllerSnapshot = {
   record: null, timeLeft: 0, restoring: true, busy: false, error: null, restoreError: false,
   syncStatus: "idle", receipt: null, rewardsVisible: false,
@@ -94,6 +113,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const [renderer, setRenderer] = useState<{ scopeKey: string; native: boolean } | null>(null);
   const startInFlight = useRef(false);
   const [runtime, setRuntime] = useState(initialRuntime);
+  const [clock] = useState(createClockStore);
   const [runtimeScopeKey, setRuntimeScopeKey] = useState<string | null>(null);
   const [draft, setDraft] = useState({ seconds: 1800, activityType: "other", subjectId: null as number | null,
     taskId: null as number | null, notes: "" });
@@ -153,15 +173,19 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = controller.subscribe(next => {
       runtimeRef.current = next;
       ticker.reschedule();
+      clock.set({ timeLeft: next.timeLeft, displayTimeLeft: next.displayTimeLeft ?? null, interactionTimeLeft: next.interaction?.timeLeft ?? null, breakSecondsLeft: next.breakSecondsLeft ?? 0 });
       setRuntimeScopeKey(snapshotScopeKey);
+      // Seconds alone go to the clock store; the app re-renders only when what
+      // a session *is* changes (started, paused, a break begins or ends, saved).
       setRuntime(current =>
       current.record?.clientSessionId === next.record?.clientSessionId
-      && current.record?.revision === next.record?.revision && current.timeLeft === next.timeLeft
+      && current.record?.revision === next.record?.revision
       && current.restoring === next.restoring && current.busy === next.busy && current.error === next.error
       && current.restoreError === next.restoreError && current.syncStatus === next.syncStatus
       && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
-      && current.interaction?.kind === next.interaction?.kind && current.interaction?.timeLeft === next.interaction?.timeLeft
-      && current.displayTimeLeft === next.displayTimeLeft && current.finishing === next.finishing && current.breakSecondsLeft === next.breakSecondsLeft
+      && current.interaction?.kind === next.interaction?.kind && (current.interaction?.timeLeft == null) === (next.interaction?.timeLeft == null)
+      && (current.displayTimeLeft == null) === (next.displayTimeLeft == null) && current.finishing === next.finishing
+      && (current.breakSecondsLeft ?? 0) > 0 === (next.breakSecondsLeft ?? 0) > 0
       && current.recovered === next.recovered
       && current.offlineAvailable === next.offlineAvailable
       && current.cloudSaveVersion === next.cloudSaveVersion
@@ -216,7 +240,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const sessionEnded = record?.state === "cancelled";
   const setup = record && (open || isCompleted || runtime.ending || sessionEnded) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
-  const timeLeft = runtime.displayTimeLeft ?? runtime.interaction?.timeLeft ?? (record && record.state !== "cancelled" ? runtime.timeLeft : draft.seconds);
+  const liveTime = (reading: ClockReading) => ({
+    timeLeft: reading.displayTimeLeft ?? reading.interactionTimeLeft ?? (record && record.state !== "cancelled" ? reading.timeLeft : draft.seconds),
+    breakSecondsLeft: reading.breakSecondsLeft,
+  });
+  const { timeLeft } = liveTime({ timeLeft: runtime.timeLeft, displayTimeLeft: runtime.displayTimeLeft ?? null, interactionTimeLeft: runtime.interaction?.timeLeft ?? null, breakSecondsLeft: runtime.breakSecondsLeft ?? 0 });
   const notes = setup?.notes ?? draft.notes;
   const linkedTaskId = setup ? setup.taskId : draft.taskId;
   const targetAttributeId = setup ? setup.subjectId : draft.subjectId;
@@ -348,6 +376,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId, setViewedSummaryId]);
   const consumeNotificationAction = useCallback((nonce: string) => countdownRef.current?.action(nonce) ?? Promise.resolve(null), []);
   return <TimerContext.Provider value={{
+    clock, liveTime,
     protectedSession: record ? !!record.protection : interactionKind === "start" && !!runtime.interaction?.protectedSession, breakUsed: record?.protection?.breakStartedAtMs != null,
     breakSecondsLeft: runtime.breakSecondsLeft ?? 0,
     breakEndsAtMs: record?.state === "running" ? record.protection?.breakEndsAtMs ?? null : null,
@@ -383,8 +412,18 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     consumeNotificationAction,
   }}>{children}</TimerContext.Provider>;
 }
-export function useTimer() {
+const stillClock = () => () => {};
+/**
+ * The session timer. Screens that show the countdown use `useTimer()` and
+ * update every second. Everything else passes `{ live: false }`: it sees the
+ * session's state the moment it changes, but does not re-render per second.
+ */
+export function useTimer(options: { live: false }): Omit<TimerContextType, "timeLeft" | "breakSecondsLeft">;
+export function useTimer(): TimerContextType;
+export function useTimer(options?: { live: false }): TimerContextType {
   const context = useContext(TimerContext);
   if (!context) throw new Error("useTimer must be used within a TimerProvider");
-  return context;
+  const live = options?.live !== false;
+  const reading = useSyncExternalStore(live ? context.clock.subscribe : stillClock, context.clock.get, context.clock.get);
+  return live ? { ...context, ...context.liveTime(reading) } : context;
 }

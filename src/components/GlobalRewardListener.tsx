@@ -26,7 +26,7 @@ export default function GlobalRewardListener() {
   const pathname = usePathname();
   const insideSession = pathname === "/session" || pathname === "/timer";
   const auth = useAuth();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const { profile, reloadProfile } = useUser();
   const { tasks, subjects } = useQuests();
   const ownerId = auth.user?.id ?? auth.localOwner?.id ?? profile?.id;

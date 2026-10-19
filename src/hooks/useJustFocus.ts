@@ -14,7 +14,7 @@ import { tapHaptic } from "../utils/tapHaptics";
  * can be changed there. A session already open comes first.
  */
 export function useJustFocus() {
-  const router = useRouter(), timer = useTimer(), { profile, hapticsEnabled } = useUser(), { subjects = [] } = useQuests();
+  const router = useRouter(), timer = useTimer({ live: false }), { profile, hapticsEnabled } = useUser(), { subjects = [] } = useQuests();
   const duration = useFocusDurationPreference(profile?.id ?? "");
   const blocked = !!(timer.hasOpenSession || timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !timer.sessionSummary));
   return () => {

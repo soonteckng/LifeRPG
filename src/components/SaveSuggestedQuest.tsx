@@ -25,7 +25,7 @@ export default function SaveSuggestedQuest({ inSheet = false, compact = false, c
   const { profile } = useUser();
   const { subjects } = useQuests();
   const routines = useSavedRoutines();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const sessionSummary = completion ?? timer.sessionSummary;
   const targetAttributeId = completion ? completion.targetAttributeId : timer.targetAttributeId;
   const ownerId = completion?.ownerId ?? profile.id;

@@ -116,8 +116,10 @@ export function PersonalPage({
   const swiped = useCallback(() => {
     if (closing.current) return;
     if (!navigation.canGoBack()) { router.replace(fallback); return; }
+    // The page is already off screen; say so, so the page beneath ends at rest too.
+    position.setValue(width);
     closing.current = true; setExitReady(true);
-  }, [navigation, router, fallback]);
+  }, [navigation, router, fallback, position, width]);
   usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
     if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }

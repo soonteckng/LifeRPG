@@ -77,7 +77,7 @@ export function TourAnchor({ id, children, style }: { id: string; children: Reac
 }
 export function useFeatureTour() { return useContext(TourContext); }
 export function FeatureTourProvider({ children }: { children: ReactNode }) {
-  const { profile, hapticsEnabled } = useUser(), timer = useTimer(), router = useRouter(), pathname = usePathname();
+  const { profile, hapticsEnabled } = useUser(), timer = useTimer({ live: false }), router = useRouter(), pathname = usePathname();
   const owner = profile.id ?? "", eligible = profile.onboarding_completed && !timer.hasOpenSession && !timer.actionBusy && !timer.isRestoring && !timer.restoreError && !timer.rewardsVisible && !(timer.isCompleted && !timer.sessionSummary);
   const [step, setStep] = useState<number | null>(null), [rect, setRect] = useState<TourRect | null>(null), [retry, setRetry] = useState(0), [waitingExpired, setWaitingExpired] = useState(false);
   const [armed, setArmed] = useState(false), [returning, setReturning] = useState(false);

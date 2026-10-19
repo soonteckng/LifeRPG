@@ -36,7 +36,7 @@ export function prefetchCharacterData(userId: string, summary: unknown) {
 }
 export function useCharacterData() {
   const { profile } = useUser();
-  const { sessionSummary } = useTimer();
+  const { sessionSummary } = useTimer({ live: false });
   const [data, setData] = useState<CharacterData | null>(() => lastSnapshot?.userId === profile.id ? lastSnapshot : null);
   const [loading, setLoading] = useState(() => lastSnapshot?.userId !== profile.id);
   const [error, setError] = useState(false);

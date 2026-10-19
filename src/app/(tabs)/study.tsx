@@ -38,7 +38,7 @@ type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null; ti
  * subject's ▶, its card, or Study on an exam; there is no setup form here.
  */
 export default function StudyScreen() {
-  const timer = useTimer(), insets = useSafeAreaInsets();
+  const timer = useTimer({ live: false }), insets = useSafeAreaInsets();
   const bottomInset = useTabDockInset("study");
   const { subjects = [] } = useQuests();
   const plan = useStudyPlan();
@@ -111,7 +111,7 @@ export default function StudyScreen() {
       <View style={s.section}>
         <SectionHeader title="My Exams" subtitle={examEditing ? "Tap ✎ to edit or − to remove." : nearest ? `${exams.length} coming up · next ${countdownLabel(daysUntil(nearest.examDate)).toLowerCase()}` : undefined}
           right={examEditing ? <DoneButton label="Done editing exams" onPress={() => setExamEditing(false)} /> : <CircleButton label="New exam" disabled={!plan.ready} onPress={newExam} />} />
-        {exams.length ? <ExamsCard exams={exams} courses={plan.courses} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} editing={examEditing} onEditingChange={value => { if (value) setEditing(false); setExamEditing(value); }}
+        {exams.length ? <ExamsCard exams={exams} courses={plan.courses} onRemove={id => plan.remove("exam", id)} editing={examEditing} onEditingChange={value => { if (value) setEditing(false); setExamEditing(value); }}
           onEdit={exam => show({ kind: "exam", exam, courseId: exam.courseId })} />
           : <Pressable onPress={newExam} accessibilityRole="button" accessibilityLabel="Add an exam" testID="study-exam-empty" style={[s.group, s.emptyRow]}>
             <View style={s.emptyIcon}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>

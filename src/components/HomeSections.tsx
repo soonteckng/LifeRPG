@@ -17,7 +17,6 @@ import { SquadFace, SquadJoinSheet } from "./SquadSheets";
 import { SquadSummary } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { useStudyPlan } from "../hooks/useStudyPlan";
-import { useStudyLauncher } from "../hooks/useStudyLauncher";
 import { useSquads } from "../hooks/useSquads";
 import { useProgressData } from "../hooks/useProgressData";
 import { useQuests } from "../context/QuestContext";
@@ -35,16 +34,16 @@ import type { StudyExam } from "../types/studyPlan";
 // ("My Squad ›", "This Week ›") opens that section's tab.
 const WEEK = 7;
 
-/** Exams within the next week (up to three), or the next one if none are that close. Tapping one starts studying it. */
+/** Exams within the next week (up to three), or the next one if none are that close. Tapping one edits it. */
 export function HomeExams() {
-  const router = useRouter(), plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), { subjects = [] } = useQuests(), insets = useSafeAreaInsets();
+  const router = useRouter(), plan = useStudyPlan(), { subjects = [] } = useQuests(), insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<"all" | "add" | null>(null);
   const [editing, setEditing] = useState<StudyExam | null>(null), [arranging, setArranging] = useState(false);
   const coming = upcomingExams(plan.exams), soon = coming.filter(exam => daysUntil(exam.examDate) <= WEEK);
   if (arranging && !coming.length) setArranging(false);
   const shown = soon.length ? soon.slice(0, 3) : coming.slice(0, 1);
   const courseFor = (id: string | null) => plan.courses.find(item => item.id === id) ?? null;
-  // Same as Study and routines: tap to edit, Study to start, hold for more.
+  // Same as Study: tap to edit, hold to edit or remove. Studying starts from a subject.
   const edit = (exam: StudyExam) => { setEditing(exam); setSheet("add"); };
   const learning = suggestedArea(subjects, "learning")?.id ?? null;
   const subtitle = soon.length ? `${soon.length} in the next 7 days${soon.length > 3 ? " · nearest 3" : ""}` : coming.length ? `Next one in ${daysUntil(coming[0].examDate)} days` : "Nothing scheduled";
@@ -53,18 +52,18 @@ export function HomeExams() {
     <SectionHeader title="Upcoming Exams" subtitle={arranging ? "Tap ✎ to edit or − to remove." : subtitle}
       right={arranging ? <DoneButton label="Done editing exams" onPress={() => setArranging(false)} />
         : coming.length ? <SeeAll count={coming.length > shown.length ? coming.length : undefined} accessibilityLabel={`See all ${coming.length} exams`} onPress={() => setSheet("all")} /> : undefined} />
-    {shown.length ? <ExamsCard exams={shown} courses={plan.courses} onEdit={edit} onStudy={launcher.study} onRemove={id => plan.remove("exam", id)} editing={arranging} onEditingChange={setArranging} />
+    {shown.length ? <ExamsCard exams={shown} courses={plan.courses} onEdit={edit} onRemove={id => plan.remove("exam", id)} editing={arranging} onEditingChange={setArranging} />
       : <Pressable onPress={add} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.card, s.row]}>
         <View style={[s.icon, s.examIcon]}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
         <Ionicons name="add-circle" size={24} color={colors.accent} />
       </Pressable>}
     <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} attached compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
-      header={<SheetHeader title="My Exams" subtitle="Tap one to edit it, or Study to start." onClose={() => setSheet(null)} />}>
+      header={<SheetHeader title="My Exams" subtitle="Tap one to edit it." onClose={() => setSheet(null)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
         <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => { const course = courseFor(exam.courseId);
           return <ExamRow key={exam.id} exam={exam} course={course} first={index === 0} inSheet label="Edit exam"
-            onPress={() => { setSheet(null); setTimeout(() => edit(exam), 250); }} onStudy={course ? () => { setSheet(null); setTimeout(() => launcher.study(course), 250); } : undefined} />; })}</View>
+            onPress={() => { setSheet(null); setTimeout(() => edit(exam), 250); }} />; })}</View>
         {/* Two equal actions side by side under the list. */}
         <View style={s.actions}>
           <Pressable onPress={() => { setSheet(null); setTimeout(add, 250); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.secondary, s.half]}>
@@ -129,7 +128,7 @@ export function HomeSquad() {
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 /** This week's progress, shared by the week card and Today's card. */
 export function useWeekProgress() {
-  const { profile } = useUser(), { sessionSummary } = useTimer();
+  const { profile } = useUser(), { sessionSummary } = useTimer({ live: false });
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const [now] = useState(() => new Date());
   const period = useMemo(() => periodFor("week", dateKey(now, timeZone), timeZone, now), [now, timeZone]);

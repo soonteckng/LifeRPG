@@ -8,7 +8,7 @@ import { floatingTabInset } from "../utils/floatingTabInset";
 
 /** Space to leave at the end of a tab's scroll for the dock, its banner and any pinned Start. */
 export function useTabDockInset(route: string) {
-  const timer = useTimer(), insets = useSafeAreaInsets(), { width, fontScale } = useWindowDimensions();
+  const timer = useTimer({ live: false }), insets = useSafeAreaInsets(), { width, fontScale } = useWindowDimensions();
   const estimate = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
   const banner = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
   const pinned = usePinnedActionPresent(route);

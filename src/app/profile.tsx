@@ -49,7 +49,7 @@ export default function ProfileScreen() {
   const [openedAt] = useState(() => Date.now());
   const [badgesOpen, setBadgesOpen] = useState(false);
   const insets = useSafeAreaInsets();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const { profile, updateProfile, reloadProfile } = useUser();
   const { accessMode, admissionEpoch } = useAuth();
   const online = accessMode === "online";

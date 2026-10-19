@@ -13,9 +13,9 @@ import type { StudyCourse, StudyExam } from "../types/studyPlan";
  * row starts at the same edge; the divider is drawn inside the row, so it
  * never pushes a row sideways.
  */
-export default function ExamRow({ exam, course, first = false, onPress, onLongPress, onStudy, inSheet = false, label, editing = false, onEdit, onRemove }: {
-  exam: StudyExam; course: StudyCourse | null; first?: boolean; onPress: () => void; onLongPress?: () => void; onStudy?: () => void; inSheet?: boolean;
-  /** In edit mode ✎ and − take the place of Study. */
+export default function ExamRow({ exam, course, first = false, onPress, onLongPress, inSheet = false, label, editing = false, onEdit, onRemove }: {
+  exam: StudyExam; course: StudyCourse | null; first?: boolean; onPress: () => void; onLongPress?: () => void; inSheet?: boolean;
+  /** In edit mode ✎ and − take the place of the chevron. */
   editing?: boolean; onEdit?: () => void; onRemove?: () => void;
   /** What tapping the row does, for screen readers. */
   label?: string;
@@ -38,18 +38,16 @@ export default function ExamRow({ exam, course, first = false, onPress, onLongPr
           {!!course && <Text style={s.caption} numberOfLines={1}>{course.name} ·</Text>}
           <Text style={[s.left, soon && s.hot]} numberOfLines={1} testID="exam-days-left">{left}</Text></View>
       </View>
-      {!onStudy && !editing && <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />}
+      {!editing && <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />}
     </Pressable>
     {editing && <EditBadges name={exam.title} onEdit={onEdit} onRemove={onRemove} />}
-    {onStudy && !editing && <Pressable onPress={onStudy} accessibilityRole="button" accessibilityLabel={`Study ${course?.name ?? exam.title}`} hitSlop={6} style={s.study}>
-      <Ionicons name="play" size={12} color={colors.accent} /><Text style={s.studyText}>Study</Text></Pressable>}
   </View>;
 }
 const s = StyleSheet.create({
-  row: { minHeight: 68, flexDirection: "row", alignItems: "center", paddingRight: 14 },
-  line: { position: "absolute", top: 0, left: 70, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  main: { flex: 1, minWidth: 0, minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 12 },
-  days: { width: 46, height: 46, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  row: { minHeight: 72, flexDirection: "row", alignItems: "center", paddingRight: 14 },
+  line: { position: "absolute", top: 0, left: 74, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
+  main: { flex: 1, minWidth: 0, minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 12 },
+  days: { width: 50, height: 50, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   daysInSheet: { backgroundColor: colors.selection },
   number: { color: colors.text, fontSize: 19, lineHeight: 22, fontWeight: "700", fontVariant: ["tabular-nums"] },
   unit: { color: colors.secondary, fontSize: 10, lineHeight: 12, fontWeight: "700", letterSpacing: 0.4 }, hot: { color: "#FFB4AE" },
@@ -59,6 +57,4 @@ const s = StyleSheet.create({
   meta: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
   dot: { width: 7, height: 7, borderRadius: 4 },
   caption: { flexShrink: 1, color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  study: { minHeight: 34, flexDirection: "row", gap: 5, paddingHorizontal: 13, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginLeft: 8 },
-  studyText: { color: colors.accent, fontSize: 14, fontWeight: "600" },
 });

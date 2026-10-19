@@ -173,11 +173,14 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   });
   function Capture() { state = useTimer(); summarySnapshots.push({ owner: auth.user?.id, backend: auth.localOwner?.backendId, epoch: auth.admissionEpoch, summary: state.sessionSummary }); return null; }
   function Page() { return React.createElement("Page"); }
-  function Harness() { return React.createElement(TimerProvider,null,React.createElement(Capture),show && React.createElement(Page)); }
+  // A screen that never shows the countdown, like Home or a tab.
+  let stillRenders = 0, still;
+  function Still() { still = useTimer({ live: false }); stillRenders++; return null; }
+  function Harness() { return React.createElement(TimerProvider,null,React.createElement(Capture),React.createElement(Still),show && React.createElement(Page)); }
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, calls, verifications: () => verifications, summarySnapshots, sessionReads: () => sessionReads,
+    state: () => state, still: () => still, stillRenders: () => stillRenders, calls, verifications: () => verifications, summarySnapshots, sessionReads: () => sessionReads,
     persistedJournal: () => JSON.parse([...values].find(([key]) => key.startsWith("liferpg:session-journal:v1:"))?.[1] ?? "null"),
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
@@ -269,6 +272,22 @@ test('warm End consumed before foreground still opens confirmation without incid
     await ui.foreground(); assert.equal(ui.verifications(), verified);
     assert.equal(ui.calls.some(c => c[0] === 'cancel' || c[0] === 'complete'), false);
     await ui.foreground(); assert.ok(ui.verifications() > verified);
+  } finally { await ui.cleanup(); }
+});
+
+test("only countdown screens re-render each second; the rest of the app sees state changes but not ticks", async () => {
+  const ui=await providerSetup();
+  try {
+    await ui.run((s)=>s.startTimer(1800,"Read"));
+    await ui.advance(1);
+    const before=ui.stillRenders();
+    for (let second=0; second<5; second++) await ui.advance(1);
+    assert.equal(ui.state().timeLeft,1794,'the countdown keeps its exact seconds');
+    assert.equal(ui.stillRenders(),before,'Home and the tabs do not re-render for each second');
+    assert.equal(ui.still().isRunning,true);assert.equal(ui.still().hasOpenSession,true);
+    await ui.run((s)=>s.pauseTimer());
+    assert.ok(ui.stillRenders()>before,'a real change, like pausing, still reaches them at once');
+    assert.equal(ui.still().isRunning,false);
   } finally { await ui.cleanup(); }
 });
 

@@ -7,16 +7,17 @@ import { colors, edge } from "../constants/theme";
 import { countdownLabel, courseColor, daysUntil, examDateLabel } from "../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../types/studyPlan";
 
-const ROW = 68 + 8, SHOWN = 3.5;
+const ROW = 72 + 8, SHOWN = 3.5;
 
 /**
  * My Exams: each exam is its own small card. After three and a half the list
  * scrolls inside itself, so exam season never makes the page endless.
- * Cards behave like subjects and routines: tap to edit, Study to start, hold
- * to wiggle into edit mode with ✎ and −.
+ * An exam is a date to work toward: tap to edit it, hold to wiggle into edit
+ * mode with ✎ and −. Studying starts from its subject, so there is one place
+ * to start and no second Study button that does the same thing.
  */
-export default function ExamsCard({ exams, courses, onEdit, onStudy, onRemove, editing = false, onEditingChange }: {
-  exams: StudyExam[]; courses: StudyCourse[]; onEdit: (exam: StudyExam) => void; onStudy: (course: StudyCourse) => void; onRemove: (id: string) => Promise<boolean>;
+export default function ExamsCard({ exams, courses, onEdit, onRemove, editing = false, onEditingChange }: {
+  exams: StudyExam[]; courses: StudyCourse[]; onEdit: (exam: StudyExam) => void; onRemove: (id: string) => Promise<boolean>;
   editing?: boolean; onEditingChange?: (editing: boolean) => void;
 }) {
   const [removing, setRemoving] = useState<StudyExam | null>(null);
@@ -34,7 +35,6 @@ export default function ExamsCard({ exams, courses, onEdit, onStudy, onRemove, e
           return <Wiggle key={exam.id} active={editing} seed={exam.id} degrees={0.4} style={s.item}>
             <ExamRow exam={exam} course={owner} first editing={editing} label="Edit exam"
               onPress={() => editing ? finish() : onEdit(exam)} onLongPress={onEditingChange ? () => onEditingChange(true) : undefined}
-              onStudy={owner ? () => onStudy(owner) : undefined}
               onEdit={() => { finish(); onEdit(exam); }} onRemove={() => setRemoving(exam)} />
           </Wiggle>;
         })}

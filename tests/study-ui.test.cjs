@@ -161,7 +161,8 @@ test('subjects with an exam come first, soonest first; exams share one card; stu
   const rows = card.findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string');
   assert.equal(rows.length, 5); assert.ok(card.props.style.some(style => style && style.height > 0), 'a long list scrolls inside its card');
   assert.match(rows[0].findAllByType('Press')[0].props.accessibilityLabel, /^Physics mock/, 'soonest exam first');
-  await act(async () => card.findAllByType('Press').find(x => x.props.accessibilityLabel === 'Study Physics').props.onPress());
+  assert.equal(card.findAllByType('Press').some(x => /^Study /.test(x.props.accessibilityLabel ?? '')), false, 'exams have no second Study button; studying starts from the subject');
+  await act(async () => shelf.findAllByType('Press').find(x => x.props.accessibilityLabel === 'Study Physics').props.onPress());
   assert.deepEqual(calls.filter(c => Array.isArray(c)), [['area', 3], ['subject', id(4)], ['mode', 'study'], ['nav', '/session']], 'an exam coming up makes it Revision');
   calls.length = 0;
   await act(async () => shelf.findAllByType('Press').find(x => x.props.accessibilityLabel === 'Study Art').props.onPress());
@@ -220,7 +221,7 @@ test('the shared Subject row picks or creates any subject and moves the session 
   assert.equal(presses(ui.root, 'Choose subject').length, 1, 'the row stays even before any subject exists');
   await act(async () => ui.unmount());
 });
-test('Home shows exams within a week: tap edits, Study starts, hold wiggles into edit mode; and peeks at your squad before its tab', async () => {
+test('Home shows exams within a week: tap edits, hold wiggles into edit mode; and peeks at your squad before its tab', async () => {
   const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [], online: true }, nav = [], timer = [];
   const sections = load('src/components/HomeSections.tsx', { ...base(),
     'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
@@ -255,15 +256,14 @@ test('Home shows exams within a week: tap edits, Study starts, hold wiggles into
   await act(async () => main().props.onLongPress());
   // Holding wiggles the list into edit mode, the same as subjects and routines.
   assert.ok(section('home-exams').findAll(x => x.props.testID === 'wiggling').length > 0, 'holding an exam starts edit mode');
-  assert.equal(presses(rows()[0], 'Study Maths').length, 0, '✎ and − take the place of Study');
+  assert.ok(presses(rows()[0], 'Edit Paper 2').length && presses(rows()[0], 'Remove Paper 2').length, '✎ and − appear on each exam');
   await act(async () => presses(rows()[0], 'Remove Paper 2')[0].props.onPress());
   const confirm = section('home-exams').findAllByType('Sheet').find(x => x.props.label === 'remove exam');
   assert.equal(confirm.props.visible, true, 'removing asks first');
   await act(async () => confirm.props.onRequestClose());
   await act(async () => presses(section('home-exams'), 'Done editing exams')[0].props.onPress());
   assert.equal(section('home-exams').findAll(x => x.props.testID === 'wiggling').length, 0);
-  await act(async () => presses(rows()[0], 'Study Maths')[0].props.onPress());
-  assert.deepEqual(timer, [3], 'its subject has an exam, so the session counts as Revision'); assert.equal(nav.at(-1), '/session', 'Study goes straight to the session');
+  assert.equal(presses(rows()[0], 'Study Maths').length, 0, 'an exam row edits; studying starts from its subject');
   // A grey "See all ›" with a small count badge beside the title lists them all.
   const seeAll = presses(section('home-exams'), 'See all 5 exams')[0];
   assert.ok(texts(seeAll).includes('See all'));assert.ok(texts(seeAll).some(t => String(t) === '5'), 'the hidden count shows as a badge');

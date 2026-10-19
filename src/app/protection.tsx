@@ -11,7 +11,7 @@ import { useTimer } from "../context/TimerContext";
 
 export default function ProtectionScreen() {
   const protection = useSessionProtection();
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const [open, setOpen] = useState(false);
   const online = useAuth().accessMode === "online";
   if (!online && open) setOpen(false);

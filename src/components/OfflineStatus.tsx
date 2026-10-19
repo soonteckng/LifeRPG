@@ -12,7 +12,7 @@ import { useOfflineReconnect } from "../hooks/useOfflineReconnect";
  * syncs later. Tapping it checks the connection (at most every 5 seconds).
  */
 export default function OfflineStatus() {
-  const auth = useAuth(), timer = useTimer();
+  const auth = useAuth(), timer = useTimer({ live: false });
   const owner = auth.localOwner;
   const reconnect = useOfflineReconnect({
     scope: owner ? JSON.stringify([owner.backendId, owner.id, auth.admissionEpoch]) : null,

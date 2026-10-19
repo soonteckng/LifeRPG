@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Animated as Native, useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { Easing, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
@@ -34,7 +34,13 @@ const SHIFT = 0.3;
 /** Moves a page left while the page above slides in, and back as that page is swiped away. */
 export function ParallaxLayer({ above, width, children }: { above: PageMotion | null; width: number; children: ReactNode }) {
   const idle = useSharedValue(0), swipe = above?.swipe ?? idle;
+  // Always drive the drift from an animated value. A native-driven transform
+  // that is simply removed keeps its last value on Android, which left this
+  // page shifted after a swipe back; a resting value puts it back at 0.
+  const [rest] = useState(() => new Native.Value(1));
   const follow = useAnimatedStyle(() => ({ transform: [{ translateX: swipe.get() * SHIFT }] }));
-  const drift = above ? { transform: [{ translateX: above.position.interpolate({ inputRange: [0, width], outputRange: [-width * SHIFT, 0], extrapolate: "clamp" }) }] } : null;
-  return <Native.View style={[{ flex: 1 }, drift]}><Animated.View style={[{ flex: 1 }, follow]}>{children}</Animated.View></Native.View>;
+  const drift = above
+    ? above.position.interpolate({ inputRange: [0, width], outputRange: [-width * SHIFT, 0], extrapolate: "clamp" })
+    : rest.interpolate({ inputRange: [0, 1], outputRange: [-width * SHIFT, 0], extrapolate: "clamp" });
+  return <Native.View style={[{ flex: 1 }, { transform: [{ translateX: drift }] }]}><Animated.View style={[{ flex: 1 }, follow]}>{children}</Animated.View></Native.View>;
 }

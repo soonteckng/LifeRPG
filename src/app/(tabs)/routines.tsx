@@ -21,7 +21,7 @@ import type { Task } from "../../services/taskService";
  * routine has its own ▶. The session screen picks the time and category.
  */
 export default function RoutinesScreen() {
-  const timer = useTimer(), { accessMode } = useAuth();
+  const timer = useTimer({ live: false }), { accessMode } = useAuth();
   const { tasks, subjects = [], refresh } = useQuests();
   const justFocus = useJustFocus(), router = useRouter();
   const bottomInset = useTabDockInset("routines");
@@ -39,10 +39,10 @@ export default function RoutinesScreen() {
   return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}>
     <ContentReveal><View style={s.stack}>
       <Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
-        <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={18} color="#AAB3FF" /></View>
+        <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={22} color="#AAB3FF" /></View>
         <View style={s.copy}><Text style={s.title}>{open ? "Your session" : "Just focus"}</Text>
           <Text style={s.caption}>{open ? timer.isRunning ? "In progress. Tap to return" : "Paused. Tap to return" : "Any activity, your time"}</Text></View>
-        <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={16} color={colors.primaryText} /></View>
+        <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={20} color={colors.primaryText} /></View>
       </Pressable>
       <SavedRoutinesCard subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
     </View></ContentReveal>
@@ -50,10 +50,11 @@ export default function RoutinesScreen() {
 }
 const s = StyleSheet.create({
   stack: { gap: 24 },
-  card: { ...edge, minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, paddingLeft: 14, paddingRight: 12, borderRadius: 18, backgroundColor: colors.surface },
-  icon: { width: 38, height: 38, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(170,179,255,0.16)" },
+  // Just focus is the main way in, so it gets the biggest card on the page.
+  card: { ...edge, minHeight: 92, flexDirection: "row", alignItems: "center", gap: 14, paddingLeft: 16, paddingRight: 14, borderRadius: 22, backgroundColor: colors.surface },
+  icon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(170,179,255,0.16)" },
   copy: { flex: 1, minWidth: 0, gap: 1 },
-  title: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  title: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: "700", letterSpacing: -0.3 },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 19 },
-  play: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  play: { width: 52, height: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
 });

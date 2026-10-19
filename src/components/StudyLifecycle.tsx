@@ -42,7 +42,7 @@ export default function StudyLifecycle() {
   const auth = useAuth();
   const { verifyCurrentOwner } = auth;
   const { scope, ready, pendingCount, courses, exams } = useStudyPlan();
-  const { protectionSessionId, isCompleted, targetAttributeId } = useTimer();
+  const { protectionSessionId, isCompleted, targetAttributeId } = useTimer({ live: false });
   const { subjects = [] } = useQuests();
   const generalId = generalArea(subjects)?.id, revisionAreaId = revisionArea(subjects)?.id;
   const examRemindersOn = useAppPreferences().examReminders;

@@ -26,7 +26,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { profile, hapticsEnabled, setHapticsEnabled, preferenceError } = useUser();
   const { user, signOut } = useAuth();
-  const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer();
+  const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer({ live: false });
   const preferences = useAppPreferences();
   const duration = useFocusDurationPreference(profile.id);
   const [goal, setGoal] = useState<{ owner: string; today: number; next: number | null } | null>(null);

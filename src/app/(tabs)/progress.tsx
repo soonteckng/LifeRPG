@@ -152,7 +152,7 @@ function SessionRow({
 }
 
 export default function ProgressScreen() {
-  const timer = useTimer();
+  const timer = useTimer({ live: false });
   const { profile, hapticsEnabled } = useUser();
   const { sessionSummary } = timer;
   const router = useRouter();

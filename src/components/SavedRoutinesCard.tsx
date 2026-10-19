@@ -12,8 +12,8 @@ import { pinSavedRoutine, routineWidgetsSupported } from "../services/routineWid
 import { resolveSavedRoutine } from "../services/savedRoutineService";
 import { setupMode } from "../services/setupMode";
 import { encodeRoutineSession } from "../utils/routineSession";
-import { focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
-import { lifeAreaColor } from "../utils/lifeAreaColor";
+import { FOCUS_AREAS, focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
+import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import { routineDuration } from "../utils/savedRoutine";
 import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
 import type { SavedRoutine } from "../types/savedRoutine";
@@ -21,6 +21,7 @@ import type { Subject, Task } from "../services/taskService";
 import { colors, radius, edge } from "../constants/theme";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
+import StartButton from "./StartButton";
 import AppSheet from "./AppSheet";
 import RoutineEditorSheet from "./RoutineEditorSheet";
 import QuestSheet from "./QuestSheet";
@@ -30,12 +31,20 @@ import SectionHeader, { CircleButton, DoneButton, SeeAll } from "./SectionHeader
 import OneTimeHint from "./OneTimeHint";
 import { appPreferences } from "../services/appPreferences";
 
-type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind };
+type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind; icon: React.ComponentProps<typeof Ionicons>["name"] };
+// Starting points across a student's week. Each leaves the list once saved.
 const ROUTINE_TEMPLATES: RoutineTemplate[] = [
-  { name: "Review today’s notes", minutes: 30, area: "learning" },
-  { name: "Read before bed", minutes: 20, area: "wellbeing" },
-  { name: "Plan tomorrow", minutes: 15, area: "personal" },
+  { name: "Review today’s notes", minutes: 30, area: "learning", icon: "book-outline" },
+  { name: "Read before bed", minutes: 20, area: "wellbeing", icon: "moon-outline" },
+  { name: "Plan tomorrow", minutes: 15, area: "personal", icon: "calendar-outline" },
+  { name: "Past-year paper", minutes: 45, area: "learning", icon: "document-text-outline" },
+  { name: "Morning stretch", minutes: 10, area: "wellbeing", icon: "body-outline" },
+  { name: "Tidy my desk", minutes: 10, area: "personal", icon: "sparkles-outline" },
+  { name: "Practise my craft", minutes: 25, area: "creative", icon: "color-palette-outline" },
+  { name: "Side project", minutes: 45, area: "work", icon: "construct-outline" },
+  { name: "Journal", minutes: 10, area: "wellbeing", icon: "create-outline" },
 ];
+const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
 
 export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
@@ -44,7 +53,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
 }) {
-  const routines = useSavedRoutines(), timer = useTimer(), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
+  const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
   // Tapping a row edits it, play starts it, and removing asks first in one small card.
@@ -162,29 +171,31 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const legacyEntry = (task: Task): RoutineEntry => ({ kind: "legacy", key: `task:${task.id}`, name: task.title, seconds: (task.target_minutes || 30) * 60, areaId: task.subject_id, task });
   const savedRow = (routine: SavedRoutine, inSheet = false) => {
     const area = areaOf(routine.focusAreaId), entry = savedEntry(routine), editingRows = arranging && !inSheet;
+    const tint = lifeAreaColor(routine.focusAreaId, area?.color_code);
     return <View key={`routine:${routine.id}`} style={[s.row, inSheet && s.sheetRow]}>
-      <View style={[s.areaDot, { backgroundColor: lifeAreaColor(routine.focusAreaId, area?.color_code) }]} />
+      <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name="repeat" size={18} color={tint} /></View>
       <Pressable disabled={!active} onPress={() => editingRows ? finish() : edit(routine)} onLongPress={inSheet ? undefined : hold} delayLongPress={350}
         accessibilityRole="button" accessibilityLabel={`${editingRows ? "" : "Edit "}${routine.name}, ${routineDuration(routine.durationSeconds)}${editingRows ? ". Done editing" : ""}`}
         accessibilityActions={inSheet ? undefined : [{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.detail}>
         <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routineDuration(routine.durationSeconds)} · {focusAreaTitle(area?.title)}{routine.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}</Text>
       </Pressable>
       {editingRows ? <EditBadges name={routine.name} onEdit={() => { setArranging(false); edit(routine); }} onRemove={() => { feedback(); setMenu({ entry, mode: "remove" }); }} />
-        : <Pressable disabled={blocked} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${routine.name}`} style={s.play}><Ionicons name="play" size={15} color={blocked ? colors.tertiary : colors.text} /></Pressable>}
+        : <StartButton disabled={blocked} onPress={() => ask(entry)} label={`Start routine ${routine.name}`} />}
     </View>;
   };
   const legacyRow = (task: Task, completed = false, inSheet = false) => {
     const disabled = blocked || completed || !task.is_due_today || !onStartLegacy || !routines.online;
     const area = areaOf(task.subject_id), entry = legacyEntry(task), editingRows = arranging && !inSheet && !completed;
+    const tint = completed ? colors.success : lifeAreaColor(task.subject_id, area?.color_code);
     return <View key={`task:${task.id}`} style={[s.row, inSheet && s.sheetRow]}>
-      <View style={[s.areaDot, { backgroundColor: completed ? colors.success : lifeAreaColor(task.subject_id, area?.color_code) }]} />
+      <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={completed ? "checkmark" : "repeat"} size={18} color={tint} /></View>
       <Pressable disabled={!active || !routines.online} onPress={() => editingRows ? finish() : editLegacy(task)} onLongPress={inSheet || completed ? undefined : hold} delayLongPress={350}
         accessibilityRole="button" accessibilityLabel={`${editingRows ? "" : "Edit "}${task.title}, ${task.target_minutes || 30} minutes${editingRows ? ". Done editing" : ""}`} style={s.detail}>
         <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
         <Text style={s.caption}>{routineDuration((task.target_minutes || 30) * 60)} · {focusAreaTitle(area?.title)}{task.is_recurring ? task.repeat_rule === "daily" ? " · Daily" : ` · ${task.repeat_rule.split(",").join(", ")}` : " · Once"}{completed ? " · Done today" : !task.is_due_today ? " · Upcoming" : ""}</Text>
       </Pressable>
       {editingRows ? <EditBadges name={task.title} onEdit={() => { setArranging(false); editLegacy(task); }} />
-        : <Pressable disabled={disabled} onPress={() => ask(entry)} accessibilityRole="button" accessibilityLabel={`Start routine ${task.title}`} style={s.play}><Ionicons name="play" size={15} color={disabled ? colors.tertiary : colors.text} /></Pressable>}
+        : <StartButton disabled={disabled} onPress={() => ask(entry)} label={`Start routine ${task.title}`} />}
     </View>;
   };
   const row = (entry: RoutineEntry, inSheet = false) => entry.kind === "saved" ? savedRow(entry.routine, inSheet) : legacyRow(entry.task, false, inSheet);
@@ -214,10 +225,13 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {offerSuggestions && routines.ready && !!suggestions.length && <View style={s.suggested}>
         <SectionHeader title="Ideas to start with" />
         <View style={s.ideas}>{suggestions.map(template => {
-          const area = suggestedArea(subjects as Subject[], template.area);
+          const area = suggestedArea(subjects as Subject[], template.area), tint = kindColor(template.area);
           return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button"
             accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes, ${focusAreaTitle(area?.title)}`} style={s.idea}>
-            <Ionicons name="add" size={15} color={colors.accent} /><Text style={s.ideaText}>{template.name}</Text>
+            <View style={s.ideaTop}><View style={[s.ideaIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={template.icon} size={17} color={tint} /></View>
+              <Ionicons name="add-circle" size={22} color={colors.accent} /></View>
+            <Text style={s.ideaText} numberOfLines={2}>{template.name}</Text>
+            <Text style={s.caption} numberOfLines={1}>{template.minutes} min · {focusAreaTitle(area?.title)}</Text>
           </Pressable>;
         })}</View>
       </View>}
@@ -271,17 +285,20 @@ const s = StyleSheet.create({
   card: { gap: 10 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 },
   suggested: { gap: 10, marginTop: 14 },
-  ideas: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  idea: { ...edge, minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.surface },
-  ideaText: { color: colors.text, fontSize: 15, fontWeight: "500" },
+  // Two columns of idea cards fill the page instead of a row of small chips.
+  ideas: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  idea: { ...edge, flexBasis: "47%", flexGrow: 1, minHeight: 112, padding: 12, gap: 4, borderRadius: 18, backgroundColor: colors.surface },
+  ideaTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  ideaIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
+  ideaText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   stack: { gap: 8 },
   itemCard: { ...edge, borderRadius: 18, backgroundColor: colors.surface, overflow: "hidden" },
   halves: { flexDirection: "row", gap: 10 }, half: { flex: 1 }, plain: { backgroundColor: colors.sheetCard }, plainText: { color: colors.text, fontSize: 16, fontWeight: "500" },
   manage: { minHeight: 44, justifyContent: "center", paddingHorizontal: 8 }, link: { color: colors.accent, fontSize: 16, fontWeight: "500" },
-  row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingVertical: 8, paddingLeft: 16, paddingRight: 10, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
+  row: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 72, paddingVertical: 10, paddingLeft: 14, paddingRight: 12, backgroundColor: colors.surface }, detail: { flex: 1, minWidth: 0, gap: 1, minHeight: 44, justifyContent: "center" },
   areaDot: { width: 10, height: 10, borderRadius: 5 },
+  rowIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   name: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" }, completed: { color: colors.secondary }, caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 },
-  play: { ...edge, width: 40, height: 40, borderRadius: 20, backgroundColor: colors.sheetCard, alignItems: "center", justifyContent: "center" },
   empty: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: colors.surface }, emptyIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft }, emptyTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   sheetHeading: { paddingHorizontal: 20, paddingBottom: 14, gap: 6 }, list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 }, addRow: { ...edge, minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 25, backgroundColor: colors.accentSoft }, conflict: { paddingVertical: 12, gap: 6 },
   confirmTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 }, confirmMeta: { flexDirection: "row", alignItems: "center", gap: 8 },

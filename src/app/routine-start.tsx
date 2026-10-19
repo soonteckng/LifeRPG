@@ -13,7 +13,7 @@ import { resolveSavedRoutine } from "../services/savedRoutineService";
 /** The native widget supplies a one-use launch proof, never a session command. */
 export default function RoutineStart() {
   const { widgetNonce } = useLocalSearchParams<{ widgetNonce?: string }>();
-  const routines = useSavedRoutines(), timer = useTimer(), router = useRouter();
+  const routines = useSavedRoutines(), timer = useTimer({ live: false }), router = useRouter();
   const scopeKey = routines.scope ? JSON.stringify(routines.scope) : null;
   const [error, setError] = useState("");
   const consumed = useRef<string | null>(null);
