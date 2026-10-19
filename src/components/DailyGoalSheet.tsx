@@ -87,7 +87,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
   };
   const status = data ? `${saved || data.pending ? `${data.next_goal_minutes} minutes from ${data.next_effective_date}. ` : ""}${!data.scheduling_available || !data.weekly_limit_available ? "Goal changes are temporarily unavailable. Please try again later." : data.can_change_goal ? "" : data.next_change_at ? `Next change: ${new Intl.DateTimeFormat(undefined, { timeZone: profile.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(data.next_change_at))}.` : "Finish setup before changing your goal."}` : "";
   const selected = parseDailyGoal(draft);
-  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} floating compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="daily goal"
+  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="daily goal"
     header={<SheetHeader title="Daily goal" subtitle={`Today stays at ${todayMinutes} min.`} onClose={() => { if (!busy) onClose(); }} />}>
     <BottomSheetScrollView contentContainerStyle={g.body} keyboardShouldPersistTaps="handled">
       <View style={g.stepperCard}>

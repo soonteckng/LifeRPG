@@ -33,7 +33,7 @@ export default function RoutineSetupRow({ entries, selected, areas, disabled = f
       <Text style={[s.value, selected ? s.chosen : s.any]} numberOfLines={1}>{selected?.name ?? "Any"}</Text>
       <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
     </Pressable>
-    <AppSheet visible={open} onRequestClose={() => setOpen(false)} onDismiss={() => { const go = after.current; after.current = null; go?.(); }} floating compact maxHeightRatio={0.8} label="routine choices"
+    <AppSheet visible={open} onRequestClose={() => setOpen(false)} onDismiss={() => { const go = after.current; after.current = null; go?.(); }} compact maxHeightRatio={0.8} label="routine choices"
       header={<SheetHeader title="Routine" subtitle="Pick one, or just focus in your category." onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView contentContainerStyle={s.list} showsVerticalScrollIndicator={false}>
         <SheetButton disabled={disabled} onPress={() => { onSelect(null); setOpen(false); }} accessibilityRole="radio" accessibilityState={{ checked: !selected }}

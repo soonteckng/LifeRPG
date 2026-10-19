@@ -237,7 +237,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       </BottomSheetScrollView>
     </AppSheet>
-    <AppSheet key={`confirm:${surfaceKey}`} visible={!!menu && active} onRequestClose={() => setMenu(null)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact floating
+    <AppSheet key={`confirm:${surfaceKey}`} visible={!!menu && active} onRequestClose={() => setMenu(null)} onDismiss={afterSheetDismiss} closeInstantly={leaving} compact
       label={menu?.mode === "options" ? "routine options" : menu?.mode === "remove" ? "remove routine" : "start routine"}
       header={menu ? <View style={s.sheetHeading}><Text style={s.confirmTitle} numberOfLines={2}>{menu.mode === "start" ? `Start “${menu.entry.name}”?` : menu.mode === "remove" ? `Remove “${menu.entry.name}”?` : menu.entry.name}</Text>
         <View style={s.confirmMeta}><View style={[s.areaDot, { backgroundColor: lifeAreaColor(menu.entry.areaId, menuArea?.color_code) }]} /><Text style={s.caption}>{menu.mode === "remove" ? "Your recorded sessions and progress stay saved." : `${routineDuration(menu.entry.seconds)} · ${focusAreaTitle(menuArea?.title)}`}</Text></View></View> : null}>

@@ -538,11 +538,14 @@ export default function ProgressScreen() {
                 {analytics.areas.map(area => <Pressable key={area.key}
                   onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
                   accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
-                  <View style={[s.areaDot, { backgroundColor: area.color }]} />
-                  <Text style={s.categoryName} numberOfLines={1}>{area.title}</Text>
+                  {/* Name and time on one line, the bar beneath, so names never cut off. */}
+                  <View style={s.categoryHead}>
+                    <View style={[s.areaDot, { backgroundColor: area.color }]} />
+                    <Text style={s.categoryName} numberOfLines={1}>{area.title}</Text>
+                    <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
+                    <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+                  </View>
                   <View style={s.categoryTrack}><View style={[s.categoryFill, { width: `${Math.max(4, Math.round(100 * area.seconds / Math.max(1, analytics.areas[0].seconds)))}%`, backgroundColor: area.color }]} /></View>
-                  <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
-                  <Ionicons name="chevron-forward" size={16} color={colors.muted} />
                 </Pressable>)}
               </View> : <View style={s.card}>
                 <Empty
@@ -821,9 +824,10 @@ const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   periodToolbar: { flexDirection: "column", alignItems: "stretch" },
   categoryStack: { gap: 8 },
-  categoryCard: { ...edge, minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 14, paddingRight: 10, borderRadius: 18, backgroundColor: colors.surface },
-  categoryName: { width: "30%", color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "500" },
-  categoryTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, categoryFill: { height: 6, borderRadius: 3 },
+  categoryCard: { ...edge, gap: 10, paddingTop: 14, paddingBottom: 16, paddingLeft: 16, paddingRight: 12, borderRadius: 18, backgroundColor: colors.surface },
+  categoryHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+  categoryName: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "500" },
+  categoryTrack: { height: 6, marginLeft: 20, marginRight: 26, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, categoryFill: { height: 6, borderRadius: 3 },
   historyEntrance: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 50 },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },

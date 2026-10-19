@@ -62,8 +62,7 @@ interface Props {
   // An action that leaves for another screen skips the slide, so the next
   // screen appears at once instead of after the sheet has visibly closed.
   closeInstantly?: boolean;
-  // Short content floats as a rounded card above the screen edge instead of
-  // a full-width sheet with empty space beneath it.
+  // Sheets float as a rounded card inside the screen (the default for all).
   floating?: boolean;
 }
 
@@ -170,7 +169,8 @@ export default function AppSheet({
   label,
   activityId,
   closeInstantly = false,
-  floating = false,
+  // Every sheet floats as a card inside the screen, so all sheets look alike.
+  floating = true,
 }: Props) {
   const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const timingConfigs = useBottomSheetTimingConfigs(listTiming);

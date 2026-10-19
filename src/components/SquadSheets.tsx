@@ -33,7 +33,7 @@ export function SquadEditSheet({ squad, visible, onClose, onSave }: {
     if (busy) return; Keyboard.dismiss(); setBusy(true);
     try { const failed = await onSave(squad.id, { name, goalMinutes: draft.goalMinutes }); if (failed) setError(failed); else onClose(); } finally { setBusy(false); }
   };
-  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} floating compact label="edit squad" motionMode="timed"
+  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} compact label="edit squad" motionMode="timed"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan"
     header={<SheetHeader title="Edit squad" subtitle="Everyone in the squad sees these." onClose={() => { if (!busy) onClose(); }} />}>
     <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
@@ -73,7 +73,7 @@ export function SquadJoinSheet({ visible, online, leading = null, memberships = 
     try { const failed = mode === "join" ? await onJoin(code) : await onCreate(name.trim()); if (failed) setError(failed); else onClose(); }
     finally { setBusy(false); }
   };
-  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) { Keyboard.dismiss(); onClose(); } }} floating compact label="join squad" motionMode="timed"
+  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) { Keyboard.dismiss(); onClose(); } }} compact label="join squad" motionMode="timed"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan"
     header={<SheetHeader title="Join or start a squad" subtitle="See each other's focus time each week, study and routines." onClose={onClose} />}>
     <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>

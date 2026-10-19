@@ -90,7 +90,7 @@ export default function SettingsScreen() {
       </SettingsGroup>
       <AppBuildInfo />
 
-      <AppSheet label="Sign out" motionMode="timed" compact floating visible={signingOut} guardDismiss={busy} onRequestClose={() => { if (!busy) setSigningOut(false); }}
+      <AppSheet label="Sign out" motionMode="timed" compact visible={signingOut} guardDismiss={busy} onRequestClose={() => { if (!busy) setSigningOut(false); }}
         header={<View style={p.sheetHeader}><Text style={p.title}>Sign out of LifeRPG?</Text></View>}>
         <BottomSheetScrollView contentContainerStyle={p.sheetBody}>
           <Text style={p.body}>{sessionBlocksLogout

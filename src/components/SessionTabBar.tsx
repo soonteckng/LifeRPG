@@ -40,7 +40,8 @@ export default function SessionTabBar(props: BottomTabBarProps) {
       <Rect width="1" height="1" fill="url(#dockFade)" />
     </Svg>
     <View pointerEvents="none" style={styles.scrim} />
-    <OfflineStatus />
+    {/* Floats just above the dock, over the content, with no bar behind it. */}
+    <View pointerEvents="box-none" style={styles.offline}><OfflineStatus /></View>
     {pinned && <PinnedActionHost route={route} />}
     {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : timer.breakSecondsLeft > 0 ? "Expand session on break" : isRunning ? "Expand running session" : "Expand paused session"}>
@@ -61,6 +62,7 @@ const styles = StyleSheet.create({
   dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 10, gap: 10 },
   // A fixed-height fade reads the same on every tab, whatever sits in the dock.
   fade: { position: "absolute", top: -FADE, left: 0, right: 0, height: FADE },
+  offline: { position: "absolute", top: -42, left: 20, right: 20 },
   scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.9)" },
   banner: { minHeight: 60, paddingLeft: 22, paddingRight: 9, paddingVertical: 8, borderRadius: 30, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   title: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },

@@ -1112,7 +1112,7 @@ test("onboarding profile validation rejects too-long names before the RPC and pr
 test("Profile shows its stats and badges, opens every milestone as a card, and keeps My Categories",async()=>{
  const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
  try{
-  assert.match(ui.text(),/1h 30m/);assert.match(ui.text(),/focus days/);assert.match(ui.text(),/best streak/);
+  assert.match(ui.text(),/Time focused1h 30m/);assert.match(ui.text(),/Focus days3/);assert.match(ui.text(),/Best streak2 days/);
   assert.match(ui.text(),/My Badges/);assert.match(ui.text(),/1 of 2 earned/);assert.match(ui.text(),/First step/);
   const sheet=()=>ui.renderer.root.findByType('MilestonesSheet');assert.equal(sheet().props.visible,false);
   // The section title (My Badges ›) opens the whole collection.

@@ -85,40 +85,44 @@ export default function SessionConnectionContent({ children }: { children: React
     if (obsoleteSessionRoute) router.replace("/");
   }, [recoveryNow, offlineCycle, obsoleteSessionRoute, timer.isRestoring, router]);
   const [visitedOffline, setVisitedOffline] = useState({ scope: ownerScope, local: localOnly });
-  const [onlineNotice, setOnlineNotice] = useState<string | null>(null);
+  // A brief note at the top when the connection drops or returns.
+  const [notice, setNotice] = useState<{ scope: string; kind: "online" | "offline" } | null>(null);
   const [noticeOpacity] = useState(() => new Animated.Value(1));
   if (visitedOffline.scope !== ownerScope) {
     setVisitedOffline({ scope: ownerScope, local: localOnly });
-    if (onlineNotice !== null) setOnlineNotice(null);
+    if (notice !== null) setNotice(null);
   } else if (localOnly) {
-    if (!visitedOffline.local) setVisitedOffline({ scope: ownerScope, local: true });
-    if (onlineNotice !== null) setOnlineNotice(null);
+    if (!visitedOffline.local) {
+      setVisitedOffline({ scope: ownerScope, local: true });
+      setNotice(recoveryNow ? null : { scope, kind: "offline" });
+    } else if (notice?.kind === "online") setNotice(null);
   } else if (visitedOffline.local && accessMode === "online" && onlineReady) {
-    setVisitedOffline({ scope: ownerScope, local: false }); setOnlineNotice(scope);
-  }
-  useLayoutEffect(() => { if (onlineNotice !== null) noticeOpacity.setValue(1); }, [onlineNotice, noticeOpacity]);
+    setVisitedOffline({ scope: ownerScope, local: false }); setNotice({ scope, kind: "online" });
+  } else if (notice?.kind === "offline") setNotice(null);
+  useLayoutEffect(() => { if (notice !== null) noticeOpacity.setValue(1); }, [notice, noticeOpacity]);
   useEffect(() => {
-    if (onlineNotice === null) return;
+    if (notice === null) return;
     let live = true;
     let animation: Animated.CompositeAnimation | undefined;
     const timeout = setTimeout(() => {
-      const clear = () => { if (live) setOnlineNotice(current => current === onlineNotice ? null : current); };
+      const clear = () => { if (live) setNotice(current => current === notice ? null : current); };
       if (reducedMotion) clear();
       else {
         animation = Animated.timing(noticeOpacity, { toValue: 0, ...navigationTiming(140) });
         animation.start(({ finished }) => { if (finished) clear(); });
       }
-    }, 1200);
+    }, notice.kind === "offline" ? 2000 : 1200);
     return () => { live = false; clearTimeout(timeout); animation?.stop(); };
-  }, [onlineNotice, noticeOpacity, reducedMotion]);
+  }, [notice, noticeOpacity, reducedMotion]);
   // Count includes rejected records. Only an actual pending, busy operation
   // warrants "syncing"; being back online alone never promises a saved result.
   const syncing = timer.syncStatus === "waiting" && timer.actionBusy && !timer.isRestoring && !timer.actionError;
   return <><ConnectionSurface localOnly={recoveryNow} onlineReady={onlineReady}
     offline={active => <OfflineSessionRecovery active={active} />}>{children}
-      {onlineNotice === scope && accessMode === "online" && onlineReady && <Animated.View pointerEvents="none"
-        testID="connection-online-notice" style={[styles.notice, { top: insets.top + 8, opacity: noticeOpacity }]}>
-        <View style={styles.noticeCard}><Text accessibilityLiveRegion="polite" style={styles.noticeText}>{syncing ? "Back online · syncing" : "Back online"}</Text></View>
+      {notice?.scope === scope && (notice.kind === "online" ? accessMode === "online" && onlineReady : localOnly && !recoveryNow) && <Animated.View pointerEvents="none"
+        testID={`connection-${notice.kind}-notice`} style={[styles.notice, { top: insets.top + 8, opacity: noticeOpacity }]}>
+        <View style={styles.noticeCard}><Text accessibilityLiveRegion="polite" style={styles.noticeText}>
+          {notice.kind === "offline" ? "Offline · sessions save on this phone" : syncing ? "Back online · syncing" : "Back online"}</Text></View>
       </Animated.View>}
     </ConnectionSurface>
     {showEnd && <SheetConfirmation title="End this session?"

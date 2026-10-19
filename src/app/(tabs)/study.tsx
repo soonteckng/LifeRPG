@@ -128,14 +128,14 @@ export default function StudyScreen() {
       onStudy={course => close(() => launcher.study(course))}
       onAddExam={course => close(() => show({ kind: "exam", exam: null, courseId: course.id, title: `${course.name} exam` }))}
       onEditExam={exam => close(() => show({ kind: "exam", exam, courseId: exam.courseId }))} />
-    <AppSheet visible={open && sheet?.kind === "add"} onRequestClose={() => close()} onDismiss={dismissed} floating compact maxHeightRatio={0.85} label="add subject"
+    <AppSheet visible={open && sheet?.kind === "add"} onRequestClose={() => close()} onDismiss={dismissed} compact maxHeightRatio={0.85} label="add subject"
       keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
       header={<SheetHeader title="Add a subject" subtitle="Pick one or type your own. One you removed comes back with its minutes." onClose={() => close()} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
         <SubjectPicker courses={plan.courses} selectedName={null} onPick={choice => close(() => void addSubject(choice.name, choice.id))} />
       </BottomSheetScrollView>
     </AppSheet>
-    <AppSheet visible={open && sheet?.kind === "how"} onRequestClose={() => close()} onDismiss={dismissed} floating compact label="how study works" motionMode="timed"
+    <AppSheet visible={open && sheet?.kind === "how"} onRequestClose={() => close()} onDismiss={dismissed} compact label="how study works" motionMode="timed"
       header={<SheetHeader title="How Study works" onClose={() => close()} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
         <View style={s.howList}>{HOW_IT_WORKS.map(([title, body], index) => <View key={title} style={[s.howRow, index > 0 && s.line]}>

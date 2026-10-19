@@ -531,3 +531,21 @@ test('opened offline, categories come from the copy saved last time online, so s
   const none = await questProvider({ offlineScope: null });
   try { assert.deepEqual(none.calls, [], 'without an account there is nothing to read'); } finally { await none.cleanup(); }
 });
+
+test('losing the connection shows a brief Offline note at the top, never over the recovery screen', async () => {
+  const ui = await connection({ accessMode: 'online', pathname: '/', timer: { offlineAvailable: true } });
+  try {
+    const note = () => ui.root().findAll(node => node.props.testID === 'connection-offline-notice' && node.type === 'AnimatedView')[0];
+    assert.equal(note(), undefined, 'nothing while online');
+    await ui.update({ accessMode: 'local-only' });
+    assert.match([].concat(note().findByType('Text').props.children).join(''), /Offline · sessions save on this phone/);
+    await ui.update({ accessMode: 'online' });
+    assert.equal(note(), undefined, 'reconnecting replaces it with Back online');
+    assert.ok(ui.root().findAll(node => node.props.testID === 'connection-online-notice').length > 0);
+  } finally { await ui.cleanup(); }
+  const recovery = await connection({ accessMode: 'online', pathname: '/' });
+  try {
+    await recovery.update({ accessMode: 'local-only' });
+    assert.equal(recovery.root().findAll(node => node.props.testID === 'connection-offline-notice').length, 0, 'the recovery screen explains itself');
+  } finally { await recovery.cleanup(); }
+});

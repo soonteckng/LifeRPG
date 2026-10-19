@@ -21,7 +21,7 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
   const { week } = useWeekProgress();
   const goal = goalMinutes * 60, left = Math.max(0, goal - completedSeconds), share = Math.min(1, completedSeconds / Math.max(1, goal));
   const after = (work: () => void) => { onClose(); setTimeout(work, 240); };
-  return <AppSheet visible={visible} onRequestClose={onClose} floating compact maxHeightRatio={0.9} label="today" motionMode="timed"
+  return <AppSheet visible={visible} onRequestClose={onClose} compact maxHeightRatio={0.9} label="today" motionMode="timed"
     header={<View style={s.header}>
       <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
       {visible && <MoreMenu label="Goal options" options={[

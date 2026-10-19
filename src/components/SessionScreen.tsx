@@ -511,7 +511,7 @@ export default function SessionScreen() {
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
-      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact floating maxHeightRatio={0.82}
+      <AppSheet visible={onlineSurfaces && !sessionSummary && (picker === "quest" || picker === "area")} onRequestClose={() => setPicker(null)} label="session choices" compact maxHeightRatio={0.82}
         header={<SheetHeader title={picker === "quest" ? "Routine" : "Category"} subtitle={picker === "quest" ? "Pick one, or just focus in your category." : "Where should this block count?"} onClose={() => setPicker(null)} />}>
         <BottomSheetScrollView contentContainerStyle={[styles.pickerBody, picker === "quest" && styles.questPickerBody]} showsVerticalScrollIndicator={false}>
           {picker === "area" && <FocusAreaPicker selectedId={timer.targetAttributeId} disabled={locked} areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...selectableAreas.filter(item => item.id !== general?.id)]}

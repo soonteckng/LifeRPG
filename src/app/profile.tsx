@@ -20,7 +20,6 @@ import ProgressRing from "../components/ProgressRing";
 import MilestonesSheet, { useMilestones } from "../components/MilestonesSheet";
 import SubjectBreakdown from "../components/SubjectBreakdown";
 import SectionHeader from "../components/SectionHeader";
-import { durationLabel } from "../utils/progressAnalytics";
 import LevelTierSheet from "../components/LevelTierSheet";
 import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
 import { focusAreaDetail } from "../utils/focusAreaDetail";
@@ -168,11 +167,16 @@ export default function ProfileScreen() {
           <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
           <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={s.heroButton}><Ionicons name="sparkles-outline" size={17} color={colors.level} /><Text style={s.heroButtonText}>Level journey</Text></Pressable>
         </View>
-        <View style={s.statsRow}>
-          {[["time-outline", durationLabel(milestones.totals.seconds), "focused", "#64D2FF"], ["calendar-outline", String(milestones.totals.days), milestones.totals.days === 1 ? "focus day" : "focus days", colors.accent],
-            ["flame", `${milestones.totals.bestStreak}`, "best streak", colors.streak]].map(([icon, value, label, tint], index) =>
-            <View key={label} style={[s.stat, index > 0 && s.statLine]} accessible accessibilityLabel={`${value} ${label}`}>
-              <Ionicons name={icon as never} size={17} color={tint} /><Text style={s.statValue} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "—"}</Text><Text style={p.caption} numberOfLines={1}>{label}</Text>
+        {/* Read like Settings: what it is on the left, the number on the right. */}
+        <View style={s.statsCard} testID="profile-stats">
+          {[["time-outline", "Time focused", studyTime(milestones.totals.seconds), "#64D2FF"],
+            ["calendar-outline", "Focus days", String(milestones.totals.days), colors.accent],
+            ["flame", "Best streak", `${milestones.totals.bestStreak} ${milestones.totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint], index) =>
+            <View key={label} style={s.statRow} accessible accessibilityLabel={`${label}, ${milestones.ready ? value : "loading"}`}>
+              {index > 0 && <View style={s.statLine} />}
+              <View style={[s.statIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={icon as never} size={16} color={tint} /></View>
+              <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
+              <Text style={s.statValue} numberOfLines={1}>{milestones.ready ? value : "—"}</Text>
             </View>)}
         </View>
         <View style={s.section} testID="profile-badges">
@@ -251,11 +255,12 @@ const s = StyleSheet.create({
   heroActions: { flexDirection: "row", gap: 10 },
   heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.surface },
   heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  // Three numbers in one strip, not three boxes.
-  statsRow: { ...edge, flexDirection: "row", borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
-  stat: { flex: 1, padding: 12, gap: 3 },
-  statLine: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: colors.line },
-  statValue: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  statsCard: { ...edge, borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
+  statRow: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
+  statLine: { position: "absolute", top: 0, left: 58, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
+  statIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  statLabel: { flex: 1, color: colors.text, fontSize: 16, lineHeight: 22 },
+  statValue: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
   badges: { gap: 10, paddingRight: 8 },
   badge: { ...edge, width: 112, minHeight: 108, padding: 12, gap: 8, borderRadius: radius.tile, backgroundColor: colors.surface },
   badgeIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft },

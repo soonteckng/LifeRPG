@@ -68,7 +68,7 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
       return onSave({ ...next, courseId }, exam?.id);
     }, "Couldn't save this exam. Your details are still here.");
   };
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} floating compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="exam editor"
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="exam editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={picking ? <SheetHeader title="Subject" subtitle="Pick one or type your own." onClose={() => setPicking(false)} closeLabel="Back to exam" /> : <SheetHeader title={exam ? "Edit exam" : "New exam"} subtitle={`${days >= 0 ? `${countdownLabel(days)} · ` : ""}${examDateLabel(draft.examDate)}`} onClose={close} closeLabel="Close exam editor" />}
     // Save stays in view while the calendar scrolls.

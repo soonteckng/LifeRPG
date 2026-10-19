@@ -16,7 +16,7 @@ export default function ItemActionSheet({ visible, title, meta, tint, mode, acti
   visible: boolean; title: string; meta: string; tint?: string; mode: "options" | "remove"; actions: ItemAction[];
   removeLabel: string; keepLabel: string; removeNote: string; onRemove: () => void; onClose: () => void; onDismiss?: () => void; label: string;
 }) {
-  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={onDismiss} compact floating label={label}
+  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={onDismiss} compact label={label}
     header={<View style={s.heading}>
       <Text style={s.title} numberOfLines={2}>{mode === "remove" ? `Remove “${title}”?` : title}</Text>
       <View style={s.meta}>{!!tint && <View style={[s.dot, { backgroundColor: tint }]} />}<Text style={s.caption}>{mode === "remove" ? removeNote : meta}</Text></View>

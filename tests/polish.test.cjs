@@ -67,7 +67,7 @@ test('daily goal sheet validates the minimum and prevents duplicate schedule wri
  try{
   // Short content floats as a fitted card; Save sits right under the rules.
   const sheet=()=>tree.root.findByType('Sheet'),save=()=>tree.root.findAllByType('Button').find(node=>node.props.accessibilityState?.busy!==undefined);
-  assert.equal(sheet().props.floating,true);assert.equal(sheet().props.compact,true);assert.equal(sheet().props.footer,undefined);
+  assert.notEqual(sheet().props.floating,false,"sheets float by default");assert.equal(sheet().props.compact,true);assert.equal(sheet().props.footer,undefined);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('29'));
   await act(async()=>save().props.onPress());assert.equal(saves,0);
   await act(async()=>tree.root.findByType('Input').props.onChangeText('90'));

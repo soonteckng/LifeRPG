@@ -55,16 +55,19 @@ export function HomeExams() {
         <View style={s.flex}><Text style={s.name}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here.</Text></View>
         <Ionicons name="add-circle" size={24} color={colors.accent} />
       </Pressable>}
-    <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} floating compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
+    <AppSheet visible={sheet === "all"} onRequestClose={() => setSheet(null)} compact maxHeightRatio={0.86} label="all exams" motionMode="timed"
       header={<SheetHeader title="My Exams" subtitle="Tap one to edit it, or Study to start." onClose={() => setSheet(null)} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
         <View style={[s.group, s.sheetGroup]}>{coming.map((exam, index) => { const course = courseFor(exam.courseId);
           return <ExamRow key={exam.id} exam={exam} course={course} first={index === 0} inSheet label="Edit exam"
             onPress={() => { setSheet(null); setTimeout(() => edit(exam), 250); }} onStudy={course ? () => { setSheet(null); setTimeout(() => launcher.study(course), 250); } : undefined} />; })}</View>
-        <Pressable onPress={() => { setSheet(null); setTimeout(add, 250); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={s.secondary}>
-          <Ionicons name="add" size={18} color={colors.accent} /><Text style={s.secondaryText}>Add an exam</Text></Pressable>
-        <Pressable onPress={() => { setSheet(null); setTimeout(() => router.navigate("/study"), 220); }} accessibilityRole="button" accessibilityLabel="Open Study" style={s.quiet}>
-          <Text style={s.quietText}>Open Study</Text></Pressable>
+        {/* Two equal actions side by side under the list. */}
+        <View style={s.actions}>
+          <Pressable onPress={() => { setSheet(null); setTimeout(add, 250); }} accessibilityRole="button" accessibilityLabel="Add an exam" style={[s.secondary, s.half]}>
+            <Ionicons name="add" size={18} color={colors.accent} /><Text style={s.secondaryText}>Add exam</Text></Pressable>
+          <Pressable onPress={() => { setSheet(null); setTimeout(() => router.navigate("/study"), 220); }} accessibilityRole="button" accessibilityLabel="Open Study" style={[s.secondary, s.half]}>
+            <Ionicons name="school-outline" size={17} color={colors.text} /><Text style={s.secondaryPlain}>Open Study</Text></Pressable>
+        </View>
       </BottomSheetScrollView>
     </AppSheet>
     <StudyExamSheet visible={sheet === "add"} exam={editing} courses={plan.courses} initialCourseId={editing?.courseId ?? null}
@@ -97,7 +100,7 @@ export function HomeSquad() {
       <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>{squads.online ? "Start a squad and keep each other going." : "Needs internet to start or join a squad."}</Text></View>
       {squads.online && <Ionicons name="add-circle" size={24} color={colors.accent} />}
     </Pressable>}
-    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} floating compact label="squad peek" motionMode="timed"
+    {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} compact label="squad peek" motionMode="timed"
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
         <View style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></View>
@@ -157,7 +160,7 @@ export function HomeWeek() {
       </View>
       <WeekBars />
     </Pressable>
-    <AppSheet visible={open} onRequestClose={() => setOpen(false)} floating compact maxHeightRatio={0.86} label="this week" motionMode="timed"
+    <AppSheet visible={open} onRequestClose={() => setOpen(false)} compact maxHeightRatio={0.86} label="this week" motionMode="timed"
       header={<SheetHeader title="This Week" subtitle={`${durationLabel(week?.seconds ?? 0)} · ${week?.sessions.length ?? 0} sessions`} onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView contentContainerStyle={s.sheetBody} showsVerticalScrollIndicator={false}>
         <View style={[s.card, s.sheetCard]}><WeekBars height={72} wide /><Text style={s.caption}>A green dot marks a day you reached your goal.</Text></View>
@@ -214,7 +217,8 @@ const s = StyleSheet.create({
   primary: { minHeight: 52, flexDirection: "row", gap: 8, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   primaryText: { color: colors.primaryText, fontSize: 16, fontWeight: "600" },
   secondary: { ...edge, minHeight: 50, flexDirection: "row", gap: 6, borderRadius: 25, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
-  secondaryText: { color: colors.accent, fontSize: 16, fontWeight: "600" },
+  secondaryText: { color: colors.accent, fontSize: 16, fontWeight: "600" }, secondaryPlain: { color: colors.text, fontSize: 16, fontWeight: "600" },
+  actions: { flexDirection: "row", gap: 10, marginTop: 4 }, half: { flex: 1 },
   quiet: { minHeight: 44, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center" },
   quietText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
 });

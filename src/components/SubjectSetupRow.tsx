@@ -55,7 +55,7 @@ export default function SubjectSetupRow({ areas, areaId, generalId, learningId, 
     {course ? <View accessible accessibilityLabel="Subject" accessibilityValue={{ text: value }} testID="session-subject" style={[s.row, style]}>{content}</View>
       : <Pressable disabled={disabled} onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel="Choose subject"
         accessibilityValue={{ text: value }} style={[s.row, style]}>{content}</Pressable>}
-    <AppSheet visible={open} onRequestClose={() => setOpen(false)} floating compact maxHeightRatio={0.85} label="subject choices"
+    <AppSheet visible={open} onRequestClose={() => setOpen(false)} compact maxHeightRatio={0.85} label="subject choices"
       keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
       header={<SheetHeader title="Subject" subtitle="Counts as Revision when an exam is coming up, otherwise Learning." onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.list} showsVerticalScrollIndicator={false}>

@@ -116,7 +116,7 @@ test('holding a routine offers Start, Edit and Remove in one small card; Remove 
  const h=await menuCard();try{
   const row=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Edit Review notes,'));
   await act(async()=>row.props.onLongPress());
-  assert.equal(h.sheet().props.label,'routine options');assert.equal(h.sheet().props.visible,true);assert.equal(h.sheet().props.floating,true);
+  assert.equal(h.sheet().props.label,'routine options');assert.equal(h.sheet().props.visible,true);assert.notEqual(h.sheet().props.floating,false);
   for(const label of ['Start','Edit routine','Remove routine'])assert.ok(h.ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel===label),label);
   await act(async()=>press(h.ui.root,'Remove routine'));
   assert.equal(h.sheet().props.label,'remove routine');assert.deepEqual(h.removed,[],'nothing is removed before confirming');

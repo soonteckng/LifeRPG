@@ -54,7 +54,7 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
   const week = days.reduce((sum, value) => sum + value, 0), peak = Math.max(...days, 1);
   const letters = days.map((_, index) => DAY_LETTERS[(new Date().getDay() + 1 + index) % 7]);
   const courseExams = course ? upcomingExams(exams).filter(item => item.courseId === course.id) : [];
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} floating compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="subject"
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="subject"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={<SheetHeader title={editing ? course ? "Edit subject" : "New subject" : course?.name ?? ""} subtitle={editing ? "Revision while an exam is coming up, otherwise Learning." : courseExams.length ? "Counts as Revision · exam coming up" : `Counts as ${focusAreaTitle(area?.title)}`}
       onClose={close} closeLabel={editing && course ? "Stop editing" : "Close subject"} />}

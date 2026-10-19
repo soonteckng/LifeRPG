@@ -141,7 +141,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
     if (visible && !pending && !ending && !rejected && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, pending, ending, rejected, hapticsEnabled]);
   return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed}
-    label={ending ? "session ended" : "session completion"} floating expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
+    label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
     header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
     footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={s.actions} testID="session-result-actions">
       {!pending && !ending && !rejected && saveAction}
