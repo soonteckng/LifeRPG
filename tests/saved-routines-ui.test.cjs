@@ -113,7 +113,7 @@ async function menuCard({ remove = async () => true } = {}) {
  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'react-native-gesture-handler/ReanimatedSwipeable':{__esModule:true,default:Swipe},'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({startFreeTimer:async(...args)=>{calls.push(['start',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
  const sheet=()=>ui.root.findAllByType('Sheet').find(x=>['start routine','routine options','remove routine'].includes(x.props.label));
- return {ui,calls,removed,sheet,cleanup:async()=>act(async()=>ui.unmount())};
+ return {ui,calls,removed,sheet,empty:async()=>{state.routines=[];await act(async()=>ui.update(React.createElement(Component,{subjects})));},cleanup:async()=>act(async()=>ui.unmount())};
 }
 test('holding a routine wiggles the list into edit mode: ✎ edits, − asks before removing, Done finishes',async()=>{
  const h=await menuCard();try{
@@ -167,4 +167,16 @@ test('suggested routines stay offered after other routines exist; a saved one le
   assert.equal(labels.some(label=>label?.startsWith('Add Read before bed')),false);
   assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Ideas to start with'),'ideas sit under their own title, as chips');
  }finally{await act(async()=>ui.unmount());}
+});
+test('removing the last routine ends edit mode, so + comes back instead of Done',async()=>{
+ const h=await menuCard();try{
+  const row=h.ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel?.startsWith('Edit Review notes,'));
+  await act(async()=>row.props.onLongPress());
+  assert.ok(h.ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel==='Done editing routines'));
+  await act(async()=>press(h.ui.root,'Remove Review notes'));await act(async()=>press(h.ui.root,'Remove routine'));
+  assert.deepEqual(h.removed,[routine.id]);
+  await h.empty();
+  assert.equal(h.ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel==='Done editing routines'),false);
+  assert.ok(h.ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel==='New routine'),'+ is back');
+ }finally{await h.cleanup();}
 });

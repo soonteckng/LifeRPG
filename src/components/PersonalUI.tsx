@@ -22,9 +22,9 @@ import { colors, edge } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { TourScrollView } from "./FeatureTour";
-import { navigationTiming, zoomTiming } from "../utils/navigationMotion";
+import { zoomTiming } from "../utils/navigationMotion";
 import AppHeader from "./AppHeader";
-import SwipeBack, { ParallaxLayer, useSwipeOffset, type PageMotion } from "./SwipeBack";
+import SwipeBack, { ParallaxLayer, slideTo, useSwipeOffset, type PageMotion } from "./SwipeBack";
 import { pageStack } from "../utils/pageStack";
 import { readSettingsOrigin, settingsTransform } from "../utils/settingsOrigin";
 export type PersonalIcon = ComponentProps<typeof Ionicons>["name"];
@@ -64,16 +64,19 @@ export function PersonalPage({
   const surface = useRef<View>(null);
   const [frame, setFrame] = useState({ x: 0, y: 0, width, height });
   const [frameReady, setFrameReady] = useState(!expandFromIcon);
-  const [position] = useState(() => new Animated.Value(controlled ? expandFromIcon ? 1 : width : 0));
-  // Second-level pages join one stack: the page beneath drifts left as the
-  // next one slides in, and follows it back while it is swiped away.
-  const swipe = useSwipeOffset(), slides = controlled && !expandFromIcon;
+  // Pages that grow out of a button (Profile, Settings) scale on `position`.
+  const [position] = useState(() => new Animated.Value(controlled && expandFromIcon ? 1 : 0));
+  // Second-level pages slide on one offset (0 on screen, width off to the
+  // right): the slide in, a finger swipe and the slide out all move the same
+  // value, and the page beneath drifts with it, so they can never disagree.
+  const slides = controlled && !expandFromIcon;
+  const offset = useSwipeOffset(slides ? width : 0);
   const [stackId] = useState(() => pageStack.reserve());
   useLayoutEffect(() => {
     if (!back) return;
-    pageStack.add(stackId, slides ? { position, swipe } : null);
+    pageStack.add(stackId, slides ? { swipe: offset } : null);
     return () => pageStack.remove(stackId);
-  }, [back, slides, position, swipe, stackId]);
+  }, [back, slides, offset, stackId]);
   const above = useSyncExternalStore(pageStack.subscribe, () => pageStack.above<PageMotion>(stackId), () => null);
   const origin = settingsTransform(source, frame);
   const closing = useRef(false);
@@ -86,10 +89,11 @@ export function PersonalPage({
   }, [frameReady]);
   useLayoutEffect(() => {
     if (!controlled || !frameReady || closing.current) return;
-    const animation = Animated.timing(position, { toValue: 0, ...(expandFromIcon ? zoomTiming(reduced ? 0 : 360, false) : navigationTiming(reduced ? 0 : 240)) });
+    if (slides) { slideTo(offset, 0, reduced ? 0 : 240); return; }
+    const animation = Animated.timing(position, { toValue: 0, ...zoomTiming(reduced ? 0 : 360, false) });
     animation.start();
     return () => animation.stop();
-  }, [controlled, position, reduced, expandFromIcon, frameReady]);
+  }, [controlled, slides, offset, position, reduced, frameReady]);
   const close = useCallback(() => {
     if (closing.current) return;
     if (!controlled) {
@@ -102,7 +106,8 @@ export function PersonalPage({
       return;
     }
     closing.current = true;
-    const animation = Animated.timing(position, { toValue: expandFromIcon ? 1 : width, ...(expandFromIcon ? zoomTiming(reduced ? 0 : 320, true) : navigationTiming(reduced ? 0 : 230)) });
+    if (slides) { slideTo(offset, width, reduced ? 0 : 230, () => setExitReady(true)); return; }
+    const animation = Animated.timing(position, { toValue: 1, ...zoomTiming(reduced ? 0 : 320, true) });
     animation.start(({ finished }) => {
       if (finished) setExitReady(true);
       else {
@@ -110,16 +115,14 @@ export function PersonalPage({
         position.setValue(0);
       }
     });
-  }, [controlled, navigation, router, position, width, reduced, expandFromIcon, fallback]);
+  }, [controlled, slides, offset, navigation, router, position, width, reduced, fallback]);
   // The swipe has already carried the page away; leave without animating again.
   // Settings opens from and returns to its icon, so it has no swipe.
   const swiped = useCallback(() => {
     if (closing.current) return;
     if (!navigation.canGoBack()) { router.replace(fallback); return; }
-    // The page is already off screen; say so, so the page beneath ends at rest too.
-    position.setValue(width);
     closing.current = true; setExitReady(true);
-  }, [navigation, router, fallback, position, width]);
+  }, [navigation, router, fallback]);
   usePreventRemove(controlled && !exitReady, event => { pendingAction.current = event?.data?.action ?? null; close(); });
   useEffect(() => {
     if (exitReady) { if (pendingAction.current) navigation.dispatch(pendingAction.current); else navigation.goBack(); }
@@ -134,7 +137,7 @@ export function PersonalPage({
     >{expandFromIcon && <Animated.View pointerEvents="none" testID="personal-page-dim"
       style={[StyleSheet.absoluteFill, { backgroundColor: "#000000", opacity: position.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0], extrapolate: "clamp" }) }]} />}
       {/* Home dims softly behind a page growing out of its button. */}
-      <ParallaxLayer above={above} width={width}><SwipeBack enabled={controlled && !expandFromIcon && !exitReady} onBack={swiped} offset={swipe}><Animated.View
+      <ParallaxLayer above={above} width={width}><SwipeBack enabled={slides && !exitReady} onBack={swiped} offset={offset}><Animated.View
       renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{

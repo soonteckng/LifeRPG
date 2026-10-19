@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { Animated as Native, useWindowDimensions } from "react-native";
+import { useMemo, type ReactNode } from "react";
+import { useWindowDimensions } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { Easing, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withTiming, type SharedValue } from "react-native-reanimated";
 
@@ -24,23 +24,26 @@ export default function SwipeBack({ enabled, onBack, offset: shared, children }:
   return <GestureDetector gesture={pan}><Animated.View style={[{ flex: 1 }, follow]}>{children}</Animated.View></GestureDetector>;
 }
 
-/** The swipe distance a page shares with the page beneath it. */
-export function useSwipeOffset() { return useSharedValue(0); }
+/** How far a sliding page sits from its place: 0 on screen, the width when off to the right. */
+export function useSwipeOffset(initial = 0) { return useSharedValue(initial); }
 
-export type PageMotion = { position: Native.Value; swipe: SharedValue<number> };
+/** Slides a page to `to` on the UI thread; `done` runs on JS once it arrives. */
+export function slideTo(offset: SharedValue<number>, to: number, duration: number, done?: () => void) {
+  offset.set(withTiming(to, { duration, easing: Easing.out(Easing.cubic), reduceMotion: ReduceMotion.System },
+    finished => { if (finished && done) runOnJS(done)(); }));
+}
+
+export type PageMotion = { swipe: SharedValue<number> };
 // The page beneath travels this share of the width, as in iOS and One UI.
 const SHIFT = 0.3;
 
-/** Moves a page left while the page above slides in, and back as that page is swiped away. */
+/**
+ * Moves a page left while the page above slides in, and back as that page is
+ * swiped or slides away. One value drives both pages, so they always move
+ * together; with nothing above, the page rests where it belongs.
+ */
 export function ParallaxLayer({ above, width, children }: { above: PageMotion | null; width: number; children: ReactNode }) {
-  const idle = useSharedValue(0), swipe = above?.swipe ?? idle;
-  // Always drive the drift from an animated value. A native-driven transform
-  // that is simply removed keeps its last value on Android, which left this
-  // page shifted after a swipe back; a resting value puts it back at 0.
-  const [rest] = useState(() => new Native.Value(1));
-  const follow = useAnimatedStyle(() => ({ transform: [{ translateX: swipe.get() * SHIFT }] }));
-  const drift = above
-    ? above.position.interpolate({ inputRange: [0, width], outputRange: [-width * SHIFT, 0], extrapolate: "clamp" })
-    : rest.interpolate({ inputRange: [0, 1], outputRange: [-width * SHIFT, 0], extrapolate: "clamp" });
-  return <Native.View style={[{ flex: 1 }, { transform: [{ translateX: drift }] }]}><Animated.View style={[{ flex: 1 }, follow]}>{children}</Animated.View></Native.View>;
+  const resting = useSharedValue(0), offset = above?.swipe ?? resting, following = !!above;
+  const drift = useAnimatedStyle(() => ({ transform: [{ translateX: following ? -SHIFT * Math.max(0, width - offset.get()) : 0 }] }));
+  return <Animated.View style={[{ flex: 1 }, drift]}>{children}</Animated.View>;
 }

@@ -50,21 +50,21 @@ test('a disabled page does not offer the swipe',async()=>{
  const ui=await render(false);assert.equal(ui.pan.config.enabled,false);
 });
 test('a swiped Android page leaves at once without running its own exit animation again',async()=>{
- let swipe,prevent,tree;const timings=[],dispatched=[];
+ let swipe,prevent,tree;const timings=[],dispatched=[];globalThis.__slides=[];
  const navigation={canGoBack:()=>true,dispatch:value=>dispatched.push(value),goBack:()=>dispatched.push('back')};
- const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}},timing:(_,config)=>{timings.push(config.toValue);return{start(){},stop(){}};}}},'expo-router':{useRouter:()=>({canGoBack:()=>true}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove:(active,callback)=>{prevent={active,callback};}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;},useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children}});
+ const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}},timing:(_,config)=>{timings.push(config.toValue);return{start(){},stop(){}};}}},'expo-router':{useRouter:()=>({canGoBack:()=>true}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove:(active,callback)=>{prevent={active,callback};}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;},useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children,slideTo:(offset,to,duration,done)=>{(globalThis.__slides??=[]).push(to);if(globalThis.__onSlide)globalThis.__onSlide(to,done);else done?.();}}});
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Milestones',subtitle:'',back:true,animateTransition:true},'Milestones'));});
  try{
   assert.equal(swipe.enabled,true);
   await act(async()=>swipe.onBack());
   assert.deepEqual(dispatched,['back']);assert.equal(prevent.active,false);assert.equal(swipe.enabled,false);
-  assert.ok(!timings.includes(390),'no second slide-out after the swipe');
+  assert.ok(!timings.includes(390)&&!(globalThis.__slides??[]).includes(390),'no second slide-out after the swipe');
   await act(async()=>swipe.onBack());assert.deepEqual(dispatched,['back'],'a repeated callback is ignored');
  }finally{await act(async()=>tree.unmount());}
 });
 test('top-level pages and Settings never offer the swipe',async()=>{
  let swipe,tree;
- const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(){return 0;}},timing:()=>({start(){},stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>({})},'expo-router/react-navigation':{usePreventRemove:()=>{}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;},useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children}});
+ const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}interpolate(){return 0;}},timing:()=>({start(){},stop(){}})}},'expo-router':{useRouter:()=>({}),useNavigation:()=>({})},'expo-router/react-navigation':{usePreventRemove:()=>{}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'./MotionPressable':host('Press'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'./SwipeBack':{__esModule:true,default:props=>{swipe=props;return props.children;},useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children,slideTo:(offset,to,duration,done)=>{(globalThis.__slides??=[]).push(to);if(globalThis.__onSlide)globalThis.__onSlide(to,done);else done?.();}}});
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Profile',subtitle:''},'Profile'));});
  try{assert.equal(swipe.enabled,false);}finally{await act(async()=>tree.unmount());}
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Settings',subtitle:'',back:true,animateTransition:true,expandFromIcon:true},'Settings'));});
@@ -89,16 +89,19 @@ test('a swipe moves the shared offset, so the page beneath can follow the finger
  pan.config.onUpdate({translationX:120});assert.equal(shared.value,120);
  await act(async()=>tree.unmount());
 });
-test('the page beneath always has a drift value, so it returns to rest after the page above is swiped away',async()=>{
+test('the page beneath follows the one offset of the page above, and rests at 0 without one',async()=>{
  const {mocks}=harness();let tree;
- class Value{constructor(value){this.value=value;}interpolate(config){return {source:this.value,...config};}}
- mocks['react-native']={...mocks['react-native'],Animated:{View:host('Native'),Value}};
+ const styles=[];mocks['react-native-reanimated'].useAnimatedStyle=read=>{const style=read();styles.push(style);return style;};
  const {ParallaxLayer}=load('src/components/SwipeBack.tsx',mocks);
- const drift=()=>tree.root.findByType('Native').props.style.flat().find(style=>style&&style.transform).transform[0].translateX;
- const motion={position:new Value(0),swipe:{value:0,get(){return this.value;},set(next){this.value=next;}}};
- await act(async()=>{tree=create(React.createElement(ParallaxLayer,{above:motion,width:400},React.createElement('Page')));});
- assert.equal(drift().source,0,'follows the page above while it is there');assert.deepEqual(drift().outputRange,[-120,0]);
+ const shift=()=>styles.at(-1).transform[0].translateX;
+ const swipe={value:0,get(){return this.value;},set(next){this.value=next;}};
+ await act(async()=>{tree=create(React.createElement(ParallaxLayer,{above:{swipe},width:400},React.createElement('Page')));});
+ assert.equal(shift(),-120,'fully drifted while the page above is on screen');
+ swipe.value=200;await act(async()=>tree.update(React.createElement(ParallaxLayer,{above:{swipe},width:400},React.createElement('Page'))));
+ assert.equal(shift(),-60,'halfway back while that page is half swiped');
+ swipe.value=400;await act(async()=>tree.update(React.createElement(ParallaxLayer,{above:{swipe},width:400},React.createElement('Page'))));
+ assert.equal(shift()===0||Object.is(shift(),-0),true,'home once it has left');
  await act(async()=>tree.update(React.createElement(ParallaxLayer,{above:null,width:400},React.createElement('Page'))));
- assert.equal(drift().source,1,'a resting value, never a removed transform');assert.deepEqual(drift().outputRange,[-120,0]);
+ assert.equal(shift(),0,'and stays at rest with nothing above, so there is no jump');
  await act(async()=>tree.unmount());
 });

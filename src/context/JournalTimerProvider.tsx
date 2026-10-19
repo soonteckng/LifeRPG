@@ -21,6 +21,7 @@ import { createCountdownTicker } from "../utils/countdownTicker";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { encodeRoutineSession, readRoutineSession } from "../utils/routineSession";
 import type { JournalClock, JournalScope, JournalSetup } from "../types/sessionJournal";
+import { sessionTrail } from "../services/sessionTrail";
 import { useAuth } from "./AuthContext";
 import { useUser } from "./UserContext";
 
@@ -170,8 +171,13 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       if (countdownRef.current === countdown) setRenderer({ scopeKey: snapshotScopeKey, native: countdown.ownsNative() });
     });
     const ticker = createCountdownTicker(() => { void controller.tick(); }, () => controller.nextTickDelayMs());
+    let traced = "";
     const unsubscribe = controller.subscribe(next => {
       runtimeRef.current = next;
+      // What the session is, not its seconds, goes to the on-phone trail.
+      const shape = [next.record?.state ?? "none", next.record?.sync.state ?? "-", next.busy, next.restoring, next.ending, next.syncStatus,
+        next.interaction?.kind ?? "-", next.finishing ?? false, next.rewardsVisible, (next.breakSecondsLeft ?? 0) > 0, next.error ? "error" : "ok"].join("|");
+      if (shape !== traced) { traced = shape; sessionTrail("timer", { shape, left: next.timeLeft }); }
       ticker.reschedule();
       clock.set({ timeLeft: next.timeLeft, displayTimeLeft: next.displayTimeLeft ?? null, interactionTimeLeft: next.interaction?.timeLeft ?? null, breakSecondsLeft: next.breakSecondsLeft ?? 0 });
       setRuntimeScopeKey(snapshotScopeKey);
@@ -193,6 +199,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     });
     void controller.initialize();
     const appState = AppState.addEventListener("change", next => {
+      sessionTrail("app", { state: next, left: runtimeRef.current.timeLeft });
       if (next === "active") void countdown.shouldRefreshOnForeground().then(shouldRefresh => {
         if (shouldRefresh && countdownRef.current === countdown) void controller.refresh();
       });

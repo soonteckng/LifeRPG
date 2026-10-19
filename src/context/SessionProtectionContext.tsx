@@ -5,6 +5,7 @@ import { uuid } from "expo-modules-core";
 import { useAuth } from "./AuthContext";
 import { useTimer } from "./TimerContext";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { sessionTrail } from "../services/sessionTrail";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
 import { getSessionProtectionModule, idleProtection, type ProtectionApp, type ProtectionCapabilities, type ProtectionState } from "../services/nativeFocusProtection";
@@ -41,6 +42,7 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   const [result, setResult] = useState<{ ownerKey: string | null; state: ProtectionState; error: string; binding?: ProtectionBinding | null }>({ ownerKey: null, state: idleProtection, error: "" });
   const [busy, setBusy] = useState(false);
   const latest = useRef({ ownerKey, preferenceKey, viewScope, hasOpenSession: timer.hasOpenSession });
+  const lastTrailed = useRef<string | null>(null);
   const savedSelection = preferences.key === preferenceKey ? preferences.selection : normalProtection;
   const currentSelection = useMemo(() => timer.protectedSession && savedSelection.mode === "normal" ? blockAppsSelection : savedSelection, [timer.protectedSession, savedSelection]);
   const sessionSelection = result.binding?.ownerKey === ownerKey && result.binding.sessionKey === (timer.protectionSessionId ?? timer.sessionId)
@@ -85,9 +87,9 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
   }, [preferenceKey]);
   useEffect(() => {
     const instance = createSessionProtectionController({ storage: AsyncStorage, newId: () => uuid.v4().toLowerCase(),
-      publish: (state, error, binding) => setResult(current => current.ownerKey === latest.current.ownerKey && current.error === error && sameProtectionState(current.state, state)
+      publish: (state, error, binding) => { if (state.status !== lastTrailed.current) { lastTrailed.current = state.status; sessionTrail("protection", { status: state.status }); } setResult(current => current.ownerKey === latest.current.ownerKey && current.error === error && sameProtectionState(current.state, state)
         && JSON.stringify(current.binding ?? null) === JSON.stringify(binding)
-        ? current : { ownerKey: latest.current.ownerKey, state, error, binding }) });
+        ? current : { ownerKey: latest.current.ownerKey, state, error, binding }); } });
     controller.current = instance;
     return () => { if (controller.current === instance) controller.current = null; void instance.dispose(); };
   }, []);

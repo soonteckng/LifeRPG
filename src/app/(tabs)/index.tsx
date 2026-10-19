@@ -190,8 +190,7 @@ export default function HomeScreen() {
   const nextExam = upcomingExams(plan.exams).find(exam => daysUntil(exam.examDate) <= 7 && plan.courses.some(course => course.id === exam.courseId));
   const nextCourse = nextExam ? plan.courses.find(course => course.id === nextExam.courseId) ?? null : null;
   const examDays = nextExam ? daysUntil(nextExam.examDate) : 0;
-  const primary = hasOpenSession ? { title: "Return to your session", detail: timer.isRunning ? "In progress" : "Paused", onPress: openSession, testID: "home-continue" }
-    : nextCourse ? { title: `Revise ${nextCourse.name}`, detail: examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`, onPress: () => launcher.study(nextCourse), testID: "home-revise" }
+  const primary = nextCourse ? { title: `Revise ${nextCourse.name}`, detail: examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`, onPress: () => launcher.study(nextCourse), testID: "home-revise" }
     : { title: "Start focusing", detail: "Any activity, your time", onPress: justFocus, testID: "home-just-focus" };
 
   return (
@@ -248,21 +247,23 @@ export default function HomeScreen() {
                 <Text style={styles.goalLabel}>{isGoalComplete ? "Goal reached" : "Today"}</Text>
                 <Text style={styles.goalHeadline} numberOfLines={2}>{isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
                 <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text></View>
+                {/* The floating session bar is the one way back, so the card only says so. */}
+                {hasOpenSession && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
                 {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
               </View>
             </TouchableOpacity>
             {needsReview ? <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Review saved session</Text>
-            </TouchableOpacity> : <View style={styles.starts}>
+            </TouchableOpacity> : hasOpenSession ? null : <View style={styles.starts}>
               <TouchableOpacity testID={primary.testID} onPress={primary.onPress} accessibilityRole="button" accessibilityLabel={`${primary.title}. ${primary.detail}`} style={styles.nextButton}>
                 <View style={styles.goalCopy}><Text style={styles.nextTitle} numberOfLines={1}>{primary.title}</Text><Text style={styles.nextDetail} numberOfLines={1}>{primary.detail}</Text></View>
-                <View style={styles.nextPlay}><Ionicons name={hasOpenSession ? "chevron-up" : "play"} size={17} color={colors.primary} /></View>
+                <View style={styles.nextPlay}><Ionicons name="play" size={17} color={colors.primary} /></View>
               </TouchableOpacity>
-              {!hasOpenSession && <TouchableOpacity testID="home-other-session" onPress={nextCourse ? justFocus : () => router.navigate("/routines")} accessibilityRole="button"
+              <TouchableOpacity testID="home-other-session" onPress={nextCourse ? justFocus : () => router.navigate("/routines")} accessibilityRole="button"
                 accessibilityLabel={nextCourse ? "Other session. Choose any activity" : "Choose a routine. Opens Routines"} style={styles.otherButton}>
                 <Text style={styles.startText} numberOfLines={1}>{nextCourse ? "Other session" : "Choose a routine"}</Text>
                 <View style={styles.otherIcon}><Ionicons name={nextCourse ? "add" : "repeat"} size={17} color={colors.accent} /></View>
-              </TouchableOpacity>}
+              </TouchableOpacity>
             </View>}
           </View></TourAnchor>
 

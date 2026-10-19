@@ -26,7 +26,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
-      if (name.endsWith("/SwipeBack")) return {__esModule:true,default:props=>props.children,useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children};
+      if (name.endsWith("/SwipeBack")) return {__esModule:true,default:props=>props.children,useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children,slideTo:(offset,to,duration,done)=>{(globalThis.__slides??=[]).push(to);if(globalThis.__onSlide)globalThis.__onSlide(to,done);else done?.();}};
       if (name.endsWith("/FocusAreaDetailSheet")) return props=>React.createElement("AreaSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
@@ -930,6 +930,8 @@ test("Profile protects edited drafts and preserves the editor through discard di
 
 test("Android secondary page retains its contents until animated back finishes and ignores repeated back", async () => {
   let finish, remove;
+  // Pages slide on one shared offset; hold the slide out until the test finishes it.
+  globalThis.__onSlide = (to, done) => { if (to === 360) finish = () => done?.(); else done?.(); };
   const calls = [];
   const navigation = {
     canGoBack: () => true,
@@ -1006,6 +1008,7 @@ test("Android secondary page retains its contents until animated back finishes a
     assert.deepEqual(calls, ["back"]);
     assert.match(text(renderer.root), /Saved rewards/);
   } finally {
+    globalThis.__onSlide = undefined;
     await act(async () => renderer.unmount());
   }
 });

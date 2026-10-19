@@ -1,7 +1,7 @@
 import { setTapHapticsEnabled, tapHaptic } from "../utils/tapHaptics";
 import { Text } from "../components/AppText";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Platform, StyleSheet, View } from "react-native";
+import { AppState, Platform, Share, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import AppSheet from "../components/AppSheet";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
@@ -20,6 +20,7 @@ import { readNotificationPermission, type NotificationPermission } from "../serv
 import { durationLabel } from "../utils/sessionSetup";
 import { afterTransition } from "../utils/afterTransition";
 import AppBuildInfo from "../components/AppBuildInfo";
+import { readSessionTrail } from "../services/sessionTrail";
 
 /** Settings, grouped like the phone's own. Each row opens its own page, sliding in from the right. */
 export default function SettingsScreen() {
@@ -81,8 +82,9 @@ export default function SettingsScreen() {
         <SettingsRow icon="calendar-outline" tint="#FF6961" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
       </SettingsGroup>
 
-      <SettingsGroup title="Help">
+      <SettingsGroup title="Help" footer="If a session ever freezes, share this right after reopening. It lists timer states and times, never your name or notes.">
         <SettingsRow first icon="information-circle-outline" tint="#64D2FF" title="How LifeRPG works" onPress={() => router.navigate("/guide")} />
+        <SettingsRow icon="pulse-outline" tint="#AAB3FF" title="Share session log" onPress={() => { void readSessionTrail().then(log => Share.share({ message: log || "No session events yet." })).catch(() => {}); }} />
       </SettingsGroup>
 
       <SettingsGroup footer={sessionBlocksLogout ? "Finish or end your session before signing out." : "Your saved progress stays with your account."}>

@@ -18,9 +18,11 @@ const GAP = 10;
  * Hold any card to edit: every card wiggles and shows ✎ and −, the same as
  * routines and exams.
  */
-export default function SubjectShelf({ courses, exams, recent, editing, onEditingChange, onOpen, onEdit, onStudy, onRemove }: {
+export default function SubjectShelf({ courses, exams, recent, editing, onEditingChange, onOpen, onEdit, onStudy, onRemove, onAdd }: {
   courses: StudyCourse[]; exams: StudyExam[]; recent: StudyRecent[]; editing: boolean; onEditingChange: (editing: boolean) => void;
   onOpen: (course: StudyCourse) => void; onEdit: (course: StudyCourse) => void; onStudy: (course: StudyCourse) => void; onRemove: (course: StudyCourse) => void;
+  /** The grid always ends with an Add tile, so suggestions are one tap away however many subjects you have. */
+  onAdd?: () => void;
 }) {
   const { width } = useWindowDimensions();
   const [box, setBox] = useState(0);
@@ -32,6 +34,10 @@ export default function SubjectShelf({ courses, exams, recent, editing, onEditin
       exam={upcoming.find(item => item.courseId === course.id)} week={weekSeconds(recent, course.id)}
       onPress={() => editing ? onEditingChange(false) : onOpen(course)} onLongPress={() => onEditingChange(true)}
       onStudy={() => onStudy(course)} onEdit={() => onEdit(course)} onRemove={() => onRemove(course)} />)}
+    {onAdd && !editing && <Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel="Add a subject" testID="subject-add-tile" style={[s.add, { width: tile }]}>
+      <View style={s.addIcon}><Ionicons name="add" size={20} color={colors.accent} /></View>
+      <Text style={s.addText}>Add subject</Text><Text style={s.noExam}>Pick one or type your own</Text>
+    </Pressable>}
   </View>;
 }
 
@@ -41,10 +47,12 @@ function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress,
 }) {
   const tint = courseColor(course.id);
   const days = exam ? daysUntil(exam.examDate) : null;
+  // A subject with an exam coming up wears its colour, so it stands out from the rest.
+  const examStyle = exam ? { borderColor: areaTint(tint, 0.55), borderWidth: 1.5, backgroundColor: colors.sheetCard } : null;
   return <Wiggle active={editing} seed={course.id} degrees={0.9} style={[s.tileFrame, { width }]}>
     <Pressable onPress={onPress} onLongPress={onLongPress} delayLongPress={400} accessibilityRole="button"
       accessibilityLabel={`${course.name}, ${studyTime(week)} this week${exam ? `, exam ${countdownLabel(days!)}` : ""}. ${editing ? "Done editing" : "Open subject"}`}
-      accessibilityActions={[{ name: "longpress", label: "Edit subjects" }]} onAccessibilityAction={onLongPress} style={s.tile}>
+      accessibilityActions={[{ name: "longpress", label: "Edit subjects" }]} onAccessibilityAction={onLongPress} style={[s.tile, examStyle]}>
       <View style={s.tileTop}>
         <View style={[s.icon, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="school-outline" size={15} color={tint} /></View>
         {exam && <ExamPill days={days!} />}
@@ -60,7 +68,7 @@ function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress,
 /** Days to an exam as a soft pill: red only in the last week, never raw red text. */
 export function ExamPill({ days }: { days: number }) {
   const soon = days <= 7;
-  return <View style={[s.badge, soon && s.badgeSoon]}><Text style={[s.badgeText, soon && s.badgeTextSoon]}>{days === 0 ? "Today" : days === 1 ? "Tomorrow" : `${days} days`}</Text></View>;
+  return <View style={[s.badge, soon && s.badgeSoon]}><Text style={[s.badgeText, soon && s.badgeTextSoon]}>{days === 0 ? "Exam today" : days === 1 ? "Exam tomorrow" : `Exam · ${days} days`}</Text></View>;
 }
 const s = StyleSheet.create({
   grid: { flexDirection: "row", flexWrap: "wrap", gap: GAP, paddingTop: 8 },
@@ -76,4 +84,7 @@ const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18, paddingRight: 36 },
   noExam: { color: colors.muted, fontSize: 12, lineHeight: 17, paddingRight: 36 },
   play: { position: "absolute", right: 10, bottom: 10 },
+  add: { minHeight: 120, padding: 12, gap: 3, borderRadius: radius.tile, borderWidth: 1.5, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.18)", justifyContent: "center" },
+  addIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 4 },
+  addText: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
 });

@@ -13,6 +13,7 @@ import { useQuests } from "../context/QuestContext";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { sessionTrail } from "../services/sessionTrail";
 
 type PresentedResult = {
   ownerId: string;
@@ -114,6 +115,7 @@ export default function GlobalRewardListener() {
       ? { ...held, props: { ...held.props, pending: false, syncBusy: false, syncError: null } } : held : null;
   const closingOwner = displayed?.ownerId;
   const done = () => {
+    sessionTrail("result done", { pending: !!displayed?.props.pending, ending: !!displayed?.props.ending, visible });
     if (!closingOwner || closingOwner !== currentOwner.current || presentationScope !== currentScope.current || closeRequested.current) return;
     closeRequested.current = true;
     setClosing(true);
@@ -124,6 +126,7 @@ export default function GlobalRewardListener() {
     timer.clearCompletionModal();
   };
   const retry = () => {
+    sessionTrail("result retry", { pending: !!displayed?.props.pending });
     if (!closingOwner || closingOwner !== currentOwner.current || presentationScope !== currentScope.current || closeRequested.current) return;
     void (async () => {
       if (!online) await auth.retrySessionVerification();

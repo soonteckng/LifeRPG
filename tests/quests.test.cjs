@@ -20,6 +20,13 @@ function load(relativePath, mocks, cache = new Map()) {
     fileName: filename,
   }).outputText;
   const localRequire = (name) => {
+    // Confirmation cards rise with a short native animation; screens that never
+    // mock Animated get a still stand-in, so the card renders in place.
+    if (name === "react-native" && Object.hasOwn(mocks, name) && !mocks[name].Animated && filename.endsWith("SheetConfirmation.tsx")) {
+      return { ...mocks[name], Animated: { View: props => React.createElement("View", props, props.children), Value: class { constructor(value) { this.value = value; } setValue(value) { this.value = value; } interpolate() { return 0; } }, timing: () => ({ start() {}, stop() {} }) }, Easing: { out: f => f, cubic: v => v } };
+    }
+    if (name.endsWith("/useReducedMotion") && !Object.hasOwn(mocks, name) && filename.endsWith("SheetConfirmation.tsx")) return { useReducedMotion: () => true };
+    if (name === "react-native-safe-area-context" && !Object.hasOwn(mocks, name) && filename.endsWith("SheetConfirmation.tsx")) return { useSafeAreaInsets: () => ({ bottom: 0 }) };
     if (Object.hasOwn(mocks, name)) return mocks[name];
     // Home's quiet tab preloads are covered by the Progress and Profile tests.
     if (name.endsWith("/hooks/useCharacterData")) return { prefetchCharacterData() {} };
@@ -703,12 +710,11 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
   assert.equal(identity.findAllByProps({testID:"home-compact-goal"}).length,0);assert.ok(focus.findByProps({testID:"home-compact-goal"}));
-  // The Today card offers one next step. With a session open, that step is going back to it.
+  // With a session open, the floating session bar is the one way back: the Today card adds no second green button.
   assert.equal(renderer.root.findAllByProps({testID:"home-quick-start"}).length,0);assert.equal(renderer.root.findAllByProps({testID:"focus-duration-chip"}).length,0);
   assert.equal(focus.findAllByProps({testID:"home-other-session"}).length,0);
-  sessionCalls.length = 0;
-  await act(async()=>focus.findByProps({testID:"home-continue"}).props.onPress());
-  assert.deepEqual(sessionCalls,[["navigate","/session"]]);
+  assert.equal(focus.findAllByProps({testID:"home-continue"}).length,0);
+  assert.ok(focus.findAll(node=>node.props.testID==="home-session-note").length>0,'the card says a session is on');
   sessionCalls.length = 0;
   openSession = false;
   await act(async () => renderer.update(React.createElement(Home)));

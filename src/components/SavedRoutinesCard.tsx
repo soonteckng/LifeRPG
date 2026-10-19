@@ -43,6 +43,7 @@ const ROUTINE_TEMPLATES: RoutineTemplate[] = [
   { name: "Practise my craft", minutes: 25, area: "creative", icon: "color-palette-outline" },
   { name: "Side project", minutes: 45, area: "work", icon: "construct-outline" },
   { name: "Journal", minutes: 10, area: "wellbeing", icon: "create-outline" },
+  { name: "Language practice", minutes: 20, area: "learning", icon: "chatbubbles-outline" },
 ];
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
 
@@ -200,8 +201,12 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   };
   const row = (entry: RoutineEntry, inSheet = false) => entry.kind === "saved" ? savedRow(entry.routine, inSheet) : legacyRow(entry.task, false, inSheet);
   const visibleEntries = entries.slice(0, limit);
+  // Once the last routine is removed there is nothing left to edit: Done gives way to + again.
+  if (arranging && !visibleEntries.length) setArranging(false);
   const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
-  const suggestions = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
+  const unsaved = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
+  // Ideas sit two to a row; an odd one waits for the next gap so no card is left alone.
+  const suggestions = unsaved.length > 1 ? unsaved.slice(0, unsaved.length - (unsaved.length % 2)) : unsaved;
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
   const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
   // A sync conflict asks which version to keep wherever the routines are listed.
@@ -287,7 +292,7 @@ const s = StyleSheet.create({
   suggested: { gap: 10, marginTop: 14 },
   // Two columns of idea cards fill the page instead of a row of small chips.
   ideas: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  idea: { ...edge, flexBasis: "47%", flexGrow: 1, minHeight: 112, padding: 12, gap: 4, borderRadius: 18, backgroundColor: colors.surface },
+  idea: { ...edge, flexBasis: "40%", flexGrow: 1, maxWidth: "50%", minHeight: 112, padding: 12, gap: 4, borderRadius: 18, backgroundColor: colors.surface },
   ideaTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   ideaIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   ideaText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },

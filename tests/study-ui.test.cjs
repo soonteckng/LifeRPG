@@ -157,6 +157,11 @@ test('subjects with an exam come first, soonest first; exams share one card; stu
   const shelf = within(ui.root, 'subject-shelf');
   const order = shelf.findAllByType('Press').map(x => x.props.accessibilityLabel).filter(label => /Open subject$/.test(label ?? '')).map(label => label.split(',')[0]);
   assert.deepEqual(order, ['Physics', 'Maths', 'Art'], 'nearest exam first, then the rest as added');
+  // Subjects with an exam wear their colour; the grid always ends with Add, however many there are.
+  const tileOf = name => shelf.findAllByType('Press').find(x => x.props.accessibilityLabel?.startsWith(`${name},`));
+  assert.ok([].concat(tileOf('Physics').props.style).some(style => style && style.borderWidth === 1.5), 'an exam subject stands out');
+  assert.ok(![].concat(tileOf('Art').props.style).some(style => style && style.borderWidth === 1.5), 'one without an exam stays calm');
+  assert.ok(shelf.findAll(x => x.props.testID === 'subject-add-tile').length > 0, 'Add a subject sits at the end of the grid');
   const card = within(ui.root, 'exams-card');
   const rows = card.findAll(x => x.props.testID === 'exam-row' && typeof x.type === 'string');
   assert.equal(rows.length, 5); assert.ok(card.props.style.some(style => style && style.height > 0), 'a long list scrolls inside its card');

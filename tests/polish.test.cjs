@@ -8,7 +8,7 @@ function load(file,mocks={},cache=new Map()){
  const module={exports:{}};cache.set(filename,module);const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{
   if(name.endsWith('/AppBuildInfo'))return()=>null;
-  if(name.endsWith('/SwipeBack'))return{__esModule:true,default:props=>props.children,useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children};
+  if(name.endsWith('/SwipeBack'))return{__esModule:true,default:props=>props.children,useSwipeOffset:()=>({get:()=>0,set(){}}),ParallaxLayer:props=>props.children,slideTo:(offset,to,duration,done)=>{(globalThis.__slides??=[]).push(to);if(globalThis.__onSlide)globalThis.__onSlide(to,done);else done?.();}};
   if(Object.hasOwn(mocks,name))return mocks[name];if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvite');if(name==='expo-constants')return {expoConfig:{android:{package:'com.soonteck.liferpg'}}};if(name==='expo')return {isRunningInExpoGo:()=>false};if(name.endsWith('/NotificationOnboardingPrompt'))return host('NotificationInvitation');if(name.endsWith('/AppText'))return{Text:host('Text')};if(name.endsWith('/MotionPressable'))return host('Button');
    if(name==='expo-haptics')return {};if(!name.startsWith('.'))return require(name);const target=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(target+ext));return load(path.relative(path.resolve(__dirname,'..'),target+ext),mocks,cache);
  },module,module.exports);return module.exports;
@@ -32,11 +32,11 @@ test('tour geometry aligns window measurements and clamps highlight bounds',()=>
  for(const target of [{x:-20,y:-10,width:180,height:84},{x:900,y:900,width:80,height:52}]){const result=geometry.spotlightRect(target,390,800);assert.ok(result.x>=4&&result.x+result.width<=386);assert.ok(result.y>=4&&result.y+result.height<=796);}
 });
 test('animated secondary-page exit preserves navigation to Home for the quick tour',async()=>{
- let finish,prevent,tree;const dispatched=[],action={type:'NAVIGATE',payload:{name:'(tabs)'}};
+ let finish,prevent,tree;globalThis.__onSlide=(to,done)=>{if(to===390)finish=()=>done?.();else done?.();};const dispatched=[],action={type:'NAVIGATE',payload:{name:'(tabs)'}};
  const navigation={canGoBack:()=>true,dispatch:value=>dispatched.push(value),goBack:()=>dispatched.push('back')};
  const api=load('src/components/PersonalUI.tsx',{'react-native':{Platform:{OS:'android'},View:host('View'),StyleSheet:{create:value=>value},useWindowDimensions:()=>({width:390}),Animated:{View:host('Animated'),Value:class{setValue(){}},timing:(_,config)=>({start:callback=>{if(config.toValue===390)finish=callback;},stop(){}})}},'expo-router':{useRouter:()=>({canGoBack:()=>true}),useNavigation:()=>navigation},'expo-router/react-navigation':{usePreventRemove:(_,callback)=>{prevent=callback;}},'react-native-safe-area-context':{SafeAreaView:host('Safe'),useSafeAreaInsets:()=>({bottom:20})},'@expo/vector-icons':{Ionicons:host('Icon')},'./FeatureTour':{TourScrollView:host('Scroll')},'./AppHeader':host('Header'),'../hooks/useReducedMotion':{useReducedMotion:()=>false}});
  await act(async()=>{tree=create(React.createElement(api.PersonalPage,{title:'Guide',subtitle:'',back:true,animateTransition:true},'Guide'));});
- try{await act(async()=>prevent({data:{action}}));assert.equal(dispatched.length,0);await act(async()=>finish({finished:true}));assert.deepEqual(dispatched,[action]);}finally{await act(async()=>tree.unmount());}
+ try{await act(async()=>prevent({data:{action}}));assert.equal(dispatched.length,0);await act(async()=>finish({finished:true}));assert.deepEqual(dispatched,[action]);}finally{globalThis.__onSlide=undefined;await act(async()=>tree.unmount());}
 });
 test('alarm settings open the current app toggle directly without sending users to an unscoped application list',async()=>{
  const calls=[];
