@@ -348,7 +348,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const acknowledgeSummary = useCallback(() => setViewedSummaryId(summaryId), [summaryId, setViewedSummaryId]);
   const consumeNotificationAction = useCallback((nonce: string) => countdownRef.current?.action(nonce) ?? Promise.resolve(null), []);
   return <TimerContext.Provider value={{
-    protectedSession: !!record?.protection, breakUsed: record?.protection?.breakStartedAtMs != null,
+    protectedSession: record ? !!record.protection : interactionKind === "start" && !!runtime.interaction?.protectedSession, breakUsed: record?.protection?.breakStartedAtMs != null,
     breakSecondsLeft: runtime.breakSecondsLeft ?? 0,
     breakEndsAtMs: record?.state === "running" ? record.protection?.breakEndsAtMs ?? null : null,
     protectionSetupRequired: protectionFailure?.scope === controllerScopeKey,
@@ -356,7 +356,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     clientReported: !!record?.clientTiming,
     offlineControlsAvailable: !!record?.clientTiming || runtime.offlineAvailable && !!record?.serverCheckpoint,
     cloudSaveVersion: runtime.cloudSaveVersion,
-    sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, protectionSessionId: record?.clientSessionId ?? null, recoveredSession: runtime.recovered,
+    sessionId: record?.serverSessionId ?? record?.clientSessionId ?? null, protectionSessionId: record?.clientSessionId
+      ?? (interactionKind === "start" && runtime.interaction?.protectedSession ? runtime.interaction.clientSessionId ?? null : null), recoveredSession: runtime.recovered,
     timeLeft, duration, isRunning: !runtime.ending && !(runtime.breakSecondsLeft && runtime.breakSecondsLeft > 0) && (interactionKind === "pause" ? false : interactionKind === "resume" || interactionKind === "start" ? true : record?.state === "running"), isCompleted, hasOpenSession: open,
     finishing: open && !runtime.ending && !!runtime.finishing,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),

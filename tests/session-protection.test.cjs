@@ -247,3 +247,25 @@ test('an uncertain read cannot expose another account or session lease as checki
   assert.deepEqual(f.stops, [lease.id]); assert.equal(f.state().id, null);
   await f.controller.dispose();
 });
+test('returning to the app after time away protects only the time actually left, never the full session again', async () => {
+  const f = setup(), realStart = f.native.start;
+  let attempts = 0;
+  // Started, then the user switched apps before Android let protection start.
+  f.native.start = async raw => { if (++attempts === 1) throw Error('Open LifeRPG before starting protection or changing permissions.'); return realStart(raw); };
+  await f.controller.update({ ...base, seconds: 1800, capturedAtMs: Date.now() });
+  assert.equal(f.starts.length, 0);
+  // Ten minutes later the app returns with the projection read before it left.
+  await f.controller.update({ ...base, seconds: 1800, capturedAtMs: Date.now() - 600_000 });
+  assert.equal(f.starts.length, 1);
+  assert.ok(Math.abs(f.starts[0].seconds - 1200) <= 1, `protection counts down from the 20 minutes left, got ${f.starts[0].seconds}`);
+  await f.controller.dispose();
+});
+test('time left is only reduced for a running session, not during a break or once the session has run out', async () => {
+  const api2 = api, now = 1_000_000;
+  assert.equal(api2.projectedSeconds({ ...base, seconds: 600, capturedAtMs: now - 30_000 }, now), 570);
+  assert.equal(api2.projectedSeconds({ ...base, seconds: 600, breakEndsAtMs: now + 60_000, capturedAtMs: now - 30_000 }, now), 600, 'focus time is frozen during a break');
+  assert.equal(api2.projectedSeconds({ ...base, seconds: 600 }, now), 600, 'a projection without a read time is used as is');
+  const f = setup(); await f.controller.update({ ...base, seconds: 60, capturedAtMs: Date.now() - 120_000 });
+  assert.equal(f.starts.length, 0, 'a session that has already run out never installs a lease');
+  await f.controller.dispose();
+});

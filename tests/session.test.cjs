@@ -586,6 +586,24 @@ test("a fresh ready Android Start persists protection and renders the break cont
   }
 });
 
+test("a protected Start names its session for app protection at the tap, before the server replies", async () => {
+  const native = { formatVersion: 3, capabilities: async () => ({ supported: true, usage: true, overlay: true, notifications: true }) };
+  let release; const reply = new Promise(resolve => { release = resolve; });
+  const provider = await providerSetup({ startActivitySession: async params => { await reply; return `bbbbbbbb-bbbb-4bbb-8bbb-${"1".padStart(12, "0")}`; } }, null, null, native);
+  try {
+    let starting;
+    await provider.run(timer => { starting = timer.startTimer(120, "Protected at the tap"); });
+    for (let i = 0; i < 5 && !provider.state().protectionSessionId; i++) await provider.run(() => {});
+    const early = provider.state();
+    assert.equal(early.awaitingStart, true, "the server has not confirmed yet");
+    assert.ok(early.protectionSessionId, "protection already has a session to cover");
+    assert.equal(early.protectedSession, true); assert.equal(early.isRunning, true);
+    release(); await provider.run(() => starting);
+    assert.equal(provider.state().protectionSessionId, early.protectionSessionId, "confirming keeps the same session, so the lease is never restarted");
+    assert.equal(provider.state().hasOpenSession, true);
+  } finally { await provider.cleanup(); }
+});
+
 test("Android Start with missing protection access cannot create an ordinary timer or server session", async () => {
   for (const missing of ["supported", "usage", "overlay", "notifications", "updated-build"]) {
     const native = { formatVersion: missing === "updated-build" ? 2 : 3,
@@ -2047,4 +2065,24 @@ test("only Study starts arm the picked subject, in one place, the timer, before 
   assert.match(source,/if \(setupMode\.get\(\) === "study"\) studySelection\.arm\(record\?\.clientSessionId \?\? null\); else studySelection\.disarm\(\);\s*try \{\s*const protectedSession/,
     "only a Study setup tags the session; Focus and Routine starts clear any armed subject");
   assert.doesNotMatch(fs.readFileSync(path.join(__dirname,"../src/components/SessionScreen.tsx"),"utf8"),/studySelection\.arm/);
+});
+
+test("the setup centres once as the screen opens; later loading only makes room and never bounces it back", async () => {
+  const ui = await screenSetup({}, {}, false, {value:false});
+  try {
+    const scroll = () => ui.root().findAll(node => typeof node.props.onContentSizeChange === "function")[0];
+    const top = () => [].concat(ui.root().findByProps({testID:"session-timer-anchor"}).props.style).filter(Boolean).reduce((all, part) => ({ ...all, ...part }), {}).paddingTop;
+    await act(async () => scroll().props.onLayout({nativeEvent:{layout:{height:500}}}));
+    await act(async () => scroll().props.onContentSizeChange(390, 300));
+    const centred = top();
+    assert.ok(centred > 0, "the setup sits in the middle of the free space");
+    // The scroll area below shrinks by the space now above it, as on a phone.
+    await act(async () => scroll().props.onLayout({nativeEvent:{layout:{height:500 - centred}}}));
+    assert.equal(top(), centred, "re-measuring after centring is stable");
+    await act(async () => scroll().props.onContentSizeChange(390, 340));
+    const roomy = top();
+    assert.ok(roomy < centred, "more content moves it up to make room");
+    await act(async () => scroll().props.onContentSizeChange(390, 300));
+    assert.equal(top(), roomy, "content shrinking back never pulls it down again");
+  } finally { await ui.cleanup(); }
 });

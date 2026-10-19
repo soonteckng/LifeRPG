@@ -78,7 +78,9 @@ export interface SessionTimerControllerSnapshot {
   ending: boolean;
   unsyncedSessionCount: number;
   // A transient view of the tap, never a journal transition or reward authority.
-  interaction: { kind: "start" | "pause" | "resume"; timeLeft: number } | null;
+  // A Start also names its session id and protection, so app protection can
+  // begin at the tap while the server confirms.
+  interaction: { kind: "start" | "pause" | "resume"; timeLeft: number; clientSessionId?: string; protectedSession?: boolean } | null;
   displayTimeLeft: number | null;
   // The tap-anchored display has reached zero while the confirmed (server)
   // timer still has its last few seconds. Presentation only.
@@ -136,7 +138,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
   let lastSetup: JournalSetup | null = null;
   let lastStartProtected = false;
   let remoteRetryAtMs = 0, remoteRetryAttempts = 0;
-  let interaction: { kind: "start" | "pause" | "resume"; remainingMs: number; atMs: number } | null = null;
+  let interaction: { kind: "start" | "pause" | "resume"; remainingMs: number; atMs: number; clientSessionId?: string; protectedSession?: boolean } | null = null;
   // Keep one presentation clock through successful replies. Server snapshots
   // still determine expiry, saved timing and rewards; this clock is never stored.
   let displayClock: { clientSessionId: string | null; running: boolean; remainingMs: number; atMs: number } | null = null;
@@ -215,7 +217,8 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     // work remaining, since End would correctly cancel that unfinished block.
     const displayTimeLeft = displayRemaining !== null && displayClock?.running && timer && timer.remainingMs > 0
       ? Math.max(1, displayRemaining) : displayRemaining;
-    const feedback = interaction && clock ? { kind: interaction.kind, timeLeft: displayTimeLeft ?? state.timeLeft } : null;
+    const feedback = interaction && clock ? { kind: interaction.kind, timeLeft: displayTimeLeft ?? state.timeLeft,
+      ...(interaction.clientSessionId ? { clientSessionId: interaction.clientSessionId, protectedSession: !!interaction.protectedSession } : {}) } : null;
     const finishing = displayRemaining !== null && displayRemaining <= 0 && !!displayClock?.running && !!timer && timer.remainingMs > 0;
     const receipt = record?.sync.receipt ?? null;
     const waiting = !!record && (!!pending(record) || ["pending", "waiting_auth"].includes(record.sync.state));
@@ -808,13 +811,15 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     validateJournalSetup(setup);
     if (legacyPending() || journal!.records.some(record => ["not_started", "running", "paused"].includes(record.state))) return false;
     lastStartProtected = protectedSession; lastSetup = copy(setup); lastAction = "start";
-    interaction = { kind: "start", remainingMs: setup.targetSeconds * 1000, atMs: now().wallTimeMs };
-    displayClock = { clientSessionId: null, running: true, remainingMs: interaction.remainingMs, atMs: interaction.atMs };
+    // The session id exists from the tap, so app protection can begin at once
+    // instead of after the server replies (and while LifeRPG is still visible).
+    const clientSessionId = uuid();
+    interaction = { kind: "start", remainingMs: setup.targetSeconds * 1000, atMs: now().wallTimeMs, clientSessionId, protectedSession };
+    displayClock = { clientSessionId, running: true, remainingMs: interaction.remainingMs, atMs: interaction.atMs };
     publish();
     // Verification is a read, before any start intent, so an offline attempt
     // cannot create an unsent legacy start that would be unsafe to retry.
     const localStart = async () => {
-      const clientSessionId = uuid();
       await write({ type: "local_start", protectedSession, clientSessionId, setup, clock: now() });
       selectedId = clientSessionId; hiddenId = null; rewardId = null;
       displayClock = null; interaction = null;
@@ -832,10 +837,9 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     }
     // The v1-compatible identity convention distinguishes new v2 Starts from
     // stored legacy intents, whose operation and client UUIDs were different.
-    const clientSessionId = uuid(), operationId = clientSessionId;
+    const operationId = clientSessionId;
     await write({ type: "prepare_start", protectedSession, operationId, clientSessionId, setup, clock: now() });
     selectedId = clientSessionId; hiddenId = null; rewardId = null;
-    if (displayClock) displayClock.clientSessionId = clientSessionId;
     let rpcAttempted = false, mutationReplyReceived = false;
     try {
       fence(); rpcAttempted = true;

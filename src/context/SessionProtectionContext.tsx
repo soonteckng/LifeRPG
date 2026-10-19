@@ -8,7 +8,7 @@ import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
 import { getSessionProtectionModule, idleProtection, type ProtectionApp, type ProtectionCapabilities, type ProtectionState } from "../services/nativeFocusProtection";
-import { createSessionProtectionController, normalProtection, readProtectionSelection, type ProtectionBinding, type ProtectionSelection } from "../services/sessionProtection";
+import { createSessionProtectionController, normalProtection, readProtectionSelection, type ProtectionBinding, type ProtectionSelection, type ProtectionSessionProjection } from "../services/sessionProtection";
 
 export type { ProtectionSelection } from "../services/sessionProtection";
 export interface SessionProtectionValue {
@@ -91,13 +91,14 @@ export function SessionProtectionProvider({ children }: { children: ReactNode })
     controller.current = instance;
     return () => { if (controller.current === instance) controller.current = null; void instance.dispose(); };
   }, []);
-  const projection = useRef({ ownerKey, sessionKey: timer.protectionSessionId ?? timer.sessionId, restoring: timer.isRestoring || !loaded,
+  const projection = useRef<ProtectionSessionProjection>({ ownerKey, sessionKey: timer.protectionSessionId ?? timer.sessionId, restoring: timer.isRestoring || !loaded,
     running: timer.isRunning, breakEndsAtMs: timer.breakEndsAtMs, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
     title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: currentSelection });
   useLayoutEffect(() => {
     projection.current = { ownerKey, sessionKey: timer.protectionSessionId ?? timer.sessionId, restoring: timer.isRestoring || !loaded,
       running: timer.isRunning, breakEndsAtMs: timer.breakEndsAtMs, ending: timer.endingSession || timer.isCompleted || timer.sessionEnded, seconds: timer.timeLeft,
-      title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: timer.protectedSession && currentSelection.mode === "normal" ? { mode: "essentials" as const, allowed: [] } : currentSelection };
+      title: readSuggestedFocus(timer.notes)?.title ?? readRoutineSession(timer.notes) ?? "Your session", selection: timer.protectedSession && currentSelection.mode === "normal" ? { mode: "essentials" as const, allowed: [] } : currentSelection,
+      capturedAtMs: Date.now() };
   });
   const expired = timer.timeLeft <= 0;
   // Immediate session transitions drive commands. The single poll below reads

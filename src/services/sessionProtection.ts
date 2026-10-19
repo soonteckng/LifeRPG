@@ -13,6 +13,14 @@ export function readProtectionSelection(raw: unknown): ProtectionSelection {
 export interface ProtectionSessionProjection {
   ownerKey: string | null; sessionKey: string | null; restoring: boolean; running: boolean;
   breakEndsAtMs?: number | null; ending: boolean; seconds: number; title: string; selection: ProtectionSelection;
+  /** When `seconds` was read. A projection can be handed over late (the app
+   * coming back from the background), so a lease never starts from stale time. */
+  capturedAtMs?: number;
+}
+/** Seconds left now: a running, unbroken session keeps counting after its projection was read. */
+export function projectedSeconds(value: ProtectionSessionProjection, nowMs = Date.now()) {
+  const counting = value.running && value.breakEndsAtMs == null && value.capturedAtMs != null;
+  return Math.ceil(Math.floor(value.seconds) - (counting ? Math.max(0, nowMs - value.capturedAtMs!) / 1000 : 0));
 }
 interface Storage { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void> }
 const bindingKey = (owner: string) => `liferpg:session-protection:binding:v2:${owner}`;
@@ -118,8 +126,10 @@ export function createSessionProtectionController(options: { storage: Storage; n
     if (!caps.supported || !caps.usage || !caps.overlay || !caps.notifications) {
       suppressed = scope; publish({ ...idleProtection, scope, status: "permission-lost" }, "Allow the optional protection permissions to protect this session."); return;
     }
+    const remaining = projectedSeconds(latest!);
+    if (remaining < 1) { publish(state, ""); return; }
     const id = options.newId(); ownedId = id;
-    const seconds = Math.max(1, Math.min(28800, Math.floor(latest!.seconds)));
+    const seconds = Math.min(28800, remaining);
     try {
       state = checked(await bounded(nativeModule.start(JSON.stringify({ version: 2, id, scope, title: input.title.slice(0, 120) || "Your session", seconds, mode: bound.selection.mode, allowed: [...bound.selection.allowed] }))));
       if (!canRun(input) || request !== revision) { await release(nativeModule, id); return; }

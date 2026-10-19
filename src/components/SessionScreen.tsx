@@ -171,9 +171,13 @@ export default function SessionScreen() {
   const compactSetup = phase === "setup" && !isQuest;
   // Setup sits in the middle of the free space instead of leaving a gap above Start.
   const [setupFit, setSetupFit] = useState({ view: 0, content: 0 });
-  const [setupTop, setSetupTop] = useState(0);
+  const [{ top: setupTop, settled }, setSetupPlace] = useState({ top: 0, settled: false });
   const fitTop = compactSetup ? Math.max(0, Math.min(200, Math.round((setupFit.view + setupTop - setupFit.content) / 2) - 12)) : 0;
-  if (Math.abs(fitTop - setupTop) > 2) setSetupTop(fitTop);
+  // Centre once, as the screen opens. Choices that load or change later only
+  // ever make room (move up), so the setup never bounces up and down.
+  if (!compactSetup) { if (setupTop !== 0 || settled) setSetupPlace({ top: 0, settled: false }); }
+  else if (setupFit.view > 0 && setupFit.content > 0 && (!settled ? true : fitTop < setupTop - 2) && (Math.abs(fitTop - setupTop) > 2 || !settled))
+    setSetupPlace({ top: fitTop, settled: true });
   const areaColor = lifeAreaColor(timer.targetAttributeId, area?.color_code);
   const learning = suggestedArea(subjects, "learning");
   const storedMode = useSetupMode();
@@ -451,7 +455,8 @@ export default function SessionScreen() {
             {phase !== "setup" && !timer.isCompleted && phase !== "ended" && <View style={styles.protectionStatus}><SessionProtectionControl statusOnly activeSurface={onlineSurfaces} /></View>}
             {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setupStack}>
-              {(loading || timer.isRestoring) && <ActivityIndicator color={colors.accent} />}
+              {/* Floats, so a background refresh never pushes the setup around. */}
+              {(loading || timer.isRestoring) && <ActivityIndicator size="small" style={styles.setupSpinner} color={colors.accent} />}
               {(choicesError || missingQuest) && <View>
                 <Text style={styles.secondary}>{missingQuest ? task ? "This routine is already done or isn’t scheduled for today. Choose another routine, or Any activity." : "Your routine is still linked. Reload its details before starting, or choose Any activity." : "Couldn’t load your choices."}</Text>
                 <Action label="Reload choices" onPress={() => void refresh()} />
@@ -568,7 +573,7 @@ const styles = StyleSheet.create({
   hiddenStatus: { position:"absolute", width:1, height:1, overflow:"hidden", color:colors.background },
   body: { paddingHorizontal: 20, paddingBottom: 20 },
   secondary: { color: colors.secondary, fontSize: 16, lineHeight: 22 },
-  setupStack: { gap: 8 },
+  setupStack: { gap: 8 }, setupSpinner: { position: "absolute", top: 4, right: 4 },
   context: { alignItems: "center", gap: 4, paddingHorizontal: 12, paddingBottom: 12 },
   contextTitle: { color: colors.text, fontSize: 20, lineHeight: 25, fontWeight: "700", letterSpacing: -0.3, textAlign: "center" },
   contextDetail: { color: colors.secondary, fontSize: 14, lineHeight: 19, textAlign: "center" },

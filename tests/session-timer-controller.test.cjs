@@ -359,13 +359,17 @@ test('presentation dismissal cannot conceal an unknown Start or paused legacy op
 test('Start exposes immediate screen feedback while verification is pending without inventing a running session', async () => {
   const h = harness(), controller = h.create(); await controller.initialize();
   const gate = deferred(); h.verifyHook = () => gate.promise;
-  const request = controller.start({ ...setup, targetSeconds: 120 });
-  assert.deepEqual(controller.getSnapshot().interaction, { kind: 'start', timeLeft: 120 });
+  const request = controller.start({ ...setup, targetSeconds: 120 }, true);
+  const { clientSessionId, ...feedback } = controller.getSnapshot().interaction;
+  assert.deepEqual(feedback, { kind: 'start', timeLeft: 120, protectedSession: true });
+  assert.match(clientSessionId, /^[0-9a-f-]{36}$/, 'the session id exists from the tap, so protection can start before the server replies');
   assert.equal(controller.getSnapshot().record, null); assert.deepEqual(h.persisted().records, []);
   h.advance(1000); await controller.tick(); assert.equal(controller.getSnapshot().interaction.timeLeft, 119);
+  assert.equal(controller.getSnapshot().interaction.clientSessionId, clientSessionId);
   assert.equal(h.calls.filter(call => call === 'start').length, 0); assert.equal(h.credits, 0);
   gate.resolve(); assert.equal(await request, true);
   assert.equal(controller.getSnapshot().interaction, null); assert.equal(controller.getSnapshot().record.state, 'running');
+  assert.equal(controller.getSnapshot().record.clientSessionId, clientSessionId, 'the confirmed session keeps the same id, so protection carries on');
   await controller.dispose();
 });
 
