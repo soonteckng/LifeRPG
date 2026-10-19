@@ -96,9 +96,9 @@ export default function StudyScreen() {
           <Text style={s.welcomeTitle}>Your study space</Text>
           <Text style={s.body}>Add the subjects you’re taking. Exams count down here, and time you study counts as Learning, or Revision once an exam is near.</Text>
           {chips}
-        </View> : courses.length ? <SubjectShelf courses={courses} exams={plan.exams} recent={plan.recent} editing={editing} onEditingChange={value => { if (value) setExamEditing(false); setEditing(value); }}
+        </View> : <SubjectShelf courses={courses} exams={plan.exams} recent={plan.recent} editing={editing} onEditingChange={value => { if (value) setExamEditing(false); setEditing(value); }}
           onOpen={course => show({ kind: "subject", course })} onEdit={course => show({ kind: "subject", course, edit: true })} onStudy={launcher.study} onRemove={setRemoving}
-          onAdd={plan.ready ? () => show({ kind: "add" }) : undefined} /> : null}
+          onAdd={plan.ready ? () => show({ kind: "add" }) : undefined} />}
         <OneTimeHint id="subject-hold" text="Hold a subject to edit or remove it." show={!editing && courses.length > 1} />
         {added && <View style={s.added} accessibilityLiveRegion="polite" testID="subject-added">
           <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
@@ -147,7 +147,7 @@ export default function StudyScreen() {
       </BottomSheetScrollView>
     </AppSheet>
   </PersonalPage>
-    {removing && <SheetConfirmation title={`Remove ${removing.name}?`} destructive
+    {removing && <SheetConfirmation elevated title={`Remove ${removing.name}?`} destructive
       message="Its minutes stay saved. Add it back any time and they return. Its exams stay, without a subject."
       confirmLabel="Remove subject" cancelLabel="Keep subject" onCancel={() => setRemoving(null)}
       onConfirm={() => { const course = removing; setRemoving(null); void plan.remove("course", course.id); }} />}

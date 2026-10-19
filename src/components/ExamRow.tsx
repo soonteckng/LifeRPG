@@ -44,17 +44,17 @@ export default function ExamRow({ exam, course, first = false, onPress, onLongPr
   </View>;
 }
 const s = StyleSheet.create({
-  row: { minHeight: 84, flexDirection: "row", alignItems: "center", paddingRight: 14 },
-  line: { position: "absolute", top: 0, left: 82, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  main: { flex: 1, minWidth: 0, minHeight: 84, flexDirection: "row", alignItems: "center", gap: 14, paddingLeft: 14 },
-  days: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
+  row: { minHeight: 100, flexDirection: "row", alignItems: "center", paddingRight: 14 },
+  line: { position: "absolute", top: 0, left: 92, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
+  main: { flex: 1, minWidth: 0, minHeight: 100, flexDirection: "row", alignItems: "center", gap: 16, paddingLeft: 16 },
+  days: { width: 64, height: 64, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   daysInSheet: { backgroundColor: colors.selection },
-  number: { color: colors.text, fontSize: 22, lineHeight: 26, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  unit: { color: colors.secondary, fontSize: 11, lineHeight: 13, fontWeight: "700", letterSpacing: 0.4 }, hot: { color: "#FFB4AE" },
-  left: { flexShrink: 0, color: colors.text, fontSize: 14, lineHeight: 19, fontWeight: "600" },
-  copy: { flex: 1, minWidth: 0, gap: 4 },
-  title: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600" },
+  number: { color: colors.text, fontSize: 26, lineHeight: 30, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  unit: { color: colors.secondary, fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 0.4 }, hot: { color: "#FFB4AE" },
+  left: { flexShrink: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  copy: { flex: 1, minWidth: 0, gap: 6 },
+  title: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: "600" },
   meta: { flexDirection: "row", alignItems: "center", gap: 6, minWidth: 0 },
   dot: { width: 7, height: 7, borderRadius: 4 },
-  caption: { flexShrink: 1, color: colors.secondary, fontSize: 14, lineHeight: 19 },
+  caption: { flexShrink: 1, color: colors.secondary, fontSize: 15, lineHeight: 20 },
 });

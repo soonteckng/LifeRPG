@@ -125,7 +125,7 @@ export default function SessionConnectionContent({ children }: { children: React
           {notice.kind === "offline" ? "Offline · sessions save on this phone" : syncing ? "Back online · syncing" : "Back online"}</Text></View>
       </Animated.View>}
     </ConnectionSurface>
-    {showEnd && <SheetConfirmation title="End this session?"
+    {showEnd && <SheetConfirmation elevated title="End this session?"
       message="Ending early stops this session without recorded time or XP."
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setRequestedEnd(null)}
       onConfirm={() => {

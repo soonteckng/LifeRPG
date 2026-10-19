@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Animated, Easing, StyleSheet, View } from "react-native";
+import { Animated, Easing, Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
@@ -14,14 +14,16 @@ export interface SheetConfirmationProps {
   cancelLabel: string;
   onConfirm: () => void;
   onCancel: () => void;
+  /** On a screen with the floating tab bar, rise above it (and its dim covers it) like a sheet does. */
+  elevated?: boolean;
 }
 
 /**
  * Every "are you sure?" in the app is the same small card that rises from the
  * bottom, like removing a routine or an exam: removing a subject, discarding
  * changes and ending a session all look and behave alike, online or offline.
- * It renders inside whatever is showing (a sheet or a screen), so it never
- * opens a second native window.
+ * Inside a sheet it renders in place; on a screen with the tab bar it is
+ * `elevated` into its own layer, so it and its dim sit above the tab bar.
  */
 export default function SheetConfirmation(props: SheetConfirmationProps) {
   const insets = useSafeAreaInsets(), reduced = useReducedMotion();
@@ -33,7 +35,7 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
     return () => animation.stop();
   }, [reduced, rise]);
   const destructive = props.destructive !== false;
-  return (
+  const card = (
     <View style={styles.overlay} accessibilityViewIsModal onAccessibilityEscape={props.onCancel}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: rise }]}>
         <Pressable style={styles.scrim} onPress={props.onCancel} accessibilityLabel={props.cancelLabel} accessibilityRole="button" />
@@ -52,6 +54,9 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
       </Animated.View>
     </View>
   );
+  return props.elevated
+    ? <Modal transparent visible animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={props.onCancel}>{card}</Modal>
+    : card;
 }
 
 const styles = StyleSheet.create({

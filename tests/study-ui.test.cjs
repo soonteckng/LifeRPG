@@ -515,3 +515,10 @@ test('an exam row shows its date as a calendar tile and the days left in words, 
     try { assert.equal(row.root.findAll(n => n.props.testID === 'exam-days-left' && n.type === 'Text')[0].props.children, words); } finally { await act(async () => row.unmount()); }
   }
 });
+
+test('with exams but no subjects, My Subjects still offers the Add subject tile', async () => {
+  const { Screen } = studyScreen({ courses: [], exams: [{ ...exam, courseId: null }] }); let ui;
+  await act(async () => { ui = create(React.createElement(Screen)); });
+  try { assert.ok(ui.root.findAll(x => x.props.testID === 'subject-add-tile').length > 0, 'never an empty gap under My Subjects'); }
+  finally { await act(async () => ui.unmount()); }
+});

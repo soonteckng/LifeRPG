@@ -92,7 +92,7 @@ function Squads() {
         onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
       <SquadEditSheet squad={squad} visible={squads.online && editing} onClose={() => setEditing(false)} onSave={squads.update} />
     </PersonalPage>
-    {confirm && squad && <SheetConfirmation destructive={confirm.kind !== "code"}
+    {confirm && squad && <SheetConfirmation elevated destructive={confirm.kind !== "code"}
       title={confirm.kind === "leave" ? `Leave ${squad.name}?` : confirm.kind === "code" ? "Get a new invite code?" : `Remove ${confirm.member.name}?`}
       message={confirm.kind === "leave" ? leaveOutcome(squad) : confirm.kind === "code" ? "The old code stops working. Everyone already in the squad stays." : "They can join again with the code."}
       confirmLabel={confirm.kind === "leave" ? squad.members.length <= 1 ? "Leave and close" : "Leave squad" : confirm.kind === "code" ? "New code" : "Remove"}

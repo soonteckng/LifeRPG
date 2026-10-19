@@ -196,7 +196,7 @@ export default function OfflineSessionWorkspace({ active: surfaceActive = true }
     </ScrollView>
     <PinnedActionHost route="index" style={s.pinned} />
     <GuidedPreferenceSheet owner={ownerId ?? ""} visible={surfaceActive && directionOpen && !active && !terminal} onClose={() => setDirectionOpen(false)} />
-    {surfaceActive && active && confirmEnd && <SheetConfirmation title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded."
+    {surfaceActive && active && confirmEnd && <SheetConfirmation elevated title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded."
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setConfirmEnd(false)} onConfirm={() => void end()} />}
   </PinnedActionProvider></SafeAreaView>;
 }

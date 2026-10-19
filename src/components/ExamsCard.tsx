@@ -7,7 +7,7 @@ import { colors, edge } from "../constants/theme";
 import { countdownLabel, courseColor, daysUntil, examDateLabel } from "../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../types/studyPlan";
 
-const ROW = 84 + 8, SHOWN = 3.5;
+const ROW = 100 + 8, SHOWN = 3.5;
 
 /**
  * My Exams: each exam is its own small card. After three and a half the list
