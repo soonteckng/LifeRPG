@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
@@ -24,6 +25,7 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
   onStudy: (course: StudyCourse) => void; onAddExam: (course: StudyCourse) => void; onEditExam: (exam: StudyExam) => void; onClose: () => void; onDismiss?: () => void;
 }) {
   const makeDraft = (): StudyCourseDraft => course ? { name: course.name, focusAreaId: course.focusAreaId } : { name: "", focusAreaId: defaultAreaId };
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(makeDraft), [original, setOriginal] = useState(() => JSON.stringify(makeDraft()));
   const [editing, setEditing] = useState(!course);
   const [wasVisible, setWasVisible] = useState(visible), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -54,7 +56,7 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
   const week = days.reduce((sum, value) => sum + value, 0), peak = Math.max(...days, 1);
   const letters = days.map((_, index) => DAY_LETTERS[(new Date().getDay() + 1 + index) % 7]);
   const courseExams = course ? upcomingExams(exams).filter(item => item.courseId === course.id) : [];
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="subject"
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} attached compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="subject"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={<SheetHeader title={editing ? course ? "Edit subject" : "New subject" : course?.name ?? ""} subtitle={editing ? "Revision while an exam is coming up, otherwise Learning." : courseExams.length ? "Counts as Revision · exam coming up" : `Counts as ${focusAreaTitle(area?.title)}`}
       onClose={close} closeLabel={editing && course ? "Stop editing" : "Close subject"} />}
@@ -62,7 +64,7 @@ export default function StudySubjectSheet({ visible, course, areas, defaultAreaI
       message={confirm === "remove" ? "Its minutes stay saved. Add it back any time and they return. Its exams stay, without a subject." : "Your previous details stay as they were."}
       confirmLabel={confirm === "remove" ? "Remove subject" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)}
       onConfirm={() => { if (confirm === "remove" && course) void run(() => onRemove(course.id), "Couldn't remove this subject. Try again.", onClose); else { setConfirm(null); if (course) { setDraft(makeDraft()); setEditing(false); } else onClose(); } }} />}>
-    <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+    <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.body, { paddingBottom: Math.max(insets.bottom, 16) }]} showsVerticalScrollIndicator={false}>
       {editing ? <>
         <BottomSheetTextInput value={draft.name} maxLength={60} editable={!busy} placeholder="For example, Maths" placeholderTextColor={colors.secondary}
           accessibilityLabel="Subject name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}

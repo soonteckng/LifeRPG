@@ -30,6 +30,7 @@ const base = () => ({
   '/AppSheet': props => React.createElement('Sheet', props, props.header, props.children, props.footer, props.overlay),
   '/notificationPermissionService': { readNotificationPermission: async () => ({ granted: true }), enableNotifications: async () => ({ granted: true }) },
   '/tapHaptics': { tapHaptic: () => {}, tapHapticsEnabled: () => false },
+  'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 24, left: 0, right: 0 }) },
 });
 // Just focus and the study launcher read the saved session length; their stores stay out of the way here.
 const startMocks = starts => ({
@@ -465,4 +466,15 @@ test('Home’s saved numbers are only used for the same day and survive bad data
   assert.equal(await api.readHomeSnapshot('someone-else', '2026-10-19'), null);
   store.set('liferpg:home-today:v1:me', '{bad json');
   assert.equal(await api.readHomeSnapshot('me', '2026-10-19'), null);
+});
+
+test('one sheet rule: short sheets float, editors and tall lists dock to the screen edges', () => {
+  const read = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+  const sheet = read('src/components/AppSheet.tsx');
+  assert.match(sheet, /attached = expanded,/, 'full-height sheets are attached by default');
+  assert.match(sheet, /const floating = !attached;/);
+  for (const [file, label] of [['src/components/StudyExamSheet.tsx', 'exam editor'], ['src/components/StudySubjectSheet.tsx', 'subject'], ['src/components/MilestonesSheet.tsx', 'milestones']])
+    assert.match(read(file), new RegExp(`<AppSheet[^\\n]*attached [^\\n]*label="${label}"`), `${label} docks to the screen edges`);
+  for (const file of ['src/components/ItemActionSheet.tsx', 'src/components/TodaySheet.tsx', 'src/components/DailyGoalSheet.tsx'])
+    assert.doesNotMatch(read(file), /\battached\b|\bexpanded\b/, `${file} stays a floating card`);
 });

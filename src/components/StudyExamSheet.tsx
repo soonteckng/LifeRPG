@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Keyboard, StyleSheet, Switch, View } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
@@ -9,7 +10,7 @@ import MonthCalendar from "./MonthCalendar";
 import SubjectPicker, { type SubjectPick } from "./SubjectPicker";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
-import { colors, radius, edge } from "../constants/theme";
+import { colors, edge } from "../constants/theme";
 import { areaTint } from "../utils/lifeAreaColor";
 import { addDays, countdownLabel, courseColor, dateKey, daysUntil, EXAM_DAYS_AHEAD, examDateLabel, validExamDraft } from "../utils/studyPlan";
 import { enableNotifications, readNotificationPermission } from "../services/notificationPermissionService";
@@ -28,6 +29,7 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
   const initialName = courses.find(course => course.id === initialCourseId)?.name ?? null;
   const makeDraft = (): StudyExamDraft => exam ? { title: exam.title, courseId: exam.courseId, examDate: exam.examDate, examMinute: exam.examMinute ?? null, remind: exam.remind ?? true }
     : { title: initialTitle || (initialName ? `${initialName} exam` : ""), courseId: initialCourseId, examDate: addDays(today, 14), examMinute: null, remind: true };
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState(makeDraft), [original, setOriginal] = useState(() => JSON.stringify(makeDraft()));
   const [wasVisible, setWasVisible] = useState(visible), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"discard" | "remove" | null>(null);
@@ -68,11 +70,11 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
       return onSave({ ...next, courseId }, exam?.id);
     }, "Couldn't save this exam. Your details are still here.");
   };
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="exam editor"
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} attached compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="exam editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={picking ? <SheetHeader title="Subject" subtitle="Pick one or type your own." onClose={() => setPicking(false)} closeLabel="Back to exam" /> : <SheetHeader title={exam ? "Edit exam" : "New exam"} subtitle={`${days >= 0 ? `${countdownLabel(days)} · ` : ""}${examDateLabel(draft.examDate)}`} onClose={close} closeLabel="Close exam editor" />}
     // Save stays in view while the calendar scrolls.
-    footer={picking ? undefined : <View style={s.footer}>
+    footer={picking ? undefined : <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 16) }]}>
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       <View style={s.actions}>
         {exam && <Pressable disabled={busy} onPress={() => setConfirm("remove")} accessibilityRole="button" accessibilityLabel="Remove exam" style={s.remove}><Ionicons name="trash-outline" size={21} color={colors.danger} /></Pressable>}
@@ -83,7 +85,7 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
       message={confirm === "remove" ? "Your study time stays saved." : "Your previous details stay as they were."}
       confirmLabel={confirm === "remove" ? "Remove exam" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)}
       onConfirm={() => { if (confirm === "remove" && exam) void run(() => onRemove(exam.id), "Couldn't remove this exam. Try again."); else { setConfirm(null); onClose(); } }} />}>
-    <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+    <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={[s.body, picking && { paddingBottom: Math.max(insets.bottom, 16) }]} showsVerticalScrollIndicator={false}>
       {picking ? <SubjectPicker courses={courses} pending={newSubject} selectedName={subjectName} onPick={pick} /> : <>
       <Pressable disabled={busy} onPress={() => { Keyboard.dismiss(); setPicking(true); }} accessibilityRole="button" accessibilityLabel="Choose subject" accessibilityValue={{ text: subjectName ?? "None" }} style={s.subjectRow}>
         <View style={[s.subjectIcon, { backgroundColor: areaTint(draft.courseId ? courseColor(draft.courseId) : colors.accent) }]}><Ionicons name="school-outline" size={16} color={draft.courseId ? courseColor(draft.courseId) : colors.accent} /></View>
@@ -119,7 +121,7 @@ const s = StyleSheet.create({
   flex: { flex: 1, minWidth: 0, gap: 2 },
   remind: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 16, backgroundColor: colors.sheetCard },
   remindTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" }, caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  footer: { gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16, backgroundColor: colors.surface, borderBottomLeftRadius: radius.sheet, borderBottomRightRadius: radius.sheet }, actions: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 },
+  footer: { gap: 10, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 16, backgroundColor: colors.surface }, actions: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 },
   primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },

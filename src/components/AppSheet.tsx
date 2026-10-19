@@ -62,8 +62,11 @@ interface Props {
   // An action that leaves for another screen skips the slide, so the next
   // screen appears at once instead of after the sheet has visibly closed.
   closeInstantly?: boolean;
-  // Sheets float as a rounded card inside the screen (the default for all).
-  floating?: boolean;
+  // One rule for every sheet: short sheets (menus, confirmations, quick
+  // choices) float as a card inside the screen; editors and tall lists dock to
+  // the screen edges so inputs, the keyboard and Save keep the full width.
+  // Full-height (expanded) sheets are attached unless told otherwise.
+  attached?: boolean;
 }
 
 const DismissContext = createContext({
@@ -169,9 +172,9 @@ export default function AppSheet({
   label,
   activityId,
   closeInstantly = false,
-  // Every sheet floats as a card inside the screen, so all sheets look alike.
-  floating = true,
+  attached = expanded,
 }: Props) {
+  const floating = !attached;
   const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
   const timingConfigs = useBottomSheetTimingConfigs(listTiming);
   const animationConfigs = motionMode === "timed" ? timingConfigs : springConfigs;
