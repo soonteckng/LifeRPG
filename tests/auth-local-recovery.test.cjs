@@ -24,7 +24,7 @@ const backend = sessionBackendIdentity(backendUrl);
 const authEntry = load("src/services/authEntryPreference.ts");
 const A = "10000000-0000-4000-8000-000000000001", B = "10000000-0000-4000-8000-000000000002";
 const offline = { name: "AuthRetryableFetchError", status: 503 };
-const profile = id => ({ id, username: id === A ? "Soon Teck" : "Other", avatar: "hero", class_title: "Scholar", level: 3, current_xp: 22, gold: 5,
+const profile = id => ({ id, username: id === A ? "Soon Teck" : "Other", avatar: "hero", class_title: "Scholar", level: 3, current_xp: 22,
   streak_count: 2, last_active_date: "2026-10-09", daily_goal_minutes: 60, last_goal_completed_date: null, onboarding_completed: true, timezone: "Asia/Kuala_Lumpur" });
 const session = (id = A, expired = false, issuer = backendUrl + "/auth/v1") => ({ user: { id }, access_token: `fixture.${Buffer.from(JSON.stringify({ sub: id, iss: issuer, exp: expired ? 1 : 4_000_000_000 })).toString("base64url")}.signature`, refresh_token: "local-fixture", expires_at: expired ? 1 : 4_000_000_000 });
 const marker = (id = A, data = profile(id)) => ({ version: 1, backendId: backend.backendId, ownerId: id, verifiedAtMs: 1_000, profile: data });

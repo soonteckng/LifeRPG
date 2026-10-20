@@ -11,7 +11,6 @@ export interface ProgressSession {
   notes?: string | null;
   duration_seconds: number;
   xp_earned: number;
-  gold_earned: number;
   completed_at: string | null;
   /** The phone's id for the session; it links a study session to its subject. */
   client_session_id?: string | null;

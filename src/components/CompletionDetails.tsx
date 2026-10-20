@@ -10,7 +10,6 @@ import ProgressRing from "./ProgressRing";
 export type CompletionData = {
   durationSeconds: number;
   xpEarned: number;
-  goldEarned: number;
   creditVersion?: number;
   areaXpEarned?: number | null;
   goalReachedNow?: boolean;
@@ -50,7 +49,6 @@ export function CompletionRows({ summary, areaTitle, areaColor, level, xpRemaini
       <Text style={[s.caption, areaColor && {color:areaColor}]}>{areaTitle ? focusAreaTitle(areaTitle) : "Focus area XP"}</Text>
       <Text style={[s.value, areaColor && {color:areaColor}]}>+{areaXP}{areaTitle ? " XP" : ""}</Text>
     </View>}
-    {summary.creditVersion !== 1 && summary.goldEarned > 0 && <View style={rowStyle}><Text style={s.caption}>Historical gold</Text><Text style={s.value}>+{summary.goldEarned}</Text></View>}
     {compact ? <View style={s.continuity}>
       <Text style={s.success}>Focus day recorded ✓</Text>
       <Text style={summary.goalReachedNow ? s.success : s.caption}>{summary.goalReachedNow ? "Daily goal reached" : "Daily goal progress saved"}</Text>

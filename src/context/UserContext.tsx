@@ -20,7 +20,6 @@ export interface UserProfile {
   class_title: string;
   level: number;
   current_xp: number;
-  gold: number;
   streak_count: number;
   last_active_date: string | null;
   daily_goal_minutes: number;
@@ -56,7 +55,6 @@ const defaultProfile: UserProfile = {
   class_title: "Scholar",
   level: 1,
   current_xp: 0,
-  gold: 0,
   streak_count: 1,
   last_active_date: new Date().toISOString().split("T")[0],
   daily_goal_minutes: 60,
@@ -115,7 +113,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, username, avatar, class_title, level, current_xp, gold, streak_count, last_active_date, daily_goal_minutes, last_goal_completed_date, onboarding_completed, timezone",
+          "id, username, avatar, class_title, level, current_xp, streak_count, last_active_date, daily_goal_minutes, last_goal_completed_date, onboarding_completed, timezone",
         )
         .eq("id", ownerId)
         .single();

@@ -102,7 +102,9 @@ export default function StudyScreen() {
           {chips}
         </View> : <SubjectShelf courses={courses} exams={plan.exams} recent={plan.recent} editing={editing} onEditingChange={value => { if (value) setExamEditing(false); setEditing(value); }}
           onOpen={course => show({ kind: "subject", course })} onEdit={course => show({ kind: "subject", course, edit: true })} onStudy={launcher.study} onRemove={setRemoving}
-          onAdd={plan.ready ? () => show({ kind: "add" }) : undefined} />}
+          // The dashed add tile helps you get started; from four subjects on,
+          // the + beside My Subjects is enough and the grid stays tidy.
+          onAdd={plan.ready && courses.length < 4 ? () => show({ kind: "add" }) : undefined} />}
         <OneTimeHint id="subject-hold" text="Hold a subject to edit or remove it." show={!editing && courses.length > 1} />
         {added && <View style={s.added} accessibilityLiveRegion="polite" testID="subject-added">
           <Ionicons name="checkmark-circle" size={18} color={colors.accent} />

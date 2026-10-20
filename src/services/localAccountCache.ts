@@ -29,13 +29,13 @@ const dateOrNull = (value: unknown) => value === null || (typeof value === "stri
 export function validateCachedProfile(value: unknown, ownerId: string): CachedVerifiedProfile | null {
   if (!object(value) || value.id !== ownerId || !bounded(value.username, 100) || !bounded(value.avatar, 100)
     || !bounded(value.class_title, 100) || !bounded(value.timezone, 100) || typeof value.onboarding_completed !== "boolean"
-    || !count(value.level) || (value.level as number) < 1 || !count(value.current_xp) || !count(value.gold) || !count(value.streak_count)
+    || !count(value.level) || (value.level as number) < 1 || !count(value.current_xp) || !count(value.streak_count)
     || !count(value.daily_goal_minutes) || (value.daily_goal_minutes as number) < 1 || (value.daily_goal_minutes as number) > 1440
     || !dateOrNull(value.last_active_date) || !dateOrNull(value.last_goal_completed_date)) return null;
   // Whitelist UI fields. Credentials, email and user/app metadata are not saved.
   return {
     id: ownerId, username: value.username, avatar: value.avatar, class_title: value.class_title,
-    level: value.level as number, current_xp: value.current_xp as number, gold: value.gold as number,
+    level: value.level as number, current_xp: value.current_xp as number,
     streak_count: value.streak_count as number, last_active_date: value.last_active_date as string | null,
     daily_goal_minutes: value.daily_goal_minutes as number, last_goal_completed_date: value.last_goal_completed_date as string | null,
     onboarding_completed: value.onboarding_completed, timezone: value.timezone,

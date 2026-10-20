@@ -96,9 +96,15 @@ export default function SessionScreen() {
     setPickerOwner(presentationScope); setPicker(null);
   }
   const [confirmEnd, setConfirmEnd] = useState(false);
+  // End can be asked for while the start (or a break) is still being
+  // confirmed. It then waits for that answer and ends right after it, so the
+  // ✕ always responds and a session is never left half-ended.
+  const [endQueued, setEndQueued] = useState(false);
   if (!onlineSurfaces && (picker !== null || confirmEnd)) { setPicker(null); setConfirmEnd(false); }
   // The last seconds are already earned; never offer to discard them.
   if (liveTimer.finishing && confirmEnd) setConfirmEnd(false);
+  // A session that reaches its end (or closes) while End waits keeps its time.
+  if (endQueued && (liveTimer.finishing || !liveTimer.hasOpenSession || liveTimer.endingSession)) setEndQueued(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [slowControl, setSlowControl] = useState(false);
   useEffect(() => {
@@ -108,6 +114,16 @@ export default function SessionScreen() {
     const pending = setTimeout(() => setSlowControl(true), 400);
     return () => { clearTimeout(pending); setSlowControl(false); };
   }, [liveTimer.actionBusy, liveTimer.hasOpenSession]);
+  const endNow = () => { setEndSnapshot(captureEndSnapshot(liveTimer)); setEndRequested(true); void liveTimer.resetTimer(); };
+  useEffect(() => {
+    if (!endQueued || liveTimer.actionBusy) return;
+    // The queued End runs just after the confirmation lands, never twice.
+    let live = true;
+    void Promise.resolve().then(() => { if (live) { setEndQueued(false); endNow(); } });
+    return () => { live = false; };
+    // endNow reads the latest timer; it only runs once the queued End is due.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endQueued, liveTimer.actionBusy]);
   const timerBounds = useRef({ top: 0, bottom: 0 });
   const timerView = useRef<View>(null);
   const detailsOffset = useRef(0);
@@ -476,9 +492,9 @@ export default function SessionScreen() {
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.background} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
-            {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.actionBusy || timer.endingSession || !!timer.finishing} onPress={() => setConfirmEnd(true)} style={styles.endControl}><Ionicons name="close" size={23} color={colors.text} /></TouchableOpacity>}
+            {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[styles.endControl, endQueued && styles.disabled]}>{endQueued ? <ActivityIndicator color={colors.text} /> : <Ionicons name="close" size={23} color={colors.text} />}</TouchableOpacity>}
             </View>
-            {timer.hasOpenSession && phase !== "ended" && <Text style={styles.cancelHint}>{timer.finishing ? "Saving your full session in a moment." : "Ending now doesn’t save this session."}</Text>}
+            {timer.hasOpenSession && phase !== "ended" && <Text style={styles.cancelHint}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -492,7 +508,7 @@ export default function SessionScreen() {
       </AppSheet>
       <FocusDurationSheet visible={onlineSurfaces && !sessionSummary && picker === "duration"} seconds={timer.duration} disabled={locked} onClose={() => setPicker(null)} onSave={applyDuration} />
       {onlineSurfaces && confirmEnd && !sessionSummary && <SheetConfirmation elevated title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
-        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); setEndSnapshot(captureEndSnapshot(timer)); setEndRequested(true); void liveTimer.resetTimer(); }} />}
+        onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); if (liveTimer.actionBusy) setEndQueued(true); else endNow(); }} />}
     </SafeAreaView>
     </Animated.View>
   );

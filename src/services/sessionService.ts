@@ -37,10 +37,8 @@ export interface CompletedSessionResult {
   duration_seconds: number;
   minutes: number;
   xp_earned: number;
-  gold_earned: number;
   level: number;
   current_xp: number;
-  gold: number;
   leveled_up: boolean;
   daily_goal_minutes: number;
   daily_completed_minutes: number;

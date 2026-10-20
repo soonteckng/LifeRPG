@@ -36,7 +36,7 @@ try {
 
 interface SessionSummary {
   completedAtMs?: number; recovered?: boolean;
-  sessionId?: string; suggestion?: SuggestedFocus; xpEarned: number; goldEarned: number;
+  sessionId?: string; suggestion?: SuggestedFocus; xpEarned: number;
   minutesSpent: number; durationSeconds: number; questTitle?: string; creditVersion?: number;
   areaXpEarned?: number | null; characterRemainderSeconds?: number; areaRemainderSeconds?: number | null;
   dailyCompletedSeconds?: number; dailyGoalMinutes?: number; goalReachedNow?: boolean; creditedDate?: string;
@@ -270,7 +270,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       sessionId: receipt.sessionId, suggestion: record.setup.taskId === null ? readSuggestedFocus(record.setup.notes) ?? undefined : undefined,
       completedAtMs: record.completedAtMs ?? undefined, recovered: runtime.recovered,
       durationSeconds: receipt.durationSeconds, minutesSpent: numberOr(result.minutes, Math.floor(receipt.durationSeconds / 60)),
-      xpEarned: numberOr(result.xp_earned), goldEarned: numberOr(result.gold_earned), questTitle: resolvedTitle,
+      xpEarned: numberOr(result.xp_earned), questTitle: resolvedTitle,
       creditVersion: optionalNumber(result.credit_version), areaXpEarned: nullableNumber(result.area_xp_earned),
       characterRemainderSeconds: optionalNumber(result.character_remainder_seconds), areaRemainderSeconds: nullableNumber(result.area_remainder_seconds),
       dailyCompletedSeconds: optionalNumber(result.daily_completed_seconds), dailyGoalMinutes: optionalNumber(result.daily_goal_minutes), goalReachedNow: result.goal_reached_now === true,

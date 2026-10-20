@@ -77,7 +77,7 @@ export default function GlobalRewardListener() {
       recovered: summary?.recovered ?? timer.recoveredSession,
       pending, ending, rejected, localSaved: pending, offline: !online,
       syncError: timer.actionError, syncBusy: timer.actionBusy || timer.isRestoring,
-      xpEarned: summary?.xpEarned, goldEarned: summary?.goldEarned,
+      xpEarned: summary?.xpEarned,
       creditVersion: summary?.creditVersion, areaXpEarned: summary?.areaXpEarned,
       characterRemainderSeconds: summary?.characterRemainderSeconds,
       areaRemainderSeconds: summary?.areaRemainderSeconds,

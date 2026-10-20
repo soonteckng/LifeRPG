@@ -25,7 +25,6 @@ export interface SessionResultSheetProps {
   recovered?: boolean;
   visible: boolean;
   xpEarned?: number;
-  goldEarned?: number;
   creditVersion?: number;
   areaXpEarned?: number | null;
   characterRemainderSeconds?: number;
@@ -58,7 +57,7 @@ export interface SessionResultSheetProps {
   saveAction?: ReactNode;
 }
 
-export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned = 0,
+export default function SessionResultSheet({ visible, xpEarned = 0,
   creditVersion, areaXpEarned, goalReachedNow, minutesSpent = 0, durationSeconds,
   questTitle, areaTitle, areaColor, isLevelUp = false, newLevel, currentXP, requiredXP, onClose, onDismiss,
   pending = false, syncError, syncBusy = false, onRetry,
@@ -176,7 +175,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
         <Text style={s.pendingText} accessibilityLiveRegion="polite">{localSaved ? offline ? "Saved on this phone. Your progress will sync when you’re online." : "Saved on this phone. We’re confirming your progress." : syncError ? "Your finished session is saved on this phone. Reconnect to confirm your progress." : "Saving your progress…"}</Text>
         {(localSaved || !!syncError) && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
       </View> : <>
-      <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, goldEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} compact />
+      <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} xpRemaining={threshold != null && xp != null ? Math.max(0,threshold-xp) : undefined} compact />
       </>}
       </>}
       </View>

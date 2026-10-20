@@ -282,7 +282,7 @@ export function parseClientSessionSubmitResult(value: unknown, submission: Clien
     return { ...identity, ending: "cancelled", receipt: null };
   }
   const result = object(raw.receipt);
-  for (const name of ["xp_earned", "gold_earned", "level", "current_xp", "gold", "daily_goal_minutes", "daily_completed_minutes",
+  for (const name of ["xp_earned", "level", "current_xp", "daily_goal_minutes", "daily_completed_minutes",
     "streak_count", "credit_version", "character_xp_earned", "character_remainder_seconds", "daily_completed_seconds"])
     if (Object.hasOwn(result, name) && !integer(result[name])) fail("invalid_response");
   for (const name of ["area_xp_earned", "area_remainder_seconds"])

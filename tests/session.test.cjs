@@ -29,7 +29,7 @@ function load(relativePath, mocks, cache = new Map()) {
     if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
-      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest", "/GuidedFocusCard"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
+      if (["/GuidedPreferenceSheet", "/SaveSuggestedQuest"].some(suffix => name.endsWith(suffix))) return props => React.createElement("GuidedBoundary", props);
       if (name === "@react-native-async-storage/async-storage") return { getItem: async () => null, setItem: async () => {} };
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
@@ -1702,6 +1702,17 @@ test("global Done closes the session route once with its existing fade while ret
     assert.ok(ui.animations.some(animation=>animation.toValue===-0.12));
     await ui.finishExit();assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
     assert.equal(ui.calls.filter(c=>c[0]==='reset'||c[0]==='complete').length,0);
+  }finally{await ui.cleanup();}
+});
+test("End answers at once while the session is still being confirmed, then ends right after the confirmation",async()=>{
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,actionBusy:true,interactionKind:"start"});
+  try{
+    assert.equal(ui.button('End session').props.disabled,false,'the ✕ works during the spinner');
+    await ui.press('End session');await act(async()=>ui.root().findByType('Confirm').props.onConfirm());
+    assert.equal(ui.calls.filter(c=>c[0]==='reset').length,0,'waits for the confirmation');
+    assert.match(JSON.stringify(ui.root().findAllByType('Text').map(t=>t.props.children)),/Ending as soon as your session is confirmed/);
+    await ui.update({actionBusy:false,interactionKind:null});await act(async()=>{await Promise.resolve();});
+    assert.equal(ui.calls.filter(c=>c[0]==='reset').length,1,'then ends, once');
   }finally{await ui.cleanup();}
 });
 test("End still requires confirmation and a failed local save keeps the active route",async()=>{

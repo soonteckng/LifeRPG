@@ -697,9 +697,7 @@ export default function ProgressScreen() {
                 <Text style={s.caption}>Rewards earned</Text>
                 <Text style={s.rowTitle}>
                   +{selectedSession.xp_earned ?? 0} character XP
-                  {selectedSession.credit_version === 1
-                    ? selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Focus area XP` : ""
-                    : ` · +${selectedSession.gold_earned ?? 0} gold`}
+                  {selectedSession.credit_version === 1 && selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Focus area XP` : ""}
                 </Text>
               </View>
               </View>

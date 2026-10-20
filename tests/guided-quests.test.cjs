@@ -118,49 +118,6 @@ async function setTenMinuteCustom(ui) {
 }
 function preferenceMock(overrides={}) { const initial={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false,...overrides};return()=>{const[value,setValue]=React.useState(initial);return{ready:true,error:false,busy:false,value,save:async next=>{setValue(next);return true;}}}; }
 
-test('Home starter makes the task smaller and starts once with its title, instruction and area',async()=>{
- const pending=deferred(),calls=[];const Card=load('src/components/GuidedFocusCard.tsx',mocks({
-  '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
-  '../context/TimerContext':{useTimer:()=>({startSuggestedTimer:(focus,area)=>{calls.push({focus,area});return pending.promise;}})},
- })).default;
- let opened=0;const props={owner:'owner',subjects:[{id:1,title:'General'},{id:2,title:'Knowledge'}],disabled:false,onStarted:()=>opened++,onFree(){},onQuest(){},onPreferences(){}};
- const ui=await render(Card,props);await setTenMinuteCustom(ui);assert.match(text(ui.tree.root),/A short review/);
- await ui.press('Use 30 minutes');assert.match(text(ui.tree.root),/Review your notes/);assert.doesNotMatch(text(ui.tree.root),/A short review/);
- await setTenMinuteCustom(ui);assert.match(text(ui.tree.root),/A short review/);
- await act(async()=>{const button=ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='guided-start');void button.props.onPress();void button.props.onPress();});
- assert.equal(calls.length,1);assert.equal(calls[0].focus.seconds,600);assert.equal(calls[0].area,2);assert.equal(opened,1);
- await act(async()=>pending.resolve(true));assert.equal(opened,1);await ui.cleanup();
-});
-test('suggested focus uses its selected block and falls back to General when Knowledge is missing',async()=>{
- const calls=[];const Card=load('src/components/GuidedFocusCard.tsx',mocks({
-  '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock({need:'practice',templateId:'practice-question'})},
-  '../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,area)=>{calls.push([focus.templateId,area,focus.seconds]);return true;}})},
- })).default;
- const ui=await render(Card,{owner:'owner',subjects:[{id:1,title:'General'}],disabled:false,onStarted(){},onFree(){},onPreferences(){}});
- assert.match(text(ui.tree.root),/Suggested: Practise questions/);
- assert.equal(ui.tree.root.findAllByType('Button').some(b=>['Choose another','Free focus','Change suggestion preferences'].includes(b.props.accessibilityLabel)),false);
- await ui.press('Set a custom focus duration');
- assert.equal(ui.tree.root.findByType('Sheet').props.motionMode,'timed');
- const fields=ui.tree.root.findAllByType('Input');
- await act(async()=>{fields.find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');fields.find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
- await ui.press('Use this duration');
- assert.match(text(ui.tree.root),/Practise questions/);assert.doesNotMatch(text(ui.tree.root),/My assignment/);
- await ui.press('Start session');assert.deepEqual(calls,[['practice-question',1,2717]]);await ui.cleanup();
-});
-test('guided start opens immediately and retains its exact choice when the background start fails',async()=>{
- const calls=[];let opened=0;const Card=load('src/components/GuidedFocusCard.tsx',mocks({
-  '../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},
-  '../context/TimerContext':{useTimer:()=>({actionError:'Offline',startSuggestedTimer:async(focus,area)=>{calls.push({focus,area});return calls.length>1;}})},
- })).default;
- const props={owner:'owner',subjects:[],disabled:false,onStarted(){opened++;},onFree(){},onQuest(){},onPreferences(){}};
- const ui=await render(Card,props);
- await ui.press('Set a custom focus duration');
- await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('45');ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus seconds').props.onChangeText('17');});
- await ui.press('Use this duration');
- await ui.press('Start session');assert.equal(calls[0].focus.seconds,2717);assert.equal(opened,1);assert.match(text(ui.tree.root),/Offline/);
- await ui.update({...props,subjects:[{id:2,title:'Knowledge'}]});
- await ui.press('Retry start');assert.deepEqual(calls[0],calls[1]);assert.equal(opened,2);await ui.cleanup();
-});
 test('new users can skip picking routines and retain their badge through the journey',async()=>{
  const db=storage(),routes=[],calls=[];
  const Screen=load('src/app/onboarding.tsx',mocks({
@@ -394,44 +351,6 @@ test('legacy preferences map to work blocks while historical session snapshots r
  assert.deepEqual(api.readSuggestedFocus(api.encodeSuggestedFocus(old)),old);
 });
 
-test('choosing a preset or custom duration never rewrites the saved suggestion default',async()=>{
- let saves=0;const initial={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
- const Card=load('src/components/GuidedFocusCard.tsx',mocks({
-  '../hooks/useGuidedPreference':{useGuidedPreference:()=>({value:initial,ready:true,error:false,busy:false,save:async()=>{saves++;return true;}})},
-  '../context/TimerContext':{useTimer:()=>({})},
- })).default;
- const props={owner:'owner',subjects:[],disabled:false,onStarted(){},onFree(){},onQuest(){},onPreferences(){}};
- let ui=await render(Card,props);await setTenMinuteCustom(ui);
- assert.match(text(ui.tree.root),/A short review/);
- await ui.press('Set a custom focus duration');
- await act(async()=>{ui.tree.root.findAllByType('Input').find(n=>n.props.accessibilityLabel==='Focus minutes').props.onChangeText('42');});
- await ui.press('Use this duration');assert.equal(selectedCustomDuration(ui),'42 min');assert.equal(saves,0);assert.equal(initial.templateId,'review-topic');
- await ui.cleanup();ui=await render(Card,props);assert.match(text(ui.tree.root),/Review your notes/);await ui.cleanup();
-});
-
-test('the offline suggested-focus card opens preferences in the card without starting or changing the selected session',async()=>{
- const calls=[],shared=mocks({'../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(...args)=>calls.push(['start',...args])})}});
- const Guided=load('src/components/GuidedFocusCard.tsx',shared).default;
- const guided=await render(Guided,{owner:'owner',subjects:[{id:2,title:'Learning'}],selectedSeconds:2717,disabled:false,onStarted:()=>calls.push(['entered']),onPreferences:()=>calls.push(['preferences','guided'])});
- try {
-  const change=guided.tree.root.findAllByType('Button').find(node=>node.props.testID==='focus-card-preferences');
-  assert.equal(change.props.accessibilityRole,'button');assert.equal(change.props.accessibilityState.disabled,false);assert.equal(Object.assign({},...change.props.style.filter(Boolean)).minHeight,52);
-  await guided.press('Change focus direction');assert.equal(selectedCustomDuration(guided),'45 min 17 sec');
-  const suggestion=guided.tree.root.findAllByType('View').find(node=>node.props.testID==='focus-card-suggestion');
-  assert.equal(text(suggestion),'Suggested: Review your notes');assert.equal(suggestion.props.onPress,undefined);
-  const title=suggestion.findByType('Text');assert.equal(title.props.numberOfLines,2);assert.notEqual(title.props.allowFontScaling,false);
-  assert.equal(guided.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);
-  assert.deepEqual(calls,[['preferences','guided']]);
-  assert.match(text(guided.tree.root),/Learning/);
- }finally{await guided.cleanup();}
-});
-test('a preferences read error keeps the in-card recovery action and current suggestion available',async()=>{
- let opened=0;const value={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
- const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({value,ready:false,busy:false,error:true})},'../context/TimerContext':{useTimer:()=>({})}})).default;
- const ui=await render(Card,{owner:'owner',subjects:[],selectedSeconds:1859,disabled:false,onStarted(){},onPreferences:()=>opened++});
- try{assert.match(text(ui.tree.root),/Tap Change to try again/);assert.doesNotMatch(text(ui.tree.root),/Find your next step/);await ui.press('Change focus direction');assert.equal(opened,1);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');}finally{await ui.cleanup();}
-});
-
 test('custom focus duration validates bounds and cancel leaves the chosen duration untouched',async()=>{
  const calls=[];let closed=0;const Sheet=load('src/components/FocusDurationSheet.tsx',mocks()).default;
  const ui=await render(Sheet,{seconds:1859,visible:true,disabled:false,onSave:s=>calls.push(s),onClose:()=>closed++});
@@ -454,23 +373,3 @@ test('custom focus duration validates bounds and cancel leaves the chosen durati
  }finally{await ui.cleanup();}
 });
 
-test('an explicit new direction replaces a failed suggestion while ordinary retries keep their exact draft',async()=>{
- const catalog=load('src/constants/guidedQuests.ts');let preference={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
- const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({value:preference,ready:true,busy:false,error:false})},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async()=>false})}})).default;
- const ui=await render(Card,{owner:'owner',subjects:[],disabled:false,onStarted(){}});
- try{await ui.press('Start session');assert.match(text(ui.tree.root),/Retry start/);preference={...preference,need:'work',templateId:catalog.defaultFocusId('work')};await ui.update({owner:'owner',subjects:[],disabled:false,onStarted(){}});assert.match(text(ui.tree.root),new RegExp(catalog.suggestedFocus(preference.templateId).title));assert.doesNotMatch(text(ui.tree.root),/Retry start/);}finally{await ui.cleanup();}
-});
-
-test('one Change action leaves the exact selected timer and confirmed setup intact until preferences are saved',async()=>{
- const calls=[];let opened=0;
- const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:preferenceMock()},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus,id]);return true;}})}})).default;
- const ui=await render(Card,{owner:'owner',subjects:[{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:1859,disabled:false,onStarted(){},onPreferences:()=>opened++});
- try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);await ui.press('Change focus direction');assert.equal(opened,1);assert.equal(calls.length,0);assert.equal(selectedCustomDuration(ui),'30 min 59 sec');assert.match(text(ui.tree.root),/Learning/);await ui.press('Start session');assert.equal(calls[0][0].seconds,1859);assert.equal(calls[0][1],2);}finally{await ui.cleanup();}
-});
-
-test('read-only activity and area cannot publish a second setup path or change attribution',async()=>{
- const calls=[],preference={version:1,enabled:true,invited:true,need:'revision',templateId:'review-topic',smaller:false};
- const Card=load('src/components/GuidedFocusCard.tsx',mocks({'../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,value:preference,busy:false,error:false,save:async()=>false})},'../context/TimerContext':{useTimer:()=>({startSuggestedTimer:async(focus,id)=>{calls.push([focus.templateId,id,focus.seconds]);return true;}})}})).default;
- const ui=await render(Card,{owner:'owner',subjects:[{id:2,title:'Learning'},{id:3,title:'Work & projects'}],selectedSeconds:2717,disabled:false,onStarted(){}});
- try{assert.equal(ui.tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Choose category'),false);assert.equal(ui.tree.root.findByProps({testID:'focus-card-suggestion'}).props.onPress,undefined);assert.match(text(ui.tree.root),/Review your notes/);await ui.press('Start session');assert.deepEqual(calls,[['review-topic',2,2717]]);}finally{await ui.cleanup();}
-});

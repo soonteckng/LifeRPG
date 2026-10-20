@@ -53,7 +53,7 @@ export function FocusDirectionPicker({ value, onChange, disabled = false, compac
 export default function GuidedChoice({ value, onChange, disabled = false, onSelection }: ChoiceProps) {
   const direction = focusDirection(value.need);
   return <View style={s.group}>
-    <View style={s.section}><Text style={s.heading}>Direction</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} includeFreeFocus onSelection={onSelection} /></View>
+    <View style={s.section}><Text style={s.heading}>Category</Text><FocusDirectionPicker value={value} onChange={onChange} disabled={disabled} includeFreeFocus onSelection={onSelection} /></View>
     <View style={s.section}>
       <Text style={s.heading}>{value.enabled ? `First step · ${direction.title}` : "First step"}</Text>
       {!value.enabled ? <View style={[s.list, s.freeRow]}>
