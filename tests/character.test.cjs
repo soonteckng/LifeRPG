@@ -205,6 +205,8 @@ async function screen(file, mocks) {
     "../components/PersonalUI": UI,
     "./CharacterPortrait": host("Portrait"),
     "../components/CharacterPortrait": host("Portrait"),
+    ...(file === "src/app/settings.tsx" ? { "../components/InterestsSheet": host("InterestsSheet"), "../components/InterestPicker": { interestTitle: kind => kind },
+      "../hooks/useGuidedPreference": { useGuidedPreference: () => ({ value: { enabled: false, interests: [] } }) } } : {}),
     ...mocks,
   }).default;
   let renderer;

@@ -3,7 +3,7 @@ import { PersonalPage, p } from "../components/PersonalUI";
 import { Text } from "../components/AppText";
 const RULES = [
   ["Starting a session", "The big button on Home starts your next session. On Routines, Just focus lets you do anything for as long as you like, and every routine and subject has its own ▶. Finish the session to keep your time and XP. If you end early, it isn’t saved."],
-  ["Routines", "Save the things you keep coming back to, with a length, a category and a daily reminder if you want one. Not sure where to start? Grab one of the ideas. If your phone supports it, open a routine and tap Add widget to put it on your home screen."],
+  ["Routines", "Save the things you keep coming back to, with a length, a category and a daily reminder if you want one. Not sure where to start? Grab one of the ideas. Pick your interests in Settings and their ideas come first, with one on Home each day. If your phone supports it, open a routine and tap Add widget to put it on your home screen."],
   ["Study and exams", "Add the subjects you’re taking and tap ▶ to study one. Add your exams too, and they’ll count down on Study and Home, with reminders if you like. Studying a subject with an exam coming up counts as Revision. The rest counts as Learning."],
   ["Changing things", "Hold a routine, subject or exam and the list starts to wiggle. Tap ✎ to edit or − to remove. We’ll always check before removing anything. Tap Done when you’re finished."],
   ["Protection, if you want it", "A protected session covers the apps you set aside until it ends, with one 5-minute break. It needs Usage Access, Display over other apps and notifications, and we explain each one before you allow it. Calls, Settings and End session are always within reach."],

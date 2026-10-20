@@ -28,7 +28,7 @@ const routine = { id: 'routine-a', revision: 1, name: 'Review notes', durationSe
   reminder: { enabled: true, hour: 18, minute: 0 }, deletedAt: null };
 function base() {
   return {
-    'react-native': { View: host('View'), Platform: { OS: 'android' }, StyleSheet: { create: v => v, hairlineWidth: 1 },
+    'react-native': { View: host('View'), ScrollView: host('HScroll'), Platform: { OS: 'android' }, StyleSheet: { create: v => v, hairlineWidth: 1 },
       Keyboard: { dismiss() {} }, Switch: host('Switch'), AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) } },
     '@expo/vector-icons': { Ionicons: host('Icon') },
     '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
@@ -37,6 +37,7 @@ function base() {
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     'expo-haptics': { selectionAsync: async () => {} },
     './AppText': { Text: host('Text') }, './MotionPressable': host('Press'),
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ value: { enabled: false } }) },
     // Edit mode's wiggle is motion only; render its rows and ✎/− buttons directly.
     './EditMode': {Wiggle:props=>React.createElement('View',{style:props.style,testID:props.active?'wiggling':undefined},props.children),EditBadges:props=>React.createElement('View',{testID:'edit-badges'},props.onEdit&&React.createElement('Press',{accessibilityLabel:`Edit ${props.name}`,onPress:props.onEdit}),props.onRemove&&React.createElement('Press',{accessibilityLabel:`Remove ${props.name}`,onPress:props.onRemove}))},
     './AppSheet': props => React.createElement('Sheet', props, props.header, props.children, props.footer, props.overlay),

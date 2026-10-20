@@ -1,6 +1,6 @@
 import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Platform, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -30,21 +30,12 @@ import { EditBadges, Wiggle } from "./EditMode";
 import SectionHeader, { CircleButton, DoneButton, SeeAll } from "./SectionHeader";
 import OneTimeHint from "./OneTimeHint";
 import { appPreferences } from "../services/appPreferences";
+import type { RoutineIdea } from "../constants/routineIdeas";
+import { INTEREST_KINDS, type InterestKind } from "../constants/guidedQuests";
+import { useGuidedPreference } from "../hooks/useGuidedPreference";
+import { interestsOf, orderedIdeas } from "../utils/interests";
 
-type RoutineTemplate = { name: string; minutes: number; area: FocusAreaKind; icon: React.ComponentProps<typeof Ionicons>["name"] };
-// Starting points across a student's week. Each leaves the list once saved.
-const ROUTINE_TEMPLATES: RoutineTemplate[] = [
-  { name: "Review today’s notes", minutes: 30, area: "learning", icon: "book-outline" },
-  { name: "Read before bed", minutes: 20, area: "wellbeing", icon: "moon-outline" },
-  { name: "Plan tomorrow", minutes: 15, area: "personal", icon: "calendar-outline" },
-  { name: "Past-year paper", minutes: 45, area: "learning", icon: "document-text-outline" },
-  { name: "Morning stretch", minutes: 10, area: "wellbeing", icon: "body-outline" },
-  { name: "Tidy my desk", minutes: 10, area: "personal", icon: "sparkles-outline" },
-  { name: "Practise my craft", minutes: 25, area: "creative", icon: "color-palette-outline" },
-  { name: "Side project", minutes: 45, area: "work", icon: "construct-outline" },
-  { name: "Journal", minutes: 10, area: "wellbeing", icon: "create-outline" },
-  { name: "Language practice", minutes: 20, area: "learning", icon: "chatbubbles-outline" },
-];
+type RoutineTemplate = RoutineIdea;
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
 
 export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll }: {
@@ -57,6 +48,9 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
+  // Ideas: your interests come first; the chips narrow to one area, and All shows everything.
+  const interests = interestsOf(useGuidedPreference(profile?.id ?? "").value);
+  const [ideaFilter, setIdeaFilter] = useState<InterestKind | "all">("all");
   // Tapping a row edits it, play starts it, and removing asks first in one small card.
   const [menu, setMenu] = useState<{ entry: RoutineEntry; mode: "start" | "remove" } | null>(null);
   // Holding a routine wiggles every card into edit mode, the same as subjects and exams.
@@ -204,9 +198,10 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   // Once the last routine is removed there is nothing left to edit: Done gives way to + again.
   if (arranging && !visibleEntries.length) setArranging(false);
   const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
-  const unsaved = ROUTINE_TEMPLATES.filter(template => !savedNames.has(template.name.toLowerCase()));
-  // Ideas sit two to a row; an odd one waits for the next gap so no card is left alone.
-  const suggestions = unsaved.length > 1 ? unsaved.slice(0, unsaved.length - (unsaved.length % 2)) : unsaved;
+  const unsaved = orderedIdeas(interests).filter(template => !savedNames.has(template.name.toLowerCase()));
+  const filtered = ideaFilter === "all" ? unsaved : unsaved.filter(template => template.area === ideaFilter);
+  // In All, ideas sit two to a row and an odd one waits for the next gap, so no card is left alone.
+  const suggestions = ideaFilter === "all" && filtered.length > 1 ? filtered.slice(0, filtered.length - (filtered.length % 2)) : filtered;
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
   const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
   // A sync conflict asks which version to keep wherever the routines are listed.
@@ -227,8 +222,17 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
       {/* Ready-made starting points stay offered until each one is saved. */}
-      {offerSuggestions && routines.ready && !!suggestions.length && <View style={s.suggested}>
-        <SectionHeader title="Ideas to start with" />
+      {offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
+        <SectionHeader title="Ideas to start with" subtitle={interests.length ? "Your interests come first" : undefined} />
+        {/* The chips always sit in the same order; All is always first. */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} accessibilityRole="tablist">
+          {(["all", ...INTEREST_KINDS] as const).map(kind => {
+            const selected = ideaFilter === kind, title = kind === "all" ? "All" : focusAreaTitle(FOCUS_AREAS.find(area => area.kind === kind)?.title);
+            return <Pressable key={kind} onPress={() => { feedback(); setIdeaFilter(kind); }} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={`${title} ideas`}
+              style={[s.chip, selected && s.chipOn]}><Text style={[s.chipText, selected && s.chipTextOn]} numberOfLines={1}>{title}</Text></Pressable>;
+          })}
+        </ScrollView>
+        {!suggestions.length && <Text style={s.caption}>You’ve saved every idea here. Try another area.</Text>}
         <View style={s.ideas}>{suggestions.map(template => {
           const area = suggestedArea(subjects as Subject[], template.area), tint = kindColor(template.area);
           return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button"
@@ -292,6 +296,10 @@ const s = StyleSheet.create({
   suggested: { gap: 10, marginTop: 14 },
   // Two columns of idea cards fill the page instead of a row of small chips.
   ideas: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  chips: { gap: 8, paddingRight: 8 },
+  chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.surface },
+  chipOn: { backgroundColor: colors.text, borderColor: colors.text },
+  chipText: { color: colors.secondary, fontSize: 14, fontWeight: "600" }, chipTextOn: { color: colors.background },
   idea: { ...edge, flexBasis: "40%", flexGrow: 1, maxWidth: "50%", minHeight: 112, padding: 12, gap: 4, borderRadius: 18, backgroundColor: colors.surface },
   ideaTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   ideaIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },

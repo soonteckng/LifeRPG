@@ -3,6 +3,9 @@ export type FocusNeed = "revision" | "assignments" | "practice" | "work" | "crea
 // The alias keeps older callers and saved study choices compatible.
 export type StudyNeed = FocusNeed;
 export type FocusAreaKey = "learning" | "work" | "creative" | "wellbeing" | "personal" | "general";
+/** The areas someone can say they're into, in the order the app always shows them. */
+export const INTEREST_KINDS = ["learning", "work", "creative", "personal", "wellbeing"] as const;
+export type InterestKind = (typeof INTEREST_KINDS)[number];
 export const STUDY_NEEDS: { id: FocusNeed; title: string; hint: string }[] = [
   { id: "revision", title: "Review and remember", hint: "Make sense of your class notes." },
   { id: "assignments", title: "Move an assignment forward", hint: "Find a manageable next step." },

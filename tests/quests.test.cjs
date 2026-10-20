@@ -1144,6 +1144,22 @@ test("Home's next step is revising the subject with an exam this week; Other ses
     assert.ok(ui.button("home-just-focus"));
   }finally{await ui.cleanup();}
 });
+test("with interests, Home's next step is today's idea from them, and Other session is any activity", async()=>{
+  const guided={value:{version:1,enabled:true,invited:true,need:"restore",templateId:"quiet-screen-free",smaller:false,interests:["wellbeing"]}};
+  const ui=await quickHomeSetup(null,undefined,null,"src/app/(tabs)/index.tsx",{"../../hooks/useGuidedPreference":{useGuidedPreference:()=>guided}});
+  try {
+    const idea=ui.button("home-idea");
+    assert.ok(idea,"an idea replaces Start focusing");
+    assert.match(idea.props.accessibilityLabel,/Idea for today · \d+ min$/);
+    const wellbeing=["Read before bed","Morning stretch","Journal","Go for a walk"];
+    assert.ok(wellbeing.some(name=>idea.props.accessibilityLabel.startsWith(name)),"from the picked area");
+    await act(async()=>idea.props.onPress());
+    const notes=ui.calls.find(c=>c[0]==="notes")[1];
+    assert.ok(wellbeing.some(name=>notes.includes(name)),"starts like a routine with the idea's name");
+    assert.ok(ui.calls.some(c=>c[0]==="seconds"));assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
+    assert.equal(ui.button("home-other-session").props.accessibilityLabel,"Other session. Choose any activity");
+  }finally{await ui.cleanup();}
+});
 test("Just focus in Routines opens the session screen with Everyday focus and the saved length, and never starts by itself", async()=>{
   const ui=await quickFocusSetup();
   try {

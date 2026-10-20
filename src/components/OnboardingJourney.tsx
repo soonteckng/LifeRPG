@@ -8,7 +8,9 @@ import OnboardingWelcome from "./OnboardingWelcome";
 import OnboardingFinish from "./OnboardingFinish";
 import { prepareFeatureTour } from "./FeatureTour";
 import Pressable from "./MotionPressable";
-import { FocusDirectionPicker } from "./GuidedChoice";
+import InterestPicker from "./InterestPicker";
+import { interestsOf, withInterests } from "../utils/interests";
+import type { InterestKind } from "../constants/guidedQuests";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import { saveOnboardingProfile, finishOnboarding } from "../services/onboardingService";
 import { useUser } from "../context/UserContext";
@@ -31,11 +33,13 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   // A new account starts on "Help me choose a focus"; a choice made before is kept.
   const startingDirection = (value: typeof guided.value) => ({ ...value, enabled: value.invited ? value.enabled : true, invited: true });
   const [direction, setDirection] = useState(() => startingDirection(guided.value));
+  // Nothing is ticked for a new account; a choice made before is kept.
+  const [picked, setPicked] = useState<InterestKind[]>(() => guided.value.invited ? interestsOf(guided.value) : []);
   const [preferenceReady, setPreferenceReady] = useState(guided.ready);
   const [choiceTouched, setChoiceTouched] = useState(false);
   if (guided.ready && !preferenceReady) {
     setPreferenceReady(true);
-    if (!choiceTouched) setDirection(startingDirection(guided.value));
+    if (!choiceTouched) { setDirection(startingDirection(guided.value)); setPicked(guided.value.invited ? interestsOf(guided.value) : []); }
   }
   const [name, setName] = useState(profile.username === "Hero" ? "" : profile.username ?? "");
   const [goal, setGoal] = useState(Math.max(30, profile.daily_goal_minutes || 60));
@@ -79,7 +83,8 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     lock.current = true; setBusy(true); setError(""); Keyboard.dismiss();
     try {
       if (!savedFinish.current) {
-        if (!(await guided.save(direction))) throw new Error("Preference save failed");
+        // "I'll choose my own", or "Show me ideas" with nothing picked, saves no interests.
+        if (!(await guided.save(withInterests(direction, direction.enabled ? picked : [])))) throw new Error("Preference save failed");
         const key = JSON.stringify([name.trim(), goal]);
         if (savedProfile.current !== key) {
           await saveOnboardingProfile(name.trim(), profile.avatar || "🌱", profile.class_title || "Adventurer", goal);
@@ -104,8 +109,8 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     { kind: "notifications" as const, icon: "notifications-outline" as const, title: "Notifications", hint: "Break reminders and End session, always in reach.", granted: !!caps?.notifications, allow: async () => { const { enableNotifications } = await import("../services/notificationPermissionService"); await enableNotifications(); await protection.refresh(); } },
   ];
   const subtitles = [
-    "Want a nudge on where to start, or would you rather do your own thing? You can switch anytime.",
-    direction.enabled ? "Pick where you’d like to begin. You can always change it later from Home." : "Choose your own time and area. Save routines whenever you want a bit more structure.",
+    "Want ideas to get you going, or would you rather do your own thing? You can switch anytime.",
+    direction.enabled ? "Pick what you’re into and we’ll put matching session ideas first." : "Choose your own time and area. Save routines whenever you want a bit more structure.",
     "This is the name your companion will know you by. You can dress them up in Profile later.",
     "Start small, short sessions count too. You don’t have to do it all at once.",
     "During a session, LifeRPG can cover the apps that tend to pull you away. Totally optional, and you can change it later.",
@@ -115,10 +120,10 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     onBack={step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? 3 : step - 1) : undefined}
     error={(step === 2 ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <View style={s.choices}>
-      <OnboardingChoice title="Help me choose a focus" hint="A starting point for learning, work or everyday life." selected={direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: true }); }} />
-      <OnboardingChoice title="Just let me focus" hint="Your time, your focus, your own routines." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
+      <OnboardingChoice title="Show me ideas" hint="Pick what you’re into and we’ll put matching session ideas first." selected={direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: true }); }} />
+      <OnboardingChoice title="I’ll choose my own" hint="Start with a timer and save your own routines whenever you like." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
     </View>}
-    {step === 1 && (direction.enabled ? <FocusDirectionPicker compact value={direction} onChange={value => { setChoiceTouched(true); setDirection(value); }} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home always has a free focus button, and Routines has plenty of ideas to start from.</Text></View>)}
+    {step === 1 && (direction.enabled ? <InterestPicker value={picked} onChange={value => { setChoiceTouched(true); setPicked(value); }} disabled={busy} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home always has a free focus button, and Routines has plenty of ideas whenever you want them.</Text></View>)}
     {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
     {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can change your goal in Settings once a week, and it kicks in the next day. A quiet day never takes away what you’ve earned.</Text></View>}
     {step === PROTECTION_STEP && <View style={s.choices}>
