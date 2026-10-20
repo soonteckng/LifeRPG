@@ -228,7 +228,9 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       </View>}
       {/* Ready-made starting points stay offered until each one is saved. */}
       {offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
-        <SectionHeader title="Ideas to start with" />
+        {/* Once areas are picked, changing them is one quiet button by the title. */}
+        <SectionHeader title="Ideas to start with" right={active && forYou.length ? <CircleButton icon="options-outline" testID="ideas-for-you-change"
+          label={`For you: ${forYou.map(ideaAreaTitle).join(", ")}. Change`} onPress={() => { feedback(); setAreasOpen(true); }} /> : undefined} />
         {/* The chips always sit in the same order; All is always first. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} accessibilityRole="tablist">
           {([...(forYou.length ? ["for-you" as const] : []), "all" as const, ...IDEA_AREAS]).map(kind => {
@@ -237,11 +239,11 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
               style={[s.chip, selected && s.chipOn]}><Text style={[s.chipText, selected && s.chipTextOn]} numberOfLines={1}>{title}</Text></Pressable>;
           })}
         </ScrollView>
-        {/* What "For you" is built from, and a way to change it (or set it up after skipping). */}
-        {active && <Pressable onPress={() => { feedback(); setAreasOpen(true); }} accessibilityRole="button" testID="ideas-for-you-change"
-          accessibilityLabel={forYou.length ? `For you: ${forYou.map(ideaAreaTitle).join(", ")}. Change` : "Get ideas for you"} style={s.forYou}>
-          <Text style={s.caption} numberOfLines={1}>{forYou.length ? `From ${forYou.map(ideaAreaTitle).join(", ")}` : "Tell us what you’d like to make time for"}</Text>
-          <Text style={s.forYouLink}>{forYou.length ? "Change" : "Choose"}</Text>
+        {/* Someone who skipped the intro can still set up For you. */}
+        {active && !forYou.length && <Pressable onPress={() => { feedback(); setAreasOpen(true); }} accessibilityRole="button" testID="ideas-for-you-change"
+          accessibilityLabel="Get ideas for you" style={s.forYou}>
+          <Text style={[s.caption, s.flex]} numberOfLines={1}>Tell us what you’d like to make time for</Text>
+          <Text style={s.forYouLink}>Choose</Text>
         </Pressable>}
         {!suggestions.length && <Text style={s.caption}>You’ve saved every idea here. Try another area.</Text>}
         <View style={s.ideas}>{suggestions.map(template => {
@@ -311,7 +313,7 @@ const s = StyleSheet.create({
   ideas: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   chips: { gap: 8, paddingRight: 8 },
   forYou: { minHeight: 32, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 4 },
-  forYouLink: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  forYouLink: { color: colors.text, fontSize: 14, fontWeight: "600" }, flex: { flex: 1, minWidth: 0 },
   chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.surface },
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { color: colors.secondary, fontSize: 14, fontWeight: "600" }, chipTextOn: { color: colors.background },

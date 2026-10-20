@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { AppState } from "react-native";
+import { useFocusEffect } from "expo-router";
 import { useAuth } from "../context/AuthContext";
+import { useTimer } from "../context/TimerContext";
 import { createSquadTransport, squadStore } from "../services/squadService";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 
@@ -21,6 +24,7 @@ export function useSquads() {
   const state = useSyncExternalStore(subscribe, snapshot, snapshot);
   const refresh = useCallback(() => scope ? squadStore.load(scope, transport()) : Promise.resolve(), [scope, transport]);
   useEffect(() => { void refresh(); }, [refresh]);
+  useLiveRefresh(refresh, online);
   const offline = "Connect to the internet to use squads.";
   const run = <T,>(work: (s: NonNullable<typeof scope>, t: NonNullable<ReturnType<typeof transport>>) => Promise<T>, fallback: T) => {
     const live = transport(); return scope && live ? work(scope, live) : Promise.resolve(fallback);
@@ -32,4 +36,34 @@ export function useSquads() {
     remove: (id: string, member: string) => run((s, t) => squadStore.remove(s, t, id, member), offline as string | null),
     update: (id: string, change: { name: string; goalMinutes: number | null } | "code") => run((s, t) => squadStore.update(s, t, id, change), offline as string | null),
   };
+}
+
+// How often a squad on screen checks who is focusing now.
+const LIVE_EVERY = 30_000;
+
+/**
+ * Keeps a squad on screen current: it reloads when the screen comes into view,
+ * when the app comes back to the front, every half minute while shown, and
+ * right after your own session starts or ends, so "focusing now" is never stale.
+ */
+function useLiveRefresh(refresh: () => Promise<void>, online: boolean) {
+  const shown = useRef(false), latest = useRef(refresh);
+  useLayoutEffect(() => { latest.current = refresh; }, [refresh]);
+  useFocusEffect(useCallback(() => {
+    shown.current = true;
+    void latest.current();
+    const poll = online ? setInterval(() => { if (AppState.currentState === "active") void latest.current(); }, LIVE_EVERY) : null;
+    const app = AppState.addEventListener("change", state => { if (state === "active") void latest.current(); });
+    return () => { shown.current = false; if (poll) clearInterval(poll); app.remove(); };
+  }, [online]));
+  const timer = useTimer({ live: false });
+  const yours = `${timer.sessionId ?? ""}|${timer.hasOpenSession}|${timer.isRunning}|${timer.sessionEnded}|${timer.sessionSummary ? 1 : 0}`;
+  const previous = useRef(yours);
+  useEffect(() => {
+    if (previous.current === yours) return;
+    previous.current = yours;
+    // A moment for the server to record the change, then read it back.
+    const soon = setTimeout(() => { void latest.current(); }, 800);
+    return () => clearTimeout(soon);
+  }, [yours]);
 }

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Keyboard, StyleSheet, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
@@ -14,6 +14,7 @@ import { focusAreaTitle } from "../utils/focusAreas";
 import { countdownLabel, courseColor, daysUntil, examDateLabel, studyDays, studyTime, upcomingExams, validCourseDraft } from "../utils/studyPlan";
 import type { Subject } from "../services/taskService";
 import type { StudyCourse, StudyCourseDraft, StudyExam, StudyRecent } from "../types/studyPlan";
+import SheetTextInput from "./SheetTextInput";
 
 type Area = Pick<Subject, "id" | "title" | "color_code">;
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
@@ -66,7 +67,7 @@ export default function StudySubjectSheet({ visible, course, startEditing = fals
       onConfirm={() => { if (confirm === "remove" && course) void run(() => onRemove(course.id), "Couldn't remove this subject. Try again.", onClose); else { setConfirm(null); if (course) { setDraft(makeDraft()); setEditing(false); } else onClose(); } }} />}>
     <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.body, { paddingBottom: Math.max(insets.bottom, 16) }]} showsVerticalScrollIndicator={false}>
       {editing ? <>
-        <BottomSheetTextInput value={draft.name} maxLength={60} editable={!busy} placeholder="For example, Maths" placeholderTextColor={colors.secondary}
+        <SheetTextInput value={draft.name} maxLength={60} editable={!busy} placeholder="For example, Maths" placeholderTextColor={colors.secondary}
           accessibilityLabel="Subject name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
           onChangeText={name => { setDraft(current => ({ ...current, name })); setError(""); }} />
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}

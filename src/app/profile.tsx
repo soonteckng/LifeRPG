@@ -9,7 +9,6 @@ import { Ionicons } from "@expo/vector-icons";
 import {
   BottomSheetScrollView,
   type BottomSheetScrollViewMethods,
-  BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -43,6 +42,7 @@ import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from
 
 import CharacterLookPicker from "../components/CharacterLookPicker";
 import { characterLook } from "../utils/characterAppearance";
+import SheetTextInput from "../components/SheetTextInput";
 export default function ProfileScreen() {
   const router = useRouter();
   const milestones = useMilestones();
@@ -233,7 +233,7 @@ export default function ProfileScreen() {
           onCancel={() => setDiscard(false)} onConfirm={() => { setDiscard(false); Keyboard.dismiss(); sheetClosing.current = true; setSheetOpen(false); }} /> : undefined}>
         <BottomSheetScrollView ref={nameScroll} keyboardShouldPersistTaps="handled" enableFooterMarginAdjustment contentContainerStyle={[p.sheetBody, { paddingBottom: 16 }]}>
           <Text style={p.rowTitle}>Name</Text>
-          <BottomSheetTextInput accessibilityLabel="Profile name" editable={!saving} style={p.input} maxLength={PROFILE_NAME_LIMIT} autoCapitalize="words" autoComplete="name" returnKeyType="done"
+          <SheetTextInput accessibilityLabel="Profile name" editable={!saving} style={p.input} maxLength={PROFILE_NAME_LIMIT} autoCapitalize="words" autoComplete="name" returnKeyType="done"
             onFocus={() => nameScroll.current?.scrollTo({ y: 0, animated: false })} value={name} onChangeText={value => { setName(value); setSaveError(""); }} />
           <Text style={p.caption}>Up to {PROFILE_NAME_LIMIT} characters, including spaces.</Text>
           {!!saveError && <Text style={p.error} accessibilityRole="alert">{saveError}</Text>}

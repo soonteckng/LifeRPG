@@ -46,13 +46,15 @@ export default function IdeaAreaPicker({ value, onChange, disabled = false, inSh
         <View style={[s.check, on && { backgroundColor: tint, borderColor: tint }]}>{on && <Ionicons name="checkmark" size={15} color={colors.background} />}</View>
       </Pressable>;
     })}
-    <Text style={s.note}>{full ? "That’s three. Tap one again to swap it." : "Choose up to three. You can change them anytime in Routines."}</Text>
+    {/* In the sheet the limit is in the subtitle, so the list keeps one steady height. */}
+    {!inSheet && <Text style={s.note}>{full ? "That’s three. Tap one again to swap it." : "Choose up to three. You can change them anytime in Routines."}</Text>}
   </View>;
 }
 const s = StyleSheet.create({
   stack: { gap: 10 },
   row: { minHeight: 76, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 24, backgroundColor: colors.surface },
-  rowInSheet: { backgroundColor: colors.sheetCard },
+  // Tighter rows in the sheet, so all five and Done fit without scrolling.
+  rowInSheet: { minHeight: 64, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 20, backgroundColor: colors.sheetCard },
   rest: { opacity: 0.45 },
   icon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
   copy: { flex: 1, minWidth: 0, gap: 3 },

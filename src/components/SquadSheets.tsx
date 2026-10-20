@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Keyboard, StyleSheet, View, type TextInput } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import Segmented from "./Segmented";
@@ -11,6 +11,7 @@ import { colors, edge } from "../constants/theme";
 import { studyTime } from "../utils/studyPlan";
 import { cleanSquadCode, SQUAD_CODE_LENGTH, SQUAD_GOALS, SQUAD_LIMITS, validSquadName } from "../utils/squads";
 import type { Squad, SquadMember } from "../types/squads";
+import SheetTextInput from "./SheetTextInput";
 
 export function SquadFace({ member, size = 36, ring = colors.surface }: { member: Pick<SquadMember, "avatar" | "focusingNow">; size?: number; ring?: string }) {
   return <View style={{ width: size, height: size }} importantForAccessibility="no-hide-descendants">
@@ -39,7 +40,7 @@ export function SquadEditSheet({ squad, visible, onClose, onSave }: {
     header={<SheetHeader title="Edit squad" subtitle="Everyone in the squad sees these." onClose={() => { if (!busy) onClose(); }} />}>
     <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
       <Text style={s.label}>Name</Text>
-      <BottomSheetTextInput value={draft.name} maxLength={40} editable={!busy} accessibilityLabel="Squad name" returnKeyType="done" style={s.input}
+      <SheetTextInput value={draft.name} maxLength={40} editable={!busy} accessibilityLabel="Squad name" returnKeyType="done" style={s.input}
         onChangeText={name => { setDraft(current => ({ ...current, name })); setError(""); }} />
       <Text style={s.label}>Weekly goal together</Text>
       <View style={s.chips}>{[null, ...SQUAD_GOALS].map(minutes => {
@@ -83,9 +84,9 @@ export function SquadJoinSheet({ visible, online, leading = null, memberships = 
       {mode === "join" ? <View>
         <View style={s.boxes} pointerEvents="none">{Array.from({ length: SQUAD_CODE_LENGTH }, (_, index) =>
           <View key={index} style={[s.box, index === Math.min(code.length, SQUAD_CODE_LENGTH - 1) && s.boxActive]}><Text style={s.boxText}>{code[index] ?? ""}</Text></View>)}</View>
-        <BottomSheetTextInput ref={input as never} value={code} onChangeText={value => { setCode(cleanSquadCode(value)); setError(""); }} maxLength={SQUAD_CODE_LENGTH + 2}
+        <SheetTextInput ref={input as never} value={code} onChangeText={value => { setCode(cleanSquadCode(value)); setError(""); }} maxLength={SQUAD_CODE_LENGTH + 2}
           autoCapitalize="characters" autoCorrect={false} autoComplete="off" accessibilityLabel="Squad code" returnKeyType="join" onSubmitEditing={() => void submit()} style={s.hiddenInput} caretHidden />
-      </View> : <BottomSheetTextInput value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={40} placeholder="For example, Calc crew" placeholderTextColor={colors.secondary}
+      </View> : <SheetTextInput value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={40} placeholder="For example, Calc crew" placeholderTextColor={colors.secondary}
         accessibilityLabel="Squad name" returnKeyType="done" onSubmitEditing={() => void submit()} style={s.input} />}
       <Text style={s.hint}>{!online ? "Connect to the internet to join or create a squad."
         : full ? `You're in ${SQUAD_LIMITS.member} squads, the most for now. Leave one to join or start another.`

@@ -1,7 +1,7 @@
 import { tapHaptic } from "../utils/tapHaptics";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AppState, Keyboard, StyleSheet, Switch, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import TouchableOpacity from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
@@ -22,6 +22,7 @@ import type { RoutineDraft, SavedRoutine } from "../types/savedRoutine";
 import type { Subject } from "../services/taskService";
 import { lastRoutineArea } from "../services/lastRoutineArea";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
+import SheetTextInput from "./SheetTextInput";
 
 export default function RoutineEditorSheet({ visible, onClose, onDismiss, routine, subjects, initialAreaId = null, initialSeconds = 1800, initialName = "", idea, onSaved, onAddWidget }: {
   visible: boolean; onClose: () => void; onDismiss?: () => void; routine?: SavedRoutine | null; subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialAreaId?: number | null; initialSeconds?: number; initialName?: string; onSaved?: (draft: RoutineDraft) => void;
@@ -131,7 +132,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     </View></View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
       <Text style={s.label}>Routine name</Text>
-      <BottomSheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
+      <SheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
       <Text style={s.label}>Category</Text>
       {locked ? <View style={s.lockedArea} testID="routine-idea-category" accessible accessibilityLabel={`Category, ${focusAreaTitle(lockedArea?.title)}`}>
         <View style={[s.lockedDot, { backgroundColor: lifeAreaColor(lockedArea?.id ?? null, lockedArea?.color_code) }]} />
@@ -151,7 +152,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
         <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
       </TouchableOpacity>}
       </View>
-      {draft.reminder.enabled && <><View style={s.time}><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Hour (0–23)</Text><BottomSheetTextInput accessibilityLabel="Reminder hour" value={hour} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setHour} style={s.input} /></View><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Minute (0–59)</Text><BottomSheetTextInput accessibilityLabel="Reminder minute" value={minute} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setMinute} style={s.input} /></View></View>
+      {draft.reminder.enabled && <><View style={s.time}><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Hour (0–23)</Text><SheetTextInput accessibilityLabel="Reminder hour" value={hour} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setHour} style={s.input} /></View><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Minute (0–59)</Text><SheetTextInput accessibilityLabel="Reminder minute" value={minute} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setMinute} style={s.input} /></View></View>
         <View style={s.permission}><Text accessibilityLiveRegion="polite" style={s.rowTitle}>{permission?.label ?? "Checking notifications…"}</Text>
           <Text style={s.caption}>Routine reminders use ordinary notification permission. They do not need Usage Access or Display over other apps.</Text>
           {!permission?.granted && permission?.action && <TouchableOpacity accessibilityRole="button" disabled={permissionBusy || busy} onPress={() => void allowReminderNotifications()} style={s.permissionAction}><Text style={s.permissionActionText}>{permissionBusy ? "Please wait…" : permission.action === "enable" ? "Allow notifications" : permission.action === "settings" ? "Open phone settings" : "Check notifications again"}</Text></TouchableOpacity>}

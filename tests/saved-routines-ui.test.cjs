@@ -198,8 +198,9 @@ test('the areas picked in the intro open the ideas on For you, and can be change
   const ideas=ui.root.findAllByType('Press').map(x=>x.props.accessibilityLabel).filter(label=>label?.startsWith('Add ')).map(label=>label.split(',')[0]);
   assert.equal(ideas.length,16,'eight from each picked area');
   assert.ok(ideas.includes('Add Flashcards')&&ideas.includes('Add Journal'));assert.equal(ideas.includes('Add Side project'),false);
-  const change=ui.root.findAll(x=>x.props.testID==='ideas-for-you-change'&&typeof x.props.onPress==='function')[0];
-  assert.equal(change.props.accessibilityLabel,'For you: Learning, Wellbeing. Change');
+  const change=ui.root.findAll(x=>x.props.testID==='ideas-for-you-change'&&x.props.accessibilityLabel&&typeof x.props.onPress==='function')[0];
+  assert.equal(change.props.accessibilityLabel,'For you: Learning, Wellbeing. Change','one quiet button by the title, no crowded line');
+  assert.equal(ui.root.findAll(x=>typeof x.props.children==='string'&&x.props.children.startsWith('From ')).length,0,'the long "From …" line is gone');
   await act(async()=>change.props.onPress());
   assert.equal(ui.root.findByType('AreasSheet').props.visible,true);
  }finally{await act(async()=>ui.unmount());}

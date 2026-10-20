@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Keyboard, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TouchableOpacity from "./SheetTouchable";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,6 +13,7 @@ import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { colors, edge } from "../constants/theme";
 
 import { cachedDailyGoal as cached, forgetDailyGoal, rememberDailyGoal as remember } from "../utils/dailyGoalCache";
+import SheetTextInput from "./SheetTextInput";
 
 export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMinutes }: { visible: boolean; onClose: () => void; onSaved: () => void; todayGoalMinutes?: number }) {
   const { profile } = useUser(), insets = useSafeAreaInsets();
@@ -91,7 +92,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
         <View style={g.stepper}>
           {editable && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Decrease daily goal by 15 minutes" disabled={busy} onPress={() => step(-15)} style={g.stepButton}><Ionicons name="remove" size={24} color={colors.accent} /></TouchableOpacity>}
           <View style={g.value}>
-            {editable ? <BottomSheetTextInput accessibilityLabel="Daily goal in minutes" style={g.input} keyboardType="number-pad" value={draft} onChangeText={change} editable={!busy} maxLength={3} selectTextOnFocus />
+            {editable ? <SheetTextInput accessibilityLabel="Daily goal in minutes" style={g.input} keyboardType="number-pad" value={draft} onChangeText={change} editable={!busy} maxLength={3} selectTextOnFocus />
               : <Text style={g.number}>{checking ? "–" : data?.next_goal_minutes ?? todayMinutes}</Text>}
             <Text style={g.unit}>minutes a day</Text>
           </View>

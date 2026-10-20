@@ -35,6 +35,7 @@ import { Easing, ReduceMotion, runOnJS, useSharedValue } from "react-native-rean
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "../constants/motion";
 import { registerSheetActivity } from "../utils/sheetActivity";
+import { SheetDragContext } from "../utils/sheetDrag";
 
 // Every sheet slides on the same calm curve: quick to start, long soft landing, no bounce.
 const listTiming = { duration: 280, easing: Easing.out(Easing.cubic) };
@@ -79,6 +80,7 @@ const DismissContext = createContext({
   footer: null as React.ReactNode,
   label: "sheet",
   floating: false,
+  setDragging: (_dragging: boolean) => {},
 });
 
 // Keep the handle component's identity stable while typing or saving.
@@ -115,11 +117,13 @@ function SheetFooter(props: BottomSheetFooterProps) {
 // Retain the library's native scroll/pan coordination even when dismissal needs
 // confirmation. Only intercept a downward release from the handle or list top.
 function useDismissGestures() {
-  const { guarded, requestClose } = useContext(DismissContext);
+  const { guarded, requestClose, setDragging } = useContext(DismissContext);
   const { animatedScrollableState, animatedPosition } = useBottomSheetInternal();
   const defaults = useGestureEventsHandlersDefault();
   const startedAtTop = useSharedValue(false);
   const startPosition = useSharedValue(0);
+  // Set once a pull actually moves the sheet down, so its fields stay calm.
+  const pulling = useSharedValue(false);
   const handleOnStart = useCallback<GestureEventHandlerCallbackType>(
     (source, event) => {
       "worklet";
@@ -136,6 +140,10 @@ function useDismissGestures() {
     (source, event) => {
       "worklet";
       defaults.handleOnChange(source, event);
+      if (!pulling.get() && startedAtTop.get() && event.translationY > 6) {
+        pulling.set(true);
+        runOnJS(setDragging)(true);
+      }
       // Dirty drafts cannot close natively, but their surface should still track
       // a downward pull one-to-one. The default release restores its snap point
       // before our existing discard guard runs; scrolling stays library-owned.
@@ -144,18 +152,34 @@ function useDismissGestures() {
         animatedPosition.set(startPosition.get() + event.translationY);
       }
     },
-    [animatedPosition, animatedScrollableState, defaults, guarded, startedAtTop, startPosition],
+    [animatedPosition, animatedScrollableState, defaults, guarded, pulling, setDragging, startedAtTop, startPosition],
   );
   const handleOnEnd = useCallback<GestureEventHandlerCallbackType>(
     (source, event) => {
       "worklet";
       defaults.handleOnEnd(source, event);
+      if (pulling.get()) {
+        pulling.set(false);
+        runOnJS(setDragging)(false);
+      }
       if (guarded && startedAtTop.get() && event.translationY > 60)
         runOnJS(requestClose)();
     },
-    [defaults, guarded, requestClose, startedAtTop],
+    [defaults, guarded, pulling, requestClose, setDragging, startedAtTop],
   );
-  return { ...defaults, handleOnStart, handleOnChange, handleOnEnd };
+  // A cancelled pull never reaches End; release the fields here instead.
+  const handleOnFinalize = useCallback<GestureEventHandlerCallbackType>(
+    (source, event) => {
+      "worklet";
+      if (pulling.get()) {
+        pulling.set(false);
+        runOnJS(setDragging)(false);
+      }
+      defaults.handleOnFinalize(source, event);
+    },
+    [defaults, pulling, setDragging],
+  );
+  return { ...defaults, handleOnStart, handleOnChange, handleOnEnd, handleOnFinalize };
 }
 
 export default function AppSheet({
@@ -203,6 +227,16 @@ export default function AppSheet({
   }, [activityToken, mounted, releaseBlocker]);
   useLayoutEffect(() => releaseBlocker, [releaseBlocker]);
   const [previousVisible, setPreviousVisible] = useState(visible);
+  // While the sheet is pulled down its text fields ignore taps. The release is
+  // held back a moment: the lifted finger's tap arrives after the pull ends.
+  const [dragging, setDraggingNow] = useState(false);
+  const dragRelease = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const setDragging = useCallback((next: boolean) => {
+    if (dragRelease.current) { clearTimeout(dragRelease.current); dragRelease.current = null; }
+    if (next) setDraggingNow(true);
+    else dragRelease.current = setTimeout(() => { dragRelease.current = null; setDraggingNow(false); }, 300);
+  }, []);
+  useEffect(() => () => { if (dragRelease.current) clearTimeout(dragRelease.current); }, []);
   const keyboardVisible = useRef(false);
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -323,6 +357,7 @@ export default function AppSheet({
               footer,
               label,
               floating,
+              setDragging,
             }}
           >
             <BottomSheet
@@ -359,7 +394,7 @@ export default function AppSheet({
               footerComponent={footer ? SheetFooter : undefined}
               handleComponent={SheetHandle}
             >
-              {children}
+              <SheetDragContext.Provider value={dragging}>{children}</SheetDragContext.Provider>
             </BottomSheet>
           </DismissContext.Provider>
           {overlay}

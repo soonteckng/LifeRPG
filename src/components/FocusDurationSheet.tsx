@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import TouchableOpacity from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
@@ -8,6 +8,7 @@ import SheetHeader from "./SheetHeader";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
 import { parseDurationFields } from "../utils/sessionSetup";
+import SheetTextInput from "./SheetTextInput";
 
 export default function FocusDurationSheet({ seconds, visible, disabled, onClose, onSave }: {
   seconds: number; visible: boolean; disabled: boolean; onClose: () => void; onSave: (seconds: number) => void;
@@ -41,8 +42,8 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
         return <View key={value} style={p.presetCell}><TouchableOpacity disabled={disabled} accessibilityRole="button" accessibilityLabel={`Set duration to ${value} minutes`} accessibilityState={{ selected: chosen }} onPress={() => { setMinutes(String(value)); setRemainder("0"); setError(""); }} style={[p.preset, chosen && p.presetChosen]}><Text style={[p.presetText, chosen && p.presetTextChosen]}>{value}</Text></TouchableOpacity></View>;
       })}</View>
       <View style={{ flexDirection: "row", gap: 12 }}>
-        <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><BottomSheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
-        <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><BottomSheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
+        <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><SheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
+        <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><SheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
       </View>
       <Text style={p.caption}>Up to 8 hours. Your suggestion and category stay the same.</Text>
       {!!error && <Text accessibilityRole="alert" style={p.error}>{error}</Text>}

@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Keyboard, StyleSheet, Switch, View } from "react-native";
-import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
@@ -16,6 +16,7 @@ import { addDays, countdownLabel, courseColor, dateKey, daysUntil, EXAM_DAYS_AHE
 import { enableNotifications, readNotificationPermission } from "../services/notificationPermissionService";
 import { tapHaptic, tapHapticsEnabled } from "../utils/tapHaptics";
 import type { StudyCourse, StudyExam, StudyExamDraft } from "../types/studyPlan";
+import SheetTextInput from "./SheetTextInput";
 
 // Half-hour steps across a school or university day.
 
@@ -94,7 +95,7 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
         <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
       </Pressable>
       <View style={s.group}>
-        <BottomSheetTextInput value={draft.title} maxLength={80} editable={!busy} placeholder="Exam name, for example Calculus final" placeholderTextColor={colors.secondary}
+        <SheetTextInput value={draft.title} maxLength={80} editable={!busy} placeholder="Exam name, for example Calculus final" placeholderTextColor={colors.secondary}
           accessibilityLabel="Exam name" style={[s.input, !!error && !draft.title.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()}
           onChangeText={title => { setDraft(current => ({ ...current, title })); setError(""); }} />
         {!!subjectName && titleFollows && <Text style={s.hint}>Named after the subject. Tap the name to change it.</Text>}

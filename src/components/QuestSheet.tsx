@@ -19,6 +19,7 @@ import { createTask, deleteTask, updateTask, type Task } from "../services/taskS
 import { DAYS, DURATIONS, draftKey, makeQuestDraft, questParams, validateQuestDraft, type QuestDraft } from "../utils/questDraft";
 import AppSheet from "./AppSheet";
 import SheetConfirmation, { type SheetConfirmationProps } from "./SheetConfirmation";
+import SheetTextInput from "./SheetTextInput";
 
 interface Props {
   visible: boolean; onClose: () => void; onDismiss?: (navigating: boolean) => void;
@@ -247,7 +248,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
           <View pointerEvents={busy ? "none" : "auto"} style={styles.form}>
             <View style={styles.field}>
               <Text style={styles.label}>{routineLanguage ? "Routine name" : "Quest name"}</Text>
-              <BottomSheetTextInput ref={titleRef} value={editor.draft.title} onChangeText={(title) => updateDraft({ title })}
+              <SheetTextInput ref={titleRef} value={editor.draft.title} onChangeText={(title) => updateDraft({ title })}
                 placeholder="What would you like to do?" placeholderTextColor={colors.muted} style={styles.input}
                 onFocus={() => { focusedField.current = "title"; revealFocusedField(); }} onBlur={() => { focusedField.current = null; }}
                 maxLength={120} multiline accessibilityLabel={routineLanguage ? "Routine name" : "Quest name"} editable={!busy} />
@@ -261,7 +262,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
                   onPress={() => { updateDraft({ minutes: String(minutes) }); setCustomDuration(false); }} />)}
                 <Choice label="Custom" selected={customDuration} onPress={() => setCustomDuration(true)} />
               </View>
-              {customDuration && <BottomSheetTextInput value={editor.draft.minutes} onChangeText={(minutes) => updateDraft({ minutes })}
+              {customDuration && <SheetTextInput value={editor.draft.minutes} onChangeText={(minutes) => updateDraft({ minutes })}
                 onFocus={() => { focusedField.current = "duration"; revealFocusedField(); }} onBlur={() => { focusedField.current = null; }}
                 keyboardType="number-pad" style={styles.input} accessibilityLabel="Custom duration in minutes" maxLength={3} editable={!busy} />}
             </View>

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { BottomSheetTextInput } from "@gorhom/bottom-sheet";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
@@ -9,6 +8,7 @@ import { type } from "../constants/typography";
 import { areaTint } from "../utils/lifeAreaColor";
 import { courseColor, subjectSuggestions } from "../utils/studyPlan";
 import type { StudyCourse } from "../types/studyPlan";
+import SheetTextInput from "./SheetTextInput";
 
 export type SubjectPick = { id: string; name: string } | { id: null; name: string };
 
@@ -35,7 +35,7 @@ export default function SubjectPicker({ courses, selectedName, pending = null, o
   return <View style={s.wrap}>
     <View style={s.search}>
       <Ionicons name="search" size={16} color={colors.secondary} />
-      <BottomSheetTextInput value={query} onChangeText={setQuery} maxLength={60} placeholder="Search or type a subject" placeholderTextColor={colors.secondary}
+      <SheetTextInput value={query} onChangeText={setQuery} maxLength={60} placeholder="Search or type a subject" placeholderTextColor={colors.secondary}
         accessibilityLabel="Search or type a subject" returnKeyType="done" autoCorrect={false} style={s.input}
         onSubmitEditing={() => { if (q && !exact) onPick({ id: null, name: q }); }} />
     </View>
