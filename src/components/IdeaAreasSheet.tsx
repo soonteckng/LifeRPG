@@ -10,7 +10,7 @@ import { colors } from "../constants/theme";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import type { IdeaArea } from "../constants/routineIdeas";
 
-/** Routines › For you › Change: the same calm picker as the intro, saved on Done. */
+/** Routines › For you › Change: the same calm picker as the intro, saved only on Done. */
 export default function IdeaAreasSheet({ owner, visible, onClose }: { owner: string; visible: boolean; onClose: () => void }) {
   const preference = useGuidedPreference(owner);
   const [draft, setDraft] = useState<IdeaArea[] | null>(null), [error, setError] = useState(""), [wasVisible, setWasVisible] = useState(visible);
@@ -24,8 +24,9 @@ export default function IdeaAreasSheet({ owner, visible, onClose }: { owner: str
     onClose();
   };
   // Done stays pinned under the list, so it is always in reach on any phone.
-  return <AppSheet visible={visible} onRequestClose={() => void done()} compact maxHeightRatio={0.9} label="ideas for you" motionMode="timed"
-    header={<SheetHeader title="Ideas for you" subtitle="Choose up to three things to make time for." onClose={() => void done()} closeLabel="Done" />}
+  // Only Done saves. Swiping down, Back or ✕ leaves the picks as they were.
+  return <AppSheet visible={visible} onRequestClose={onClose} compact maxHeightRatio={0.9} label="ideas for you" motionMode="timed"
+    header={<SheetHeader title="Ideas for you" subtitle="Choose up to three things to make time for." onClose={onClose} />}
     footer={<View style={s.footer}>
       {!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}
       <Pressable onPress={() => void done()} disabled={preference.busy} accessibilityRole="button" accessibilityLabel="Done" style={s.done}>

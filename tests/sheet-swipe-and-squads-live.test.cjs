@@ -32,14 +32,22 @@ test('Ideas for you keeps Done pinned below the list, with the limit in the subt
  const Sheet=load('src/components/IdeaAreasSheet.tsx',{'react-native':rn,'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll')},
   './AppSheet':props=>React.createElement('Sheet',props,props.children),'./SheetHeader':host('Header'),'./IdeaAreaPicker':host('Picker'),
   './SheetTouchable':host('Press'),'./AppText':{Text:host('Text')},'../constants/theme':{colors:{}},
-  '../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,busy:false,value:{ideaAreas:['learning']},save:async()=>true})}}).default;
- let ui;await act(async()=>{ui=create(React.createElement(Sheet,{owner:'o',visible:true,onClose(){}}));});
+  '../hooks/useGuidedPreference':{useGuidedPreference:()=>({ready:true,busy:false,value:{ideaAreas:['learning']},save:async v=>{saved.push(v.ideaAreas);return true;}})}}).default;
+ const saved=[];let closed=0;
+ let ui;await act(async()=>{ui=create(React.createElement(Sheet,{owner:'o',visible:true,onClose(){closed++;}}));});
  const sheet=ui.root.findByType('Sheet');
  assert.ok(sheet.props.footer,'Done lives in the footer');
  assert.equal(ui.root.findByType('Scroll').findAll(x=>x.props.accessibilityLabel==='Done').length,0,'not at the end of the scrolling list');
  assert.match(sheet.props.header.props.subtitle,/up to three/);
  assert.equal(ui.root.findByType('Picker').props.inSheet,true);
- await act(async()=>ui.unmount());
+ await act(async()=>ui.root.findByType('Picker').props.onChange(['learning','wellbeing']));
+ await act(async()=>ui.root.findByType('Sheet').props.onRequestClose());
+ await act(async()=>ui.root.findByType('Sheet').props.header.props.onClose());
+ assert.deepEqual(saved,[],'swiping down or ✕ does not save');assert.equal(closed,2);
+ const done=ui.root.findByType('Sheet').props.footer;let doneUi;await act(async()=>{doneUi=create(done);});
+ await act(async()=>doneUi.root.findAll(x=>x.props.accessibilityLabel==='Done'&&x.props.onPress)[0].props.onPress());
+ assert.deepEqual(saved,[['learning','wellbeing']],'Done saves the picks');
+ await act(async()=>{doneUi.unmount();ui.unmount();});
 });
 
 test('a squad on screen reloads when shown, on return to the app, on a timer, and when your session changes',()=>{
@@ -55,7 +63,12 @@ test('a squad page slides down from anywhere once scrolled to the top, like the 
  const rn={View:host('View'),ScrollView:host('Scroll'),StyleSheet:{create:v=>v,absoluteFill:{}},useWindowDimensions:()=>({height:800}),
   Animated:{Value:function(){return value;},View:host('AView'),timing},PanResponder:{create:c=>{config=c;return{panHandlers:{}};}}};
  const nav={canGoBack:()=>true,goBack(){nav.left=true;}};
+ // A chainable stand-in for the list gesture that keeps its callbacks.
+ let list;const chain=()=>{const g={};for(const k of ['runOnJS','enabled','activeOffsetY','failOffsetX','simultaneousWithExternalGesture'])g[k]=()=>g;
+  for(const k of ['onStart','onUpdate','onEnd','onFinalize'])g[k]=f=>{g['_'+k]=f;return g;};return g;};
+ const gh={Gesture:{Native:()=>({native:true}),Pan:()=>(list=chain())},GestureDetector:({children})=>children};
  const Page=load('src/components/SlideUpPage.tsx',{'react-native':rn,'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:0,bottom:0})},
+  'react-native-gesture-handler':gh,
   'expo-router':{useNavigation:()=>nav,useRouter:()=>({replace(){}})},'expo-router/react-navigation':{usePreventRemove(){}},'./AppHeader':host('Header'),
   '../constants/theme':{colors:{}},'../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/navigationMotion':{navigationTiming:d=>({duration:d})}}).default;
  let ui;await act(async()=>{ui=create(React.createElement(Page,{title:'My Squad',fallback:'/squads'},React.createElement('Text',null,'board')));});
@@ -65,9 +78,36 @@ test('a squad page slides down from anywhere once scrolled to the top, like the 
  ui.root.findByType('Scroll').props.onScroll({nativeEvent:{contentOffset:{y:120}}});
  assert.equal(take(30),false,'scrolled down, the content scrolls back first');
  ui.root.findByType('Scroll').props.onScroll({nativeEvent:{contentOffset:{y:0}}});
- config.onPanResponderMove({}, {dy:400});assert.equal(values.at(-1),0.5,'the page follows the finger');
+ config.onPanResponderGrant();config.onPanResponderMove({}, {dy:400});assert.equal(values.at(-1),0.5,'the page follows the finger');
  config.onPanResponderRelease({}, {dy:40,vy:0.1});assert.deepEqual(values.at(-1),['to',1],'a short pull settles back');
- await act(async()=>config.onPanResponderRelease({}, {dy:300,vy:0.2}));assert.deepEqual(values.at(-1),['to',0],'a long pull slides it away');
+ config.onPanResponderGrant();await act(async()=>config.onPanResponderRelease({}, {dy:300,vy:0.2}));assert.deepEqual(values.at(-1),['to',0],'a long pull slides it away');
  assert.equal(nav.left,true,'and then leaves');
+ assert.equal(take(30),false,'once leaving, nothing else takes the pull');
+ await act(async()=>ui.unmount());
+});
+
+test('over a long scrolling list the pull is taken alongside the scroll, only at the top',async()=>{
+ const values=[];const value={setValue:v=>values.push(v),stopAnimation(){},interpolate:()=>0};
+ const timing=(_v,{toValue})=>({start:done=>{values.push(['to',toValue]);done?.({finished:true});},stop(){}});
+ let config,list;const chain=()=>{const g={};for(const k of ['runOnJS','enabled','activeOffsetY','failOffsetX','simultaneousWithExternalGesture'])g[k]=()=>g;
+  for(const k of ['onStart','onUpdate','onEnd','onFinalize'])g[k]=f=>{g['_'+k]=f;return g;};return g;};
+ const rn={View:host('View'),ScrollView:host('Scroll'),StyleSheet:{create:v=>v,absoluteFill:{}},useWindowDimensions:()=>({height:800}),
+  Animated:{Value:function(){return value;},View:host('AView'),timing},PanResponder:{create:c=>{config=c;return{panHandlers:{}};}}};
+ const nav={canGoBack:()=>true,goBack(){nav.left=true;}};
+ const Page=load('src/components/SlideUpPage.tsx',{'react-native':rn,'react-native-gesture-handler':{Gesture:{Native:()=>({}),Pan:()=>(list=chain())},GestureDetector:({children})=>children},
+  'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:0,bottom:0})},'expo-router':{useNavigation:()=>nav,useRouter:()=>({replace(){}})},
+  'expo-router/react-navigation':{usePreventRemove(){}},'./AppHeader':host('Header'),'../constants/theme':{colors:{}},
+  '../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/navigationMotion':{navigationTiming:d=>({duration:d})}}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Page,{title:'My Squad',fallback:'/squads'},'board'));});
+ const scroller=ui.root.findByType('Scroll');values.length=0;
+ scroller.props.onScroll({nativeEvent:{contentOffset:{y:200}}});
+ list._onStart();list._onUpdate({translationY:300});list._onEnd({translationY:300,velocityY:0});
+ assert.equal(values.length,0,'scrolled down, a pull just scrolls the list');
+ scroller.props.onScroll({nativeEvent:{contentOffset:{y:0}}});
+ list._onStart();assert.equal(config.onMoveShouldSetPanResponderCapture({}, {dy:30,dx:0}),false,'one owner per pull');
+ list._onUpdate({translationY:200});assert.equal(values.at(-1),0.75,'the page follows the finger over the list');
+ list._onEnd({translationY:40,velocityY:100});list._onFinalize();assert.deepEqual(values.at(-1),['to',1],'a short pull settles back');
+ list._onStart();await act(async()=>list._onEnd({translationY:60,velocityY:900}));assert.deepEqual(values.at(-1),['to',0],'a quick flick slides it away');
+ assert.equal(nav.left,true);
  await act(async()=>ui.unmount());
 });
