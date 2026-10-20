@@ -31,7 +31,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
   { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. The big button starts your next session, and Other session is there for anything else." },
   { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Your routines", body: "The things you come back to live here. One tap and you’re off. See all shows the full list." },
   { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap on Routines", body: "" },
-  { id: "routines-just-focus", route: "/routines", kind: "info", target: "routines-just-focus", title: "Just focus", body: "Pick anything, set your own time and go. Further down you can save your own routines or grab one of our ideas." },
+  { id: "routines-just-focus", route: "/routines", kind: "info", target: "routines-just-focus", title: "Just focus", body: "Pick anything, set your own time and go. Further down, ideas for what you chose are waiting, ready to save as your own routines." },
   { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap on Study", body: "" },
   { id: "study-subjects", route: "/study", kind: "info", target: "study-subjects", title: "Subjects and exams", body: "Add what you’re studying and tap ▶ to start a session for it. Add an exam date too, and we’ll count down to it here and on Home." },
   { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap on Squads", body: "" },

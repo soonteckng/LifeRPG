@@ -179,9 +179,29 @@ test('idea chips narrow to one area in a fixed order, and All shows everything',
   assert.deepEqual(ui.root.findAllByType('Press').filter(x=>x.props.accessibilityRole==='tab').map(x=>x.props.accessibilityLabel),
    ['All ideas','Learning ideas','Work & projects ideas','Creativity ideas','Everyday life ideas','Wellbeing ideas'],'chips keep one fixed order');
   await act(async()=>chip('Work & projects ideas').props.onPress());
-  assert.deepEqual(ideas().map(label=>label.split(',')[0]),['Add Side project','Add Deep work block','Add Clear my inbox','Add Prep for a meeting']);
+  assert.deepEqual(ideas().map(label=>label.split(',')[0]),['Add Side project','Add Deep work block','Add Clear my inbox','Add Prep for a meeting','Add Plan the week','Add Update my CV','Add Learn a work skill','Add Tidy my files']);
   await act(async()=>chip('All ideas').props.onPress());
-  assert.equal(ideas().length,20);
+  assert.equal(ideas().length,40,'eight ideas for each area');
+  assert.ok(ui.root.findAll(x=>x.props.testID==='ideas-for-you-change'&&x.props.accessibilityLabel==='Get ideas for you').length>0,'someone who skipped can still choose');
+ }finally{await act(async()=>ui.unmount());}
+});
+test('the areas picked in the intro open the ideas on For you, and can be changed right there',async()=>{
+ const state={ready:true,scope,online:true,routines:[],pendingCount:0,conflicts:[]};
+ const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},
+  '../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../hooks/useGuidedPreference':{useGuidedPreference:()=>({value:{ideaAreas:['learning','wellbeing']}})},
+  './IdeaAreasSheet':props=>React.createElement('AreasSheet',props),'./RoutineEditorSheet':host('Editor'),'../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{id:'owner'}})},
+  '../context/TimerContext':{useTimer:()=>({})},'../services/routineWidgetService':{pinSavedRoutine:async()=>true,routineWidgetsSupported:async()=>false},'../services/savedRoutineService':{resolveSavedRoutine:async()=>null}}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
+ try{
+  const tabs=()=>ui.root.findAllByType('Press').filter(x=>x.props.accessibilityRole==='tab');
+  assert.equal(tabs()[0].props.accessibilityLabel,'For you ideas');assert.equal(tabs()[0].props.accessibilityState.selected,true,'opens on For you');
+  const ideas=ui.root.findAllByType('Press').map(x=>x.props.accessibilityLabel).filter(label=>label?.startsWith('Add ')).map(label=>label.split(',')[0]);
+  assert.equal(ideas.length,16,'eight from each picked area');
+  assert.ok(ideas.includes('Add Flashcards')&&ideas.includes('Add Journal'));assert.equal(ideas.includes('Add Side project'),false);
+  const change=ui.root.findAll(x=>x.props.testID==='ideas-for-you-change'&&typeof x.props.onPress==='function')[0];
+  assert.equal(change.props.accessibilityLabel,'For you: Learning, Wellbeing. Change');
+  await act(async()=>change.props.onPress());
+  assert.equal(ui.root.findByType('AreasSheet').props.visible,true);
  }finally{await act(async()=>ui.unmount());}
 });
 test('removing the last routine ends edit mode, so + comes back instead of Done',async()=>{

@@ -14,7 +14,6 @@ function load(file, mocks = {}, cache = new Map()) {
   const code = ts.transpileModule(fs.readFileSync(filename,'utf8'), { compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true} }).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
-    if(file==='src/components/OnboardingJourney.tsx'&&name.endsWith('/RoutineEditorSheet'))return()=>null;
     // Home's quiet tab preloads are covered by the Progress and Profile tests.
     if(name.endsWith('/hooks/useCharacterData'))return{prefetchCharacterData(){}};
     if(name.endsWith('/hooks/useProgressData'))return{prefetchProgress(){}};
@@ -173,32 +172,24 @@ test('new users can skip picking routines and retain their badge through the jou
  const ui=await render(Screen);assert.doesNotMatch(text(ui.tree.root),/Skip suggestions/);await ui.press('Skip for now');await ui.press('Continue');await ui.press('Continue');
  assert.deepEqual(routes,[]);await ui.press('Previous step');assert.equal(ui.tree.root.findByType('Frame').props.step,3);await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');assert.deepEqual(routes,['/']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
 });
-test('new users pick up to three first routines; they are saved, with their category, before setup continues',async()=>{
+test('new users can pick up to three areas to make time for; nothing is created, and the picks are saved at the end',async()=>{
  const db=storage(),saved=[];
  const Screen=load('src/app/onboarding.tsx',mocks({
   '../hooks/useSavedRoutines':{useSavedRoutines:()=>({ready:true,routines:[],save:async draft=>{saved.push(draft);return true;}})},
-  '../context/QuestContext':{useQuests:()=>({subjects:[{id:1,title:'General'},{id:3,title:'Work & projects'}]})},
   '@react-native-async-storage/async-storage':db.api,'expo-router':{useRouter:()=>({replace(){}})},
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
   '../services/onboardingService':{saveOnboardingProfile:async()=>{},finishOnboarding:async()=>{}},
  })).default;
  const ui=await render(Screen);
- {
-  const frame=()=>ui.tree.root.findByType('Frame').props;
-  assert.equal(frame().title,'What would you like to try first?');assert.equal(frame().primary,'Skip for now','nothing is pre-picked');
-  const card=name=>ui.tree.root.findAll(n=>n.props.testID==='first-routine-idea'&&typeof n.props.onPress==='function'&&n.props.accessibilityLabel.startsWith(name))[0];
-  await act(async()=>card('Clear my inbox').props.onPress());assert.equal(frame().primary,'Add routine');
-  await act(async()=>ui.tree.root.findAll(n=>n.props.accessibilityLabel==='Work & projects ideas'&&typeof n.props.onPress==='function')[0].props.onPress());
-  await act(async()=>card('Deep work block').props.onPress());await act(async()=>card('Side project').props.onPress());
-  assert.equal(frame().primary,'Add 3 routines');
-  assert.equal(card('Prep for a meeting').props.disabled,true,'three is the most');
-  await ui.press('Add 3 routines');
-  assert.deepEqual(saved.map(d=>[d.name,d.focusAreaId,d.durationSeconds,d.reminder.enabled]),[['Clear my inbox',3,1200,false],['Deep work block',3,1800,false],['Side project',3,2700,false]]);
-  assert.equal(frame().step,2,'on to your name');
-  await ui.press('Previous step');assert.equal(frame().primary,'Continue','saved ones show as added, and are not saved twice');
-  await ui.press('Continue');assert.equal(saved.length,3);
-  await ui.cleanup();
- }
+ const frame=()=>ui.tree.root.findByType('Frame').props;
+ assert.equal(frame().title,'What would you like to make time for?');assert.equal(frame().primary,'Skip for now','nothing is pre-picked');
+ const area=label=>ui.tree.root.findAll(n=>n.props.accessibilityLabel===label&&typeof n.props.onPress==='function')[0];
+ await act(async()=>area('Wellbeing').props.onPress());await act(async()=>area('Learning').props.onPress());await act(async()=>area('Work & projects').props.onPress());
+ assert.equal(frame().primary,'Continue');assert.equal(area('Creativity').props.disabled,true,'three is the most');
+ await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');
+ assert.deepEqual(saved,[],'the intro creates no routines');
+ assert.deepEqual(JSON.parse(db.values.get('liferpg:guided:v1:student')).ideaAreas,['learning','work','wellbeing']);
+ await ui.cleanup();
 });
 test('Save as routine opens an editable draft and marks saved only after an explicit successful save',async()=>{
  const db=storage(),calls=[];

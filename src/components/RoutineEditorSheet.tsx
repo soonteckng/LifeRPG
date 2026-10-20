@@ -117,7 +117,8 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     try { const removed = await routines.remove(routine.id); if (epoch === generation.current) { setConfirm(null); if (removed) onClose(); else setError("Couldn't remove this routine. Try again."); } }
     finally { lock.current = false; if (epoch === generation.current) setBusy(false); }
   };
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} expanded heightRatio={0.86} guardDismiss={dirty || busy} label="routine editor"
+  // Sized to its content, so Save sits right under the last row with no empty gap.
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} attached compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="routine editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={<SheetHeader title={routine ? "Edit routine" : "New routine"} subtitle="A saved starting point for something that matters." onClose={close} closeLabel="Close routine editor" />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? "Remove this routine?" : "Discard your changes?"} message={confirm === "remove" ? "Your recorded sessions and progress stay saved." : "Your previous routine stays saved."} confirmLabel={confirm === "remove" ? "Remove routine" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)} onConfirm={() => { if (confirm === "remove") void remove(); else { setConfirm(null); onClose(); } }} />}
@@ -132,17 +133,24 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
       <Text style={s.label}>Routine name</Text>
       <BottomSheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
       <Text style={s.label}>Category</Text>
-      {locked ? <View style={s.lockedArea} testID="routine-idea-category" accessible accessibilityLabel={`Category, ${focusAreaTitle(lockedArea?.title)}. Set by this idea`}>
+      {locked ? <View style={s.lockedArea} testID="routine-idea-category" accessible accessibilityLabel={`Category, ${focusAreaTitle(lockedArea?.title)}`}>
         <View style={[s.lockedDot, { backgroundColor: lifeAreaColor(lockedArea?.id ?? null, lockedArea?.color_code) }]} />
         <Text style={[s.rowTitle, { flex: 1 }]}>{focusAreaTitle(lockedArea?.title)}</Text>
-        <Ionicons name="lock-closed" size={14} color={colors.tertiary} />
       </View> : <FocusAreaPicker disabled={busy} selectedId={generalSelected ? general?.id ?? null : draft.focusAreaId}
         areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...focusAreaChoices(subjects, draft.focusAreaId).filter(item => focusAreaTitle(item.title) !== "Everyday focus")]}
         onSelect={focusAreaId => { feedback(); setDraft(previous => ({ ...previous, focusAreaId })); }} />}
-      {locked && <Text style={s.caption}>Set by this idea. Rename it to make it your own and pick any category.</Text>}
-      {/* The same length choices as a session: 15, 30, 45, 60, 90 or your own. */}
-      <FocusLengthControl compact seconds={draft.durationSeconds} disabled={busy} onChange={durationSeconds => setDraft(previous => ({ ...previous, durationSeconds }))} />
-      <View style={s.reminder}><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ true: colors.accentFill }} /></View>
+      {/* Length, reminder and widget sit in one tidy card, like Settings. The
+          length uses the same choices as a session: 15, 30, 45, 60, 90 or your own. */}
+      <Text style={s.label}>Details</Text>
+      <View style={s.group}>
+      <FocusLengthControl compact flat showLabel={false} seconds={draft.durationSeconds} disabled={busy} onChange={durationSeconds => setDraft(previous => ({ ...previous, durationSeconds }))} />
+      <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="notifications-outline" size={17} color={colors.secondary} /></View><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ true: colors.accentFill }} /></View>
+      {routine && onAddWidget && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Add widget to your home screen" onPress={onAddWidget} style={[s.groupRow, s.divider]}>
+        <View style={s.groupIcon}><Ionicons name="grid-outline" size={17} color={colors.secondary} /></View>
+        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Start this routine from your phone’s home screen.</Text></View>
+        <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+      </TouchableOpacity>}
+      </View>
       {draft.reminder.enabled && <><View style={s.time}><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Hour (0–23)</Text><BottomSheetTextInput accessibilityLabel="Reminder hour" value={hour} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setHour} style={s.input} /></View><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Minute (0–59)</Text><BottomSheetTextInput accessibilityLabel="Reminder minute" value={minute} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setMinute} style={s.input} /></View></View>
         <View style={s.permission}><Text accessibilityLiveRegion="polite" style={s.rowTitle}>{permission?.label ?? "Checking notifications…"}</Text>
           <Text style={s.caption}>Routine reminders use ordinary notification permission. They do not need Usage Access or Display over other apps.</Text>
@@ -150,11 +158,6 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
           {!permission?.granted && <Text style={s.caption}>You can save this reminder now. It can notify you after notifications are allowed.</Text>}
           <Text style={s.caption}>Your phone may delay reminders to save battery.</Text>
         </View></>}
-      {routine && onAddWidget && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Add widget to your home screen" onPress={onAddWidget} style={s.reminder}>
-        <Ionicons name="grid-outline" size={19} color={colors.accent} />
-        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Start this routine from your phone’s home screen.</Text></View>
-        <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
-      </TouchableOpacity>}
     </BottomSheetScrollView>
   </AppSheet>;
 }
@@ -162,6 +165,10 @@ const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, label: { ...type.label, paddingHorizontal: 4, marginTop: 4 }, rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
   body: { paddingHorizontal: 16, paddingBottom: 24, gap: 12 }, input: { ...edge, minHeight: 52, paddingHorizontal: 16, paddingVertical: 12, color: colors.text, fontSize: 17, borderRadius: 16, backgroundColor: colors.sheetCard },
 
+  group: { ...edge, borderRadius: 16, backgroundColor: colors.sheetCard, overflow: "hidden" },
+  groupRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  groupIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
   lockedArea: { ...edge, minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.sheetCard },
   lockedDot: { width: 10, height: 10, borderRadius: 5 },
   time: { flexDirection: "row", gap: 12 }, reminder: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footerArea: { paddingHorizontal: 16, paddingTop: 12, gap: 10, backgroundColor: colors.surfaceRaised }, footer: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 }, footerError: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 }, inputError: { borderWidth: 1, borderColor: colors.danger },

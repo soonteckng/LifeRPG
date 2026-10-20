@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Easing, Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Pressable from "./MotionPressable";
@@ -28,12 +28,22 @@ export interface SheetConfirmationProps {
 export default function SheetConfirmation(props: SheetConfirmationProps) {
   const insets = useSafeAreaInsets(), reduced = useReducedMotion();
   const [rise] = useState(() => new Animated.Value(reduced ? 1 : 0));
-  useEffect(() => {
+  // In its own layer (a Modal), the card rises only once that layer is on
+  // screen. Started earlier, Android could leave it invisible while it still
+  // took taps, so a first press on End seemed to do nothing.
+  const started = useRef(false), animation = useRef<Animated.CompositeAnimation | null>(null);
+  const show = useCallback(() => {
+    if (started.current) return;
+    started.current = true;
     if (reduced) { rise.setValue(1); return; }
-    const animation = Animated.timing(rise, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true });
-    animation.start();
-    return () => animation.stop();
+    animation.current = Animated.timing(rise, { toValue: 1, duration: 260, easing: Easing.out(Easing.cubic), useNativeDriver: true });
+    animation.current.start(({ finished }) => { if (finished) rise.setValue(1); });
   }, [reduced, rise]);
+  useEffect(() => {
+    // In place, start at once; in a Modal, onShow starts it (with a safety net).
+    const fallback = setTimeout(show, props.elevated ? 250 : 0);
+    return () => { clearTimeout(fallback); animation.current?.stop(); };
+  }, [show, props.elevated]);
   const destructive = props.destructive !== false;
   const card = (
     <View style={styles.overlay} accessibilityViewIsModal onAccessibilityEscape={props.onCancel}>
@@ -55,7 +65,7 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
     </View>
   );
   return props.elevated
-    ? <Modal transparent visible animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={props.onCancel}>{card}</Modal>
+    ? <Modal transparent visible animationType="none" statusBarTranslucent navigationBarTranslucent onShow={show} onRequestClose={props.onCancel}>{card}</Modal>
     : card;
 }
 

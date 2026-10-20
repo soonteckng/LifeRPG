@@ -26,8 +26,7 @@ import MoreMenu from "../../components/MoreMenu";
 import { CircleButton } from "../../components/SectionHeader";
 import { useStudyPlan } from "../../hooks/useStudyPlan";
 import { useStudyLauncher } from "../../hooks/useStudyLauncher";
-import { useJustFocus, useStartRoutine } from "../../hooks/useJustFocus";
-import { useSavedRoutines } from "../../hooks/useSavedRoutines";
+import { useJustFocus } from "../../hooks/useJustFocus";
 import { daysUntil, upcomingExams } from "../../utils/studyPlan";
 import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import { useAuth } from "../../context/AuthContext";
@@ -65,8 +64,7 @@ export default function HomeScreen() {
   const [goalSettings, setGoalSettings] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
-  const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus(), startRoutine = useStartRoutine();
-  const savedRoutines = useSavedRoutines();
+  const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus();
   const avatar = useRef<View>(null), settingsIcon = useRef<View>(null);
   // Profile and Settings grow out of their button, then shrink back into it.
   const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings") => {
@@ -194,19 +192,12 @@ export default function HomeScreen() {
   const needsReview = !!(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary));
   const goalShare = Math.min(1, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60));
 
-  // The Today card suggests one next step: revise for an exam this week; for a
-  // brand-new account, the first routine picked during setup; or just focus.
+  // The Today card suggests one next step: revise for an exam this week, or just focus.
   const nextExam = upcomingExams(plan.exams).find(exam => daysUntil(exam.examDate) <= 7 && plan.courses.some(course => course.id === exam.courseId));
   const nextCourse = nextExam ? plan.courses.find(course => course.id === nextExam.courseId) ?? null : null;
   const examDays = nextExam ? daysUntil(nextExam.examDate) : 0;
-  // "Brand new" means nothing finished yet: no XP, no streak, nothing today.
-  const brandNew = known && accessMode === "online" && (profile?.level ?? 1) <= 1 && (profile?.current_xp ?? 0) === 0 && streakDays === 0 && safeCompletedSeconds === 0;
-  const firstRoutine = !nextCourse && brandNew ? savedRoutines.routines.find(routine => routine.deletedAt === null) ?? null : null;
   const primary = nextCourse ? { title: `Revise ${nextCourse.name}`, detail: examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`, onPress: () => launcher.study(nextCourse), testID: "home-revise" }
-    : firstRoutine ? { title: `Start ${firstRoutine.name}`, detail: `Your first routine · ${Math.round(firstRoutine.durationSeconds / 60)} min`, onPress: () => startRoutine(firstRoutine), testID: "home-first-routine" }
     : { title: "Start focusing", detail: "Any activity, your time", onPress: justFocus, testID: "home-just-focus" };
-  // With a suggestion up top, the second button is any other session.
-  const suggested = !!nextCourse || !!firstRoutine;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
@@ -274,10 +265,10 @@ export default function HomeScreen() {
                 <View style={styles.goalCopy}><Text style={styles.nextTitle} numberOfLines={1}>{primary.title}</Text><Text style={styles.nextDetail} numberOfLines={1}>{primary.detail}</Text></View>
                 <View style={styles.nextPlay}><Ionicons name="play" size={17} color={colors.primary} /></View>
               </TouchableOpacity>
-              <TouchableOpacity testID="home-other-session" onPress={suggested ? justFocus : () => router.navigate("/routines")} accessibilityRole="button"
-                accessibilityLabel={suggested ? "Other session. Choose any activity" : "Choose a routine. Opens Routines"} style={styles.otherButton}>
-                <Text style={styles.startText} numberOfLines={1}>{suggested ? "Other session" : "Choose a routine"}</Text>
-                <View style={styles.otherIcon}><Ionicons name={suggested ? "add" : "repeat"} size={17} color={colors.accent} /></View>
+              <TouchableOpacity testID="home-other-session" onPress={nextCourse ? justFocus : () => router.navigate("/routines")} accessibilityRole="button"
+                accessibilityLabel={nextCourse ? "Other session. Choose any activity" : "Choose a routine. Opens Routines"} style={styles.otherButton}>
+                <Text style={styles.startText} numberOfLines={1}>{nextCourse ? "Other session" : "Choose a routine"}</Text>
+                <View style={styles.otherIcon}><Ionicons name={nextCourse ? "add" : "repeat"} size={17} color={colors.accent} /></View>
               </TouchableOpacity>
             </View>}
           </View></TourAnchor>

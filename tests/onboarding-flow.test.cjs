@@ -5,7 +5,6 @@ const React = require('react'), { act, create } = require('react-test-renderer')
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const host = name => props => React.createElement(name, props, props.children);
 function environment(reduced = false) {
-  const savedRoutines = { ready: true, routines: [], saved: [], fail: false, save: async draft => { if (savedRoutines.fail) return false; savedRoutines.saved.push(draft); return true; } };
   const pending = [], stopped = [], announced = [], configs = []; let back, keyboard = false, dismissals = 0;
   const animation = config => { configs.push(config); return { config, start: callback => pending.push(callback), stop: () => stopped.push(config) }; };
   const Scroll = React.forwardRef((props, ref) => { React.useImperativeHandle(ref, () => ({ scrollTo() {} })); return React.createElement('Scroll', props, props.children); });
@@ -24,11 +23,6 @@ function environment(reduced = false) {
     const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
     new Function('require', 'module', 'exports', code)(name => {
       if (Object.hasOwn(extra, name)) return extra[name];
-      if (file === 'src/components/OnboardingJourney.tsx') {
-        if (name.endsWith('/RoutineEditorSheet')) return props => React.createElement('RoutineEditor', props);
-        if (name.endsWith('/useSavedRoutines')) return { useSavedRoutines: () => savedRoutines };
-        if (name.endsWith('/QuestContext')) return { useQuests: () => ({ subjects: [{ id: 1, title: 'General' }, { id: 2, title: 'Learning' }] }) };
-      }
       if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name.endsWith('/OnboardingWelcome') && file !== 'src/components/OnboardingWelcome.tsx') return require('./onboarding-mocks.cjs').finish(React);
       if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
@@ -43,7 +37,7 @@ function environment(reduced = false) {
     }, module, module.exports);
     return module.exports;
   }
-  return { load, savedRoutines, pending, stopped, configs, announced, back: () => back(), setKeyboard: () => { keyboard = true; }, dismissals: () => dismissals };
+  return { load, pending, stopped, configs, announced, back: () => back(), setKeyboard: () => { keyboard = true; }, dismissals: () => dismissals };
 }
 test('the real onboarding frame pins actions outside scroll and keeps progress/back/keyboard behavior consistent', async () => {
   const env = environment(), Frame = env.load('src/components/OnboardingFrame.tsx').default; let backs = 0, next = 0, tree;
@@ -81,7 +75,7 @@ test('reduced motion changes steps without delayed animations', async () => {
   await act(async () => tree.unmount());
 });
 
-test('every page shares Back navigation, keeps choices, saves picked routines as you continue and the rest at the end', async () => {
+test('every page shares Back navigation, keeps choices and saves only at the final step', async () => {
   const env = environment(); let tree, finishes = 0; const routes = [], profiles = [], preferences = [];
   const Screen = env.load('src/components/OnboardingJourney.tsx', {
     './OnboardingFrame': require('./onboarding-mocks.cjs').frame(React),
@@ -95,7 +89,7 @@ test('every page shares Back navigation, keeps choices, saves picked routines as
   const press = async label => act(async () => button(label).props.onPress());
   try {
     const frame = () => tree.root.findByType('Frame').props;
-    assert.equal(frame().title, 'What would you like to try first?'); assert.equal(frame().total, 6);
+    assert.equal(frame().title, 'What would you like to make time for?'); assert.equal(frame().total, 6);
     await press('Skip for now'); assert.equal(frame().step, 2);
     const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 15);
     await press('Continue');assert.equal(frame().step,2);assert.ok(tree.root.findByProps({testID:'onboarding-name-error'}));assert.equal(frame().error,'');
@@ -107,14 +101,13 @@ test('every page shares Back navigation, keeps choices, saves picked routines as
       if (expected === 3) assert.equal(button('90 min').props.accessibilityState.checked, true);
       if (expected === 2) assert.equal(input().props.value, 'Soon');
     }
-    // Picking a first routine saves it as you continue, with no reminder.
-    await press('Plan tomorrow, 15 minutes, Everyday life'); assert.equal(frame().primary, 'Add routine');
-    await press('Add routine'); assert.equal(frame().step, 2);
-    assert.deepEqual(env.savedRoutines.saved.map(draft => [draft.name, draft.durationSeconds, draft.reminder.enabled]), [['Plan tomorrow', 900, false]]);
+    // The first page is a calm choice of areas; nothing is created there.
+    await press('Learning'); assert.equal(frame().primary, 'Continue');
+    await press('Continue'); assert.equal(frame().step, 2);
     for (let expected = 3; expected <= 6; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
     assert.equal(profiles.length, 0); assert.equal(finishes, 0);
     await act(async () => { button('Start my journey').props.onPress(); button('Start my journey').props.onPress(); });
-    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].invited, true); assert.equal(finishes, 1); assert.deepEqual(routes, []);
+    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].invited, true); assert.deepEqual(preferences[0].ideaAreas, ['learning']); assert.equal(finishes, 1); assert.deepEqual(routes, []);
     await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   } finally { await act(async () => tree.unmount()); }
 });

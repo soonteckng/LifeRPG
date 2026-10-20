@@ -31,6 +31,9 @@ import SectionHeader, { CircleButton, DoneButton, SeeAll } from "./SectionHeader
 import OneTimeHint from "./OneTimeHint";
 import { appPreferences } from "../services/appPreferences";
 import { IDEA_AREAS, ROUTINE_IDEAS, type IdeaArea, type RoutineIdea } from "../constants/routineIdeas";
+import { useGuidedPreference } from "../hooks/useGuidedPreference";
+import IdeaAreasSheet from "./IdeaAreasSheet";
+import { ideaAreaTitle } from "./IdeaAreaPicker";
 
 type RoutineTemplate = RoutineIdea;
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
@@ -45,8 +48,12 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
-  // Ideas: the chips narrow to one area, and All shows everything.
-  const [ideaFilter, setIdeaFilter] = useState<IdeaArea | "all">("all");
+  // Ideas: "For you" gathers the areas picked in the intro (it opens there);
+  // the other chips narrow to one area, and All shows everything.
+  const forYou = useGuidedPreference(profile?.id ?? "").value.ideaAreas ?? [];
+  const [chosenFilter, setIdeaFilter] = useState<IdeaArea | "all" | "for-you" | null>(null);
+  const ideaFilter = chosenFilter === "for-you" && !forYou.length ? "all" : chosenFilter ?? (forYou.length ? "for-you" : "all");
+  const [areasOpen, setAreasOpen] = useState(false);
   // Tapping a row edits it, play starts it, and removing asks first in one small card.
   const [menu, setMenu] = useState<{ entry: RoutineEntry; mode: "start" | "remove" } | null>(null);
   // Holding a routine wiggles every card into edit mode, the same as subjects and exams.
@@ -195,7 +202,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   if (arranging && !visibleEntries.length) setArranging(false);
   const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
   const unsaved = ROUTINE_IDEAS.filter(template => !savedNames.has(template.name.toLowerCase()));
-  const filtered = ideaFilter === "all" ? unsaved : unsaved.filter(template => template.area === ideaFilter);
+  const filtered = ideaFilter === "all" ? unsaved : ideaFilter === "for-you" ? unsaved.filter(template => forYou.includes(template.area)) : unsaved.filter(template => template.area === ideaFilter);
   // In All, ideas sit two to a row and an odd one waits for the next gap, so no card is left alone.
   const suggestions = ideaFilter === "all" && filtered.length > 1 ? filtered.slice(0, filtered.length - (filtered.length % 2)) : filtered;
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
@@ -224,12 +231,18 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <SectionHeader title="Ideas to start with" />
         {/* The chips always sit in the same order; All is always first. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} accessibilityRole="tablist">
-          {(["all", ...IDEA_AREAS] as const).map(kind => {
-            const selected = ideaFilter === kind, title = kind === "all" ? "All" : focusAreaTitle(FOCUS_AREAS.find(area => area.kind === kind)?.title);
+          {([...(forYou.length ? ["for-you" as const] : []), "all" as const, ...IDEA_AREAS]).map(kind => {
+            const selected = ideaFilter === kind, title = kind === "for-you" ? "For you" : kind === "all" ? "All" : focusAreaTitle(FOCUS_AREAS.find(area => area.kind === kind)?.title);
             return <Pressable key={kind} onPress={() => { feedback(); setIdeaFilter(kind); }} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={`${title} ideas`}
               style={[s.chip, selected && s.chipOn]}><Text style={[s.chipText, selected && s.chipTextOn]} numberOfLines={1}>{title}</Text></Pressable>;
           })}
         </ScrollView>
+        {/* What "For you" is built from, and a way to change it (or set it up after skipping). */}
+        {active && <Pressable onPress={() => { feedback(); setAreasOpen(true); }} accessibilityRole="button" testID="ideas-for-you-change"
+          accessibilityLabel={forYou.length ? `For you: ${forYou.map(ideaAreaTitle).join(", ")}. Change` : "Get ideas for you"} style={s.forYou}>
+          <Text style={s.caption} numberOfLines={1}>{forYou.length ? `From ${forYou.map(ideaAreaTitle).join(", ")}` : "Tell us what you’d like to make time for"}</Text>
+          <Text style={s.forYouLink}>{forYou.length ? "Change" : "Choose"}</Text>
+        </Pressable>}
         {!suggestions.length && <Text style={s.caption}>You’ve saved every idea here. Try another area.</Text>}
         <View style={s.ideas}>{suggestions.map(template => {
           const area = suggestedArea(subjects as Subject[], template.area), tint = kindColor(template.area);
@@ -279,6 +292,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         </>}
       </BottomSheetScrollView>
     </AppSheet>
+    {offerSuggestions && <IdeaAreasSheet owner={profile?.id ?? ""} visible={areasOpen && active} onClose={() => setAreasOpen(false)} />}
     <RoutineEditorSheet key={`edit:${surfaceKey}`} visible={!!editor && active} onClose={() => setEditor(null)} routine={editor?.routine} subjects={subjects}
       initialAreaId={editor?.template ? suggestedArea(subjects as Subject[], editor.template.area)?.id ?? initialAreaId : initialAreaId}
       idea={editorIdea ? { name: editorIdea.name, areaId: suggestedArea(subjects as Subject[], editorIdea.area)?.id ?? null } : undefined}
@@ -296,6 +310,8 @@ const s = StyleSheet.create({
   // Two columns of idea cards fill the page instead of a row of small chips.
   ideas: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   chips: { gap: 8, paddingRight: 8 },
+  forYou: { minHeight: 32, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 4 },
+  forYouLink: { color: colors.text, fontSize: 14, fontWeight: "600" },
   chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.surface },
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { color: colors.secondary, fontSize: 14, fontWeight: "600" }, chipTextOn: { color: colors.background },

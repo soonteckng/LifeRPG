@@ -1,6 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { STARTER_QUESTS, LEGACY_STARTER_NEEDS, type FocusNeed } from "../constants/guidedQuests";
-export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: FocusNeed; templateId: string; smaller: boolean; areaId?: number | null }
+import { IDEA_AREAS, IDEA_AREA_LIMIT, type IdeaArea } from "../constants/routineIdeas";
+// `ideaAreas` (added later): the areas picked in the intro, which shape the
+// "For you" ideas in Routines. Older saved preferences simply have none.
+export interface GuidedPreference { version: 1; enabled: boolean; invited: boolean; need: FocusNeed; templateId: string; smaller: boolean; areaId?: number | null; ideaAreas?: IdeaArea[] }
 export const DEFAULT_GUIDED_PREFERENCE: GuidedPreference = { version: 1, enabled: false, invited: false, need: "revision", templateId: "review-topic", smaller: false };
 export function parseGuidedPreference(raw: string | null): GuidedPreference {
   try {
@@ -8,7 +11,8 @@ export function parseGuidedPreference(raw: string | null): GuidedPreference {
     const template = STARTER_QUESTS.find(task => (task.id === value?.templateId || task.need === LEGACY_STARTER_NEEDS[value?.templateId]) && task.need === value?.need);
     if (value?.version !== 1 || !template || typeof value.enabled !== "boolean" || typeof value.invited !== "boolean" || typeof value.smaller !== "boolean") return { ...DEFAULT_GUIDED_PREFERENCE };
     const area = value.areaId === null || (Number.isSafeInteger(value.areaId) && value.areaId > 0) ? { areaId: value.areaId as number | null } : {};
-    return { version: 1, enabled: value.enabled, invited: value.invited, need: template.need, templateId: template.id, smaller: false, ...area };
+    const ideaAreas = Array.isArray(value.ideaAreas) ? { ideaAreas: IDEA_AREAS.filter(kind => value.ideaAreas.includes(kind)).slice(0, IDEA_AREA_LIMIT) } : {};
+    return { version: 1, enabled: value.enabled, invited: value.invited, need: template.need, templateId: template.id, smaller: false, ...area, ...ideaAreas };
   } catch { return { ...DEFAULT_GUIDED_PREFERENCE }; }
 }
 interface State { value: GuidedPreference; ready: boolean; error: boolean; busy: boolean }

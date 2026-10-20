@@ -22,12 +22,6 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
-      if (file === "src/components/OnboardingJourney.tsx") {
-        // First routines: the editor, saved routines and categories stay out of these flows.
-        if (name.endsWith("/RoutineEditorSheet")) return () => null;
-        if (name.endsWith("/useSavedRoutines")) return { useSavedRoutines: () => ({ ready: true, routines: [], save: async () => true }) };
-        if (name.endsWith("/QuestContext")) return { useQuests: () => ({ subjects: [] }) };
-      }
       if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };

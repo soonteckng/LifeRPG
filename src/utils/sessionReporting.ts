@@ -11,7 +11,9 @@ export function sessionCategory(session: { subject_id: number | null; activity_t
 }
 
 export function sessionDockState(state: { isCompleted: boolean; isRunning: boolean; actionError: string | null; sessionSummary: unknown; timeLeft: number; awaitingStart?: boolean; finishing?: boolean; breakSecondsLeft?: number }) {
-  if (state.finishing) return { label: "Finishing up…", detail: "", icon: "hourglass-outline" as const };
+  // The last second and the save read as one step, so the bar changes once,
+  // not "Finishing up" then "Saving" in quick succession.
+  if (state.finishing) return { label: "Saving session…", detail: "", icon: "sync-outline" as const };
   // A protected break is its own state, never shown as an ordinary pause.
   if (!state.isCompleted && (state.breakSecondsLeft ?? 0) > 0) return { label: "On break", detail: sessionTime(state.breakSecondsLeft ?? 0), icon: "cafe-outline" as const };
   if (state.awaitingStart) return { label: "Checking session start", detail: "Review", icon: "sync-outline" as const };
