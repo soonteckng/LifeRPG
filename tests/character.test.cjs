@@ -21,6 +21,12 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (file === "src/components/OnboardingJourney.tsx") {
+        // First routines: the editor, saved routines and categories stay out of these flows.
+        if (name.endsWith("/RoutineEditorSheet")) return () => null;
+        if (name.endsWith("/useSavedRoutines")) return { useSavedRoutines: () => ({ ready: true, routines: [], save: async () => true }) };
+        if (name.endsWith("/QuestContext")) return { useQuests: () => ({ subjects: [] }) };
+      }
       if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name.endsWith("/AppBuildInfo")) return () => null;
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
@@ -205,8 +211,6 @@ async function screen(file, mocks) {
     "../components/PersonalUI": UI,
     "./CharacterPortrait": host("Portrait"),
     "../components/CharacterPortrait": host("Portrait"),
-    ...(file === "src/app/settings.tsx" ? { "../components/InterestsSheet": host("InterestsSheet"), "../components/InterestPicker": { interestTitle: kind => kind },
-      "../hooks/useGuidedPreference": { useGuidedPreference: () => ({ value: { enabled: false, interests: [] } }) } } : {}),
     ...mocks,
   }).default;
   let renderer;
@@ -346,8 +350,7 @@ test("onboarding failure keeps choices and retries before entering Home", async 
     },
   });
   try {
-    await ui.press("Continue");
-    await ui.press("Continue");
+    await ui.press("Skip for now");
     await ui.input("Your name", "Soon Teck");
     await ui.press("Continue");
     await ui.press("Continue");

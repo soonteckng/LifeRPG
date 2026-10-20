@@ -1144,19 +1144,21 @@ test("Home's next step is revising the subject with an exam this week; Other ses
     assert.ok(ui.button("home-just-focus"));
   }finally{await ui.cleanup();}
 });
-test("with interests, Home's next step is today's idea from them, and Other session is any activity", async()=>{
-  const guided={value:{version:1,enabled:true,invited:true,need:"restore",templateId:"quiet-screen-free",smaller:false,interests:["wellbeing"]}};
-  const ui=await quickHomeSetup(null,undefined,null,"src/app/(tabs)/index.tsx",{"../../hooks/useGuidedPreference":{useGuidedPreference:()=>guided}});
+test("a brand-new account's Home offers the first routine picked in setup, and Other session is any activity", async()=>{
+  const routine={id:"r1",name:"Clear my inbox",focusAreaId:2,durationSeconds:1200,reminder:{enabled:false,hour:18,minute:0},revision:1,deletedAt:null};
+  const ui=await quickHomeSetup(null,undefined,null,"src/app/(tabs)/index.tsx",{
+    "../../hooks/useSavedRoutines":{useSavedRoutines:()=>({ready:true,routines:[routine]})},
+    // Home's first read happens once, as on a real launch.
+    "../../hooks/useHomeLifecycle":{useHomeLifecycle:load=>{const once=React.useRef(false);React.useEffect(()=>{if(!once.current){once.current=true;void load();}});return 12;}},
+  });
   try {
-    const idea=ui.button("home-idea");
-    assert.ok(idea,"an idea replaces Start focusing");
-    assert.match(idea.props.accessibilityLabel,/Idea for today · \d+ min$/);
-    const wellbeing=["Read before bed","Morning stretch","Journal","Go for a walk"];
-    assert.ok(wellbeing.some(name=>idea.props.accessibilityLabel.startsWith(name)),"from the picked area");
-    await act(async()=>idea.props.onPress());
-    const notes=ui.calls.find(c=>c[0]==="notes")[1];
-    assert.ok(wellbeing.some(name=>notes.includes(name)),"starts like a routine with the idea's name");
-    assert.ok(ui.calls.some(c=>c[0]==="seconds"));assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
+    const first=ui.button("home-first-routine");
+    assert.ok(first,"the first routine takes the big button");
+    assert.equal(first.props.accessibilityLabel,"Start Clear my inbox. Your first routine · 20 min");
+    await act(async()=>first.props.onPress());
+    assert.ok(ui.calls.some(c=>c[0]==="notes"&&c[1].includes("Clear my inbox")));
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",2]]);assert.deepEqual(ui.calls.filter(c=>c[0]==="seconds"),[["seconds",1200]]);
+    assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
     assert.equal(ui.button("home-other-session").props.accessibilityLabel,"Other session. Choose any activity");
   }finally{await ui.cleanup();}
 });

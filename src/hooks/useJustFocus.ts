@@ -4,10 +4,9 @@ import { useUser } from "../context/UserContext";
 import { useQuests } from "../context/QuestContext";
 import { useFocusDurationPreference } from "./useFocusDurationPreference";
 import { setupMode } from "../services/setupMode";
-import { generalArea, suggestedArea } from "../utils/focusAreas";
+import { generalArea } from "../utils/focusAreas";
 import { encodeRoutineSession } from "../utils/routineSession";
-import type { RoutineIdea } from "../constants/routineIdeas";
-import type { Subject } from "../services/taskService";
+import type { SavedRoutine } from "../types/savedRoutine";
 import { validSessionSeconds } from "../utils/sessionSetup";
 import { tapHaptic } from "../utils/tapHaptics";
 
@@ -34,19 +33,18 @@ export function useJustFocus() {
 }
 
 /**
- * Starts one of the ready-made ideas without saving it: the session screen
- * opens filled in with its name, length and category, like a routine.
+ * Opens the session screen filled in with one saved routine, the same as its
+ * ▶ in My Routines. Home uses it for a new account's first routine.
  */
-export function useStartIdea() {
-  const router = useRouter(), timer = useTimer({ live: false }), { hapticsEnabled } = useUser(), { subjects = [] } = useQuests();
+export function useStartRoutine() {
+  const router = useRouter(), timer = useTimer({ live: false }), { hapticsEnabled } = useUser();
   const blocked = !!(timer.hasOpenSession || timer.actionBusy || timer.isRestoring || timer.restoreError || (timer.isCompleted && !timer.sessionSummary));
-  return (idea: RoutineIdea) => {
-    const notes = encodeRoutineSession(idea.name);
+  return (routine: Pick<SavedRoutine, "id" | "name" | "durationSeconds" | "focusAreaId">) => {
+    const notes = encodeRoutineSession(routine.name);
     if (!blocked && notes !== null) {
-      timer.setLinkedTaskId(null);
-      timer.setTargetAttributeId(suggestedArea(subjects as Subject[], idea.area)?.id ?? null);
-      timer.setNotes(notes); timer.setDurationInSeconds(idea.minutes * 60);
-      setupMode.choose("routine"); setupMode.chooseRoutine(null);
+      timer.setLinkedTaskId(null); timer.setTargetAttributeId(routine.focusAreaId);
+      timer.setNotes(notes); timer.setDurationInSeconds(routine.durationSeconds);
+      setupMode.choose("routine"); setupMode.chooseRoutine(`routine:${routine.id}`);
     }
     timer.reviewSummary?.();
     if (hapticsEnabled) tapHaptic("medium");

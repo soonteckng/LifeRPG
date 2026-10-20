@@ -5,6 +5,7 @@ const React = require('react'), { act, create } = require('react-test-renderer')
 global.IS_REACT_ACT_ENVIRONMENT = true;
 const host = name => props => React.createElement(name, props, props.children);
 function environment(reduced = false) {
+  const savedRoutines = { ready: true, routines: [], saved: [], fail: false, save: async draft => { if (savedRoutines.fail) return false; savedRoutines.saved.push(draft); return true; } };
   const pending = [], stopped = [], announced = [], configs = []; let back, keyboard = false, dismissals = 0;
   const animation = config => { configs.push(config); return { config, start: callback => pending.push(callback), stop: () => stopped.push(config) }; };
   const Scroll = React.forwardRef((props, ref) => { React.useImperativeHandle(ref, () => ({ scrollTo() {} })); return React.createElement('Scroll', props, props.children); });
@@ -23,6 +24,11 @@ function environment(reduced = false) {
     const code = ts.transpileModule(fs.readFileSync(filename, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
     new Function('require', 'module', 'exports', code)(name => {
       if (Object.hasOwn(extra, name)) return extra[name];
+      if (file === 'src/components/OnboardingJourney.tsx') {
+        if (name.endsWith('/RoutineEditorSheet')) return props => React.createElement('RoutineEditor', props);
+        if (name.endsWith('/useSavedRoutines')) return { useSavedRoutines: () => savedRoutines };
+        if (name.endsWith('/QuestContext')) return { useQuests: () => ({ subjects: [{ id: 1, title: 'General' }, { id: 2, title: 'Learning' }] }) };
+      }
       if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name.endsWith('/OnboardingWelcome') && file !== 'src/components/OnboardingWelcome.tsx') return require('./onboarding-mocks.cjs').finish(React);
       if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
@@ -37,7 +43,7 @@ function environment(reduced = false) {
     }, module, module.exports);
     return module.exports;
   }
-  return { load, pending, stopped, configs, announced, back: () => back(), setKeyboard: () => { keyboard = true; }, dismissals: () => dismissals };
+  return { load, savedRoutines, pending, stopped, configs, announced, back: () => back(), setKeyboard: () => { keyboard = true; }, dismissals: () => dismissals };
 }
 test('the real onboarding frame pins actions outside scroll and keeps progress/back/keyboard behavior consistent', async () => {
   const env = environment(), Frame = env.load('src/components/OnboardingFrame.tsx').default; let backs = 0, next = 0, tree;
@@ -75,7 +81,7 @@ test('reduced motion changes steps without delayed animations', async () => {
   await act(async () => tree.unmount());
 });
 
-test('all seven pages share Back navigation, retain choices and save only at the final step', async () => {
+test('every page shares Back navigation, keeps choices, saves picked routines as you continue and the rest at the end', async () => {
   const env = environment(); let tree, finishes = 0; const routes = [], profiles = [], preferences = [];
   const Screen = env.load('src/components/OnboardingJourney.tsx', {
     './OnboardingFrame': require('./onboarding-mocks.cjs').frame(React),
@@ -88,21 +94,27 @@ test('all seven pages share Back navigation, retain choices and save only at the
   const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
   const press = async label => act(async () => button(label).props.onPress());
   try {
-    await press('Continue'); await press('Continue');
+    const frame = () => tree.root.findByType('Frame').props;
+    assert.equal(frame().title, 'What would you like to try first?'); assert.equal(frame().total, 6);
+    await press('Skip for now'); assert.equal(frame().step, 2);
     const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 15);
-    await press('Continue');assert.equal(tree.root.findByType('Frame').props.step,3);assert.ok(tree.root.findByProps({testID:'onboarding-name-error'}));assert.equal(tree.root.findByType('Frame').props.error,'');
-    await act(async () => input().props.onChangeText('A'.repeat(25))); await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, 3);
+    await press('Continue');assert.equal(frame().step,2);assert.ok(tree.root.findByProps({testID:'onboarding-name-error'}));assert.equal(frame().error,'');
+    await act(async () => input().props.onChangeText('A'.repeat(25))); await press('Continue'); assert.equal(frame().step, 2);
     await act(async () => input().props.onChangeText('Soon')); await press('Continue'); await press('90 min'); await press('Continue');
-    assert.equal(tree.root.findByType('Frame').props.step, 5); assert.equal(profiles.length, 0);
-    for (let expected = 4; expected >= 1; expected--) {
-      await press('Previous step'); assert.equal(tree.root.findByType('Frame').props.step, expected);
-      if (expected === 4) assert.equal(button('90 min').props.accessibilityState.checked, true);
-      if (expected === 3) assert.equal(input().props.value, 'Soon');
+    assert.equal(frame().step, 4); assert.equal(profiles.length, 0);
+    for (let expected = 3; expected >= 1; expected--) {
+      await press('Previous step'); assert.equal(frame().step, expected);
+      if (expected === 3) assert.equal(button('90 min').props.accessibilityState.checked, true);
+      if (expected === 2) assert.equal(input().props.value, 'Soon');
     }
-    for (let expected = 2; expected <= 7; expected++) { await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, expected); }
+    // Picking a first routine saves it as you continue, with no reminder.
+    await press('Plan tomorrow, 15 minutes, Everyday life'); assert.equal(frame().primary, 'Add routine');
+    await press('Add routine'); assert.equal(frame().step, 2);
+    assert.deepEqual(env.savedRoutines.saved.map(draft => [draft.name, draft.durationSeconds, draft.reminder.enabled]), [['Plan tomorrow', 900, false]]);
+    for (let expected = 3; expected <= 6; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
     assert.equal(profiles.length, 0); assert.equal(finishes, 0);
     await act(async () => { button('Start my journey').props.onPress(); button('Start my journey').props.onPress(); });
-    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].enabled, false, 'Show me ideas with nothing picked saves no interests'); assert.deepEqual(preferences[0].interests, []); assert.equal(finishes, 1); assert.deepEqual(routes, []);
+    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].invited, true); assert.equal(finishes, 1); assert.deepEqual(routes, []);
     await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   } finally { await act(async () => tree.unmount()); }
 });
@@ -175,11 +187,11 @@ test('Android setup asks about app protection with Allow buttons, names what can
     '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: {}, save: async () => true }) },
     '../services/onboardingService': { saveOnboardingProfile: async () => {}, finishOnboarding: async () => {} },
   }).default;
-  await act(async () => { tree = create(React.createElement(Journey, { initialStep: 4 })); });
+  await act(async () => { tree = create(React.createElement(Journey, { initialStep: 3 })); });
   const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
   try {
     assert.equal(tree.root.findByType('Frame').props.title, 'Keep distractions away');
-    assert.equal(tree.root.findByType('Frame').props.total, 8);
+    assert.equal(tree.root.findByType('Frame').props.total, 7);
     assert.ok(button('Maybe later'), 'protection stays optional');
     await act(async () => button('Allow Usage Access').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call)), [['open', 'usage']]);
@@ -187,9 +199,9 @@ test('Android setup asks about app protection with Allow buttons, names what can
     assert.match(copy, /You can change this later/); assert.match(copy, /can never be blocked/);
     assert.equal(tree.root.findAllByType('Segmented').length, 0, 'allow list is the one mode, so there is nothing to pick');
     caps = { usage: true, overlay: true, notifications: true };
-    await act(async () => tree.update(React.createElement(Journey, { initialStep: 4 })));
+    await act(async () => tree.update(React.createElement(Journey, { initialStep: 3 })));
     await act(async () => button('Continue').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list', []]]);
-    assert.equal(tree.root.findByType('Frame').props.step, 6);
+    assert.equal(tree.root.findByType('Frame').props.step, 5);
   } finally { await act(async () => tree.unmount()); }
 });

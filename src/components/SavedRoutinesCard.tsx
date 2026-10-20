@@ -30,10 +30,7 @@ import { EditBadges, Wiggle } from "./EditMode";
 import SectionHeader, { CircleButton, DoneButton, SeeAll } from "./SectionHeader";
 import OneTimeHint from "./OneTimeHint";
 import { appPreferences } from "../services/appPreferences";
-import type { RoutineIdea } from "../constants/routineIdeas";
-import { INTEREST_KINDS, type InterestKind } from "../constants/guidedQuests";
-import { useGuidedPreference } from "../hooks/useGuidedPreference";
-import { interestsOf, orderedIdeas } from "../utils/interests";
+import { IDEA_AREAS, ROUTINE_IDEAS, type IdeaArea, type RoutineIdea } from "../constants/routineIdeas";
 
 type RoutineTemplate = RoutineIdea;
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
@@ -48,9 +45,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
   const [legacyEditor, setLegacyEditor] = useState<Task | null>(null), [showDone, setShowDone] = useState(false);
-  // Ideas: your interests come first; the chips narrow to one area, and All shows everything.
-  const interests = interestsOf(useGuidedPreference(profile?.id ?? "").value);
-  const [ideaFilter, setIdeaFilter] = useState<InterestKind | "all">("all");
+  // Ideas: the chips narrow to one area, and All shows everything.
+  const [ideaFilter, setIdeaFilter] = useState<IdeaArea | "all">("all");
   // Tapping a row edits it, play starts it, and removing asks first in one small card.
   const [menu, setMenu] = useState<{ entry: RoutineEntry; mode: "start" | "remove" } | null>(null);
   // Holding a routine wiggles every card into edit mode, the same as subjects and exams.
@@ -198,11 +194,13 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   // Once the last routine is removed there is nothing left to edit: Done gives way to + again.
   if (arranging && !visibleEntries.length) setArranging(false);
   const savedNames = new Set([...routines.routines.map(item => item.name.trim().toLowerCase()), ...legacyTasks.map(task => task.title.trim().toLowerCase())]);
-  const unsaved = orderedIdeas(interests).filter(template => !savedNames.has(template.name.toLowerCase()));
+  const unsaved = ROUTINE_IDEAS.filter(template => !savedNames.has(template.name.toLowerCase()));
   const filtered = ideaFilter === "all" ? unsaved : unsaved.filter(template => template.area === ideaFilter);
   // In All, ideas sit two to a row and an odd one waits for the next gap, so no card is left alone.
   const suggestions = ideaFilter === "all" && filtered.length > 1 ? filtered.slice(0, filtered.length - (filtered.length % 2)) : filtered;
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
+  // An idea (new, or saved under its own name) keeps its category in the editor.
+  const editorIdea = editor?.template ?? (editor?.routine ? ROUTINE_IDEAS.find(idea => idea.name.toLowerCase() === editor.routine!.name.trim().toLowerCase()) : undefined);
   const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
   // A sync conflict asks which version to keep wherever the routines are listed.
   const conflictRows = routines.conflicts.map(conflict => <View key={conflict.operation.operationId} style={s.conflict}><Text style={s.name}>{conflict.operation.draft.name}</Text><Text style={s.caption}>{conflict.reason}</Text><View style={s.heading}><Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, false)} style={s.manage}><Text style={s.link}>Use other device’s version</Text></Pressable>{(!conflict.latest || conflict.latest.deletedAt === null) && <Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, true)} style={s.manage}><Text style={s.link}>Keep my changes</Text></Pressable>}</View></View>);
@@ -223,10 +221,10 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       </View>}
       {/* Ready-made starting points stay offered until each one is saved. */}
       {offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
-        <SectionHeader title="Ideas to start with" subtitle={interests.length ? "Your interests come first" : undefined} />
+        <SectionHeader title="Ideas to start with" />
         {/* The chips always sit in the same order; All is always first. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} accessibilityRole="tablist">
-          {(["all", ...INTEREST_KINDS] as const).map(kind => {
+          {(["all", ...IDEA_AREAS] as const).map(kind => {
             const selected = ideaFilter === kind, title = kind === "all" ? "All" : focusAreaTitle(FOCUS_AREAS.find(area => area.kind === kind)?.title);
             return <Pressable key={kind} onPress={() => { feedback(); setIdeaFilter(kind); }} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={`${title} ideas`}
               style={[s.chip, selected && s.chipOn]}><Text style={[s.chipText, selected && s.chipTextOn]} numberOfLines={1}>{title}</Text></Pressable>;
@@ -283,6 +281,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     </AppSheet>
     <RoutineEditorSheet key={`edit:${surfaceKey}`} visible={!!editor && active} onClose={() => setEditor(null)} routine={editor?.routine} subjects={subjects}
       initialAreaId={editor?.template ? suggestedArea(subjects as Subject[], editor.template.area)?.id ?? initialAreaId : initialAreaId}
+      idea={editorIdea ? { name: editorIdea.name, areaId: suggestedArea(subjects as Subject[], editorIdea.area)?.id ?? null } : undefined}
       initialSeconds={editor?.template ? editor.template.minutes * 60 : initialSeconds} initialName={editor?.template?.name}
       onAddWidget={widget && editor?.routine ? () => { const routine = editor.routine; if (routine) void pin(routine); } : undefined} />
     {legacyEditor && active && <QuestSheet key={`legacy:${scopeKey}:${legacyEditor.id}`} visible onClose={() => setLegacyEditor(null)} editorOnly initialTask={legacyEditor} expectedOwnerId={profile?.id} routineLanguage />}

@@ -26,9 +26,8 @@ import MoreMenu from "../../components/MoreMenu";
 import { CircleButton } from "../../components/SectionHeader";
 import { useStudyPlan } from "../../hooks/useStudyPlan";
 import { useStudyLauncher } from "../../hooks/useStudyLauncher";
-import { useJustFocus, useStartIdea } from "../../hooks/useJustFocus";
-import { useGuidedPreference } from "../../hooks/useGuidedPreference";
-import { ideaOfTheDay, interestsOf } from "../../utils/interests";
+import { useJustFocus, useStartRoutine } from "../../hooks/useJustFocus";
+import { useSavedRoutines } from "../../hooks/useSavedRoutines";
 import { daysUntil, upcomingExams } from "../../utils/studyPlan";
 import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import { useAuth } from "../../context/AuthContext";
@@ -66,8 +65,8 @@ export default function HomeScreen() {
   const [goalSettings, setGoalSettings] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
-  const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus(), startIdea = useStartIdea();
-  const interests = interestsOf(useGuidedPreference(profile?.id ?? "").value);
+  const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus(), startRoutine = useStartRoutine();
+  const savedRoutines = useSavedRoutines();
   const avatar = useRef<View>(null), settingsIcon = useRef<View>(null);
   // Profile and Settings grow out of their button, then shrink back into it.
   const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings") => {
@@ -195,17 +194,19 @@ export default function HomeScreen() {
   const needsReview = !!(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary));
   const goalShare = Math.min(1, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60));
 
-  // The Today card suggests one next step: revise for an exam this week, then
-  // today's idea from your interests (the same all day), or just focus.
+  // The Today card suggests one next step: revise for an exam this week; for a
+  // brand-new account, the first routine picked during setup; or just focus.
   const nextExam = upcomingExams(plan.exams).find(exam => daysUntil(exam.examDate) <= 7 && plan.courses.some(course => course.id === exam.courseId));
   const nextCourse = nextExam ? plan.courses.find(course => course.id === nextExam.courseId) ?? null : null;
   const examDays = nextExam ? daysUntil(nextExam.examDate) : 0;
-  const idea = nextCourse ? null : ideaOfTheDay(interests, dateKey(new Date(), timeZone));
+  // "Brand new" means nothing finished yet: no XP, no streak, nothing today.
+  const brandNew = known && accessMode === "online" && (profile?.level ?? 1) <= 1 && (profile?.current_xp ?? 0) === 0 && streakDays === 0 && safeCompletedSeconds === 0;
+  const firstRoutine = !nextCourse && brandNew ? savedRoutines.routines.find(routine => routine.deletedAt === null) ?? null : null;
   const primary = nextCourse ? { title: `Revise ${nextCourse.name}`, detail: examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`, onPress: () => launcher.study(nextCourse), testID: "home-revise" }
-    : idea ? { title: idea.name, detail: `Idea for today · ${idea.minutes} min`, onPress: () => startIdea(idea), testID: "home-idea" }
+    : firstRoutine ? { title: `Start ${firstRoutine.name}`, detail: `Your first routine · ${Math.round(firstRoutine.durationSeconds / 60)} min`, onPress: () => startRoutine(firstRoutine), testID: "home-first-routine" }
     : { title: "Start focusing", detail: "Any activity, your time", onPress: justFocus, testID: "home-just-focus" };
   // With a suggestion up top, the second button is any other session.
-  const suggested = !!nextCourse || !!idea;
+  const suggested = !!nextCourse || !!firstRoutine;
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>

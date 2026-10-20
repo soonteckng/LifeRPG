@@ -3,15 +3,19 @@ import { AppState, Keyboard, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Text, TextInput } from "./AppText";
-import OnboardingFrame, { OnboardingChoice, useOnboardingTransition } from "./OnboardingFrame";
+import OnboardingFrame, { useOnboardingTransition } from "./OnboardingFrame";
 import OnboardingWelcome from "./OnboardingWelcome";
 import OnboardingFinish from "./OnboardingFinish";
 import { prepareFeatureTour } from "./FeatureTour";
 import Pressable from "./MotionPressable";
-import InterestPicker from "./InterestPicker";
-import { interestsOf, withInterests } from "../utils/interests";
-import type { InterestKind } from "../constants/guidedQuests";
+import FirstRoutinesPicker, { FIRST_ROUTINE_LIMIT } from "./FirstRoutinesPicker";
+import RoutineEditorSheet from "./RoutineEditorSheet";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
+import { useSavedRoutines } from "../hooks/useSavedRoutines";
+import { useQuests } from "../context/QuestContext";
+import { ROUTINE_IDEAS } from "../constants/routineIdeas";
+import { suggestedArea } from "../utils/focusAreas";
+import type { Subject } from "../services/taskService";
 import { saveOnboardingProfile, finishOnboarding } from "../services/onboardingService";
 import { useUser } from "../context/UserContext";
 import { colors, edge } from "../constants/theme";
@@ -19,9 +23,10 @@ import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
 import { INTRO_PAGES, ONBOARDING_NAME_LIMIT } from "../constants/onboarding";
 import { useSessionProtection } from "../context/SessionProtectionContext";
 
-const TITLES = ["Find your rhythm", "Make it yours", "What should we call you?", "A little time for you", "Keep distractions away"];
-// Steps: 0–3 setup, 4 app protection (Android only), 5–7 intro pages.
-const PROTECTION_STEP = 4, FIRST_INTRO = 5, LAST_STEP = 7;
+const TITLES = ["What would you like to try first?", "What should we call you?", "A little time for you", "Keep distractions away"];
+// Steps: 0 first routines, 1 name, 2 goal, 3 app protection (Android only), 4–6 intro pages.
+const NAME_STEP = 1, GOAL_STEP = 2, PROTECTION_STEP = 3, LAST_STEP = 6;
+export const FIRST_INTRO = 4;
 export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: number }) {
   const router = useRouter();
   const { profile, reloadProfile } = useUser();
@@ -30,17 +35,12 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const [welcoming, setWelcoming] = useState(initialStep === 0);
   const welcomeDone = useCallback(() => setWelcoming(false), []);
   const [step, setStep] = useState(initialStep);
-  // A new account starts on "Help me choose a focus"; a choice made before is kept.
-  const startingDirection = (value: typeof guided.value) => ({ ...value, enabled: value.invited ? value.enabled : true, invited: true });
-  const [direction, setDirection] = useState(() => startingDirection(guided.value));
-  // Nothing is ticked for a new account; a choice made before is kept.
-  const [picked, setPicked] = useState<InterestKind[]>(() => guided.value.invited ? interestsOf(guided.value) : []);
-  const [preferenceReady, setPreferenceReady] = useState(guided.ready);
-  const [choiceTouched, setChoiceTouched] = useState(false);
-  if (guided.ready && !preferenceReady) {
-    setPreferenceReady(true);
-    if (!choiceTouched) { setDirection(startingDirection(guided.value)); setPicked(guided.value.invited ? interestsOf(guided.value) : []); }
-  }
+  // First routines: ideas picked here are saved when you continue; ones
+  // already saved (or made with "Create my own") show as added.
+  const routines = useSavedRoutines(), { subjects = [] } = useQuests();
+  const [picked, setPicked] = useState<string[]>([]), [added, setAdded] = useState<string[]>([]), [creating, setCreating] = useState(false);
+  const toggle = (name: string) => setPicked(current => current.includes(name) ? current.filter(item => item !== name)
+    : current.length + added.length < FIRST_ROUTINE_LIMIT ? [...current, name] : current);
   const [name, setName] = useState(profile.username === "Hero" ? "" : profile.username ?? "");
   const [goal, setGoal] = useState(Math.max(30, profile.daily_goal_minutes || 60));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -70,21 +70,37 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const changeStep = (next: number) => { setError(""); transition.change(() => setStep(next)); };
   const next = async () => {
     if (lock.current || transition.moving) return;
-    if (step === 2 && (!name.trim() || name.trim().length > ONBOARDING_NAME_LIMIT)) {
+    if (step === 0 && picked.length) {
+      // Save the picked ideas, in the order they were picked, before moving on.
+      lock.current = true; setBusy(true); setError("");
+      try {
+        for (const pick of picked) {
+          const idea = ROUTINE_IDEAS.find(item => item.name === pick);
+          if (!idea) continue;
+          const saved = await routines.save({ name: idea.name, focusAreaId: suggestedArea(subjects as Subject[], idea.area)?.id ?? null, durationSeconds: idea.minutes * 60, reminder: { enabled: false, hour: 18, minute: 0 } });
+          if (!saved) throw new Error("Routine save failed");
+          if (alive.current) { setAdded(current => [...current, pick]); setPicked(current => current.filter(item => item !== pick)); }
+        }
+      } catch {
+        if (alive.current) setError("Couldn’t add your routines. Check your connection and try again.");
+        return;
+      } finally { lock.current = false; if (alive.current) setBusy(false); }
+      changeStep(NAME_STEP); return;
+    }
+    if (step === NAME_STEP && (!name.trim() || name.trim().length > ONBOARDING_NAME_LIMIT)) {
       setError(`Choose a name between 1 and ${ONBOARDING_NAME_LIMIT} characters.`); return;
     }
-    if (step === 3) { const validation = validateDailyGoal(goal); if (validation) { setError(validation); return; } }
-    if (step === 3 && !protection.supported) { changeStep(FIRST_INTRO); return; }
+    if (step === GOAL_STEP) { const validation = validateDailyGoal(goal); if (validation) { setError(validation); return; } }
+    if (step === GOAL_STEP && !protection.supported) { changeStep(FIRST_INTRO); return; }
     if (step === PROTECTION_STEP && caps?.usage && caps.overlay && caps.notifications) await protection.choose("allow-list", protection.selection.mode === "allow-list" ? protection.selection.allowed : []).catch(() => false);
     if (step < LAST_STEP) { changeStep(step + 1); return; }
     if (!savedFinish.current && (!name.trim() || name.trim().length > ONBOARDING_NAME_LIMIT)) {
-      setStep(2); setError(`Choose a name between 1 and ${ONBOARDING_NAME_LIMIT} characters.`); return;
+      setStep(NAME_STEP); setError(`Choose a name between 1 and ${ONBOARDING_NAME_LIMIT} characters.`); return;
     }
     lock.current = true; setBusy(true); setError(""); Keyboard.dismiss();
     try {
       if (!savedFinish.current) {
-        // "I'll choose my own", or "Show me ideas" with nothing picked, saves no interests.
-        if (!(await guided.save(withInterests(direction, direction.enabled ? picked : [])))) throw new Error("Preference save failed");
+        if (!(await guided.save({ ...guided.value, invited: true }))) throw new Error("Preference save failed");
         const key = JSON.stringify([name.trim(), goal]);
         if (savedProfile.current !== key) {
           await saveOnboardingProfile(name.trim(), profile.avatar || "🌱", profile.class_title || "Adventurer", goal);
@@ -109,23 +125,19 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     { kind: "notifications" as const, icon: "notifications-outline" as const, title: "Notifications", hint: "Break reminders and End session, always in reach.", granted: !!caps?.notifications, allow: async () => { const { enableNotifications } = await import("../services/notificationPermissionService"); await enableNotifications(); await protection.refresh(); } },
   ];
   const subtitles = [
-    "Want ideas to get you going, or would you rather do your own thing? You can switch anytime.",
-    direction.enabled ? "Pick what you’re into and we’ll put matching session ideas first." : "Choose your own time and area. Save routines whenever you want a bit more structure.",
+    "Pick a routine to get started. You can change it or add more anytime.",
     "This is the name your companion will know you by. You can dress them up in Profile later.",
     "Start small, short sessions count too. You don’t have to do it all at once.",
     "During a session, LifeRPG can cover the apps that tend to pull you away. Totally optional, and you can change it later.",
   ];
-  return <OnboardingFrame step={step + 1 - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={skipped ? 7 : 8} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
-    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
-    onBack={step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? 3 : step - 1) : undefined}
-    error={(step === 2 ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
-    {step === 0 && <View style={s.choices}>
-      <OnboardingChoice title="Show me ideas" hint="Pick what you’re into and we’ll put matching session ideas first." selected={direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: true }); }} />
-      <OnboardingChoice title="I’ll choose my own" hint="Start with a timer and save your own routines whenever you like." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
-    </View>}
-    {step === 1 && (direction.enabled ? <InterestPicker value={picked} onChange={value => { setChoiceTouched(true); setPicked(value); }} disabled={busy} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home always has a free focus button, and Routines has plenty of ideas whenever you want them.</Text></View>)}
-    {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
-    {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can change your goal in Settings once a week, and it kicks in the next day. A quiet day never takes away what you’ve earned.</Text></View>}
+  const firstLabel = picked.length === 1 ? "Add routine" : picked.length > 1 ? `Add ${picked.length} routines` : added.length ? "Continue" : "Skip for now";
+  return <><OnboardingFrame step={step + 1 - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={skipped ? 6 : 7} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
+    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === 0 ? "Adding…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
+    onBack={step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? GOAL_STEP : step - 1) : undefined}
+    error={(step === NAME_STEP ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
+    {step === 0 && <FirstRoutinesPicker picked={picked} added={added} onToggle={toggle} onCreate={() => setCreating(true)} disabled={busy} />}
+    {step === NAME_STEP && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
+    {step === GOAL_STEP && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can change your goal in Settings once a week, and it kicks in the next day. A quiet day never takes away what you’ve earned.</Text></View>}
     {step === PROTECTION_STEP && <View style={s.choices}>
       <Text style={s.hint}>During a session, only the apps you allow stay open and everything else is covered. You can choose your allowed apps any time from Protection on Home. You can change this later.</Text>
       <View style={s.permissionList}>{permissionRows.map((row, index) => <View key={row.kind} style={[s.permissionRow, index > 0 && s.permissionDivider]}>
@@ -137,7 +149,10 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
       <Text style={s.hint}>Phone and emergency calls, Settings and this app can never be blocked. They always stay open for your safety.</Text>
     </View>}
     {intro && <><View style={s.illustration}><View style={s.symbol}><Ionicons name={intro.icon} size={44} color={colors.accent} /></View></View><View style={s.note}><Text style={s.noteBody}>{intro.detail}</Text></View></>}
-  </OnboardingFrame>;
+  </OnboardingFrame>
+  {/* "Create my own": the ordinary routine editor; it saves the routine itself. */}
+  <RoutineEditorSheet visible={creating} subjects={subjects} onClose={() => setCreating(false)}
+    onSaved={draft => setAdded(current => current.includes(draft.name) ? current : [...current, draft.name])} /></>;
 }
 const s = StyleSheet.create({
   permissionList: { ...edge, borderRadius: 20, backgroundColor: colors.surface, overflow: "hidden" },

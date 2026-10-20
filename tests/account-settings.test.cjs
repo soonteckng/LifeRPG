@@ -22,6 +22,12 @@ function load(file, mocks = {}, cache = new Map()) {
   new Function("require", "module", "exports", code)(
     (name) => {
       if (Object.hasOwn(mocks, name)) return mocks[name];
+      if (file === "src/components/OnboardingJourney.tsx") {
+        // First routines: the editor, saved routines and categories stay out of these flows.
+        if (name.endsWith("/RoutineEditorSheet")) return () => null;
+        if (name.endsWith("/useSavedRoutines")) return { useSavedRoutines: () => ({ ready: true, routines: [], save: async () => true }) };
+        if (name.endsWith("/QuestContext")) return { useQuests: () => ({ subjects: [] }) };
+      }
       if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };
@@ -141,8 +147,6 @@ async function settings(options = {}, file = "src/app/settings.tsx") {
     "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; } } },
     "../hooks/useFocusDurationPreference": { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, choose: async () => {} }) },
     "../components/CharacterMark": host("Mark"),
-    "../components/InterestsSheet": host("InterestsSheet"), "../components/InterestPicker": { interestTitle: kind => kind },
-    "../hooks/useGuidedPreference": { useGuidedPreference: () => ({ value: options.guided ?? { enabled: false, interests: [] } }) },
     "react-native": { ...Native, AppState: { addEventListener: (_, fn) => { foreground = fn; return { remove() {} }; } },
       Linking: { openSettings: async () => { phoneCalls++; } } },
     "expo-router": { useRouter: () => ({ navigate: path => navigate.push(path) }) },
@@ -188,10 +192,6 @@ test("Settings groups its rows and every row opens its own page", async () => {
     await ui.press("NotificationsOff");
     await ui.press("How LifeRPG works");
     assert.deepEqual(ui.calls().navigate, ["/settings-goal", "/settings-sessions", "/settings-notifications", "/guide"]);
-    // Your interests opens its own sheet right here.
-    assert.equal(ui.renderer.root.findByType("InterestsSheet").props.visible, false);
-    await ui.press("Your interestsNone");
-    assert.equal(ui.renderer.root.findByType("InterestsSheet").props.visible, true);
     const toggle = label => ui.renderer.root.findAllByType("Switch").find(n => n.props.accessibilityLabel === label);
     // Motion follows the phone's own setting; the app has no switch of its own.
     assert.equal(toggle("Reduce motion"), undefined);
@@ -400,9 +400,7 @@ test("optional onboarding preserves a saved character badge and keeps the twelve
     "../services/onboardingService": { saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
   });
   try {
-    await ui.press("I’ll choose my own");
-    await ui.press("Continue");
-    await ui.press("Continue");
+    await ui.press("Skip for now");
     await ui.press("Continue");
     await ui.press("Continue");
     await ui.press("Continue");

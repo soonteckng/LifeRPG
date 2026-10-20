@@ -23,10 +23,6 @@ import { cachedDailyGoal, rememberDailyGoal } from "../utils/dailyGoalCache";
 import AppBuildInfo from "../components/AppBuildInfo";
 import Pressable from "../components/MotionPressable";
 import { readSessionTrail } from "../services/sessionTrail";
-import InterestsSheet from "../components/InterestsSheet";
-import { interestTitle } from "../components/InterestPicker";
-import { useGuidedPreference } from "../hooks/useGuidedPreference";
-import { interestsOf } from "../utils/interests";
 
 /** Settings, grouped like the phone's own. Each row opens its own page, sliding in from the right. */
 export default function SettingsScreen() {
@@ -42,7 +38,6 @@ export default function SettingsScreen() {
   });
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [signingOut, setSigningOut] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [interestsOpen, setInterestsOpen] = useState(false);
   const lock = useRef(false), generation = useRef(0);
   // Values only; each page loads and edits its own details.
   const load = useCallback(async () => {
@@ -68,7 +63,6 @@ export default function SettingsScreen() {
     try { const result = await signOut(); if (result.error) throw result.error; }
     catch { setError("Could not sign out. Check your connection and try again."); lock.current = false; setBusy(false); }
   };
-  const interests = interestsOf(useGuidedPreference(profile.id ?? "").value);
   const goalValue = goal && goal.owner === profile.id ? `${goal.today} min${goal.next ? ` → ${goal.next}` : ""}` : `${profile.daily_goal_minutes} min`;
   return (
     <PersonalPage title="Settings" subtitle="" back animateTransition expandFromIcon fallback="/">
@@ -79,7 +73,6 @@ export default function SettingsScreen() {
 
       <SettingsGroup title="Focus">
         <SettingsRow first icon="flag-outline" title="Daily goal" value={goalValue} onPress={() => router.navigate("/settings-goal")} />
-        <SettingsRow icon="sparkles-outline" tint="#FFD60A" title="Your interests" value={!interests.length ? "None" : interests.length === 1 ? interestTitle(interests[0]) : `${interests.length} picked`} onPress={() => setInterestsOpen(true)} />
         <SettingsRow icon="time-outline" tint="#64D2FF" title="Sessions" value={duration.ready ? durationLabel(duration.selectedSeconds) : ""} onPress={() => router.navigate("/settings-sessions")} />
         {Platform.OS === "android" && <SettingsRow icon="shield-checkmark-outline" tint="#30D158" title="Session protection" onPress={() => router.navigate("/protection")} />}
       </SettingsGroup>
@@ -119,7 +112,6 @@ export default function SettingsScreen() {
           {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}
         </BottomSheetScrollView>
       </AppSheet>
-      <InterestsSheet owner={profile.id ?? ""} visible={interestsOpen} onClose={() => setInterestsOpen(false)} />
     </PersonalPage>
   );
 }
