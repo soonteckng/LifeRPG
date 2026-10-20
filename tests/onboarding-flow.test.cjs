@@ -102,7 +102,7 @@ test('all seven pages share Back navigation, retain choices and save only at the
     for (let expected = 2; expected <= 7; expected++) { await press('Continue'); assert.equal(tree.root.findByType('Frame').props.step, expected); }
     assert.equal(profiles.length, 0); assert.equal(finishes, 0);
     await act(async () => { button('Start my journey').props.onPress(); button('Start my journey').props.onPress(); });
-    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].enabled, false); assert.equal(finishes, 1); assert.deepEqual(routes, []);
+    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].enabled, true, 'a new account starts on Help me choose a focus'); assert.equal(finishes, 1); assert.deepEqual(routes, []);
     await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   } finally { await act(async () => tree.unmount()); }
 });

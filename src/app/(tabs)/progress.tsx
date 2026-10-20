@@ -13,7 +13,6 @@ import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import SheetButton from "../../components/SheetTouchable";
@@ -155,7 +154,6 @@ export default function ProgressScreen() {
   const timer = useTimer({ live: false });
   const { profile, hapticsEnabled } = useUser();
   const { sessionSummary } = timer;
-  const router = useRouter();
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const insets = useSafeAreaInsets();
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
@@ -406,9 +404,6 @@ export default function ProgressScreen() {
                   {freshPeriod ? <>
                     <Text style={s.storyTitle}>{mode === "week" ? "A fresh week" : "A fresh month"}</Text>
                     <Text style={s.storyLine}>Your first session starts this {mode}’s story. Even 15 minutes counts.</Text>
-                    <Pressable onPress={() => router.navigate("/")} accessibilityRole="button" accessibilityLabel="Start a session from Home" style={s.storyAction}>
-                      <Ionicons name="play" size={14} color={colors.primaryText} /><Text style={s.storyActionText}>Start a session</Text>
-                    </Pressable>
                     {analytics.previousSeconds > 0 && <Text style={s.caption}>Last {mode}: {durationLabel(analytics.previousSeconds)}</Text>}
                   </> : <>
                     <Text style={s.storyValue} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>{durationLabel(analytics.seconds)}</Text>
@@ -938,8 +933,6 @@ const s = StyleSheet.create({
   storyTitle: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "700", letterSpacing: -0.6, marginTop: 2 },
   storyLine: { color: colors.text, fontSize: 15, lineHeight: 20 },
   storyAside: { color: colors.secondary },
-  storyAction: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 8, minHeight: 44, paddingHorizontal: 18, borderRadius: 22, backgroundColor: colors.primary, marginTop: 12, marginBottom: 6 },
-  storyActionText: { color: colors.primaryText, fontSize: 15, fontWeight: "600" },
   dayDetail: { marginTop: 10, paddingTop: 12, paddingBottom: 6, gap: 2, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   dayDetailHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   dayDetailTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", flexShrink: 1 },

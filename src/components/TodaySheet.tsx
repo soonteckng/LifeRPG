@@ -7,7 +7,7 @@ import Pressable from "./MotionPressable";
 import ProgressRing from "./ProgressRing";
 import MoreMenu from "./MoreMenu";
 import { Text } from "./AppText";
-import { useWeekProgress, WeekBars } from "./HomeSections";
+import { useWeekProgress, WEEK_LEGEND, WeekBars } from "./HomeSections";
 import { colors, edge } from "../constants/theme";
 import { durationLabel } from "../utils/progressAnalytics";
 
@@ -43,7 +43,7 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
         <Stat icon="time-outline" tint="#64D2FF" value={durationLabel(week?.seconds ?? 0)} label="this week" />
         <Stat icon="checkmark-circle-outline" tint={colors.success} value={`${week?.goalDays ?? 0}/7`} label="goal days" />
       </View>
-      <View style={s.card}><Text style={s.label}>This week</Text><WeekBars height={64} wide /><Text style={s.caption}>A green dot marks a day you reached your goal.</Text></View>
+      <View style={s.card}><Text style={s.label}>This week</Text><WeekBars height={64} wide /><Text style={s.caption}>{WEEK_LEGEND}</Text></View>
       <Text style={s.note}>A new goal starts tomorrow, so today’s target and your streak never shift under you.</Text>
     </BottomSheetScrollView>
   </AppSheet>;

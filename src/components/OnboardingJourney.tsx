@@ -28,12 +28,14 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const [welcoming, setWelcoming] = useState(initialStep === 0);
   const welcomeDone = useCallback(() => setWelcoming(false), []);
   const [step, setStep] = useState(initialStep);
-  const [direction, setDirection] = useState({ ...guided.value, invited: true });
+  // A new account starts on "Help me choose a focus"; a choice made before is kept.
+  const startingDirection = (value: typeof guided.value) => ({ ...value, enabled: value.invited ? value.enabled : true, invited: true });
+  const [direction, setDirection] = useState(() => startingDirection(guided.value));
   const [preferenceReady, setPreferenceReady] = useState(guided.ready);
   const [choiceTouched, setChoiceTouched] = useState(false);
   if (guided.ready && !preferenceReady) {
     setPreferenceReady(true);
-    if (!choiceTouched) setDirection({ ...guided.value, invited: true });
+    if (!choiceTouched) setDirection(startingDirection(guided.value));
   }
   const [name, setName] = useState(profile.username === "Hero" ? "" : profile.username ?? "");
   const [goal, setGoal] = useState(Math.max(30, profile.daily_goal_minutes || 60));

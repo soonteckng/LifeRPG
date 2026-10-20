@@ -99,6 +99,8 @@ export default function HomeScreen() {
   const [loadError, setLoadError] = useState(false);
   // When today's numbers were last read from the server; shown while offline.
   const [updatedAt, setUpdatedAt] = useState<number | null>(null);
+  // Set once the server has answered, so a late on-phone copy never covers fresher numbers.
+  const serverLoaded = useRef(false);
   const dataScope = JSON.stringify([owner, accessMode, admissionEpoch, timeZone]);
   const menuView = useMemo(() => ({ dataScope }), [dataScope]);
   const currentMenuView = useRef<typeof menuView | null>(menuView);
@@ -117,6 +119,7 @@ export default function HomeScreen() {
     try {
       const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
       if (currentDataScope.current !== expectedScope) return;
+      serverLoaded.current = true;
       if (streak !== undefined) setFocusStreak(streak);
       const seconds = progress ? creditedDailySeconds(progress) : 0, savedAtMs = Date.now();
       setTodayGoal(progress?.goal_minutes ?? null);
@@ -130,12 +133,13 @@ export default function HomeScreen() {
       if (currentDataScope.current === expectedScope) setLoadError(true);
     } finally { if (currentDataScope.current === expectedScope) setRefreshing(false); }
   }, [reloadProfile, refreshQuests, timeZone, accessMode, dataScope, owner]);
-  // Opened offline: show today's numbers as last saved on this phone.
+  // Show today's numbers as last saved on this phone at once (offline, or
+  // while the server is still answering after signing in), never a false 0.
   useEffect(() => {
-    if (accessMode === "online" || !owner || updatedAt !== null) return;
+    if (!owner || updatedAt !== null) return;
     let live = true;
     void readHomeSnapshot(owner, dateKey(new Date(), timeZone)).then(snapshot => {
-      if (!live || !snapshot) return;
+      if (!live || !snapshot || serverLoaded.current) return;
       setCompletedSeconds(snapshot.completedSeconds); setTodayGoal(snapshot.goalMinutes); setGoalCompleted(snapshot.goalCompleted);
       if (snapshot.streak !== null) setFocusStreak(snapshot.streak);
       setUpdatedAt(snapshot.savedAtMs);
@@ -166,7 +170,9 @@ export default function HomeScreen() {
   const tier = levelTierProgress(level, profile?.current_xp ?? 0).current;
   const displayName = profile?.username?.trim() || "Hero";
   const greeting = homeWelcome(hour < 5 ? 18 : hour, displayName).split(",")[0];
-  const isGoalComplete = goalCompleted || remainingSeconds === 0;
+  // Until today's numbers arrive (from this phone or the server), show a dash, not a 0.
+  const known = updatedAt !== null;
+  const isGoalComplete = known && (goalCompleted || remainingSeconds === 0);
   const streakDays = Math.max(0, focusStreak ?? 0);
   const feedback = () => { if (hapticsEnabled) tapHaptic(); };
 
@@ -239,14 +245,14 @@ export default function HomeScreen() {
               accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
               <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
                 <ProgressRing size={108} stroke={9} progress={goalShare} color={isGoalComplete ? colors.success : colors.primary} track={colors.accentSoft}>
-                  <Text style={styles.ringValue} numberOfLines={1} adjustsFontSizeToFit>{Math.floor(safeCompletedSeconds / 60)}</Text>
+                  <Text style={styles.ringValue} numberOfLines={1} adjustsFontSizeToFit>{known ? Math.floor(safeCompletedSeconds / 60) : "–"}</Text>
                   <Text style={styles.ringUnit} numberOfLines={1} adjustsFontSizeToFit>of {dailyGoalMinutes} min</Text>
                 </ProgressRing>
               </View>
               <View style={[styles.goalCopy, styles.todayCopy]}>
                 <Text style={styles.goalLabel}>{isGoalComplete ? "Goal reached" : "Today"}</Text>
-                <Text style={styles.goalHeadline} numberOfLines={2}>{isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
-                <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : "A fresh start"}</Text></View>
+                <Text style={styles.goalHeadline} numberOfLines={2}>{!known ? `${dailyGoalMinutes} min goal` : isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
+                <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : known ? "A fresh start" : "Checking your streak"}</Text></View>
                 {/* The floating session bar is the one way back, so the card only says so. */}
                 {hasOpenSession && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
                 {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}

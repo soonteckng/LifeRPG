@@ -30,15 +30,15 @@ export const TOUR_STEPS: readonly TourStep[] = [
   { id: "welcome", route: "/", kind: "info", title: "Welcome to LifeRPG!", body: "Let’s take a quick look around. It only takes a minute, and the app waits for you while we go.", next: "Let’s go" },
   { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. The big button starts your next session, and Other session is there for anything else." },
   { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Your routines", body: "The things you come back to live here. One tap and you’re off. See all shows the full list." },
-  { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap Routines", body: "It’s in the bar at the bottom. Tap it to open it." },
+  { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap on Routines", body: "" },
   { id: "routines-just-focus", route: "/routines", kind: "info", target: "routines-just-focus", title: "Just focus", body: "Pick anything, set your own time and go. Further down you can save your own routines or grab one of our ideas." },
-  { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap Study", body: "Next stop, your subjects. Tap Study in the bar at the bottom." },
+  { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap on Study", body: "" },
   { id: "study-subjects", route: "/study", kind: "info", target: "study-subjects", title: "Subjects and exams", body: "Add what you’re studying and tap ▶ to start a session for it. Add an exam date too, and we’ll count down to it here and on Home." },
-  { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap Squads", body: "Let’s go see your friends. Tap Squads in the bar at the bottom." },
+  { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap on Squads", body: "" },
   { id: "squads-overview", route: "/squads", kind: "info", title: "Better together", body: "Make a squad or join a friend’s, and you’ll cheer each other on through the week. Totally optional, jump in whenever you like." },
-  { id: "tap-progress", route: "/squads", kind: "tap", target: "tab-progress", expect: "/progress", title: "Tap Progress", body: "Time to see it all add up. Tap Progress in the bar at the bottom." },
+  { id: "tap-progress", route: "/squads", kind: "tap", target: "tab-progress", expect: "/progress", title: "Tap on Progress", body: "" },
   { id: "progress-overview", route: "/progress", kind: "info", title: "Watch it grow", body: "Every minute you focus shows up here, sorted by category, along with your streak and milestones." },
-  { id: "tap-home", route: "/progress", kind: "tap", target: "tab-index", expect: "/", title: "Tap Home", body: "Back to where we started. Tap Home in the bar at the bottom." },
+  { id: "tap-home", route: "/progress", kind: "tap", target: "tab-index", expect: "/", title: "Tap on Home", body: "" },
   { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your companion any time for your profile and milestones. The gear opens Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
@@ -321,19 +321,21 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
         <MaterialCommunityIcons name="hand-pointing-down" size={34} color={guideColors.action} />
       </Animated.View>}
       {current && <Animated.View testID="tour-tip" onLayout={event => { const height = event.nativeEvent.layout.height; panelSize.current = height; setPanelHeight(height); }}
-        accessible={current.kind === "tap"} accessibilityRole={current.kind === "tap" ? "button" : undefined} accessibilityLabel={current.kind === "tap" ? `${current.title} ${current.body}` : undefined}
+        accessible={current.kind === "tap"} accessibilityRole={current.kind === "tap" ? "button" : undefined} accessibilityLabel={current.kind === "tap" ? current.title : undefined}
         accessibilityActions={current.kind === "tap" ? [{ name: "activate", label: `Open ${tapLabel}` }] : undefined}
         onAccessibilityAction={current.kind === "tap" ? () => router.navigate(current.expect!) : undefined}
         style={[s.tip, { width: panelWidth, left: (viewport.width - panelWidth) / 2, top: tipTop, opacity, transform: [{ scale: reduced ? 1 : opacity.interpolate({ inputRange: [0, 1], outputRange: [0.97, 1] }) }] }]}>
+        {/* A reminder takes the count's place, so the card never changes size
+            and nothing on the page underneath moves. */}
         <View style={s.meta}>
-          <Text testID="tour-count" style={s.count}>{counter} of {TOUR_STEPS.length}</Text>
+          {nudged ? <Text testID="tour-paused-feedback" style={[s.count, s.reminder]} numberOfLines={1} accessibilityRole="alert">{current.kind === "tap" ? `Tap ${tapLabel} to keep going` : `Tap ${current.next ?? "Next"} to keep going`}</Text>
+            : <Text testID="tour-count" style={s.count}>{counter} of {TOUR_STEPS.length}</Text>}
           <View style={s.track}><View style={[s.fill, { width: `${Math.round(100 * counter / TOUR_STEPS.length)}%` }]} /></View>
         </View>
         <Text testID="tour-title" style={s.title} accessibilityRole="header">{current.title}</Text>
-        <ScrollView style={{ maxHeight: Math.max(60, viewport.height * 0.28), flexGrow: 0 }}>
-          {nudged && <Text testID="tour-paused-feedback" style={s.feedback} accessibilityRole="alert">{current.kind === "tap" ? `Tap ${tapLabel} to keep going.` : `Tap ${current.next ?? "Next"} to keep going.`}</Text>}
+        {!!current.body && <ScrollView style={{ maxHeight: Math.max(60, viewport.height * 0.28), flexGrow: 0 }}>
           <Text style={s.body}>{current.body}</Text>
-        </ScrollView>
+        </ScrollView>}
         <View style={s.actions}>
           {previous >= 0 && <Pressable testID="tour-back" onPress={retreat} accessibilityRole="button" accessibilityLabel="Back" style={s.back}>
             <Ionicons name="chevron-back" size={20} color={guideColors.text} />
@@ -346,7 +348,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
             </Pressable>
           </View> : fallbackTap ? <Pressable testID="tour-open-tab" onPress={() => router.navigate(current.expect!)} accessibilityRole="button" accessibilityLabel={`Open ${tapLabel}`} style={[s.action, s.next]}>
             <Text style={s.actionText}>Open {tapLabel}</Text><Ionicons name="arrow-forward" size={17} color={guideColors.text} />
-          </Pressable> : <View style={s.pointer}><Ionicons name="hand-left-outline" size={16} color={guideColors.secondary} /><Text style={s.pointerText}>Everything else waits until you do.</Text></View>}
+          </Pressable> : null}
         </View>
       </Animated.View>}
     </View>}
@@ -362,11 +364,11 @@ const s = StyleSheet.create({
   ringTap: { borderWidth: 3, backgroundColor: "rgba(245,184,75,0.14)" },
   meta: { flexDirection: "row", alignItems: "center", gap: 10 },
   count: { color: guideColors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  reminder: { color: guideColors.text, fontWeight: "700", flexShrink: 1 },
   track: { flex: 1, height: 4, borderRadius: 2, backgroundColor: guideColors.tag, overflow: "hidden" }, fill: { height: 4, borderRadius: 2, backgroundColor: guideColors.action },
   tip: { position: "absolute", padding: 16, borderRadius: 22, backgroundColor: guideColors.surface, borderWidth: 1, borderColor: guideColors.line, gap: 10 },
   title: { color: guideColors.text, fontSize: 21, lineHeight: 27, fontWeight: "700", letterSpacing: -0.3 },
   body: { color: guideColors.text, fontSize: 16, lineHeight: 22 },
-  feedback: { color: guideColors.text, backgroundColor: guideColors.tag, padding: 10, borderRadius: 10, marginBottom: 10, fontSize: 14, lineHeight: 20, fontWeight: "600" },
   actions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 },
   next: { flex: 1 },
   back: { width: 50, height: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: guideColors.tag },
@@ -375,5 +377,4 @@ const s = StyleSheet.create({
   actionText: { color: guideColors.text, fontSize: 17, lineHeight: 22, fontWeight: "700" },
   hand: { position: "absolute", width: 100, height: HAND, alignItems: "center", justifyContent: "flex-end" },
   handLabel: { color: guideColors.text, backgroundColor: guideColors.surface, overflow: "hidden", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, fontSize: 13, lineHeight: 18, fontWeight: "700" },
-  pointer: { flex: 1, minHeight: 50, flexDirection: "row", alignItems: "center", gap: 8 }, pointerText: { color: guideColors.secondary, fontSize: 14, lineHeight: 19 },
 });

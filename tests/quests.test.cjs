@@ -747,8 +747,11 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   await act(async () => renderer.update(React.createElement(Home)));
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
+  assert.match(output(), /"–"/, 'before today’s numbers arrive the ring shows a dash, not a false 0');
+  assert.match(output(), /60 min goal/);
   await act(async () => refresh());
   assert.match(output(), /25 \/ 60 min/);
+  assert.doesNotMatch(output(), /60 min goal/);
   progressMinutes = 26;
   summary = { id: "saved-session" };
   await act(async () => renderer.update(React.createElement(Home)));

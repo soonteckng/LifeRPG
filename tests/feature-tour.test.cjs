@@ -92,8 +92,12 @@ test('a reminder only grows the card: the page underneath is not measured or scr
   await ui.advance(700);await ui.next();
   assert.equal(ui.title(),'Your day at a glance');
   const before={measures:ui.measures.length,reveals:ui.reveals.length};
+  const lines=()=>ui.find('tour-tip')[0].findAllByType('Text').length;
+  const before_lines=lines();
   await ui.tapPaused();
   assert.match(ui.text(),/Tap Next to keep going/);
+  assert.equal(lines(),before_lines,'the reminder replaces the count, so the card keeps its size');
+  assert.equal(ui.find('tour-count').length,0);
   await act(async()=>ui.find('tour-tip')[0].props.onLayout({nativeEvent:{layout:{height:300}}}));
   await ui.advance(1500);
   assert.deepEqual({measures:ui.measures.length,reveals:ui.reveals.length},before,'no re-measure, no scroll');
@@ -104,7 +108,7 @@ test('a tap step leaves a hole over its real tab: only that tab works, and openi
  const ui=await guide();
  try{
   await ui.advance(700);await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Tap Routines');
+  assert.equal(ui.title(),'Tap on Routines');
   assert.equal(ui.find('tour-next').length,0,'no Next: the tab itself is the button');
   const blockers=ui.tree.root.findAll(n=>n.type==='Paused');
   assert.equal(blockers.length,4,'four paused panes surround the glowing tab');
@@ -122,6 +126,7 @@ test('a tap step leaves a hole over its real tab: only that tab works, and openi
   assert.ok(hand.top+hand.height<=ring.top,'a hand points down at the tab, above its glow');assert.match(ui.text(),/Tap here/);
   const tip=Object.assign({},...[].concat(ui.find('tour-tip')[0].props.style).filter(Boolean));
   assert.ok(tip.top+220<=hand.top,'the card sits above the hand, never over it');
+  assert.doesNotMatch(ui.text(),/Everything else waits/,'a tap step only says what to tap');
   await ui.tapPaused();assert.match(ui.text(),/Tap Routines to keep going/);
   await ui.openTab('/routines');
   assert.equal(ui.title(),'Just focus');
@@ -132,7 +137,7 @@ test('if a tab cannot be measured, the card offers its own button instead of tra
  const ui=await guide({measureTabs:false});
  try{
   await ui.advance(700);await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Tap Routines');
+  assert.equal(ui.title(),'Tap on Routines');
   await ui.advance(1200);
   const open=ui.tree.root.findAll(n=>n.props.testID==='tour-open-tab')[0];
   assert.equal(open.props.accessibilityLabel,'Open Routines');
@@ -153,7 +158,7 @@ test('Back returns to the previous tip, skips tap steps and takes the page with 
   await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
   assert.equal(ui.title(),'Your routines','skips "Tap Routines" back to the last tip');
   assert.equal(ui.routes.at(-1),'/','and returns to its page');
-  await ui.next();assert.equal(ui.title(),'Tap Routines');
+  await ui.next();assert.equal(ui.title(),'Tap on Routines');
   await ui.back();await ui.advance(1200);
   assert.equal(ui.title(),'Your routines','hardware Back on a tap step goes back too');
  }finally{await ui.cleanup();}

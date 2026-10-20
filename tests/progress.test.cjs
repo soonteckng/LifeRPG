@@ -601,7 +601,7 @@ test("empty Progress welcomes a fresh week instead of a page of empty sections",
   try {
     assert.match(ui.text(), /A fresh week/);
     assert.match(ui.text(), /Even 15 minutes counts/);
-    assert.ok(ui.renderer.root.findAllByType("Button").some(b => b.props.accessibilityLabel === "Start a session from Home"));
+    assert.ok(!ui.renderer.root.findAllByType("Button").some(b => b.props.accessibilityLabel === "Start a session from Home"), "no button that only goes back to Home");
     assert.doesNotMatch(ui.text(), /Room to grow|No completed sessions|By category/);
     assert.equal(ui.historyCalls(), 0);
   } finally {

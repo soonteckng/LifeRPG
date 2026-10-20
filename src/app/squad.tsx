@@ -14,7 +14,7 @@ import { squadSelection } from "../services/squadSelection";
 import { leaveOutcome } from "../utils/squads";
 import type { SquadMember } from "../types/squads";
 
-type Confirm = { kind: "leave" } | { kind: "code" } | { kind: "remove"; member: SquadMember } | null;
+type Confirm = { kind: "leave" } | { kind: "code" } | { kind: "remove"; member: SquadMember; newCode: boolean } | null;
 
 /**
  * One squad, in full: its week together, the leaderboard and the invite. It
@@ -71,7 +71,7 @@ function SquadPage() {
       action={squads.online && squad ? <MoreMenu options={options} label="Squad options" size={36} testID="squad-options" /> : undefined}>
       <View style={s.stack}>
         {!squads.online && <Text style={s.offline} testID="squads-offline">Offline · showing your squad as last saved. Changes need internet.</Text>}
-        {squad && <SquadBoard squad={squad} busy={busy} onSetGoal={() => setEditing(true)} onRemove={member => { if (squads.online) setConfirm({ kind: "remove", member }); }} onInvite={share} />}
+        {squad && <SquadBoard squad={squad} busy={busy} onSetGoal={() => setEditing(true)} onRemove={(member, newCode) => { if (squads.online) setConfirm({ kind: "remove", member, newCode }); }} onInvite={share} />}
         {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       </View>
     </SlideUpPage>
@@ -80,10 +80,14 @@ function SquadPage() {
     <SquadEditSheet squad={squad} visible={squads.online && editing} onClose={() => setEditing(false)} onSave={squads.update} />
     {confirm && squad && <SheetConfirmation elevated destructive={confirm.kind !== "code"}
       title={confirm.kind === "leave" ? `Leave ${squad.name}?` : confirm.kind === "code" ? "Get a new invite code?" : `Remove ${confirm.member.name}?`}
-      message={confirm.kind === "leave" ? leaveOutcome(squad) : confirm.kind === "code" ? "The old code stops working. Everyone already in the squad stays." : "They can join again with the code."}
-      confirmLabel={confirm.kind === "leave" ? squad.members.length <= 1 ? "Leave and close" : "Leave squad" : confirm.kind === "code" ? "New code" : "Remove"}
+      message={confirm.kind === "leave" ? leaveOutcome(squad) : confirm.kind === "code" ? "The old code stops working. Everyone already in the squad stays." : confirm.newCode ? "They leave the squad and the old code stops working, so only people you share the new code with can join." : "They leave the squad. They can join again with the code."}
+      confirmLabel={confirm.kind === "leave" ? squad.members.length <= 1 ? "Leave and close" : "Leave squad" : confirm.kind === "code" ? "New code" : confirm.newCode ? "Remove and change code" : "Remove"}
       cancelLabel={confirm.kind === "code" ? "Keep this code" : "Cancel"} onCancel={() => setConfirm(null)}
-      onConfirm={() => void (confirm.kind === "leave" ? run(() => squads.leave(squad.id)) : confirm.kind === "code" ? run(() => squads.update(squad.id, "code")) : run(() => squads.remove(squad.id, confirm.member.id)))} />}
+      onConfirm={() => void (confirm.kind === "leave" ? run(() => squads.leave(squad.id)) : confirm.kind === "code" ? run(() => squads.update(squad.id, "code")) : run(async () => {
+        // Removing first, then the new code: if removing fails, the code stays as it was.
+        const failed = await squads.remove(squad.id, confirm.member.id);
+        return failed || !confirm.newCode ? failed : squads.update(squad.id, "code");
+      }))} />}
   </View>;
 }
 const s = StyleSheet.create({

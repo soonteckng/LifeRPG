@@ -30,9 +30,24 @@ export function weekStart(now = new Date()): number {
 export const SQUAD_GOALS = [300, 600, 900, 1200, 1800] as const;
 export function squadTotal(squad: Squad): number { return squad.members.reduce((sum, member) => sum + member.weekSeconds, 0); }
 export function focusingCount(squad: Squad): number { return squad.members.filter(member => member.focusingNow).length; }
-/** Most focus first; ties keep join order. */
+export type Standing = { member: SquadMember; place: number | null };
+const byName = (a: SquadMember, b: SquadMember) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id);
+/**
+ * This week's leaderboard. Only someone who has focused this week is ranked;
+ * equal time shares a place (1, 1, 3), so joining earlier never wins a tie.
+ * Everyone else follows, unranked (place null), in name order.
+ */
+export function standings(squad: Squad): Standing[] {
+  const active = squad.members.filter(member => member.weekSeconds > 0).sort((a, b) => b.weekSeconds - a.weekSeconds || byName(a, b));
+  const waiting = squad.members.filter(member => member.weekSeconds <= 0).sort(byName);
+  return [
+    ...active.map(member => ({ member, place: 1 + active.filter(other => other.weekSeconds > member.weekSeconds).length })),
+    ...waiting.map(member => ({ member, place: null })),
+  ];
+}
+/** Members in leaderboard order: most focus first, then those yet to start. */
 export function ranked(squad: Squad): SquadMember[] {
-  return squad.members.map((member, index) => ({ member, index })).sort((a, b) => b.member.weekSeconds - a.member.weekSeconds || a.index - b.index).map(item => item.member);
+  return standings(squad).map(item => item.member);
 }
 /** Free limits, also enforced by the server: lead one squad, belong to three. */
 export const SQUAD_LIMITS = { lead: 1, member: 3 } as const;

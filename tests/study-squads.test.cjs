@@ -26,6 +26,10 @@ test('codes are cleaned, weeks start on Monday and members rank by focus time', 
   assert.equal(new Date(utils.weekStart(new Date(2026, 9, 19, 1))).getDate(), 19);
   const s = squad();
   assert.deepEqual(utils.ranked(s).map(m => m.name), ['User 2', 'User 1']);
+  // Nobody wins by joining first: 0 minutes is unranked, and equal time shares a place.
+  const mixed = squad(1, [member(3, 0), member(1, 0, { name: 'Zed' }), member(2, 600), member(4, 600), member(5, 900)]);
+  assert.deepEqual(utils.standings(mixed).map(x => [x.member.name, x.place]),
+    [['User 5', 1], ['User 2', 2], ['User 4', 2], ['User 3', null], ['Zed', null]]);
   assert.equal(utils.squadTotal(s), 2400); assert.equal(utils.focusingCount(s), 1);
   assert.equal(utils.validSquad({ ...s, code: 'K7Q4P0' }), false);
   assert.equal(utils.validSquadName(' Crew'), false);
@@ -87,20 +91,31 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   const calls = []; let current = [squad()];
   const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, update: async () => null, join: async () => null, create: async () => null,
     leave: async id => { calls.push(['leave', id]); return null; }, remove: async (id, m) => { calls.push(['remove', m]); return null; } });
-  const Tab = squadsPage(state); let ui;
+  const base = state; const withUpdate = () => ({ ...base(), update: async (id, change) => { calls.push(['update', change]); return null; } });
+  const Tab = squadsPage(withUpdate); let ui;
   await act(async () => { ui = create(React.createElement(Tab)); });
   assert.equal(ui.root.findByType('Page').props.title, 'My Squad');
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-board').length > 0, 'the squad itself, not a shortcut to it');
   assert.ok(words(ui.root).includes('Calc crew')); assert.ok(words(ui.root).includes('2 members · you lead this squad · 1 focusing now'));
-  assert.ok(ui.root.findAll(n => n.props.testID === 'squad-podium').length > 0, 'the top of the week stands on a podium');
+  assert.ok(ui.root.findAll(n => n.props.testID === 'squad-leaderboard').length > 0, 'one table, however many members');
   await act(async () => pressLabel(ui.root, 'Invite friends').props.onPress());
   assert.match(rn.shared.message, /K7Q4PX/);
   const first = pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now');
-  assert.equal(first.props.onPress, undefined, 'a tap never removes anyone');
-  await act(async () => first.props.onLongPress());
+  assert.equal(first.props.onLongPress, undefined, 'no hidden hold-to-remove');
+  await act(async () => first.props.onPress());
+  const sheet = () => ui.root.findAllByType('Sheet').find(x => x.props.label === 'squad member');
+  assert.ok(sheet(), 'a tap shows their week');
+  await act(async () => pressLabel(ui.root, 'Remove User 2').props.onPress());
   assert.equal(calls.length, 0, 'removing asks first');
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
   assert.deepEqual(calls, [['remove', member(2).id]]);
+  // Removing and changing the code, for a code that reached the wrong person.
+  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now').props.onPress());
+  await act(async () => pressLabel(ui.root, 'Remove User 2 and get a new code').props.onPress());
+  assert.match(ui.root.findByType('Confirm').props.message, /old code stops working/);
+  await act(async () => ui.root.findByType('Confirm').props.onConfirm());
+  assert.deepEqual(calls.slice(1), [['remove', member(2).id], ['update', 'code']]);
+  calls.splice(1);
   assert.deepEqual(menu(ui.root).map(option => option.label), ['Edit name and goal', 'New invite code', 'Share invite', 'Join or start a squad', 'Leave squad']);
   await choose(ui.root, 'Leave squad');
   assert.equal(ui.root.findByType('Confirm').props.message, utils.leaveOutcome(squad()), 'leaving says what happens to the squad');
@@ -110,7 +125,8 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   current = [{ ...squad(), ownerIsYou: false }];
   await act(async () => ui.update(React.createElement(Tab)));
   assert.deepEqual(menu(ui.root).map(option => option.label), ['Share invite', 'Join or start a squad', 'Leave squad'], 'members only share, join another or leave');
-  assert.equal(pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now')?.props.onLongPress, undefined, 'members cannot remove anyone');
+  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now').props.onPress());
+  assert.equal(pressLabel(ui.root, 'Remove User 2'), undefined, 'members cannot remove anyone');
   assert.match(utils.leaveOutcome(squad(1, [member(1, 0)])), /squad closes and its invite code stops working/, 'the last member is told the squad ends');
   await act(async () => ui.unmount());
 });

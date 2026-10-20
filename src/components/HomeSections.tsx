@@ -25,7 +25,7 @@ import { useTimer } from "../context/TimerContext";
 import { squadSelection } from "../services/squadSelection";
 import { suggestedArea } from "../utils/focusAreas";
 import { daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
-import { ranked, squadTotal } from "../utils/squads";
+import { squadTotal, standings } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
 import type { StudyExam } from "../types/studyPlan";
 
@@ -92,7 +92,7 @@ export function HomeSquad() {
   // The whole squad rises from the bottom, once the peek has slid away.
   const openSquad = () => { setPeek(false); setTimeout(() => { if (squad) { squadSelection.choose(squad.id); router.navigate("/squad"); } }, 220); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
-  const top = squad ? ranked(squad).slice(0, 3) : [];
+  const top = squad ? standings(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
     <SectionHeader title="My Squad" subtitle={!squads.online ? squad ? "Offline · last saved" : undefined : squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
       onPress={squad ? openSquads : undefined} pressLabel="My Squad. Open Squads" />
@@ -109,12 +109,12 @@ export function HomeSquad() {
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <Pressable onPress={openSquad} accessibilityRole="button" accessibilityLabel={`${squad.name}. Open squad`} testID="home-squad-open" style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></Pressable>
-        <View style={[s.group, s.sheetGroup]}>{top.map((member, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
-          accessibilityLabel={`${index + 1}. ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)}`}>
-          <Text style={[s.rank, index === 0 && member.weekSeconds > 0 && { color: colors.level }]}>{index + 1}</Text>
+        <View style={[s.group, s.sheetGroup]}>{top.map(({ member, place }, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
+          accessibilityLabel={`${place ? `${place}.` : "Not ranked yet."} ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)}`}>
+          <Text style={[s.rank, place === 1 && { color: colors.level }]}>{place ?? "–"}</Text>
           <SquadFace member={member} size={32} ring={colors.sheetCard} />
           <Text style={[s.name, s.flex]} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
-          <Text style={s.time}>{studyTime(member.weekSeconds)}</Text>
+          <Text style={s.time}>{place ? studyTime(member.weekSeconds) : "–"}</Text>
         </View>)}</View>
         <Pressable onPress={openSquad} accessibilityRole="button" accessibilityLabel="See the whole squad" style={s.primary}>
           <Text style={s.primaryText}>See the whole squad</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
@@ -138,6 +138,8 @@ export function useWeekProgress() {
   const week = useMemo(() => data ? buildProgress(period, data.sessions, data.goals, timeZone, data.areas, now) : null, [data, period, timeZone, now]);
   return { week, period };
 }
+/** The bars are neutral (today brightest); only the dot under a day is green. */
+export const WEEK_LEGEND = "Today is the brightest bar. A green dot under a day means you reached your goal.";
 export function WeekBars({ height = 44, wide = false }: { height?: number; wide?: boolean }) {
   const { week, period } = useWeekProgress();
   const top = Math.max(1, ...(week?.days.map(day => day.seconds) ?? [0]));
@@ -168,7 +170,7 @@ export function HomeWeek() {
     <AppSheet visible={open} onRequestClose={() => setOpen(false)} attached compact maxHeightRatio={0.86} label="this week" motionMode="timed"
       header={<SheetHeader title="This Week" subtitle={`${durationLabel(week?.seconds ?? 0)} · ${week?.sessions.length ?? 0} sessions`} onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
-        <View style={[s.card, s.sheetCard]}><WeekBars height={72} wide /><Text style={s.caption}>A green dot marks a day you reached your goal.</Text></View>
+        <View style={[s.card, s.sheetCard]}><WeekBars height={72} wide /><Text style={s.caption}>{WEEK_LEGEND}</Text></View>
         <View style={[s.group, s.sheetGroup]}>{week?.areas.length ? week.areas.map((area, index) => <View key={area.key} style={[s.areaRow, index > 0 && s.line]} accessible accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}`}>
           <View style={[s.dot, { backgroundColor: area.color }]} />
           <Text style={s.areaName} numberOfLines={1}>{area.title}</Text>
@@ -208,7 +210,7 @@ const s = StyleSheet.create({
   bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" }, barsWide: { justifyContent: "space-between", gap: 0 },
   barColumn: { width: 12, alignItems: "center", gap: 4 }, barColumnWide: { width: 28 },
   barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: "rgba(255,255,255,0.05)" }, barTrackWide: { width: 22, borderRadius: 6 },
-  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.24)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.primary },
+  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.24)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.text },
   day: { color: colors.tertiary, fontSize: 10, fontWeight: "600" }, dayToday: { color: colors.text },
   goalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "transparent" }, goalDotOn: { backgroundColor: colors.success },
   rankRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },

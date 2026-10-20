@@ -411,7 +411,7 @@ test('Revision and Learning break down by subject; untagged time is Other and si
 test('Today’s card shows the goal up close; changing it lives in its ••• menu', async () => {
   const calls = [];
   const Sheet = load('src/components/TodaySheet.tsx', { ...base(), '/MoreMenu': props => React.createElement('Menu', props), '/ProgressRing': host('Ring'),
-    '/HomeSections': { useWeekProgress: () => ({ week: { seconds: 5400, goalDays: 2 } }), WeekBars: host('Bars') } }).default;
+    '/HomeSections': { useWeekProgress: () => ({ week: { seconds: 5400, goalDays: 2 } }), WeekBars: host('Bars'), WEEK_LEGEND: 'legend' } }).default;
   let ui; await act(async () => { ui = create(React.createElement(Sheet, { visible: true, onClose: () => calls.push('close'), completedSeconds: 1500, goalMinutes: 60, streak: 4, complete: false,
     onChangeGoal: () => calls.push('goal'), onOpenProgress: () => calls.push('progress') })); });
   for (const value of ['25', '4', '1h 30m', '2/7']) assert.ok(texts(ui.root).includes(value), value);
@@ -442,7 +442,7 @@ test('a one-time tip shows until it is dismissed or its gesture is used, then ne
 });
 
 test('a small squad shows open seats that invite, and the invite stays last on the page', async () => {
-  const Board = load('src/components/SquadBoard.tsx', { ...base(), '/SquadSheets': { SquadFace: host('Face') }, '/OneTimeHint': host('Hint'), '/SquadsSection': { daysLeftInWeek: () => 3 } }).default;
+  const Board = load('src/components/SquadBoard.tsx', { ...base(), '/SquadSheets': { SquadFace: host('Face'), SquadMemberSheet: host('MemberSheet') }, '/OneTimeHint': host('Hint'), '/SquadsSection': { daysLeftInWeek: () => 3 } }).default;
   const member = (n, extra = {}) => ({ id: id(20 + n), name: `Friend ${n}`, weekSeconds: 600 * n, focusingNow: false, isYou: false, level: 1, ...extra });
   const squad = members => ({ id: id(8), name: 'Library crew', code: 'K7Q4PX', goalMinutes: null, ownerIsYou: true, members });
   let invites = 0, ui;

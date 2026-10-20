@@ -8,6 +8,7 @@ import CharacterPortrait from "./CharacterPortrait";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
+import { studyTime } from "../utils/studyPlan";
 import { cleanSquadCode, SQUAD_CODE_LENGTH, SQUAD_GOALS, SQUAD_LIMITS, validSquadName } from "../utils/squads";
 import type { Squad, SquadMember } from "../types/squads";
 
@@ -98,8 +99,44 @@ export function SquadJoinSheet({ visible, online, leading = null, memberships = 
   </AppSheet>;
 }
 
+/**
+ * One member, tapped on the leaderboard: their week at a glance. The leader
+ * can remove them here, deliberately, with two clear choices: a plain remove
+ * (they can rejoin with the code), or remove and change the code, for when
+ * the code reached someone it shouldn't have.
+ */
+export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismiss, onRemove }: {
+  member: SquadMember | null; place: number | null; leader: boolean; busy: boolean;
+  onClose: () => void; onDismiss?: () => void; onRemove: (member: SquadMember, newCode: boolean) => void;
+}) {
+  const canRemove = leader && !!member && !member.isYou;
+  return <AppSheet visible={!!member} onRequestClose={onClose} onDismiss={onDismiss} compact label="squad member" motionMode="timed"
+    header={member ? <SheetHeader title={member.isYou ? `${member.name} (you)` : member.name} subtitle={`Level ${member.level}${member.isOwner ? " · Squad leader" : ""}${member.focusingNow ? " · Focusing now" : ""}`} onClose={onClose} /> : undefined}>
+    {member && <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      <View style={s.facts}>
+        <View style={s.fact}><Text style={s.factValue}>{place ? `#${place}` : "–"}</Text><Text style={s.factLabel}>{place ? "this week" : "not ranked yet"}</Text></View>
+        <View style={s.fact}><Text style={s.factValue}>{studyTime(member.weekSeconds)}</Text><Text style={s.factLabel}>focused this week</Text></View>
+        <View style={s.fact}><Text style={s.factValue}>{member.streak}</Text><Text style={s.factLabel}>day streak</Text></View>
+      </View>
+      {canRemove && <>
+        <Pressable disabled={busy} onPress={() => onRemove(member, false)} accessibilityRole="button" accessibilityLabel={`Remove ${member.name}`} style={[s.remove, busy && s.disabled]}>
+          <Text style={s.removeText}>Remove from squad</Text></Pressable>
+        <Pressable disabled={busy} onPress={() => onRemove(member, true)} accessibilityRole="button" accessibilityLabel={`Remove ${member.name} and get a new code`} style={[s.remove, busy && s.disabled]}>
+          <Text style={s.removeText}>Remove and get a new code</Text></Pressable>
+        <Text style={s.hint}>Don’t know who this is? Get a new code too, so only people you invite can join.</Text>
+      </>}
+    </BottomSheetScrollView>}
+  </AppSheet>;
+}
+
 const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 },
+  facts: { flexDirection: "row", gap: 8 },
+  fact: { ...edge, flex: 1, minHeight: 76, padding: 12, gap: 2, borderRadius: 16, backgroundColor: colors.sheetCard, justifyContent: "center" },
+  factValue: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  factLabel: { color: colors.secondary, fontSize: 13, lineHeight: 17 },
+  remove: { minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
+  removeText: { color: colors.danger, fontSize: 16, fontWeight: "600" },
   face: { overflow: "hidden", backgroundColor: colors.selection, alignItems: "center", justifyContent: "center" },
   live: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
