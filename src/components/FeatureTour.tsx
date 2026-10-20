@@ -292,6 +292,10 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     opacity: reduced ? 1 : glow.interpolate({ inputRange: [0, 1], outputRange: [0.45, 1] }),
     transform: [{ scale: reduced ? 1 : Animated.add(glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.035] }), bump.interpolate({ inputRange: [0, 1], outputRange: [0, 0.06] })) }] });
   const guideActive = armed || active;
+  const inlineBack = current?.kind === "tap" && !fallbackTap;
+  const backButton = previous >= 0 ? <Pressable testID="tour-back" onPress={retreat} accessibilityRole="button" accessibilityLabel="Back" style={[s.back, inlineBack && s.backSmall]}>
+    <Ionicons name="chevron-back" size={20} color={guideColors.text} />
+  </Pressable> : null;
   const counter = step === null ? 0 : step + 1;
   const tapLabel = current?.expect === "/" ? "Home" : current?.expect ? current.expect.slice(1).replace(/^./, letter => letter.toUpperCase()) : "";
   return <TourContext.Provider value={value}><View ref={root} testID="tour-root" collapsable={false} onLayout={measureRoot} style={s.root}>
@@ -332,14 +336,16 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
             : <Text testID="tour-count" style={s.count}>{counter} of {TOUR_STEPS.length}</Text>}
           <View style={s.track}><View style={[s.fill, { width: `${Math.round(100 * counter / TOUR_STEPS.length)}%` }]} /></View>
         </View>
-        <Text testID="tour-title" style={s.title} accessibilityRole="header">{current.title}</Text>
+        {/* A tap step is one line: Back beside "Tap on Routines", nothing else. */}
+        {inlineBack ? <View style={s.titleRow}>
+          {backButton}
+          <Text testID="tour-title" style={[s.title, s.flexTitle]} accessibilityRole="header">{current.title}</Text>
+        </View> : <Text testID="tour-title" style={s.title} accessibilityRole="header">{current.title}</Text>}
         {!!current.body && <ScrollView style={{ maxHeight: Math.max(60, viewport.height * 0.28), flexGrow: 0 }}>
           <Text style={s.body}>{current.body}</Text>
         </ScrollView>}
-        <View style={s.actions}>
-          {previous >= 0 && <Pressable testID="tour-back" onPress={retreat} accessibilityRole="button" accessibilityLabel="Back" style={s.back}>
-            <Ionicons name="chevron-back" size={20} color={guideColors.text} />
-          </Pressable>}
+        {!inlineBack && <View style={s.actions}>
+          {previous >= 0 && backButton}
           {current.kind === "info" ? <View style={s.next}>
             <Animated.View testID="tour-next-ring" pointerEvents="none" style={[s.nextRing, { opacity: reduced ? 1 : glow.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
               transform: [{ scale: reduced ? 1 : Animated.add(glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }), bump.interpolate({ inputRange: [0, 1], outputRange: [0, 0.06] })) }] }]} />
@@ -349,7 +355,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           </View> : fallbackTap ? <Pressable testID="tour-open-tab" onPress={() => router.navigate(current.expect!)} accessibilityRole="button" accessibilityLabel={`Open ${tapLabel}`} style={[s.action, s.next]}>
             <Text style={s.actionText}>Open {tapLabel}</Text><Ionicons name="arrow-forward" size={17} color={guideColors.text} />
           </Pressable> : null}
-        </View>
+        </View>}
       </Animated.View>}
     </View>}
   </View></TourContext.Provider>;
@@ -371,6 +377,8 @@ const s = StyleSheet.create({
   body: { color: guideColors.text, fontSize: 16, lineHeight: 22 },
   actions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 },
   next: { flex: 1 },
+  titleRow: { flexDirection: "row", alignItems: "center", gap: 12 }, flexTitle: { flex: 1 },
+  backSmall: { width: 44, height: 44, borderRadius: 12 },
   back: { width: 50, height: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: guideColors.tag },
   nextRing: { position: "absolute", top: -5, bottom: -5, left: -5, right: -5, borderWidth: 2.5, borderRadius: 19, borderColor: guideColors.action },
   action: { minHeight: 50, borderRadius: 14, backgroundColor: guideColors.action, paddingHorizontal: 16, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
