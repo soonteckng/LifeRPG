@@ -281,7 +281,10 @@ test('Home shows exams within a week: tap edits, hold wiggles into edit mode; an
   const peek = section('home-squad-section').findAllByType('Sheet').find(x => x.props.label === 'squad peek');
   assert.equal(peek.props.visible, true, 'a tap peeks at the leaderboard');
   await act(async () => { presses(peek, 'See the whole squad')[0].props.onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
-  assert.equal(nav.at(-1), '/squads');
+  assert.equal(nav.at(-1), '/squad', 'the whole squad opens as its own page');
+  await act(async () => section('home-squad-section').findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
+  await act(async () => { section('home-squad-section').findAll(x => x.props.testID === 'home-squad-open' && x.type === 'Press')[0].props.onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
+  assert.equal(nav.filter(to => to === '/squad').length, 2, 'the squad card in the peek opens it too, so its arrow works');
   await act(async () => presses(section('home-week'), 'This week, 0m. Show by category')[0].props.onPress());
   assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());
@@ -338,6 +341,11 @@ test('the Routines tab starts with Just focus, holds every routine, and starts o
   const card = ui.root.findByType('Routines').props;
   assert.equal(ui.root.findByType('Page').props.title, 'Routines'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
   assert.ok(texts(ui.root).includes('Just focus')); assert.equal(texts(ui.root).includes('Quick focus'), false, 'the old quick focus card is gone');
+  const help = ui.root.findByType('Page').props.action;
+  assert.equal(help.props.label, 'How Routines work', 'a ? beside the title, like Study');
+  await act(async () => help.props.onPress());
+  const how = ui.root.findAllByType('Sheet').find(x => x.props.label === 'how routines work');
+  assert.equal(how.props.visible, true); assert.equal(/\battached\b/.test(Object.keys(how.props).join(' ')), false, 'info only, so it floats');
   await act(async () => card.onStartLegacy({ id: 5, target_minutes: 25, subject_id: 2 }));
   assert.deepEqual(calls.filter(c => c[0] !== 'mode'), [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
   calls.length = 0;
@@ -497,7 +505,8 @@ test('one sheet rule: short sheets float, editors and tall lists dock to the scr
   assert.match(read('src/components/SessionProtectionControl.tsx'), /<AppSheet[^\n]*attached compact[^\n]*session protection/, 'session protection details are attached');
   const progress = read('src/app/(tabs)/progress.tsx').split('<AppSheet')[1];
   assert.match(progress, /label="progress details"\s+compact\s+attached/, 'category details on Progress are attached and content-sized');
-  for (const file of ['src/components/ItemActionSheet.tsx', 'src/components/DailyGoalSheet.tsx', 'src/components/FocusDurationSheet.tsx'])
+  assert.match(read('src/components/DailyGoalSheet.tsx'), /<AppSheet[^\n]*attached compact[^\n]*daily goal/, 'the daily goal editor is full width, like the other editors');
+  for (const file of ['src/components/ItemActionSheet.tsx', 'src/components/FocusDurationSheet.tsx'])
     assert.doesNotMatch(read(file), /\battached\b|\bexpanded\b/, `${file} stays a floating card`);
 });
 

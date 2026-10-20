@@ -58,6 +58,8 @@ interface Props {
   motionMode?: "spring" | "timed";
   overlay?: React.ReactNode;
   footer?: React.ReactNode;
+  /** Painted inside the dim behind the sheet, e.g. a soft colour glow for a finished session. */
+  backdropGlow?: React.ReactNode;
   label: string;
   activityId?: symbol;
   // An action that leaves for another screen skips the slide, so the next
@@ -176,6 +178,7 @@ export default function AppSheet({
   activityId,
   closeInstantly = false,
   attached = expanded,
+  backdropGlow,
 }: Props) {
   const floating = !attached;
   const springConfigs = useBottomSheetSpringConfigs(motion.sheet);
@@ -274,6 +277,7 @@ export default function AppSheet({
         pressBehavior="none"
         accessible={false}
       >
+        {backdropGlow}
         {/* 'none' disables the library's tap recognizer. Supply our own target so
           draft confirmation runs before closing rather than bypassing it. */}
         <Pressable
@@ -285,7 +289,7 @@ export default function AppSheet({
         />
       </BottomSheetBackdrop>
     ),
-    [onRequestClose, label],
+    [onRequestClose, label, backdropGlow],
   );
 
   return (

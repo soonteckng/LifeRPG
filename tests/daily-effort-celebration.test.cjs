@@ -188,6 +188,7 @@ async function resultHarness(overrides={}) {
   const profile={id:"owner-a",level:1,current_xp:1}; let closes=0,dismissals=0;
   const host=type=>function ResultHost(props){return React.createElement(type,props,props.children);};
   const Component=load("src/components/LevelUpModal.tsx",{
+    "react-native-svg":{__esModule:true,default:host("Svg"),Defs:host("Defs"),RadialGradient:host("RadialGradient"),Rect:host("Rect"),Stop:host("Stop")},
     "react-native":{View:host("View"),Text:host("Text"),StyleSheet:{create:value=>value,hairlineWidth:1},useWindowDimensions:()=>({height:640,width:360,fontScale:1.6})},
     "react-native-safe-area-context":{useSafeAreaInsets:()=>({top:24,bottom:34})},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},

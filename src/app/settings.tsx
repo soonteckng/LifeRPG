@@ -19,7 +19,9 @@ import { getDailyGoalSettings } from "../services/dailyGoalService";
 import { readNotificationPermission, type NotificationPermission } from "../services/notificationPermissionService";
 import { durationLabel } from "../utils/sessionSetup";
 import { afterTransition } from "../utils/afterTransition";
+import { cachedDailyGoal, rememberDailyGoal } from "../utils/dailyGoalCache";
 import AppBuildInfo from "../components/AppBuildInfo";
+import Pressable from "../components/MotionPressable";
 import { readSessionTrail } from "../services/sessionTrail";
 
 /** Settings, grouped like the phone's own. Each row opens its own page, sliding in from the right. */
@@ -30,7 +32,10 @@ export default function SettingsScreen() {
   const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer({ live: false });
   const preferences = useAppPreferences();
   const duration = useFocusDurationPreference(profile.id);
-  const [goal, setGoal] = useState<{ owner: string; today: number; next: number | null } | null>(null);
+  const [goal, setGoal] = useState<{ owner: string; today: number; next: number | null } | null>(() => {
+    const known = cachedDailyGoal(profile.id);
+    return known ? { owner: profile.id, today: known.today_goal_minutes, next: known.pending ? known.next_goal_minutes : null } : null;
+  });
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
   const [signingOut, setSigningOut] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const lock = useRef(false), generation = useRef(0);
@@ -39,6 +44,8 @@ export default function SettingsScreen() {
     const request = ++generation.current, owner = profile.id;
     const [settings, notifications] = await Promise.all([getDailyGoalSettings(owner).catch(() => null), readNotificationPermission().catch(() => null)]);
     if (request !== generation.current) return;
+    // Shared with Daily goal, so that page opens already filled in.
+    if (settings) rememberDailyGoal(settings);
     if (settings) setGoal({ owner, today: settings.today_goal_minutes, next: settings.pending ? settings.next_goal_minutes : null });
     setPermission(notifications);
   }, [profile.id]);
@@ -73,8 +80,6 @@ export default function SettingsScreen() {
       <SettingsGroup title="Feel" footer={preferenceError ?? undefined}>
         <SettingsRow first icon="phone-portrait-outline" tint="#FF9F0A" title="Haptic feedback"
           toggle={{ value: hapticsEnabled, onChange: value => { setHapticsEnabled(value); setTapHapticsEnabled(value); if (value) tapHaptic(); } }} />
-        <SettingsRow icon="sparkles-outline" tint="#FF9F0A" title="Reduce motion" subtitle="Calmer transitions, on top of your phone’s setting"
-          toggle={{ value: preferences.reduceMotion, onChange: value => void appPreferences.update({ reduceMotion: value }) }} />
       </SettingsGroup>
 
       <SettingsGroup title="Notifications">
@@ -82,15 +87,16 @@ export default function SettingsScreen() {
         <SettingsRow icon="calendar-outline" tint="#FF6961" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
       </SettingsGroup>
 
-      <SettingsGroup title="Help" footer="If a session ever freezes, share this right after reopening. It lists timer states and times, never your name or notes.">
+      <SettingsGroup title="Help">
         <SettingsRow first icon="information-circle-outline" tint="#64D2FF" title="How LifeRPG works" onPress={() => router.navigate("/guide")} />
-        <SettingsRow icon="pulse-outline" tint="#AAB3FF" title="Share session log" onPress={() => { void readSessionTrail().then(log => Share.share({ message: log || "No session events yet." })).catch(() => {}); }} />
       </SettingsGroup>
 
       <SettingsGroup footer={sessionBlocksLogout ? "Finish or end your session before signing out." : "Your saved progress stays with your account."}>
         <SettingsRow first danger icon="log-out-outline" title="Sign out" onPress={() => { setError(""); setSigningOut(true); }} />
       </SettingsGroup>
-      <AppBuildInfo />
+      {/* Support only: holding the version shares the on-phone session log. */}
+      <Pressable onLongPress={() => { void readSessionTrail().then(log => Share.share({ message: log || "No session events yet." })).catch(() => {}); }} delayLongPress={800}
+        accessible={false} haptic={false}><AppBuildInfo /></Pressable>
 
       <AppSheet label="Sign out" motionMode="timed" compact visible={signingOut} guardDismiss={busy} onRequestClose={() => { if (!busy) setSigningOut(false); }}
         header={<View style={p.sheetHeader}><Text style={p.title}>Sign out of LifeRPG?</Text></View>}>

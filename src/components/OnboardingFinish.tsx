@@ -25,8 +25,8 @@ export default function OnboardingFinish({ onDone }: { onDone: () => void }) {
     return () => { alive = false; clearTimeout(deadline); animation.stop(); };
   }, [onDone, opacity, scale, reduced]);
   return <SafeAreaView style={s.page}><Animated.View testID="onboarding-finish" style={[s.content, { opacity, transform: [{ scale }] }]} accessibilityLiveRegion="polite">
-    <View style={s.halo}><Ionicons name="checkmark" size={44} color={colors.accent} /></View>
-    <Text style={s.title} accessibilityRole="header">You’re ready.</Text><Text style={s.body}>A little focus. A little growth.{"\n"}Your journey starts here.</Text>
+    <View style={s.halo}><Ionicons name="checkmark" size={44} color={colors.primary} /></View>
+    <Text style={s.title} accessibilityRole="header">You’re in!</Text><Text style={s.body}>Small steps add up fast.{"\n"}Let’s see where they take you.</Text>
   </Animated.View></SafeAreaView>;
 }
-const s = StyleSheet.create({ page: { flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center", padding: 32 }, content: { width: "100%", maxWidth: 460, alignItems: "center", gap: 24 }, halo: { width: 112, height: 112, borderRadius: 56, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }, title: { fontSize: 34, lineHeight: 42, fontWeight: "500", letterSpacing: -0.7, color: colors.text, textAlign: "center" }, body: { color: colors.secondary, fontSize: 17, lineHeight: 22, textAlign: "center" } });
+const s = StyleSheet.create({ page: { flex: 1, backgroundColor: colors.background, justifyContent: "center", alignItems: "center", padding: 32 }, content: { width: "100%", maxWidth: 460, alignItems: "center", gap: 24 }, halo: { width: 112, height: 112, borderRadius: 56, borderWidth: 1, borderColor: colors.primary, backgroundColor: colors.accentSoft, alignItems: "center", justifyContent: "center" }, title: { fontSize: 34, lineHeight: 42, fontWeight: "500", letterSpacing: -0.7, color: colors.text, textAlign: "center" }, body: { color: colors.secondary, fontSize: 17, lineHeight: 22, textAlign: "center" } });

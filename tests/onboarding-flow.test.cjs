@@ -178,7 +178,7 @@ test('Android setup asks about app protection with Allow buttons, names what can
   await act(async () => { tree = create(React.createElement(Journey, { initialStep: 4 })); });
   const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
   try {
-    assert.equal(tree.root.findByType('Frame').props.title, 'Keep distractions aside.');
+    assert.equal(tree.root.findByType('Frame').props.title, 'Keep distractions away');
     assert.equal(tree.root.findByType('Frame').props.total, 8);
     assert.ok(button('Maybe later'), 'protection stays optional');
     await act(async () => button('Allow Usage Access').props.onPress());

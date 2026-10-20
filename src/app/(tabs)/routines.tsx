@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -7,6 +7,8 @@ import { PersonalPage } from "../../components/PersonalUI";
 import { Text } from "../../components/AppText";
 import Pressable from "../../components/MotionPressable";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
+import HowItWorksSheet from "../../components/HowItWorksSheet";
+import { CircleButton } from "../../components/SectionHeader";
 import { TourAnchor } from "../../components/FeatureTour";
 import { colors, edge } from "../../constants/theme";
 import { useAuth } from "../../context/AuthContext";
@@ -26,6 +28,7 @@ export default function RoutinesScreen() {
   const { tasks, subjects = [], refresh } = useQuests();
   const justFocus = useJustFocus(), router = useRouter();
   const bottomInset = useTabDockInset("routines");
+  const [how, setHow] = useState(false);
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const open = !!timer.hasOpenSession;
   // Old routines keep their task link; the setup screen confirms before starting.
@@ -37,7 +40,8 @@ export default function RoutinesScreen() {
     }
     timer.reviewSummary?.(); router.navigate("/session");
   };
-  return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}>
+  return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}
+    action={<CircleButton icon="help" size={36} label="How Routines work" onPress={() => setHow(true)} />}>
     <ContentReveal><View style={s.stack}>
       <TourAnchor id="routines-just-focus"><Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
         <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={22} color="#AAB3FF" /></View>
@@ -47,8 +51,17 @@ export default function RoutinesScreen() {
       </Pressable></TourAnchor>
       <SavedRoutinesCard subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
     </View></ContentReveal>
+    <HowItWorksSheet visible={how} onClose={() => setHow(false)} title="How Routines work" label="how routines work" steps={HOW_IT_WORKS} />
   </PersonalPage>;
 }
+const HOW_IT_WORKS = [
+  ["Just focus", "Pick any activity and set your own time. Perfect for when you just want to get going."],
+  ["Save a routine", "Give it a name, a length and a category, plus a daily reminder if you like."],
+  ["Start in one tap", "Tap ▶ on a routine and you’re straight into a session."],
+  ["Change or remove", "Hold a routine to edit or remove it. We’ll always check before removing anything."],
+  ["Need ideas?", "Grab one of the ideas below and make it yours."],
+] as const;
+
 const s = StyleSheet.create({
   stack: { gap: 24 },
   // Just focus is the main way in, so it gets the biggest card on the page.

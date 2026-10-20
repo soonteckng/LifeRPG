@@ -137,7 +137,7 @@ test('the goal sheet reads quietly while closed, then opens filled in and still 
   const Sheet=props=>React.createElement('Sheet',props,props.header,props.children,props.footer);
   const Component=load('src/components/DailyGoalSheet.tsx',{
     'react-native':{View:host('View'),Keyboard:{addListener:()=>({remove(){}})}},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Button')},
-    './AppSheet':Sheet,'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':props=>React.createElement('Header',props),
+    'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:20})},'./AppSheet':Sheet,'@expo/vector-icons':{Ionicons:host('Icon')},'./SheetHeader':props=>React.createElement('Header',props),
     '../context/UserContext':{useUser:()=>({profile:{id:'prefetch-owner',daily_goal_minutes:60,timezone:'Asia/Kuala_Lumpur'}})},
     '../services/dailyGoalService':{getDailyGoalSettings:async()=>++reads===1?{...goal,user_id:'prefetch-owner',next_goal_minutes:75}:later.promise,scheduleDailyGoal:async()=>{throw Error('no write');},missingGoalAPI:()=>false},
   }).default;

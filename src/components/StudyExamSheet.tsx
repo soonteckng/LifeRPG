@@ -104,7 +104,7 @@ export default function StudyExamSheet({ visible, exam, courses, initialCourseId
       <View style={s.remind}>
         <View style={s.flex}><Text style={s.remindTitle}>Remind me</Text><Text style={s.caption}>A week before, the evening before and that morning.</Text></View>
         <Switch value={draft.remind} disabled={busy} onValueChange={remind => { if (tapHapticsEnabled()) tapHaptic(); setDraft(current => ({ ...current, remind })); }}
-          accessibilityLabel="Remind me about this exam" trackColor={{ true: colors.accent, false: colors.selection }} thumbColor={colors.text} />
+          accessibilityLabel="Remind me about this exam" trackColor={{ true: colors.accentFill, false: colors.selection }} thumbColor={colors.text} />
       </View>
       </>}
     </BottomSheetScrollView>

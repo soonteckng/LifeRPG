@@ -1492,6 +1492,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     return React.createElement('Scroll',props,props.children);
   });
   const Modal=load("src/components/LevelUpModal.tsx",{
+    "react-native-svg":{__esModule:true,default:host("Svg"),Defs:host("Defs"),RadialGradient:host("RadialGradient"),Rect:host("Rect"),Stop:host("Stop")},
     "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s,hairlineWidth:1},useWindowDimensions:()=>({fontScale})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:CompletionScroll},

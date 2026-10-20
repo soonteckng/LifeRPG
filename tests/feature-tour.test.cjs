@@ -31,7 +31,7 @@ async function guide({receipt='pending',measureTabs=true}={}){
  const api=load('src/components/FeatureTour.tsx',{
   'react-native':Native,'expo-haptics':{ImpactFeedbackStyle:{Light:'light'},impactAsync:async()=>{}},'@expo/vector-icons':{Ionicons:host('Icon')},
   'expo-router':{usePathname:()=>pathname,useRouter:()=>router},
-  'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:24})},
+  'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:24})},'react-native-svg':{__esModule:true,default:host('Svg'),Path:host('Path')},
   '@react-native-async-storage/async-storage':{__esModule:true,default:{getItem:async key=>store.get(key)??null,setItem:async(key,value)=>{store.set(key,value);}}},
   '/UserContext':{useUser:()=>({profile:{id:'alice',onboarding_completed:true},hapticsEnabled:false})},
   '/TimerContext':{useTimer:()=>({hasOpenSession:false,actionBusy:false,isRestoring:false,restoreError:false,rewardsVisible:false,isCompleted:false,sessionSummary:null})},
@@ -59,7 +59,7 @@ async function guide({receipt='pending',measureTabs=true}={}){
 }
 
 test('the guide is one connected walk: each tap step opens the page the next step explains, and it ends on Home',()=>{
- const {TOUR_STEPS}=load('src/components/FeatureTour.tsx',{'react-native':{StyleSheet:{create:s=>s}},'expo-router':{},'expo-haptics':{},'@expo/vector-icons':{},'react-native-safe-area-context':{},'@react-native-async-storage/async-storage':{},'/UserContext':{},'/TimerContext':{},'/useReducedMotion':{},'/notificationOnboardingStore':{},'/NotificationOnboardingPrompt':{},'/AppText':{},'/MotionPressable':{}});
+ const {TOUR_STEPS}=load('src/components/FeatureTour.tsx',{'react-native':{StyleSheet:{create:s=>s}},'expo-router':{},'expo-haptics':{},'@expo/vector-icons':{},'react-native-safe-area-context':{},'react-native-svg':{},'@react-native-async-storage/async-storage':{},'/UserContext':{},'/TimerContext':{},'/useReducedMotion':{},'/notificationOnboardingStore':{},'/NotificationOnboardingPrompt':{},'/AppText':{},'/MotionPressable':{}});
  assert.equal(TOUR_STEPS[0].id,'welcome');assert.equal(TOUR_STEPS.at(-1).route,'/');
  TOUR_STEPS.forEach((step,index)=>{
   if(step.kind==='tap'){assert.ok(step.target?.startsWith('tab-'),`${step.id} points at a real tab`);assert.equal(TOUR_STEPS[index+1].route,step.expect,`${step.id} leads to the page it opens`);}
@@ -68,18 +68,21 @@ test('the guide is one connected walk: each tap step opens the page the next ste
  assert.deepEqual(TOUR_STEPS.filter(step=>step.kind==='tap').map(step=>step.expect),['/routines','/study','/squads','/progress','/']);
 });
 
-test('a new account sees a welcome, with the app paused, no Skip and no Back; other taps and hardware Back only point at the glow',async()=>{
+test('a new account sees a welcome, with the app paused, no Skip and nothing to go back to; other taps and hardware Back only point at the glow',async()=>{
  const ui=await guide();
  try{
-  assert.match(ui.text(),/Starting your guide/);
+  assert.equal(ui.find('tour-overlay').length,1,'the app is paused while the guide gets ready');
   await ui.advance(700);
-  assert.equal(ui.title(),'Welcome to LifeRPG.');
-  assert.match(ui.text(),/Guide · 1 of 13/);assert.match(ui.text(),/The app is paused · follow the glowing button/);
+  assert.equal(ui.title(),'Welcome to LifeRPG!');
+  assert.equal(ui.find('tour-banner').length,0,'no banner over the page: the count lives in the tip');
+  assert.match(ui.text(),/1 of 13/);
   assert.equal(ui.tree.root.findByProps({testID:'tour-app-content'}).props.importantForAccessibility,'no-hide-descendants');
-  assert.equal(ui.tree.root.findAll(n=>/Skip|Back/.test(n.props.accessibilityLabel??'')).length,0,'not skippable, forward only');
+  assert.equal(ui.tree.root.findAll(n=>/Skip|Back/.test(n.props.accessibilityLabel??'')).length,0,'not skippable, and the first tip has no Back');
   await ui.tapPaused();
-  assert.match(ui.text(),/Tap the glowing button to continue/);assert.equal(ui.title(),'Welcome to LifeRPG.','tapping elsewhere never moves on');
-  assert.ok(ui.hasBack());await ui.back();assert.equal(ui.title(),'Welcome to LifeRPG.','hardware Back stays in the guide');
+  assert.match(ui.text(),/Tap Let’s go to keep going/);assert.equal(ui.title(),'Welcome to LifeRPG!','tapping elsewhere never moves on');
+  assert.ok(ui.hasBack());await ui.back();assert.equal(ui.title(),'Welcome to LifeRPG!','hardware Back stays in the guide');
+  // Copy stays warm and plain: no em dashes and no "glowing" instructions.
+  for(const step of ui.api.TOUR_STEPS)assert.doesNotMatch(`${step.title} ${step.body}`,/—|glowing/,step.id);
  }finally{await ui.cleanup();}
 });
 
@@ -87,7 +90,7 @@ test('a tap step leaves a hole over its real tab: only that tab works, and openi
  const ui=await guide();
  try{
   await ui.advance(700);await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Tap Routines.');
+  assert.equal(ui.title(),'Tap Routines');
   assert.equal(ui.find('tour-next').length,0,'no Next: the tab itself is the button');
   const blockers=ui.tree.root.findAll(n=>n.type==='Paused');
   assert.equal(blockers.length,4,'four paused panes surround the glowing tab');
@@ -97,9 +100,13 @@ test('a tap step leaves a hole over its real tab: only that tab works, and openi
   const [above,left,right,below]=blockers.map(box);
   assert.equal(above.height,hole.y);assert.equal(left.width,hole.x);
   assert.equal(right.left,hole.x+hole.width);assert.equal(below.top,hole.y+hole.height,'nothing covers the tab itself');
-  await ui.tapPaused();assert.match(ui.text(),/Tap the glowing Routines tab to continue/);
+  // The glow is a pill inside the slot, so it sits within the round tab bar.
+  const ring=Object.assign({},...[].concat(ui.find('tour-outline')[0].props.style).filter(Boolean));
+  assert.ok(ring.left>=hole.x&&ring.left+ring.width<=hole.x+hole.width&&ring.top>=hole.y&&ring.top+ring.height<=hole.y+hole.height,'ring stays inside the slot');
+  assert.equal(ring.borderRadius,ring.height/2,'a full pill');
+  await ui.tapPaused();assert.match(ui.text(),/Tap Routines to keep going/);
   await ui.openTab('/routines');
-  assert.equal(ui.title(),'Just focus.');
+  assert.equal(ui.title(),'Just focus');
  }finally{await ui.cleanup();}
 });
 
@@ -107,12 +114,30 @@ test('if a tab cannot be measured, the card offers its own button instead of tra
  const ui=await guide({measureTabs:false});
  try{
   await ui.advance(700);await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Tap Routines.');
+  assert.equal(ui.title(),'Tap Routines');
   await ui.advance(1200);
   const open=ui.tree.root.findAll(n=>n.props.testID==='tour-open-tab')[0];
   assert.equal(open.props.accessibilityLabel,'Open Routines');
   await act(async()=>open.props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Just focus.');
+  assert.equal(ui.title(),'Just focus');
+ }finally{await ui.cleanup();}
+});
+
+test('Back returns to the previous tip, skips tap steps and takes the page with it; hardware Back does the same',async()=>{
+ const ui=await guide();
+ try{
+  await ui.advance(700);await ui.next();
+  assert.equal(ui.title(),'Your day at a glance');
+  await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
+  assert.equal(ui.title(),'Welcome to LifeRPG!');
+  await ui.next();await ui.next();await ui.next();await ui.openTab('/routines');
+  assert.equal(ui.title(),'Just focus');
+  await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
+  assert.equal(ui.title(),'Your routines','skips "Tap Routines" back to the last tip');
+  assert.equal(ui.routes.at(-1),'/','and returns to its page');
+  await ui.next();assert.equal(ui.title(),'Tap Routines');
+  await ui.back();await ui.advance(1200);
+  assert.equal(ui.title(),'Your routines','hardware Back on a tap step goes back too');
  }finally{await ui.cleanup();}
 });
 
@@ -139,7 +164,7 @@ test('an account without a pending guide never sees it',async()=>{
 
 test('new-account setup prepares the guide and the notification invitation together',async()=>{
  const store=new Map(),prepared=[];
- const api=load('src/components/FeatureTour.tsx',{'react-native':{StyleSheet:{create:s=>s}},'expo-router':{},'expo-haptics':{},'@expo/vector-icons':{},'react-native-safe-area-context':{},
+ const api=load('src/components/FeatureTour.tsx',{'react-native':{StyleSheet:{create:s=>s}},'expo-router':{},'expo-haptics':{},'@expo/vector-icons':{},'react-native-safe-area-context':{},'react-native-svg':{},
   '@react-native-async-storage/async-storage':{__esModule:true,default:{setItem:async(key,value)=>{store.set(key,value);}}},'/UserContext':{},'/TimerContext':{},'/useReducedMotion':{},
   '/notificationOnboardingStore':{notificationOnboardingStore:{prepare:async owner=>{prepared.push(owner);}}},'/NotificationOnboardingPrompt':{},'/AppText':{},'/MotionPressable':{}});
  await api.prepareFeatureTour('bob');

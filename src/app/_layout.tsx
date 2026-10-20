@@ -176,6 +176,8 @@ function AppContent() {
               dangerouslySingular
               options={sessionNativeOptions()}
             />
+            {/* A squad rises from the bottom and slides down to close, like Session. */}
+            <Stack.Screen name="squad" options={sessionNativeOptions()} />
             <Stack.Screen name="routine-start" options={{ headerShown: false, animation: reducedMotion ? "none" : "fade" }} />
             <Stack.Screen
               name="quests"

@@ -72,6 +72,7 @@ async function setup({height=844,fontScale=1,bottom=34,initialProps={}}={}) {
       props.footerComponent&&React.createElement(FooterContainer,{footerComponent:props.footerComponent}));
   });
   const mocks={'react-native':native,'react-native-reanimated':reanimated,
+    'react-native-svg':{__esModule:true,default:host('Svg'),Defs:host('Defs'),RadialGradient:host('RadialGradient'),Rect:host('Rect'),Stop:host('Stop')},
     '@gorhom/bottom-sheet':{__esModule:true,default:Sheet,BottomSheetFooter:Footer,BottomSheetScrollView:Scroll,
       BottomSheetBackdrop:host('Backdrop'),useBottomSheetSpringConfigs:x=>x,useBottomSheetTimingConfigs:x=>x},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom})},

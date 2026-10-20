@@ -34,6 +34,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     return React.createElement('Scroll',values,values.children);
   });
   const Modal = load('src/components/LevelUpModal.tsx', {
+    'react-native-svg':{__esModule:true,default:host('Svg'),Defs:host('Defs'),RadialGradient:host('RadialGradient'),Rect:host('Rect'),Stop:host('Stop')},
     'react-native':{View:host('View'),Text:host('Text'),Platform:{OS:'android'},StyleSheet:{create:s=>s,hairlineWidth:1},useWindowDimensions:()=>({height,width:390,fontScale})},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:34})},
     '@gorhom/bottom-sheet':{BottomSheetScrollView:Scroll},

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Keyboard, View } from "react-native";
 import { BottomSheetScrollView, BottomSheetTextInput } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import TouchableOpacity from "./SheetTouchable";
 import { Ionicons } from "@expo/vector-icons";
 import AppSheet from "./AppSheet";
@@ -11,15 +12,10 @@ import { getDailyGoalSettings, missingGoalAPI, scheduleDailyGoal, type DailyGoal
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { colors, edge } from "../constants/theme";
 
-// The last reading per account, so the sheet opens with real numbers at once.
-// A fresh read still follows every open; the server stays the authority.
-const recent = new Map<string, { data: DailyGoalSettings; at: number }>();
-const FRESH_MS = 10 * 60_000;
-const remember = (data: DailyGoalSettings) => { recent.set(data.user_id, { data, at: Date.now() }); };
-const cached = (owner: string) => { const entry = recent.get(owner); return entry && Date.now() - entry.at < FRESH_MS ? entry.data : null; };
+import { cachedDailyGoal as cached, forgetDailyGoal, rememberDailyGoal as remember } from "../utils/dailyGoalCache";
 
 export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMinutes }: { visible: boolean; onClose: () => void; onSaved: () => void; todayGoalMinutes?: number }) {
-  const { profile } = useUser();
+  const { profile } = useUser(), insets = useSafeAreaInsets();
   const [loadedData, setData] = useState<DailyGoalSettings | null>(null), [draft, setDraft] = useState(""), [error, setError] = useState(""), [saved, setSaved] = useState(false), [busy, setBusy] = useState(false);
   const data = loadedData?.user_id === profile.id ? loadedData : null;
   const [needsCheck, setNeedsCheck] = useState(false);
@@ -64,7 +60,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
     catch {
       // A lost reply can follow a successful write. Read the ledger before
       // offering another save; do not tell the user the write never happened.
-      recent.delete(profile.id);
+      forgetDailyGoal(profile.id);
       if (current === generation.current) {
         try {
           const checked = await getDailyGoalSettings(profile.id);
@@ -87,9 +83,10 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
   };
   const status = data ? `${saved || data.pending ? `${data.next_goal_minutes} minutes from ${data.next_effective_date}. ` : ""}${!data.scheduling_available || !data.weekly_limit_available ? "Goal changes are temporarily unavailable. Please try again later." : data.can_change_goal ? "" : data.next_change_at ? `Next change: ${new Intl.DateTimeFormat(undefined, { timeZone: profile.timezone, dateStyle: "medium", timeStyle: "short" }).format(new Date(data.next_change_at))}.` : "Finish setup before changing your goal."}` : "";
   const selected = parseDailyGoal(draft);
-  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="daily goal"
+  // Full width from the bottom edge, like the other editors, above the phone's own bar.
+  return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} attached compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="daily goal"
     header={<SheetHeader title="Daily goal" subtitle={`Today stays at ${todayMinutes} min.`} onClose={() => { if (!busy) onClose(); }} />}>
-    <BottomSheetScrollView contentContainerStyle={g.body} keyboardShouldPersistTaps="handled">
+    <BottomSheetScrollView contentContainerStyle={[g.body, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} keyboardShouldPersistTaps="handled">
       <View style={g.stepperCard}>
         <View style={g.stepper}>
           {editable && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Decrease daily goal by 15 minutes" disabled={busy} onPress={() => step(-15)} style={g.stepButton}><Ionicons name="remove" size={24} color={colors.accent} /></TouchableOpacity>}

@@ -62,30 +62,34 @@ const sheets = () => load('src/components/SquadSheets.tsx', {
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
 
-// The Squads tab is the squad page: the squad you pick, its week, its leaderboard and a ••• menu.
-const squadsTab = state => load('src/app/(tabs)/squads.tsx', {
+// The Squads tab lists one card per squad; a card opens the squad page, which rises from the bottom.
+const mocks = (state, extra = {}) => ({
   'react-native': { ...rn, ScrollView: host('HScroll') }, '@expo/vector-icons': { Ionicons: host('Icon') },
   '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   'expo-router': { useFocusEffect: () => {} }, '/useTabDockInset': { useTabDockInset: () => 100 },
   '/PersonalUI': { PersonalPage: ({ title, action, children }) => React.createElement('Page', { title }, action, children) }, '/ContentReveal': props => props.children,
+  '/SlideUpPage': ({ title, action, footer, gone, children }) => React.createElement('Page', { title, gone }, action, children, footer),
   '/MotionPressable': host('Press'), '/SheetTouchable': host('Press'), '/AppText': { Text: host('Text') }, '/SheetConfirmation': host('Confirm'),
   // The ••• menu's options are its contract; its popover has its own looks.
   '/MoreMenu': props => React.createElement('Menu', props),
   '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
   '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/ProgressRing': host('Ring'),
-  '/useSquads': { useSquads: () => state() },
-}).default;
+  '/useSquads': { useSquads: () => state() }, ...extra,
+});
+const squadsTab = (state, navigate = () => {}, choose = () => {}) => load('src/app/(tabs)/squads.tsx', mocks(state, { 'expo-router': { useFocusEffect: () => {}, useRouter: () => ({ navigate }) },
+  '/squadSelection': { squadSelection: { get: () => null, choose } } })).default;
+const squadsPage = state => load('src/app/squad.tsx', mocks(state)).default;
 const menu = root => root.findAllByType('Menu')[0]?.props.options ?? [];
 const choose = (root, label) => act(async () => menu(root).find(option => option.label === label).onPress());
 const words = root => root.findAllByType('Text').map(t => [].concat(t.props.children).filter(x => typeof x === 'string' || typeof x === 'number').join(''));
 
-test('the Squads tab shows the whole squad: it ranks members, shares the code and asks before leaving or removing', async () => {
+test('the squad page shows the whole squad: it ranks members, shares the code and asks before leaving or removing', async () => {
   const calls = []; let current = [squad()];
   const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, update: async () => null, join: async () => null, create: async () => null,
     leave: async id => { calls.push(['leave', id]); return null; }, remove: async (id, m) => { calls.push(['remove', m]); return null; } });
-  const Tab = squadsTab(state); let ui;
+  const Tab = squadsPage(state); let ui;
   await act(async () => { ui = create(React.createElement(Tab)); });
-  assert.equal(ui.root.findByType('Page').props.title, 'Squads');
+  assert.equal(ui.root.findByType('Page').props.title, 'My Squad');
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-board').length > 0, 'the squad itself, not a shortcut to it');
   assert.ok(words(ui.root).includes('Calc crew')); assert.ok(words(ui.root).includes('2 members · you lead this squad · 1 focusing now'));
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-podium').length > 0, 'the top of the week stands on a podium');
@@ -149,7 +153,7 @@ test('leaders rename, set a weekly goal and get a new code from the menu; the go
   const calls = []; let current = { ...squad(), goalMinutes: 60 };
   const state = () => ({ ready: true, online: true, squads: [current], refresh: async () => {}, leave: async () => null, remove: async () => null, join: async () => null, create: async () => null,
     update: async (id, change) => { calls.push(change); return null; } });
-  const Tab = squadsTab(state); let ui;
+  const Tab = squadsPage(state); let ui;
   await act(async () => { ui = create(React.createElement(Tab)); });
   assert.ok(words(ui.root).includes('of 1h goal')); assert.ok(words(ui.root).some(t => /^20m to go · \d+ days? left$/.test(t)));
   const byText = label => ui.root.findAllByType('Press').find(x => x.findAllByType('Text').some(t => t.props.children === label));
@@ -174,21 +178,23 @@ test('leaders rename, set a weekly goal and get a new code from the menu; the go
   assert.ok(words(ui.root).some(t => /^Resets on Monday · \d+ days? left$/.test(t)));
   await act(async () => ui.unmount());
 });
-test('with several squads the tab switches between them, and an empty tab invites you to start one', async () => {
-  let current = [];
+test('the Squads tab shows a card for every squad; a card opens that squad, and an empty tab invites you to start one', async () => {
+  let current = []; const opened = [], chosen = [];
   const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, join: async () => null, create: async () => null, update: async () => null, leave: async () => null, remove: async () => null });
-  const Tab = squadsTab(state); let ui;
+  const Tab = squadsTab(state, to => opened.push(to), id => chosen.push(id)); let ui;
   await act(async () => { ui = create(React.createElement(Tab)); });
   assert.ok(ui.root.findAll(n => n.props.testID === 'squads-empty').length > 0);
   await act(async () => ui.root.findAllByType('Press').filter(x => x.props.accessibilityLabel === 'Join or start a squad').at(-1).props.onPress());
   assert.equal(ui.root.findAllByType('Sheet').some(x => x.props.label === 'join squad'), true);
   current = [squad(), { ...squad(2), ownerIsYou: false, name: 'Library' }];
   await act(async () => ui.update(React.createElement(Tab)));
-  const tab = name => ui.root.findAllByType('Press').find(x => x.props.accessibilityRole === 'tab' && x.props.accessibilityLabel === name);
-  assert.equal(tab('Calc crew').props.accessibilityState.selected, true);
-  await act(async () => tab('Library').props.onPress());
-  assert.equal(tab('Library').props.accessibilityState.selected, true); assert.ok(words(ui.root).includes('Library'));
-  await act(async () => tab('Calc crew').props.onPress());
+  const cards = ui.root.findAll(n => n.props.testID === 'squad-card' && n.type === 'Press');
+  assert.equal(cards.length, 2, 'one card per squad, never a switcher');
+  assert.ok(words(ui.root).includes('Calc crew') && words(ui.root).includes('Library'));
+  assert.ok(ui.root.findAll(n => n.props.accessibilityRole === 'tab').length === 0);
+  await act(async () => cards[1].props.onPress());
+  assert.deepEqual(opened, ['/squad']);
+  assert.deepEqual(chosen, [squad(2).id], 'the page opens on the squad you tapped');
   await act(async () => ui.unmount());
 });
 
@@ -200,7 +206,7 @@ test('cloud-only squad sheet portals close offline and do not reopen after recon
       join: async (...args) => { calls.push(['join', ...args]); return null; },
       create: async (...args) => { calls.push(['create', ...args]); return null; },
       leave: async () => null, remove: async () => null });
-    const Tab = squadsTab(state); let ui;
+    const Tab = squadsPage(state); let ui;
     await act(async () => { ui = create(React.createElement(Tab)); });
     try {
       assert.equal(ui.root.findAllByType('Menu').length, 1, 'the normal online squad menu is present');
@@ -225,4 +231,17 @@ test('cloud-only squad sheet portals close offline and do not reopen after recon
       assert.deepEqual(calls, []);
     } finally { await act(async () => ui.unmount()); }
   }
+});
+
+test('the squad page stays on the squad it opened with, and slides away once you are no longer in it', async () => {
+  let current = [squad(), { ...squad(2), ownerIsYou: false, name: 'Library' }];
+  const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, join: async () => null, create: async () => null, update: async () => null, leave: async () => null, remove: async () => null });
+  const Page = squadsPage(state); let ui;
+  await act(async () => { ui = create(React.createElement(Page)); });
+  assert.ok(words(ui.root).includes('Calc crew')); assert.equal(ui.root.findByType('Page').props.gone, false);
+  current = [{ ...squad(2), ownerIsYou: false, name: 'Library' }];
+  await act(async () => ui.update(React.createElement(Page)));
+  assert.equal(ui.root.findByType('Page').props.gone, true, 'never swaps in another squad');
+  assert.ok(!words(ui.root).includes('Library'));
+  await act(async () => ui.unmount());
 });

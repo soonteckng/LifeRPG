@@ -6,12 +6,13 @@ import { CompletionHero, CompletionRows } from "./CompletionDetails";
 import { colors } from "../constants/theme";
 import { completionSheetHeight } from "../utils/completionSheetLayout";
 import { DEFAULT_TIMEZONE } from "../utils/progressAnalytics";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import AppSheet from "./AppSheet";
 import * as Haptics from "expo-haptics";
 import { dailyAchievementQueue } from "../services/dailyAchievementQueue";
@@ -140,7 +141,17 @@ export default function SessionResultSheet({ visible, xpEarned = 0, goldEarned =
   useEffect(() => {
     if (visible && !pending && !ending && !rejected && hapticsEnabled) void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [visible, pending, ending, rejected, hapticsEnabled]);
-  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed}
+  // A finished session glows softly in its category's colour behind the card,
+  // instead of sitting on plain black. A stopped session stays calm.
+  const glowTint = ending || rejected ? null : areaColor ?? colors.primary;
+  // Memoised so the sheet's dim layer keeps its identity across re-renders.
+  const glow = useMemo(() => glowTint ? <Svg testID="session-result-glow" pointerEvents="none" style={StyleSheet.absoluteFill} width="100%" height="100%">
+    <Defs><RadialGradient id="sessionResultGlow" cx="50%" cy="30%" rx="85%" ry="55%">
+      <Stop offset="0" stopColor={glowTint} stopOpacity={0.6} /><Stop offset="0.55" stopColor={glowTint} stopOpacity={0.18} /><Stop offset="1" stopColor={glowTint} stopOpacity={0} />
+    </RadialGradient></Defs>
+    <Rect width="100%" height="100%" fill="url(#sessionResultGlow)" />
+  </Svg> : null, [glowTint]);
+  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed} backdropGlow={glow}
     label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
     header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
     footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={s.actions} testID="session-result-actions">

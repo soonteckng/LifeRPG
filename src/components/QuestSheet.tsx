@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
   headerAction: { minHeight: 44, paddingHorizontal: 6, justifyContent: "center" },
   link: { color: colors.accent, fontSize: 15 },
   editorTitle: { color: colors.text, fontSize: 24, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 8, textAlign: "left" },
-  save: { minWidth: 120, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.accent, justifyContent: "center", alignItems: "center" },
+  save: { minWidth: 120, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" },
   saveText: { color: colors.background, fontSize: 14, fontWeight: "500" },
   form: { gap: 14, paddingTop: 12 },
   field: { gap: 8 },

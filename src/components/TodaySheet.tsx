@@ -33,7 +33,7 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
     </View>}>
     <BottomSheetScrollView contentContainerStyle={[s.body, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
       <View style={[s.card, s.hero]} accessible accessibilityLabel={`${Math.floor(completedSeconds / 60)} of ${goalMinutes} minutes today`}>
-        <ProgressRing size={148} stroke={14} progress={share} color={complete ? colors.success : colors.accent} track={colors.accentSoft}>
+        <ProgressRing size={148} stroke={14} progress={share} color={complete ? colors.success : colors.primary} track={colors.accentSoft}>
           <Text style={s.ringValue}>{Math.floor(completedSeconds / 60)}</Text><Text style={s.caption}>of {goalMinutes} min</Text>
         </ProgressRing>
         <Text style={s.headline}>{complete ? "Nicely done today" : completedSeconds ? "Keep it going" : "A fresh start"}</Text>

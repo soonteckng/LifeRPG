@@ -10,15 +10,17 @@ import { getTodayProgress } from "../services/dailyProgressService";
 import { parseDailyGoal, validateDailyGoal } from "../utils/dailyGoal";
 import { dateKey } from "../utils/progressAnalytics";
 import { afterTransition } from "../utils/afterTransition";
+import { cachedDailyGoal, forgetDailyGoal, rememberDailyGoal } from "../utils/dailyGoalCache";
 
 /** Settings › Daily goal: today's target and a change that starts tomorrow. */
 export default function GoalSettingsScreen() {
   const { profile } = useUser();
-  const [loadedGoalData, setGoalData] = useState<DailyGoalSettings | null>(null);
+  // A recent reading (Settings reads ahead when it opens) fills the page at once.
+  const [loadedGoalData, setGoalData] = useState<DailyGoalSettings | null>(() => cachedDailyGoal(profile.id));
   const goalData = loadedGoalData?.user_id === profile.id ? loadedGoalData : null;
   const [goalError, setGoalError] = useState("");
   const [savedTodayGoal, setSavedTodayGoal] = useState<number | null>(null);
-  const [draft, setDraft] = useState(String(profile.daily_goal_minutes));
+  const [draft, setDraft] = useState(() => String(cachedDailyGoal(profile.id)?.next_goal_minutes ?? profile.daily_goal_minutes));
   const [edited, setEdited] = useState(false);
   const [savedGoal, setSavedGoal] = useState("");
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -26,9 +28,12 @@ export default function GoalSettingsScreen() {
   useLayoutEffect(() => { goalOwner.current = profile.id; goalGeneration.current++; }, [profile.id]);
   const loadGoal = useCallback(async () => {
     const request = ++goalGeneration.current;
-    setGoalData(null); setGoalError("Checking your latest goal schedule...");
+    // Keep what is on screen while checking, so the page never empties out.
+    const known = cachedDailyGoal(profile.id);
+    if (known) { setGoalData(known); setGoalError(""); } else { setGoalData(null); setGoalError("Checking your latest goal schedule..."); }
     try {
       const data = await getDailyGoalSettings(profile.id);
+      rememberDailyGoal(data);
       if (request === goalGeneration.current) { setGoalData(data); setGoalError(""); }
     } catch (failure) {
       // Stored daily targets remain authoritative even without the editing API.
@@ -63,10 +68,11 @@ export default function GoalSettingsScreen() {
     try {
       const result = await scheduleDailyGoal(minutes, profile.id);
       if (request !== goalGeneration.current || owner !== goalOwner.current) return;
-      goalGeneration.current++; setGoalData(result); setGoalError(""); setEdited(false);
+      goalGeneration.current++; rememberDailyGoal(result); setGoalData(result); setGoalError(""); setEdited(false);
       setSavedGoal(`Your ${result.next_goal_minutes}-minute goal starts on ${result.next_effective_date} in ${result.timezone}. Today's target and previous achievements stay unchanged.`);
     } catch (failure) {
       if (owner !== goalOwner.current) return;
+      forgetDailyGoal(owner);
       setGoalData(null);
       if (missingGoalAPI(failure)) setGoalError("Goal settings are temporarily unavailable. Please try again later.");
       else { setGoalError("Check your latest goal schedule before trying again."); setError("Could not schedule or confirm your goal change. A delayed change may still arrive. Check the current schedule before choosing another goal."); }

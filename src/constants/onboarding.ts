@@ -1,7 +1,7 @@
 import { PROFILE_NAME_LIMIT } from "./profile";
 export const ONBOARDING_NAME_LIMIT = PROFILE_NAME_LIMIT;
 export const INTRO_PAGES = [
-  { icon: "timer-outline", title: "Start with one small block.", body: "Start a routine, study a subject, or just focus. Pick a length and let the timer keep time.", detail: "A protected session can cover the apps that pull you away until it ends. Ending a session is always one tap away." },
-  { icon: "person-outline", title: "Your effort takes shape.", body: "Finished sessions grow your companion and the category you chose. Levels reflect effort you’ve recorded, not ability.", detail: "Every completed second counts toward your daily goal. Each 60 seconds earns 1 XP; leftover seconds carry forward." },
-  { icon: "leaf-outline", title: "A rhythm, at your pace.", body: "Focus days build your streak. Add your exams and they count down on Home, so nothing sneaks up on you.", detail: "Next, a short guide shows you around. It takes about a minute, and Settings has the details whenever you need them." },
+  { icon: "timer-outline", title: "Start small", body: "Start a routine, study a subject or just focus. Pick how long, and the timer takes care of the rest.", detail: "Want fewer distractions? A protected session can cover the apps that pull you away until you’re done. Ending a session is always one tap away." },
+  { icon: "person-outline", title: "Watch yourself grow", body: "Every session you finish helps your companion and that category level up. Levels show the effort you put in, not how talented you are.", detail: "Every second counts toward your daily goal. Each full minute earns 1 XP, and spare seconds carry over to next time." },
+  { icon: "leaf-outline", title: "Go at your own pace", body: "Focus on a day and your streak grows. Add your exams and they’ll count down on Home, so nothing sneaks up on you.", detail: "Up next, a quick look around the app. It takes about a minute, and Settings has all the details whenever you want them." },
 ] as const;

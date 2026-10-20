@@ -20,13 +20,15 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
         freezeOnBlur: true,
-        animation: reducedMotion ? "none" : "fade",
+        // Always the same fade (instant when the phone asks for less motion):
+        // switching animation modes could leave a tab's content hidden.
+        animation: "fade",
         transitionSpec: { animation: "timing", config: { duration: reducedMotion ? 0 : 180 } },
         sceneStyle: { backgroundColor: colors.background },
         tabBarStyle: styles.tabBar,
         tabBarBackground: () => <GlassSurface radius={33} />,
         tabBarItemStyle: styles.tabItem,
-        tabBarActiveTintColor: colors.accent,
+        tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: styles.tabLabel,
         tabBarHideOnKeyboard: true,

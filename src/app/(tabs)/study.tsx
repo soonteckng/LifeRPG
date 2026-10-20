@@ -20,6 +20,7 @@ import { appPreferences } from "../../services/appPreferences";
 import SheetConfirmation from "../../components/SheetConfirmation";
 import AppSheet from "../../components/AppSheet";
 import SheetHeader from "../../components/SheetHeader";
+import HowItWorksSheet from "../../components/HowItWorksSheet";
 import SubjectPicker from "../../components/SubjectPicker";
 import { colors, radius, edge } from "../../constants/theme";
 import { useQuests } from "../../context/QuestContext";
@@ -140,15 +141,7 @@ export default function StudyScreen() {
         <SubjectPicker courses={plan.courses} selectedName={null} onPick={choice => close(() => void addSubject(choice.name, choice.id))} />
       </BottomSheetScrollView>
     </AppSheet>
-    <AppSheet visible={open && sheet?.kind === "how"} onRequestClose={() => close()} onDismiss={dismissed} compact label="how study works" motionMode="timed"
-      header={<SheetHeader title="How Study works" onClose={() => close()} />}>
-      <BottomSheetScrollView contentContainerStyle={s.sheetBody}>
-        <View style={s.howList}>{HOW_IT_WORKS.map(([title, body], index) => <View key={title} style={[s.howRow, index > 0 && s.line]}>
-          <View style={s.step}><Text style={s.stepText}>{index + 1}</Text></View>
-          <View style={s.flex}><Text style={s.rowTitle}>{title}</Text><Text style={s.caption}>{body}</Text></View>
-        </View>)}</View>
-      </BottomSheetScrollView>
-    </AppSheet>
+    <HowItWorksSheet visible={open && sheet?.kind === "how"} onClose={() => close()} onDismiss={dismissed} title="How Study works" label="how study works" steps={HOW_IT_WORKS} />
   </PersonalPage>
     {removing && <SheetConfirmation elevated destructive
       title={removingExam ? `${removing.name} has an exam coming up` : `Remove ${removing.name}?`}
@@ -161,10 +154,10 @@ export default function StudyScreen() {
 }
 
 const HOW_IT_WORKS = [
-  ["Add your subjects", "Hold a subject to edit or remove it. Its minutes stay saved, and come back if you add it again."],
-  ["Add your exams", "Each one counts down here and on Home, with reminders if you want them."],
-  ["Study a subject", "Tap ▶ on a subject. With an exam coming up it counts as Revision, otherwise Learning."],
-  ["See where your time went", "Progress breaks Revision and Learning down by subject."],
+  ["Add your subjects", "Hold a subject to edit or remove it. Its minutes stay saved and come back if you add it again."],
+  ["Add your exams", "Each one counts down here and on Home, with reminders if you like."],
+  ["Study a subject", "Tap ▶ on a subject. With an exam coming up it counts as Revision, otherwise it’s Learning."],
+  ["See where your time went", "Progress shows your Revision and Learning time for each subject."],
 ] as const;
 
 const s = StyleSheet.create({
@@ -177,17 +170,12 @@ const s = StyleSheet.create({
   welcomeIcon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 2 },
   welcomeTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
   sheetBody: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
-  howList: { ...edge, borderRadius: 20, backgroundColor: colors.sheetCard, overflow: "hidden" },
-  howRow: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 14 },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   emptyRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
   emptyIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
   added: { ...edge, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 50, paddingLeft: 14, paddingRight: 6, borderRadius: 25, backgroundColor: colors.surface },
-  line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { ...edge, minHeight: 36, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.sheetCard },
   chipText: { color: colors.text, fontSize: 15, fontWeight: "500" },
-  step: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
-  stepText: { color: colors.accent, fontSize: 13, fontWeight: "700" },
 });

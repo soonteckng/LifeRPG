@@ -42,16 +42,16 @@ export default function OnboardingWelcome({ owner, onDone }: { owner: string; on
     return () => { live = false; clearTimeout(deadline); animation.stop(); };
   }, [owner, onDone, reduced, words, detail, curtain]);
   return <SafeAreaView style={s.page}><Animated.View testID="onboarding-welcome" style={[s.content, { opacity: curtain }]}>
-    <View style={s.halo}><Ionicons name="leaf-outline" size={44} color={colors.accent} /></View>
+    <View style={s.halo}><Ionicons name="leaf-outline" size={44} color={colors.primary} /></View>
     <View style={s.words} accessible accessibilityRole="header" accessibilityLabel="Welcome to LifeRPG">
       {["Welcome", "to", "LifeRPG"].map((word, index) => <Animated.View key={word} style={{ opacity: words[index], transform: [{ translateY: reduced ? 0 : words[index].interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }}><Text style={[s.word, index === 2 && s.brand]}>{word}</Text></Animated.View>)}
     </View>
-    <Animated.View style={{ opacity: detail, transform: [{ translateY: reduced ? 0 : detail.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}><Text style={s.detail}>A little space for what matters.{"\n"}A new rhythm, one day at a time.</Text></Animated.View>
+    <Animated.View style={{ opacity: detail, transform: [{ translateY: reduced ? 0 : detail.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }] }}><Text style={s.detail}>Your time, your pace, your adventure.{"\n"}Let’s get you set up.</Text></Animated.View>
   </Animated.View></SafeAreaView>;
 }
 const s = StyleSheet.create({
   page: { flex: 1, backgroundColor: colors.background, justifyContent: "center", padding: 32 }, content: { alignItems: "center", gap: 28 },
   halo: { width: 104, height: 104, borderRadius: 52, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, borderWidth: 1, borderColor: colors.line },
-  words: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: 8, rowGap: 4 }, word: { fontSize: 30, lineHeight: 40, fontWeight: "500", letterSpacing: -0.5, color: colors.text }, brand: { color: colors.accent },
+  words: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", columnGap: 8, rowGap: 4 }, word: { fontSize: 30, lineHeight: 40, fontWeight: "500", letterSpacing: -0.5, color: colors.text }, brand: { color: colors.primary },
   detail: { textAlign: "center", fontSize: 17, lineHeight: 22, color: colors.secondary },
 });

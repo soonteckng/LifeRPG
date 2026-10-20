@@ -89,6 +89,8 @@ export function HomeSquad() {
   const [wasOnline, setWasOnline] = useState(squads.online);
   if (wasOnline !== squads.online) { setWasOnline(squads.online); if (!squads.online) setJoining(false); }
   const openSquads = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
+  // The whole squad rises from the bottom, once the peek has slid away.
+  const openSquad = () => { setPeek(false); setTimeout(() => { if (squad) { squadSelection.choose(squad.id); router.navigate("/squad"); } }, 220); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const top = squad ? ranked(squad).slice(0, 3) : [];
   return <View style={s.section} testID="home-squad-section">
@@ -106,7 +108,7 @@ export function HomeSquad() {
     {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} attached compact maxHeightRatio={0.86} label="squad peek" motionMode="timed"
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
-        <View style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></View>
+        <Pressable onPress={openSquad} accessibilityRole="button" accessibilityLabel={`${squad.name}. Open squad`} testID="home-squad-open" style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></Pressable>
         <View style={[s.group, s.sheetGroup]}>{top.map((member, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
           accessibilityLabel={`${index + 1}. ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)}`}>
           <Text style={[s.rank, index === 0 && member.weekSeconds > 0 && { color: colors.level }]}>{index + 1}</Text>
@@ -114,7 +116,7 @@ export function HomeSquad() {
           <Text style={[s.name, s.flex]} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
           <Text style={s.time}>{studyTime(member.weekSeconds)}</Text>
         </View>)}</View>
-        <Pressable onPress={() => { setPeek(false); setTimeout(openSquads, 220); }} accessibilityRole="button" accessibilityLabel="See the whole squad" style={s.primary}>
+        <Pressable onPress={openSquad} accessibilityRole="button" accessibilityLabel="See the whole squad" style={s.primary}>
           <Text style={s.primaryText}>See the whole squad</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
         <Pressable onPress={share} accessibilityRole="button" accessibilityLabel="Share invite" style={s.quiet}>
           <Ionicons name="share-outline" size={16} color={colors.accent} /><Text style={s.quietText}>Share invite</Text></Pressable>
@@ -206,7 +208,7 @@ const s = StyleSheet.create({
   bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" }, barsWide: { justifyContent: "space-between", gap: 0 },
   barColumn: { width: 12, alignItems: "center", gap: 4 }, barColumnWide: { width: 28 },
   barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: "rgba(255,255,255,0.05)" }, barTrackWide: { width: 22, borderRadius: 6 },
-  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(99,230,190,0.45)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.accent },
+  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.24)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.primary },
   day: { color: colors.tertiary, fontSize: 10, fontWeight: "600" }, dayToday: { color: colors.text },
   goalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "transparent" }, goalDotOn: { backgroundColor: colors.success },
   rankRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },

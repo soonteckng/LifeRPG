@@ -238,7 +238,7 @@ export default function HomeScreen() {
             <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalRow} accessibilityRole="button"
               accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
               <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }}>
-                <ProgressRing size={108} stroke={9} progress={goalShare} color={isGoalComplete ? colors.success : colors.accent} track={colors.accentSoft}>
+                <ProgressRing size={108} stroke={9} progress={goalShare} color={isGoalComplete ? colors.success : colors.primary} track={colors.accentSoft}>
                   <Text style={styles.ringValue} numberOfLines={1} adjustsFontSizeToFit>{Math.floor(safeCompletedSeconds / 60)}</Text>
                   <Text style={styles.ringUnit} numberOfLines={1} adjustsFontSizeToFit>of {dailyGoalMinutes} min</Text>
                 </ProgressRing>

@@ -17,7 +17,7 @@ import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
 import { INTRO_PAGES, ONBOARDING_NAME_LIMIT } from "../constants/onboarding";
 import { useSessionProtection } from "../context/SessionProtectionContext";
 
-const TITLES = ["Find your rhythm.", "Make it yours.", "What should we call you?", "A little time for you.", "Keep distractions aside."];
+const TITLES = ["Find your rhythm", "Make it yours", "What should we call you?", "A little time for you", "Keep distractions away"];
 // Steps: 0–3 setup, 4 app protection (Android only), 5–7 intro pages.
 const PROTECTION_STEP = 4, FIRST_INTRO = 5, LAST_STEP = 7;
 export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: number }) {
@@ -102,11 +102,11 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     { kind: "notifications" as const, icon: "notifications-outline" as const, title: "Notifications", hint: "Break reminders and End session, always in reach.", granted: !!caps?.notifications, allow: async () => { const { enableNotifications } = await import("../services/notificationPermissionService"); await enableNotifications(); await protection.refresh(); } },
   ];
   const subtitles = [
-    "A gentle starting point, or space to focus your own way. You can change this anytime.",
-    direction.enabled ? "Choose where you’d like to begin. You can change your suggestion on Home anytime." : "Choose your own duration and Focus area. Save routines whenever you want a little structure.",
-    "A name for your journey. You can personalise your character in Profile later.",
-    "Choose a starting daily goal. Short sessions count too. There’s no need to do it all at once.",
-    "During a session, this app can cover the apps that pull you away. Optional, and you can change it later.",
+    "Want a nudge on where to start, or would you rather do your own thing? You can switch anytime.",
+    direction.enabled ? "Pick where you’d like to begin. You can always change it later from Home." : "Choose your own time and area. Save routines whenever you want a bit more structure.",
+    "This is the name your companion will know you by. You can dress them up in Profile later.",
+    "Start small, short sessions count too. You don’t have to do it all at once.",
+    "During a session, LifeRPG can cover the apps that tend to pull you away. Totally optional, and you can change it later.",
   ];
   return <OnboardingFrame step={step + 1 - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={skipped ? 7 : 8} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
     busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
@@ -116,9 +116,9 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
       <OnboardingChoice title="Help me choose a focus" hint="A starting point for learning, work or everyday life." selected={direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: true }); }} />
       <OnboardingChoice title="Just let me focus" hint="Your time, your focus, your own routines." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
     </View>}
-    {step === 1 && (direction.enabled ? <FocusDirectionPicker compact value={direction} onChange={value => { setChoiceTouched(true); setDirection(value); }} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home will offer free focus whenever you’re ready, and Routines has ideas to start from.</Text></View>)}
+    {step === 1 && (direction.enabled ? <FocusDirectionPicker compact value={direction} onChange={value => { setChoiceTouched(true); setDirection(value); }} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home always has a free focus button, and Routines has plenty of ideas to start from.</Text></View>)}
     {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
-    {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>Change your daily goal in Settings once every seven days. Changes start the next day. A quiet day never takes earned growth away.</Text></View>}
+    {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can change your goal in Settings once a week, and it kicks in the next day. A quiet day never takes away what you’ve earned.</Text></View>}
     {step === PROTECTION_STEP && <View style={s.choices}>
       <Text style={s.hint}>During a session, only the apps you allow stay open and everything else is covered. You can choose your allowed apps any time from Protection on Home. You can change this later.</Text>
       <View style={s.permissionList}>{permissionRows.map((row, index) => <View key={row.kind} style={[s.permissionRow, index > 0 && s.permissionDivider]}>

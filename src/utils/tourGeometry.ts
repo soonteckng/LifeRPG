@@ -37,3 +37,17 @@ export function tourScrollDelta(rect: TourRect, panelHeight: number, top: number
   if (rect.y + rect.height > bottom) return rect.y + rect.height - bottom;
   return 0;
 }
+
+/** The guide's tab highlight: a pill inside its slot, so it follows the round tab bar. */
+export function tabPill(slot: TourRect): TourRect {
+  const inset = Math.min(8, slot.width / 4, slot.height / 4);
+  return { x: slot.x + inset, y: slot.y + inset, width: slot.width - inset * 2, height: slot.height - inset * 2 };
+}
+
+/** A full-screen shade with one rounded window cut out (SVG even-odd path). */
+export function shadeWithHole(width: number, height: number, hole: TourRect, radius: number) {
+  const { x, y, width: w, height: h } = hole, r = Math.max(0, Math.min(radius, w / 2, h / 2));
+  return `M0 0H${width}V${height}H0Z`
+    + `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}`
+    + `H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+}

@@ -1,4 +1,6 @@
-// True black with iOS-style greys; one mint accent carries every action.
+// True black with iOS-style greys. Mint is saved for the moments that matter:
+// the main buttons, the active tab, goal rings and switches. Small links,
+// icons and progress bars stay a quiet near-white, so the app never feels too green.
 export const colors = {
   background: "#000000",
   surface: "#1C1C1E",
@@ -14,9 +16,9 @@ export const colors = {
   muted: "#8E8E93",
   // Chevrons and quiet glyphs only; too dim for reading text.
   tertiary: "#636366",
-  accent: "#63E6BE",
+  accent: "#EBEBF0",
   accentFill: "#63E6BE",
-  accentSoft: "rgba(99,230,190,0.14)",
+  accentSoft: "rgba(255,255,255,0.10)",
   primary: "#63E6BE",
   primaryText: "#00140D",
   selection: "#3A3A3C",

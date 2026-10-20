@@ -115,7 +115,7 @@ test('Tab crossfade respects reduced motion without changing route identities or
     assert.equal(tabs().backBehavior,'initialRoute');
     assert.deepEqual(routes.map(node=>node.props.name),['index','routines','study','squads','progress','tasks','timer']);
     reduced=true;await act(async()=>tree.update(React.createElement(Layout)));
-    assert.equal(tabs().screenOptions.animation,'none');
+    assert.equal(tabs().screenOptions.animation,'fade','the mode never switches, so no tab is left hidden');
     assert.equal(tabs().screenOptions.transitionSpec.config.duration,0);
     assert.equal(tree.root.findAllByType('TabScreen')[0],routes[0]);
   }finally{await act(async()=>tree.unmount());}

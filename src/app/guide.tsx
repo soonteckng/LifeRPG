@@ -2,20 +2,20 @@ import { View } from "react-native";
 import { PersonalPage, p } from "../components/PersonalUI";
 import { Text } from "../components/AppText";
 const RULES = [
-  ["Start a session", "On Home, the green button starts your next step. Just focus on Routines starts any activity at your own length, a routine starts with its ▶, and so does a subject in Study. Finish the session to record your effort. Ending early saves no time or XP."],
-  ["Routines", "Save something you want to return to, with its length, category and an optional daily reminder. Start from one of the ideas if you like. Where your phone supports it, a routine can also sit on your home screen: open it and tap Add widget."],
-  ["Study and exams", "Add the subjects you’re taking and tap ▶ to study one. Add your exams: each counts down on Study and Home, with reminders if you want them. Studying a subject with an exam coming up counts as Revision; otherwise it counts as Learning."],
-  ["Editing anything", "Hold a routine, subject or exam: the list wiggles and each card shows ✎ to edit and − to remove. Removing always asks first. Tap a card or Done when you’re finished."],
-  ["Protection is optional", "A protected session covers the apps you set aside until it ends, with one 5-minute break. It needs Usage Access, Display over other apps and notifications; each is explained before you allow it. Calls, Settings and End session always stay within reach."],
-  ["Your effort becomes growth", "Every 60 completed seconds earns 1 XP for your companion and for the session’s category; leftover seconds carry forward. Levels reflect recorded effort, not ability. Tap your level on Home to see the tier path."],
-  ["Your daily goal and streak", "Completed time counts toward your daily goal. Any day with a completed session is a Focus day, and Focus days in a row build your streak. You can change your goal once every seven days; changes start the next day."],
-  ["Squads", "Start a squad or join one with its code, and see each other’s week together. Squads are optional and never change your own progress."],
-  ["Progress", "See the time you recorded each day, week or month, by category, with every session listed. Tap a category or a day for the details."],
-  ["Profile and milestones", "Tap your companion on Home to open Profile. Choose a look, see your categories grow and collect milestones; they unlock on their own as you go."],
-  ["Offline", "Without a connection, sessions save on this phone and sync when you’re back online. Anything that needs the server, like joining a squad, waits until then."],
+  ["Starting a session", "The big button on Home starts your next session. On Routines, Just focus lets you do anything for as long as you like, and every routine and subject has its own ▶. Finish the session to keep your time and XP. If you end early, it isn’t saved."],
+  ["Routines", "Save the things you keep coming back to, with a length, a category and a daily reminder if you want one. Not sure where to start? Grab one of the ideas. If your phone supports it, open a routine and tap Add widget to put it on your home screen."],
+  ["Study and exams", "Add the subjects you’re taking and tap ▶ to study one. Add your exams too, and they’ll count down on Study and Home, with reminders if you like. Studying a subject with an exam coming up counts as Revision. The rest counts as Learning."],
+  ["Changing things", "Hold a routine, subject or exam and the list starts to wiggle. Tap ✎ to edit or − to remove. We’ll always check before removing anything. Tap Done when you’re finished."],
+  ["Protection, if you want it", "A protected session covers the apps you set aside until it ends, with one 5-minute break. It needs Usage Access, Display over other apps and notifications, and we explain each one before you allow it. Calls, Settings and End session are always within reach."],
+  ["Growing your companion", "Every full minute you finish earns 1 XP for your companion and for that session’s category, and spare seconds carry over. Levels show the effort you put in, not how talented you are. Tap your level on Home to see what’s ahead."],
+  ["Daily goal and streak", "Finished time counts toward your daily goal. Any day with a finished session is a Focus day, and Focus days in a row grow your streak. You can change your goal once a week, and it kicks in the next day."],
+  ["Squads", "Make a squad or join a friend’s with its code, and cheer each other on through the week. Squads are optional and never touch your own progress."],
+  ["Progress", "See your time for each day, week or month, sorted by category, with every session listed. Tap a category or a day to dig in."],
+  ["Profile and milestones", "Tap your companion on Home to open Profile. Pick a look, watch your categories grow and collect milestones. They unlock on their own as you go."],
+  ["Offline", "No connection? No problem. Sessions save on your phone and sync when you’re back online. Things that need the internet, like joining a squad, wait until then."],
 ];
 export default function GuideScreen() {
-  return <PersonalPage title="How LifeRPG works" subtitle="Everything the first-run guide showed you, and a little more." back animateTransition>
+  return <PersonalPage title="How LifeRPG works" subtitle="Everything from the tour, plus a few extras." back animateTransition>
     {RULES.map(([title, body]) => <View key={title} style={p.card}><Text style={p.title}>{title}</Text><Text style={p.body}>{body}</Text></View>)}
   </PersonalPage>;
 }

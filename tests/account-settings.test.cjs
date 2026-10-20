@@ -187,9 +187,11 @@ test("Settings groups its rows and every row opens its own page", async () => {
     await ui.press("How LifeRPG works");
     assert.deepEqual(ui.calls().navigate, ["/settings-goal", "/settings-sessions", "/settings-notifications", "/guide"]);
     const toggle = label => ui.renderer.root.findAllByType("Switch").find(n => n.props.accessibilityLabel === label);
-    await act(async () => toggle("Reduce motion").props.onValueChange(true));
+    // Motion follows the phone's own setting; the app has no switch of its own.
+    assert.equal(toggle("Reduce motion"), undefined);
+    assert.doesNotMatch(ui.text(), /Reduce motion|Share session log/);
     await act(async () => toggle("Exam reminders").props.onValueChange(false));
-    assert.deepEqual(ui.calls().updates, [{ reduceMotion: true }, { examReminders: false }]);
+    assert.deepEqual(ui.calls().updates, [{ examReminders: false }]);
   } finally { await ui.cleanup(); }
 });
 const goalPage = options => settings(options, "src/app/settings-goal.tsx");
@@ -450,4 +452,15 @@ test("notification enabling creates the Android channel before prompting and nev
   const result = await api.enableNotifications();
   assert.deepEqual(calls, ["channel", "prompt"]);
   assert.equal(result.label, "Allowed on this device");
+});
+test("Settings and Daily goal share the last goal reading, so the goal page opens already filled in", async () => {
+  let reads = 0;
+  const cache = load("src/utils/dailyGoalCache.ts", { "../services/dailyGoalService": { getDailyGoalSettings: async owner => { reads++; return { user_id: owner, today_goal_minutes: 60, next_goal_minutes: 90, pending: true }; } } });
+  assert.equal(cache.cachedDailyGoal("account"), null);
+  cache.prefetchDailyGoal("account"); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(cache.cachedDailyGoal("account").next_goal_minutes, 90);
+  cache.prefetchDailyGoal("account"); await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reads, 1, "a recent reading is reused");
+  assert.equal(cache.cachedDailyGoal("someone-else"), null, "never another account's goal");
+  cache.forgetDailyGoal("account"); assert.equal(cache.cachedDailyGoal("account"), null);
 });
