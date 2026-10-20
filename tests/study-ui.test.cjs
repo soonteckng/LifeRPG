@@ -26,6 +26,8 @@ const rn = { View: host('View'), ScrollView: host('HScroll'), Switch: host('Swit
 const editMode = {Wiggle:props=>React.createElement('View',{style:props.style,testID:props.active?'wiggling':undefined},props.children),EditBadges:props=>React.createElement('View',{testID:'edit-badges'},props.onEdit&&React.createElement('Press',{accessibilityLabel:`Edit ${props.name}`,onPress:props.onEdit}),props.onRemove&&React.createElement('Press',{accessibilityLabel:`Remove ${props.name}`,onPress:props.onRemove}))};
 const base = () => ({
   '/EditMode': editMode,
+  // The guide's anchor is a plain wrapper here; the guide has its own tests.
+  '/FeatureTour': { TourAnchor: props => React.createElement('View', { testID: `tour-anchor-${props.id}` }, props.children), TourScrollView: props => React.createElement('Scroll', props, props.children), useFeatureTour: () => null },
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') },
   '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/MotionPressable': host('Press'), '/SheetConfirmation': host('Confirm'),
@@ -521,4 +523,22 @@ test('with exams but no subjects, My Subjects still offers the Add subject tile'
   await act(async () => { ui = create(React.createElement(Screen)); });
   try { assert.ok(ui.root.findAll(x => x.props.testID === 'subject-add-tile').length > 0, 'never an empty gap under My Subjects'); }
   finally { await act(async () => ui.unmount()); }
+});
+
+test('removing a subject with an exam coming up says so first; one without an exam asks as before', async () => {
+  const art = { ...course, id: id(3), name: 'Art' };
+  const { Screen } = studyScreen({ courses: [course, art], exams: [exam] }); let ui;
+  await act(async () => { ui = create(React.createElement(Screen)); });
+  try {
+    const tile = name => within(ui.root, 'subject-shelf').findAllByType('Press').find(x => x.props.accessibilityLabel?.startsWith(`${name},`));
+    await act(async () => tile('Maths').props.onLongPress());
+    await act(async () => presses(ui.root, 'Remove Maths')[0].props.onPress());
+    let confirm = ui.root.findByType('Confirm').props;
+    assert.equal(confirm.title, 'Maths has an exam coming up');
+    assert.match(confirm.message, /Calculus final is in 12 days/); assert.match(confirm.message, /Are you sure you want to remove Maths\?/);
+    await act(async () => confirm.onCancel());
+    await act(async () => presses(ui.root, 'Remove Art')[0].props.onPress());
+    confirm = ui.root.findByType('Confirm').props;
+    assert.equal(confirm.title, 'Remove Art?', 'no exam, the usual question');
+  } finally { await act(async () => ui.unmount()); }
 });

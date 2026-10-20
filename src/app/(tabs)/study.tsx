@@ -13,6 +13,7 @@ import StudySubjectSheet from "../../components/StudySubjectSheet";
 import { requestStudySync } from "../../components/StudyLifecycle";
 import SectionHeader, { CircleButton, DoneButton } from "../../components/SectionHeader";
 import SubjectShelf from "../../components/SubjectShelf";
+import { TourAnchor } from "../../components/FeatureTour";
 import ExamsCard from "../../components/ExamsCard";
 import OneTimeHint from "../../components/OneTimeHint";
 import { appPreferences } from "../../services/appPreferences";
@@ -27,7 +28,7 @@ import { useStudyPlan } from "../../hooks/useStudyPlan";
 import { useStudyLauncher } from "../../hooks/useStudyLauncher";
 import { useTabDockInset } from "../../hooks/useTabDockInset";
 import { suggestedArea } from "../../utils/focusAreas";
-import { countdownLabel, daysUntil, QUICK_SUBJECTS, sortCoursesByExam, subjectSuggestions, upcomingExams } from "../../utils/studyPlan";
+import { countdownLabel, daysUntil, examDateLabel, QUICK_SUBJECTS, sortCoursesByExam, subjectSuggestions, upcomingExams } from "../../utils/studyPlan";
 import type { StudyCourse, StudyExam } from "../../types/studyPlan";
 
 type Sheet = { kind: "exam"; exam: StudyExam | null; courseId: string | null; title?: string } | { kind: "subject"; course: StudyCourse | null; edit?: boolean }
@@ -74,6 +75,8 @@ export default function StudyScreen() {
   const ensureSubject = (name: string) => plan.ensureCourse(name, learning?.id ?? null);
   const newExam = () => show({ kind: "exam", exam: null, courseId: null });
   const nearest = exams[0];
+  // Removing a subject with an exam coming up asks a little more clearly.
+  const removingExam = removing ? exams.find(item => item.courseId === removing.id) ?? null : null;
 
   const chips = <View style={s.chips}>{quick.map(name => <Pressable key={name} disabled={!plan.ready} onPress={() => void addSubject(name, null)} accessibilityRole="button" accessibilityLabel={`Add ${name}`} style={s.chip}>
     <Ionicons name="add" size={14} color={colors.accent} /><Text style={s.chipText}>{name}</Text>
@@ -87,7 +90,7 @@ export default function StudyScreen() {
     <ContentReveal><View style={s.stack}>
       {!!plan.error && <Text style={s.notice} accessibilityLiveRegion="polite">{plan.error}</Text>}
 
-      <View style={s.section}>
+      <TourAnchor id="study-subjects"><View style={s.section}>
         <SectionHeader title="My Subjects" subtitle={editing ? "Tap ✎ to edit or − to remove." : undefined}
           right={editing ? <DoneButton label="Done editing subjects" onPress={() => setEditing(false)} />
             : <CircleButton label="Add a subject" disabled={!plan.ready} onPress={() => show({ kind: "add" })} />} />
@@ -106,7 +109,7 @@ export default function StudyScreen() {
           <Pressable onPress={() => { const subject = added; setAdded(null); show({ kind: "exam", exam: null, courseId: subject.id, title: `${subject.name} exam` }); }}
             accessibilityRole="button" accessibilityLabel={`Add an exam for ${added.name}`} style={s.pill}><Text style={s.pillText}>Add exam</Text></Pressable>
         </View>}
-      </View>
+      </View></TourAnchor>
 
       <View style={s.section}>
         <SectionHeader title="My Exams" subtitle={examEditing ? "Tap ✎ to edit or − to remove." : nearest ? `${exams.length} coming up · next ${countdownLabel(daysUntil(nearest.examDate)).toLowerCase()}` : undefined}
@@ -147,17 +150,20 @@ export default function StudyScreen() {
       </BottomSheetScrollView>
     </AppSheet>
   </PersonalPage>
-    {removing && <SheetConfirmation elevated title={`Remove ${removing.name}?`} destructive
-      message="Its minutes stay saved. Add it back any time and they return. Its exams stay, without a subject."
+    {removing && <SheetConfirmation elevated destructive
+      title={removingExam ? `${removing.name} has an exam coming up` : `Remove ${removing.name}?`}
+      message={removingExam
+        ? `${removingExam.title} is ${countdownLabel(daysUntil(removingExam.examDate)).toLowerCase()} (${examDateLabel(removingExam.examDate)}). Are you sure you want to remove ${removing.name}? Its minutes stay saved, and its exams stay without a subject.`
+        : "Its minutes stay saved. Add it back any time and they return. Its exams stay, without a subject."}
       confirmLabel="Remove subject" cancelLabel="Keep subject" onCancel={() => setRemoving(null)}
       onConfirm={() => { const course = removing; setRemoving(null); void plan.remove("course", course.id); }} />}
   </View>;
 }
 
 const HOW_IT_WORKS = [
-  ["Add your subjects", "Hold a subject to remove it. Its minutes stay saved, and come back if you add it again."],
+  ["Add your subjects", "Hold a subject to edit or remove it. Its minutes stay saved, and come back if you add it again."],
   ["Add your exams", "Each one counts down here and on Home, with reminders if you want them."],
-  ["Study a subject", "Tap ▶ on a subject or Study on an exam. With an exam coming up it counts as Revision, otherwise Learning."],
+  ["Study a subject", "Tap ▶ on a subject. With an exam coming up it counts as Revision, otherwise Learning."],
   ["See where your time went", "Progress breaks Revision and Learning down by subject."],
 ] as const;
 

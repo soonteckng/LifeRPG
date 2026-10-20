@@ -2,20 +2,20 @@ import { View } from "react-native";
 import { PersonalPage, p } from "../components/PersonalUI";
 import { Text } from "../components/AppText";
 const RULES = [
-  ["One session, one starting point", "Your focus card brings today's goal, category, suggestion and time together. Tap Change to choose a category or free focus. Choose 30 or 60 minutes, or set a custom time. Finish a session to record your effort. Ending early gives no credit."],
-  ["Focus areas fit your life", "Learning, work, creativity, everyday life and wellbeing help you see where your effort goes. Everyday focus fits anything else. Choose the area that fits your session; labels do not measure ability."],
-  ["Wellbeing, made clear", "Read a book for pleasure, write in a journal or take a gentle walk. Keep distracting apps closed and give this activity your attention until the timer ends."],
-  ["A companion of your own", "Open Personalise on Profile to change your name and choose a complete character look. Your companion greets you when you visit Profile, then breathes, blinks and looks around. Tap it for another greeting. Cosmetic choices keep your saved progress."],
-  ["Your milestones", "Profile is home to your milestone collection. Sessions, time, focus days and a steady rhythm unlock milestones automatically. There is nothing to claim and no extra XP is awarded."],
-  ["Your effort becomes growth", "Completed seconds count toward your daily goal. Every 60 seconds earns 1 character XP and XP for the chosen Focus area; leftover seconds carry forward. Levels reflect logged effort, not ability. Tap your level on Home or Profile to see the tier path and your next target."],
-  ["Your routines, together", "Keep activities you want to return to in Your routines. Your earlier quests appear here too, with their existing schedules and completion history. Choose a routine to start its session or open Manage to edit it. Saving a suggestion as a routine never awards extra XP."],
-  ["Reminders are your choice", "Turn on a daily reminder when editing a saved routine and allow notifications on this phone. Reminders do not require Usage Access or Display over other apps. Android can deliver reminders later when precise alarms are off or the phone limits background activity."],
-  ["Protection is optional", "The normal timer works without app-protection permissions. The Android protection preview uses Usage Access to detect an open app and Display over other apps to show a cover. Read each permission explanation before choosing whether to allow it. Calls, Settings and Stop remain accessible."],
-  ["Consistency, without pressure", "Any completed session with recorded time makes a Focus day. Consecutive days build your Focus streak. Progress also shows your longest streak. A quiet day never removes earned growth or milestones."],
-  ["A steady daily goal", "Choose a minimum of 30 minutes per day. Where goal editing is available, you can change it once every seven days. Changes begin the next day; saved daily targets and past achievements stay intact."],
+  ["Start a session", "On Home, the green button starts your next step. Just focus on Routines starts any activity at your own length, a routine starts with its ▶, and so does a subject in Study. Finish the session to record your effort. Ending early saves no time or XP."],
+  ["Routines", "Save something you want to return to, with its length, category and an optional daily reminder. Start from one of the ideas if you like. Where your phone supports it, a routine can also sit on your home screen: open it and tap Add widget."],
+  ["Study and exams", "Add the subjects you’re taking and tap ▶ to study one. Add your exams: each counts down on Study and Home, with reminders if you want them. Studying a subject with an exam coming up counts as Revision; otherwise it counts as Learning."],
+  ["Editing anything", "Hold a routine, subject or exam: the list wiggles and each card shows ✎ to edit and − to remove. Removing always asks first. Tap a card or Done when you’re finished."],
+  ["Protection is optional", "A protected session covers the apps you set aside until it ends, with one 5-minute break. It needs Usage Access, Display over other apps and notifications; each is explained before you allow it. Calls, Settings and End session always stay within reach."],
+  ["Your effort becomes growth", "Every 60 completed seconds earns 1 XP for your companion and for the session’s category; leftover seconds carry forward. Levels reflect recorded effort, not ability. Tap your level on Home to see the tier path."],
+  ["Your daily goal and streak", "Completed time counts toward your daily goal. Any day with a completed session is a Focus day, and Focus days in a row build your streak. You can change your goal once every seven days; changes start the next day."],
+  ["Squads", "Start a squad or join one with its code, and see each other’s week together. Squads are optional and never change your own progress."],
+  ["Progress", "See the time you recorded each day, week or month, by category, with every session listed. Tap a category or a day for the details."],
+  ["Profile and milestones", "Tap your companion on Home to open Profile. Choose a look, see your categories grow and collect milestones; they unlock on their own as you go."],
+  ["Offline", "Without a connection, sessions save on this phone and sync when you’re back online. Anything that needs the server, like joining a squad, waits until then."],
 ];
 export default function GuideScreen() {
-  return <PersonalPage title="How LifeRPG works" subtitle="A small guide, whenever you need it." back animateTransition>
+  return <PersonalPage title="How LifeRPG works" subtitle="Everything the first-run guide showed you, and a little more." back animateTransition>
     {RULES.map(([title, body]) => <View key={title} style={p.card}><Text style={p.title}>{title}</Text><Text style={p.body}>{body}</Text></View>)}
   </PersonalPage>;
 }

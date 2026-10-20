@@ -1,7 +1,7 @@
 import { PROFILE_NAME_LIMIT } from "./profile";
 export const ONBOARDING_NAME_LIMIT = PROFILE_NAME_LIMIT;
 export const INTRO_PAGES = [
-  { icon: "timer-outline", title: "Start with one small block.", body: "Follow a suggestion or focus your own way. Your personal quests stay alongside both.", detail: "Choose a duration, settle into your work, and let the timer take care of the time." },
-  { icon: "person-outline", title: "Your effort takes shape.", body: "Completing a session grows your character and the area you choose. Levels reflect effort you’ve recorded.", detail: "Every completed second counts toward your daily goal. Each 60 seconds earns 1 XP; leftover seconds carry forward. You can change your daily goal once every seven days, starting the next day." },
-  { icon: "leaf-outline", title: "A rhythm, at your pace.", body: "Completed sessions build Focus days. Consecutive Focus days build your streak; your daily goal is a separate milestone.", detail: "Earned growth stays with you. Find your next step on Home lets you change direction, and Settings has a short guide whenever you need it." },
+  { icon: "timer-outline", title: "Start with one small block.", body: "Start a routine, study a subject, or just focus. Pick a length and let the timer keep time.", detail: "A protected session can cover the apps that pull you away until it ends. Ending a session is always one tap away." },
+  { icon: "person-outline", title: "Your effort takes shape.", body: "Finished sessions grow your companion and the category you chose. Levels reflect effort you’ve recorded, not ability.", detail: "Every completed second counts toward your daily goal. Each 60 seconds earns 1 XP; leftover seconds carry forward." },
+  { icon: "leaf-outline", title: "A rhythm, at your pace.", body: "Focus days build your streak. Add your exams and they count down on Home, so nothing sneaks up on you.", detail: "Next, a short guide shows you around. It takes about a minute, and Settings has the details whenever you need them." },
 ] as const;

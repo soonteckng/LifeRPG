@@ -103,7 +103,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   ];
   const subtitles = [
     "A gentle starting point, or space to focus your own way. You can change this anytime.",
-    direction.enabled ? "Choose where you’d like to begin. You can change your suggestion on Home anytime." : "Choose your own duration and Focus area. Add personal quests whenever you want a little structure.",
+    direction.enabled ? "Choose where you’d like to begin. You can change your suggestion on Home anytime." : "Choose your own duration and Focus area. Save routines whenever you want a little structure.",
     "A name for your journey. You can personalise your character in Profile later.",
     "Choose a starting daily goal. Short sessions count too. There’s no need to do it all at once.",
     "During a session, this app can cover the apps that pull you away. Optional, and you can change it later.",
@@ -114,9 +114,9 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     error={(step === 2 ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <View style={s.choices}>
       <OnboardingChoice title="Help me choose a focus" hint="A starting point for learning, work or everyday life." selected={direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: true }); }} />
-      <OnboardingChoice title="Just let me focus" hint="Your time, your focus, your own quests." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
+      <OnboardingChoice title="Just let me focus" hint="Your time, your focus, your own routines." selected={!direction.enabled} onPress={() => { setChoiceTouched(true); setDirection({ ...direction, enabled: false }); }} />
     </View>}
-    {step === 1 && (direction.enabled ? <FocusDirectionPicker compact value={direction} onChange={value => { setChoiceTouched(true); setDirection(value); }} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home will offer free focus. Find your next step is there whenever you’d like a suggestion.</Text></View>)}
+    {step === 1 && (direction.enabled ? <FocusDirectionPicker compact value={direction} onChange={value => { setChoiceTouched(true); setDirection(value); }} /> : <View style={s.note}><Text style={s.noteTitle}>Ready when you are.</Text><Text style={s.noteBody}>Home will offer free focus whenever you’re ready, and Routines has ideas to start from.</Text></View>)}
     {step === 2 && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
     {step === 3 && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>Change your daily goal in Settings once every seven days. Changes start the next day. A quiet day never takes earned growth away.</Text></View>}
     {step === PROTECTION_STEP && <View style={s.choices}>

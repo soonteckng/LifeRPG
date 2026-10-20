@@ -7,6 +7,7 @@ import { PersonalPage } from "../../components/PersonalUI";
 import { Text } from "../../components/AppText";
 import Pressable from "../../components/MotionPressable";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
+import { TourAnchor } from "../../components/FeatureTour";
 import { colors, edge } from "../../constants/theme";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
@@ -38,12 +39,12 @@ export default function RoutinesScreen() {
   };
   return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}>
     <ContentReveal><View style={s.stack}>
-      <Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
+      <TourAnchor id="routines-just-focus"><Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
         <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={22} color="#AAB3FF" /></View>
         <View style={s.copy}><Text style={s.title}>{open ? "Your session" : "Just focus"}</Text>
           <Text style={s.caption}>{open ? timer.isRunning ? "In progress. Tap to return" : "Paused. Tap to return" : "Any activity, your time"}</Text></View>
         <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={20} color={colors.primaryText} /></View>
-      </Pressable>
+      </Pressable></TourAnchor>
       <SavedRoutinesCard subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
     </View></ContentReveal>
   </PersonalPage>;

@@ -5,6 +5,7 @@ import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
+import { useEffect, useRef } from "react";
 import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,6 +30,16 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const route = props.state?.routes?.[props.state.index]?.name ?? "index";
   const pinned = usePinnedActionPresent(route);
   const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale, pinned);
+  // The guide can point at a single tab: the pill is five equal slots.
+  const bar = useRef<View>(null), register = tour?.register;
+  useEffect(() => {
+    if (!register) return;
+    const offs = GUIDE_TABS.map((name, index) => register(`tab-${name}`, {
+      measure: done => bar.current?.measureInWindow((x, y, w, h) => done({ x: x + (w * index) / GUIDE_TABS.length, y, width: w / GUIDE_TABS.length, height: h })),
+      reveal: () => false,
+    }));
+    return () => offs.forEach(off => off());
+  }, [register]);
   return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
     {/* Content fades into the background behind the bars, as on iOS, rather
       than showing through the gaps between them. */}
@@ -54,10 +65,11 @@ export default function SessionTabBar(props: BottomTabBarProps) {
       </View>
       <View style={styles.bannerCircle}><Ionicons name="chevron-up" size={20} color={colors.primary} /></View>
     </TouchableOpacity>}
-    <BottomTabBar {...props} />
+    <View ref={bar} collapsable={false}><BottomTabBar {...props} /></View>
   </View>;
 }
 const FADE = 48;
+const GUIDE_TABS = ["index", "routines", "study", "squads", "progress"] as const;
 const styles = StyleSheet.create({
   dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 10, gap: 10 },
   // A fixed-height fade reads the same on every tab, whatever sits in the dock.
