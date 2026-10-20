@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { createContext, forwardRef, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, BackHandler, Pressable as NativePressable, ScrollView, StyleSheet, View, useWindowDimensions, type ScrollViewProps, type StyleProp, type ViewStyle } from "react-native";
 import * as Haptics from "expo-haptics";
-import { Ionicons } from "@expo/vector-icons";
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import { usePathname, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path } from "react-native-svg";
@@ -30,15 +30,15 @@ export const TOUR_STEPS: readonly TourStep[] = [
   { id: "welcome", route: "/", kind: "info", title: "Welcome to LifeRPG!", body: "Let’s take a quick look around. It only takes a minute, and the app waits for you while we go.", next: "Let’s go" },
   { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. The big button starts your next session, and Other session is there for anything else." },
   { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Your routines", body: "The things you come back to live here. One tap and you’re off. See all shows the full list." },
-  { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap Routines", body: "It’s down in the bar at the bottom." },
+  { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap Routines", body: "It’s in the bar at the bottom. Tap it to open it." },
   { id: "routines-just-focus", route: "/routines", kind: "info", target: "routines-just-focus", title: "Just focus", body: "Pick anything, set your own time and go. Further down you can save your own routines or grab one of our ideas." },
-  { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap Study", body: "Next stop, your subjects." },
+  { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap Study", body: "Next stop, your subjects. Tap Study in the bar at the bottom." },
   { id: "study-subjects", route: "/study", kind: "info", target: "study-subjects", title: "Subjects and exams", body: "Add what you’re studying and tap ▶ to start a session for it. Add an exam date too, and we’ll count down to it here and on Home." },
-  { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap Squads", body: "Let’s go see your friends." },
+  { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap Squads", body: "Let’s go see your friends. Tap Squads in the bar at the bottom." },
   { id: "squads-overview", route: "/squads", kind: "info", title: "Better together", body: "Make a squad or join a friend’s, and you’ll cheer each other on through the week. Totally optional, jump in whenever you like." },
-  { id: "tap-progress", route: "/squads", kind: "tap", target: "tab-progress", expect: "/progress", title: "Tap Progress", body: "Time to see it all add up." },
+  { id: "tap-progress", route: "/squads", kind: "tap", target: "tab-progress", expect: "/progress", title: "Tap Progress", body: "Time to see it all add up. Tap Progress in the bar at the bottom." },
   { id: "progress-overview", route: "/progress", kind: "info", title: "Watch it grow", body: "Every minute you focus shows up here, sorted by category, along with your streak and milestones." },
-  { id: "tap-home", route: "/progress", kind: "tap", target: "tab-index", expect: "/", title: "Tap Home", body: "Back to where we started." },
+  { id: "tap-home", route: "/progress", kind: "tap", target: "tab-index", expect: "/", title: "Tap Home", body: "Back to where we started. Tap Home in the bar at the bottom." },
   { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your companion any time for your profile and milestones. The gear opens Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
@@ -110,6 +110,9 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const targets = useRef(new Map<string, Target>()), scrollTargets = useRef(new Map<string, () => void>());
   const moving = useRef(false), alive = useRef(true), root = useRef<View>(null), epoch = useRef(0);
   const [frame, setFrame] = useState<TourRect | null>(null), [panelHeight, setPanelHeight] = useState(220);
+  // The highlight reads the card's size without re-running when the card grows
+  // (for example a "tap Next" reminder), so the page underneath never shifts.
+  const panelSize = useRef(220);
   const [opacity] = useState(() => new Animated.Value(0)), [glow] = useState(() => new Animated.Value(0)), [bump] = useState(() => new Animated.Value(0));
   const screen = useWindowDimensions(), insets = useSafeAreaInsets(), reduced = useReducedMotion();
   const [dockHeight, setDockHeight] = useState(90 + insets.bottom);
@@ -181,7 +184,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           if (![next.x, next.y, next.width, next.height].every(Number.isFinite) || next.width <= 0 || next.height <= 0) { again(); return; }
           if (!revealed) {
             revealed = true;
-            if (target.reveal(next, { top: frame.y + guideTop, bottom: frame.y + frame.height - 12, panelHeight: panelHeight + 8 })) { scrolled = !reduced; again(); return; }
+            if (target.reveal(next, { top: frame.y + guideTop, bottom: frame.y + frame.height - 12, panelHeight: panelSize.current + 8 })) { scrolled = !reduced; again(); return; }
           }
           if (scrolled) settling++;
           if (!last || Math.abs(last.x - next.x) > 1 || Math.abs(last.y - next.y) > 1 || Math.abs(last.height - next.height) > 1 || Math.abs(last.width - next.width) > 1) { last = next; stable = 0; again(); return; }
@@ -196,7 +199,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     };
     timeout = setTimeout(measure, 60);
     return () => { live = false; request++; clearTimeout(timeout); clearTimeout(callbackDeadline); };
-  }, [current, pathname, frame, guideTop, panelHeight, measureRevision, reduced]);
+  }, [current, pathname, frame, guideTop, measureRevision, reduced]);
   // If a highlight never arrives, the card still appears, with its own button.
   useEffect(() => {
     if (!current) return;
@@ -276,8 +279,8 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const viewport = { width: frame?.width ?? screen.width, height: frame?.height ?? screen.height };
   const panelWidth = Math.min(480, viewport.width - 32);
   const tabTarget = !!current?.target?.startsWith("tab-");
-  // Tips stay above the tab bar; for a tab, just above the glowing tab.
-  const tipBottom = tabTarget && rect ? rect.y - 16 : viewport.height - dockHeight - 12;
+  // Tips stay above the tab bar; for a tab, above the hand pointing at it.
+  const tipBottom = tabTarget && rect ? rect.y - 16 - HAND : viewport.height - dockHeight - 12;
   const tipTop = current?.id === "welcome" ? Math.max(guideTop, (viewport.height - panelHeight) / 2)
     : tourTipPosition(overview || tabTarget ? null : rect, panelHeight, guideTop, tipBottom);
   const hole = current?.kind === "tap" && rect ? rect : null;
@@ -311,7 +314,13 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
           <Animated.View testID="tour-outline" style={[s.ring, current?.kind === "tap" && s.ringTap, ringStyle(spot, tabTarget ? 3 : 6)]} />
         </> : <View testID={overview ? "tour-overview-scrim" : "tour-dim"} style={[StyleSheet.absoluteFill, overview ? s.overviewDim : s.dimFull]} />}
       </View>
-      {current && <Animated.View testID="tour-tip" onLayout={event => setPanelHeight(event.nativeEvent.layout.height)}
+      {/* On a tap step, a hand bobs above the real button: tap here. */}
+      {hole && spot && <Animated.View testID="tour-hand" pointerEvents="none" style={[s.hand, { left: spot.x + spot.width / 2 - 50, top: spot.y - HAND - 4,
+        transform: [{ translateY: reduced ? 0 : glow.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }] }]}>
+        <Text style={s.handLabel}>Tap here</Text>
+        <MaterialCommunityIcons name="hand-pointing-down" size={34} color={guideColors.action} />
+      </Animated.View>}
+      {current && <Animated.View testID="tour-tip" onLayout={event => { const height = event.nativeEvent.layout.height; panelSize.current = height; setPanelHeight(height); }}
         accessible={current.kind === "tap"} accessibilityRole={current.kind === "tap" ? "button" : undefined} accessibilityLabel={current.kind === "tap" ? `${current.title} ${current.body}` : undefined}
         accessibilityActions={current.kind === "tap" ? [{ name: "activate", label: `Open ${tapLabel}` }] : undefined}
         onAccessibilityAction={current.kind === "tap" ? () => router.navigate(current.expect!) : undefined}
@@ -343,6 +352,7 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     </View>}
   </View></TourContext.Provider>;
 }
+const HAND = 62;
 const s = StyleSheet.create({
   root: { flex: 1 }, anchor: { width: "100%", alignSelf: "stretch" },
   overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 },
@@ -363,5 +373,7 @@ const s = StyleSheet.create({
   nextRing: { position: "absolute", top: -5, bottom: -5, left: -5, right: -5, borderWidth: 2.5, borderRadius: 19, borderColor: guideColors.action },
   action: { minHeight: 50, borderRadius: 14, backgroundColor: guideColors.action, paddingHorizontal: 16, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
   actionText: { color: guideColors.text, fontSize: 17, lineHeight: 22, fontWeight: "700" },
+  hand: { position: "absolute", width: 100, height: HAND, alignItems: "center", justifyContent: "flex-end" },
+  handLabel: { color: guideColors.text, backgroundColor: guideColors.surface, overflow: "hidden", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, fontSize: 13, lineHeight: 18, fontWeight: "700" },
   pointer: { flex: 1, minHeight: 50, flexDirection: "row", alignItems: "center", gap: 8 }, pointerText: { color: guideColors.secondary, fontSize: 14, lineHeight: 19 },
 });
