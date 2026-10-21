@@ -1176,7 +1176,13 @@ test("Home can open recovery for an unsaved, rejected or unreadable session even
   const review=()=>ui.renderer.root.findAllByType("Pressable").find(node=>node.props.accessibilityLabel==="Review saved session");
   try {
     assert.equal(review(),undefined);
-    for(const flags of [{isCompleted:true,syncStatus:"waiting",sessionSummary:null},{isCompleted:true,syncStatus:"rejected",sessionSummary:null},{restoreError:true}]) {
+    // While a finished session is still saving, its result card leads: the
+    // Home card keeps its session shape, with no review or start buttons.
+    await ui.update({isCompleted:true,syncStatus:"waiting",sessionSummary:null});
+    assert.equal(review(),undefined);
+    assert.equal(ui.renderer.root.findAll(node=>node.props.testID==="home-other-session").length,0,"no start buttons pop in under the saving screen");
+    assert.match(ui.text?ui.text():JSON.stringify(ui.renderer.toJSON()),/Session finished/);
+    for(const flags of [{isCompleted:true,syncStatus:"waiting",sessionSummary:null,summaryViewed:true},{isCompleted:true,syncStatus:"rejected",sessionSummary:null,summaryViewed:false},{restoreError:true}]) {
       await ui.update(flags); assert.ok(review());
       await act(async()=>review().props.onPress());
     }

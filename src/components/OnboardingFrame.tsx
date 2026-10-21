@@ -1,6 +1,7 @@
 import { Children, Fragment, isValidElement, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { AccessibilityInfo, Animated, BackHandler, Easing, Keyboard, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import Pressable from "./MotionPressable";
 import { colors } from "../constants/theme";
@@ -48,6 +49,15 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
 }) {
   const scroll = useRef<ScrollView>(null);
   useLayoutEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [step]);
+  // When a page runs past the screen, a soft "More below" cue says so, so
+  // nobody thinks the list ends at what they can see. It goes once they scroll.
+  const metrics = useRef({ view: 0, content: 0, y: 0 });
+  const [more, setMore] = useState(false);
+  const measure = (next: Partial<typeof metrics.current>) => {
+    Object.assign(metrics.current, next);
+    const { view, content, y } = metrics.current;
+    setMore(view > 0 && content - (y + view) > 24);
+  };
   useEffect(() => { AccessibilityInfo.announceForAccessibility(title); }, [title]);
   useEffect(() => {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
@@ -65,7 +75,10 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
             {Array.from({ length: total }, (_, i) => <View key={i} style={[s.segment, i < step && s.segmentComplete]} />)}
           </View>
         </View>
-        <ScrollView ref={scroll} style={s.scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>
+        <View style={s.scroll}>
+        <ScrollView ref={scroll} style={s.scroll} contentContainerStyle={s.body} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}
+          onLayout={event => measure({ view: event.nativeEvent.layout.height })} onContentSizeChange={(_, height) => measure({ content: height })}
+          onScroll={event => measure({ y: event.nativeEvent.contentOffset.y })} scrollEventThrottle={32}>
           <Animated.View style={{ opacity, gap: 24 }} pointerEvents={busy || transitioning ? "none" : "auto"}>
             <View key={step} style={{ gap: 24 }}>
               <View style={s.heading}><OnboardingSection delay={0}><Text style={s.title} accessibilityRole="header">{title}</Text></OnboardingSection><OnboardingSection delay={160}><Text style={s.subtitle}>{subtitle}</Text></OnboardingSection></View>
@@ -73,6 +86,13 @@ export default function OnboardingFrame({ step, total, title, subtitle, children
             </View>
           </Animated.View>
         </ScrollView>
+        {more && <View pointerEvents="box-none" style={s.more} testID="onboarding-more">
+          <View pointerEvents="none" style={[s.fade, { opacity: 0.35 }]} /><View pointerEvents="none" style={[s.fade, { opacity: 0.7 }]} /><View pointerEvents="none" style={[s.fade, { opacity: 0.92 }]} />
+          <Pressable onPress={() => scroll.current?.scrollToEnd({ animated: true })} accessibilityRole="button" accessibilityLabel="More below. Scroll down" style={s.morePill}>
+            <Text style={s.moreText}>More below</Text><Ionicons name="chevron-down" size={16} color={colors.text} />
+          </Pressable>
+        </View>}
+        </View>
         <View style={s.footer} testID="onboarding-footer">
           <View style={s.feedback} accessibilityLiveRegion="polite">{!!error && <Text style={s.error} accessibilityRole="alert">{error}</Text>}{retry && <Pressable onPress={retry} accessibilityRole="button" style={s.quiet}><Text style={s.link}>Retry loading preferences</Text></Pressable>}</View>
           <View style={s.footerActions}>
@@ -105,7 +125,11 @@ const s = StyleSheet.create({
   top: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 20, gap: 16 }, topRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 },
   brand: { fontSize: 13, lineHeight: 18, letterSpacing: 2, color: colors.secondary, fontWeight: "500" }, step: { fontSize: 14, lineHeight: 20, color: colors.secondary },
   progress: { flexDirection: "row", gap: 5 }, segment: { flex: 1, height: 4, borderRadius: 2, backgroundColor: colors.line }, segmentComplete: { backgroundColor: colors.accent },
-  scroll: { flex: 1 }, body: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24, flexGrow: 1 }, heading: { gap: 12 },
+  scroll: { flex: 1 },
+  more: { position: "absolute", left: 0, right: 0, bottom: 0, height: 56, alignItems: "center", justifyContent: "flex-end" },
+  fade: { alignSelf: "stretch", height: 10, backgroundColor: colors.background },
+  morePill: { position: "absolute", bottom: 8, flexDirection: "row", alignItems: "center", gap: 6, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, backgroundColor: colors.sheetCard, borderWidth: 1, borderColor: colors.border },
+  moreText: { color: colors.text, fontSize: 14, lineHeight: 18, fontWeight: "500" }, body: { paddingHorizontal: 24, paddingTop: 16, paddingBottom: 24, flexGrow: 1 }, heading: { gap: 12 },
   title: { fontSize: 30, lineHeight: 37, letterSpacing: -0.7, fontWeight: "500", color: colors.text }, subtitle: { fontSize: 17, lineHeight: 22, color: colors.secondary },
   footer: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 8, backgroundColor: colors.background }, feedback: { minHeight: 24, paddingBottom: 8 },
   primary: { flex: 1, minHeight: 54, borderRadius: 27, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center", padding: 14 }, primaryText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "500", textAlign: "center" },

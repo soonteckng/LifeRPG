@@ -51,15 +51,17 @@ export default function IdeaAreaPicker({ value, onChange, disabled = false, inSh
   </View>;
 }
 const s = StyleSheet.create({
-  stack: { gap: 10 },
-  row: { minHeight: 76, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 18, paddingVertical: 14, borderRadius: 24, backgroundColor: colors.surface },
+  // Compact enough that all five fit on most phones; Onboarding shows a
+  // "More below" cue on the smaller ones.
+  stack: { gap: 8 },
+  row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, backgroundColor: colors.surface },
   // Tighter rows in the sheet, so all five and Done fit without scrolling.
   rowInSheet: { minHeight: 64, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 20, backgroundColor: colors.sheetCard },
   rest: { opacity: 0.45 },
-  icon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center" },
-  copy: { flex: 1, minWidth: 0, gap: 3 },
-  title: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600" },
-  line: { color: colors.secondary, fontSize: 14, lineHeight: 19 },
+  icon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  copy: { flex: 1, minWidth: 0, gap: 2 },
+  title: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  line: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.tertiary, alignItems: "center", justifyContent: "center" },
   note: { color: colors.secondary, fontSize: 14, lineHeight: 20, paddingHorizontal: 6, marginTop: 4 },
 });

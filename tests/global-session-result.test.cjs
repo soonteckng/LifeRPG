@@ -172,43 +172,49 @@ test('pending Done is available offline and confirmation resurfaces once after d
   }finally{await ui.cleanup();}
 });
 
-test('online saving inside Session uses a short grace but maintains one pending sheet while the confirmed receipt arrives',async t=>{
+const saving=ui=>ui.root().findAll(node=>node.props.testID==='session-saving'&&typeof node.type==='string').length>0;
+test('online saving inside Session dims behind one saving message, and the card opens only with the confirmed result',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
   const ui=await setup({isCompleted:true,syncStatus:'waiting'},'online','/session');
   try{
     const result=ui.result();assert.equal(result.props.visible,false);
-    await act(async()=>t.mock.timers.tick(1000));assert.equal(result.props.visible,false,'a short wait, so the card usually opens already filled in');
-    await act(async()=>t.mock.timers.tick(300));assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
-    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
-  }finally{await ui.cleanup();}
-});
-test('outside Session a finished session opens once, complete, when its result arrives quickly',async t=>{
-  t.mock.timers.enable({apis:['setTimeout']});
-  const ui=await setup({isCompleted:true,syncStatus:'waiting'});
-  try{
-    const result=ui.result();assert.equal(result.props.visible,false,'no saving flash first');
-    await act(async()=>t.mock.timers.tick(700));
+    await act(async()=>t.mock.timers.tick(200));assert.equal(saving(ui),false,'an instant reply never flashes the saving screen');
+    await act(async()=>t.mock.timers.tick(100));assert.equal(saving(ui),true);assert.equal(result.props.visible,false,'no half-filled card');
+    await act(async()=>t.mock.timers.tick(3000));assert.equal(saving(ui),true);assert.equal(result.props.visible,false);
     await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);
-    assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
+    assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);assert.equal(saving(ui),false);
   }finally{await ui.cleanup();}
 });
-test('outside Session a slower result opens the card after the brief wait, then fills in',async t=>{
+test('outside Session a quick result opens the card once, complete, with no saving screen',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const ui=await setup({isCompleted:true,syncStatus:'waiting',clientReported:true});
+  try{
+    const result=ui.result();assert.equal(result.props.visible,false,'waits for the result, even when the phone already holds the finish');
+    await act(async()=>t.mock.timers.tick(150));
+    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);
+    assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);assert.equal(saving(ui),false);
+  }finally{await ui.cleanup();}
+});
+test('a reply slower than the limit opens the card in its saved-on-this-phone state, then fills in',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
   const ui=await setup({isCompleted:true,syncStatus:'waiting'});
   try{
-    const result=ui.result();await act(async()=>t.mock.timers.tick(1600));
-    assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
+    const result=ui.result();await act(async()=>t.mock.timers.tick(9900));
+    assert.equal(saving(ui),true);assert.equal(result.props.visible,false);
+    await act(async()=>t.mock.timers.tick(200));
+    assert.equal(saving(ui),false);assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
     await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(result.props.pending,false);
   }finally{await ui.cleanup();}
 });
-
-test('fast receipts skip the brief saving card, and retry controls retain their identity while retrying',async t=>{
+test('an error or going offline opens the card at once with its retry, never a stuck saving screen',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
   const ui=await setup({isCompleted:true,syncStatus:'waiting'});
   try{
-    const result=ui.result();await act(async()=>t.mock.timers.tick(400));
-    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
-    await act(async()=>t.mock.timers.tick(1000));assert.equal(result.props.pending,false);
+    await act(async()=>t.mock.timers.tick(400));assert.equal(saving(ui),true);
+    await ui.update({actionError:'Could not confirm yet.'});
+    assert.equal(saving(ui),false);assert.equal(ui.result().props.visible,true);assert.equal(ui.result().props.syncError,'Could not confirm yet.');
+    await ui.update({actionError:null},'local-only');
+    assert.equal(saving(ui),false);assert.equal(ui.result().props.visible,true);
   }finally{await ui.cleanup();}
 });
 

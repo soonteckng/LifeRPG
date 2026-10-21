@@ -189,7 +189,11 @@ export default function HomeScreen() {
     }
     openSession();
   };
-  const needsReview = !!(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary));
+  // A session that just finished keeps the card in its session shape until its
+  // result is closed, so nothing jumps under the saving screen and the card.
+  const settling = accessMode === "online" && !hasOpenSession && !timer.summaryViewed && !timer.restoreError && !timer.actionError
+    && timer.syncStatus !== "rejected" && (timer.isCompleted || timer.endingSession || timer.sessionEnded);
+  const needsReview = !settling && !!(timer.restoreError || (timer.endingSession && timer.actionError) || (timer.isCompleted && !sessionSummary));
   const goalShare = Math.min(1, safeCompletedSeconds / Math.max(1, dailyGoalMinutes * 60));
 
   // The Today card suggests one next step: revise for an exam this week, or just focus.
@@ -254,13 +258,13 @@ export default function HomeScreen() {
                 <Text style={styles.goalHeadline} numberOfLines={2}>{!known ? `${dailyGoalMinutes} min goal` : isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
                 <View style={styles.streakRow}><Ionicons name="flame" size={14} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={styles.streakText}>{streakDays > 0 ? `${streakDays}-day streak` : known ? "A fresh start" : "Checking your streak"}</Text></View>
                 {/* The floating session bar is the one way back, so the card only says so. */}
-                {hasOpenSession && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
+                {(hasOpenSession || settling) && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{settling ? "Session finished" : timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
                 {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
               </View>
             </TouchableOpacity>
             {needsReview ? <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Review saved session</Text>
-            </TouchableOpacity> : hasOpenSession ? null : <View style={styles.starts}>
+            </TouchableOpacity> : hasOpenSession || settling ? null : <View style={styles.starts}>
               <TouchableOpacity testID={primary.testID} onPress={primary.onPress} accessibilityRole="button" accessibilityLabel={`${primary.title}. ${primary.detail}`} style={styles.nextButton}>
                 <View style={styles.goalCopy}><Text style={styles.nextTitle} numberOfLines={1}>{primary.title}</Text><Text style={styles.nextDetail} numberOfLines={1}>{primary.detail}</Text></View>
                 <View style={styles.nextPlay}><Ionicons name="play" size={17} color={colors.primary} /></View>
