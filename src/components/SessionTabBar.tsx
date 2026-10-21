@@ -22,7 +22,8 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const insets = useSafeAreaInsets();
   const timer = useTimer();
   const { hasOpenSession, isRunning, isCompleted, sessionSummary } = timer;
-  const dock = sessionDockState(timer);
+  // A fresh start reads as running at once; "Checking" only if it is slow.
+  const dock = sessionDockState({ ...timer, awaitingStart: timer.startCheckVisible });
   const measure = useMeasureFloatingDock();
   const tour = useFeatureTour();
   const { width, fontScale } = useWindowDimensions();
@@ -56,12 +57,12 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     {pinned && <PinnedActionHost route={route} />}
     {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : timer.breakSecondsLeft > 0 ? "Expand session on break" : isRunning ? "Expand running session" : "Expand paused session"}>
-      {hasOpenSession && !timer.awaitingStart && timer.duration > 0 && <View pointerEvents="none" style={styles.progressTrack}>
+      {hasOpenSession && !timer.startCheckVisible && timer.duration > 0 && <View pointerEvents="none" style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${timer.finishing ? 100 : Math.max(0, Math.min(1, 1 - timer.timeLeft / timer.duration)) * 100}%` }]} />
       </View>}
       <View style={styles.bannerCopy}>
         <View style={styles.bannerLabel}><Ionicons name={dock.icon} size={16} color={colors.primaryText} /><Text style={styles.title} numberOfLines={1}>{dock.label}</Text></View>
-        {!!dock.detail && <Text style={styles.time} numberOfLines={1}>{hasOpenSession && !timer.awaitingStart ? `${dock.detail} left` : dock.detail}</Text>}
+        {!!dock.detail && <Text style={styles.time} numberOfLines={1}>{hasOpenSession && !timer.startCheckVisible ? `${dock.detail} left` : dock.detail}</Text>}
       </View>
       <View style={styles.bannerCircle}><Ionicons name="chevron-up" size={20} color={colors.primary} /></View>
     </TouchableOpacity>}

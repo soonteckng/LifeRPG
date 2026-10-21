@@ -110,7 +110,7 @@ test('strict-mode owner remount still admits a fresh child-requested quest read'
 function taskService(owners,rows){
   const calls=[];let check=0;
   const api=load('src/services/taskService.ts',{'../../lib/supabase':{supabase:{
-    auth:{getUser:async()=>({data:{user:owners[Math.min(check++,owners.length-1)]?{id:owners[Math.min(check-1,owners.length-1)]}:null},error:null})},
+    auth:{getSession:async()=>({data:{session:owners[Math.min(check++,owners.length-1)]?{user:{id:owners[Math.min(check-1,owners.length-1)]}}:null},error:null})},
     from:table=>({select:()=>({eq:(column,owner)=>{calls.push([table,column,owner]);return{order:async()=>({data:rows,error:null})};}})}),
   }}});
   return{api,calls};

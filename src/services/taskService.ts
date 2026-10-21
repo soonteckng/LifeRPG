@@ -122,20 +122,18 @@ function mapTask(row: any): Task {
   };
 }
 
+// The account signed in on this phone. It only scopes rows and detects an
+// account switch mid-load; the database already limits every read and write
+// to the signed-in account, so this needs no network round trip.
 async function getCurrentUserId(): Promise<string> {
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
+  const { data, error } = await supabase.auth.getSession();
   if (error) {
     throw error;
   }
-
+  const user = data.session?.user;
   if (!user) {
     throw new Error("You must be signed in.");
   }
-
   return user.id;
 }
 

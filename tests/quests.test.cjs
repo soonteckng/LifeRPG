@@ -323,7 +323,7 @@ test("task creation checks the expected owner before insert and again before ret
   for(const timing of ["before","after","unchanged"]){
     let userCalls=0,inserts=0;
     const service=load("src/services/taskService.ts",{
-      '../../lib/supabase':{supabase:{auth:{getUser:async()=>({data:{user:{id:timing==="before"||timing==="after"&&userCalls++>0?"another-owner":"owner"}},error:null})},
+      '../../lib/supabase':{supabase:{auth:{getSession:async()=>({data:{session:{user:{id:timing==="before"||timing==="after"&&userCalls++>0?"another-owner":"owner"}}},error:null})},
         from:()=>({insert:()=>{inserts++;return{select:()=>({single:async()=>({data:task(),error:null})})};}})}},
     });
     const promise=service.createTask({title:"New quest",targetMinutes:1},{expectedOwnerId:"owner"});
@@ -934,7 +934,7 @@ test("Done today excludes older one-off completions when loaded from persistence
     task({id:5, is_recurring:true, repeat_rule:'daily', last_completed_date:'2000-01-01'}),
   ];
   const service = load('src/services/taskService.ts', {
-    '../../lib/supabase': {supabase:{auth:{getUser:async()=>({data:{user:{id:'owner'}},error:null})},from:()=>({select:()=>({eq:()=>({order:async()=>({data:rows,error:null})})})})}},
+    '../../lib/supabase': {supabase:{auth:{getSession:async()=>({data:{session:{user:{id:'owner'}}},error:null})},from:()=>({select:()=>({eq:()=>({order:async()=>({data:rows,error:null})})})})}},
   });
   const saved = await service.getTasks();
   assert.deepEqual(saved.filter(item=>item.is_completed_today).map(item=>item.id).sort(), [1,3]);

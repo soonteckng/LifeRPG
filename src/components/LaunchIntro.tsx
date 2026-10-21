@@ -4,6 +4,7 @@ import { AccessibilityInfo, Animated, StyleSheet, View } from "react-native";
 import * as SplashScreen from "expo-splash-screen";
 import { colors } from "../constants/theme";
 import { loadLaunchUpdate, prepareLaunchUpdate } from "../services/launchUpdate";
+import { launchIntroState } from "../services/launchIntroState";
 
 // The intro waits at most this long for a newer update, so a slow network
 // never holds up the app. A later download still applies on the next open.
@@ -13,7 +14,11 @@ const UPDATE_WAIT_MS = 3000;
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function LaunchIntro({ children }: { children: ReactNode }) {
-  const [visible, setVisible] = useState(true);
+  // Marked during the first render, before the screens under it render, so a
+  // popup never appears over the logo.
+  const [visible, setVisible] = useState(() => { launchIntroState.begin(); return true; });
+  useEffect(() => { if (!visible) launchIntroState.finish(); }, [visible]);
+  useEffect(() => () => launchIntroState.finish(), []);
   const [opacity] = useState(() => new Animated.Value(0));
   const [scale] = useState(() => new Animated.Value(0.9));
   useEffect(() => {

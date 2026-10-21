@@ -135,6 +135,9 @@ function capabilityGrant(raw: unknown, scope: JournalScope, now: number): Offlin
 }
 
 /** Disabled until a fresh verified account has seen the installed backend policy. */
+// How long a server-issued offline grant is reused before asking again.
+const CAPABILITY_RECHECK_MS = 10 * 60 * 1000;
+
 export function createOfflineCapabilityCache(expectedScope: JournalScope, options: OfflineCapabilityCacheOptions) {
   scopeValid(expectedScope);
   const scope = { ...expectedScope }, key = offlineCapabilityKey(scope), rpc = options.rpc ?? defaultRpc;
@@ -222,7 +225,19 @@ export function createOfflineCapabilityCache(expectedScope: JournalScope, option
     }
   }); };
   const clear = () => { generation++; grant = null; clockRejected = true; return enqueue(() => persist(null)); };
-  return { key, load, readFreshGrant, refresh, clear };
+  // Reopening the app checks back here. A grant the server issued minutes ago
+  // is still current (grants last days), so only an older or missing one asks
+  // the server again; that used to be one more round trip before a finished
+  // session could be saved. An explicit refresh() always asks.
+  const refreshIfStale = (): Promise<OfflineCapabilityGrant | null> => {
+    const recent = readFreshGrant();
+    if (recent) {
+      const age = clock() - recent.grantedAtMs;
+      if (age >= 0 && age < CAPABILITY_RECHECK_MS) return Promise.resolve(recent);
+    }
+    return refresh();
+  };
+  return { key, load, readFreshGrant, refresh, refreshIfStale, clear };
 }
 
 export function validateClientSessionSubmission(value: unknown): asserts value is ClientSessionSubmission {

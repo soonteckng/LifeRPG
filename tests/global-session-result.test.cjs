@@ -68,7 +68,8 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
   const Screen=withScreen?load('src/components/SessionScreen.tsx',mocks,cache).default:null;
   const Tree=()=>React.createElement(React.Fragment,null,Screen&&React.createElement(Screen),React.createElement(Presenter));
   let renderer;await act(async()=>{renderer=create(React.createElement(Tree));});
-  return{calls,dismissals,animations,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
+  const intro=load('src/services/launchIntroState.ts',mocks,cache).launchIntroState;
+  return{calls,dismissals,animations,intro,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
     update:async(changes={},nextMode=mode,nextPath=pathname,nextOwner=ownerId,nextBackend=backendId,nextEpoch=admissionEpoch)=>{timer={...timer,...changes};mode=nextMode;pathname=nextPath;ownerId=nextOwner;backendId=nextBackend;admissionEpoch=nextEpoch;await act(async()=>renderer.update(React.createElement(Tree)));},
     done:async()=>act(async()=>{renderer.root.findByType('Result').props.onClose();renderer.update(React.createElement(Tree));}),
     dismiss:async()=>act(async()=>renderer.root.findByType('Result').props.onDismiss()),
@@ -176,8 +177,8 @@ test('online saving inside Session uses a short grace but maintains one pending 
   const ui=await setup({isCompleted:true,syncStatus:'waiting'},'online','/session');
   try{
     const result=ui.result();assert.equal(result.props.visible,false);
-    await act(async()=>t.mock.timers.tick(200));assert.equal(result.props.visible,false,'a brief wait for a very fast result');
-    await act(async()=>t.mock.timers.tick(200));assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
+    await act(async()=>t.mock.timers.tick(1000));assert.equal(result.props.visible,false,'a short wait, so the card usually opens already filled in');
+    await act(async()=>t.mock.timers.tick(300));assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
     await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
   }finally{await ui.cleanup();}
 });
@@ -186,7 +187,7 @@ test('outside Session a finished session opens once, complete, when its result a
   const ui=await setup({isCompleted:true,syncStatus:'waiting'});
   try{
     const result=ui.result();assert.equal(result.props.visible,false,'no saving flash first');
-    await act(async()=>t.mock.timers.tick(200));
+    await act(async()=>t.mock.timers.tick(700));
     await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);
     assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
   }finally{await ui.cleanup();}
@@ -279,5 +280,15 @@ test('repeated Done requests in one event only clear the journal presentation on
     const done=ui.result().props.onClose;
     await act(async()=>{done();done();});
     assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+  }finally{await ui.cleanup();}
+});
+
+test('a result found while the app is still opening waits for the launch logo, then appears',async()=>{
+  const ui=await setup({isCompleted:true,sessionSummary:summary,syncStatus:'saved'});
+  try{
+    await act(async()=>ui.intro.begin());
+    assert.equal(ui.result().props.visible,false,'never slides over the logo');
+    await act(async()=>ui.intro.finish());
+    assert.equal(ui.result().props.visible,true,'appears once the app has opened');
   }finally{await ui.cleanup();}
 });

@@ -55,6 +55,9 @@ interface TimerContextType {
   isRestoring: boolean; restoreError: boolean; retryRestore: () => void; actionBusy: boolean;
   actionError: string | null; rewardsVisible: boolean; retryCompletion: () => Promise<void>; retryAction: () => Promise<void>;
   syncStatus: "idle" | "waiting" | "saved" | "rejected"; awaitingStart: boolean; endingSession: boolean; sessionEnded: boolean; unsyncedSessionCount: number;
+  /** Labels only: a fresh start shows as running while it is confirmed, and
+   * says "Checking" only if that takes unusually long or a saved start is checked. */
+  startCheckVisible: boolean;
   interactionKind: "start" | "pause" | "resume" | null;
   resolveQuestTitle: (id: number, title: string) => void; activityType: string; targetAttributeId: number | null;
   linkedTaskId: number | null; notes: string; sessionSummary: SessionSummary | null; summaryViewed: boolean;
@@ -99,6 +102,9 @@ const optionalNumber = (value: unknown) => typeof value === "number" && Number.i
 const nullableNumber = (value: unknown) => value === null ? null : optionalNumber(value);
 
 /** The tested JS journal remains authoritative; native code renders only its notification projection. */
+// How long a fresh start may take to confirm before the app says it is checking.
+const START_CHECK_GRACE_MS = 3000;
+
 export function TimerProvider({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const { reloadProfile, soundEnabled = true, hapticsEnabled = true } = useUser();
@@ -131,6 +137,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const notificationTitle = useRef("Session");
   const notificationPreferences = useRef({ sound: soundEnabled, haptics: hapticsEnabled });
   const refreshAfterAdmission = useRef(false);
+  const startProof = useRef(false);
 
   useEffect(() => {
     if (!ownerId || !backendId) return;
@@ -142,7 +149,11 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       return id && backend ? { ownerId: id, backendId: backend } : null;
     };
     const verifyOwner = async (): Promise<JournalScope | null> => {
-      const verified = await authRef.current.verifyCurrentOwner();
+      // Starting a session always checks with the server: that check is also
+      // how a dead connection is noticed before the start is sent, so the
+      // session can begin on this phone instead. Other steps reuse a check
+      // made moments ago with the same credentials.
+      const verified = await authRef.current.verifyCurrentOwner(startProof.current ? { fresh: true } : undefined);
       return verified ? { ownerId: verified.id, backendId: verified.backendId } : null;
     };
     const currentEpoch = () => authRef.current.admissionEpoch;
@@ -155,7 +166,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const controller = createSessionTimerController({ scope,
       store,
       server: createJournalSessionTransport(scope, transportOptions),
-      offline: { load: capability.load, refresh: capability.refresh, readFreshGrant: capability.readFreshGrant,
+      offline: { load: capability.load, refresh: capability.refreshIfStale, readFreshGrant: capability.readFreshGrant,
         isLocalOnly: () => authRef.current.accessMode === "local-only", readSnapshot: offlineTransport.readSnapshot, submit: offlineTransport.submit },
       authority: { currentScope, currentEpoch, verify, beginOperation: verification.beginOperation, endOperation: verification.endOperation }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
     });
@@ -244,6 +255,16 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const open = !runtime.ending && (interactionKind === "start" || !!record && ["running", "paused", "not_started"].includes(record.state));
   const isCompleted = record?.state === "completed";
   const awaitingStart = !runtime.ending && (interactionKind === "start" || record?.state === "not_started");
+  // The countdown runs from the tap, so a normal start reads as running at
+  // once. Only a slow confirmation (or a saved start being checked) says so.
+  const startInteraction = interactionKind === "start" ? runtime.interaction?.clientSessionId ?? "start" : null;
+  const [slowStart, setSlowStart] = useState<string | null>(null);
+  useEffect(() => {
+    if (!startInteraction) return;
+    const slow = setTimeout(() => setSlowStart(startInteraction), START_CHECK_GRACE_MS);
+    return () => clearTimeout(slow);
+  }, [startInteraction]);
+  const startCheckVisible = awaitingStart && (interactionKind !== "start" || slowStart === startInteraction);
   const sessionEnded = record?.state === "cancelled";
   const setup = record && (open || isCompleted || runtime.ending || sessionEnded) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
@@ -357,11 +378,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
       const protectedSession = await prepareProtectedSession(JSON.stringify([backendId, ownerId]));
       if (controllerRef.current !== controller || authRef.current.admissionEpoch !== auth.admissionEpoch) return false;
       setProtectionFailure(null);
+      startProof.current = true;
       return await controller.start(startSetup, protectedSession);
     } catch (error) {
       setProtectionFailure({ scope: controllerScopeKey, message: error instanceof Error ? error.message : "Check protection settings before starting." }); return false;
     }
-    finally { startInFlight.current = false; }
+    finally { startInFlight.current = false; startProof.current = false; }
   };
   const startSuggestedTimer = (focus: SuggestedFocus, subjectId: number | null) => {
     const validated = suggestedFocus(focus.templateId, focus.smaller === true);
@@ -398,7 +420,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     finishing: open && !runtime.ending && !!runtime.finishing,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: protectionFailure?.scope === controllerScopeKey ? protectionFailure.message : runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
-    syncStatus: runtime.syncStatus, awaitingStart, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
+    syncStatus: runtime.syncStatus, awaitingStart, startCheckVisible, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
     retryCompletion: retry, retryAction: retry,
     resolveQuestTitle: (id, title) => { if (id === linkedTaskId) setQuestTitle(current => current?.id === id && current.title === title ? current : { id, title }); },
     activityType, targetAttributeId, linkedTaskId, notes,

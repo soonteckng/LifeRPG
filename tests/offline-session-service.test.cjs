@@ -315,3 +315,25 @@ test('missing owned snapshot returns null without inventing session state', asyn
   const f = fixture({ responses: [{ data: null, error: null }] });
   assert.equal(await f.transport.readSnapshot(SERVER), null);
 });
+
+test('reopening the app reuses a grant issued minutes ago, and asks again once it is older', async () => {
+  const f = fixture({ responses: [{ data: capability(), error: null }, { data: capability(), error: null }] });
+  await f.cache.refresh();
+  assert.equal(f.calls.length, 1);
+  const reused = await f.cache.refreshIfStale();
+  assert.ok(reused, 'the recent grant is still offered');
+  assert.equal(f.calls.length, 1, 'no extra round trip on reopen');
+  assert.equal(f.cache.readFreshGrant() !== null, true);
+});
+test('a missing grant is always asked for on reopen', async () => {
+  const f = fixture({ responses: [{ data: capability(), error: null }] });
+  assert.ok(await f.cache.refreshIfStale());
+  assert.deepEqual(f.calls.map(item => item.name), ['session_sync_capabilities_v1']);
+});
+test('after ten minutes a reopen asks the server again, so a switched-off offline mode is noticed', async () => {
+  const f = fixture({ responses: [{ data: capability(), error: null }] });
+  await f.cache.refresh();
+  f.setNow(T0 + 10 * 60 * 1000 + 1);
+  await f.cache.refreshIfStale();
+  assert.equal(f.calls.length, 2, 'an older grant is checked again');
+});

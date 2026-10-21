@@ -386,7 +386,7 @@ export default function SessionScreen() {
     ? chosenCourse ? [contextExam ? `${contextExam.title} ${countdownLabel(daysUntil(contextExam.examDate)).toLowerCase()}` : null, `${studyTime(weekSeconds(study.recent, chosenCourse.id))} this week`,
       contextExam ? "Counts as Revision" : "Counts as Learning"].filter(Boolean).join(" · ") : "Revision when an exam is near, otherwise Learning."
     : isRoutine ? focusAreaTitle(area?.title) : focusAreaHint(area?.title ?? "") || "Any activity you choose.";
-  const status = phase === "ended" ? "Session ended" : timer.isRestoring ? "Restoring your session…" : timer.awaitingStart ? "Checking your saved start…"
+  const status = phase === "ended" ? "Session ended" : timer.isRestoring ? "Restoring your session…" : timer.startCheckVisible ? "Checking your saved start…"
     : timer.endingSession ? "Session ended"
     : timer.isCompleted ? timer.sessionSummary ? "Time recorded" : timer.syncStatus === "rejected" ? "Kept on this phone. Your account did not accept it." : "Saved on this phone. Waiting to sync."
     : timer.hasOpenSession ? timer.isRunning ? "Session in progress" : "Paused" : "Ready when you are";
@@ -444,7 +444,7 @@ export default function SessionScreen() {
           onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
           {breakActive && <Text style={styles.activeTitle} accessibilityRole="timer">Break · {sessionTime(timer.breakSecondsLeft)} left. Apps unlock now and protection returns automatically.</Text>}
-          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.awaitingStart ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
+          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.startCheckVisible ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
             {phase !== "setup" && !timer.isCompleted && phase !== "ended" && <View style={styles.protectionStatus}><SessionProtectionControl statusOnly activeSurface={onlineSurfaces} /></View>}
             {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setupStack}>

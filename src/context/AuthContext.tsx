@@ -20,7 +20,9 @@ interface AuthContextType {
   admissionEpoch: number;
   cachedProfile: CachedVerifiedProfile | null;
   cacheVerifiedProfile: (profile: CachedVerifiedProfile) => Promise<void>;
-  verifyCurrentOwner: () => Promise<LocalAccountOwner | null>;
+  /** `fresh` always asks the server, e.g. before starting a session, where the
+   * check also notices a dead connection before anything is sent. */
+  verifyCurrentOwner: (options?: { fresh?: boolean }) => Promise<LocalAccountOwner | null>;
   retrySessionVerification: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null; needsEmailConfirmation: boolean }>;
@@ -31,6 +33,11 @@ interface AuthContextType {
 }
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const AUTH_VERIFICATION_TIMEOUT_MS = 8000;
+// A server-checked account stays proven for a short while, but only for the
+// exact same credentials. Each session step used to repeat the same check, an
+// extra round trip every time. A refreshed token, another account, recovery
+// or a lost connection always gets a new check at once.
+const OWNER_PROOF_TTL_MS = 60_000;
 const LOCAL_RECONNECT_INTERVAL_MS = 4000;
 class AuthVerificationTimeout extends Error {
   readonly status = 503;
@@ -45,12 +52,21 @@ function boundedAuthRequest<T>(request: Promise<T>): Promise<T> {
 const sameCredentials = (left: Session | null, right: Session | null) => left?.user?.id === right?.user?.id
   && left?.access_token === right?.access_token && left?.refresh_token === right?.refresh_token;
 const snapshotCredentials = (current: Session | null): Session | null => current ? { ...current, user: { ...current.user } } : null;
+// An identical account reply keeps its object, so screens do not re-render for nothing.
+const sameProfile = (left: CachedVerifiedProfile | null, right: CachedVerifiedProfile | null) => {
+  if (!left || !right) return left === right;
+  try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
+};
+const sameUserDetails = (left: User | null, right: User) => {
+  if (!left || left.id !== right.id) return false;
+  try { return JSON.stringify(left) === JSON.stringify(right); } catch { return false; }
+};
 interface SessionVerificationFlight {
   session: Session | null; epoch: number; recovery: RecoveryState; generation: number;
   promise: Promise<LocalAccountOwner | null>;
 }
 interface OwnerVerificationFlight {
-  ownerId: string; session: Session | null; epoch: number; cancelled: boolean;
+  ownerId: string; session: Session | null; epoch: number; cancelled: boolean; fresh: boolean;
   promise: Promise<LocalAccountOwner | null>;
 }
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -72,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [verifiedUser, setVerifiedUser] = useState<User | null>(null);
   const verified = useRef<User | null>(null);
   const verifiedCredentials = useRef<Session | null>(null);
+  const verifiedAt = useRef(0);
   const verificationGeneration = useRef(0);
   const sessionVerification = useRef<SessionVerificationFlight | null>(null);
   const ownerVerification = useRef<OwnerVerificationFlight | null>(null);
@@ -168,7 +185,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!data.user || data.user.id !== current.user.id) throw { code: "owner_mismatch" };
       if (!fresh() || sessionRef.current?.user.id !== current.user.id) return null;
       if (deviceReachable.current === false && recoveryRef.current === "none") throw new AuthVerificationTimeout();
-      verified.current = data.user; verifiedCredentials.current = current; setVerifiedUser(data.user);
+      verified.current = data.user; verifiedCredentials.current = current; verifiedAt.current = Date.now();
+      setVerifiedUser(previous => sameUserDetails(previous, data.user) ? previous : data.user);
       // Recovery may display a network-verified identity but never admits Home
       // or stores a local recovery marker for that recovery session.
       if (recoveryRef.current !== "none") return null;
@@ -183,7 +201,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           && admission.current.mode === "online" && verified.current?.id === owner.id && sessionRef.current?.user.id === owner.id;
         try {
           const saved = await accountCache.verified(owner.id, sameOwner);
-          if (saved && sameOwner()) { cacheRef.current = saved; setCachedProfile(saved.profile); }
+          if (saved && sameOwner()) { cacheRef.current = saved; setCachedProfile(previous => sameProfile(previous, saved.profile) ? previous : saved.profile); }
         } catch { /* Online access is valid; a failed marker cannot grant future local admission. */ }
       }
       return fresh() ? owner : null;
@@ -229,18 +247,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       && verified.current?.id === profile.id && sessionRef.current?.user.id === profile.id;
     if (!accountCache || !current()) return;
     const saved = await accountCache.profile(profile, current);
-    if (saved && current()) { cacheRef.current = saved; setCachedProfile(saved.profile); }
+    if (saved && current()) { cacheRef.current = saved; setCachedProfile(previous => sameProfile(previous, saved.profile) ? previous : saved.profile); }
   }, [accountCache]);
-  const verifyCurrentOwner = (): Promise<LocalAccountOwner | null> => {
+  // The same credentials were checked with the server moments ago, online.
+  const recentProof = (current: Session | null, error: unknown) => !error && !!current?.access_token && !!current.refresh_token
+    && admission.current.mode === "online" && recoveryRef.current === "none" && deviceReachable.current !== false
+    && verified.current?.id === current.user?.id && sameCredentials(verifiedCredentials.current, current)
+    && Date.now() - verifiedAt.current >= 0 && Date.now() - verifiedAt.current < OWNER_PROOF_TTL_MS;
+  const verifyCurrentOwner = (options?: { fresh?: boolean }): Promise<LocalAccountOwner | null> => {
+    const wantsFresh = options?.fresh === true;
     const ownerId = admission.current.owner?.id ?? sessionRef.current?.user.id;
     if (!ownerId || recoveryRef.current !== "none" || admissionClosed.current) return Promise.resolve(null);
     if (deviceReachable.current === false) return connectionDowngrade.current ?? Promise.resolve(null);
     const epoch = admissionRevision.current;
     const current = snapshotCredentials(sessionRef.current);
     const existing = ownerVerification.current;
+    // A fresh flight can answer anyone; a fresh request never joins a reused one.
     if (existing && !existing.cancelled && existing.ownerId === ownerId && existing.epoch === epoch
-      && sameCredentials(existing.session, current)) return existing.promise;
-    const flight: OwnerVerificationFlight = { ownerId, epoch, session: current, cancelled: false,
+      && sameCredentials(existing.session, current) && (existing.fresh || !wantsFresh)) return existing.promise;
+    const flight: OwnerVerificationFlight = { ownerId, epoch, session: current, cancelled: false, fresh: wantsFresh,
       promise: Promise.resolve(null) };
     const fresh = () => !flight.cancelled && flight.epoch === admissionRevision.current && !admissionClosed.current
       && recoveryRef.current === "none" && sameCredentials(sessionRef.current, flight.session)
@@ -250,9 +275,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!fresh() || (result.data.session && result.data.session.user.id !== ownerId)) return null;
       // A refresh may return new credentials. Their own fresh getUser check is
       // required; a same-owner JWT or local marker is never cloud proof.
-      sessionRef.current = result.data.session; setSession(result.data.session);
+      const changed = !sameCredentials(sessionRef.current, result.data.session);
+      sessionRef.current = result.data.session;
+      if (changed) setSession(result.data.session);
       flight.session = snapshotCredentials(result.data.session);
-      return verifySession(result.data.session, true, result.error);
+      return verifySession(result.data.session, wantsFresh || !recentProof(result.data.session, result.error), result.error);
     };
     ownerVerification.current = flight;
     flight.promise = boundedAuthRequest(work()).catch(async error => {

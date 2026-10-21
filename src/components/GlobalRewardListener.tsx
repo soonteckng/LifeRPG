@@ -1,7 +1,7 @@
 import { requiredCharacterXP } from "../utils/levelTiers";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "expo-router";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
 import SaveSuggestedQuest, { type SuggestedQuestCompletion } from "./SaveSuggestedQuest";
@@ -14,6 +14,7 @@ import { lifeAreaColor } from "../utils/lifeAreaColor";
 import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { sessionTrail } from "../services/sessionTrail";
+import { launchIntroState } from "../services/launchIntroState";
 
 type PresentedResult = {
   ownerId: string;
@@ -23,9 +24,10 @@ type PresentedResult = {
 };
 
 /** One result portal survives route changes and online/offline transitions. */
-// A very fast result opens the card already filled in. Otherwise it opens
-// after this brief moment, laid out as finished, and the numbers fill in.
-const RESULT_GRACE_MS = 300;
+// The card waits this long for the confirmed result, so it usually opens once,
+// already filled in. A slower reply opens it laid out as finished, and the
+// numbers fill in when they arrive.
+const RESULT_GRACE_MS = 1200;
 
 export default function GlobalRewardListener() {
   const pathname = usePathname();
@@ -143,8 +145,11 @@ export default function GlobalRewardListener() {
   useEffect(() => {
     if (online && summary) void reloadProfile();
   }, [online, summary, reloadProfile]);
-  return <><SessionResultSheet {...displayed?.props} visible={visible}
-    saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!visible} completion={displayed.saveCompletion} />}
+  // Never over the launch logo: the card appears once the app has opened.
+  const introDone = useSyncExternalStore(launchIntroState.subscribe, launchIntroState.isDone, launchIntroState.isDone);
+  const shown = visible && introDone;
+  return <><SessionResultSheet {...displayed?.props} visible={shown}
+    saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!shown} completion={displayed.saveCompletion} />}
     onClose={done} onDismiss={() => {
       if (closingOwner !== currentOwner.current || presentationScope !== currentScope.current) return;
       closeRequested.current = false; setClosing(false); if (!candidate) setHeld(null);

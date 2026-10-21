@@ -53,7 +53,7 @@ async function fixture({ usage = true } = {}) {
     '../utils/countdownTicker': { createCountdownTicker: () => ({ reschedule() {}, dispose() {} }) },
     '../services/sessionService': { createJournalSessionTransport: () => new Proxy({}, { get: () => forbidden }) },
     '../services/offlineSessionService': {
-      createOfflineCapabilityCache: () => ({ load: noop, refresh: noop, readFreshGrant: () => grant }),
+      createOfflineCapabilityCache: () => ({ load: noop, refresh: noop, refreshIfStale: noop, readFreshGrant: () => grant }),
       createOfflineSessionTransport: () => ({ readSnapshot: forbidden, submit: forbidden }),
     },
     '../services/sessionNotificationService': { createSessionNotificationLifecycle: () => ({ activate() {}, setPreferences() {}, dispose: noop, schedule: noop, clear: noop }) },

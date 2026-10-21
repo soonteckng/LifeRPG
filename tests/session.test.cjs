@@ -137,9 +137,9 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     },
   });
   const reloadProfile = async () => true;
-  let verifications = 0;
+  let verifications = 0; const verificationKinds = [];
   const auth = { user: { id: PROVIDER_SCOPE.ownerId }, localOwner: { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId },
-    accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async () => { verifications++; return { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }; } };
+    accessMode: "online", admissionEpoch: 1, verifyCurrentOwner: async options => { verifications++; verificationKinds.push(options?.fresh ? "fresh" : "reuse"); return { id: PROVIDER_SCOPE.ownerId, backendId: PROVIDER_SCOPE.backendId }; } };
   const flush = () => new Promise(resolve => setImmediate(resolve));
   // Legacy fixture sessions keep their original controls. Protection cases use
   // the production readiness function, replacing only the device boundary.
@@ -160,7 +160,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "../services/protectedSessionStart": { prepareProtectedSession },
     "../services/sessionService": service,
     "../services/offlineSessionService": {
-      createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, readFreshGrant: () => null }),
+      createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, refreshIfStale: async () => null, readFreshGrant: () => null }),
       createOfflineSessionTransport: () => ({ readSnapshot: async () => null, submit: async () => { throw Error("Offline capability is disabled in this legacy fixture"); } }),
     },
     "../utils/countdownTicker": { createCountdownTicker: (callback) => {
@@ -180,7 +180,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, still: () => still, stillRenders: () => stillRenders, calls, verifications: () => verifications, summarySnapshots, sessionReads: () => sessionReads,
+    state: () => state, still: () => still, stillRenders: () => stillRenders, calls, verifications: () => verifications, verificationKinds: () => [...verificationKinds], summarySnapshots, sessionReads: () => sessionReads,
     persistedJournal: () => JSON.parse([...values].find(([key]) => key.startsWith("liferpg:session-journal:v1:"))?.[1] ?? "null"),
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
@@ -289,6 +289,37 @@ test("only countdown screens re-render each second; the rest of the app sees sta
     assert.ok(ui.stillRenders()>before,'a real change, like pausing, still reaches them at once');
     assert.equal(ui.still().isRunning,false);
   } finally { await ui.cleanup(); }
+});
+
+test("starting a session always checks the account with the server; later steps reuse a recent check", async () => {
+  const ui=await providerSetup();
+  try {
+    await ui.run((s)=>s.startTimer(1800,"Read"));
+    const atStart=ui.verificationKinds();
+    assert.ok(atStart.includes("fresh"),'Start asks the server, which also notices a dead connection before sending');
+    await ui.advance(5);
+    await ui.run((s)=>s.pauseTimer());
+    const later=ui.verificationKinds().slice(atStart.length);
+    assert.ok(later.length>0 && later.every(kind=>kind==="reuse"),'pausing reuses the recent check instead of a new round trip');
+    assert.equal(ui.state().isRunning,false);
+  } finally { await ui.cleanup(); }
+});
+
+test("a normal start reads as running at once; it says Checking only if confirming is unusually slow", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  const ui=await providerSetup({ startActivitySession: async () => { await gate; return "bbbbbbbb-bbbb-4bbb-8bbb-000000000001"; } });
+  try {
+    let pending;
+    await ui.run((s)=>{ pending=s.startTimer(1800,"Read"); });
+    assert.equal(ui.state().awaitingStart,true,'the start is still being confirmed');
+    assert.equal(ui.state().startCheckVisible,false,'but it reads as a running session straight away');
+    assert.equal(ui.state().isRunning,true);
+    await act(async()=>{ t.mock.timers.tick(3000); });
+    assert.equal(ui.state().startCheckVisible,true,'only an unusually slow confirmation says Checking');
+    release(); await act(async()=>{ await pending; });
+    assert.equal(ui.state().awaitingStart,false); assert.equal(ui.state().startCheckVisible,false);
+  } finally { await ui.cleanup(); t.mock.timers.reset(); }
 });
 
 test("minimise/reopen keeps running and paused identity, settings and remaining time", async () => {
@@ -742,7 +773,8 @@ test("unknown timing changes disable new timing controls while retry and End rem
 });
 
 test("uncertain start is planned instead of paused, End is available, and Retry survives automatic checks",async()=>{
-  const ui=await screenSetup({hasOpenSession:true,isRunning:false,awaitingStart:true,syncStatus:"waiting",actionError:"Waiting to confirm whether your session started."});
+  // A saved start being checked (no live start in progress) always says so.
+  const ui=await screenSetup({hasOpenSession:true,isRunning:false,awaitingStart:true,startCheckVisible:true,syncStatus:"waiting",actionError:"Waiting to confirm whether your session started."});
   try {
     assert.doesNotMatch(ui.output(),/· Paused/);assert.match(ui.output(),/Checking start/);
     assert.equal(ui.button("Checking start").props.disabled,true);assert.equal(ui.button("End session").props.disabled,false);

@@ -24,9 +24,9 @@ const legacy = [
 function service(rows, options = {}) {
   const calls = [], owners = options.owners ?? ['account-a']; let checks = 0;
   const supabase = {
-    auth: { getUser: async () => {
+    auth: { getSession: async () => {
       const id = owners[Math.min(checks++, owners.length - 1)];
-      return { data: { user: id ? { id } : null }, error: null };
+      return { data: { session: id ? { user: { id } } : null }, error: null };
     } },
     from: table => {
       calls.push(['from', table]);
