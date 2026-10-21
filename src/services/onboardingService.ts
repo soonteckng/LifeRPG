@@ -43,3 +43,13 @@ export async function finishOnboarding() {
 
   return data;
 }
+
+/** The intro's name step: is this name free? Old servers without the check say yes. */
+export async function usernameAvailable(username: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("username_available_v1", { p_username: username.trim() });
+  if (error) {
+    if ((error as { code?: string }).code === "PGRST202") return true;
+    throw error;
+  }
+  return data !== false;
+}

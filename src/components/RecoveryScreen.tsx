@@ -1,103 +1,69 @@
-import { Text, TextInput } from "./AppText";
+import { Text } from "./AppText";
 import { useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import { colors } from "../constants/theme";
-import { passwordValidation, recoveryError, recoveryLinkError, validEmail } from "../utils/passwordRecovery";
-import PasswordInput from "./PasswordInput";
+import { passwordValidation, recoveryError } from "../utils/passwordRecovery";
 import { PersonalButton, p } from "./PersonalUI";
 import AuthFormFrame from "./AuthFormFrame";
+import { AuthPasswordField } from "./AuthFields";
 
-export default function RecoveryScreen({ requestOnly = false, onBack }: { requestOnly?: boolean; onBack?: () => void }) {
-  const { recovery, requestPasswordReset, saveRecoveryPassword, leaveRecovery } = useAuth();
-  const [email, setEmail] = useState("");
+/**
+ * After a right reset code (or an older reset link): choose a new password.
+ * Asking for a code happens on the Forgot password screen, so an expired
+ * reset simply leads back to Sign in to ask for a new one.
+ */
+export default function RecoveryScreen() {
+  const { recovery, saveRecoveryPassword, leaveRecovery } = useAuth();
   const [password, setPassword] = useState(""), [confirmation, setConfirmation] = useState("");
-  const [busy, setBusy] = useState(false), [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
-  const [fieldError, setFieldError] = useState<{ field: "email" | "password" | "confirmation"; message: string } | null>(null);
-  const [requestAnother, setRequestAnother] = useState(false);
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [fieldError, setFieldError] = useState<{ field: "password" | "confirmation"; message: string } | null>(null);
   const lock = useRef(false);
-  const checking = !requestOnly && recovery === "checking";
-  const success = !requestOnly && recovery === "success";
-  const invalid = !requestOnly && recovery === "invalid";
-  const requesting = requestOnly || invalid || requestAnother;
+  const checking = recovery === "checking", success = recovery === "success", invalid = recovery === "invalid";
   const submit = async (focus: (field: string) => void) => {
-    if (lock.current || checking || success || (requesting && sent)) return;
+    if (lock.current || checking || success || invalid) return;
     setError(""); setFieldError(null);
-    const validation = requesting ? (validEmail(email) ? "" : "Enter a valid email address.") : passwordValidation(password, confirmation);
+    const validation = passwordValidation(password, confirmation);
     if (validation) {
-      const field = requesting ? "email" : password.length < 8 ? "password" : "confirmation";
+      const field = password.length < 8 ? "password" : "confirmation";
       focus(field); setFieldError({ field, message: validation });
       return;
     }
     lock.current = true; setBusy(true);
-    try {
-      if (requesting) { await requestPasswordReset(email); setSent(true); }
-      else { await saveRecoveryPassword(password); setPassword(""); setConfirmation(""); }
-      Keyboard.dismiss();
-    } catch (cause) { focus("submit"); setError(recoveryError(cause, !requesting)); }
+    try { await saveRecoveryPassword(password); setPassword(""); setConfirmation(""); Keyboard.dismiss(); }
+    catch (cause) { focus("submit"); setError(recoveryError(cause, true)); }
     finally { lock.current = false; setBusy(false); }
   };
   const back = async (focus: (field: string) => void) => {
     if (lock.current || checking) return;
     lock.current = true; setBusy(true); setError(""); setFieldError(null);
-    try { Keyboard.dismiss(); if (requestOnly) onBack?.(); else await leaveRecovery(); }
-    catch { focus("submit"); setError("Could not sign out of recovery. Check your connection and try again."); }
+    try { Keyboard.dismiss(); await leaveRecovery(); }
+    catch { focus("submit"); setError("Couldn’t leave the reset. Check your connection and try again."); }
     finally { lock.current = false; setBusy(false); }
   };
-  return <AuthFormFrame transitionKey={checking ? "checking" : success ? "success" : requesting ? "request-recovery" : "save-password"}
-    title={checking ? "Checking recovery link" : success ? "Password updated" : requesting ? "Reset your password" : "Set new password"}
-    description={checking ? "We’re checking that this link belongs to your account." : success ? "You’re ready to return to your account." : requesting ? "We’ll send a secure link to your email." : "Choose a password you can keep safe."}>
+  return <AuthFormFrame transitionKey={checking ? "checking" : success ? "success" : invalid ? "invalid" : "save-password"}
+    title={checking ? "One moment" : success ? "Password updated" : invalid ? "This reset has expired" : "Set a new password"}
+    description={checking ? "Checking that this reset is yours." : success ? "You’re ready to sign in with your new password."
+      : invalid ? "Reset codes and links only last a short while. Ask for a new code from Sign in." : "Choose one you’ll remember. At least 8 characters."}>
     {({ active, focus, blur, layout }) => <>
-      {checking ? <><ActivityIndicator color={colors.accent} /><Text style={p.body}>Verifying your recovery link...</Text></> : <>
-        {success ? <Text style={p.body} accessibilityRole="alert">Your password was saved. Return to sign in with your new password.</Text> : <>
-          {invalid && <Text style={p.error} accessibilityRole="alert">{recoveryLinkError}</Text>}
-          {requesting ? <>
-            <View onLayout={event => layout("email", event)} style={{ gap: 8 }}>
-              <Text style={{ color: colors.neutral, fontSize: 14, lineHeight: 20, fontWeight: "500" }}>Account email</Text>
-              <TextInput accessibilityLabel="Email" style={[p.input, { backgroundColor: colors.surface,
-                borderColor: fieldError?.field === "email" ? colors.danger : active === "email" ? colors.accent : colors.border,
-                borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }]}
-                placeholder="you@example.com" placeholderTextColor={colors.muted} keyboardType="email-address"
-                autoCapitalize="none" autoCorrect={false} autoComplete="email" textContentType="emailAddress"
-                value={email} onChangeText={setEmail} onFocus={() => focus("email")} onBlur={() => blur("email")} editable={!busy && !sent}
-                returnKeyType="done" submitBehavior="submit" onSubmitEditing={() => void submit(focus)} />
-              {fieldError?.field === "email" && <Text style={p.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{fieldError.message}</Text>}
-            </View>
-            <View onLayout={event => layout("submit", event)} style={{ gap: 12 }}>
-              {sent && <Text style={p.body} accessibilityRole="alert">If an account exists for that email, you will receive a password recovery link. Check your inbox and spam folder. Use the newest email.</Text>}
-              {!!error && !(invalid && error === recoveryLinkError) && <Text style={p.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
-              <PersonalButton title={busy ? "Requesting..." : sent ? "Recovery email requested" : "Send recovery email"}
-                disabled={busy || sent} onPress={() => void submit(focus)} />
-            </View>
-          </> : <>
-            <Text style={p.body}>Use at least 8 characters. A longer password with letters, numbers, and symbols is stronger.</Text>
-            <View onLayout={event => layout("password", event)}>
-              <PasswordInput accessibilityLabel="New password" placeholder="New password" autoComplete="new-password" textContentType="newPassword"
-                style={{ backgroundColor: colors.surface, borderColor: active === "password" ? colors.accent : colors.border,
-                  borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }}
-                value={password} onChangeText={setPassword} onFocus={() => focus("password")} onBlur={() => blur("password")} editable={!busy}
-                error={fieldError?.field === "password" ? fieldError.message : undefined} />
-            </View>
-            <View onLayout={event => layout("confirmation", event)}>
-              <PasswordInput accessibilityLabel="Confirm new password" placeholder="Confirm new password" autoComplete="new-password" textContentType="newPassword"
-                style={{ backgroundColor: colors.surface, borderColor: active === "confirmation" ? colors.accent : colors.border,
-                  borderWidth: 1, minHeight: 56, paddingHorizontal: 16, fontSize: 17 }}
-                value={confirmation} onChangeText={setConfirmation} onFocus={() => focus("confirmation")} onBlur={() => blur("confirmation")} editable={!busy}
-                returnKeyType="done" submitBehavior="submit" onSubmitEditing={() => void submit(focus)}
-                error={fieldError?.field === "confirmation" ? fieldError.message : undefined} />
-            </View>
-            <View onLayout={event => layout("submit", event)} style={{ gap: 12 }}>
-              {!!error && <Text style={p.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
-              <PersonalButton title={busy ? "Saving..." : "Save new password"} disabled={busy} onPress={() => void submit(focus)} />
-            </View>
-            <PersonalButton secondary title="Request another recovery email" disabled={busy}
-              onPress={() => { Keyboard.dismiss(); setRequestAnother(true); setError(""); setFieldError(null); setPassword(""); setConfirmation(""); }} />
-          </>}
+      {checking ? <View style={{ alignItems: "center" }}><ActivityIndicator color={colors.accent} /></View> : <>
+        {!success && !invalid && <>
+          <AuthPasswordField label="New password" active={active === "password"} onFieldLayout={event => layout("password", event)}
+            placeholder="New password" autoComplete="new-password" textContentType="newPassword"
+            value={password} onChangeText={setPassword} onFocus={() => focus("password")} onBlur={() => blur("password")} editable={!busy}
+            error={fieldError?.field === "password" ? fieldError.message : undefined} />
+          <AuthPasswordField label="Confirm new password" active={active === "confirmation"} onFieldLayout={event => layout("confirmation", event)}
+            placeholder="Type it again" autoComplete="new-password" textContentType="newPassword"
+            value={confirmation} onChangeText={setConfirmation} onFocus={() => focus("confirmation")} onBlur={() => blur("confirmation")} editable={!busy}
+            returnKeyType="done" submitBehavior="submit" onSubmitEditing={() => void submit(focus)}
+            error={fieldError?.field === "confirmation" ? fieldError.message : undefined} />
         </>}
-        {success && !!error && <View onLayout={event => layout("submit", event)}><Text style={p.error} accessibilityRole="alert">{error}</Text></View>}
-        {busy && <ActivityIndicator color={colors.accent} />}
-        <PersonalButton secondary title={busy ? "Please wait..." : "Return to sign in"} disabled={busy} onPress={() => void back(focus)} />
+        <View onLayout={event => layout("submit", event)} style={{ gap: 12 }}>
+          {!!error && <Text style={p.error} accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
+          {!success && !invalid && <PersonalButton title={busy ? "Saving…" : "Save new password"} disabled={busy} onPress={() => void submit(focus)} />}
+          <PersonalButton secondary={!success && !invalid} title={busy && (success || invalid) ? "Please wait…" : "Back to sign in"} disabled={busy}
+            onPress={() => void back(focus)} />
+        </View>
       </>}
     </>}
   </AuthFormFrame>;

@@ -124,7 +124,7 @@ test('new users can skip picking routines and retain their badge through the jou
   '@react-native-async-storage/async-storage':db.api,
   'expo-router':{useRouter:()=>({replace:route=>routes.push(route)})},
   '../context/UserContext':{useUser:()=>({profile:{id:'new-user',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
-  '../services/onboardingService':{saveOnboardingProfile:async(...args)=>calls.push(args),finishOnboarding:async()=>{}},
+  '../services/onboardingService':{ usernameAvailable: async () => true,saveOnboardingProfile:async(...args)=>calls.push(args),finishOnboarding:async()=>{}},
  })).default;
  const ui=await render(Screen);assert.doesNotMatch(text(ui.tree.root),/Skip suggestions/);await ui.press('Skip for now');await ui.press('Continue');await ui.press('Continue');
  assert.deepEqual(routes,[]);await ui.press('Previous step');assert.equal(ui.tree.root.findByType('Frame').props.step,3);await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');assert.deepEqual(routes,['/']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
@@ -135,7 +135,7 @@ test('new users can pick up to three areas to make time for; nothing is created,
   '../hooks/useSavedRoutines':{useSavedRoutines:()=>({ready:true,routines:[],save:async draft=>{saved.push(draft);return true;}})},
   '@react-native-async-storage/async-storage':db.api,'expo-router':{useRouter:()=>({replace(){}})},
   '../context/UserContext':{useUser:()=>({profile:{id:'student',username:'Soon',avatar:'🌱',daily_goal_minutes:60},reloadProfile:async()=>true})},
-  '../services/onboardingService':{saveOnboardingProfile:async()=>{},finishOnboarding:async()=>{}},
+  '../services/onboardingService':{ usernameAvailable: async () => true,saveOnboardingProfile:async()=>{},finishOnboarding:async()=>{}},
  })).default;
  const ui=await render(Screen);
  const frame=()=>ui.tree.root.findByType('Frame').props;

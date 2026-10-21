@@ -22,8 +22,11 @@ export const supabase = createClient(
       autoRefreshToken: !isServerRender,
       persistSession: !isServerRender,
       detectSessionInUrl: false,
-      // Native recovery links are consumed explicitly by AuthProvider.
-      flowType: "implicit",
+      // Links back into the app (Google sign-in, recovery) carry a one-time
+      // code that only this phone can exchange, never the login tokens
+      // themselves. AuthProvider consumes them explicitly. Email codes typed
+      // into the app do not depend on this setting.
+      flowType: "pkce",
     },
   }
 );

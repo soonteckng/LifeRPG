@@ -91,12 +91,15 @@ async function provider(options = {}) {
     ...options.auth,
   };
   const module = load("src/context/AuthContext.tsx", {
-    "../../lib/supabase": { supabase: { auth } },
+    "../../lib/supabase": { supabase: { auth, rpc: async (name, params) => { calls.push(["rpc", name, params]);
+      return options.rpc ? options.rpc(name, params) : { data: null, error: { code: "PGRST202", message: "missing" } }; } } },
     "../services/nativeFocusProtection": { readNativeConnectivity: async () => null, subscribeNativeConnectivity: async () => null },
     "react-native": { Platform: { OS: "android" } },
     "expo-linking": {
-      createURL: () => options.callback ?? callback, getInitialURL: async () => options.url ?? null,
+      createURL: path => options.sameCallbacks || path !== "auth/callback" ? options.callback ?? callback : "liferpg://auth/callback",
+      getInitialURL: async () => options.url ?? null,
       addEventListener: (_, fn) => { linkListener = fn; return { remove() {} }; },
+      openURL: async url => { calls.push(["open", url]); },
     },
     "@react-native-async-storage/async-storage": {
       getItem: async key => key === recovery.recoveryStorageKey ? stored : presentation.get(key) ?? null,
@@ -242,11 +245,12 @@ const native = {
   Pressable: host("Button"), ScrollView: host("Scroll"), KeyboardAvoidingView: host("Keyboard"),
   ActivityIndicator: host("Spinner"), Platform: { OS: "android" },
   Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
+  BackHandler: { addEventListener: () => ({ remove() {} }) },
   Animated: { Value: class { setValue() {} }, View: host("Animated"), timing: () => ({ start() {}, stop() {} }) },
 };
 const personalUI = { p: {}, PersonalButton: host("Button") };
 async function recoveryScreen(auth, props = {}, options = {}) {
-  const Component = load("src/components/RecoveryScreen.tsx", {
+  const Component = load(options.file ?? "src/components/RecoveryScreen.tsx", {
     "react-native": { ...native, Platform: { OS: options.os ?? "android" } },
     "react-native-safe-area-context": { SafeAreaView: host("Safe"), useSafeAreaInsets: () => ({ top: 24, bottom: 34, left: 0, right: 0 }) },
     "@expo/vector-icons": { Ionicons: host("Icon") },
@@ -265,25 +269,26 @@ async function recoveryScreen(auth, props = {}, options = {}) {
     cleanup: async () => act(async () => renderer.unmount()),
   };
 }
-test("email-entry screen validates, blocks repeats, and confirms neutrally", async () => {
+test("forgot password validates the email, sends once, and answers neutrally with a code step", async () => {
   let calls = 0;
   const wait = deferred();
-  const ui = await recoveryScreen({ requestPasswordReset: async () => { calls++; await wait.promise; } }, { requestOnly: true });
+  const ui = await recoveryScreen({ requestPasswordReset: async () => { calls++; await wait.promise; }, recoverWithCode: async () => {} },
+    { email: "", onBack() {} }, { file: "src/components/ForgotPasswordScreen.tsx" });
   try {
-    await act(async () => ui.button("Send recovery email").props.onPress());
-    assert.equal(calls, 0);
+    await act(async () => ui.button("Send code").props.onPress());
+    assert.equal(calls, 0, "no email is sent for an empty or malformed address");
     await ui.input("Email", "hero@example.com");
     let first;
     await act(async () => {
-      const submit = ui.button("Send recovery email").props.onPress;
+      const submit = ui.button("Send code").props.onPress;
       first = submit(); submit();
     });
     assert.equal(calls, 1);
-    assert.equal(ui.button("Requesting...").props.disabled, true);
+    assert.equal(ui.button("Sending…").props.disabled, true);
     await act(async () => { wait.resolve(); await first; });
-    assert.equal(ui.button("Recovery email requested").props.disabled, true);
     const text = ui.renderer.root.findAllByType("Text").map(n => n.props.children).join(" ");
-    assert.match(text, /If an account exists/);
+    assert.match(text, /If there’s an account for hero@example.com, a 6-digit code is on its way/, "never says whether the account exists");
+    assert.ok(ui.renderer.root.findAllByType("Input").some(n => n.props.accessibilityLabel === "6-digit code"));
   } finally { await ui.cleanup(); }
 });
 test("new password screen validates confirmation and preserves drafts after provider failure", async () => {
@@ -299,7 +304,7 @@ test("new password screen validates confirmation and preserves drafts after prov
     assert.equal(calls, 1);
     assert.equal(ui.renderer.root.findAllByType("Input")[0].props.value, "long-password");
     assert.equal(ui.button("Save new password").props.disabled, false);
-    assert.ok(ui.button("Request another recovery email"));
+    assert.ok(ui.button("Back to sign in"), "an expired or unwanted reset always has a way back");
   } finally { await ui.cleanup(); }
 });
 
@@ -686,7 +691,7 @@ test("Supabase static-render storage guard preserves persistent native/browser s
       assert.equal(options.autoRefreshToken, os !== "web");
       assert.equal(options.storage, os === "web" ? undefined : storage);
       assert.equal(options.detectSessionInUrl, false);
-      assert.equal(options.flowType, "implicit");
+      assert.equal(options.flowType, "pkce", "links back into the app carry a one-time code, never login tokens");
     }
   } finally {
     if (originalWindow === undefined) delete global.window;
@@ -742,5 +747,76 @@ test("late verification cannot overwrite a newer authenticated account", async (
     assert.equal(ui.value().user.id, "new-account");
     await act(async () => old.resolve({ data: { user: session.user }, error: null }));
     assert.equal(ui.value().user.id, "new-account");
+  } finally { await ui.cleanup(); }
+});
+
+test("a username signs in through its private email check; an email skips it; failures never reveal accounts", async () => {
+  const signIns = [];
+  const ui = await provider({ auth: { signInWithPassword: async input => { signIns.push(input); return { error: null }; } },
+    rpc: async (name, params) => params.p_username === "Soon Teck" && params.p_password === "right password" ? { data: "a@example.com", error: null }
+      : params.p_username === "Busy Name" ? { data: null, error: { message: "too_many_attempts" } } : { data: null, error: null } });
+  try {
+    assert.deepEqual(await ui.value().signIn(" Soon Teck ", "right password"), { error: null });
+    assert.deepEqual(signIns.at(-1), { email: "a@example.com", password: "right password" }, "Supabase signs in with the email the check returned");
+    await ui.value().signIn("hero@example.com", "pw");
+    assert.equal(ui.calls.filter(call => call[0] === "rpc").length, 1, "an email never asks the username check");
+    assert.deepEqual(signIns.at(-1), { email: "hero@example.com", password: "pw" });
+    const wrong = await ui.value().signIn("Soon Teck", "wrong");
+    assert.equal(wrong.error.code, "invalid_credentials"); assert.equal(signIns.length, 2, "a wrong password never reaches sign-in");
+    assert.equal((await ui.value().signIn("Busy Name", "x")).error.code, "too_many_attempts");
+  } finally { await ui.cleanup(); }
+  const missing = await provider();
+  try { assert.equal((await missing.value().signIn("Soon Teck", "pw")).error.code, "username_sign_in_unavailable"); }
+  finally { await missing.cleanup(); }
+});
+
+test("the sign-up email code and its resend use Supabase's signup type", async () => {
+  const otp = [], resends = [];
+  const ui = await provider({ auth: { verifyOtp: async input => { otp.push(input); return { data: { session: null }, error: null }; },
+    resend: async input => { resends.push(input); return { error: null }; } } });
+  try {
+    assert.deepEqual(await ui.value().verifySignUpCode(" new@example.com ", " 123456 "), { error: null });
+    assert.deepEqual(otp, [{ email: "new@example.com", token: "123456", type: "signup" }]);
+    assert.deepEqual(await ui.value().resendSignUpCode("new@example.com"), { error: null });
+    assert.deepEqual(resends, [{ type: "signup", email: "new@example.com" }]);
+  } finally { await ui.cleanup(); }
+});
+
+test("Google opens in the browser and its one-time code signs in; a cancel or a recovery link never does", async () => {
+  const oauth = [], exchanges = [];
+  const ui = await provider({ codeEvent: "SIGNED_IN", auth: {
+    signInWithOAuth: async input => { oauth.push(input); return { data: { url: "https://fixture.supabase.co/auth/v1/authorize?provider=google" }, error: null }; },
+    exchangeCodeForSession: async code => { exchanges.push(code); return { data: { session }, error: null }; },
+  } });
+  try {
+    assert.deepEqual(await ui.value().signInWithGoogle(), { error: null });
+    assert.equal(oauth[0].provider, "google");
+    assert.equal(oauth[0].options.redirectTo, "liferpg://auth/callback"); assert.equal(oauth[0].options.skipBrowserRedirect, true);
+    assert.deepEqual(ui.calls.find(call => call[0] === "open"), ["open", "https://fixture.supabase.co/auth/v1/authorize?provider=google"]);
+    await ui.link("liferpg://auth/callback?error=access_denied");
+    assert.equal(ui.value().googleStatus, "cancelled"); assert.deepEqual(exchanges, []);
+    await ui.link("liferpg://auth/callback?code=abcdef123456");
+    assert.deepEqual(exchanges, ["abcdef123456"]); assert.equal(ui.value().googleStatus, "idle");
+    await ui.link("liferpg://auth/callback?code=abcdef123456");
+    assert.equal(exchanges.length, 1, "the same link is used once");
+    await ui.link("liferpg://somewhere-else?code=abcdef999999");
+    assert.equal(exchanges.length, 1, "only the exact callback path is read");
+  } finally { await ui.cleanup(); }
+});
+
+test("a reset code opens recovery only when it is right; a wrong code leaves everything as it was", async () => {
+  let accept = false;
+  const ui = await provider({ auth: { verifyOtp: async input => {
+    if (!accept) return { data: { session: null }, error: { code: "otp_expired", message: "Token has expired or is invalid" } };
+    return { data: { session }, error: null };
+  } } });
+  try {
+    await assert.rejects(() => ui.value().recoverWithCode("hero@example.com", "000000"), error => error.code === "otp_expired");
+    assert.equal(ui.value().recovery, "none"); assert.equal(ui.stored(), null, "the guard is cleared again");
+    await assert.rejects(() => ui.value().recoverWithCode("hero@example.com", "12ab"), error => error.code === "otp_invalid");
+    accept = true;
+    await ui.run(value => value.recoverWithCode("hero@example.com", "123456"));
+    assert.equal(ui.value().recovery, "ready"); assert.equal(ui.stored(), "account-a");
+    assert.equal(ui.writes[0], "pending", "the guard is written before the code is used");
   } finally { await ui.cleanup(); }
 });

@@ -170,6 +170,7 @@ const Native = {
     timing: () => ({ start() {}, stop() {} }),
   },
   AppState: { addEventListener: () => ({ remove() {} }) },
+  BackHandler: { addEventListener: () => ({ remove() {} }) },
   Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
   Switch: host("Switch"),
   Linking: { openSettings: async () => {} },
@@ -232,35 +233,52 @@ async function screen(file, mocks) {
     cleanup: async () => act(async () => renderer.unmount()),
   };
 }
-test("registration confirms email without claiming an authenticated session", async () => {
-  let calls = 0;
-  const ui = await screen("src/components/AuthScreen.tsx", {
+// The new-person intro, reduced to what these tests need: the welcome
+// finishes at once and the intro frame is a plain container.
+const introMocks = {
+  "./OnboardingWelcome": ({ onDone }) => { React.useEffect(() => { onDone(); }, [onDone]); return null; },
+  "./OnboardingFrame": Object.assign(({ children, primary, onNext, secondary, onSecondary, title }) => React.createElement("Frame", { title },
+    React.createElement("Button", { onPress: onNext, accessibilityLabel: primary }, primary),
+    onSecondary ? React.createElement("Button", { onPress: onSecondary, accessibilityLabel: secondary }, secondary) : null, children),
+    { useOnboardingTransition: () => ({ opacity: {}, moving: false, change: fn => fn() }) }),
+  "../services/authSettings": { useAuthSettings: () => ({ google: false }) },
+  "../services/nativeFocusProtection": { getSessionProtectionModule: async () => null },
+  "@react-native-async-storage/async-storage": { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} },
+};
+test("a new account waits for its email code and never claims a session before it", async () => {
+  let calls = 0, verified = 0;
+  const ui = await screen("src/components/AuthScreen.tsx", { ...introMocks,
     "../context/AuthContext": {
       useAuth: () => ({
-        signUp: async () => {
-          calls++;
-          return { needsEmailConfirmation: true };
-        },
+        googleStatus: "idle", clearGoogleStatus() {},
+        signUp: async () => { calls++; return { error: null, needsEmailConfirmation: true }; },
+        verifySignUpCode: async () => { verified++; return { error: null }; },
       }),
     },
   });
   try {
     await ui.press("New here? Create an account");
+    assert.equal(ui.renderer.root.findByType("Frame").props.title, "What would you like to make time for?", "a new person starts with the intro");
+    await ui.press("Skip for now");
+    assert.match(ui.text(), /Save your progress/);
     await ui.input("Email", "person@example.com");
     await ui.input("Password", "password");
     await ui.press("Create account");
     assert.equal(calls, 1);
-    assert.match(ui.text(), /If registration can be completed/);
+    assert.match(ui.text(), /Check your email/);
+    assert.match(ui.text(), /6-digit code to person@example.com/);
+    assert.equal(verified, 0, "nothing opens until the code is entered");
     assert.match(ui.text(), /Sign in/);
   } finally {
     await ui.cleanup();
   }
 });
-test("failed login exposes error, preserves inputs and allows retry", async () => {
+test("failed sign-in explains itself, keeps what was typed and allows retry", async () => {
   let calls = 0;
-  const ui = await screen("src/components/AuthScreen.tsx", {
+  const ui = await screen("src/components/AuthScreen.tsx", { ...introMocks,
     "../context/AuthContext": {
       useAuth: () => ({
+        googleStatus: "idle", clearGoogleStatus() {},
         signIn: async () => {
           if (++calls === 1) throw Error("Offline");
           return { error: null };
@@ -270,7 +288,7 @@ test("failed login exposes error, preserves inputs and allows retry", async () =
   });
   try {
     assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
-    await ui.input("Email", "person@example.com");
+    await ui.input("Email or username", "person@example.com");
     await ui.input("Password", "password");
     const surface = ui.renderer.root.findByType("Scroll");
     await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 450 } } }));
@@ -278,11 +296,8 @@ test("failed login exposes error, preserves inputs and allows retry", async () =
     assert.match(ui.text(), /Welcome back/);
     assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
     await ui.press("Sign in");
-    assert.match(ui.text(), /Offline/);
-    assert.equal(
-      ui.renderer.root.findAllByType("Input")[1].props.value,
-      "password",
-    );
+    assert.match(ui.text(), /Couldn’t connect/);
+    assert.equal(ui.renderer.root.findAllByType("Input").find(n => n.props.accessibilityLabel === "Password").props.value, "password");
     await ui.press("Sign in");
     assert.equal(calls, 2);
     await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 800 } } }));
@@ -297,9 +312,10 @@ test("rapid sign-in taps submit once", async () => {
   const promise = new Promise((r) => {
     resolve = r;
   });
-  const ui = await screen("src/components/AuthScreen.tsx", {
+  const ui = await screen("src/components/AuthScreen.tsx", { ...introMocks,
     "../context/AuthContext": {
       useAuth: () => ({
+        googleStatus: "idle", clearGoogleStatus() {},
         signIn: () => {
           calls++;
           return promise;
@@ -308,7 +324,7 @@ test("rapid sign-in taps submit once", async () => {
     },
   });
   try {
-    await ui.input("Email", "person@example.com");
+    await ui.input("Email or username", "person@example.com");
     await ui.input("Password", "password");
     const handler = ui.renderer.root
       .findAllByType("Button")
@@ -336,7 +352,7 @@ test("onboarding failure keeps choices and retries before entering Home", async 
         reloadProfile: async () => true,
       }),
     },
-    "../services/onboardingService": {
+    "../services/onboardingService": { usernameAvailable: async () => true,
       saveOnboardingProfile: async () => {
         if (++attempts === 1) throw Error("Offline");
       },
@@ -372,7 +388,7 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
         reloadProfile: async () => true,
       }),
     },
-    "../services/onboardingService": {
+    "../services/onboardingService": { usernameAvailable: async () => true,
       saveOnboardingProfile: async () => {},
       finishOnboarding: async () => {
         if (++calls === 1) throw Error("Offline");
@@ -392,7 +408,7 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
   }
 });
 test("existing introduction links open the static guide without changing onboarding", async () => {
- let writes=0;const routes=[];const ui=await screen("src/app/tutorial.tsx",{"expo-router":{useRouter:()=>({replace:route=>routes.push(route)})},"../context/UserContext":{useUser:()=>({profile:{onboarding_completed:true}})},"../services/onboardingService":{finishOnboarding:async()=>writes++}});
+ let writes=0;const routes=[];const ui=await screen("src/app/tutorial.tsx",{"expo-router":{useRouter:()=>({replace:route=>routes.push(route)})},"../context/UserContext":{useUser:()=>({profile:{onboarding_completed:true}})},"../services/onboardingService":{ usernameAvailable: async () => true,finishOnboarding:async()=>writes++}});
  assert.deepEqual(routes,["./guide"]);assert.equal(writes,0);await ui.cleanup();
 });
 async function userProviderHarness({ updateError = null, stored = null } = {}) {

@@ -7,6 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { isExpoGoLanRecoveryRedirect, parseRecoveryLink, recoveryLinkError, recoveryStorageKey, validEmail, type RecoveryState } from "../utils/passwordRecovery";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { authEntryPreference, authEntryStorageKey, type AuthEntryMode } from "../services/authEntryPreference";
+import { parseAuthCallback } from "../utils/authCallback";
 import { setCloudConnectionScope, subscribeCloudConnectionFailure } from "../services/cloudConnection";
 import { readNativeConnectivity, subscribeNativeConnectivity } from "../services/nativeFocusProtection";
 import { createLocalAccountCache, readPersistedCredentialOwner, localRecoveryOwner, isTemporaryAuthFailure, isExpiredAuthFailure,
@@ -24,8 +25,18 @@ interface AuthContextType {
    * check also notices a dead connection before anything is sent. */
   verifyCurrentOwner: (options?: { fresh?: boolean }) => Promise<LocalAccountOwner | null>;
   retrySessionVerification: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
+  /** An email, or a username picked in the intro, plus the password. */
+  signIn: (identifier: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string) => Promise<{ error: Error | null; needsEmailConfirmation: boolean }>;
+  /** The 6-digit code from the sign-up email. */
+  verifySignUpCode: (email: string, code: string) => Promise<{ error: Error | null }>;
+  resendSignUpCode: (email: string) => Promise<{ error: Error | null }>;
+  /** Opens Google in the browser; the app signs in when it comes back. */
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
+  /** A Google sign-in that came back to the app: finishing, or why it stopped. */
+  googleStatus: "idle" | "finishing" | "failed" | "cancelled";
+  /** The 6-digit code from the reset email; then a new password is chosen. */
+  recoverWithCode: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<{ error: Error | null }>;
   requestPasswordReset: (email: string) => Promise<void>;
   saveRecoveryPassword: (password: string) => Promise<void>;
@@ -104,6 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [localOwner, setLocalOwner] = useState<LocalAccountOwner | null>(null);
   const [admissionEpoch, setAdmissionEpoch] = useState(0);
   const [recovery, setRecovery] = useState<RecoveryState>("none");
+  const [googleStatus, setGoogleStatus] = useState<"idle" | "finishing" | "failed" | "cancelled">("idle");
   const recoveryRef = useRef<RecoveryState>("none");
   const recoveryUser = useRef<string | null>(null);
   const saving = useRef(false), requesting = useRef(false);
@@ -142,6 +154,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
   const redirectTo = Platform.OS === "web" && typeof window === "undefined"
     ? "" : Linking.createURL("auth/recovery");
+  const callbackUrl = Platform.OS === "web" && typeof window === "undefined"
+    ? "" : Linking.createURL("auth/callback");
   const verifySession = (current: Session | null, force = false, restorationError: unknown = null): Promise<LocalAccountOwner | null> => {
     if (admissionClosed.current && recoveryRef.current === "none") return Promise.resolve(null);
     if (deviceReachable.current === false && recoveryRef.current === "none") restorationError ??= new AuthVerificationTimeout();
@@ -316,7 +330,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Defer SDK calls until its synchronous callback releases its auth lock.
       if (current) void Promise.resolve().then(() => live ? verifySession(current) : null);
     });
+    // Google sign-in comes back here with a one-time code for this phone.
+    let lastCallback: string | null = null;
+    const handleCallback = async (url: string) => {
+      // Never mistake a recovery link for a sign-in link.
+      if (!callbackUrl || callbackUrl === redirectTo) return false;
+      const callback = parseAuthCallback(url, callbackUrl);
+      if (!callback) return false;
+      if (lastCallback === url) return true;
+      lastCallback = url;
+      if (callback.kind === "error") { if (live) setGoogleStatus(callback.cancelled ? "cancelled" : "failed"); return true; }
+      if (recoveryRef.current !== "none") return true;
+      admissionClosed.current = false;
+      if (live) setGoogleStatus("finishing");
+      try {
+        const { error } = await supabase.auth.exchangeCodeForSession(callback.code);
+        if (live) setGoogleStatus(error ? "failed" : "idle");
+      } catch { if (live) setGoogleStatus("failed"); }
+      return true;
+    };
     const handleLink = async (url: string) => {
+      if (await handleCallback(url)) return;
       const link = parseRecoveryLink(url, redirectTo);
       if (!link || processing || saving.current || lastLink === url) return;
       processing = true; recoveryEventSeen = false; lastLink = url; changeRecovery("checking");
@@ -409,9 +443,61 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // The listener and boot guard belong to this provider instance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const signIn = async (email: string, password: string) => {
+  const failure = (code: string) => Object.assign(new Error(code), { code });
+  const signIn = async (identifier: string, password: string) => {
     admissionClosed.current = false;
+    let email = identifier.trim();
+    if (!email.includes("@")) {
+      // A username: the database checks the password and, only when it is
+      // right, returns the account's email. Then Supabase signs in as usual.
+      try {
+        const { data, error } = await supabase.rpc("username_sign_in_email_v1", { p_username: email, p_password: password });
+        if (error) {
+          if (/too_many_attempts/.test(error.message ?? "")) return { error: failure("too_many_attempts") };
+          if (error.code === "PGRST202") return { error: failure("username_sign_in_unavailable") };
+          return { error: failure("network") };
+        }
+        if (typeof data !== "string" || !validEmail(data)) return { error: failure("invalid_credentials") };
+        email = data;
+      } catch { return { error: failure("network") }; }
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password }); return { error };
+  };
+  const verifySignUpCode = async (email: string, code: string) => {
+    admissionClosed.current = false;
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: "signup" });
+    return { error };
+  };
+  const resendSignUpCode = async (email: string) => {
+    const { error } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+    return { error };
+  };
+  const signInWithGoogle = async () => {
+    if (!callbackUrl) return { error: failure("google_failed") };
+    admissionClosed.current = false; setGoogleStatus("idle");
+    const { data, error } = await supabase.auth.signInWithOAuth({ provider: "google",
+      options: { redirectTo: callbackUrl, skipBrowserRedirect: true, queryParams: { prompt: "select_account" } } });
+    if (error || !data?.url) return { error: error ?? failure("google_failed") };
+    try { await Linking.openURL(data.url); } catch { return { error: failure("google_failed") }; }
+    return { error: null };
+  };
+  // The reset email's 6-digit code. Like a recovery link, a guard is written
+  // before the code opens a recovery session, so Home is never shown with it.
+  const recoverWithCode = async (email: string, code: string) => {
+    if (saving.current) return;
+    if (!validEmail(email) || !/^\d{6,10}$/.test(code.trim())) throw failure("otp_invalid");
+    await persistRecovery("pending");
+    let result;
+    try { result = await supabase.auth.verifyOtp({ email: email.trim(), token: code.trim(), type: "recovery" }); }
+    catch (error) { if (recoveryRef.current === "none") await persistRecovery(null).catch(() => {}); throw error; }
+    if (result.error || !result.data.session) {
+      if (recoveryRef.current === "none") await persistRecovery(null).catch(() => {});
+      throw result.error ?? failure("otp_invalid");
+    }
+    const recovered = result.data.session;
+    recoveryUser.current = recovered.user.id;
+    await persistRecovery(recovered.user.id);
+    sessionRef.current = recovered; setSession(recovered); changeRecovery("ready");
   };
   const signUp = async (email: string, password: string) => {
     admissionClosed.current = false;
@@ -568,7 +654,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider value={{ session, user: verifiedUser?.id === session?.user?.id ? verifiedUser : null, loading: loading || (verifying && accessMode === "signed-out"), recovery,
       sessionError, authEntryMode, localOwner, accessMode, admissionEpoch, cachedProfile, cacheVerifiedProfile, verifyCurrentOwner,
       retrySessionVerification,
-      signIn, signUp, signOut, requestPasswordReset, saveRecoveryPassword, leaveRecovery }}>
+      signIn, signUp, signOut, requestPasswordReset, saveRecoveryPassword, leaveRecovery,
+      verifySignUpCode, resendSignUpCode, signInWithGoogle, googleStatus, recoverWithCode }}>
       {children}
     </AuthContext.Provider>
   );

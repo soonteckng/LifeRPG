@@ -11,7 +11,9 @@ import Pressable from "./MotionPressable";
 import IdeaAreaPicker from "./IdeaAreaPicker";
 import { useGuidedPreference } from "../hooks/useGuidedPreference";
 import type { IdeaArea } from "../constants/routineIdeas";
-import { saveOnboardingProfile, finishOnboarding } from "../services/onboardingService";
+import { saveOnboardingProfile, finishOnboarding, usernameAvailable } from "../services/onboardingService";
+import { introHandoff } from "../services/introHandoff";
+import { PROFILE_NAME_TAKEN, profileNameError } from "../constants/profile";
 import { useUser } from "../context/UserContext";
 import { colors, edge } from "../constants/theme";
 import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
@@ -27,12 +29,16 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const { profile, reloadProfile } = useUser();
   const guided = useGuidedPreference(profile.id ?? "");
   const transition = useOnboardingTransition();
-  const [welcoming, setWelcoming] = useState(initialStep === 0);
+  // A new person started the intro before their account existed: carry on
+  // from the name step with what they picked, counting the account step too.
+  const [handoff] = useState(() => initialStep === 0 ? introHandoff.peek() : null);
+  const offset = handoff ? 1 : 0;
+  const [welcoming, setWelcoming] = useState(initialStep === 0 && !handoff);
   const welcomeDone = useCallback(() => setWelcoming(false), []);
-  const [step, setStep] = useState(initialStep);
+  const [step, setStep] = useState(handoff ? NAME_STEP : initialStep);
   // Up to three areas; nothing is created here. After the intro and the
   // guide, Routines gathers ideas from them under "For you".
-  const [areas, setAreas] = useState<IdeaArea[]>([]);
+  const [areas, setAreas] = useState<IdeaArea[]>(handoff?.areas ?? []);
   const [name, setName] = useState(profile.username === "Hero" ? "" : profile.username ?? "");
   const [goal, setGoal] = useState(Math.max(30, profile.daily_goal_minutes || 60));
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -65,6 +71,17 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     if (step === NAME_STEP && (!name.trim() || name.trim().length > ONBOARDING_NAME_LIMIT)) {
       setError(`Choose a name between 1 and ${ONBOARDING_NAME_LIMIT} characters.`); return;
     }
+    if (step === NAME_STEP) {
+      const invalid = profileNameError(name);
+      if (invalid) { setError(invalid); return; }
+      // Names are unique, so check now rather than at the very end.
+      lock.current = true; setBusy(true);
+      const free = await usernameAvailable(name).catch(() => true);
+      lock.current = false;
+      if (!alive.current) return;
+      setBusy(false);
+      if (!free) { setError(PROFILE_NAME_TAKEN); return; }
+    }
     if (step === GOAL_STEP) { const validation = validateDailyGoal(goal); if (validation) { setError(validation); return; } }
     if (step === GOAL_STEP && !protection.supported) { changeStep(FIRST_INTRO); return; }
     if (step === PROTECTION_STEP && caps?.usage && caps.overlay && caps.notifications) await protection.choose("allow-list", protection.selection.mode === "allow-list" ? protection.selection.allowed : []).catch(() => false);
@@ -82,12 +99,17 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
           savedProfile.current = key;
         }
         await finishOnboarding(); savedFinish.current = true;
+        introHandoff.clear();
         if (alive.current) setConfirmed(true);
         await prepareFeatureTour(profile.id ?? "").catch(() => {});
       }
       if (alive.current) setCelebrating(true);
-    } catch {
-      if (alive.current) { setError("Couldn’t save your setup. Your choices are still here. Please try again."); setBusy(false); lock.current = false; }
+    } catch (cause) {
+      if (!alive.current) return;
+      // Someone took this name in the meantime: choose another, nothing is lost.
+      if ((cause as { code?: string })?.code === "23505") { setStep(NAME_STEP); setError(PROFILE_NAME_TAKEN); }
+      else setError("Couldn’t save your setup. Your choices are still here. Please try again.");
+      setBusy(false); lock.current = false;
     }
   };
   if (welcoming) return <OnboardingWelcome owner={profile.id ?? ""} onDone={welcomeDone} />;
@@ -106,8 +128,8 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     "During a session, LifeRPG can cover the apps that tend to pull you away. Totally optional, and you can change it later.",
   ];
   const firstLabel = areas.length ? "Continue" : "Skip for now";
-  return <OnboardingFrame step={step + 1 - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={skipped ? 6 : 7} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
-    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
+  return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 6 : 7) + offset} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
+    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === NAME_STEP ? "Checking…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
     onBack={step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? GOAL_STEP : step - 1) : undefined}
     error={(step === NAME_STEP ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <IdeaAreaPicker value={areas} onChange={setAreas} disabled={busy} />}

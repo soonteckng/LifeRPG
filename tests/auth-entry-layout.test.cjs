@@ -239,33 +239,48 @@ test("web account forms mount without the native-only Keyboard.metrics API", asy
 
 test("Create account can switch to Sign in and reset without losing drafts or using the wrong auth action", async () => {
   const calls = [];
-  const Screen = load("src/components/AuthScreen.tsx", { ...mocksFor(),
-    "../context/AuthContext": { useAuth: () => ({ recovery: "none",
+  const Frame = Object.assign(({ children, primary, onNext, title }) => React.createElement("Frame", { title },
+    React.createElement("Button", { onPress: onNext, title: primary }), children),
+    { useOnboardingTransition: () => ({ opacity: {}, moving: false, change: fn => fn() }) });
+  const base = mocksFor();
+  const Screen = load("src/components/AuthScreen.tsx", { ...base,
+    "react-native": { ...base["react-native"], BackHandler: { addEventListener: () => ({ remove() {} }) } },
+    "./OnboardingWelcome": ({ onDone }) => { React.useEffect(() => { onDone(); }, [onDone]); return null; },
+    "./OnboardingFrame": Frame, "./IdeaAreaPicker": host("Areas"),
+    "../services/authSettings": { useAuthSettings: () => ({ google: false }) },
+    "../services/nativeFocusProtection": { getSessionProtectionModule: async () => null },
+    "@react-native-async-storage/async-storage": { getItem: async () => null, setItem: async () => {}, removeItem: async () => {} },
+    "../context/AuthContext": { useAuth: () => ({ recovery: "none", googleStatus: "idle", clearGoogleStatus() {},
       signUp: async (email, password) => { calls.push(["sign-up", email, password]); return { error: null, needsEmailConfirmation: true }; },
       signIn: async (email, password) => { calls.push(["sign-in", email, password]); return { error: null }; },
+      requestPasswordReset: async () => {}, recoverWithCode: async () => {},
     }) },
   }).default;
   let renderer;
   await act(async () => { renderer = create(React.createElement(Screen, { initialMode: "sign-up" })); });
-  const button = title => renderer.root.findAllByType("Button").find(node => node.props.title === title || text(node) === title);
+  const button = title => renderer.root.findAllByType("Button").find(node => node.props.title === title || node.props.accessibilityLabel === title || text(node) === title);
   const input = label => renderer.root.findAllByType("Input").find(node => node.props.accessibilityLabel === label);
   try {
+    await act(async () => button("Skip for now").props.onPress());
     assert.ok(button("Create account"));
     assert.equal(button("Forgot password?"), undefined);
     await act(async () => { input("Email").props.onChangeText(" hero@example.com "); input("Password").props.onChangeText("draft-password"); });
     await act(async () => button("Already have an account? Sign in").props.onPress());
-    assert.equal(input("Email").props.value, " hero@example.com ");
+    assert.equal(input("Email or username").props.value, " hero@example.com ");
     assert.equal(input("Password").props.value, "draft-password");
     await act(async () => button("Forgot password?").props.onPress());
     assert.match(text(renderer.root), /Reset your password/);
-    await act(async () => button("Return to sign in").props.onPress());
+    assert.equal(input("Email").props.value, "hero@example.com", "the email carries over to the reset");
+    await act(async () => button("Back to sign in").props.onPress());
     assert.equal(input("Password").props.value, "draft-password");
     await act(async () => button("Sign in").props.onPress());
     assert.deepEqual(calls, [["sign-in", "hero@example.com", "draft-password"]]);
     await act(async () => button("New here? Create an account").props.onPress());
+    await act(async () => button("Skip for now").props.onPress());
+    assert.equal(input("Password").props.value, "", "a new account never reuses the sign-in password");
+    await act(async () => input("Password").props.onChangeText("brand-new-password"));
     await act(async () => button("Create account").props.onPress());
-    assert.equal(calls[1][0], "sign-up");
-    assert.equal(input("Password").props.value, "");
-    assert.match(text(renderer.root), /If registration can be completed/);
+    assert.deepEqual(calls[1], ["sign-up", "hero@example.com", "brand-new-password"]);
+    assert.match(text(renderer.root), /Check your email/);
   } finally { await act(async () => renderer.unmount()); }
 });

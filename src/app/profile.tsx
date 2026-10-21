@@ -1,5 +1,5 @@
 import { focusAreaTitle, focusAreaIcon, focusAreaKind } from "../utils/focusAreas";
-import { PROFILE_NAME_LIMIT, profileNameError } from "../constants/profile";
+import { PROFILE_NAME_LIMIT, PROFILE_NAME_TAKEN, profileNameError } from "../constants/profile";
 import Pressable from "../components/MotionPressable";
 import { useTimer } from "../context/TimerContext";
 import { Text } from "../components/AppText";
@@ -133,10 +133,10 @@ export default function ProfileScreen() {
       Keyboard.dismiss();
       sheetClosing.current = true;
       setSheetOpen(false);
-    } catch {
-      if (currentSaveView.current === saveView) setSaveError(
-        "Couldn’t save your changes. Your draft is here. Please try again.",
-      );
+    } catch (cause) {
+      // Names are unique: someone else may already use this one.
+      if (currentSaveView.current === saveView) setSaveError((cause as { code?: string })?.code === "23505" ? PROFILE_NAME_TAKEN
+        : "Couldn’t save your changes. Your draft is here. Please try again.");
     } finally {
       lock.current = false;
       setSaving(false);

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Animated, Keyboard, KeyboardAvoidingView, Platform, ScrollView, View, type LayoutChangeEvent } from "react-native";
+import { Animated, BackHandler, Keyboard, KeyboardAvoidingView, Platform, ScrollView, View, type LayoutChangeEvent } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import Pressable from "./MotionPressable";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "./AppText";
 import { p } from "./PersonalUI";
@@ -23,12 +25,16 @@ function AuthFormContents({ children, ...controls }: FormControls & {
   return children(controls);
 }
 
-export default function AuthFormFrame({ title, description, transitionKey, hero, children }: {
+export default function AuthFormFrame({ title, description, transitionKey, hero, children, progress, onBack }: {
   title: string;
   description?: string;
   transitionKey: string;
   hero?: ReactNode;
   children: (controls: FormControls) => ReactNode;
+  /** Inside the intro: the same step bar as the other intro pages. */
+  progress?: { step: number; total: number };
+  /** A Back control at the top, also used by the phone's Back button. */
+  onBack?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const reducedMotion = useReducedMotion();
@@ -116,7 +122,32 @@ export default function AuthFormFrame({ title, description, transitionKey, hero,
     animation.start();
     return () => animation.stop();
   }, [entrance, reducedMotion, transitionKey]);
+  // The phone's Back closes the keyboard first, then goes back a step.
+  const back = useRef(onBack);
+  useLayoutEffect(() => { back.current = onBack; }, [onBack]);
+  const hasBack = !!onBack;
+  useEffect(() => {
+    if (!hasBack) return;
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (Keyboard.isVisible?.()) Keyboard.dismiss(); else back.current?.();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [hasBack]);
   return <SafeAreaView edges={["top", "left", "right"]} style={p.page}>
+    {(progress || onBack) && <View testID="auth-top" style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 4, gap: 14, width: "100%", maxWidth: 520, alignSelf: "center" }}>
+      <View style={{ minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        {onBack ? <Pressable onPress={onBack} accessibilityRole="button" accessibilityLabel="Back" hitSlop={10}
+          style={{ width: 40, height: 40, borderRadius: 20, marginLeft: -8, alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name="chevron-back" size={24} color={colors.text} />
+        </Pressable> : <View />}
+        {progress && <Text style={{ fontSize: 14, lineHeight: 20, color: colors.secondary }}>Step {progress.step} of {progress.total}</Text>}
+      </View>
+      {progress && <View style={{ flexDirection: "row", gap: 5 }} accessible accessibilityRole="progressbar" accessibilityLabel="Setup progress"
+        accessibilityValue={{ min: 0, max: progress.total, now: progress.step, text: `Step ${progress.step} of ${progress.total}` }}>
+        {Array.from({ length: progress.total }, (_, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: i < progress.step ? colors.accent : colors.line }} />)}
+      </View>}
+    </View>}
     <KeyboardAvoidingView style={{ flex: 1 }}
       enabled={Platform.OS === "ios"} behavior={Platform.OS === "ios" ? "padding" : undefined}
       keyboardVerticalOffset={insets.top}>

@@ -10,6 +10,7 @@ import { PersonalButton, p } from "../components/PersonalUI";
 import AuthScreen from "../components/AuthScreen";
 import RecoveryScreen from "../components/RecoveryScreen";
 import LaunchIntro from "../components/LaunchIntro";
+import { introHandoff } from "../services/introHandoff";
 import GlobalRewardListener from "../components/GlobalRewardListener";
 import SessionConnectionContent from "../components/SessionConnectionContent";
 import RoutineLifecycle from "../components/RoutineLifecycle";
@@ -303,6 +304,8 @@ function SessionVerificationError({ onRetry, onSignOut }: {
 
 function AuthGate() {
   const { user, localOwner, loading, recovery, sessionError, authEntryMode, retrySessionVerification, signOut } = useAuth();
+  // A new person's intro picks, saved before the app last closed.
+  useEffect(() => { void introHandoff.restore(); }, []);
 
   if (loading) {
     return (

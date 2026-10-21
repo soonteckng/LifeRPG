@@ -391,7 +391,7 @@ test("optional onboarding preserves a saved character badge and keeps the twelve
   const ui = await screen("src/app/onboarding.tsx", {
     "expo-router": { useRouter: () => ({ replace() {} }) },
     "../context/UserContext": { useUser: () => ({ profile: { id: "onboarding-badge", username: "Soon", avatar: badges[9], daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
-    "../services/onboardingService": { saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
+    "../services/onboardingService": { usernameAvailable: async () => true, saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
   });
   try {
     await ui.press("Skip for now");

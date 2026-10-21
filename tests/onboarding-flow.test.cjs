@@ -82,7 +82,7 @@ test('every page shares Back navigation, keeps choices and saves only at the fin
     'expo-router': { useRouter: () => ({ replace: route => routes.push(route) }) },
     '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Hero', daily_goal_minutes: 60, avatar: '🌱' }, reloadProfile: async () => true }) },
     '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: { enabled: false, need: 'revision', templateId: 'review-topic', smaller: false }, save: async value => { preferences.push(value); return true; } }) },
-    '../services/onboardingService': { saveOnboardingProfile: async (...args) => profiles.push(args), finishOnboarding: async () => finishes++ },
+    '../services/onboardingService': { usernameAvailable: async () => true, saveOnboardingProfile: async (...args) => profiles.push(args), finishOnboarding: async () => finishes++ },
   }).default;
   await act(async () => { tree = create(React.createElement(Screen)); });
   const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
@@ -118,7 +118,7 @@ test('completion waits for its animation before Home, and retries a failed refre
     'expo-router': { useRouter: () => router },
     '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Soon', onboarding_completed: false }, reloadProfile: async () => ++refreshes > 1 }) },
     '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: {}, save: async () => true }) },
-    '../services/onboardingService': { saveOnboardingProfile: async () => {}, finishOnboarding: async () => writes++ },
+    '../services/onboardingService': { usernameAvailable: async () => true, saveOnboardingProfile: async () => {}, finishOnboarding: async () => writes++ },
   }).default;
   await act(async () => { tree = create(React.createElement(Screen)); });
   const press = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress();
@@ -178,7 +178,7 @@ test('Android setup asks about app protection with Allow buttons, names what can
     'expo-router': { useRouter: () => ({ replace() {} }) },
     '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Soon', onboarding_completed: false }, reloadProfile: async () => true }) },
     '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: {}, save: async () => true }) },
-    '../services/onboardingService': { saveOnboardingProfile: async () => {}, finishOnboarding: async () => {} },
+    '../services/onboardingService': { usernameAvailable: async () => true, saveOnboardingProfile: async () => {}, finishOnboarding: async () => {} },
   }).default;
   await act(async () => { tree = create(React.createElement(Journey, { initialStep: 3 })); });
   const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
@@ -196,5 +196,60 @@ test('Android setup asks about app protection with Allow buttons, names what can
     await act(async () => button('Continue').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list', []]]);
     assert.equal(tree.root.findByType('Frame').props.step, 5);
+  } finally { await act(async () => tree.unmount()); }
+});
+
+function journey(env, overrides = {}) {
+  const calls = { profiles: [], preferences: [], cleared: 0, checks: [] };
+  const Screen = env.load('src/components/OnboardingJourney.tsx', {
+    './OnboardingFrame': require('./onboarding-mocks.cjs').frame(React),
+    'expo-router': { useRouter: () => ({ replace() {} }) },
+    '../context/UserContext': { useUser: () => ({ profile: { id: 'new-user', username: 'Hero', daily_goal_minutes: 60, avatar: '🌱' }, reloadProfile: async () => true }) },
+    '../hooks/useGuidedPreference': { useGuidedPreference: () => ({ ready: true, value: { enabled: false, need: 'revision', templateId: 'review-topic', smaller: false }, save: async value => { calls.preferences.push(value); return true; } }) },
+    '../services/introHandoff': { introHandoff: { peek: () => overrides.handoff ?? null, clear: () => { calls.cleared++; }, restore: async () => null, set() {} } },
+    '../services/onboardingService': {
+      usernameAvailable: async name => { calls.checks.push(name); return overrides.available ? overrides.available(name) : true; },
+      saveOnboardingProfile: async (...args) => { if (overrides.saveError) { const error = overrides.saveError; overrides.saveError = null; throw error; } calls.profiles.push(args); },
+      finishOnboarding: async () => {},
+    },
+  }).default;
+  return { Screen, calls };
+}
+test('after creating an account in the intro, it carries on from the name step with the earlier picks', async () => {
+  const env = environment(); let tree;
+  const { Screen, calls } = journey(env, { handoff: { areas: ['learning', 'wellbeing'] } });
+  await act(async () => { tree = create(React.createElement(Screen)); });
+  const frame = () => tree.root.findByType('Frame').props;
+  const press = async label => act(async () => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress());
+  try {
+    assert.equal(frame().title, 'What should we call you?', 'no welcome or area choice again');
+    assert.equal(frame().step, 3, 'areas and the account step came first'); assert.equal(frame().total, 7);
+    await act(async () => tree.root.findByType('Input').props.onChangeText('Soon'));
+    await press('Continue'); assert.equal(frame().step, 4);
+    for (let expected = 5; expected <= 7; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
+    await act(async () => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === 'Start my journey').props.onPress());
+    assert.deepEqual(calls.preferences[0].ideaAreas, ['learning', 'wellbeing']);
+    assert.equal(calls.profiles[0][0], 'Soon'); assert.equal(calls.cleared, 1, 'the draft is cleared once saved');
+  } finally { await act(async () => tree.unmount()); }
+});
+test('the name step checks a name is free, refuses "@", and a name taken meanwhile brings you back to choose', async () => {
+  const env = environment(); let tree;
+  const { Screen, calls } = journey(env, { handoff: { areas: [] }, available: name => name !== 'Taken', saveError: { code: '23505' } });
+  await act(async () => { tree = create(React.createElement(Screen)); });
+  const frame = () => tree.root.findByType('Frame').props;
+  const input = () => tree.root.findByType('Input');
+  const error = () => tree.root.findAllByProps({ testID: 'onboarding-name-error' }).map(node => node.props.children).join('');
+  const press = async label => act(async () => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress());
+  try {
+    await act(async () => input().props.onChangeText('me@mail'));
+    await press('Continue'); assert.equal(frame().step, 3); assert.match(error(), /@/); assert.deepEqual(calls.checks, [], 'no server check for an invalid name');
+    await act(async () => input().props.onChangeText('Taken'));
+    await press('Continue'); assert.equal(frame().step, 3); assert.match(error(), /That name is taken/);
+    await act(async () => input().props.onChangeText('Free'));
+    await press('Continue'); assert.equal(frame().step, 4);
+    for (let i = 0; i < 3; i++) await press('Continue');
+    await press('Start my journey');
+    assert.equal(frame().step, 3, 'someone took it meanwhile: back to the name, nothing lost');
+    assert.match(error(), /That name is taken/); assert.equal(input().props.value, 'Free');
   } finally { await act(async () => tree.unmount()); }
 });
