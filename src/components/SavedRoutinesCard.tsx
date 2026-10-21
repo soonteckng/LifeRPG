@@ -1,5 +1,5 @@
 import { tapHaptic } from "../utils/tapHaptics";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,12 +38,14 @@ import { ideaAreaTitle } from "./IdeaAreaPicker";
 type RoutineTemplate = RoutineIdea;
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
+  /** "start": Home's Start row, routines as chips that start at once, then Any activity. */
+  layout?: "list" | "start"; lead?: ReactNode; onAnyActivity?: () => void;
 }) {
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -218,9 +220,47 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const menuRoutine = menu?.entry.kind === "saved" ? menu.entry.routine : null;
   // A sync conflict asks which version to keep wherever the routines are listed.
   const conflictRows = routines.conflicts.map(conflict => <View key={conflict.operation.operationId} style={s.conflict}><Text style={s.name}>{conflict.operation.draft.name}</Text><Text style={s.caption}>{conflict.reason}</Text><View style={s.heading}><Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, false)} style={s.manage}><Text style={s.link}>Use other device’s version</Text></Pressable>{(!conflict.latest || conflict.latest.deletedAt === null) && <Pressable accessibilityRole="button" onPress={() => void routines.resolveConflict(conflict.operation.operationId, true)} style={s.manage}><Text style={s.link}>Keep my changes</Text></Pressable>}</View></View>);
+  // Home's Start row: each routine is one chip that starts it, then Any activity.
+  // A phone with no routines yet gets one wide Start button instead.
+  const chipDisabled = (entry: RoutineEntry) => entry.kind === "saved" ? blocked : blocked || !entry.task.is_due_today || !onStartLegacy || !routines.online;
+  const anyBlocked = !!(timer.hasOpenSession || timer.actionBusy || timer.endingSession || timer.isRestoring || timer.restoreError || (timer.isCompleted && !timer.summaryViewed));
+  const startView = layout === "start" ? <View style={s.startCard} testID="saved-routines-card">
+    <View style={s.startHead}>
+      <Text style={s.startTitle} accessibilityRole="header">Start</Text>
+      {!!entries.length && <SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
+        onPress={() => { feedback(); if (active && routines.ready) { setShowDone(false); setManage(true); } else onSeeAll?.(); }} />}
+    </View>
+    {visibleEntries.length || lead ? <View style={s.startChips}>
+      {lead}
+      {visibleEntries.map(entry => {
+        const disabled = chipDisabled(entry), area = areaOf(entry.areaId), tint = lifeAreaColor(entry.areaId, area?.color_code);
+        return <Pressable key={entry.key} disabled={disabled} onPress={() => ask(entry)} delayLongPress={350}
+          onLongPress={entry.kind === "saved" ? () => edit(entry.routine) : undefined}
+          accessibilityRole="button" accessibilityState={{ disabled }} accessibilityLabel={`Start routine ${entry.name}, ${routineDuration(entry.seconds)}`}
+          accessibilityHint={entry.kind === "saved" ? "Hold to edit" : undefined} style={[s.startChip, disabled && s.startChipOff]}>
+          <View style={[s.startPlay, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="play" size={14} color={tint} style={s.nudge} /></View>
+          <View style={s.flex}><Text style={s.chipName} numberOfLines={1}>{entry.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{routineDuration(entry.seconds)}</Text></View>
+        </Pressable>;
+      })}
+      {onAnyActivity && <Pressable disabled={anyBlocked} onPress={onAnyActivity} testID="home-just-focus" accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }}
+        accessibilityLabel="Any activity. Start focusing, your time" style={[s.startChip, anyBlocked && s.startChipOff]}>
+        <View style={[s.startPlay, s.anyPlay]}><Ionicons name="add" size={17} color={colors.text} /></View>
+        <View style={s.flex}><Text style={s.chipName} numberOfLines={1}>Any activity</Text><Text style={s.chipCaption} numberOfLines={1}>Your time</Text></View>
+      </Pressable>}
+    </View> : <>
+      {onAnyActivity && <Pressable disabled={anyBlocked} onPress={onAnyActivity} testID="home-just-focus" accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }}
+        accessibilityLabel="Start a focus session. Any activity, your time" style={[s.startWide, anyBlocked && s.startChipOff]}>
+        <Ionicons name="play" size={18} color={colors.primaryText} /><Text style={s.startWideText}>Start a focus session</Text>
+      </Pressable>}
+      {routines.ready && onSeeAll && <Pressable disabled={!active} onPress={() => { feedback(); onSeeAll(); }} accessibilityRole="button" accessibilityLabel="Make a routine in Routines" style={s.manage}>
+        <Text style={s.startLink}>Save something you return to as a routine</Text></Pressable>}
+    </>}
+    {!routines.ready && !!routines.error && <Text style={s.caption}>{routines.error}</Text>}
+    {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
+  </View> : null;
   const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
   return <>
-    <View style={s.card} testID="saved-routines-card">
+    {startView ?? <View style={s.card} testID="saved-routines-card">
       {/* On Home, See all opens every routine in a sheet, like Upcoming Exams; in Routines the header has +. */}
       {arranging ? <SectionHeader title="My Routines" subtitle="Tap ✎ to edit or − to remove." right={<DoneButton label="Done editing routines" onPress={finish} />} />
         : onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
@@ -270,7 +310,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
       {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
       {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
-    </View>
+    </View>}
     <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} attached compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title={showDone ? "Done today" : "My Routines"} subtitle={showDone ? "Finished today. Tap one to edit it." : "Tap one to edit it, or ▶ to start."} onClose={() => setManage(false)} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         {showDone ? done.map(task => legacyRow(task, true, true)) : entries.map(entry => row(entry, true))}
@@ -347,4 +387,18 @@ const s = StyleSheet.create({
   removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },
+  startCard: { ...edge, padding: 16, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
+  startHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
+  startTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },
+  // Two chips to a row, wrapping, so every way to start is visible at once.
+  startChips: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  startChip: { ...edge, flexBasis: "45%", flexGrow: 1, minHeight: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingLeft: 10, paddingRight: 12, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },
+  startChipOff: { opacity: 0.45 },
+  startPlay: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  anyPlay: { backgroundColor: colors.accentSoft }, nudge: { marginLeft: 2 },
+  chipName: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  chipCaption: { color: colors.secondary, fontSize: 13, lineHeight: 17 },
+  startWide: { minHeight: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 28, backgroundColor: colors.primary },
+  startWideText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },
+  startLink: { color: colors.secondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
 });

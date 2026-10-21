@@ -14,7 +14,7 @@ import SectionHeader, { DoneButton, SeeAll } from "./SectionHeader";
 import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
 import { SquadFace, SquadJoinSheet } from "./SquadSheets";
-import { SquadSummary } from "./SquadsSection";
+import { SquadSummary, daysLeftInWeek } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { useSquads } from "../hooks/useSquads";
@@ -25,7 +25,7 @@ import { useTimer } from "../context/TimerContext";
 import { squadSelection } from "../services/squadSelection";
 import { suggestedArea } from "../utils/focusAreas";
 import { daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
-import { squadTotal, standings } from "../utils/squads";
+import { goalProgress, squadTotal, standings } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
 import type { StudyExam } from "../types/studyPlan";
 
@@ -80,7 +80,7 @@ export function HomeExams() {
 }
 
 /** Your squad's week. Tapping it peeks at the leaderboard; the Squads tab has the whole squad. */
-export function HomeSquad() {
+export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   const router = useRouter(), squads = useSquads(), insets = useSafeAreaInsets();
   const chosen = squadSelection.get();
   const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
@@ -93,8 +93,25 @@ export function HomeSquad() {
   const openSquad = () => { setPeek(false); setTimeout(() => { if (squad) { squadSelection.choose(squad.id); router.navigate("/squad"); } }, 220); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const top = squad ? standings(squad).slice(0, 3) : [];
-  return <View style={s.section} testID="home-squad-section">
-    <SectionHeader title="My Squad" subtitle={!squads.online ? squad ? "Offline · last saved" : undefined : squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
+  // On Home the squad sits beside This week as a small tile.
+  const progress = squad ? goalProgress(squad) : null, left = tile ? daysLeftInWeek() : 0;
+  const tileCard = squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
+    accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={[s.card, s.tile]}>
+    <View style={s.tileHead}><Text style={s.tileLabel}>Squad</Text><Text style={s.tileMeta} numberOfLines={1}>{!squads.online ? "Offline" : progress !== null && progress >= 1 ? "Goal reached" : `${left} ${left === 1 ? "day" : "days"} left`}</Text></View>
+    <Text style={s.tileName} numberOfLines={1}>{squad.name}</Text>
+    <Text style={s.caption} numberOfLines={1}>{squad.members.length} {squad.members.length === 1 ? "member" : "members"}</Text>
+    <View style={s.tileFoot}>
+      <Text style={s.caption} numberOfLines={1}><Text style={s.tileStrong}>{studyTime(squadTotal(squad))}</Text>{squad.goalMinutes ? ` / ${squad.goalMinutes / 60}h` : " together"}</Text>
+      {progress !== null && <View style={s.tileTrack}><View style={[s.tileFill, { width: `${Math.max(progress > 0 ? 4 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
+    </View>
+  </Pressable> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
+    accessibilityLabel={squads.online ? "Focus with friends. Join or start a squad" : "Focus with friends. Needs internet"} testID="home-squad-empty" style={[s.card, s.tile]}>
+    <View style={s.tileHead}><Text style={s.tileLabel}>Squad</Text>{squads.online && <Ionicons name="add-circle" size={22} color={colors.accent} />}</View>
+    <Text style={s.tileName} numberOfLines={2}>Focus with friends</Text>
+    <Text style={s.caption} numberOfLines={3}>{squads.online ? "Start a squad and keep each other going." : "Needs internet to start or join a squad."}</Text>
+  </Pressable>;
+  return <View style={tile ? s.tileSection : s.section} testID="home-squad-section">
+    {tile ? tileCard : <><SectionHeader title="My Squad" subtitle={!squads.online ? squad ? "Offline · last saved" : undefined : squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
       onPress={squad ? openSquads : undefined} pressLabel="My Squad. Open Squads" />
     {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
       accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
@@ -104,7 +121,7 @@ export function HomeSquad() {
       <View style={[s.icon, { backgroundColor: colors.accentSoft }]}><Ionicons name="people-outline" size={20} color={colors.accent} /></View>
       <View style={s.flex}><Text style={s.name}>Focus with friends</Text><Text style={s.caption}>{squads.online ? "Start a squad and keep each other going." : "Needs internet to start or join a squad."}</Text></View>
       {squads.online && <Ionicons name="add-circle" size={24} color={colors.accent} />}
-    </Pressable>}
+    </Pressable>}</>}
     {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} attached compact maxHeightRatio={0.86} label="squad peek" motionMode="timed"
       header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
@@ -152,21 +169,30 @@ export function WeekBars({ height = 44, wide = false }: { height?: number; wide?
 }
 
 /** This week in one line and seven small bars. Tapping it opens the week by category. */
-export function HomeWeek() {
+export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
   const router = useRouter(), { week } = useWeekProgress(), insets = useSafeAreaInsets();
   const [open, setOpen] = useState(false);
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
-  return <View style={s.section} testID="home-week">
+  const changeLine = !week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`;
+  return <View style={tile ? s.tileSection : s.section} testID="home-week">
+    {tile ? <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.tile]}>
+      <Text style={s.tileLabel}>This week</Text>
+      <Text style={s.tileTotal}>{durationLabel(week?.seconds ?? 0)}</Text>
+      <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={2}>{changeLine}</Text>
+      <View style={s.tileFoot}>
+        <Text style={s.caption} numberOfLines={1}>Focus on {week?.activeDays ?? 0} of 7 days</Text>
+        <WeekBars height={30} />
+      </View>
+    </Pressable> : <>
     <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
     <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
       <View style={s.flex}>
         <Text style={s.total}>{durationLabel(week?.seconds ?? 0)}</Text>
-        <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>
-          {!week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`}</Text>
+        <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>{changeLine}</Text>
       </View>
       <WeekBars />
-    </Pressable>
+    </Pressable></>}
     <AppSheet visible={open} onRequestClose={() => setOpen(false)} attached compact maxHeightRatio={0.86} label="this week" motionMode="timed"
       header={<SheetHeader title="This Week" subtitle={`${durationLabel(week?.seconds ?? 0)} · ${week?.sessions.length ?? 0} sessions`} onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
@@ -195,6 +221,18 @@ export function HomeMilestones() {
 
 const s = StyleSheet.create({
   section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
+  // Home's half-width tiles: a small label, the number, and a footer.
+  tileSection: { flex: 1, minWidth: 0 },
+  tile: { flex: 1, minHeight: 176, gap: 4 },
+  tileHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
+  tileLabel: { color: colors.secondary, fontSize: 14, lineHeight: 19, fontWeight: "600" },
+  tileMeta: { flexShrink: 1, color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  tileName: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "700", marginTop: 2 },
+  tileTotal: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -0.5 },
+  tileFoot: { marginTop: "auto", paddingTop: 10, gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  tileStrong: { color: colors.text, fontWeight: "700" },
+  tileTrack: { height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" },
+  tileFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   sheetGroup: { ...edge, backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },
@@ -210,7 +248,7 @@ const s = StyleSheet.create({
   bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" }, barsWide: { justifyContent: "space-between", gap: 0 },
   barColumn: { width: 12, alignItems: "center", gap: 4 }, barColumnWide: { width: 28 },
   barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: "rgba(255,255,255,0.05)" }, barTrackWide: { width: 22, borderRadius: 6 },
-  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(255,255,255,0.24)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.text },
+  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(45,212,167,0.45)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.progress },
   day: { color: colors.tertiary, fontSize: 10, fontWeight: "600" }, dayToday: { color: colors.text },
   goalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "transparent" }, goalDotOn: { backgroundColor: colors.success },
   rankRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },

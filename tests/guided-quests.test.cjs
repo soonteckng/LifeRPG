@@ -189,7 +189,7 @@ test('Home stays a dashboard when suggestions were on: no suggestion card, and o
  try{
   assert.equal(ui.tree.root.findAll(node=>node.props.testID==='guided-focus-card').length,0);assert.doesNotMatch(text(ui.tree.root),/Suggested:/);
   assert.equal(ui.tree.root.findAll(node=>node.props.testID==='home-start-focus').length,0,'sessions are set up in Routines and Study');
-  const routines=ui.tree.root.findByType('SavedRoutinesCard');assert.deepEqual(routines.props.legacyTasks,[quest]);assert.equal(routines.props.suggestions,false);assert.equal(routines.props.limit,2);
+  const routines=ui.tree.root.findByType('SavedRoutinesCard');assert.deepEqual(routines.props.legacyTasks,[quest]);assert.equal(routines.props.suggestions,false);assert.equal(routines.props.limit,3);assert.equal(routines.props.layout,'start');
   await act(async()=>routines.props.onStartLegacy(quest));assert.deepEqual(setupCalls,[['task',7],['minutes',45],['area',2]]);assert.deepEqual(routes,['/session']);
   await act(async()=>routines.props.onSeeAll());assert.equal(routes.at(-1),'/routines');
   // Profile grows out of the avatar once its position is known (or after a short wait).

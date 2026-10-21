@@ -5,7 +5,7 @@ import { colors } from "../constants/theme";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-export default function ProgressRing({size, progress, color = colors.primary, track = colors.line, children, stroke = 10}: {
+export default function ProgressRing({size, progress, color = colors.progress, track = colors.line, children, stroke = 10}: {
   size: number; progress: number; color?: string; track?: string; children?: ReactNode; stroke?: number;
 }) {
   const fraction = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : 0;

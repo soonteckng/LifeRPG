@@ -244,3 +244,24 @@ test('an idea keeps its category until renamed; a new routine starts in the cate
   assert.deepEqual(remembered,[['owner',subjects[1].id]]);
  }finally{await act(async()=>ui.unmount());}
 });
+test('Home Start row: each routine is a chip that starts it, Any activity sits last, and no routines means one wide Start button',async()=>{
+  for(const withRoutine of [true,false]){
+    const calls=[],state={ready:true,scope,online:true,routines:withRoutine?[routine]:[],pendingCount:0,conflicts:[]};
+    const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>prepTimer(calls)},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+    let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,layout:'start',limit:3,suggestions:false,onSeeAll:()=>calls.push('see-all'),onAnyActivity:()=>calls.push('any')}));});
+    try{
+      const labels=()=>ui.root.findAllByType('Press').map(x=>x.props.accessibilityLabel);
+      if(withRoutine){
+        assert.ok(labels().includes('Start routine Review notes, 1 min 15 sec')||labels().some(l=>/^Start routine Review notes, /.test(l)),'the routine is a chip');
+        assert.ok(labels().includes('Any activity. Start focusing, your time'),'Any activity sits beside it');
+        await act(async()=>press(ui.root,labels().find(l=>/^Start routine Review notes, /.test(l))));
+        assert.deepEqual(calls.filter(Array.isArray).at(-1),['route','/session'],'a chip opens the session set up with that routine');
+        await act(async()=>press(ui.root,'Any activity. Start focusing, your time'));assert.ok(calls.includes('any'));
+      }else{
+        assert.ok(labels().includes('Start a focus session. Any activity, your time'),'one wide button when there are no routines');
+        await act(async()=>press(ui.root,'Start a focus session. Any activity, your time'));assert.ok(calls.includes('any'));
+        assert.equal(labels().some(l=>/^Start routine /.test(l||'')),false);
+      }
+    }finally{await act(async()=>ui.unmount());}
+  }
+});

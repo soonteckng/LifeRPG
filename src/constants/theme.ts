@@ -1,36 +1,39 @@
-// True black with iOS-style greys. Mint is saved for the moments that matter:
-// the main buttons, the active tab, goal rings and switches. Small links,
-// icons and progress bars stay a quiet near-white, so the app never feels too green.
+// Midnight blue-black with cool greys. Each colour has one job everywhere:
+// purple for the main buttons and the active tab, teal for progress and
+// success (rings, bars, "Protected"), amber only for streaks, levels and the
+// paused state. Small links and icons stay a quiet near-white.
 export const colors = {
-  background: "#000000",
-  surface: "#1C1C1E",
-  surfaceRaised: "#1C1C1E",
+  background: "#090C14",
+  surface: "#131826",
+  surfaceRaised: "#161C2B",
   // Cards inside sheets sit above the raised sheet, never below it.
-  sheetCard: "#2C2C2E",
-  focusSurface: "#1C1C1E",
-  focusBorder: "rgba(255,255,255,0.08)",
-  protection: "#63E6BE",
-  text: "#FFFFFF",
-  neutral: "#D1D1D6",
-  secondary: "#98989F",
-  muted: "#8E8E93",
+  sheetCard: "#1E2436",
+  focusSurface: "#131826",
+  focusBorder: "rgba(160,172,214,0.12)",
+  protection: "#2DD4A7",
+  text: "#F5F7FF",
+  neutral: "#D6DAE8",
+  secondary: "#A3ABC2",
+  muted: "#9199B1",
   // Chevrons and quiet glyphs only; too dim for reading text.
-  tertiary: "#636366",
-  accent: "#EBEBF0",
-  accentFill: "#63E6BE",
-  accentSoft: "rgba(255,255,255,0.10)",
-  primary: "#63E6BE",
-  primaryText: "#00140D",
-  selection: "#3A3A3C",
-  success: "#30D158",
-  level: "#FFD60A",
-  levelSoft: "rgba(255,214,10,0.16)",
-  streak: "#FF9F0A",
-  line: "rgba(255,255,255,0.08)",
-  border: "rgba(255,255,255,0.12)",
-  glass: "rgba(28,28,30,0.95)",
-  glassTint: "rgba(28,28,30,0.8)",
-  danger: "#FF6961",
+  tertiary: "#5F6782",
+  accent: "#E6E9F5",
+  accentFill: "#7C3AED",
+  accentSoft: "rgba(160,172,214,0.14)",
+  primary: "#7C3AED",
+  primaryText: "#FFFFFF",
+  // Progress that is still filling: goal rings, timers and bars.
+  progress: "#2DD4A7",
+  selection: "#2A3149",
+  success: "#34D399",
+  level: "#FBBF24",
+  levelSoft: "rgba(251,191,36,0.16)",
+  streak: "#FFB020",
+  line: "rgba(160,172,214,0.10)",
+  border: "rgba(160,172,214,0.16)",
+  glass: "rgba(19,24,38,0.95)",
+  glassTint: "rgba(19,24,38,0.8)",
+  danger: "#FF6B6B",
 } as const;
 
 // The guide is a distinct instruction layer above the ordinary app surfaces.
@@ -51,4 +54,4 @@ export const radius = { card: 24, tile: 20, row: 16, sheet: 32 } as const;
 
 // Every card, tile and grouped list shares this thin edge, on pages and in
 // sheets alike, so surfaces read as one family.
-export const edge = { borderWidth: 1, borderColor: "rgba(255,255,255,0.08)" } as const;
+export const edge = { borderWidth: 1, borderColor: "rgba(160,172,214,0.12)" } as const;

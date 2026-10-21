@@ -19,7 +19,7 @@ export default function ProtectionScreen() {
   const mode = !selection ? "Checking your session…" : selection.mode === "normal" ? "Set up protection" : selection.mode === "allow-list" ? "Allow list" : "Block apps";
   return <PersonalPage title="Session protection" subtitle="Give your next session a little space." back animateTransition>
     <View style={[p.card, { backgroundColor: colors.focusSurface, gap: 14 }]}>
-      <View style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "rgba(99,230,190,0.1)" }}><Ionicons name="shield-checkmark-outline" size={25} color={colors.protection} /></View>
+      <View style={{ width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 16, backgroundColor: "rgba(45,212,167,0.1)" }}><Ionicons name="shield-checkmark-outline" size={25} color={colors.protection} /></View>
       <Text style={p.rowTitle}>{mode}</Text><Text style={p.body}>New sessions protect your time by covering distracting apps. Choose the tools you need, with one break of up to five minutes. Your app choices stay on this phone.</Text>
       <PersonalButton title={timer.hasOpenSession ? "Protection details" : "Choose protection"} onPress={() => setOpen(true)} />
     </View>

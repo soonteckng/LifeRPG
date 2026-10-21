@@ -428,7 +428,7 @@ export default function SessionScreen() {
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
             {(phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
               progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              color={breakActive ? colors.streak : phase === "completed" ? colors.accent : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.accent} />}
+              color={breakActive ? colors.streak : phase === "completed" ? colors.progress : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : phase === "setup" ? colors.accent : colors.progress} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }]}>
             <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds}
@@ -490,7 +490,7 @@ export default function SessionScreen() {
             <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
               onPress={timer.hasOpenSession ? () => void (breakActive ? timer.resumeTimer() : timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
-              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.background} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.background} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.background} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
+              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.primaryText} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.primaryText} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
             {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[styles.endControl, endQueued && styles.disabled]}>{endQueued ? <ActivityIndicator color={colors.text} /> : <Ionicons name="close" size={23} color={colors.text} />}</TouchableOpacity>}
             </View>

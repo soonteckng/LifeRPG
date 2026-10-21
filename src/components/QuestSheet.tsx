@@ -200,7 +200,7 @@ export default function QuestSheet({ visible, onClose, onDismiss, onStartSession
       </Pressable>
 
       <Pressable onPress={save} disabled={busy} style={styles.save} accessibilityRole="button" accessibilityLabel={editor.task ? "Save changes" : `Create ${noun}`} accessibilityState={{ busy, disabled: busy }}>
-        {busy ? <ActivityIndicator color={colors.background} size="small" /> : <Text style={styles.saveText} maxFontSizeMultiplier={1.5}>{editor.task ? "Save changes" : `Create ${noun}`}</Text>}
+        {busy ? <ActivityIndicator color={colors.primaryText} size="small" /> : <Text style={styles.saveText} maxFontSizeMultiplier={1.5}>{editor.task ? "Save changes" : `Create ${noun}`}</Text>}
       </Pressable>
     </View>
     {formError && <Text style={styles.headerError} accessibilityRole="alert" accessibilityLiveRegion="polite">{formError}</Text>}
@@ -417,7 +417,7 @@ const styles = StyleSheet.create({
   link: { color: colors.accent, fontSize: 15 },
   editorTitle: { color: colors.text, fontSize: 24, fontWeight: "500", paddingHorizontal: 20, paddingBottom: 8, textAlign: "left" },
   save: { minWidth: 120, minHeight: 44, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, backgroundColor: colors.primary, justifyContent: "center", alignItems: "center" },
-  saveText: { color: colors.background, fontSize: 14, fontWeight: "500" },
+  saveText: { color: colors.primaryText, fontSize: 14, fontWeight: "500" },
   form: { gap: 14, paddingTop: 12 },
   field: { gap: 8 },
   label: { color: colors.text, fontSize: 14, fontWeight: "500" },

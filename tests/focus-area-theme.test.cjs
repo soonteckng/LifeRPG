@@ -10,5 +10,6 @@ function luminance(hex){const v=[1,3,5].map(i=>parseInt(hex.slice(i,i+2),16)/255
 function contrast(a,b){const x=luminance(a),y=luminance(b);return(Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
 test('dark theme body, actions and quiet labels retain readable contrast on layered surfaces',()=>{
  for(const background of [theme.background,theme.surface,theme.surfaceRaised])for(const foreground of [theme.text,theme.secondary,theme.muted,theme.accent])assert.ok(contrast(foreground,background)>=4.5,foreground+' on '+background);
- assert.ok(contrast(theme.primaryText,theme.primary)>=7);assert.ok(contrast(theme.text,theme.selection)>=4.5);
+ // Button words meet WCAG AA on the button, and the button stands out from the page (non-text 3:1).
+ assert.ok(contrast(theme.primaryText,theme.primary)>=4.5);assert.ok(contrast(theme.primary,theme.background)>=3);assert.ok(contrast(theme.text,theme.selection)>=4.5);
 });

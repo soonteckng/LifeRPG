@@ -83,6 +83,6 @@ const styles = StyleSheet.create({
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },
   bannerLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(0,20,13,0.12)" },
-  progressFill: { height: 4, backgroundColor: "rgba(0,20,13,0.7)" },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(255,255,255,0.22)" },
+  progressFill: { height: 4, backgroundColor: "rgba(255,255,255,0.9)" },
 });

@@ -706,7 +706,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   sessionCalls.length = 0;
 
   const layout = renderer.root.findByProps({testID: "home-layout"}).props.style;
-  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 26);assert.equal(layout.minHeight,undefined);
+  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 16);assert.equal(layout.minHeight,undefined);
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
   assert.equal(identity.findAllByProps({testID:"home-compact-goal"}).length,0);assert.ok(focus.findByProps({testID:"home-compact-goal"}));
@@ -719,19 +719,20 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   openSession = false;
   await act(async () => renderer.update(React.createElement(Home)));
   assert.equal(viewportMargin(), initialMargin);
-  // With no exam this week the next step is to just focus; the other button picks a routine.
-  const today = () => renderer.root.findAllByType("TourAnchor").find(node=>node.props.id === "home-focus");
-  await act(async()=>today().findByProps({testID:"home-just-focus"}).props.onPress());
+  // With no exam this week the Start row offers Any activity beside the routines.
+  const startRow = () => renderer.root.findAllByType("TourAnchor").find(node=>node.props.id === "home-quests");
+  // The Start row is the routines card in its "start" layout, handed Any activity.
+  const startCard = startRow().findByType("SavedRoutinesBoundary");
+  assert.equal(startCard.props.layout,"start");
+  await act(async()=>startCard.props.onAnyActivity());
   assert.deepEqual(sessionCalls.filter(call=>call[0]==="navigate"),[["navigate","/session"]]);
   sessionCalls.length = 0;
-  await act(async()=>today().findByProps({testID:"home-other-session"}).props.onPress());
-  assert.deepEqual(sessionCalls,[["navigate","/routines"]]);
-  sessionCalls.length = 0;
+  assert.equal(renderer.root.findAllByProps({testID:"home-other-session"}).length,0,"one Start row, no second button");
   const previousTasks=homeTasks;
   for(const count of [0,1,2]){
     homeTasks=Array.from({length:count},(_,i)=>task({id:200+i,title:`Focus ${i}`}));
     await act(async()=>renderer.update(React.createElement(Home)));
-    assert.equal(renderer.root.findByProps({testID:"home-layout"}).props.style.gap,26);
+    assert.equal(renderer.root.findByProps({testID:"home-layout"}).props.style.gap,16);
     assert.equal(viewportMargin(),initialMargin);
     assert.equal(routines().props.legacyTasks.length,count);
   }
@@ -1120,28 +1121,28 @@ async function quickHomeSetup(history = null, start = async () => true, duration
     update:async(flags={},newOwner=owner,nextHistory=historyValue)=>{timerFlags=flags;owner=newOwner;historyValue=nextHistory;await act(async()=>renderer.update(React.createElement(Home)));},
     output:()=>JSON.stringify(renderer.toJSON()),cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
-test("Home's next step is revising the subject with an exam this week; Other session is any activity", async()=>{
+test("An exam this week leads the Start row with Revise; Any activity is always there", async()=>{
   const day=n=>{const d=new Date();d.setDate(d.getDate()+n);return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;};
   const maths={kind:"course",id:"c1",name:"Maths",focusAreaId:2,deletedAt:null}, plan={ready:true,courses:[maths],exams:[{kind:"exam",id:"e1",title:"Maths final",courseId:"c1",examDate:day(3),deletedAt:null},{kind:"exam",id:"e2",title:"Later",courseId:"c1",examDate:day(20),deletedAt:null}],recent:[]};
   const withRevision=[...subjects,{id:3,title:"Revision"}];
   const ui=await quickHomeSetup(null,undefined,null,"src/app/(tabs)/index.tsx",{"../../hooks/useStudyPlan":{useStudyPlan:()=>plan},
     "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects:withRevision,loading:false,refresh:async()=>{}})},"../context/QuestContext":{useQuests:()=>({tasks:[],subjects:withRevision,loading:false,refresh:async()=>{}})}});
   try {
-    const revise=ui.button("home-revise");
+    const start=()=>ui.renderer.root.findByType("SavedRoutines").props;
+    const revise=start().lead;
+    assert.equal(revise.props.testID,"home-revise");
     assert.equal(revise.props.accessibilityLabel,"Revise Maths. Exam in 3 days");
     await act(async()=>revise.props.onPress());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",3]],"an exam this week makes it Revision");
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
     ui.calls.length=0;
-    const other=ui.button("home-other-session");
-    assert.equal(other.props.accessibilityLabel,"Other session. Choose any activity");
-    await act(async()=>other.props.onPress());
+    await act(async()=>start().onAnyActivity());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",1]],"any activity starts from Everyday focus");
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
     plan.exams=plan.exams.slice(1);
     await ui.update();
-    assert.equal(ui.button("home-revise"),undefined,"an exam weeks away does not take over the button");
-    assert.ok(ui.button("home-just-focus"));
+    assert.equal(start().lead,undefined,"an exam weeks away does not lead the Start row");
+    assert.equal(typeof start().onAnyActivity,"function");
   }finally{await ui.cleanup();}
 });
 test("Just focus in Routines opens the session screen with Everyday focus and the saved length, and never starts by itself", async()=>{
