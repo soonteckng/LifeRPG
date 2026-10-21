@@ -100,20 +100,21 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
     return () => clearTimeout(timeout);
   }, [pendingKey]);
   const needsRetry = pending && (offline || !!syncError && !syncBusy || waiting.key === pendingKey && waiting.ready);
+  // Online and still confirming: the card already looks finished, with the
+  // numbers filling in. The longer messages are only for offline or trouble.
+  const confirming = pending && !rejected && !ending && !offline && !syncError && !needsRetry;
   const screen = useWindowDimensions();
   const windowHeight = screen.height || 844;
   const fontScale = screen.fontScale || 1;
-  const measurementKey = `${sessionId ?? "result"}:${screen.width}:${fontScale}:${ending}:${rejected}`;
-  const [measurements, setMeasurements] = useState<{key: string; header?: number; body?: number; actions?: number}>({key: measurementKey});
+  // Each part reports its size whenever it changes, so its latest size is
+  // always right. Guessed sizes are only for the first frame: dropping real
+  // sizes when the result arrived left the card too tall, a gap above Done.
+  const [measured, setMeasurements] = useState<{header?: number; body?: number; actions?: number}>({});
   const measure = useCallback((part: "header" | "body" | "actions", height: number) => {
     if (!Number.isFinite(height) || height <= 0) return;
     const rounded = Math.ceil(height);
-    setMeasurements(current => {
-      const previous = current.key === measurementKey ? current : {key: measurementKey};
-      return previous[part] === rounded ? previous : {...previous, [part]: rounded};
-    });
-  }, [measurementKey]);
-  const measured: typeof measurements = measurements.key === measurementKey ? measurements : {key: measurementKey};
+    setMeasurements(previous => previous[part] === rounded ? previous : {...previous, [part]: rounded});
+  }, []);
   // The card floats above the bottom edge, so its tallest size leaves that gap too.
   const resultHeight = completionSheetHeight({windowHeight, topInset: insets.top + Math.max(insets.bottom, 8) + 8,
     headerHeight: measured.header ?? 48 * fontScale,
@@ -152,7 +153,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
   </Svg> : null, [glowTint]);
   return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed} backdropGlow={glow}
     label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
-    header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
+    header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? confirming ? "Session complete" : "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
     footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={s.actions} testID="session-result-actions">
       {!pending && !ending && !rejected && saveAction}
       <TouchableOpacity accessibilityRole="button" accessibilityLabel="Done" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
@@ -171,7 +172,8 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
         {needsRetry && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
       </View> : <>
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
-      {rejected ? <View style={s.pending}><Text style={s.pendingText} accessibilityLiveRegion="polite">Your session record stays on this phone. Your account did not accept this result, so it has not earned progress or completed a quest.</Text></View> : pending ? <View style={s.pending}>
+      {confirming ? <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} compact loading />
+      : rejected ? <View style={s.pending}><Text style={s.pendingText} accessibilityLiveRegion="polite">Your session record stays on this phone. Your account did not accept this result, so it has not earned progress or completed a quest.</Text></View> : pending ? <View style={s.pending}>
         <Text style={s.pendingText} accessibilityLiveRegion="polite">{localSaved ? offline ? "Saved on this phone. Your progress will sync when you’re online." : "Saved on this phone. We’re confirming your progress." : syncError ? "Your finished session is saved on this phone. Reconnect to confirm your progress." : "Saving your progress…"}</Text>
         {(localSaved || !!syncError) && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
       </View> : <>

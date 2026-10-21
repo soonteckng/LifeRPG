@@ -1529,8 +1529,9 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.match(text(renderer.root),/Character XP\+1/);
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',pending:true,recovered:true,durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
-    assert.match(text(renderer.root),/Session finished.*Saving your progress/);
-    assert.doesNotMatch(text(renderer.root),/Character XP|Progress saved|Recorded/);
+    // Online and still confirming: laid out as finished, numbers filling in, never claimed as recorded yet.
+    assert.match(text(renderer.root),/Session complete.*Character XP…/);
+    assert.doesNotMatch(text(renderer.root),/\+1|Progress saved|Recorded ✓|recorded ✓/);
     assert.doesNotMatch(text(renderer.root),/now saved to your account/);
     assert.ok(sheet.props.heightRatio <= 0.85, 'pending results keep actions within the capped sheet');
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',recovered:true,completedAtMs:Date.UTC(2026,9,11,1,23),durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));

@@ -23,9 +23,9 @@ type PresentedResult = {
 };
 
 /** One result portal survives route changes and online/offline transitions. */
-// How long a finished session waits for its confirmed result before the card
-// opens in its saving state instead. Most replies arrive well within this.
-const RESULT_GRACE_MS = 1500;
+// A very fast result opens the card already filled in. Otherwise it opens
+// after this brief moment, laid out as finished, and the numbers fill in.
+const RESULT_GRACE_MS = 300;
 
 export default function GlobalRewardListener() {
   const pathname = usePathname();
