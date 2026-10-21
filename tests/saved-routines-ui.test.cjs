@@ -265,3 +265,21 @@ test('Home Start row: each routine is a chip that starts it, Any activity sits l
     }finally{await act(async()=>ui.unmount());}
   }
 });
+test('Routines tab grid: each routine is a tile with its own start, hold edits, and a last tile makes a new one',async()=>{
+  const calls=[],state={ready:true,scope,online:true,routines:[routine],pendingCount:0,conflicts:[]};
+  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>prepTimer(calls)},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,layout:'grid',limit:Number.MAX_SAFE_INTEGER}));});
+  try{
+    const labels=()=>ui.root.findAllByType('Press').map(x=>x.props.accessibilityLabel);
+    assert.ok(labels().includes('Start routine Review notes'));
+    assert.ok(labels().includes('Create a new routine'),'the last tile adds a routine');
+    await act(async()=>press(ui.root,'Create a new routine'));assert.equal(ui.root.findByType('Editor').props.visible,true);
+    await act(async()=>ui.root.findByType('Editor').props.onClose());
+    await act(async()=>press(ui.root,'Start routine Review notes'));
+    assert.deepEqual(calls.filter(Array.isArray).at(-1),['route','/session']);
+    const tile=ui.root.findAllByType('Press').find(x=>/^Edit Review notes/.test(x.props.accessibilityLabel||''));
+    await act(async()=>tile.props.onLongPress());
+    assert.ok(ui.root.findAll(x=>x.props.testID==='edit-badges').length>0,'holding a tile starts edit mode');
+    assert.equal(labels().includes('Create a new routine'),false,'no add tile while editing');
+  }finally{await act(async()=>ui.unmount());}
+});

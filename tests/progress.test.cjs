@@ -26,6 +26,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name.endsWith("/MotionPressable")) return mocks["react-native"]?.Pressable || mocks["react-native"]?.TouchableOpacity || (props => React.createElement("Button", props, props.children));
       if (name.endsWith("/GlassSurface")) return props => React.createElement("View", {...props, testID:"glass-surface"});
       if (name.endsWith("/SlidingSelection")) return props => React.createElement("View", {...props, style:[props.style,{left:props.index === 0 ? "0%" : "50%"}]});
+      if (name.endsWith("/ProgressRing")) return props => React.createElement("Ring", props, props.children);
       if (name === "expo-router/js-tabs") return {useBottomTabBarHeight: () => 90};
       { const study = require('./helpers/study-stubs.cjs')(name); if (study) return study; }
       if (!name.startsWith(".")) return require(name);

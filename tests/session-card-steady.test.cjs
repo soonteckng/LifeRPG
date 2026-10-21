@@ -15,7 +15,7 @@ function sheet(){
   '@gorhom/bottom-sheet':{BottomSheetScrollView:React.forwardRef((p,ref)=>React.createElement('Scroll',p,p.children))},
   'react-native-svg':{__esModule:true,default:host('Svg'),Defs:host('Defs'),RadialGradient:host('RG'),Rect:host('Rect'),Stop:host('Stop')},
   './AppSheet':AppSheet,'expo-haptics':{notificationAsync:async()=>{},NotificationFeedbackType:{Success:'s'}},
-  './MotionPressable':host('Press'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),
+  './MotionPressable':host('Press'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),'./CharacterMark':host('Companion'),
   '../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{id:'me',level:2,current_xp:40,timezone:'Asia/Kuala_Lumpur'}})},
   '../services/dailyAchievementQueue':{dailyAchievementQueue:{enqueue(){}}},
  }).default;
@@ -54,5 +54,16 @@ test('measured sizes survive the result arriving, so the card never grows a gap 
  assert.equal(Math.round(props().heightRatio*800),28+36+260+74,'kept the real sizes instead of falling back to taller guesses');
  await act(async()=>layout('session-result-body',250));
  assert.equal(Math.round(props().heightRatio*800),28+36+250+74,'and still follows a real change');
+ await act(async()=>ui.unmount());
+});
+
+test('a level up leads with the companion and the new level; a normal finish has neither',async()=>{
+ const {Sheet}=sheet();let ui;
+ await act(async()=>{ui=create(React.createElement(Sheet,{...base,pending:false,sessionId:'s2',xpEarned:1,creditVersion:1,areaXpEarned:1,isLevelUp:true,newLevel:3}));});
+ const hero=ui.root.findAll(n=>n.props.testID==='session-level-up'&&typeof n.type==='string');
+ assert.equal(hero.length,1);assert.match(text(ui.toJSON()),/Level up!/);assert.match(text(ui.toJSON()),/You reached Level 3/);
+ assert.equal(ui.root.findAllByType('Companion').length,1,'your own companion, not a stock image');
+ await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s3',xpEarned:1,creditVersion:1,areaXpEarned:1})));
+ assert.equal(ui.root.findAll(n=>n.props.testID==='session-level-up').length,0);assert.doesNotMatch(text(ui.toJSON()),/You reached Level/);
  await act(async()=>ui.unmount());
 });

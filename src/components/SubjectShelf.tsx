@@ -29,8 +29,14 @@ export default function SubjectShelf({ courses, exams, recent, editing, onEditin
   // Two equal columns of the measured width; before layout, the page's usual width.
   const tile = Math.floor(((box || Math.min(width, 600) - 40) - GAP) / 2);
   const upcoming = upcomingExams(exams);
+  // The subject you studied last this week leads, full width, so picking up
+  // where you left off is one tap. The rest keep their order in two columns.
+  const full = tile * 2 + GAP;
+  const lastId = courses.length > 2 ? [...recent].sort((a, b) => b.completedAt - a.completedAt)
+    .find(item => courses.some(course => course.id === item.courseId) && weekSeconds(recent, item.courseId) > 0)?.courseId : undefined;
+  const ordered = lastId ? [...courses.filter(course => course.id === lastId), ...courses.filter(course => course.id !== lastId)] : courses;
   return <View style={s.grid} testID="subject-shelf" onLayout={event => setBox(event.nativeEvent.layout.width)}>
-    {courses.map(course => <SubjectTile key={course.id} course={course} width={tile} editing={editing}
+    {ordered.map(course => <SubjectTile key={course.id} course={course} width={course.id === lastId ? full : tile} featured={course.id === lastId} editing={editing}
       exam={upcoming.find(item => item.courseId === course.id)} week={weekSeconds(recent, course.id)}
       onPress={() => editing ? onEditingChange(false) : onOpen(course)} onLongPress={() => onEditingChange(true)}
       onStudy={() => onStudy(course)} onEdit={() => onEdit(course)} onRemove={() => onRemove(course)} />)}
@@ -41,8 +47,8 @@ export default function SubjectShelf({ courses, exams, recent, editing, onEditin
   </View>;
 }
 
-function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress, onStudy, onEdit, onRemove }: {
-  course: StudyCourse; width: number; editing: boolean; exam?: StudyExam; week: number;
+function SubjectTile({ course, width, featured = false, editing, exam, week, onPress, onLongPress, onStudy, onEdit, onRemove }: {
+  course: StudyCourse; width: number; featured?: boolean; editing: boolean; exam?: StudyExam; week: number;
   onPress: () => void; onLongPress: () => void; onStudy: () => void; onEdit: () => void; onRemove: () => void;
 }) {
   const tint = courseColor(course.id);
@@ -57,7 +63,8 @@ function SubjectTile({ course, width, editing, exam, week, onPress, onLongPress,
         <View style={[s.icon, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="school-outline" size={15} color={tint} /></View>
         {exam && <ExamPill days={days!} />}
       </View>
-      <Text style={s.name} numberOfLines={2}>{course.name}</Text>
+      {featured && <Text style={s.featured}>Last studied</Text>}
+      <Text style={[s.name, featured && s.nameFeatured]} numberOfLines={2}>{course.name}</Text>
       <Text style={s.caption} numberOfLines={1}>{studyTime(week)} this week</Text>
       {!exam && <Text style={s.noExam} numberOfLines={1}>No exam yet</Text>}
     </Pressable>
@@ -80,11 +87,13 @@ const s = StyleSheet.create({
   badgeSoon: { backgroundColor: "rgba(255,105,97,0.18)" },
   badgeText: { color: colors.neutral, fontSize: 12, fontWeight: "700", fontVariant: ["tabular-nums"] }, badgeTextSoon: { color: "#FFB4AE" },
   name: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  nameFeatured: { fontSize: 20, lineHeight: 26, fontWeight: "700" },
+  featured: { color: colors.progress, fontSize: 13, lineHeight: 18, fontWeight: "600" },
   // The last lines leave room for the ▶ in the corner.
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18, paddingRight: 36 },
   noExam: { color: colors.muted, fontSize: 12, lineHeight: 17, paddingRight: 36 },
   play: { position: "absolute", right: 10, bottom: 10 },
-  add: { minHeight: 120, padding: 12, gap: 3, borderRadius: radius.tile, borderWidth: 1.5, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.18)", justifyContent: "center" },
+  add: { minHeight: 120, padding: 12, gap: 3, borderRadius: radius.tile, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.border, justifyContent: "center" },
   addIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 4 },
   addText: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
 });

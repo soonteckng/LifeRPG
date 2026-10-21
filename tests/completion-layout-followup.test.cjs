@@ -39,7 +39,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:34})},
     '@gorhom/bottom-sheet':{BottomSheetScrollView:Scroll},
     '@expo/vector-icons':{Ionicons:host('Icon')},
-    './ProgressRing':host('Ring'),
+    './ProgressRing':host('Ring'),'./CharacterMark':host('Companion'),
     './MotionPressable':host('Button'),
     './SaveSuggestedQuest':() => saveVisible ? React.createElement('Button',{},'Save as quest') : null,
     './AppSheet':values=>React.createElement('Sheet',values,values.header,values.children,React.createElement('NativeFooter',null,values.footer)),

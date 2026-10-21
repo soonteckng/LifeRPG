@@ -86,11 +86,20 @@ export default function StudyScreen() {
       <Ionicons name="search" size={14} color={colors.accent} /><Text style={s.chipText}>More</Text></Pressable>
   </View>;
 
-  return <View style={s.screen}><PersonalPage title="Study" subtitle="" compact bottomContentInset={bottomInset}
-    action={<CircleButton icon="help" size={36} label="How Study works" onPress={() => show({ kind: "how" })} />}>
-    <ContentReveal><View style={s.stack}>
-      {!!plan.error && <Text style={s.notice} accessibilityLiveRegion="polite">{plan.error}</Text>}
-
+  const examsSection = <>
+      <View style={s.section}>
+        <SectionHeader title="My Exams" subtitle={examEditing ? "Tap ✎ to edit or − to remove." : nearest ? `${exams.length} coming up · next ${countdownLabel(daysUntil(nearest.examDate)).toLowerCase()}` : undefined}
+          right={examEditing ? <DoneButton label="Done editing exams" onPress={() => setExamEditing(false)} /> : <CircleButton label="New exam" disabled={!plan.ready} onPress={newExam} />} />
+        {exams.length ? <ExamsCard exams={exams} courses={plan.courses} onRemove={id => plan.remove("exam", id)} editing={examEditing} onEditingChange={value => { if (value) setEditing(false); setExamEditing(value); }}
+          onEdit={exam => show({ kind: "exam", exam, courseId: exam.courseId })} />
+          : <Pressable onPress={newExam} accessibilityRole="button" accessibilityLabel="Add an exam" testID="study-exam-empty" style={[s.group, s.emptyRow]}>
+            <View style={s.emptyIcon}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
+            <View style={s.flex}><Text style={s.rowTitle}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here and on Home.</Text></View>
+            <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
+          </Pressable>}
+      </View>
+  </>;
+  const subjectsSection = <>
       <TourAnchor id="study-subjects"><View style={s.section}>
         <SectionHeader title="My Subjects" subtitle={editing ? "Tap ✎ to edit or − to remove." : undefined}
           right={editing ? <DoneButton label="Done editing subjects" onPress={() => setEditing(false)} />
@@ -114,17 +123,15 @@ export default function StudyScreen() {
         </View>}
       </View></TourAnchor>
 
-      <View style={s.section}>
-        <SectionHeader title="My Exams" subtitle={examEditing ? "Tap ✎ to edit or − to remove." : nearest ? `${exams.length} coming up · next ${countdownLabel(daysUntil(nearest.examDate)).toLowerCase()}` : undefined}
-          right={examEditing ? <DoneButton label="Done editing exams" onPress={() => setExamEditing(false)} /> : <CircleButton label="New exam" disabled={!plan.ready} onPress={newExam} />} />
-        {exams.length ? <ExamsCard exams={exams} courses={plan.courses} onRemove={id => plan.remove("exam", id)} editing={examEditing} onEditingChange={value => { if (value) setEditing(false); setExamEditing(value); }}
-          onEdit={exam => show({ kind: "exam", exam, courseId: exam.courseId })} />
-          : <Pressable onPress={newExam} accessibilityRole="button" accessibilityLabel="Add an exam" testID="study-exam-empty" style={[s.group, s.emptyRow]}>
-            <View style={s.emptyIcon}><Ionicons name="calendar-outline" size={20} color={colors.danger} /></View>
-            <View style={s.flex}><Text style={s.rowTitle}>Got an exam coming up?</Text><Text style={s.caption}>Add it and the days count down here and on Home.</Text></View>
-            <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
-          </Pressable>}
-      </View>
+  </>;
+  return <View style={s.screen}><PersonalPage title="Study" subtitle="" compact bottomContentInset={bottomInset}
+    action={<CircleButton icon="help" size={36} label="How Study works" onPress={() => show({ kind: "how" })} />}>
+    <ContentReveal><View style={s.stack}>
+      {!!plan.error && <Text style={s.notice} accessibilityLiveRegion="polite">{plan.error}</Text>}
+
+      {/* Exams lead once there are some, since they are the part with a date;
+        a new Study tab starts with its subjects. */}
+      {exams.length ? <>{examsSection}{subjectsSection}</> : <>{subjectsSection}{examsSection}</>}
     </View></ContentReveal>
 
     <StudyExamSheet visible={open && sheet?.kind === "exam"} exam={sheet?.kind === "exam" ? sheet.exam : null} courses={plan.courses}

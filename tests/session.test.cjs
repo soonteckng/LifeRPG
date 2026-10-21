@@ -1530,7 +1530,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     "@gorhom/bottom-sheet":{BottomSheetScrollView:CompletionScroll},
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
     "@expo/vector-icons":{Ionicons:host("Icon")},
-    "./ProgressRing":host("Ring"),
+    "./ProgressRing":host("Ring"),"./CharacterMark":host("Companion"),
     "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
     "../hooks/useReducedMotion":{useReducedMotion:()=>true},
     "expo-haptics":{},

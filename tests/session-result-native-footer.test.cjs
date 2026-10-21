@@ -77,7 +77,7 @@ async function setup({height=844,fontScale=1,bottom=34,initialProps={}}={}) {
       BottomSheetBackdrop:host('Backdrop'),useBottomSheetSpringConfigs:x=>x,useBottomSheetTimingConfigs:x=>x},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom})},
     'react-native-gesture-handler':{GestureHandlerRootView:host('Root')},
-    '@expo/vector-icons':{Ionicons:host('Icon')},'./ProgressRing':host('Ring'),
+    '@expo/vector-icons':{Ionicons:host('Icon')},'./ProgressRing':host('Ring'),'./CharacterMark':host('Companion'),
     './AppText':{Text:host('Text')},'./MotionPressable':host('Button'),
     '../context/UserContext':{useUser:()=>({profile:{id:'a',level:1,current_xp:1},hapticsEnabled:false})},
     'expo-haptics':{},'../services/dailyAchievementQueue':{dailyAchievementQueue:{enqueue(){}}},

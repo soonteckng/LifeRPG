@@ -45,7 +45,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
   /** "start": Home's Start row, routines as chips that start at once, then Any activity. */
-  layout?: "list" | "start"; lead?: ReactNode; onAnyActivity?: () => void;
+  layout?: "list" | "start" | "grid"; lead?: ReactNode; onAnyActivity?: () => void;
 }) {
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -206,6 +206,27 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     </View>;
   };
   const row = (entry: RoutineEntry, inSheet = false) => entry.kind === "saved" ? savedRow(entry.routine, inSheet) : legacyRow(entry.task, false, inSheet);
+  // Routines tab: two tiles to a row, each with its ▶, and a last tile to add one.
+  const tile = (entry: RoutineEntry) => {
+    const saved = entry.kind === "saved", task = saved ? null : entry.task, routine = saved ? entry.routine : null;
+    const area = areaOf(entry.areaId), tint = lifeAreaColor(entry.areaId, area?.color_code), editing = arranging;
+    const startDisabled = saved ? blocked : blocked || !task!.is_due_today || !onStartLegacy || !routines.online;
+    const caption = `${routineDuration(entry.seconds)} · ${focusAreaTitle(area?.title)}${routine?.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}${task && !task.is_due_today ? " · Upcoming" : ""}`;
+    return <Wiggle key={entry.key} active={editing} seed={entry.key} degrees={0.6} style={s.gridCell}>
+      <View style={s.gridTile}>
+        <Pressable disabled={!active || (!saved && !routines.online)} onPress={() => editing ? finish() : saved ? edit(routine) : editLegacy(task!)} onLongPress={hold} delayLongPress={350}
+          accessibilityRole="button" accessibilityLabel={`${editing ? "" : "Edit "}${entry.name}, ${routineDuration(entry.seconds)}${editing ? ". Done editing" : ""}`}
+          accessibilityActions={[{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.gridBody}>
+          <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name="repeat" size={18} color={tint} /></View>
+          <Text style={s.gridName} numberOfLines={2}>{entry.name}</Text>
+          <Text style={s.gridCaption} numberOfLines={2}>{caption}</Text>
+        </Pressable>
+        <View style={s.gridAction}>{editing ? <EditBadges name={entry.name} onEdit={() => { setArranging(false); if (saved) edit(routine); else editLegacy(task!); }}
+          onRemove={saved ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined} />
+          : <StartButton disabled={startDisabled} onPress={() => ask(entry)} label={`Start routine ${entry.name}`} />}</View>
+      </View>
+    </Wiggle>;
+  };
   const visibleEntries = entries.slice(0, limit);
   // Once the last routine is removed there is nothing left to edit: Done gives way to + again.
   if (arranging && !visibleEntries.length) setArranging(false);
@@ -267,7 +288,13 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
           onPress={() => { feedback(); if (active && routines.ready && (entries.length || done.length)) { setShowDone(false); setManage(true); } else onSeeAll(); }} />} />
         : <SectionHeader title="My Routines" right={<CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />} />}
       <OneTimeHint id="routine-hold" text="Hold a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
-      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : visibleEntries.length ? <View style={s.stack}>
+      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : layout === "grid" ? <View style={s.grid}>
+        {visibleEntries.map(tile)}
+        {!arranging && <Pressable disabled={!active || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create a new routine" testID="routine-new-tile" style={[s.gridCell, s.newTile]}>
+          <View style={s.newIcon}><Ionicons name="add" size={22} color={colors.text} /></View>
+          <Text style={s.newText}>{visibleEntries.length ? "New routine" : "Make your first routine"}</Text>
+        </Pressable>}
+      </View> : visibleEntries.length ? <View style={s.stack}>
         {/* Each routine is its own small card; in edit mode they wiggle together. */}
         {visibleEntries.map(entry => <Wiggle key={entry.key} active={arranging} seed={entry.key} degrees={0.4} style={s.itemCard}>{row(entry)}</Wiggle>)}
       </View> : <View style={s.itemCard}>
@@ -387,6 +414,16 @@ const s = StyleSheet.create({
   removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  gridCell: { flexBasis: "45%", flexGrow: 1, maxWidth: "50%" },
+  gridTile: { ...edge, flex: 1, minHeight: 156, padding: 14, borderRadius: radius.tile, backgroundColor: colors.surface },
+  gridBody: { flex: 1, gap: 6 },
+  gridName: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600", marginTop: 4 },
+  gridCaption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
+  gridAction: { alignItems: "flex-end", marginTop: 8 },
+  newTile: { minHeight: 156, borderRadius: radius.tile, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center", gap: 10, padding: 14 },
+  newIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
+  newText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600", textAlign: "center" },
   startCard: { ...edge, padding: 16, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
   startHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
   startTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },

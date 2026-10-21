@@ -49,7 +49,7 @@ export default function RoutinesScreen() {
           <Text style={s.caption}>{open ? timer.isRunning ? "In progress. Tap to return" : "Paused. Tap to return" : "Any activity, your time"}</Text></View>
         <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={20} color={colors.primaryText} /></View>
       </Pressable></TourAnchor>
-      <SavedRoutinesCard subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
+      <SavedRoutinesCard layout="grid" subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
     </View></ContentReveal>
     <HowItWorksSheet visible={how} onClose={() => setHow(false)} title="How Routines work" label="how routines work" steps={HOW_IT_WORKS} />
   </PersonalPage>;

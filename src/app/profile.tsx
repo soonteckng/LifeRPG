@@ -148,35 +148,37 @@ export default function ProfileScreen() {
   return (
     <PersonalPage title="Profile" subtitle="" compact back animateTransition expandFromIcon fallback="/">
       <ContentReveal><View style={s.stack}>
-        {/* A compact header: your companion on the left, who you are and your level on the right. */}
+        {/* Your character sheet: the companion leads, then your name, level and XP. */}
         <View style={s.hero} testID="profile-companion-card">
           <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={s.portrait}>
-            <ProgressRing size={100} stroke={4} progress={profile.current_xp / required} color={colors.level} track={colors.levelSoft}>
-              <View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={72} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} greetOnFocus /></View>
+            <View style={s.halo} pointerEvents="none" />
+            <ProgressRing size={136} stroke={5} progress={profile.current_xp / required} color={colors.level} track={colors.levelSoft}>
+              <View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={96} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} greetOnFocus /></View>
             </ProgressRing>
-            <View style={s.levelBadge}><Text style={s.levelBadgeText}>LV {profile.level}</Text></View>
+            <View style={s.levelBadge}><Text style={s.levelBadgeText}>Level {profile.level}</Text></View>
           </Pressable>
           <View style={s.identity}>
             <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
             <Text style={s.tier} numberOfLines={1}>{tier.title} · {savedLook.title}</Text>
-            <Meter value={profile.current_xp / required} height={5} color={colors.level} />
-            <Text style={p.caption} numberOfLines={1}>{profile.current_xp} / {required} XP · {required - profile.current_xp} to level {profile.level + 1}</Text>
+          </View>
+          <View style={s.xp}>
+            <View style={s.xpHead}><Text style={s.xpValue}>{profile.current_xp} / {required} XP</Text><Text style={p.caption} numberOfLines={1}>{required - profile.current_xp} to level {profile.level + 1}</Text></View>
+            <Meter value={profile.current_xp / required} height={6} color={colors.level} />
+          </View>
+          <View style={s.heroActions}>
+            <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
+            <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={[s.heroButton, s.heroPrimary]}><Ionicons name="sparkles-outline" size={17} color={colors.primaryText} /><Text style={[s.heroButtonText, s.heroPrimaryText]}>Level journey</Text></Pressable>
           </View>
         </View>
-        <View style={s.heroActions}>
-          <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
-          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={s.heroButton}><Ionicons name="sparkles-outline" size={17} color={colors.level} /><Text style={s.heroButtonText}>Level journey</Text></Pressable>
-        </View>
-        {/* Read like Settings: what it is on the left, the number on the right. */}
-        <View style={s.statsCard} testID="profile-stats">
+        {/* Three numbers side by side, read at a glance. */}
+        <View style={s.statsRow} testID="profile-stats">
           {[["time-outline", "Time focused", studyTime(milestones.totals.seconds), "#64D2FF"],
             ["calendar-outline", "Focus days", String(milestones.totals.days), colors.accent],
-            ["flame", "Best streak", `${milestones.totals.bestStreak} ${milestones.totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint], index) =>
-            <View key={label} style={s.statRow} accessible accessibilityLabel={`${label}, ${milestones.ready ? value : "loading"}`}>
-              {index > 0 && <View style={s.statLine} />}
+            ["flame", "Best streak", `${milestones.totals.bestStreak} ${milestones.totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint]) =>
+            <View key={label} style={s.statTile} accessible accessibilityLabel={`${label}, ${milestones.ready ? value : "loading"}`}>
               <View style={[s.statIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={icon as never} size={16} color={tint} /></View>
+              <Text style={[s.statValue, label === "Best streak" && { color: colors.streak }]} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "—"}</Text>
               <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
-              <Text style={s.statValue} numberOfLines={1}>{milestones.ready ? value : "—"}</Text>
             </View>)}
         </View>
         <View style={s.section} testID="profile-badges">
@@ -247,27 +249,32 @@ export default function ProfileScreen() {
 }
 const s = StyleSheet.create({
   stack: { gap: 24 }, section: { gap: 10 },
-  hero: { ...edge, flexDirection: "row", alignItems: "center", gap: 16, padding: 18, borderRadius: radius.card, backgroundColor: colors.surface },
-  portrait: { alignItems: "center" },
-  levelBadge: { marginTop: -12, paddingHorizontal: 10, minHeight: 24, borderRadius: 12, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
-  levelBadgeText: { color: "#2B2200", fontSize: 12, fontWeight: "800", letterSpacing: 0.6 },
-  tier: { color: colors.level, fontSize: 14, lineHeight: 19, fontWeight: "600", marginBottom: 4 },
-  heroActions: { flexDirection: "row", gap: 10 },
-  heroButton: { ...edge, flex: 1, minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 22, backgroundColor: colors.surface },
+  hero: { ...edge, alignItems: "center", gap: 14, paddingHorizontal: 18, paddingTop: 24, paddingBottom: 18, borderRadius: radius.card, backgroundColor: colors.surface },
+  portrait: { alignItems: "center", justifyContent: "center" },
+  // A soft warm halo behind the ring, so the level frame looks earned.
+  halo: { position: "absolute", top: -12, width: 160, height: 160, borderRadius: 80, backgroundColor: "rgba(251,191,36,0.07)" },
+  levelBadge: { marginTop: -14, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
+  levelBadgeText: { color: "#2B2200", fontSize: 14, fontWeight: "800" },
+  tier: { color: colors.level, fontSize: 15, lineHeight: 20, fontWeight: "600", textAlign: "center" },
+  xp: { alignSelf: "stretch", gap: 8, padding: 12, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },
+  xpHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8 },
+  xpValue: { color: colors.level, fontSize: 15, lineHeight: 20, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  heroActions: { alignSelf: "stretch", flexDirection: "row", gap: 10 },
+  heroButton: { ...edge, flex: 1, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 24, backgroundColor: colors.surfaceRaised },
   heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  statsCard: { ...edge, borderRadius: radius.tile, backgroundColor: colors.surface, overflow: "hidden" },
-  statRow: { minHeight: 54, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16 },
-  statLine: { position: "absolute", top: 0, left: 58, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  statIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
-  statLabel: { flex: 1, color: colors.text, fontSize: 16, lineHeight: 22 },
-  statValue: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  heroPrimary: { backgroundColor: colors.primary, borderColor: colors.primary }, heroPrimaryText: { color: colors.primaryText },
+  statsRow: { flexDirection: "row", gap: 10 },
+  statTile: { ...edge, flex: 1, minHeight: 108, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 8, paddingVertical: 14, borderRadius: radius.tile, backgroundColor: colors.surface },
+  statIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  statLabel: { color: colors.secondary, fontSize: 13, lineHeight: 17, textAlign: "center" },
+  statValue: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "center" },
   badges: { gap: 10, paddingRight: 8 },
   badge: { ...edge, width: 112, minHeight: 108, padding: 12, gap: 8, borderRadius: radius.tile, backgroundColor: colors.surface },
   badgeIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft },
   badgeText: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: "600" },
   emptyBadges: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.card, backgroundColor: colors.surface },
-  glow: { width: 84, height: 84, borderRadius: 42, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, identity: { flex: 1, minWidth: 0, gap: 3 },
-  username: { color: colors.text, fontSize: 24, lineHeight: 29, fontWeight: "700", letterSpacing: -0.5 },
+  glow: { width: 116, height: 116, borderRadius: 58, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, identity: { alignItems: "center", gap: 4 },
+  username: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.5, textAlign: "center" },
   growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   areasCard: { gap: 12, paddingHorizontal: 2 },

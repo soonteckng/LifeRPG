@@ -8,6 +8,7 @@ import Pressable from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { type } from "../../constants/typography";
 import { Text } from "../../components/AppText";
+import ProgressRing from "../../components/ProgressRing";
 import ContentReveal from "../../components/ContentReveal";
 import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
@@ -529,19 +530,19 @@ export default function ProgressScreen() {
               {!freshPeriod && <>
               <Section title="By category" />
               {analytics.areas.length ? <View style={s.categoryStack}>
-                {/* Each category is its own card: its share of the time, and its sessions a tap away. */}
-                {analytics.areas.map(area => <Pressable key={area.key}
+                {/* Two small tiles a row: each ring is that category's share of the time. */}
+                {analytics.areas.map(area => { const share = area.seconds / Math.max(1, analytics.seconds);
+                  return <Pressable key={area.key}
                   onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
                   accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
-                  {/* Name and time on one line, the bar beneath, so names never cut off. */}
-                  <View style={s.categoryHead}>
-                    <View style={[s.areaDot, { backgroundColor: area.color }]} />
-                    <Text style={s.categoryName} numberOfLines={1}>{area.title}</Text>
+                  <ProgressRing size={46} stroke={4} progress={share} color={area.color} track={colors.accentSoft}>
+                    <Text style={s.categoryShare}>{Math.round(share * 100)}%</Text>
+                  </ProgressRing>
+                  <View style={s.categoryCopy}>
+                    <Text style={s.categoryName} numberOfLines={2}>{area.title}</Text>
                     <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
-                    <Ionicons name="chevron-forward" size={16} color={colors.muted} />
                   </View>
-                  <View style={s.categoryTrack}><View style={[s.categoryFill, { width: `${Math.max(4, Math.round(100 * area.seconds / Math.max(1, analytics.areas[0].seconds)))}%`, backgroundColor: area.color }]} /></View>
-                </Pressable>)}
+                </Pressable>; })}
               </View> : <View style={s.card}>
                 <Empty
                   icon="leaf-outline"
@@ -819,11 +820,11 @@ export default function ProgressScreen() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   periodToolbar: { flexDirection: "column", alignItems: "stretch" },
-  categoryStack: { gap: 8 },
-  categoryCard: { ...edge, gap: 10, paddingTop: 14, paddingBottom: 16, paddingLeft: 16, paddingRight: 12, borderRadius: 18, backgroundColor: colors.surface },
-  categoryHead: { flexDirection: "row", alignItems: "center", gap: 10 },
-  categoryName: { flex: 1, minWidth: 0, color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "500" },
-  categoryTrack: { height: 6, marginLeft: 20, marginRight: 26, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, categoryFill: { height: 6, borderRadius: 3 },
+  categoryStack: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  categoryCard: { ...edge, flexBasis: "45%", flexGrow: 1, maxWidth: "50%", minHeight: 76, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, backgroundColor: colors.surface },
+  categoryCopy: { flex: 1, minWidth: 0, gap: 2 },
+  categoryShare: { color: colors.text, fontSize: 11, lineHeight: 14, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  categoryName: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   historyEntrance: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 50 },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },

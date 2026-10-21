@@ -14,6 +14,8 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import AppSheet from "./AppSheet";
+import CharacterMark from "./CharacterMark";
+import ProgressRing from "./ProgressRing";
 import * as Haptics from "expo-haptics";
 import { dailyAchievementQueue } from "../services/dailyAchievementQueue";
 import type { DailyEffortEvidence } from "../services/dailyEffortCelebrationService";
@@ -171,6 +173,14 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
         {needsRetry && <Text style={s.pendingText}>{offline ? "Your stop is saved on this phone. We’ll confirm it when you reconnect." : "Your stop is saved on this phone. We’re waiting for confirmation."}</Text>}
         {needsRetry && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
       </View> : <>
+      {/* A level up is its own moment: the companion and the new level lead. */}
+      {isLevelUp && !pending && !rejected && level != null && <View style={s.levelHero} testID="session-level-up" accessible accessibilityLabel={`You reached Level ${level}`}>
+        <ProgressRing size={112} stroke={4} progress={1} color={colors.level} track={colors.levelSoft}>
+          <View style={s.levelDisc}><CharacterMark size={70} avatar={profile?.avatar ?? "🌱"} /></View>
+        </ProgressRing>
+        <View style={s.levelBadge}><Ionicons name="sparkles" size={13} color="#2B2200" /><Text style={s.levelBadgeText}>Level {level}</Text></View>
+        <Text style={s.levelLine}>You reached Level {level}</Text>
+      </View>}
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
       {confirming ? <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} compact loading />
       : rejected ? <View style={s.pending}><Text style={s.pendingText} accessibilityLiveRegion="polite">Your session record stays on this phone. Your account did not accept this result, so it has not earned progress or completed a quest.</Text></View> : pending ? <View style={s.pending}>
@@ -196,6 +206,11 @@ const s = StyleSheet.create({
   endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center", alignSelf:"center"},
   retry: {minHeight:48, justifyContent:"center", alignItems:"center"},
   retryText: {color:colors.accent, fontSize:17},
+  levelHero: { alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: 4 },
+  levelDisc: { width: 92, height: 92, borderRadius: 46, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  levelBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: -26, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, backgroundColor: colors.level },
+  levelBadgeText: { color: "#2B2200", fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  levelLine: { color: colors.success, fontSize: 17, lineHeight: 22, fontWeight: "600" },
   done: { minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 27, backgroundColor: colors.primary },
   doneText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
 });
