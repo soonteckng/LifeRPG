@@ -582,10 +582,11 @@ test("LifeRPG intro covers signed-out and signed-in content and releases it afte
       "react-native": { ...native, StyleSheet: { create: s => s, absoluteFill: {} },
         AccessibilityInfo: { isReduceMotionEnabled: async () => false },
         Animated: {
-          Value: class { setValue() {} }, View: host("Animated"), timing: () => ({}), spring: () => ({}),
+          Value: class { setValue() {} }, View: host("Animated"), timing: () => ({ start: fn => fn?.({ finished: true }), stop() {} }), spring: () => ({}),
           parallel: () => ({}), delay: () => ({}), sequence: () => ({ start: fn => { finish = fn; }, stop() {} }),
         } },
       "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => { hides++; } },
+      "../services/launchUpdate": { prepareLaunchUpdate: async () => false, loadLaunchUpdate: async () => {} },
     }).default;
     let renderer;
     await act(async () => { renderer = create(React.createElement(Component, null, React.createElement(destination))); });
@@ -610,6 +611,7 @@ test("reduced-motion launch skips animation and shows the app after a brief bran
       AccessibilityInfo: { isReduceMotionEnabled: async () => true },
       Animated: { Value: class { setValue() {} }, View: host("Animated"), sequence: () => { animations++; } } },
     "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => {} },
+    "../services/launchUpdate": { prepareLaunchUpdate: async () => false, loadLaunchUpdate: async () => {} },
   }).default;
   let renderer;
   await act(async () => { renderer = create(React.createElement(Component, null, React.createElement("Home"))); });
@@ -618,6 +620,39 @@ test("reduced-motion launch skips animation and shows the app after a brief bran
     assert.equal(animations, 0);
     assert.equal(renderer.root.findAllByType("View").some(n => n.props.testID === "launch-intro"), false);
   } finally { await act(async () => renderer.unmount()); }
+});
+test("a newer update found during the intro loads at once, and a slow check never holds the app", async () => {
+  for (const ready of [true, false]) {
+    let finish, release, reloads = 0;
+    const check = new Promise(resolve => { release = resolve; });
+    const Component = load("src/components/LaunchIntro.tsx", {
+      "react-native": { ...native, StyleSheet: { create: s => s, absoluteFill: {} },
+        AccessibilityInfo: { isReduceMotionEnabled: async () => false },
+        Animated: {
+          Value: class { setValue() {} }, View: host("Animated"), timing: () => ({ start: fn => fn?.({ finished: true }), stop() {} }), spring: () => ({}),
+          parallel: () => ({}), delay: () => ({}), sequence: () => ({ start: fn => { finish = fn; }, stop() {} }),
+        } },
+      "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => {} },
+      "../services/launchUpdate": { prepareLaunchUpdate: () => check, loadLaunchUpdate: async () => { reloads++; } },
+    }).default;
+    let renderer;
+    await act(async () => { renderer = create(React.createElement(Component, null, React.createElement("Home"))); });
+    const intro = () => renderer.root.findAllByType("View").some(n => n.props.testID === "launch-intro");
+    try {
+      await act(async () => finish({ finished: true }));
+      assert.equal(intro(), true, "the logo stays while the check finishes, never a blank page");
+      await act(async () => release(ready));
+      assert.equal(reloads, ready ? 1 : 0, ready ? "a ready update loads before anything is touched" : "no update, no reload");
+      if (!ready) assert.equal(intro(), false);
+    } finally { await act(async () => renderer.unmount()); }
+  }
+});
+test("the launch update check gives up quietly in development and on errors", async () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const source = fs.readFileSync(path.resolve(__dirname, "../src/services/launchUpdate.ts"), "utf8");
+  assert.match(source, /__DEV__ \|\| !Updates\.isEnabled/);
+  assert.match(source, /catch \{ return false; \}/);
+  assert.match(source, /Promise\.race/);
 });
 test("an unrelated account sign-in during recovery invalidates password editing", async () => {
   const ui = await provider({ session, marker: session.user.id });

@@ -96,6 +96,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         // Offline, the session runs here in the workspace; there's no setup screen to open.
         const started = await timer.startFreeTimer(latest.durationSeconds, latest.focusAreaId, latest.name);
         if (currentSurface.current === surfaceKey && !started) setMessage(timer.actionError ?? "Couldn't start this routine. Your saved settings are still here.");
+        if (currentSurface.current === surfaceKey && started) setMenu(null);
         return;
       }
       const notes = encodeRoutineSession(latest.name);
@@ -163,7 +164,13 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       if (nextEditor.current !== undefined && active) { setEditor({ routine: nextEditor.current }); nextEditor.current = undefined; }
   };
   // Play opens the session setup with this routine filled in; Start is pressed there.
-  const ask = (entry: RoutineEntry) => { if (blocked) return; setMessage(""); if (entry.kind === "saved") void start(entry.routine); else void startLegacy(entry.task); };
+  const ask = (entry: RoutineEntry) => {
+    if (blocked) return; setMessage("");
+    // Without the cloud (offline, or still connecting just after launch) there
+    // is no setup screen, so ▶ asks first instead of starting straight away.
+    if (entry.kind === "saved" && !routines.online && !manage && !menu) { feedback(); setConfirm(entry); return; }
+    if (entry.kind === "saved") void start(entry.routine); else void startLegacy(entry.task);
+  };
   const areaOf = (id: number | null | undefined) => subjects.find(area => area.id === id);
   const savedEntry = (routine: SavedRoutine): RoutineEntry => ({ kind: "saved", key: `routine:${routine.id}`, name: routine.name, seconds: routine.durationSeconds, areaId: routine.focusAreaId, routine });
   const legacyEntry = (task: Task): RoutineEntry => ({ kind: "legacy", key: `task:${task.id}`, name: task.title, seconds: (task.target_minutes || 30) * 60, areaId: task.subject_id, task });

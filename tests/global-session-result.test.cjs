@@ -176,16 +176,28 @@ test('online saving inside Session uses a short grace but maintains one pending 
   const ui=await setup({isCompleted:true,syncStatus:'waiting'},'online','/session');
   try{
     const result=ui.result();assert.equal(result.props.visible,false);
+    await act(async()=>t.mock.timers.tick(800));assert.equal(result.props.visible,false,'still waiting for the result');
     await act(async()=>t.mock.timers.tick(800));assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
     await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
   }finally{await ui.cleanup();}
 });
-test('outside Session a finished session is presented at once while it saves, never after half-finished Home states',async t=>{
+test('outside Session a finished session opens once, complete, when its result arrives quickly',async t=>{
   t.mock.timers.enable({apis:['setTimeout']});
   const ui=await setup({isCompleted:true,syncStatus:'waiting'});
   try{
-    const result=ui.result();assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
-    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);assert.equal(result.props.pending,false);
+    const result=ui.result();assert.equal(result.props.visible,false,'no saving flash first');
+    await act(async()=>t.mock.timers.tick(600));
+    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(ui.result(),result);
+    assert.equal(result.props.visible,true);assert.equal(result.props.pending,false);
+  }finally{await ui.cleanup();}
+});
+test('outside Session a slow result still shows the saving card after the short wait',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const ui=await setup({isCompleted:true,syncStatus:'waiting'});
+  try{
+    const result=ui.result();await act(async()=>t.mock.timers.tick(1600));
+    assert.equal(result.props.visible,true);assert.equal(result.props.pending,true);
+    await ui.update({sessionSummary:summary,syncStatus:'saved'});assert.equal(result.props.pending,false);
   }finally{await ui.cleanup();}
 });
 

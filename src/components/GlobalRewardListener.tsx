@@ -23,6 +23,10 @@ type PresentedResult = {
 };
 
 /** One result portal survives route changes and online/offline transitions. */
+// How long a finished session waits for its confirmed result before the card
+// opens in its saving state instead. Most replies arrive well within this.
+const RESULT_GRACE_MS = 1500;
+
 export default function GlobalRewardListener() {
   const pathname = usePathname();
   const insideSession = pathname === "/session" || pathname === "/timer";
@@ -51,15 +55,16 @@ export default function GlobalRewardListener() {
   if (pendingSurface.key !== pendingKey) setPendingSurface({ key: pendingKey, ready: false });
   useEffect(() => {
     if (!pendingKey) return;
-    // Fast online replies never flash a saving page. Durable offline results
-    // are usable immediately, including their Done action.
+    // Fast online replies never flash a saving page: the card waits a moment
+    // for the result and opens once, complete. Durable offline results are
+    // usable immediately, including their Done action.
     const deadline = setTimeout(() => setPendingSurface(current => current.key === pendingKey
-      ? { key: pendingKey, ready: true } : current), 700);
+      ? { key: pendingKey, ready: true } : current), RESULT_GRACE_MS);
     return () => clearTimeout(deadline);
   }, [pendingKey]);
-  // Elsewhere in the app there is no saving status to read, and waiting would
-  // flash half-finished Home controls; the sheet takes over at once instead.
-  const ready = !pending || ending || !online || timer.clientReported || !!timer.actionError || !insideSession
+  // The same short wait everywhere, in Session, on Home, or on returning to
+  // the app, so the card never opens on "Saving…" and then changes size.
+  const ready = !pending || ending || !online || timer.clientReported || !!timer.actionError
     || pendingSurface.key === pendingKey && pendingSurface.ready;
   const available = !!ownerId && terminal && !timer.hasOpenSession && !timer.summaryViewed && ready;
   const quest = tasks.find(item => item.id === timer.linkedTaskId);
