@@ -40,7 +40,7 @@ async function guide({receipt='pending',measureTabs=true}={}){
   '/NotificationOnboardingPrompt':host('Invite'),'/AppText':{Text:host('Text')},'/MotionPressable':host('Button'),
  });
  // Every highlighted target sits somewhere sensible; tab targets only when measurable.
- const spots={'home-focus':{x:20,y:200,width:350,height:220},'home-quests':{x:20,y:440,width:350,height:160},'home-identity':{x:20,y:60,width:350,height:100},'routines-just-focus':{x:20,y:120,width:350,height:92},'study-subjects':{x:20,y:120,width:350,height:260}};
+ const spots={'home-focus':{x:20,y:200,width:350,height:220},'home-quests':{x:20,y:440,width:350,height:160},'home-identity':{x:20,y:60,width:350,height:100},'routines-mine':{x:20,y:240,width:350,height:200},'study-subjects':{x:20,y:120,width:350,height:260}};
  ['index','routines','study','squads','progress'].forEach((tab,i)=>{spots[`tab-${tab}`]={x:20+i*70,y:720,width:70,height:66};});
  function Targets(){const tour=api.useFeatureTour();React.useEffect(()=>{const offs=Object.entries(spots).map(([id,rect])=>tour.register(id,{measure:done=>{if(id.startsWith('tab-')&&!measureTabs)return;measures.push(id);done(rect);},reveal:()=>{reveals.push(id);return false;}}));return()=>offs.forEach(off=>off());},[tour]);return React.createElement('App');}
  const element=()=>React.createElement(api.FeatureTourProvider,null,React.createElement(Targets));
@@ -129,7 +129,7 @@ test('a tap step leaves a hole over its real tab: only that tab works, and openi
   assert.doesNotMatch(ui.text(),/Everything else waits/,'a tap step only says what to tap');
   await ui.tapPaused();assert.match(ui.text(),/Tap Routines to keep going/);
   await ui.openTab('/routines');
-  assert.equal(ui.title(),'Just focus');
+  assert.equal(ui.title(),'Make it yours');
  }finally{await ui.cleanup();}
 });
 
@@ -142,7 +142,7 @@ test('if a tab cannot be measured, the card offers its own button instead of tra
   const open=ui.tree.root.findAll(n=>n.props.testID==='tour-open-tab')[0];
   assert.equal(open.props.accessibilityLabel,'Open Routines');
   await act(async()=>open.props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Just focus');
+  assert.equal(ui.title(),'Make it yours');
  }finally{await ui.cleanup();}
 });
 
@@ -154,7 +154,7 @@ test('Back returns to the previous tip, skips tap steps and takes the page with 
   await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
   assert.equal(ui.title(),'Welcome to LifeRPG!');
   await ui.next();await ui.next();await ui.next();await ui.openTab('/routines');
-  assert.equal(ui.title(),'Just focus');
+  assert.equal(ui.title(),'Make it yours');
   await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
   assert.equal(ui.title(),'Start a session','skips "Tap Routines" back to the last tip');
   assert.equal(ui.routes.at(-1),'/','and returns to its page');
@@ -203,7 +203,13 @@ test("the guide describes today's layout and every highlight still exists", () =
     assert.doesNotMatch(tour, old); assert.doesNotMatch(page, old);
   }
   const screens = ["src/app/(tabs)/index.tsx", "src/app/(tabs)/routines.tsx", "src/app/(tabs)/study.tsx"].map(read).join("\n");
+  // Routines points at your own routines (title, + and grid), not only Just focus.
+  assert.match(tour, /target: "routines-mine", title: "Make it yours"/);
+  assert.doesNotMatch(tour, /target: "routines-just-focus"/);
+  // Tips with no highlight keep the page visible behind them.
+  assert.match(tour, /overviewDim: \{ backgroundColor: "rgba\(0,0,0,0\.18\)" \}/);
   const targets = [...tour.matchAll(/kind: "info", target: "([\w-]+)"/g)].map(match => match[1]);
   assert.ok(targets.length >= 4);
   for (const target of targets) assert.match(screens, new RegExp(`TourAnchor id="${target}"`), `${target} is still on screen`);
+  assert.match(read("src/components/SavedRoutinesCard.tsx"), /layout === "grid" && wrapMine/);
 });

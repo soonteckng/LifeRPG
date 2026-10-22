@@ -12,11 +12,11 @@ const ICONS: Record<IdeaArea, React.ComponentProps<typeof Ionicons>["name"]> = {
 };
 // A softer line than the category hints: what making time for it feels like.
 const LINES: Record<IdeaArea, string> = {
-  learning: "Classes, exams and things you’re curious about.",
-  work: "Projects, jobs and getting things moving.",
-  creative: "Making, writing, drawing and playing.",
-  personal: "The everyday things that keep life running.",
-  wellbeing: "Rest, movement and time for yourself.",
+  learning: "Classes, exams, curiosity",
+  work: "Projects, jobs, side work",
+  creative: "Making, writing, drawing",
+  personal: "Chores and daily life",
+  wellbeing: "Rest, movement, me time",
 };
 const areaOf = (kind: IdeaArea) => FOCUS_AREAS.find(area => area.kind === kind);
 export const ideaAreaTitle = (kind: IdeaArea) => focusAreaTitle(areaOf(kind)?.title);
@@ -42,7 +42,7 @@ export default function IdeaAreaPicker({ value, onChange, disabled = false, inSh
         accessibilityHint={LINES[kind]} accessibilityState={{ checked: on, disabled: locked }} testID={`idea-area-${kind}`}
         style={[s.row, inSheet && s.rowInSheet, on && { backgroundColor: areaTint(tint, 0.14) }, !on && full && s.rest]}>
         <View style={[s.icon, { backgroundColor: areaTint(tint, on ? 0.26 : 0.14) }]}><Ionicons name={ICONS[kind]} size={20} color={tint} /></View>
-        <View style={s.copy}><Text style={s.title}>{ideaAreaTitle(kind)}</Text><Text style={s.line}>{LINES[kind]}</Text></View>
+        <View style={s.copy}><Text style={s.title} numberOfLines={1}>{ideaAreaTitle(kind)}</Text><Text style={s.line} numberOfLines={1}>{LINES[kind]}</Text></View>
         <View style={[s.check, on && { backgroundColor: tint, borderColor: tint }]}>{on && <Ionicons name="checkmark" size={15} color={colors.background} />}</View>
       </Pressable>;
     })}
@@ -51,15 +51,14 @@ export default function IdeaAreaPicker({ value, onChange, disabled = false, inSh
   </View>;
 }
 const s = StyleSheet.create({
-  // Compact enough that all five fit on most phones; Onboarding shows a
-  // "More below" cue on the smaller ones.
+  // One line each, so all five and the note fit on the page without scrolling.
   stack: { gap: 8 },
-  row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 22, backgroundColor: colors.surface },
+  row: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 14, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.surface },
   // Tighter rows in the sheet, so all five and Done fit without scrolling.
   rowInSheet: { minHeight: 64, paddingVertical: 11, paddingHorizontal: 16, borderRadius: 20, backgroundColor: colors.sheetCard },
   rest: { opacity: 0.45 },
-  icon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-  copy: { flex: 1, minWidth: 0, gap: 2 },
+  icon: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
+  copy: { flex: 1, minWidth: 0, gap: 1 },
   title: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
   line: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
   check: { width: 26, height: 26, borderRadius: 13, borderWidth: 1.5, borderColor: colors.tertiary, alignItems: "center", justifyContent: "center" },

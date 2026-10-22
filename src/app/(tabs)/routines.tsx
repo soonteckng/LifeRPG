@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { TourAnchor } from "../../components/FeatureTour";
 import { useFocusEffect, useRouter } from "expo-router";
 import ContentReveal from "../../components/ContentReveal";
 import { PersonalPage } from "../../components/PersonalUI";
@@ -9,7 +10,6 @@ import Pressable from "../../components/MotionPressable";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
 import HowItWorksSheet from "../../components/HowItWorksSheet";
 import { CircleButton } from "../../components/SectionHeader";
-import { TourAnchor } from "../../components/FeatureTour";
 import { colors, edge } from "../../constants/theme";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
@@ -43,13 +43,13 @@ export default function RoutinesScreen() {
   return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}
     action={<CircleButton icon="help" size={36} label="How Routines work" onPress={() => setHow(true)} />}>
     <ContentReveal><View style={s.stack}>
-      <TourAnchor id="routines-just-focus"><Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
+      <Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
         <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={22} color="#AAB3FF" /></View>
         <View style={s.copy}><Text style={s.title}>{open ? "Your session" : "Just focus"}</Text>
           <Text style={s.caption}>{open ? timer.isRunning ? "In progress. Tap to return" : "Paused. Tap to return" : "Any activity, your time"}</Text></View>
         <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={20} color={colors.primaryText} /></View>
-      </Pressable></TourAnchor>
-      <SavedRoutinesCard layout="grid" subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
+      </Pressable>
+      <SavedRoutinesCard layout="grid" wrapMine={mine => <TourAnchor id="routines-mine" style={s.mine}>{mine}</TourAnchor>} subjects={subjects} limit={Number.MAX_SAFE_INTEGER} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={startLegacy} />
     </View></ContentReveal>
     <HowItWorksSheet visible={how} onClose={() => setHow(false)} title="How Routines work" label="how routines work" steps={HOW_IT_WORKS} />
   </PersonalPage>;
@@ -64,6 +64,8 @@ const HOW_IT_WORKS = [
 
 const s = StyleSheet.create({
   stack: { gap: 24 },
+  // Same spacing as the routines card, so the guide's highlight changes nothing on screen.
+  mine: { gap: 10 },
   // Just focus is the main way in, so it gets the biggest card on the page.
   card: { ...edge, minHeight: 92, flexDirection: "row", alignItems: "center", gap: 14, paddingLeft: 16, paddingRight: 14, borderRadius: 22, backgroundColor: colors.surface },
   icon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(170,179,255,0.16)" },

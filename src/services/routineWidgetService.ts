@@ -156,6 +156,16 @@ export const selectSavedRoutineWidgetOwner = (scope: JournalScope | null) => { p
 export const clearSavedRoutineWidgets = (scope: JournalScope) => { publisher.clear(scope); return bridge.clear(scope); };
 export const publishSavedRoutineWidgets = (scope: JournalScope, routines: SavedRoutine[]) => publisher.publish(scope, routines);
 
+/**
+ * The routine you just made goes on the home screen: the one saved routine
+ * that wasn't there before. If that can't be told apart, nothing is pinned.
+ */
+export async function pinNewSavedRoutine(scope: JournalScope, before: ReadonlySet<string>) {
+  await savedRoutineStore.load(scope);
+  const added = savedRoutineStore.snapshot(scope).routines.filter(item => !before.has(item.id));
+  return added.length === 1 ? pinSavedRoutine(scope, added[0].id) : false;
+}
+
 export async function pinSavedRoutine(scope: JournalScope, routineId: string) {
   await savedRoutineStore.load(scope);
   const snapshot = savedRoutineStore.snapshot(scope);

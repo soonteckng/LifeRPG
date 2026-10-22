@@ -24,8 +24,10 @@ import { lastRoutineArea } from "../services/lastRoutineArea";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
 import SheetTextInput from "./SheetTextInput";
 
-export default function RoutineEditorSheet({ visible, onClose, onDismiss, routine, subjects, initialAreaId = null, initialSeconds = 1800, initialName = "", idea, onSaved, onAddWidget }: {
-  visible: boolean; onClose: () => void; onDismiss?: () => void; routine?: SavedRoutine | null; subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialAreaId?: number | null; initialSeconds?: number; initialName?: string; onSaved?: (draft: RoutineDraft) => void;
+export default function RoutineEditorSheet({ visible, onClose, onDismiss, routine, subjects, initialAreaId = null, initialSeconds = 1800, initialName = "", idea, onSaved, onAddWidget, widgetOnSave = false }: {
+  visible: boolean; onClose: () => void; onDismiss?: () => void; routine?: SavedRoutine | null; subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialAreaId?: number | null; initialSeconds?: number; initialName?: string; onSaved?: (draft: RoutineDraft, options?: { addWidget: boolean }) => void;
+  /** A new routine can go straight onto the home screen once it is saved. */
+  widgetOnSave?: boolean;
   /** Pins this saved routine to the phone's home screen, where the launcher supports it. */
   onAddWidget?: () => void;
   /** A ready-made idea keeps its own category while it keeps its name. */
@@ -46,6 +48,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
   const [hour, setHour] = useState(String(draft.reminder.hour)), [minute, setMinute] = useState(String(draft.reminder.minute));
   const [wasVisible, setWasVisible] = useState(visible), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [confirm, setConfirm] = useState<"discard" | "remove" | null>(null);
+  const [addWidget, setAddWidget] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission | null>(null), [permissionBusy, setPermissionBusy] = useState(false);
   const permissionScope = JSON.stringify([visible, draft.reminder.enabled, routines.scope?.ownerId, routines.scope?.backendId]);
   const [permissionView, setPermissionView] = useState(permissionScope);
@@ -57,7 +60,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
   useLayoutEffect(() => { const epoch = generation.current + 1; generation.current = epoch; return () => { generation.current = epoch + 1; }; }, [visible, routines.scope?.ownerId, routines.scope?.backendId]);
   if (wasVisible !== visible) {
     setWasVisible(visible);
-    if (visible) { const next = makeDraft(); setDraft(next); setOriginal(JSON.stringify(next)); setHour(String(next.reminder.hour)); setMinute(String(next.reminder.minute)); setError(""); setConfirm(null); setBusy(false); }
+    if (visible) { const next = makeDraft(); setDraft(next); setOriginal(JSON.stringify(next)); setHour(String(next.reminder.hour)); setMinute(String(next.reminder.minute)); setError(""); setConfirm(null); setAddWidget(false); setBusy(false); }
   }
   useEffect(() => {
     const epoch = ++permissionGeneration.current;
@@ -108,7 +111,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     if (!validRoutineDraft(next) || (next.reminder.enabled && (!/^\d{1,2}$/.test(hour) || !/^\d{1,2}$/.test(minute)))) { setError("Add a name and choose a valid reminder time, from 00:00 to 23:59."); return; }
     if (next.focusAreaId !== null && !subjects.some(item => item.id === next.focusAreaId)) { setError("Choose an available category before saving."); return; }
     lock.current = true; setBusy(true); const epoch = generation.current;
-    try { const saved = await routines.save(next, routine?.id); if (epoch !== generation.current) return; if (saved) { feedback(); if (!locked) lastRoutineArea.remember(owner, next.focusAreaId); onSaved?.(next); onClose(); } else setError("Couldn't save this routine. Your previous settings are still here."); }
+    try { const saved = await routines.save(next, routine?.id); if (epoch !== generation.current) return; if (saved) { feedback(); if (!locked) lastRoutineArea.remember(owner, next.focusAreaId); onSaved?.(next, { addWidget: !routine && widgetOnSave && addWidget }); onClose(); } else setError("Couldn't save this routine. Your previous settings are still here."); }
     catch { if (epoch === generation.current) setError("Couldn't save this routine. Your previous settings are still here."); }
     finally { lock.current = false; if (epoch === generation.current) setBusy(false); }
   };
@@ -146,6 +149,9 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
       <View style={s.group}>
       <FocusLengthControl compact flat showLabel={false} seconds={draft.durationSeconds} disabled={busy} onChange={durationSeconds => setDraft(previous => ({ ...previous, durationSeconds }))} />
       <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="notifications-outline" size={17} color={colors.secondary} /></View><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ true: colors.accentFill }} /></View>
+      {!routine && widgetOnSave && <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="grid-outline" size={17} color={colors.secondary} /></View>
+        <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Put it on your home screen once it’s saved.</Text></View>
+        <Switch accessibilityLabel="Add a home screen widget after saving" value={addWidget} disabled={busy} onValueChange={value => { feedback(); setAddWidget(value); }} trackColor={{ true: colors.accentFill }} /></View>}
       {routine && onAddWidget && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Add widget to your home screen" onPress={onAddWidget} style={[s.groupRow, s.divider]}>
         <View style={s.groupIcon}><Ionicons name="grid-outline" size={17} color={colors.secondary} /></View>
         <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Start this routine from your phone’s home screen.</Text></View>

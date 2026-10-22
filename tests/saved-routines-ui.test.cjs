@@ -294,3 +294,41 @@ test('like subjects, the Add routine tile shows until you have four routines',as
     finally{await act(async()=>ui.unmount());}
   }
 });
+
+test('a new routine can go on the home screen as it is saved, without opening it again', async () => {
+  const saved = [], results = [];
+  const Component = load('src/components/RoutineEditorSheet.tsx', { ...base(), 'expo-haptics': { selectionAsync: async () => {} }, '../context/UserContext': { useUser: () => ({ hapticsEnabled: false }) },
+    '../hooks/useSavedRoutines': { useSavedRoutines: () => ({ scope, ready: true, save: async (...args) => { saved.push(args); return true; }, remove: async () => true }) } }).default;
+  const widgetSwitch = ui => ui.root.findAllByType('Switch').find(x => x.props.accessibilityLabel === 'Add a home screen widget after saving');
+  const saveButton = ui => ui.root.findAllByType('Press').find(x => x.props.children?.props?.children === 'Save routine');
+  let ui;
+  // Phones without widgets, and routines that already exist, show no switch.
+  for (const props of [{ widgetOnSave: false }, { widgetOnSave: true, routine }]) {
+    await act(async () => { ui = create(React.createElement(Component, { subjects, visible: true, onClose() {}, ...props })); });
+    try { assert.equal(widgetSwitch(ui), undefined); } finally { await act(async () => ui.unmount()); }
+  }
+  await act(async () => { ui = create(React.createElement(Component, { subjects, visible: true, onClose() {}, widgetOnSave: true, initialName: 'Stretch', onSaved: (draft, options) => results.push([draft.name, options]) })); });
+  try {
+    assert.equal(widgetSwitch(ui).props.value, false, 'off until you choose it');
+    await act(async () => widgetSwitch(ui).props.onValueChange(true));
+    await act(async () => saveButton(ui).props.onPress());
+    assert.equal(saved.length, 1); assert.equal(saved[0][1], undefined, 'a brand-new routine');
+    assert.deepEqual(results, [['Stretch', { addWidget: true }]]);
+  } finally { await act(async () => ui.unmount()); }
+});
+
+test('the widget goes to the one routine that was just made, never a guess', async () => {
+  const pinned = []; let routines = [];
+  const api = load('src/services/routineWidgetService.ts', {
+    'expo-modules-core': { uuid: { v4: () => 'bbbbbbbb-bbbb-4bbb-8bbb-000000000001' } }, './nativeSessionCountdown': { getNativeSessionCountdownModule: async () => null },
+    './savedRoutineService': { savedRoutineStore: { load: async () => {}, snapshot: () => ({ ready: true, routines }) } }, './offlineFocusCatalog': { readOfflineFocusAreas: async () => [] },
+  });
+  const original = api.pinSavedRoutine;
+  assert.equal(typeof api.pinNewSavedRoutine, 'function');
+  const before = new Set(['old-1']);
+  routines = [{ id: 'old-1' }];
+  assert.equal(await api.pinNewSavedRoutine(scope, before), false, 'nothing new, nothing pinned');
+  routines = [{ id: 'old-1' }, { id: 'new-1' }, { id: 'new-2' }];
+  assert.equal(await api.pinNewSavedRoutine(scope, before), false, 'two new ones cannot be told apart');
+  assert.deepEqual(pinned, []); assert.equal(api.pinSavedRoutine, original);
+});

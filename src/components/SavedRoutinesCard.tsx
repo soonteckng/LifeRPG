@@ -8,7 +8,7 @@ import { useRouter } from "expo-router";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
-import { pinSavedRoutine, routineWidgetsSupported } from "../services/routineWidgetService";
+import { pinNewSavedRoutine, pinSavedRoutine, routineWidgetsSupported } from "../services/routineWidgetService";
 import { resolveSavedRoutine } from "../services/savedRoutineService";
 import { setupMode } from "../services/setupMode";
 import { encodeRoutineSession } from "../utils/routineSession";
@@ -38,7 +38,7 @@ import { ideaAreaTitle } from "./IdeaAreaPicker";
 type RoutineTemplate = RoutineIdea;
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
@@ -46,6 +46,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   onSeeAll?: () => void;
   /** "start": Home's Start row, routines as chips that start at once, then Any activity. */
   layout?: "list" | "start" | "grid"; lead?: ReactNode; onAnyActivity?: () => void;
+  /** On Routines, the guide wraps your own routines (title, + and grid) to point at them. */
+  wrapMine?: (mine: ReactNode) => ReactNode;
 }) {
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -145,6 +147,20 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     const scope = routines.scope, operation = {}; locked.current = operation; feedback();
     try { const result = await pinSavedRoutine(scope, routine.id); if (currentSurface.current === surfaceKey) setMessage(result ? "Choose where to place your routine widget." : "Your phone couldn't add the widget. You can also add LifeRPG from your launcher’s widget list."); }
     catch { if (currentSurface.current === surfaceKey) setMessage("Your phone couldn't add the widget. Try again from your launcher’s widget list."); }
+    finally { if (locked.current === operation) locked.current = null; }
+  };
+  // The routines that existed when a new one was started, so the new one can be found once it's saved.
+  const knownIds = useRef<ReadonlySet<string>>(new Set());
+  useEffect(() => {
+    if (editor && !editor.routine) knownIds.current = new Set(routines.routines.map(item => item.id));
+    // Only when a new routine's editor opens, not when the list changes as it saves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor]);
+  const pinNew = async () => {
+    if (!routines.scope || locked.current || !active) return;
+    const scope = routines.scope, operation = {}; locked.current = operation;
+    try { const result = await pinNewSavedRoutine(scope, knownIds.current); if (currentSurface.current === surfaceKey) setMessage(result ? "Choose where to place your routine widget." : "Saved. Your phone couldn't add the widget, so try Add widget from the routine."); }
+    catch { if (currentSurface.current === surfaceKey) setMessage("Saved. Your phone couldn't add the widget, so try Add widget from the routine."); }
     finally { if (locked.current === operation) locked.current = null; }
   };
   const remove = async (routine: SavedRoutine) => {
@@ -282,6 +298,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   return <>
     {startView ?? <View style={s.card} testID="saved-routines-card">
       {/* On Home, See all opens every routine in a sheet, like Upcoming Exams; in Routines the header has +. */}
+      {(layout === "grid" && wrapMine ? wrapMine : (node: ReactNode) => node)(<>
       {arranging ? <SectionHeader title="My Routines" subtitle="Tap ✎ to edit or − to remove." right={<DoneButton label="Done editing routines" onPress={finish} />} />
         : onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
           onPress={() => { feedback(); if (active && routines.ready && (entries.length || done.length)) { setShowDone(false); setManage(true); } else onSeeAll(); }} />} />
@@ -300,6 +317,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       </View> : <View style={s.itemCard}>
         <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
+      </>)}
       {/* Ready-made starting points stay offered until each one is saved. */}
       {offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
         {/* Once areas are picked, changing them is one quiet button by the title. */}
@@ -373,7 +391,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       initialAreaId={editor?.template ? suggestedArea(subjects as Subject[], editor.template.area)?.id ?? initialAreaId : initialAreaId}
       idea={editorIdea ? { name: editorIdea.name, areaId: suggestedArea(subjects as Subject[], editorIdea.area)?.id ?? null } : undefined}
       initialSeconds={editor?.template ? editor.template.minutes * 60 : initialSeconds} initialName={editor?.template?.name}
-      onAddWidget={widget && editor?.routine ? () => { const routine = editor.routine; if (routine) void pin(routine); } : undefined} />
+      onAddWidget={widget && editor?.routine ? () => { const routine = editor.routine; if (routine) void pin(routine); } : undefined}
+      widgetOnSave={widget && !!editor && !editor.routine} onSaved={(_, options) => { if (options?.addWidget) void pinNew(); }} />
     {legacyEditor && active && <QuestSheet key={`legacy:${scopeKey}:${legacyEditor.id}`} visible onClose={() => setLegacyEditor(null)} editorOnly initialTask={legacyEditor} expectedOwnerId={profile?.id} routineLanguage />}
   </>;
 }
@@ -442,3 +461,4 @@ const s = StyleSheet.create({
   startWideText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },
   startLink: { color: colors.secondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
 });
+
