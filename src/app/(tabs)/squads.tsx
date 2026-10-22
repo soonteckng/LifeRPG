@@ -9,6 +9,9 @@ import Pressable from "../../components/MotionPressable";
 import { CircleButton } from "../../components/SectionHeader";
 import { SquadSummary } from "../../components/SquadsSection";
 import { SquadJoinSheet } from "../../components/SquadSheets";
+import { useSquadDetail } from "../../components/SquadDetail";
+import MoreMenu from "../../components/MoreMenu";
+import { PinnedRoute } from "../../components/PinnedAction";
 import { colors, edge, radius } from "../../constants/theme";
 import { useSquads } from "../../hooks/useSquads";
 import { useTabDockInset } from "../../hooks/useTabDockInset";
@@ -17,10 +20,15 @@ import { squadTotal } from "../../utils/squads";
 import { studyTime } from "../../utils/studyPlan";
 
 /**
- * My Squads: one big card for each squad you're in. Tap a card and the whole
- * squad rises from the bottom; slide it down to come back here.
+ * Squads. In one squad (most people's case), the tab is that squad in full:
+ * your week together, the leaderboard and the invite. In two or more, one big
+ * card for each; tap one and the whole squad rises from the bottom.
  */
 export default function SquadsScreen() {
+  // The invite button pins above the tab bar, like Start on Routines.
+  return <PinnedRoute name="squads"><SquadsTab /></PinnedRoute>;
+}
+function SquadsTab() {
   const squads = useSquads(), router = useRouter();
   const bottomInset = useTabDockInset("squads");
   const [joining, setJoining] = useState(false);
@@ -31,6 +39,20 @@ export default function SquadsScreen() {
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
   const leading = squads.squads.find(item => item.ownerIsYou)?.name ?? null;
   const open = (id: string) => { squadSelection.choose(id); router.navigate("/squad"); };
+  const only = squads.squads.length === 1 ? squads.squads[0] : null;
+  const detail = useSquadDetail(only, squads);
+  if (only) return <View style={s.screen}>
+    <PersonalPage title={only.name} subtitle="" compact bottomContentInset={bottomInset}
+      action={squads.online ? <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" /> : undefined}>
+      <ContentReveal><View style={s.stack} testID="squads-single">
+        {detail.board}
+        {squads.online && <Pressable onPress={detail.join} accessibilityRole="button" accessibilityLabel="Join or start another squad" style={s.another}>
+          <Ionicons name="add-circle-outline" size={18} color={colors.accent} /><Text style={s.anotherText}>Join or start another squad</Text>
+        </Pressable>}
+      </View></ContentReveal>
+    </PersonalPage>
+    {detail.sheets}
+  </View>;
   return <View style={s.screen}>
     <PersonalPage title="Squads" subtitle="" compact bottomContentInset={bottomInset}
       action={squads.online && <CircleButton size={36} label="Join or start a squad" onPress={() => setJoining(true)} />}>
@@ -64,4 +86,6 @@ const s = StyleSheet.create({
   emptyBody: { color: colors.secondary, fontSize: 15, lineHeight: 21, textAlign: "center" },
   primary: { alignSelf: "stretch", minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, marginTop: 8 },
   primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
+  another: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4 },
+  anotherText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
 });

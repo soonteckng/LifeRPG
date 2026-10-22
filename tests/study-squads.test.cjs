@@ -261,3 +261,22 @@ test('the squad page stays on the squad it opened with, and slides away once you
   assert.ok(!words(ui.root).includes('Library'));
   await act(async () => ui.unmount());
 });
+
+test('in one squad, the Squads tab is that squad in full, with its menu and a way to join another', async () => {
+  let current = [squad()];
+  const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, join: async () => null, create: async () => null, update: async () => null, leave: async () => null, remove: async () => null });
+  const Tab = squadsTab(state); let ui;
+  await act(async () => { ui = create(React.createElement(Tab)); });
+  try {
+    assert.ok(ui.root.findAll(n => n.props.testID === 'squads-single').length > 0);
+    assert.equal(ui.root.findAll(n => n.props.testID === 'squad-card' && n.type === 'Press').length, 0, 'no list for a single squad');
+    assert.equal(ui.root.findByType('Page').props.title, 'Calc crew', 'the tab is titled with your squad');
+    assert.ok(ui.root.findAll(n => n.props.testID === 'squad-board').length > 0, 'the leaderboard and invite are right here');
+    assert.ok(menu(ui.root).some(option => option.label === 'Leave squad'), 'the same options as the squad page');
+    await act(async () => pressLabel(ui.root, 'Join or start another squad').props.onPress());
+    assert.equal(ui.root.findAllByType('Sheet').some(x => x.props.label === 'join squad'), true);
+    current = [squad(), { ...squad(2), ownerIsYou: false, name: 'Library' }];
+    await act(async () => ui.update(React.createElement(Tab)));
+    assert.equal(ui.root.findAll(n => n.props.testID === 'squad-card' && n.type === 'Press').length, 2, 'two or more go back to cards');
+  } finally { await act(async () => ui.unmount()); }
+});
