@@ -26,6 +26,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name === "expo-constants") return { expoConfig: { android: { package: "com.soonteck.liferpg" } } };
       if (name === "expo") return { isRunningInExpoGo: () => false };
       if (name === "expo-updates") return { isEmbeddedLaunch: true, updateId: null, isEmergencyLaunch: false };
+      if (name.endsWith('/SessionProtectionControl')) return { ProtectionSettingsSheet: props => React.createElement('ProtectionSheet', props), default: () => null };
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);

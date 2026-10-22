@@ -26,6 +26,7 @@ function environment(reduced = false) {
       if (name.endsWith('/SessionProtectionContext')) return { useSessionProtection: () => ({ supported: false, selection: { mode: 'normal', allowed: [] }, capabilities: null, refresh: async () => {}, openPermission: async () => {}, choose: async () => false }) };
       if (name.endsWith('/OnboardingWelcome') && file !== 'src/components/OnboardingWelcome.tsx') return require('./onboarding-mocks.cjs').finish(React);
       if (name.endsWith('/FeatureTour')) return { prepareFeatureTour: async () => {} };
+      if (name.endsWith('/SessionProtectionControl')) return { ProtectionSettingsSheet: props => React.createElement('ProtectionSheet', props) };
       if (Object.hasOwn(base, name)) return base[name];
       if (name.endsWith('/AppText')) return { Text: host('Text'), TextInput: host('Input') };
       if (name.endsWith('/MotionPressable')) return host('Button');
@@ -194,8 +195,17 @@ test('Android setup asks about app protection with Allow buttons, names what can
     assert.doesNotMatch(copy, /During a session, only the apps you allow/, 'no long paragraph to read');
     assert.doesNotMatch(copy, /Protection on Home/, 'protection lives in Settings now');
     assert.equal(tree.root.findAllByType('Segmented').length, 0, 'allow list is the one mode, so there is nothing to pick');
+    const appsRow = () => tree.root.findAll(node => node.props.testID === 'onboarding-allowed-apps' && typeof node.props.onPress === 'function')[0];
+    assert.equal(appsRow(), undefined, 'apps come after the permissions');
     caps = { usage: true, overlay: true, notifications: true };
     await act(async () => tree.update(React.createElement(Journey, { initialStep: 3 })));
+    // Once protection is allowed, the same app list as Settings is one tap away.
+    assert.ok(appsRow());
+    assert.equal(tree.root.findByType('ProtectionSheet').props.visible, false);
+    await act(async () => appsRow().props.onPress());
+    assert.equal(tree.root.findByType('ProtectionSheet').props.visible, true);
+    await act(async () => tree.root.findByType('ProtectionSheet').props.onClose());
+    assert.equal(tree.root.findByType('ProtectionSheet').props.visible, false);
     await act(async () => button('Continue').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list', []]]);
     assert.equal(tree.root.findByType('Frame').props.step, 5);

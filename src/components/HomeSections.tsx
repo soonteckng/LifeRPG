@@ -251,7 +251,7 @@ const s = StyleSheet.create({
   tileFoot: { marginTop: "auto", paddingTop: 10, gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   tileStrong: { color: colors.text, fontWeight: "700" },
   tileTrack: { height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" },
-  tileFillBar: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+  tileFillBar: { height: 6, borderRadius: 3, backgroundColor: colors.progress },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   sheetGroup: { ...edge, backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },

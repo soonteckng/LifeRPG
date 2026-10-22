@@ -19,6 +19,7 @@ import { colors, edge } from "../constants/theme";
 import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
 import { INTRO_PAGES, ONBOARDING_NAME_LIMIT } from "../constants/onboarding";
 import { useSessionProtection } from "../context/SessionProtectionContext";
+import { ProtectionSettingsSheet } from "./SessionProtectionControl";
 
 const TITLES = ["What would you like to make time for?", "What should we call you?", "A little time for you", "Keep distractions away"];
 // Steps: 0 areas you'd like to make time for, 1 name, 2 goal, 3 app protection (Android only), 4–6 intro pages.
@@ -44,6 +45,9 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [celebrating, setCelebrating] = useState(false), [confirmed, setConfirmed] = useState(false);
   const protection = useSessionProtection();
+  // Once protection is allowed, the same app list as Settings, so nobody
+  // finishes the intro with every app covered by surprise.
+  const [appsOpen, setAppsOpen] = useState(false);
   const caps = protection.capabilities;
   const refreshProtection = protection.refresh;
   // Permissions are granted in Android Settings; re-read them on return.
@@ -128,6 +132,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     "LifeRPG can cover distracting apps while you focus. Optional, and you can change it in Settings.",
   ];
   const firstLabel = areas.length ? "Continue" : "Skip for now";
+  const allowedCount = protection.selection.mode === "allow-list" ? protection.selection.allowed.length : 0;
   return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 6 : 7) + offset} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
     busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === NAME_STEP ? "Checking…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
     onBack={step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? GOAL_STEP : step - 1) : undefined}
@@ -142,12 +147,20 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
         {row.granted ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} accessibilityLabel={`${row.title} allowed`} />
           : <Pressable onPress={() => void row.allow()} accessibilityRole="button" accessibilityLabel={`Allow ${row.title}`} style={s.allow}><Text style={s.allowText}>Allow</Text></Pressable>}
       </View>)}</View>
+      {caps?.usage && caps.overlay && caps.notifications && <Pressable onPress={() => setAppsOpen(true)} accessibilityRole="button" testID="onboarding-allowed-apps"
+        accessibilityLabel={`Allowed apps, ${allowedCount}. Choose apps that stay open`} style={s.appsRow}>
+        <Ionicons name="apps-outline" size={20} color={colors.accent} />
+        <View style={s.permissionCopy}><Text style={s.permissionTitle}>Allowed apps{allowedCount ? ` · ${allowedCount}` : ""}</Text>
+          <Text style={s.permissionHint} numberOfLines={1}>{allowedCount ? "These stay open while you focus" : "Keep notes, music or a calculator open"}</Text></View>
+        <Ionicons name="chevron-forward" size={18} color={colors.tertiary} />
+      </Pressable>}
       {/* Two facts, one line each: the break, and what is never blocked. */}
       <View style={s.facts}>
         <View style={s.fact}><Ionicons name="cafe-outline" size={18} color={colors.secondary} /><Text style={s.permissionHint}>One 5-minute break per session</Text></View>
         <View style={s.fact}><Ionicons name="call-outline" size={18} color={colors.secondary} /><Text style={s.permissionHint}>Calls and Settings can never be blocked</Text></View>
       </View>
     </View>}
+    {protection.supported && <ProtectionSettingsSheet visible={appsOpen && step === PROTECTION_STEP} onClose={() => setAppsOpen(false)} />}
     {intro && <><View style={s.illustration}><View style={s.symbol}><Ionicons name={intro.icon} size={44} color={colors.accent} /></View></View><View style={s.note}><Text style={s.noteBody}>{intro.detail}</Text></View></>}
   </OnboardingFrame>;
 }
@@ -158,6 +171,7 @@ const s = StyleSheet.create({
   permissionCopy: { flex: 1, minWidth: 0, gap: 1 }, permissionTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
   // The same sizes as the areas list on the first page, so every intro page reads alike.
   permissionHint: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
+  appsRow: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: colors.surface },
   facts: { gap: 10, paddingHorizontal: 6 }, fact: { flexDirection: "row", alignItems: "center", gap: 10 },
   allow: { minHeight: 36, paddingHorizontal: 16, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   allowText: { color: colors.accent, fontSize: 15, fontWeight: "600" },

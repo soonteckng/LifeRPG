@@ -41,6 +41,7 @@ import {
   dateKey,
   DEFAULT_TIMEZONE,
   durationLabel,
+  totalLabel,
   nextAnchor,
   periodFor,
   previousAnchor,
@@ -427,9 +428,9 @@ export default function ProgressScreen() {
                   {freshPeriod ? <>
                     <Text style={s.storyTitle}>{mode === "week" ? "A fresh week" : "A fresh month"}</Text>
                     <Text style={s.storyLine}>Your first session starts this {mode}’s story. Even 15 minutes counts.</Text>
-                    {analytics.previousSeconds > 0 && <Text style={s.caption}>Last {mode}: {durationLabel(analytics.previousSeconds)}</Text>}
+                    {analytics.previousSeconds > 0 && <Text style={s.caption}>Last {mode}: {totalLabel(analytics.previousSeconds)}</Text>}
                   </> : <>
-                    <Text style={s.storyValue} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>{durationLabel(analytics.seconds)}</Text>
+                    <Text style={s.storyValue} adjustsFontSizeToFit minimumFontScale={0.7} numberOfLines={1}>{totalLabel(analytics.seconds)}</Text>
                     <Text style={s.storyLine}>{comparisonLabel}{leadArea ? <Text style={s.storyAside}> {focusAreaTitle(leadArea.title)} led the way.</Text> : null}</Text>
                   </>}
                 </View>
@@ -489,7 +490,7 @@ export default function ProgressScreen() {
                 <View style={s.dayDetail} testID="progress-day-hero">
                   <View style={s.dayDetailHeading}>
                     <Text style={s.dayDetailTitle}>{dayLabel}</Text>
-                    <Text style={s.dayDetailValue}>{durationLabel(heroDay?.seconds ?? 0)}</Text>
+                    <Text style={s.dayDetailValue}>{totalLabel(heroDay?.seconds ?? 0)}</Text>
                   </View>
                   <Text style={s.caption}>{dayMessage}</Text>
                   <OneTimeHint id="progress-day" text="Tap a day to see it here. Tap it again for its sessions." />
@@ -571,7 +572,7 @@ export default function ProgressScreen() {
                 {scopedAreas.map(area => { const share = area.seconds / Math.max(1, scopedSeconds);
                   return <Pressable key={area.key}
                   onPress={() => open({ kind: "area", key: area.key, day: sessionScope === "day" ? heroDay?.key : undefined })} accessibilityRole="button"
-                  accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
+                  accessibilityLabel={`${focusAreaTitle(area.title)}, ${totalLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
                   <View style={s.categoryTop}>
                     <ProgressRing size={56} stroke={5} progress={share} color={area.color} track={colors.accentSoft}>
                       <Text style={s.categoryShare}>{Math.round(share * 100)}%</Text>
@@ -579,7 +580,7 @@ export default function ProgressScreen() {
                     <Ionicons name="chevron-forward" size={16} color={colors.muted} />
                   </View>
                   <Text style={s.categoryName} numberOfLines={2}>{area.title}</Text>
-                  <Text style={s.categoryTime}>{durationLabel(area.seconds)}</Text>
+                  <Text style={s.categoryTime}>{totalLabel(area.seconds)}</Text>
                   <Text style={s.caption}>{area.sessions.length} {area.sessions.length === 1 ? "session" : "sessions"}</Text>
                 </Pressable>; })}
               </View> : <View style={s.card}>

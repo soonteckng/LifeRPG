@@ -121,6 +121,17 @@ export function durationLabel(seconds: number): string {
       .join(" ") || "0m"
   );
 }
+/**
+ * Totals (a week, a month, a day, a category) in hours and minutes, like the
+ * rest of the app. Seconds only show while the total is under a minute.
+ * Single sessions keep their exact time with durationLabel.
+ */
+export function totalLabel(seconds: number): string {
+  const value = Math.max(0, Math.floor(seconds));
+  if (value > 0 && value < 60) return `${value}s`;
+  const h = Math.floor(value / 3600), m = Math.floor((value % 3600) / 60);
+  return [h ? `${h}h` : "", m ? `${m}m` : ""].filter(Boolean).join(" ") || "0m";
+}
 export function calendarLabel(
   key: string,
   options: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" },

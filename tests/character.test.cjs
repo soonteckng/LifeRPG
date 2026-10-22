@@ -30,6 +30,7 @@ function load(file, mocks = {}, cache = new Map()) {
       if (name.endsWith("/FocusAreaDetailSheet")) return props=>React.createElement("AreaSheet",props);
       if (name === "react-native-reanimated") return {__esModule:true,default:{View:props=>React.createElement("Animated",props,props.children)}};
       if (name.endsWith("/useCharacterMotion")) return {useCharacterMotion:()=>({bodyStyle:{},eyeStyle:{},armStyle:{},greet(){}})};
+      if (name.endsWith('/SessionProtectionControl')) return { ProtectionSettingsSheet: props => React.createElement('ProtectionSheet', props), default: () => null };
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
       if (name.endsWith("/OnboardingFrame")) return require("./onboarding-mocks.cjs").frame(React);
