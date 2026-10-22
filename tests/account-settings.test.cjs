@@ -137,6 +137,7 @@ async function settings(options = {}, file = "src/app/settings.tsx") {
   const navigate = [], updates = [];
   const ui = await screen(file, {
     ...sheets,
+    "../components/DeveloperTools": props => React.createElement("DeveloperTools", props),
     "../hooks/useAppPreferences": { useAppPreferences: () => ({ reduceMotion: false, examReminders: true, hints: [] }) },
     "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; } } },
     "../hooks/useFocusDurationPreference": { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, choose: async () => {} }) },

@@ -21,6 +21,7 @@ import { durationLabel } from "../utils/sessionSetup";
 import { afterTransition } from "../utils/afterTransition";
 import { cachedDailyGoal, rememberDailyGoal } from "../utils/dailyGoalCache";
 import AppBuildInfo from "../components/AppBuildInfo";
+import DeveloperTools from "../components/DeveloperTools";
 import Pressable from "../components/MotionPressable";
 import { readSessionTrail } from "../services/sessionTrail";
 
@@ -90,6 +91,8 @@ export default function SettingsScreen() {
       <SettingsGroup title="Help">
         <SettingsRow first icon="information-circle-outline" tint="#64D2FF" title="How LifeRPG works" onPress={() => router.navigate("/guide")} />
       </SettingsGroup>
+
+      <DeveloperTools />
 
       <SettingsGroup footer={sessionBlocksLogout ? "Finish or end your session before signing out." : "Your saved progress stays with your account."}>
         <SettingsRow first danger icon="log-out-outline" title="Sign out" onPress={() => { setError(""); setSigningOut(true); }} />

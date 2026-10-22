@@ -240,7 +240,7 @@ test("dismissing by gesture does not claim a celebration; a later explicit Done 
 test("pending or old results dismiss normally without claiming a daily achievement", async () => {
   const realNow=Date.now;Date.now=()=>NOW;
   try {
-    for(const overrides of [{pending:true},{creditedDate:"2026-10-11"},{creditVersion:undefined}]) {
+    for(const overrides of [{preview:true},{pending:true},{creditedDate:"2026-10-11"},{creditVersion:undefined}]) {
       const ui=await resultHarness(overrides);
       try{await ui.done();await ui.dismiss();assert.equal(ui.closes,1);assert.equal(ui.dismissals,1);assert.equal(ui.queue.snapshot(),null);}finally{await ui.cleanup();}
     }

@@ -53,6 +53,8 @@ export interface SessionResultSheetProps {
   /** Locally durable work is complete even while cloud confirmation is pending. */
   localSaved?: boolean;
   offline?: boolean;
+  /** Developer preview: shows the card only, and never claims a daily celebration. */
+  preview?: boolean;
   ending?: boolean;
   rejected?: boolean;
   /** Supplied only by a verified online caller; never reads quests itself. */
@@ -64,7 +66,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
   questTitle, areaTitle, areaColor, isLevelUp = false, newLevel, currentXP, requiredXP, onClose, onDismiss,
   pending = false, syncError, syncBusy = false, onRetry,
   sessionId, completedAtMs, recovered = false, creditedDate, dailyCompletedSeconds, dailyGoalMinutes,
-  localSaved = false, offline = false, ending = false, rejected = false, saveAction,
+  localSaved = false, offline = false, ending = false, rejected = false, saveAction, preview = false,
 }: SessionResultSheetProps) {
   const { hapticsEnabled, profile } = useUser();
   const celebration = useRef<DailyEffortEvidence | null>(null);
@@ -76,7 +78,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
   const done = () => {
     if (doneRequested.current) return;
     doneRequested.current = true;
-    celebration.current = visible && !pending && !ending && !rejected ? {visible:true, pending:false, recovered, sessionId,
+    celebration.current = visible && !preview && !pending && !ending && !rejected ? {visible:true, pending:false, recovered, sessionId,
       ownerId:profile?.id, timeZone:profile?.timezone || DEFAULT_TIMEZONE, creditedDate, dailyCompletedSeconds,
       dailyGoalMinutes, goalReachedNow, durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion} : null;
     onClose();
