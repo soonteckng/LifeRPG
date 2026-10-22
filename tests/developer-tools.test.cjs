@@ -24,9 +24,12 @@ const host = type => function Host(props) { return React.createElement(type, pro
 const flush = () => act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
 
 function access(rpc) {
-  const calls = [];
-  const mod = load("src/services/developerAccess.ts", { "../../lib/supabase": { supabase: { rpc: async name => { calls.push(name); return rpc(); } } } });
-  return { mod, calls };
+  const calls = [], removed = [];
+  const mod = load("src/services/developerAccess.ts", {
+    "../../lib/supabase": { supabase: { rpc: async name => { calls.push(name); return rpc(name); } } },
+    "@react-native-async-storage/async-storage": { removeItem: async key => { removed.push(key); } },
+  });
+  return { mod, calls, removed };
 }
 
 test("developer access is a clear server yes, asked once per account", async () => {
@@ -47,20 +50,38 @@ test("developer access is a clear server yes, asked once per account", async () 
   assert.equal(await retry.mod.isDeveloper("dev"), true);
 });
 
-async function tools({ developer = true, online = true } = {}) {
-  const sheets = [];
+test("restarting the intro asks the server, then clears this phone's welcome mark", async () => {
+  const ok = access(() => ({ data: true, error: null }));
+  assert.equal(await ok.mod.restartIntro("dev"), true);
+  assert.deepEqual(ok.calls, ["dev_restart_intro_v1"]);
+  assert.deepEqual(ok.removed, ["liferpg:welcome:v1:dev"]);
+  for (const reply of [() => ({ data: null, error: { code: "42501" } }), () => ({ data: false, error: null }), () => { throw Error("offline"); }]) {
+    const refused = access(reply);
+    assert.equal(await refused.mod.restartIntro("someone"), false);
+    assert.deepEqual(refused.removed, [], "nothing on the phone changes when the server says no");
+  }
+  const none = access(() => ({ data: true, error: null }));
+  assert.equal(await none.mod.restartIntro(""), false); assert.deepEqual(none.calls, []);
+});
+
+async function tools({ developer = true, online = true, session = false, restart = async () => true, reload = async () => true } = {}) {
+  const sheets = [], log = [];
   const Tools = load("src/components/DeveloperTools.tsx", {
     "react-native": { Modal: host("Modal") },
     "./SettingsList": { SettingsGroup: host("Group"), SettingsRow: props => React.createElement("Row", props) },
     "./SessionResultSheet": props => { sheets.push(props); return React.createElement("Result", props); },
     "./SessionSavingOverlay": host("Saving"),
-    "../context/UserContext": { useUser: () => ({ profile: { id: "dev", level: 4, current_xp: 30 } }) },
+    "./SheetConfirmation": props => React.createElement("Confirm", props),
+    "./FeatureTour": { useFeatureTour: () => ({ start: () => log.push("tour") }) },
+    "../context/TimerContext": { useTimer: () => ({ hasOpenSession: session }) },
+    "../context/UserContext": { useUser: () => ({ profile: { id: "dev", level: 4, current_xp: 30 }, reloadProfile: async () => { log.push("reload"); return reload(); } }) },
     "../context/AuthContext": { useAuth: () => ({ accessMode: online ? "online" : "offline" }) },
-    "../services/developerAccess": { useIsDeveloper: (owner, isOnline) => developer && owner === "dev" && isOnline },
+    "../services/developerAccess": { useIsDeveloper: (owner, isOnline) => developer && owner === "dev" && isOnline,
+      restartIntro: async owner => { log.push(`restart:${owner}`); return restart(); } },
   }).default;
   let renderer; await act(async () => { renderer = create(React.createElement(Tools)); });
   const row = title => renderer.root.findAllByType("Row").find(node => node.props.title === title);
-  return { renderer, sheets, row, press: async title => act(async () => row(title).props.onPress()),
+  return { renderer, sheets, row, log, confirm: () => renderer.root.findAllByType("Confirm")[0], group: () => renderer.root.findByType("Group"), press: async title => act(async () => row(title).props.onPress()),
     result: () => renderer.root.findAllByType("Result")[0], cleanup: () => act(async () => renderer.unmount()) };
 }
 
@@ -75,7 +96,7 @@ test("each preview opens a card marked as a preview, and Done closes it", async 
   const ui = await tools();
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
-      ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen"]);
+      ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Preview level up");
     let card = ui.result().props;
@@ -117,4 +138,55 @@ test("the server check exists only for signed-in accounts and is in a migration"
   assert.match(sql, /revoke all on function public\.is_developer_v1\(\) from public, anon/);
   assert.match(sql, /grant execute on function public\.is_developer_v1\(\) to authenticated/);
   assert.doesNotMatch(sql, /insert into/i, "accounts are added by hand, never by a migration");
+});
+
+test("Replay the guide starts the real tour and saves nothing", async () => {
+  const ui = await tools();
+  try { await ui.press("Replay the guide"); assert.deepEqual(ui.log, ["tour"]); } finally { await ui.cleanup(); }
+});
+
+test("Restart the intro asks first, then restarts and reloads the profile so the intro opens", async () => {
+  const ui = await tools();
+  try {
+    await ui.press("Restart the intro");
+    assert.ok(ui.confirm()); assert.deepEqual(ui.log, [], "nothing happens until you confirm");
+    await act(async () => ui.confirm().props.onCancel());
+    assert.equal(ui.confirm(), undefined);
+    await ui.press("Restart the intro");
+    await act(async () => { ui.confirm().props.onConfirm(); ui.confirm().props.onConfirm(); });
+    await flush();
+    assert.deepEqual(ui.log, ["restart:dev", "reload"], "one restart, even with a double tap");
+    assert.equal(ui.confirm(), undefined);
+  } finally { await ui.cleanup(); }
+});
+
+test("a refused restart explains itself and leaves you where you are", async () => {
+  for (const [options, pattern] of [[{ restart: async () => false }, /Couldn't restart the intro/], [{ reload: async () => false }, /Close and reopen the app/]]) {
+    const ui = await tools(options);
+    try {
+      await ui.press("Restart the intro");
+      await act(async () => ui.confirm().props.onConfirm()); await flush();
+      assert.equal(ui.confirm(), undefined);
+      assert.match(ui.group().props.footer, pattern);
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test("during a session the guide and intro wait", async () => {
+  const ui = await tools({ session: true });
+  try {
+    assert.equal(ui.row("Replay the guide").props.disabled, true);
+    assert.equal(ui.row("Restart the intro").props.disabled, true);
+    assert.match(ui.group().props.footer, /Finish or end your session first/);
+  } finally { await ui.cleanup(); }
+});
+
+test("only developers can restart the intro, and only the intro mark changes", () => {
+  const sql = fs.readFileSync(path.resolve(__dirname, "../supabase/migrations/20261022130000_developer_restart_intro.sql"), "utf8");
+  assert.match(sql, /liferpg_auth_private\.developers where user_id = auth\.uid\(\)/);
+  assert.match(sql, /raise exception 'Developer accounts only'/);
+  assert.match(sql, /update public\.profiles set onboarding_completed = false where id = auth\.uid\(\);/);
+  assert.equal((sql.match(/update /g) || []).length, 1);
+  assert.doesNotMatch(sql, /delete |truncate/i);
+  assert.match(sql, /revoke all on function public\.dev_restart_intro_v1\(\) from public, anon/);
 });
