@@ -280,3 +280,22 @@ test('in one squad, the Squads tab is that squad in full, with its menu and a wa
     assert.equal(ui.root.findAll(n => n.props.testID === 'squad-card' && n.type === 'Press').length, 2, 'two or more go back to cards');
   } finally { await act(async () => ui.unmount()); }
 });
+
+test('Create follows the account limits from the server: one led squad by default, more for an account allowed more', async () => {
+  const { SquadJoinSheet } = sheets(); let ui;
+  const render = props => React.createElement(SquadJoinSheet, { visible: true, online: true, onClose() {}, onJoin: async () => null, onCreate: async () => null, ...props });
+  await act(async () => { ui = create(render({ leading: 'Calc crew', leadCount: 1, memberships: 1 })); });
+  const submit = () => ui.root.findAllByType('Press').at(-1);
+  const choose = async mode => act(async () => ui.root.findByType('Segmented').props.onChange(mode));
+  try {
+    await choose('create');
+    assert.equal(submit().props.disabled, true, 'the default: one squad to lead');
+    assert.ok(words(ui.root).some(t => /You already lead Calc crew/.test(t)));
+    await act(async () => ui.update(render({ leading: 'Calc crew', leadCount: 1, memberships: 1, limits: { lead: 10, member: 10 } })));
+    await choose('create');
+    assert.equal(submit().props.disabled, false, 'a higher limit lets you start another');
+    assert.ok(words(ui.root).some(t => /lead up to 10 squads and be in up to 10/.test(t)));
+    await act(async () => ui.update(render({ leading: 'Calc crew', leadCount: 10, memberships: 10, limits: { lead: 10, member: 10 } })));
+    assert.equal(submit().props.disabled, true, 'still a limit, just a higher one');
+  } finally { await act(async () => ui.unmount()); }
+});

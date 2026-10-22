@@ -90,7 +90,9 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   if (wasOnline !== squads.online) { setWasOnline(squads.online); if (!squads.online) setJoining(false); }
   const openSquads = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
   // The whole squad rises from the bottom, once the peek has slid away.
-  const openSquad = () => { setPeek(false); setTimeout(() => { if (squad) { squadSelection.choose(squad.id); router.navigate("/squad"); } }, 220); };
+  // In one squad, the Squads tab already is that squad, so go there rather than
+  // opening a second copy of it.
+  const openSquad = () => { setPeek(false); setTimeout(() => { if (squad) { squadSelection.choose(squad.id); router.navigate(squads.squads.length === 1 ? "/squads" : "/squad"); } }, 220); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
   const top = squad ? standings(squad).slice(0, 3) : [];
   // On Home the squad sits beside This week as a small tile.
@@ -149,7 +151,7 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
           <Ionicons name="share-outline" size={16} color={colors.accent} /><Text style={s.quietText}>Share invite</Text></Pressable>
       </BottomSheetScrollView>
     </AppSheet>}
-    <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={squads.squads.find(item => item.ownerIsYou)?.name ?? null} memberships={squads.squads.length}
+    <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={squads.squads.find(item => item.ownerIsYou)?.name ?? null} memberships={squads.squads.length} leadCount={squads.squads.filter(item => item.ownerIsYou).length} limits={squads.limits}
       onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
   </View>;
 }

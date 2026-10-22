@@ -55,7 +55,7 @@ export function useSquadDetail(squad: Squad | null, squads: ReturnType<typeof us
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
   </View>;
   const sheets = <>
-    <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={leading} memberships={squads.squads.length}
+    <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={leading} memberships={squads.squads.length} leadCount={squads.squads.filter(item => item.ownerIsYou).length} limits={squads.limits}
       onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
     <SquadEditSheet squad={squad} visible={squads.online && editing} onClose={() => setEditing(false)} onSave={squads.update} />
     {confirm && squad && <SheetConfirmation elevated destructive={confirm.kind !== "code"}

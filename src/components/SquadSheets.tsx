@@ -57,15 +57,18 @@ export function SquadEditSheet({ squad, visible, onClose, onSave }: {
 }
 
 /** Join with a friend's code, or start a squad with a name. */
-export function SquadJoinSheet({ visible, online, leading = null, memberships = 0, onClose, onJoin, onCreate }: {
+export function SquadJoinSheet({ visible, online, leading = null, leadCount, memberships = 0, limits = SQUAD_LIMITS, onClose, onJoin, onCreate }: {
   visible: boolean; online: boolean; leading?: string | null; memberships?: number; onClose: () => void; onJoin: (code: string) => Promise<string | null>; onCreate: (name: string) => Promise<string | null>;
+  /** How many squads you lead now, and your limits from the server. */
+  leadCount?: number; limits?: { lead: number; member: number };
 }) {
   const [mode, setMode] = useState<"join" | "create">("join"), [code, setCode] = useState(""), [name, setName] = useState("");
   const [error, setError] = useState(""), [busy, setBusy] = useState(false), [wasVisible, setWasVisible] = useState(visible);
   if (wasVisible !== visible) { setWasVisible(visible); if (visible) { setMode("join"); setCode(""); setName(""); setError(""); setBusy(false); } }
   const input = useRef<TextInput>(null);
   // Join and Create stay tappable; a missing code or name is explained instead of greying the button out.
-  const full = memberships >= SQUAD_LIMITS.member, blocked = mode === "create" ? !!leading || full : full;
+  const led = leadCount ?? (leading ? 1 : 0), leadFull = led >= limits.lead;
+  const full = memberships >= limits.member, blocked = mode === "create" ? leadFull || full : full;
   const ready = online && !busy && !blocked;
   const submit = async () => {
     if (!ready) return;
@@ -89,10 +92,10 @@ export function SquadJoinSheet({ visible, online, leading = null, memberships = 
       </View> : <SheetTextInput value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={40} placeholder="For example, Calc crew" placeholderTextColor={colors.secondary}
         accessibilityLabel="Squad name" returnKeyType="done" onSubmitEditing={() => void submit()} style={s.input} />}
       <Text style={s.hint}>{!online ? "Connect to the internet to join or create a squad."
-        : full ? `You're in ${SQUAD_LIMITS.member} squads, the most for now. Leave one to join or start another.`
+        : full ? `You're in ${limits.member} squads, the most for now. Leave one to join or start another.`
         : mode === "join" ? "Ask a friend for their squad's 6-character code. Squads hold up to 8 people, and only members see each other's focus time."
-        : leading ? `You already lead ${leading}. You can lead one squad at a time, so leave it before starting another.`
-        : "You'll lead this squad and get a code to share. You can lead one squad and be in up to three."}</Text>
+        : leadFull ? limits.lead === 1 && leading ? `You already lead ${leading}. You can lead one squad at a time, so leave it before starting another.` : `You lead ${led} squads, the most for now. Leave one before starting another.`
+        : limits.lead === 1 ? "You'll lead this squad and get a code to share. You can lead one squad and be in up to three." : `You'll lead this squad and get a code to share. You can lead up to ${limits.lead} squads and be in up to ${limits.member}.`}</Text>
       {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
       <Pressable disabled={!ready} onPress={() => void submit()} accessibilityRole="button" accessibilityState={{ disabled: !ready, busy }} style={[s.primary, !ready && s.disabled]}>
         <Text style={s.primaryText}>{busy ? "Please wait…" : mode === "join" ? "Join squad" : "Create squad"}</Text></Pressable>

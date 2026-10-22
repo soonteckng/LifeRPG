@@ -42,14 +42,13 @@ function SquadsTab() {
   const only = squads.squads.length === 1 ? squads.squads[0] : null;
   const detail = useSquadDetail(only, squads);
   if (only) return <View style={s.screen}>
+    {/* Joining or starting another squad sits up top, beside the squad's options. */}
     <PersonalPage title={only.name} subtitle="" compact bottomContentInset={bottomInset}
-      action={squads.online ? <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" /> : undefined}>
-      <ContentReveal><View style={s.stack} testID="squads-single">
-        {detail.board}
-        {squads.online && <Pressable onPress={detail.join} accessibilityRole="button" accessibilityLabel="Join or start another squad" style={s.another}>
-          <Ionicons name="add-circle-outline" size={18} color={colors.accent} /><Text style={s.anotherText}>Join or start another squad</Text>
-        </Pressable>}
-      </View></ContentReveal>
+      action={squads.online ? <View style={s.actions}>
+        <CircleButton size={36} label="Join or start another squad" onPress={detail.join} />
+        <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" />
+      </View> : undefined}>
+      <ContentReveal><View style={s.stack} testID="squads-single">{detail.board}</View></ContentReveal>
     </PersonalPage>
     {detail.sheets}
   </View>;
@@ -70,7 +69,7 @@ function SquadsTab() {
               style={[s.primary, !squads.online && s.dim]}><Text style={s.primaryText}>{squads.online ? "Join or start a squad" : "Needs internet"}</Text></Pressable>
           </View>}
       </View></ContentReveal>
-      <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={leading} memberships={squads.squads.length}
+      <SquadJoinSheet visible={squads.online && joining} online={squads.online} leading={leading} memberships={squads.squads.length} leadCount={squads.squads.filter(item => item.ownerIsYou).length} limits={squads.limits}
         onClose={() => setJoining(false)} onJoin={squads.join} onCreate={squads.create} />
     </PersonalPage>
   </View>;
@@ -86,6 +85,5 @@ const s = StyleSheet.create({
   emptyBody: { color: colors.secondary, fontSize: 15, lineHeight: 21, textAlign: "center" },
   primary: { alignSelf: "stretch", minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, marginTop: 8 },
   primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
-  another: { minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 4 },
-  anotherText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
+  actions: { flexDirection: "row", alignItems: "center", gap: 8 },
 });

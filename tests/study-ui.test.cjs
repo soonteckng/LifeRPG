@@ -288,10 +288,10 @@ test('Home shows exams within a week: tap edits, hold wiggles into edit mode; an
   const peek = section('home-squad-section').findAllByType('Sheet').find(x => x.props.label === 'squad peek');
   assert.equal(peek.props.visible, true, 'a tap peeks at the leaderboard');
   await act(async () => { presses(peek, 'See the whole squad')[0].props.onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
-  assert.equal(nav.at(-1), '/squad', 'the whole squad opens as its own page');
+  assert.equal(nav.at(-1), '/squads', 'in one squad, the Squads tab is that squad, so it opens there');
   await act(async () => section('home-squad-section').findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
   await act(async () => { section('home-squad-section').findAll(x => x.props.testID === 'home-squad-open' && x.type === 'Press')[0].props.onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
-  assert.equal(nav.filter(to => to === '/squad').length, 2, 'the squad card in the peek opens it too, so its arrow works');
+  assert.equal(nav.filter(to => to === '/squads').length, 2, 'the squad card in the peek opens it too, so its arrow works');
   await act(async () => presses(section('home-week'), 'This week, 0m. Show by category')[0].props.onPress());
   assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());

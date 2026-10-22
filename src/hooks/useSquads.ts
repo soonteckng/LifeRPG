@@ -1,3 +1,4 @@
+import { useSquadLimits } from "../services/squadLimits";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
@@ -29,7 +30,9 @@ export function useSquads() {
   const run = <T,>(work: (s: NonNullable<typeof scope>, t: NonNullable<ReturnType<typeof transport>>) => Promise<T>, fallback: T) => {
     const live = transport(); return scope && live ? work(scope, live) : Promise.resolve(fallback);
   };
-  return { ...state, online: !!scope && online, refresh,
+  // How many squads this account may lead and be in, as the server says.
+  const limits = useSquadLimits(ownerId ?? "", !!scope && online);
+  return { ...state, online: !!scope && online, refresh, limits,
     create: (name: string) => run((s, t) => squadStore.create(s, t, name), offline as string | null),
     join: (code: string) => run((s, t) => squadStore.join(s, t, code), offline as string | null),
     leave: (id: string) => run((s, t) => squadStore.leave(s, t, id), offline as string | null),
