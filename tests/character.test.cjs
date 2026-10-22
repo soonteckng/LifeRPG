@@ -605,6 +605,7 @@ test("Settings prevents logout while a session is running, paused or unresolved"
     const ui = await screen("src/app/settings.tsx", {
       ...sheetMocks,
       "../components/DeveloperTools": () => null,
+      "../components/DeleteAccount": () => null,
       "expo-router": { useRouter: () => ({ navigate() {} }) },
       "expo-notifications": {
         getPermissionsAsync: async () => ({ granted: true }),
@@ -723,6 +724,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
   const ui = await screen("src/app/settings.tsx", {
     ...sheetMocks,
     "../components/DeveloperTools": () => null,
+      "../components/DeleteAccount": () => null,
     expo: { isRunningInExpoGo: () => true },
     "expo-router": { useRouter: () => ({ navigate() {} }) },
     "../context/UserContext": {

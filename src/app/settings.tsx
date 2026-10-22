@@ -22,6 +22,7 @@ import { afterTransition } from "../utils/afterTransition";
 import { cachedDailyGoal, rememberDailyGoal } from "../utils/dailyGoalCache";
 import AppBuildInfo from "../components/AppBuildInfo";
 import DeveloperTools from "../components/DeveloperTools";
+import DeleteAccount from "../components/DeleteAccount";
 import Pressable from "../components/MotionPressable";
 import { readSessionTrail } from "../services/sessionTrail";
 
@@ -97,6 +98,7 @@ export default function SettingsScreen() {
       <SettingsGroup footer={sessionBlocksLogout ? "Finish or end your session before signing out." : "Your saved progress stays with your account."}>
         <SettingsRow first danger icon="log-out-outline" title="Sign out" onPress={() => { setError(""); setSigningOut(true); }} />
       </SettingsGroup>
+      <DeleteAccount />
       {/* Support only: holding the version shares the on-phone session log. */}
       <Pressable onLongPress={() => { void readSessionTrail().then(log => Share.share({ message: log || "No session events yet." })).catch(() => {}); }} delayLongPress={800}
         accessible={false} haptic={false}><AppBuildInfo /></Pressable>
