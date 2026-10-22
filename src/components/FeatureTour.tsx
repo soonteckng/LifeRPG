@@ -28,8 +28,8 @@ import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
 export type TourStep = { id: string; route: string; kind: "info" | "tap"; target?: string; expect?: string; title: string; body: string; next?: string };
 export const TOUR_STEPS: readonly TourStep[] = [
   { id: "welcome", route: "/", kind: "info", title: "Welcome to LifeRPG!", body: "Let’s take a quick look around. It only takes a minute, and the app waits for you while we go.", next: "Let’s go" },
-  { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. The big button starts your next session, and Other session is there for anything else." },
-  { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Your routines", body: "The things you come back to live here. One tap and you’re off. See all shows the full list." },
+  { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. Tap the card for your day, and the three dots let you change your goal." },
+  { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Start a session", body: "Sessions start here. Your routines wait as one-tap buttons, and you can always focus on anything else. Hold a routine to change it." },
   { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap on Routines", body: "" },
   { id: "routines-just-focus", route: "/routines", kind: "info", target: "routines-just-focus", title: "Just focus", body: "Pick anything, set your own time and go. Further down, ideas for what you chose are waiting, ready to save as your own routines." },
   { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap on Study", body: "" },
@@ -37,9 +37,9 @@ export const TOUR_STEPS: readonly TourStep[] = [
   { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap on Squads", body: "" },
   { id: "squads-overview", route: "/squads", kind: "info", title: "Better together", body: "Make a squad or join a friend’s, and you’ll cheer each other on through the week. Totally optional, jump in whenever you like." },
   { id: "tap-progress", route: "/squads", kind: "tap", target: "tab-progress", expect: "/progress", title: "Tap on Progress", body: "" },
-  { id: "progress-overview", route: "/progress", kind: "info", title: "Watch it grow", body: "Every minute you focus shows up here, sorted by category, along with your streak and milestones." },
+  { id: "progress-overview", route: "/progress", kind: "info", title: "Watch it grow", body: "Every minute you focus shows up here, sorted by category. Switch between one day and the whole week or month, and tap a category to see its sessions. Your streak and milestones are further down." },
   { id: "tap-home", route: "/progress", kind: "tap", target: "tab-index", expect: "/", title: "Tap on Home", body: "" },
-  { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your companion any time for your profile and milestones. The gear opens Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
+  { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your companion for your profile, or your level to see what’s ahead. The gear opens Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
 const pendingOwners = new Set<string>();

@@ -156,11 +156,11 @@ test('Back returns to the previous tip, skips tap steps and takes the page with 
   await ui.next();await ui.next();await ui.next();await ui.openTab('/routines');
   assert.equal(ui.title(),'Just focus');
   await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Your routines','skips "Tap Routines" back to the last tip');
+  assert.equal(ui.title(),'Start a session','skips "Tap Routines" back to the last tip');
   assert.equal(ui.routes.at(-1),'/','and returns to its page');
   await ui.next();assert.equal(ui.title(),'Tap on Routines');
   await ui.back();await ui.advance(1200);
-  assert.equal(ui.title(),'Your routines','hardware Back on a tap step goes back too');
+  assert.equal(ui.title(),'Start a session','hardware Back on a tap step goes back too');
  }finally{await ui.cleanup();}
 });
 
@@ -193,4 +193,17 @@ test('new-account setup prepares the guide and the notification invitation toget
  await api.prepareFeatureTour('bob');
  assert.deepEqual(prepared,['bob']);assert.equal(store.get('liferpg:tour:v1:bob'),'pending');
  await api.prepareFeatureTour('');assert.deepEqual(prepared,['bob'],'no owner, nothing prepared');
+});
+
+test("the guide describes today's layout and every highlight still exists", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const read = file => fs.readFileSync(path.resolve(__dirname, "..", file), "utf8");
+  const tour = read("src/components/FeatureTour.tsx"), page = read("src/app/guide.tsx");
+  for (const old of [/big button/i, /Other session/, /every session listed/, /title: "Your routines"/]) {
+    assert.doesNotMatch(tour, old); assert.doesNotMatch(page, old);
+  }
+  const screens = ["src/app/(tabs)/index.tsx", "src/app/(tabs)/routines.tsx", "src/app/(tabs)/study.tsx"].map(read).join("\n");
+  const targets = [...tour.matchAll(/kind: "info", target: "([\w-]+)"/g)].map(match => match[1]);
+  assert.ok(targets.length >= 4);
+  for (const target of targets) assert.match(screens, new RegExp(`TourAnchor id="${target}"`), `${target} is still on screen`);
 });
