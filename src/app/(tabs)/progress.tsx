@@ -52,7 +52,7 @@ import { sessionCategory } from "../../utils/sessionReporting";
 
 type Detail =
   | { kind: "day"; key: string }
-  | { kind: "area"; key: string }
+  | { kind: "area"; key: string; day?: string }
   | { kind: "period" }
   | { kind: "consistency" };
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
@@ -175,7 +175,6 @@ function SessionsByDay({ sessions, areas, timeZone, inSheet = false, onPress }: 
     </View>;
   })}</View>;
 }
-const PREVIEW_SESSIONS = 3;
 
 export default function ProgressScreen() {
   const timer = useTimer({ live: false });
@@ -252,9 +251,10 @@ export default function ProgressScreen() {
     detail?.kind === "area"
       ? analytics?.areas.find((a) => a.key === detail.key)
       : null;
+  const onDay = (session: ProgressSession, day: string) => dateKey(new Date(session.completed_at!), timeZone) === day;
   const detailSessions =
     detail?.kind === "period" ? analytics?.sessions ?? []
-      : (activeDay?.sessions ?? activeArea?.sessions ?? []);
+      : activeDay?.sessions ?? (activeArea ? detail?.kind === "area" && detail.day ? activeArea.sessions.filter(item => onDay(item, detail.day!)) : activeArea.sessions : []);
   const detailTitle = selectedSession
     ? "Session details"
     : detail?.kind === "period" ? `Sessions · ${mode === "week" ? "Week" : "Month"}`
@@ -268,10 +268,12 @@ export default function ProgressScreen() {
             })
           : (activeArea?.title ?? "Details");
   const heroDay = analytics ? progressHeroDay(analytics, period, selectedDayKey) : undefined;
-  const listedSessions = sessionScope === "period"
-    ? analytics?.sessions ?? [] : heroDay?.sessions ?? [];
-  const listDetail: Detail = sessionScope === "day" && heroDay
-    ? { kind: "day", key: heroDay.key } : { kind: "period" };
+  // By category reads either the chosen day or the whole week or month.
+  const scopedAreas = !analytics ? [] : sessionScope === "period" || !heroDay ? analytics.areas
+    : analytics.areas.map(area => { const sessions = area.sessions.filter(item => onDay(item, heroDay.key));
+      return { ...area, sessions, seconds: sessions.reduce((sum, item) => sum + item.duration_seconds, 0) }; })
+      .filter(area => area.seconds > 0).sort((a, b) => b.seconds - a.seconds);
+  const scopedSeconds = scopedAreas.reduce((sum, area) => sum + area.seconds, 0);
   const selectDay = (key: string) => {
     setSessionScope("day");
     if (key === heroDay?.key) { open({ kind: "day", key }); void appPreferences.retireHint("progress-day"); }
@@ -279,12 +281,6 @@ export default function ProgressScreen() {
       tick();
       setSelectedDayKey(key);
     }
-  };
-  const openListedSession = (session: ProgressSession) => {
-    tick();
-    setDetail(listDetail);
-    setSelectedSession(session);
-    setSheetVisible(true);
   };
   const dayLabel = heroDay?.key === today ? "Today’s effort"
     : heroDay ? `${calendarLabel(heroDay.key, { weekday: "short", month: "short", day: "numeric" })} · recorded effort` : "Recorded effort";
@@ -554,32 +550,8 @@ export default function ProgressScreen() {
                 </View>
               </View>}
               {!freshPeriod && <>
-              <Section title="By category" />
-              {analytics.areas.length ? <View style={s.categoryStack}>
-                {/* Two small tiles a row: each ring is that category's share of the time. */}
-                {analytics.areas.map(area => { const share = area.seconds / Math.max(1, analytics.seconds);
-                  return <Pressable key={area.key}
-                  onPress={() => open({ kind: "area", key: area.key })} accessibilityRole="button"
-                  accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
-                  <ProgressRing size={46} stroke={4} progress={share} color={area.color} track={colors.accentSoft}>
-                    <Text style={s.categoryShare}>{Math.round(share * 100)}%</Text>
-                  </ProgressRing>
-                  <View style={s.categoryCopy}>
-                    <Text style={s.categoryName} numberOfLines={2}>{area.title}</Text>
-                    <Text style={s.areaRowValue}>{durationLabel(area.seconds)}</Text>
-                  </View>
-                </Pressable>; })}
-              </View> : <View style={s.card}>
-                <Empty
-                  icon="leaf-outline"
-                  title="Room to grow"
-                  body="Your completed sessions will show where you’re investing your time."
-                />
-              </View>}
-              <Section title="Sessions" subtitle={sessionScope === "period"
-                ? `${listedSessions.length} completed this ${mode}`
-                : `${heroDay ? calendarLabel(heroDay.key, { weekday: "long", month: "short", day: "numeric" }) : "Selected day"} · ${listedSessions.length} completed`} />
-              <View style={s.segment} accessibilityRole="tablist" accessibilityLabel="Session list range">
+              <Section title="By category" subtitle={sessionScope === "day" && heroDay ? `${calendarLabel(heroDay.key, { weekday: "long", month: "short", day: "numeric" })} · tap a day above to change` : `Your whole ${mode}`} />
+              <View style={s.segment} accessibilityRole="tablist" accessibilityLabel="Category range">
                 <View pointerEvents="none" style={s.segmentTrack}>
                   <SlidingSelection index={sessionScope === "day" ? 0 : 1} style={s.segmentSelected} />
                 </View>
@@ -587,29 +559,36 @@ export default function ProgressScreen() {
                   onPress={() => { tick(); setSessionScope(scope); }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: sessionScope === scope }}
-                  accessibilityLabel={scope === "day" ? "Sessions for selected day" : `Sessions for selected ${mode}`}
+                  accessibilityLabel={scope === "day" ? "Categories for selected day" : `Categories for selected ${mode}`}
                   style={s.segmentButton}>
                   <Text style={[s.segmentText, sessionScope === scope && s.segmentActive]}>
                     {scope === "day" ? "Selected day" : `Whole ${mode}`}
                   </Text>
                 </Pressable>)}
               </View>
-              {/* A short preview, newest first under each day; the full list opens in a sheet. */}
-              <View testID="progress-session-list">
-                {listedSessions.length ? <SessionsByDay sessions={[...listedSessions].sort((a, b) => Date.parse(b.completed_at!) - Date.parse(a.completed_at!)).slice(0, PREVIEW_SESSIONS)}
-                  areas={data.areas} timeZone={timeZone} onPress={openListedSession} />
-                : <View style={s.sessionsCard}><Empty icon="time-outline" title="No completed sessions"
-                  body={sessionScope === "day" ? heroDay?.future
-                    ? "This day’s completed sessions will appear here."
-                    : "Completed sessions for this day will appear here."
-                    : `Completed sessions for this ${mode} will appear here.`} /></View>}
-              </View>
-              {listedSessions.length > PREVIEW_SESSIONS && <Pressable onPress={() => open(listDetail)} accessibilityRole="button"
-                accessibilityLabel={sessionScope === "period" ? "View sessions in selected period" : "View sessions for selected day"}
-                style={[s.sessionsCard, s.historyEntrance]}>
-                <Text style={s.link}>{`See all ${listedSessions.length} sessions`}</Text>
-                <Ionicons name="chevron-forward" size={18} color={colors.accent} />
-              </Pressable>}
+              {scopedAreas.length ? <View style={s.categoryStack} testID="progress-categories">
+                {/* Each ring is that category's share of the time shown; tap for its sessions, by day. */}
+                {scopedAreas.map(area => { const share = area.seconds / Math.max(1, scopedSeconds);
+                  return <Pressable key={area.key}
+                  onPress={() => open({ kind: "area", key: area.key, day: sessionScope === "day" ? heroDay?.key : undefined })} accessibilityRole="button"
+                  accessibilityLabel={`${focusAreaTitle(area.title)}, ${durationLabel(area.seconds)}. View sessions`} style={s.categoryCard}>
+                  <View style={s.categoryTop}>
+                    <ProgressRing size={56} stroke={5} progress={share} color={area.color} track={colors.accentSoft}>
+                      <Text style={s.categoryShare}>{Math.round(share * 100)}%</Text>
+                    </ProgressRing>
+                    <Ionicons name="chevron-forward" size={16} color={colors.muted} />
+                  </View>
+                  <Text style={s.categoryName} numberOfLines={2}>{area.title}</Text>
+                  <Text style={s.categoryTime}>{durationLabel(area.seconds)}</Text>
+                  <Text style={s.caption}>{area.sessions.length} {area.sessions.length === 1 ? "session" : "sessions"}</Text>
+                </Pressable>; })}
+              </View> : <View style={s.card}>
+                <Empty
+                  icon="leaf-outline"
+                  title={sessionScope === "day" ? heroDay?.future ? "Time ahead of you" : "Nothing on this day" : "Room to grow"}
+                  body={sessionScope === "day" ? "Tap another day in the chart above, or see your whole " + mode + "." : "Your completed sessions will show where you’re investing your time."}
+                />
+              </View>}
               </>}
               <Section
                 title="Consistency"
@@ -838,10 +817,11 @@ const s = StyleSheet.create({
   dayGroups: { gap: 14 }, dayGroup: { gap: 8 },
   dayHeading: { color: colors.secondary, fontSize: 14, lineHeight: 19, fontWeight: "600", paddingHorizontal: 4 },
   categoryStack: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  categoryCard: { ...edge, flexBasis: "45%", flexGrow: 1, maxWidth: "50%", minHeight: 76, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, backgroundColor: colors.surface },
-  categoryCopy: { flex: 1, minWidth: 0, gap: 2 },
-  categoryShare: { color: colors.text, fontSize: 11, lineHeight: 14, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  categoryName: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  categoryCard: { ...edge, flexBasis: "45%", flexGrow: 1, maxWidth: "50%", minHeight: 160, gap: 4, padding: 14, borderRadius: 20, backgroundColor: colors.surface },
+  categoryTop: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 8 },
+  categoryShare: { color: colors.text, fontSize: 13, lineHeight: 16, fontWeight: "700", fontVariant: ["tabular-nums"] },
+  categoryName: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  categoryTime: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", fontVariant: ["tabular-nums"] },
   historyEntrance: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, minHeight: 50 },
   page: { paddingHorizontal: 20, paddingTop: 0, paddingBottom: 24 },
   flex: { flex: 1, minWidth: 0 },

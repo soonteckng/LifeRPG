@@ -578,10 +578,11 @@ test("selected-period session details retain the period and do not mutate reward
   const ui = await screenHarness();
   try {
     assert.equal(ui.historyCalls(), 0);
-    await ui.press("Sessions for selected week");
-    // Three or fewer sessions are all in the preview, so no "See all" is needed.
-    assert.equal(ui.renderer.root.findAllByType("Button").some(b => b.props.accessibilityLabel === "View sessions in selected period"), false);
+    await ui.press("Categories for selected week");
     assert.equal(ui.historyCalls(), 0);
+    // Sessions open from their category, grouped by day.
+    const card = ui.renderer.root.findByProps({ testID: "progress-categories" }).findAllByType("Button").find(b => b.props.accessibilityLabel?.endsWith("View sessions"));
+    await act(async () => card.props.onPress());
     const row = ui.renderer.root
       .findAllByType("Button")
       .find(
@@ -592,7 +593,7 @@ test("selected-period session details retain the period and do not mutate reward
     await act(async () => row.props.onPress());
     assert.match(ui.text(), /already saved/);
     await ui.press("Back to sessions");
-    assert.match(ui.text(), /Sessions · Week/);
+    assert.ok(ui.renderer.root.findByType("Sheet").findAllByType("Button").some(b => b.props.accessibilityLabel?.includes("30s,")), "back to the same category list");
     assert.equal(ui.renderer.root.findAllByType("Button").some(b=>b.props.accessibilityLabel==="View all session history"),false);
   } finally {
     await ui.cleanup();
@@ -637,7 +638,7 @@ test("compact Progress keeps the chart before allocation and opens area drilldow
     const text=ui.text();
     assert.ok(text.indexOf("30s") < text.indexOf("Goal reached"));
     assert.ok(text.indexOf("Goal reached") < text.indexOf("By category"));
-    assert.ok(text.indexOf("By category") < text.indexOf("Sessions"));
+    assert.equal(ui.renderer.root.findAllByProps({ testID: "progress-session-list" }).length, 0, "no separate Sessions list; sessions open from a category");
     const area=ui.renderer.root.findAllByType("Button").find(n=>n.props.accessibilityLabel?.endsWith("View sessions"));
     assert.ok(area);
     await act(async()=>area.props.onPress());
@@ -675,10 +676,10 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
     assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#64D2FF", 60], ["#FF9F0A", 60]]);
-    await ui.press("Sessions for selected week");
+    await ui.press("Categories for selected week");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
-    const rows = ui.renderer.root.findByProps({testID: "progress-session-list"}).findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
-    assert.equal(rows.length, 2);
+    const cards = ui.renderer.root.findByProps({ testID: "progress-categories" }).findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View sessions"));
+    assert.equal(cards.length, 2, "each area keeps its own card");
   } finally { await ui.cleanup(); }
 });
 test("Month By category opens both legacy Wellbeing sessions from one combined row", async () => {
@@ -715,11 +716,11 @@ test("week and month session lists exclude comparison dates and unrelated histor
  const previousWeek=shiftDay(week.start,-1),previousMonth=shiftDay(month.start,-1);
  const rows=[session('current',60,new Date(Date.now()-1000).toISOString()),session('comparison',120,previousWeek+'T04:00:00Z'),session('old-month',180,previousMonth+'T04:00:00Z')];
  const ui=await screenHarness({sessionRows:rows});
- const labels=()=>ui.renderer.root.findByProps({testID:'progress-session-list'}).findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session')).map(b=>b.props.accessibilityLabel);
+ const cards=()=>ui.renderer.root.findByProps({testID:'progress-categories'}).findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View sessions')).map(b=>b.props.accessibilityLabel);
  try{
-  await ui.press('Sessions for selected week');assert.equal(labels().length,1);assert.match(labels()[0],/1m,/);assert.doesNotMatch(ui.text(),/View all history/);
-  await ui.press('Month view');await ui.press('Sessions for selected month');
-  assert.equal(labels().length,previousWeek>=month.start?2:1);assert.ok(labels().every(label=>!label.includes('3m,')));assert.equal(ui.historyCalls(),0);
+  await ui.press('Categories for selected week');assert.equal(cards().length,1);assert.match(cards()[0],/, 1m\. View sessions$/,'only this week');assert.doesNotMatch(ui.text(),/View all history/);
+  await ui.press('Month view');await ui.press('Categories for selected month');
+  assert.match(cards()[0],previousWeek>=month.start?/, 3m\. View sessions$/:/, 1m\. View sessions$/);assert.ok(cards().every(label=>!label.includes('6m')),'never the previous month');assert.equal(ui.historyCalls(),0);
  }finally{await ui.cleanup();}
 });
 test("local Monday week rollover excludes Sunday while month retains both dates", () => {
@@ -867,7 +868,7 @@ test("Progress separates today's effort from the period total and keeps a tapped
 
 function calendarLabelForTest(key) { return analytics.calendarLabel(key); }
 
-test("the session list follows the selected day; its week toggle never changes the day or queries history", async () => {
+test("By category follows the selected day; its week toggle never changes the day or queries history", async () => {
   const today = dateKey(new Date(), TZ);
   const week = periodFor("week", today, TZ);
   const monday = shiftDay(week.start, -7), friday = shiftDay(monday, 4);
@@ -876,31 +877,29 @@ test("the session list follows the selected day; its week toggle never changes t
     session("friday", 120, `${friday}T04:00:00Z`),
     session("outside", 900, `${shiftDay(monday, -1)}T04:00:00Z`),
   ] });
-  const listRows = () => ui.renderer.root.findByProps({ testID: "progress-session-list" })
-    .findAllByType("Button").filter(button => button.props.accessibilityLabel?.endsWith("View session"));
+  const cards = () => ui.renderer.root.findByProps({ testID: "progress-categories" })
+    .findAllByType("Button").filter(button => button.props.accessibilityLabel?.endsWith("View sessions")).map(button => button.props.accessibilityLabel);
   const heroText = () => {
     const text = node => typeof node === "string" ? node : (node.children ?? []).map(text).join("");
     return text(ui.renderer.root.findByProps({ testID: "progress-day-hero" }));
   };
   try {
     await ui.press("Previous week");
-    assert.equal(listRows().length, 1, "the most recent recorded day is the default in a historical week");
-    assert.match(listRows()[0].props.accessibilityLabel, /2m,/);
+    assert.match(cards()[0], /, 2m\. View sessions$/, "the most recent recorded day is the default in a historical week");
     const selectedHero = heroText();
-    await ui.press("Sessions for selected week");
-    assert.equal(listRows().length, 2);
-    assert.equal(heroText(), selectedHero, "the week list does not turn the hero into a week total");
-    assert.ok(listRows().every(row => !row.props.accessibilityLabel.includes("15m,")), "comparison dates stay out of the week list");
+    await ui.press("Categories for selected week");
+    assert.match(cards()[0], /, 3m\. View sessions$/);
+    assert.equal(heroText(), selectedHero, "the week toggle does not turn the hero into a week total");
+    assert.ok(cards().every(label => !label.includes("18m")), "comparison dates stay out of the week");
     const mondayBar = () => ui.renderer.root.findAllByType("Button").find(button => button.props.testID === `progress-day-${monday}`);
     await act(async () => mondayBar().props.onPress());
     assert.equal(ui.renderer.root.findByType("Sheet").props.visible, false);
     assert.match(heroText(), /recorded effort1m/);
-    assert.equal(listRows().length, 1, "selecting a different bar returns the list to that day");
-    assert.match(listRows()[0].props.accessibilityLabel, /1m,/);
-    await ui.press("Sessions for selected week");
-    assert.equal(listRows().length, 2);
-    await ui.press("Sessions for selected day");
-    assert.equal(listRows().length, 1);
+    assert.match(cards()[0], /, 1m\. View sessions$/, "picking a bar returns the categories to that day");
+    await ui.press("Categories for selected week");
+    assert.match(cards()[0], /, 3m\. View sessions$/);
+    await ui.press("Categories for selected day");
+    assert.match(cards()[0], /, 1m\. View sessions$/);
     assert.equal(ui.historyCalls(), 0, "both scopes reuse the bounded period data");
   } finally { await ui.cleanup(); }
 });
@@ -932,20 +931,20 @@ test("bar taps select once and open only on a repeated selection, with one hapti
   } finally { await ui.cleanup(); }
 });
 
-test("an inline session opens its saved detail and returns to the same day list", async () => {
+test("a category on the selected day opens that day's sessions; a session opens its detail and comes back", async () => {
   const ui = await screenHarness();
   try {
-    const list = ui.renderer.root.findByProps({ testID: "progress-session-list" });
-    const row = list.findAllByType("Button").find(button => button.props.accessibilityLabel?.endsWith("View session"));
-    assert.ok(row);
-    await act(async () => row.props.onPress());
-    assert.equal(ui.renderer.root.findByType("Sheet").props.visible, true);
+    const card = ui.renderer.root.findByProps({ testID: "progress-categories" }).findAllByType("Button").find(button => button.props.accessibilityLabel?.endsWith("View sessions"));
+    assert.ok(card);
+    await act(async () => card.props.onPress());
+    const sheetRows = () => ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(button => button.props.accessibilityLabel?.endsWith("View session"));
+    const count = sheetRows().length;
+    assert.ok(count >= 1);
+    await act(async () => sheetRows()[0].props.onPress());
     assert.match(ui.text(), /already saved/);
     await ui.press("Back to sessions");
-    const sheetRows = ui.renderer.root.findByType("Sheet").findAllByType("Button")
-      .filter(button => button.props.accessibilityLabel?.endsWith("View session"));
-    assert.equal(sheetRows.length, 1);
-    assert.equal(ui.renderer.root.findAllByType("Button").find(button => button.props.accessibilityLabel === "Sessions for selected day").props.accessibilityState.selected, true);
+    assert.equal(sheetRows().length, count, "back to the same day's list");
+    assert.equal(ui.renderer.root.findAllByType("Button").find(button => button.props.accessibilityLabel === "Categories for selected day").props.accessibilityState.selected, true);
     assert.equal(ui.historyCalls(), 0);
   } finally { await ui.cleanup(); }
 });
@@ -976,17 +975,19 @@ test("offline, Progress says so calmly instead of offering a retry that cannot w
     assert.equal(ui.renderer.root.findAllByType("Button").some((b) => b.props.accessibilityLabel === "Retry Progress"), false);
   } finally { await ui.cleanup(); }
 });
-test("Sessions shows the newest three under their day; See all opens every session grouped by day",async()=>{
- const now=Date.now(),rows=[0,1,2,3,4].map(n=>session(`s${n}`,60*(n+1),new Date(now-1000-n*60000).toISOString()));
+test("a category's sessions sit under their day: the chosen day only, or the whole week grouped by day",async()=>{
+ const today=dateKey(new Date(),TZ),week=periodFor('week',today,TZ),monday=shiftDay(week.start,-7),tuesday=shiftDay(monday,1);
+ const rows=[session('m1',60,`${monday}T04:00:00Z`),session('m2',120,`${monday}T05:00:00Z`),session('t1',180,`${tuesday}T04:00:00Z`)];
  const ui=await screenHarness({sessionRows:rows});
- const inList=()=>ui.renderer.root.findByProps({testID:'progress-session-list'}).findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session'));
+ const openCard=async()=>{const card=ui.renderer.root.findByProps({testID:'progress-categories'}).findAllByType('Button').find(b=>b.props.accessibilityLabel?.endsWith('View sessions'));await act(async()=>card.props.onPress());};
+ const sheetRows=()=>ui.renderer.root.findByType('Sheet').findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session'));
+ const close=async()=>{await act(async()=>ui.renderer.root.findByType('Sheet').props.onRequestClose());await act(async()=>ui.renderer.root.findByType('Sheet').props.onDismiss?.());};
  try{
-  await ui.press('Sessions for selected week');
-  assert.equal(inList().length,3,'a preview, not every session');
-  assert.ok(ui.renderer.root.findAllByProps({testID:'sessions-by-day'}).length>0,'grouped under its day');
-  await ui.press('View sessions in selected period');
-  const sheetRows=ui.renderer.root.findByType('Sheet').findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session'));
-  assert.equal(sheetRows.length,5,'See all lists every session');
-  assert.match(ui.text(),/\d sessions? · /,'each day says how many');
+  await ui.press('Previous week');
+  await openCard();assert.equal(sheetRows().length,1,'the selected day (Tuesday) only');await close();
+  await ui.press('Categories for selected week');await openCard();
+  assert.equal(sheetRows().length,3,'the whole week');
+  assert.equal(ui.renderer.root.findByType('Sheet').findAllByProps({testID:'sessions-by-day'}).length>0,true);
+  assert.match(ui.text(),/2 sessions · 3m/,'Monday heads its two sessions');
  }finally{await ui.cleanup();}
 });

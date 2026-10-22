@@ -97,9 +97,8 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   const progress = squad ? goalProgress(squad) : null, left = tile ? daysLeftInWeek() : 0;
   const live = squad ? squad.members.filter(member => member.focusingNow).length : 0, place = tile && squad ? yourPlace(squad) : null;
   // The whole tile is one tap target: its contents never take the touch.
-  const tileCard = squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
-    accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={[s.card, s.tile]}>
-    <View style={s.tileFill} pointerEvents="none">
+  const tileCard = squad ? <View style={[s.card, s.tile]}>
+    <View style={s.tileFill} importantForAccessibility="no-hide-descendants">
     <View style={s.tileHead}><Text style={s.tileLabel}>Squad</Text><Text style={s.tileMeta} numberOfLines={1}>{!squads.online ? "Offline" : progress !== null && progress >= 1 ? "Goal reached" : `${left} ${left === 1 ? "day" : "days"} left`}</Text></View>
     <Text style={s.tileName} numberOfLines={1}>{squad.name}</Text>
     {/* Who's in it, so the tile feels like your people rather than a number. */}
@@ -112,7 +111,10 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
       {progress !== null && <View style={s.tileTrack}><View style={[s.tileFillBar, { width: `${Math.max(progress > 0 ? 4 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
     </View>
     </View>
-  </Pressable> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
+    {/* One clear layer over the whole card takes every tap, wherever it lands. */}
+    <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad" style={s.tileTap}
+      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} />
+  </View> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
     accessibilityLabel={squads.online ? "Focus with friends. Join or start a squad" : "Focus with friends. Needs internet"} testID="home-squad-empty" style={[s.card, s.tile]}>
     <View style={s.tileHead}><Text style={s.tileLabel}>Squad</Text>{squads.online && <Ionicons name="add-circle" size={22} color={colors.accent} />}</View>
     <Text style={s.tileName} numberOfLines={2}>Focus with friends</Text>
@@ -184,8 +186,8 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
   const changeLine = !week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`;
   return <View style={tile ? s.tileSection : s.section} testID="home-week">
-    {tile ? <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.tile]}>
-      <View style={s.tileFill} pointerEvents="none">
+    {tile ? <View style={[s.card, s.tile]}>
+      <View style={s.tileFill} importantForAccessibility="no-hide-descendants">
       <Text style={s.tileLabel}>This week</Text>
       <Text style={s.tileTotal}>{durationLabel(week?.seconds ?? 0)}</Text>
       <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={2}>{changeLine}</Text>
@@ -194,7 +196,8 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
         <WeekBars height={30} />
       </View>
       </View>
-    </Pressable> : <>
+      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={s.tileTap} />
+    </View> : <>
     <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
     <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
       <View style={s.flex}>
@@ -235,6 +238,7 @@ const s = StyleSheet.create({
   tileSection: { flex: 1, minWidth: 0 },
   tile: { flex: 1 },
   tileFill: { flex: 1, gap: 4 },
+  tileTap: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 2, borderRadius: radius.card },
   tileFaces: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
   tileFace: { borderRadius: 15, borderWidth: 2, borderColor: colors.surface },
   tileHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },

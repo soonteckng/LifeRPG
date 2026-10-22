@@ -558,3 +558,27 @@ test('removing a subject with an exam coming up says so first; one without an ex
     assert.equal(confirm.title, 'Remove Art?', 'no exam, the usual question');
   } finally { await act(async () => ui.unmount()); }
 });
+test('Home squad tile: one tap layer covers the whole card and opens the leaderboard; the contents never take the tap', async () => {
+  const squad = { id: id(8), name: 'Library crew', code: 'K7Q4PX', goalMinutes: 300, members: [{ id: id(9), name: 'Aina', weekSeconds: 3600, focusingNow: false, isYou: true, level: 2 }] };
+  const { HomeSquad } = load('src/components/HomeSections.tsx', { ...base(),
+    'expo-router': { useRouter: () => ({ navigate() {} }) },
+    '/useSquads': { useSquads: () => ({ squads: [squad], online: true }) }, '/useStudyPlan': {}, '/useStudyLauncher': {}, '/useProgressData': {},
+    '/QuestContext': {}, '/UserContext': {}, '/TimerContext': {}, '/ExamRow': host('Exam'), '/ExamsCard': host('Exams'),
+    '/MilestonesRow': host('Milestones'), '/StudyExamSheet': host('ExamSheet'),
+    '/SquadsSection': { SquadSummary: host('Summary'), daysLeftInWeek: () => 4, yourPlace: () => null }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') },
+    '/SheetHeader': host('Header'), '/SectionHeader': { __esModule: true, default: host('Section'), SeeAll: host('SeeAll') },
+    '/squadSelection': { squadSelection: { get: () => null, choose() {} } },
+  });
+  let ui; await act(async () => { ui = create(React.createElement(HomeSquad, { tile: true })); });
+  try {
+    const outsideSheets = node => { for (let at = node.parent; at; at = at.parent) if (at.type === 'Sheet') return false; return true; };
+    const presses = ui.root.findAllByType('Press').filter(outsideSheets);
+    assert.equal(presses.length, 1, 'exactly one tap target on the card');
+    const tap = presses[0];
+    assert.equal(tap.props.testID, 'home-squad'); assert.equal(tap.props.style.position, 'absolute'); assert.equal(tap.props.style.top, 0); assert.equal(tap.props.style.bottom, 0);
+    assert.equal(tap.props.children, undefined, 'nothing inside the layer can catch the touch');
+    await act(async () => tap.props.onPress());
+    assert.equal(ui.root.findAllByType('Sheet').find(x => x.props.label === 'squad peek').props.visible, true);
+    assert.ok(ui.root.findAllByType('Face').length > 0, 'the gap shows your squad');
+  } finally { await act(async () => ui.unmount()); }
+});
