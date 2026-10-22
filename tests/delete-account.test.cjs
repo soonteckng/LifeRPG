@@ -38,35 +38,79 @@ test('the phone forgets only the deleted account', async () => {
 });
 
 async function screen({ session = false, online = true, unsynced = 0, deleted = true } = {}) {
-  const log = [];
+  const log = [], timers = [];
+  const realSet = global.setTimeout, realClear = global.clearTimeout;
+  // The ten-second wait runs on a fake clock, one tick per "second".
+  global.setTimeout = (fn, ms) => { if (ms === 1000) { timers.push(fn); return timers.length; } return realSet(fn, ms); };
+  global.clearTimeout = id => { if (typeof id === 'number' && id <= timers.length) timers[id - 1] = null; else realClear(id); };
   const Delete = load('src/components/DeleteAccount.tsx', {
     react: React,
+    'react-native': { View: host('View'), StyleSheet: { create: v => v } },
+    '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll') },
+    './AppText': { Text: host('Text') },
+    './AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
+    './SheetTextInput': props => React.createElement('Input', props),
+    './MotionPressable': host('Press'),
+    './PersonalUI': { PersonalButton: props => React.createElement('Button', props), p: {} },
+    '../constants/theme': { colors: new Proxy({}, { get: () => '#000' }) },
     './SettingsList': { SettingsGroup: host('Group'), SettingsRow: props => React.createElement('Row', props) },
     './SheetConfirmation': props => React.createElement('Confirm', props),
     '../context/AuthContext': { useAuth: () => ({ accessMode: online ? 'online' : 'offline', signOut: async () => { log.push('signOut'); return { error: null }; } }) },
-    '../context/UserContext': { useUser: () => ({ profile: { id: owner } }) },
+    '../context/UserContext': { useUser: () => ({ profile: { id: owner, username: '8k' } }) },
     '../context/TimerContext': { useTimer: () => ({ hasOpenSession: session, unsyncedSessionCount: unsynced }) },
     '../services/accountDeletion': { deleteMyAccount: async () => { log.push('delete'); return deleted; }, forgetAccountOnPhone: async id => { log.push(`forget:${id}`); } },
-  }).default;
-  let renderer; await act(async () => { renderer = create(React.createElement(Delete)); });
+  });
+  let renderer; await act(async () => { renderer = create(React.createElement(Delete.default)); });
+  const find = id => renderer.root.findAll(n => n.props.testID === id && typeof n.type !== 'string')[0];
   return { renderer, log, row: () => renderer.root.findByType('Row'), confirm: () => renderer.root.findAllByType('Confirm')[0], footer: () => renderer.root.findByType('Group').props.footer,
-    cleanup: () => act(async () => renderer.unmount()) };
+    sheet: () => renderer.root.findAllByType('Sheet')[0], input: () => find('delete-account-name'), button: () => find('delete-account-confirm'),
+    tick: async (n = 1) => { for (let i = 0; i < n; i++) await act(async () => { const fn = timers.filter(Boolean).at(-1); timers.length = 0; fn?.(); }); },
+    cleanup: async () => { await act(async () => renderer.unmount()); global.setTimeout = realSet; global.clearTimeout = realClear; } };
 }
 
-test('Delete account asks once, then deletes, forgets the phone copy and signs out, in that order', async () => {
+test('deleting takes two steps: what goes, then your username and a ten-second wait', async () => {
   const ui = await screen({ unsynced: 2 });
   try {
-    assert.equal(ui.confirm(), undefined);
     await act(async () => ui.row().props.onPress());
     assert.match(ui.confirm().props.message, /deleted for good/);
     assert.match(ui.confirm().props.message, /Squads you lead pass to the next member/);
     assert.match(ui.confirm().props.message, /2 sessions on this phone haven’t synced yet and will be lost too/);
-    assert.equal(ui.confirm().props.destructive, true);
-    await act(async () => ui.confirm().props.onCancel());
-    assert.equal(ui.confirm(), undefined); assert.deepEqual(ui.log, [], 'Keep my account changes nothing');
-    await act(async () => ui.row().props.onPress());
-    await act(async () => { ui.confirm().props.onConfirm(); ui.confirm().props.onConfirm(); });
+    assert.equal(ui.confirm().props.confirmLabel, 'Continue', 'step one never deletes');
+    await act(async () => ui.confirm().props.onConfirm());
+    assert.equal(ui.confirm(), undefined); assert.ok(ui.sheet());
+    assert.deepEqual(ui.log, [], 'nothing is deleted yet');
+    assert.equal(ui.button().props.disabled, true);
+    assert.equal(ui.button().props.accessibilityLabel, 'Delete forever (10)');
+    await act(async () => ui.input().props.onChangeText(' 8K '));
+    assert.equal(ui.button().props.disabled, true, 'the name alone is not enough before the wait');
+    await ui.tick(9);
+    assert.equal(ui.button().props.accessibilityLabel, 'Delete forever (1)'); assert.equal(ui.button().props.disabled, true);
+    await ui.tick(1);
+    assert.equal(ui.button().props.accessibilityLabel, 'Delete forever'); assert.equal(ui.button().props.disabled, false);
+    await act(async () => ui.input().props.onChangeText('8'));
+    assert.equal(ui.button().props.disabled, true, 'a wrong name locks it again');
+    await act(async () => ui.input().props.onChangeText('8k'));
+    await act(async () => { ui.button().props.onPress(); ui.button().props.onPress(); });
     assert.deepEqual(ui.log, ['delete', `forget:${owner}`, 'signOut'], 'one deletion, even with a double tap');
+  } finally { await ui.cleanup(); }
+});
+
+test('Keep my account at either step changes nothing, and the wait starts over next time', async () => {
+  const ui = await screen();
+  try {
+    await act(async () => ui.row().props.onPress());
+    await act(async () => ui.confirm().props.onCancel());
+    assert.equal(ui.confirm(), undefined);
+    await act(async () => ui.row().props.onPress());
+    await act(async () => ui.confirm().props.onConfirm());
+    await ui.tick(10);
+    await act(async () => ui.renderer.root.findAllByType('Button').find(b => b.props.title === 'Keep my account').props.onPress());
+    assert.equal(ui.sheet(), undefined);
+    await act(async () => ui.row().props.onPress());
+    await act(async () => ui.confirm().props.onConfirm());
+    assert.equal(ui.button().props.accessibilityLabel, 'Delete forever (10)');
+    assert.equal(ui.input().props.value, '', 'the typed name is cleared');
+    assert.deepEqual(ui.log, []);
   } finally { await ui.cleanup(); }
 });
 
@@ -75,8 +119,11 @@ test('a failed deletion keeps the account and the phone copy, and says so', asyn
   try {
     await act(async () => ui.row().props.onPress());
     await act(async () => ui.confirm().props.onConfirm());
+    await act(async () => ui.input().props.onChangeText('8k'));
+    await ui.tick(10);
+    await act(async () => ui.button().props.onPress());
     assert.deepEqual(ui.log, ['delete']);
-    assert.equal(ui.confirm(), undefined);
+    assert.equal(ui.sheet(), undefined);
     assert.match(ui.footer(), /Couldn’t delete your account/);
   } finally { await ui.cleanup(); }
 });
