@@ -32,14 +32,14 @@ function remember(id: string, value: ProgressData) {
   cache.set(id, { ...value, at: Date.now() });
   while (cache.size > 6) cache.delete(cache.keys().next().value!);
 }
-async function loadProgress(period: ProgressPeriod, timeZone: string, key: string): Promise<ProgressData> {
-  const bounds = queryBounds(period);
+async function loadProgress(period: ProgressPeriod, timeZone: string, key: string, owner: string): Promise<ProgressData> {
+  const bounds = queryBounds(period), now = new Date(), who = owner || undefined;
   const [sessions, goals, areas, streak, longestStreak] = await Promise.all([
-    getCompletedSessions(bounds.since, bounds.until),
-    getProgressGoals(period.start, period.end),
-    getProgressSubjects(),
-    getFocusStreak(timeZone),
-    getLongestFocusStreak(timeZone),
+    getCompletedSessions(bounds.since, bounds.until, who),
+    getProgressGoals(period.start, period.end, who),
+    getProgressSubjects(who),
+    getFocusStreak(timeZone, now, who),
+    getLongestFocusStreak(timeZone, now, who),
   ]);
   return { key, sessions, goals, areas, streak, longestStreak };
 }
@@ -49,7 +49,7 @@ export function prefetchProgress(owner: string, timeZone: string, now = new Date
   const period = periodFor("week", dateKey(now, timeZone), timeZone, now);
   const key = periodKey(period, timeZone), id = `${owner}|${key}`;
   if (!owner || cache.has(id) || prefetching.has(id)) return;
-  const request = loadProgress(period, timeZone, key);
+  const request = loadProgress(period, timeZone, key, owner);
   prefetching.set(id, request);
   request.then(value => remember(id, value), () => {}).finally(() => prefetching.delete(id));
 }
@@ -78,7 +78,7 @@ export function useProgressData(
     const request = ++generation.current;
     if (!quiet) setLoading(true);
     try {
-      const value = await (prefetching.get(id) ?? loadProgress(latestPeriod.current, timeZone, key));
+      const value = await (prefetching.get(id) ?? loadProgress(latestPeriod.current, timeZone, key, owner));
       if (generation.current === request) {
         remember(id, value);
         setData(value);
@@ -89,7 +89,7 @@ export function useProgressData(
     } finally {
       if (generation.current === request) setLoading(false);
     }
-  }, [id, key, timeZone]);
+  }, [id, key, timeZone, owner]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;

@@ -137,8 +137,10 @@ async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
-export async function getSubjects(): Promise<Subject[]> {
-  const ownerId = await getCurrentUserId();
+export async function getSubjects(owner?: string): Promise<Subject[]> {
+  // A caller that already knows the account passes it, so a sign-in change
+  // while this runs can't return another account's categories.
+  const ownerId = owner || await getCurrentUserId();
   let { data, error } = await supabase
     .from("subjects")
     .select(

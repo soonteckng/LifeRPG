@@ -189,8 +189,9 @@ test('Android setup asks about app protection with Allow buttons, names what can
     await act(async () => button('Allow Usage Access').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call)), [['open', 'usage']]);
     const copy = JSON.stringify(tree.toJSON());
-    assert.match(copy, /You can change all of this in Settings, under Session protection/); assert.match(copy, /can never be blocked/);
-    assert.match(copy, /one 5-minute break, when your apps open up again/, 'the break is explained before the first protected session');
+    assert.match(copy, /you can change it in Settings/); assert.match(copy, /Calls and Settings can never be blocked/);
+    assert.match(copy, /One 5-minute break per session/, 'the break is explained before the first protected session');
+    assert.doesNotMatch(copy, /During a session, only the apps you allow/, 'no long paragraph to read');
     assert.doesNotMatch(copy, /Protection on Home/, 'protection lives in Settings now');
     assert.equal(tree.root.findAllByType('Segmented').length, 0, 'allow list is the one mode, so there is nothing to pick');
     caps = { usage: true, overlay: true, notifications: true };

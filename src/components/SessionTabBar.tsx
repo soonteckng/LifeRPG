@@ -7,7 +7,6 @@ import { useRouter } from "expo-router";
 import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
 import { useEffect, useRef } from "react";
 import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
@@ -42,16 +41,8 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     return () => offs.forEach(off => off());
   }, [register]);
   return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
-    {/* Content fades into the background behind the bars, as on iOS, rather
-      than showing through the gaps between them. */}
-    <Svg pointerEvents="none" style={styles.fade} width="100%" height="100%" preserveAspectRatio="none" viewBox="0 0 1 1">
-      <Defs><LinearGradient id="dockFade" x1="0" y1="0" x2="0" y2="1">
-        <Stop offset="0" stopColor={colors.background} stopOpacity={0} />
-        <Stop offset="1" stopColor={colors.background} stopOpacity={0.9} />
-      </LinearGradient></Defs>
-      <Rect width="1" height="1" fill="url(#dockFade)" />
-    </Svg>
-    <View pointerEvents="none" style={styles.scrim} />
+    {/* A floating dock: nothing paints behind the bars, so the page stays
+      visible around them and only the bars themselves sit on top. */}
     {/* Floats just above the dock, over the content, with no bar behind it. */}
     <View pointerEvents="box-none" style={styles.offline}><OfflineStatus /></View>
     {pinned && <PinnedActionHost route={route} />}
@@ -69,14 +60,10 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     <View ref={bar} collapsable={false}><BottomTabBar {...props} /></View>
   </View>;
 }
-const FADE = 48;
 const GUIDE_TABS = ["index", "routines", "study", "squads", "progress"] as const;
 const styles = StyleSheet.create({
   dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 10, gap: 10 },
-  // A fixed-height fade reads the same on every tab, whatever sits in the dock.
-  fade: { position: "absolute", top: -FADE, left: 0, right: 0, height: FADE },
   offline: { position: "absolute", top: -42, left: 20, right: 20 },
-  scrim: { position: "absolute", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.9)" },
   banner: { minHeight: 60, paddingLeft: 22, paddingRight: 9, paddingVertical: 8, borderRadius: 30, flexDirection: "row", alignItems: "center", gap: 12, overflow: "hidden", backgroundColor: colors.primary },
   title: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   time: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 20, fontWeight: "500", fontVariant: ["tabular-nums"] },

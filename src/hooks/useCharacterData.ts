@@ -20,8 +20,8 @@ let lastSnapshot: Snapshot | null = null;
 let prefetching: { userId: string; request: Promise<CharacterData> } | null = null;
 async function loadCharacter(userId: string): Promise<CharacterData> {
   const [areas, sessions] = await Promise.all([
-    getProgressSubjects(),
-    getCompletedSessions("1970-01-01T00:00:00Z", new Date().toISOString()),
+    getProgressSubjects(userId),
+    getCompletedSessions("1970-01-01T00:00:00Z", new Date().toISOString(), userId),
   ]);
   return { userId, areas, sessions };
 }

@@ -249,7 +249,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const unsaved = ROUTINE_IDEAS.filter(template => !savedNames.has(template.name.toLowerCase()));
   const filtered = ideaFilter === "all" ? unsaved : ideaFilter === "for-you" ? unsaved.filter(template => forYou.includes(template.area)) : unsaved.filter(template => template.area === ideaFilter);
   // In All, ideas sit two to a row and an odd one waits for the next gap, so no card is left alone.
-  const suggestions = ideaFilter === "all" && filtered.length > 1 ? filtered.slice(0, filtered.length - (filtered.length % 2)) : filtered;
+  // Every unsaved idea shows, even when that leaves one tile alone on the last row.
+  const suggestions = filtered;
   const menuArea = menu ? areaOf(menu.entry.areaId) : undefined;
   // An idea (new, or saved under its own name) keeps its category in the editor.
   const editorIdea = editor?.template ?? (editor?.routine ? ROUTINE_IDEAS.find(idea => idea.name.toLowerCase() === editor.routine!.name.trim().toLowerCase()) : undefined);
@@ -275,7 +276,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
           accessibilityRole="button" accessibilityState={{ disabled }} accessibilityLabel={`Start routine ${entry.name}, ${routineDuration(entry.seconds)}`}
           accessibilityHint={entry.kind === "saved" ? "Hold to edit" : undefined} style={[s.startChip, disabled && s.startChipOff]}>
           <View style={[s.startPlay, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="play" size={14} color={tint} style={s.nudge} /></View>
-          <View style={s.flex}><Text style={s.chipName} numberOfLines={1}>{entry.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{routineDuration(entry.seconds)}</Text></View>
+          <View style={s.flex}><Text style={s.chipName} numberOfLines={2}>{entry.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{routineDuration(entry.seconds)}</Text></View>
         </Pressable>;
       })}
       {onAnyActivity && <Pressable disabled={anyBlocked} onPress={onAnyActivity} testID="home-just-focus" accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }}

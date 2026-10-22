@@ -117,15 +117,15 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const intro = step >= FIRST_INTRO ? INTRO_PAGES[step - FIRST_INTRO] : null;
   const skipped = !protection.supported;
   const permissionRows = [
-    { kind: "usage" as const, icon: "eye-outline" as const, title: "Usage Access", hint: "Notices which app is open.", granted: !!caps?.usage, allow: () => protection.openPermission("usage") },
-    { kind: "overlay" as const, icon: "layers-outline" as const, title: "Display over other apps", hint: "Covers an app you set aside.", granted: !!caps?.overlay, allow: () => protection.openPermission("overlay") },
-    { kind: "notifications" as const, icon: "notifications-outline" as const, title: "Notifications", hint: "Break reminders and End session, always in reach.", granted: !!caps?.notifications, allow: async () => { const { enableNotifications } = await import("../services/notificationPermissionService"); await enableNotifications(); await protection.refresh(); } },
+    { kind: "usage" as const, icon: "eye-outline" as const, title: "Usage Access", hint: "Sees which app is open", granted: !!caps?.usage, allow: () => protection.openPermission("usage") },
+    { kind: "overlay" as const, icon: "layers-outline" as const, title: "Display over other apps", hint: "Covers distracting apps", granted: !!caps?.overlay, allow: () => protection.openPermission("overlay") },
+    { kind: "notifications" as const, icon: "notifications-outline" as const, title: "Notifications", hint: "Break and End session alerts", granted: !!caps?.notifications, allow: async () => { const { enableNotifications } = await import("../services/notificationPermissionService"); await enableNotifications(); await protection.refresh(); } },
   ];
   const subtitles = [
     "Choose what matters to you right now. We’ll have ideas waiting once you’ve settled in.",
     "This is the name your companion will know you by. You can dress them up in Profile later.",
     "Start small, short sessions count too. You don’t have to do it all at once.",
-    "During a session, LifeRPG can cover the apps that tend to pull you away. Totally optional, and you can change it later.",
+    "LifeRPG can cover distracting apps while you focus. Optional, and you can change it in Settings.",
   ];
   const firstLabel = areas.length ? "Continue" : "Skip for now";
   return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 6 : 7) + offset} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
@@ -136,14 +136,17 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     {step === NAME_STEP && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
     {step === GOAL_STEP && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can change your goal in Settings once a week, and it kicks in the next day. A quiet day never takes away what you’ve earned.</Text></View>}
     {step === PROTECTION_STEP && <View style={s.choices}>
-      <Text style={s.hint}>During a session, only the apps you allow stay open and everything else is covered. Need a breather? Each protected session has one 5-minute break, when your apps open up again. You can change all of this in Settings, under Session protection.</Text>
       <View style={s.permissionList}>{permissionRows.map((row, index) => <View key={row.kind} style={[s.permissionRow, index > 0 && s.permissionDivider]}>
         <Ionicons name={row.icon} size={20} color={row.granted ? colors.accent : colors.secondary} />
-        <View style={s.permissionCopy}><Text style={s.permissionTitle}>{row.title}</Text><Text style={s.hint}>{row.hint}</Text></View>
+        <View style={s.permissionCopy}><Text style={s.permissionTitle}>{row.title}</Text><Text style={s.permissionHint} numberOfLines={1}>{row.hint}</Text></View>
         {row.granted ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} accessibilityLabel={`${row.title} allowed`} />
           : <Pressable onPress={() => void row.allow()} accessibilityRole="button" accessibilityLabel={`Allow ${row.title}`} style={s.allow}><Text style={s.allowText}>Allow</Text></Pressable>}
       </View>)}</View>
-      <Text style={s.hint}>Phone and emergency calls, Settings and this app can never be blocked. They always stay open for your safety.</Text>
+      {/* Two facts, one line each: the break, and what is never blocked. */}
+      <View style={s.facts}>
+        <View style={s.fact}><Ionicons name="cafe-outline" size={18} color={colors.secondary} /><Text style={s.permissionHint}>One 5-minute break per session</Text></View>
+        <View style={s.fact}><Ionicons name="call-outline" size={18} color={colors.secondary} /><Text style={s.permissionHint}>Calls and Settings can never be blocked</Text></View>
+      </View>
     </View>}
     {intro && <><View style={s.illustration}><View style={s.symbol}><Ionicons name={intro.icon} size={44} color={colors.accent} /></View></View><View style={s.note}><Text style={s.noteBody}>{intro.detail}</Text></View></>}
   </OnboardingFrame>;
@@ -152,7 +155,10 @@ const s = StyleSheet.create({
   permissionList: { ...edge, borderRadius: 20, backgroundColor: colors.surface, overflow: "hidden" },
   permissionRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 16, paddingVertical: 10 },
   permissionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  permissionCopy: { flex: 1, minWidth: 0, gap: 2 }, permissionTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
+  permissionCopy: { flex: 1, minWidth: 0, gap: 1 }, permissionTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  // The same sizes as the areas list on the first page, so every intro page reads alike.
+  permissionHint: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
+  facts: { gap: 10, paddingHorizontal: 6 }, fact: { flexDirection: "row", alignItems: "center", gap: 10 },
   allow: { minHeight: 36, paddingHorizontal: 16, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   allowText: { color: colors.accent, fontSize: 15, fontWeight: "600" },
   choices: { gap: 12 }, note: { ...edge, padding: 22, borderRadius: 22, backgroundColor: colors.surface, gap: 12 }, noteTitle: { color: colors.text, fontSize: 23, lineHeight: 29, fontWeight: "500" }, noteBody: { color: colors.secondary, fontSize: 17, lineHeight: 22 },

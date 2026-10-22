@@ -117,7 +117,7 @@ export default function HomeScreen() {
     const expectedScope = dataScope;
     setRefreshing(true);
     try {
-      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone).catch(() => undefined)]);
+      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone, undefined, owner || undefined).catch(() => undefined)]);
       if (currentDataScope.current !== expectedScope) return;
       serverLoaded.current = true;
       if (streak !== undefined) setFocusStreak(streak);

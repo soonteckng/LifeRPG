@@ -29,9 +29,17 @@ export interface ProgressGoal {
 const FIELDS = "*";
 const PAGE_SIZE = 500;
 
+// Every history read names the account it is for. Pages are fetched one after
+// another, so without this a sign-in change part way through could mix a
+// second account's rows into the first account's results.
+function forOwner<Q>(query: Q, owner?: string): Q {
+  return owner ? (query as unknown as { eq: (column: string, value: string) => Q }).eq("user_id", owner) : query;
+}
+
 export async function getCompletedSessions(
   sinceDate: string,
   untilDate?: string,
+  owner?: string,
 ): Promise<ProgressSession[]> {
   const rows: ProgressSession[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
@@ -41,6 +49,7 @@ export async function getCompletedSessions(
       .eq("status", "completed")
       .gte("completed_at", sinceDate);
     if (untilDate) query = query.lt("completed_at", untilDate);
+    query = forOwner(query, owner);
     const { data, error } = await query
       .order("completed_at", { ascending: false })
       .order("id", { ascending: false })
@@ -53,12 +62,13 @@ export async function getCompletedSessions(
 export async function getProgressGoals(
   start: string,
   end: string,
+  owner?: string,
 ): Promise<ProgressGoal[]> {
   const rows: ProgressGoal[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await supabase
+    const { data, error } = await forOwner(supabase
       .from("daily_progress")
-      .select("*")
+      .select("*"), owner)
       .gte("progress_date", start)
       .lte("progress_date", end)
       .order("progress_date", { ascending: true })
@@ -68,8 +78,8 @@ export async function getProgressGoals(
     if (!data || data.length < PAGE_SIZE) return rows;
   }
 }
-export async function getProgressSubjects(): Promise<Subject[]> {
-  return getSubjects();
+export async function getProgressSubjects(owner?: string): Promise<Subject[]> {
+  return getSubjects(owner);
 }
 export async function getSessionHistory(
   offset: number,
@@ -92,14 +102,15 @@ export async function getSessionHistory(
 export async function getFocusStreak(
   timeZone: string,
   now = new Date(),
+  owner?: string,
 ): Promise<number> {
   const today = dateKey(now, timeZone);
   let expected = today,
     streak = 0;
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await supabase
+    const { data, error } = await forOwner(supabase
       .from("activity_sessions")
-      .select("completed_at, id, duration_seconds")
+      .select("completed_at, id, duration_seconds"), owner)
       .eq("status", "completed")
       .gt("duration_seconds", 0)
       .lte("completed_at", now.toISOString())
@@ -121,10 +132,10 @@ export async function getFocusStreak(
 }
 
 // A bounded, owner-filtered lookup, separate from Progress's paginated history.
-export async function getLongestFocusStreak(timeZone: string, now = new Date()): Promise<number> {
+export async function getLongestFocusStreak(timeZone: string, now = new Date(), owner?: string): Promise<number> {
   const days = new Set<string>();
   for (let offset = 0; ; offset += PAGE_SIZE) {
-    const { data, error } = await supabase.from("activity_sessions").select("id, completed_at, duration_seconds")
+    const { data, error } = await forOwner(supabase.from("activity_sessions").select("id, completed_at, duration_seconds"), owner)
       .eq("status", "completed").gt("duration_seconds", 0).lte("completed_at", now.toISOString())
       .order("completed_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + PAGE_SIZE - 1);
     if (error) throw error;
