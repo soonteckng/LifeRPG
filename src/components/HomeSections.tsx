@@ -14,7 +14,7 @@ import SectionHeader, { DoneButton, SeeAll } from "./SectionHeader";
 import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
 import { SquadFace, SquadJoinSheet } from "./SquadSheets";
-import { SquadSummary, daysLeftInWeek } from "./SquadsSection";
+import { SquadSummary, daysLeftInWeek, yourPlace } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { useSquads } from "../hooks/useSquads";
@@ -95,14 +95,22 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   const top = squad ? standings(squad).slice(0, 3) : [];
   // On Home the squad sits beside This week as a small tile.
   const progress = squad ? goalProgress(squad) : null, left = tile ? daysLeftInWeek() : 0;
+  const live = squad ? squad.members.filter(member => member.focusingNow).length : 0, place = tile && squad ? yourPlace(squad) : null;
+  // The whole tile is one tap target: its contents never take the touch.
   const tileCard = squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
     accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={[s.card, s.tile]}>
+    <View style={s.tileFill} pointerEvents="none">
     <View style={s.tileHead}><Text style={s.tileLabel}>Squad</Text><Text style={s.tileMeta} numberOfLines={1}>{!squads.online ? "Offline" : progress !== null && progress >= 1 ? "Goal reached" : `${left} ${left === 1 ? "day" : "days"} left`}</Text></View>
     <Text style={s.tileName} numberOfLines={1}>{squad.name}</Text>
-    <Text style={s.caption} numberOfLines={1}>{squad.members.length} {squad.members.length === 1 ? "member" : "members"}</Text>
+    {/* Who's in it, so the tile feels like your people rather than a number. */}
+    <View style={s.tileFaces}>
+      {squad.members.slice(0, 4).map((member, index) => <View key={member.id} style={[s.tileFace, index > 0 && { marginLeft: -8 }]}><SquadFace member={member} size={26} ring={colors.surface} /></View>)}
+      <Text style={[s.caption, s.flex]} numberOfLines={1}>{live ? `${live} focusing now` : place ? place[0].toUpperCase() + place.slice(1) : `${squad.members.length} ${squad.members.length === 1 ? "member" : "members"}`}</Text>
+    </View>
     <View style={s.tileFoot}>
       <Text style={s.caption} numberOfLines={1}><Text style={s.tileStrong}>{studyTime(squadTotal(squad))}</Text>{squad.goalMinutes ? ` / ${squad.goalMinutes / 60}h` : " together"}</Text>
-      {progress !== null && <View style={s.tileTrack}><View style={[s.tileFill, { width: `${Math.max(progress > 0 ? 4 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
+      {progress !== null && <View style={s.tileTrack}><View style={[s.tileFillBar, { width: `${Math.max(progress > 0 ? 4 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
+    </View>
     </View>
   </Pressable> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
     accessibilityLabel={squads.online ? "Focus with friends. Join or start a squad" : "Focus with friends. Needs internet"} testID="home-squad-empty" style={[s.card, s.tile]}>
@@ -177,12 +185,14 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
   const changeLine = !week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`;
   return <View style={tile ? s.tileSection : s.section} testID="home-week">
     {tile ? <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.tile]}>
+      <View style={s.tileFill} pointerEvents="none">
       <Text style={s.tileLabel}>This week</Text>
       <Text style={s.tileTotal}>{durationLabel(week?.seconds ?? 0)}</Text>
       <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={2}>{changeLine}</Text>
       <View style={s.tileFoot}>
         <Text style={s.caption} numberOfLines={1}>Focus on {week?.activeDays ?? 0} of 7 days</Text>
         <WeekBars height={30} />
+      </View>
       </View>
     </Pressable> : <>
     <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
@@ -223,7 +233,10 @@ const s = StyleSheet.create({
   section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
   // Home's half-width tiles: a small label, the number, and a footer.
   tileSection: { flex: 1, minWidth: 0 },
-  tile: { flex: 1, minHeight: 176, gap: 4 },
+  tile: { flex: 1 },
+  tileFill: { flex: 1, gap: 4 },
+  tileFaces: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
+  tileFace: { borderRadius: 15, borderWidth: 2, borderColor: colors.surface },
   tileHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
   tileLabel: { color: colors.secondary, fontSize: 14, lineHeight: 19, fontWeight: "600" },
   tileMeta: { flexShrink: 1, color: colors.secondary, fontSize: 13, lineHeight: 18 },
@@ -232,7 +245,7 @@ const s = StyleSheet.create({
   tileFoot: { marginTop: "auto", paddingTop: 10, gap: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   tileStrong: { color: colors.text, fontWeight: "700" },
   tileTrack: { height: 6, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" },
-  tileFill: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
+  tileFillBar: { height: 6, borderRadius: 3, backgroundColor: colors.primary },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   sheetGroup: { ...edge, backgroundColor: colors.sheetCard, borderRadius: 20 },
   card: { ...edge, padding: 16, borderRadius: radius.card, backgroundColor: colors.surface },

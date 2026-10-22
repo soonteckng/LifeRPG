@@ -579,7 +579,8 @@ test("selected-period session details retain the period and do not mutate reward
   try {
     assert.equal(ui.historyCalls(), 0);
     await ui.press("Sessions for selected week");
-    await ui.press("View sessions in selected period");
+    // Three or fewer sessions are all in the preview, so no "See all" is needed.
+    assert.equal(ui.renderer.root.findAllByType("Button").some(b => b.props.accessibilityLabel === "View sessions in selected period"), false);
     assert.equal(ui.historyCalls(), 0);
     const row = ui.renderer.root
       .findAllByType("Button")
@@ -675,9 +676,8 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
     assert.equal(segments.length, 2);
     assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#64D2FF", 60], ["#FF9F0A", 60]]);
     await ui.press("Sessions for selected week");
-    await ui.press("View sessions in selected period");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
-    const rows = ui.renderer.root.findByType("Sheet").findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
+    const rows = ui.renderer.root.findByProps({testID: "progress-session-list"}).findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View session"));
     assert.equal(rows.length, 2);
   } finally { await ui.cleanup(); }
 });
@@ -715,11 +715,10 @@ test("week and month session lists exclude comparison dates and unrelated histor
  const previousWeek=shiftDay(week.start,-1),previousMonth=shiftDay(month.start,-1);
  const rows=[session('current',60,new Date(Date.now()-1000).toISOString()),session('comparison',120,previousWeek+'T04:00:00Z'),session('old-month',180,previousMonth+'T04:00:00Z')];
  const ui=await screenHarness({sessionRows:rows});
- const labels=()=>ui.renderer.root.findByType('Sheet').findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session')).map(b=>b.props.accessibilityLabel);
+ const labels=()=>ui.renderer.root.findByProps({testID:'progress-session-list'}).findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session')).map(b=>b.props.accessibilityLabel);
  try{
-  await ui.press('Sessions for selected week');await ui.press('View sessions in selected period');assert.equal(labels().length,1);assert.match(labels()[0],/1m,/);assert.doesNotMatch(ui.text(),/View all history/);
-  await act(async()=>ui.renderer.root.findByType('Sheet').props.onRequestClose());await act(async()=>ui.renderer.root.findByType('Sheet').props.onDismiss());
-  await ui.press('Month view');await ui.press('Sessions for selected month');await ui.press('View sessions in selected period');
+  await ui.press('Sessions for selected week');assert.equal(labels().length,1);assert.match(labels()[0],/1m,/);assert.doesNotMatch(ui.text(),/View all history/);
+  await ui.press('Month view');await ui.press('Sessions for selected month');
   assert.equal(labels().length,previousWeek>=month.start?2:1);assert.ok(labels().every(label=>!label.includes('3m,')));assert.equal(ui.historyCalls(),0);
  }finally{await ui.cleanup();}
 });
@@ -976,4 +975,18 @@ test("offline, Progress says so calmly instead of offering a retry that cannot w
     assert.doesNotMatch(ui.text(), /Couldn’t refresh Progress/);
     assert.equal(ui.renderer.root.findAllByType("Button").some((b) => b.props.accessibilityLabel === "Retry Progress"), false);
   } finally { await ui.cleanup(); }
+});
+test("Sessions shows the newest three under their day; See all opens every session grouped by day",async()=>{
+ const now=Date.now(),rows=[0,1,2,3,4].map(n=>session(`s${n}`,60*(n+1),new Date(now-1000-n*60000).toISOString()));
+ const ui=await screenHarness({sessionRows:rows});
+ const inList=()=>ui.renderer.root.findByProps({testID:'progress-session-list'}).findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session'));
+ try{
+  await ui.press('Sessions for selected week');
+  assert.equal(inList().length,3,'a preview, not every session');
+  assert.ok(ui.renderer.root.findAllByProps({testID:'sessions-by-day'}).length>0,'grouped under its day');
+  await ui.press('View sessions in selected period');
+  const sheetRows=ui.renderer.root.findByType('Sheet').findAllByType('Button').filter(b=>b.props.accessibilityLabel?.endsWith('View session'));
+  assert.equal(sheetRows.length,5,'See all lists every session');
+  assert.match(ui.text(),/\d sessions? · /,'each day says how many');
+ }finally{await ui.cleanup();}
 });

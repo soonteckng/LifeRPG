@@ -212,19 +212,18 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     const area = areaOf(entry.areaId), tint = lifeAreaColor(entry.areaId, area?.color_code), editing = arranging;
     const startDisabled = saved ? blocked : blocked || !task!.is_due_today || !onStartLegacy || !routines.online;
     const caption = `${routineDuration(entry.seconds)} · ${focusAreaTitle(area?.title)}${routine?.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}${task && !task.is_due_today ? " · Upcoming" : ""}`;
-    return <Wiggle key={entry.key} active={editing} seed={entry.key} degrees={0.6} style={s.gridCell}>
-      <View style={s.gridTile}>
-        <Pressable disabled={!active || (!saved && !routines.online)} onPress={() => editing ? finish() : saved ? edit(routine) : editLegacy(task!)} onLongPress={hold} delayLongPress={350}
-          accessibilityRole="button" accessibilityLabel={`${editing ? "" : "Edit "}${entry.name}, ${routineDuration(entry.seconds)}${editing ? ". Done editing" : ""}`}
-          accessibilityActions={[{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.gridBody}>
-          <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name="repeat" size={18} color={tint} /></View>
-          <Text style={s.gridName} numberOfLines={2}>{entry.name}</Text>
-          <Text style={s.gridCaption} numberOfLines={2}>{caption}</Text>
-        </Pressable>
-        <View style={s.gridAction}>{editing ? <EditBadges name={entry.name} onEdit={() => { setArranging(false); if (saved) edit(routine); else editLegacy(task!); }}
-          onRemove={saved ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined} />
-          : <StartButton disabled={startDisabled} onPress={() => ask(entry)} label={`Start routine ${entry.name}`} />}</View>
-      </View>
+    // The same tile as a subject in Study: icon, name, details, ▶ in the corner.
+    return <Wiggle key={entry.key} active={editing} seed={entry.key} degrees={0.9} style={s.gridCell}>
+      <Pressable disabled={!active || (!saved && !routines.online)} onPress={() => editing ? finish() : saved ? edit(routine) : editLegacy(task!)} onLongPress={hold} delayLongPress={350}
+        accessibilityRole="button" accessibilityLabel={`${editing ? "" : "Edit "}${entry.name}, ${routineDuration(entry.seconds)}${editing ? ". Done editing" : ""}`}
+        accessibilityActions={[{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.gridTile}>
+        <View style={s.gridTop}><View style={[s.gridIcon, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="repeat" size={15} color={tint} /></View></View>
+        <Text style={s.gridName} numberOfLines={2}>{entry.name}</Text>
+        <Text style={s.gridCaption} numberOfLines={2}>{caption}</Text>
+      </Pressable>
+      {editing ? <EditBadges placement="corner" name={entry.name} onEdit={() => { setArranging(false); if (saved) edit(routine); else editLegacy(task!); }}
+        onRemove={saved ? () => { feedback(); setMenu({ entry, mode: "remove" }); } : undefined} />
+        : <StartButton disabled={startDisabled} onPress={() => ask(entry)} label={`Start routine ${entry.name}`} size={34} style={s.gridPlay} />}
     </Wiggle>;
   };
   const visibleEntries = entries.slice(0, limit);
@@ -290,9 +289,10 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       <OneTimeHint id="routine-hold" text="Hold a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : layout === "grid" ? <View style={s.grid}>
         {visibleEntries.map(tile)}
-        {!arranging && <Pressable disabled={!active || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create a new routine" testID="routine-new-tile" style={[s.gridCell, s.newTile]}>
-          <View style={s.newIcon}><Ionicons name="add" size={22} color={colors.text} /></View>
-          <Text style={s.newText}>{visibleEntries.length ? "New routine" : "Make your first routine"}</Text>
+        {/* Like Add subject: the dashed tile helps you start; from four routines on, the + by the title is enough. */}
+        {!arranging && entries.length < 4 && <Pressable disabled={!active || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create a new routine" testID="routine-new-tile" style={[s.gridCell, s.newTile]}>
+          <View style={s.newIcon}><Ionicons name="add" size={20} color={colors.accent} /></View>
+          <Text style={s.newText}>Add routine</Text><Text style={s.newHint}>Name it and pick a length</Text>
         </Pressable>}
       </View> : visibleEntries.length ? <View style={s.stack}>
         {/* Each routine is its own small card; in edit mode they wiggle together. */}
@@ -415,15 +415,18 @@ const s = StyleSheet.create({
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  gridCell: { flexBasis: "45%", flexGrow: 1, maxWidth: "50%" },
-  gridTile: { ...edge, flex: 1, minHeight: 156, padding: 14, borderRadius: radius.tile, backgroundColor: colors.surface },
-  gridBody: { flex: 1, gap: 6 },
-  gridName: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600", marginTop: 4 },
-  gridCaption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  gridAction: { alignItems: "flex-end", marginTop: 8 },
-  newTile: { minHeight: 156, borderRadius: radius.tile, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center", gap: 10, padding: 14 },
-  newIcon: { width: 44, height: 44, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
-  newText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600", textAlign: "center" },
+  gridCell: { flexBasis: "45%", flexGrow: 1, maxWidth: "50%", position: "relative" },
+  gridTile: { ...edge, flex: 1, minHeight: 120, padding: 12, gap: 3, borderRadius: radius.tile, backgroundColor: colors.surface },
+  gridTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
+  gridIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
+  gridName: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  // The last lines leave room for the ▶ in the corner.
+  gridCaption: { color: colors.secondary, fontSize: 13, lineHeight: 18, paddingRight: 36 },
+  gridPlay: { position: "absolute", right: 10, bottom: 10 },
+  newTile: { minHeight: 120, padding: 12, gap: 3, borderRadius: radius.tile, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.border, justifyContent: "center" },
+  newIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 4 },
+  newText: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  newHint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
   startCard: { ...edge, padding: 16, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
   startHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
   startTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },

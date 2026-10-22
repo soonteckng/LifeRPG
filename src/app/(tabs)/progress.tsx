@@ -112,6 +112,7 @@ function SessionRow({
   timeZone,
   inSheet = false,
   last = false,
+  showDate = true,
   onPress,
 }: {
   session: ProgressSession;
@@ -119,6 +120,8 @@ function SessionRow({
   timeZone: string;
   inSheet?: boolean;
   last?: boolean;
+  /** Under a date heading the row shows only its time. */
+  showDate?: boolean;
   onPress: () => void;
 }) {
   const Button = inSheet ? SheetButton : Pressable;
@@ -142,7 +145,7 @@ function SessionRow({
       <View style={s.flex}>
         <Text style={s.rowTitle}>{title}</Text>
         <Text style={s.caption}>
-          {readSuggestedFocus(session.notes) || readRoutineSession(session.notes) ? `${sessionCategory(session, areas)} · ` : ""}{calendarLabel(key)} · {time}
+          {readSuggestedFocus(session.notes) || readRoutineSession(session.notes) ? `${sessionCategory(session, areas)} · ` : ""}{showDate ? `${calendarLabel(key)} · ` : ""}{time}
         </Text>
       </View>
       <Text style={s.rowValue}>{durationLabel(session.duration_seconds)}</Text>
@@ -150,6 +153,29 @@ function SessionRow({
     </Button>
   );
 }
+
+/**
+ * Sessions under their day: "Sun 19 Oct · 2 sessions · 45m", then each session
+ * with its time. Newest day first.
+ */
+function SessionsByDay({ sessions, areas, timeZone, inSheet = false, onPress }: {
+  sessions: ProgressSession[]; areas: { id: number; title: string }[]; timeZone: string; inSheet?: boolean; onPress: (session: ProgressSession) => void;
+}) {
+  const days: { key: string; sessions: ProgressSession[] }[] = [];
+  [...sessions].sort((a, b) => Date.parse(b.completed_at!) - Date.parse(a.completed_at!)).forEach(session => {
+    const key = dateKey(new Date(session.completed_at!), timeZone), last = days.at(-1);
+    if (last?.key === key) last.sessions.push(session); else days.push({ key, sessions: [session] });
+  });
+  return <View style={s.dayGroups} testID="sessions-by-day">{days.map(day => {
+    const total = day.sessions.reduce((sum, item) => sum + item.duration_seconds, 0);
+    return <View key={day.key} style={s.dayGroup}>
+      <Text style={s.dayHeading} accessibilityRole="header">{calendarLabel(day.key, { weekday: "short", day: "numeric", month: "short" })} · {day.sessions.length} {day.sessions.length === 1 ? "session" : "sessions"} · {durationLabel(total)}</Text>
+      <View style={inSheet ? s.sheetGroup : s.sessionsCard}>{day.sessions.map((session, index) => <SessionRow key={session.id} session={session} areas={areas} timeZone={timeZone}
+        inSheet={inSheet} showDate={false} last={index === day.sessions.length - 1} onPress={() => onPress(session)} />)}</View>
+    </View>;
+  })}</View>;
+}
+const PREVIEW_SESSIONS = 3;
 
 export default function ProgressScreen() {
   const timer = useTimer({ live: false });
@@ -568,23 +594,22 @@ export default function ProgressScreen() {
                   </Text>
                 </Pressable>)}
               </View>
-              <View style={s.sessionsCard}>
+              {/* A short preview, newest first under each day; the full list opens in a sheet. */}
               <View testID="progress-session-list">
-                {listedSessions.map(session => <SessionRow key={session.id} session={session}
-                  areas={data.areas} timeZone={timeZone} onPress={() => openListedSession(session)} />)}
-                {!listedSessions.length && <Empty icon="time-outline" title="No completed sessions"
+                {listedSessions.length ? <SessionsByDay sessions={[...listedSessions].sort((a, b) => Date.parse(b.completed_at!) - Date.parse(a.completed_at!)).slice(0, PREVIEW_SESSIONS)}
+                  areas={data.areas} timeZone={timeZone} onPress={openListedSession} />
+                : <View style={s.sessionsCard}><Empty icon="time-outline" title="No completed sessions"
                   body={sessionScope === "day" ? heroDay?.future
                     ? "This day’s completed sessions will appear here."
                     : "Completed sessions for this day will appear here."
-                    : `Completed sessions for this ${mode} will appear here.`} />}
+                    : `Completed sessions for this ${mode} will appear here.`} /></View>}
               </View>
-              <Pressable onPress={() => open(listDetail)} accessibilityRole="button"
+              {listedSessions.length > PREVIEW_SESSIONS && <Pressable onPress={() => open(listDetail)} accessibilityRole="button"
                 accessibilityLabel={sessionScope === "period" ? "View sessions in selected period" : "View sessions for selected day"}
-                style={s.historyEntrance}>
-                <Text style={s.link}>{sessionScope === "period" ? `View this ${mode}’s sessions` : "View this day’s sessions"}</Text>
+                style={[s.sessionsCard, s.historyEntrance]}>
+                <Text style={s.link}>{`See all ${listedSessions.length} sessions`}</Text>
                 <Ionicons name="chevron-forward" size={18} color={colors.accent} />
-              </Pressable>
-              </View>
+              </Pressable>}
               </>}
               <Section
                 title="Consistency"
@@ -783,17 +808,7 @@ export default function ProgressScreen() {
                 </>
               )}
               {activeArea && ["learning", "revision"].includes(focusAreaKind(activeArea.title) ?? "") && <SubjectBreakdown owner={profile?.id ?? ""} sessions={detailSessions} />}
-              {!!detailSessions.length && <View style={s.sheetGroup}>{detailSessions.map((session, index) => (
-                <SessionRow
-                  key={session.id}
-                  session={session}
-                  areas={data?.areas ?? []}
-                  timeZone={timeZone}
-                  inSheet
-                  last={index === detailSessions.length - 1}
-                  onPress={() => setSelectedSession(session)}
-                />
-              ))}</View>}
+              {!!detailSessions.length && <SessionsByDay sessions={detailSessions} areas={data?.areas ?? []} timeZone={timeZone} inSheet onPress={setSelectedSession} />}
               {!detailSessions.length && (
                   <Empty
                     icon="time-outline"
@@ -820,6 +835,8 @@ export default function ProgressScreen() {
 const s = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
   periodToolbar: { flexDirection: "column", alignItems: "stretch" },
+  dayGroups: { gap: 14 }, dayGroup: { gap: 8 },
+  dayHeading: { color: colors.secondary, fontSize: 14, lineHeight: 19, fontWeight: "600", paddingHorizontal: 4 },
   categoryStack: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   categoryCard: { ...edge, flexBasis: "45%", flexGrow: 1, maxWidth: "50%", minHeight: 76, flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 18, backgroundColor: colors.surface },
   categoryCopy: { flex: 1, minWidth: 0, gap: 2 },

@@ -283,3 +283,14 @@ test('Routines tab grid: each routine is a tile with its own start, hold edits, 
     assert.equal(labels().includes('Create a new routine'),false,'no add tile while editing');
   }finally{await act(async()=>ui.unmount());}
 });
+test('like subjects, the Add routine tile shows until you have four routines',async()=>{
+  for(const count of [3,4]){
+    const list=Array.from({length:count},(_,i)=>({...routine,id:`bbbbbbbb-bbbb-4bbb-8bbb-00000000000${i+1}`,name:`Routine ${i+1}`}));
+    const state={ready:true,scope,online:true,routines:list,pendingCount:0,conflicts:[]};
+    const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+    let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,layout:'grid',limit:Number.MAX_SAFE_INTEGER}));});
+    try{assert.equal(ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel==='Create a new routine'),count<4);
+      assert.equal(ui.root.findAllByType('Press').some(x=>x.props.accessibilityLabel==='New routine'),true,'the + by the title always adds one');}
+    finally{await act(async()=>ui.unmount());}
+  }
+});
