@@ -128,7 +128,7 @@ export default function ProfileScreen() {
     setSaving(true);
     setSaveError("");
     try {
-      await updateProfile(name.trim(), avatar, profile.class_title);
+      await updateProfile(name.trim(), avatar);
       if (currentSaveView.current !== saveView) return;
       Keyboard.dismiss();
       sheetClosing.current = true;

@@ -5,7 +5,6 @@ import { validateDailyGoal } from "../utils/dailyGoal";
 export async function saveOnboardingProfile(
   username: string,
   avatar: string,
-  classTitle: string,
   dailyGoalMinutes: number,
 ) {
   const nameError = profileNameError(username);
@@ -18,7 +17,8 @@ export async function saveOnboardingProfile(
       {
         p_username: username.trim(),
         p_avatar: avatar,
-        p_class_title: classTitle,
+        // The server ignores this now; older app versions still send one.
+        p_class_title: null,
         p_daily_goal_minutes:
           dailyGoalMinutes,
       },

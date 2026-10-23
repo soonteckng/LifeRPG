@@ -108,7 +108,7 @@ test('every page shares Back navigation, keeps choices and saves only at the fin
     for (let expected = 3; expected <= 6; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
     assert.equal(profiles.length, 0); assert.equal(finishes, 0);
     await act(async () => { button('Start my journey').props.onPress(); button('Start my journey').props.onPress(); });
-    assert.deepEqual(profiles, [['Soon', '🌱', 'Adventurer', 90]]); assert.equal(preferences[0].invited, true); assert.deepEqual(preferences[0].ideaAreas, ['learning']); assert.equal(finishes, 1); assert.deepEqual(routes, []);
+    assert.deepEqual(profiles, [['Soon', '🌱', 90]]); assert.equal(preferences[0].invited, true); assert.deepEqual(preferences[0].ideaAreas, ['learning']); assert.equal(finishes, 1); assert.deepEqual(routes, []);
     await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   } finally { await act(async () => tree.unmount()); }
 });

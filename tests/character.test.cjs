@@ -1108,9 +1108,9 @@ test("shared typography uses iOS System, keeps text readable and preserves exact
 test("profile editing preserves spaces and uses the same 15-character boundary as onboarding",async()=>{
  const ui=await userProviderHarness();
  try {
-  await ui.run(v=>v.updateProfile('  Soon Teck  ','⭐','Scholar'));assert.equal(ui.value().profile.username,'Soon Teck');
-  await ui.run(v=>v.updateProfile('A'.repeat(15),'⭐','Scholar'));assert.equal(ui.value().profile.username.length,15);
-  for(const invalid of [' ','A'.repeat(16)])await assert.rejects(ui.value().updateProfile(invalid,'⭐','Scholar'),/1 and 15/);
+  await ui.run(v=>v.updateProfile('  Soon Teck  ','⭐'));assert.equal(ui.value().profile.username,'Soon Teck');
+  await ui.run(v=>v.updateProfile('A'.repeat(15),'⭐'));assert.equal(ui.value().profile.username.length,15);
+  for(const invalid of [' ','A'.repeat(16)])await assert.rejects(ui.value().updateProfile(invalid,'⭐'),/1 and 15/);
   assert.equal(ui.value().profile.username.length,15);
  }finally{await ui.cleanup();}
  const names=load('src/constants/profile.ts');assert.equal(load('src/constants/onboarding.ts').ONBOARDING_NAME_LIMIT,names.PROFILE_NAME_LIMIT);
@@ -1128,8 +1128,8 @@ test("profile name input fills the keyboard-safe parent and rejects over-limit p
 
 test("onboarding profile validation rejects too-long names before the RPC and preserves internal spaces",async()=>{
  const queries=[];const api=load('src/services/onboardingService.ts',{'../../lib/supabase':{supabase:{rpc:async(name,args)=>{queries.push([name,args]);return {data:true,error:null};}}}});
- await assert.rejects(api.saveOnboardingProfile('A'.repeat(16),'⭐','Scholar',60),/1 and 15/);assert.equal(queries.length,0);
- await api.saveOnboardingProfile('  Soon Teck  ','⭐','Scholar',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_username,'Soon Teck');
+ await assert.rejects(api.saveOnboardingProfile('A'.repeat(16),'⭐',60),/1 and 15/);assert.equal(queries.length,0);
+ await api.saveOnboardingProfile('  Soon Teck  ','⭐',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_class_title,null,'the old class title is no longer sent');assert.equal(queries[0][1].p_username,'Soon Teck');
 });
 
 test("Profile shows its stats and badges, opens every milestone as a card, and keeps My Categories",async()=>{
@@ -1162,7 +1162,7 @@ test('an open profile draft stays editable offline, labels Save as needing inter
   await ui.input('Profile name','Kept draft');await act(async()=>outgoing());await ui.press('Save changes');assert.deepEqual(saves,[]);
   auth.accessMode='online';await ui.update();await act(async()=>outgoing());assert.deepEqual(saves,[]);
   assert.equal(save().props.disabled,false);await ui.press('Save changes');
-  assert.deepEqual(saves,[['Kept draft','⭐','Scholar']]);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
+  assert.deepEqual(saves,[['Kept draft','⭐']]);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
 });
 
@@ -1174,7 +1174,7 @@ test("look changes preview locally and save only after confirmation; failed save
   const portraits=ui.renderer.root.findAllByType('Portrait');assert.equal(portraits.find(node=>node.props.level===3).props.avatar,'⭐');assert.equal(portraits.find(node=>node.props.interactive===false).props.avatar,'🧝‍♂️');
   await ui.press('Save changes');assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);assert.match(ui.text(),/Couldn’t save/);
   const selected=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel==='Choose Fern');assert.equal(selected.props.accessibilityState.checked,true);
-  fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon Teck','🧝‍♂️','Scholar']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
+  fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon Teck','🧝‍♂️']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
 });
 

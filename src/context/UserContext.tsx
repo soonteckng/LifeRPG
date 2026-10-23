@@ -17,7 +17,8 @@ export interface UserProfile {
   id: string;
   username: string;
   avatar: string;
-  class_title: string;
+  /** Old class title, no longer used; only older saved copies still carry it. */
+  class_title?: string | null;
   level: number;
   current_xp: number;
   streak_count: number;
@@ -35,7 +36,6 @@ interface UserContextType {
   preferenceError: string | null;
   username: string;
   avatar: string;
-  classTitle: string;
   soundEnabled: boolean;
   hapticsEnabled: boolean;
   setSoundEnabled: (val: boolean) => void;
@@ -43,7 +43,6 @@ interface UserContextType {
   updateProfile: (
     username: string,
     avatar: string,
-    classTitle: string,
   ) => Promise<void>;
   reloadProfile: () => Promise<boolean>;
 }
@@ -52,7 +51,6 @@ const defaultProfile: UserProfile = {
   id: "",
   username: "Hero",
   avatar: "🧙‍♂️",
-  class_title: "Scholar",
   level: 1,
   current_xp: 0,
   streak_count: 1,
@@ -113,7 +111,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       const { data, error } = await supabase
         .from("profiles")
         .select(
-          "id, username, avatar, class_title, level, current_xp, streak_count, last_active_date, daily_goal_minutes, last_goal_completed_date, onboarding_completed, timezone",
+          "id, username, avatar, level, current_xp, streak_count, last_active_date, daily_goal_minutes, last_goal_completed_date, onboarding_completed, timezone",
         )
         .eq("id", ownerId)
         .single();
@@ -220,7 +218,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const updateProfile = async (
     username: string,
     avatar: string,
-    classTitle: string,
   ) => {
     if (!user || mode !== "online") throw new Error("Connect and verify your account before editing your profile.");
     const owner = user.id;
@@ -230,9 +227,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     if (nameError) throw new Error(nameError);
     const { data, error } = await supabase
       .from("profiles")
-      .update({ username: clean, avatar, class_title: classTitle })
+      .update({ username: clean, avatar })
       .eq("id", user.id)
-      .select("id, username, avatar, class_title")
+      .select("id, username, avatar")
       .single();
     if (error || !data) throw error ?? new Error("Profile could not be saved.");
     if (ownerRef.current !== owner || modeRef.current !== "online" || version !== profileVersion.current) return;
@@ -251,7 +248,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         preferenceError,
         username: profile.username || "Hero",
         avatar: profile.avatar || "🧙‍♂️",
-        classTitle: profile.class_title || "Scholar",
         soundEnabled,
         hapticsEnabled,
         setSoundEnabled,

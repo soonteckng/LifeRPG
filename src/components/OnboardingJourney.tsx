@@ -109,7 +109,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
         if (!(await guided.save({ ...guided.value, invited: true, ideaAreas: areas }))) throw new Error("Preference save failed");
         const key = JSON.stringify([name.trim(), goal]);
         if (savedProfile.current !== key) {
-          await saveOnboardingProfile(name.trim(), profile.avatar || "🌱", profile.class_title || "Adventurer", goal);
+          await saveOnboardingProfile(name.trim(), profile.avatar || "🌱", goal);
           savedProfile.current = key;
         }
         await finishOnboarding(); savedFinish.current = true;

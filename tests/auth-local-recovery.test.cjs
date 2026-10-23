@@ -231,7 +231,8 @@ test("only successful getUser plus matching cloud profile stores usable snapshot
     assert.equal(ui.value().accessMode, "online"); assert.equal(ui.value().user.id, A);
     await ui.run(value => value.cacheVerifiedProfile({ ...profile(A), email: "private@example.test", access_token: "secret" }));
     const saved = JSON.parse(store.values.get(utils.localAccountCacheKey(backend.backendId)));
-    assert.deepEqual(saved.profile, profile(A)); assert.equal(saved.ownerId, A);
+    const { class_title: _oldTitle, ...expected } = profile(A);
+    assert.deepEqual(saved.profile, expected, 'the old class title is no longer kept on the phone'); assert.equal(saved.ownerId, A);
     await ui.run(value => value.cacheVerifiedProfile(profile(B)));
     assert.equal(JSON.parse(store.values.get(utils.localAccountCacheKey(backend.backendId))).ownerId, A);
   } finally { await ui.cleanup(); }
@@ -471,7 +472,7 @@ test("local profile loads only cached snapshot, scopes preferences to owner and 
   try {
     assert.equal(ui.user().profile.id, A); assert.equal(ui.user().username, "Soon Teck"); assert.equal(ui.user().profile.level, 3);
     assert.equal(ui.user().soundEnabled, false); assert.equal(ui.user().hapticsEnabled, false);
-    await assert.rejects(() => ui.user().updateProfile("Changed", "hero", "Scholar"), /Connect and verify/);
+    await assert.rejects(() => ui.user().updateProfile("Changed", "hero"), /Connect and verify/);
     await ui.run(() => ui.user().reloadProfile()); assert.equal(ui.user().profile.id, A);
   } finally { await ui.cleanup(); }
 });
