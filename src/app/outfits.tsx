@@ -9,6 +9,8 @@ import Segmented from "../components/Segmented";
 import SheetConfirmation from "../components/SheetConfirmation";
 import Adventurer from "../components/adventurer/Adventurer";
 import ItemArt, { StardustArt } from "../components/adventurer/ItemArt";
+import ProfilePicture from "../components/adventurer/ProfilePicture";
+import Svg, { Defs, Ellipse, LinearGradient, Rect, Stop } from "react-native-svg";
 import { colors, edge, radius } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useRewards } from "../hooks/useRewards";
@@ -23,6 +25,7 @@ const BG: Record<string, [string, string]> = {
   bg_dusk: ["#4A3366", "#B86A6A"], bg_forest: ["#24493F", "#3E6B4F"], bg_meadow: ["#6C9CC6", "#A8CC92"],
   bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
 };
+const STAGE_HEIGHT = 240;
 interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; frame: string | null; title: string | null }
 
 /** Camp › Outfits: your look, clothes, gear, pet and profile picture, saved to your account. */
@@ -39,6 +42,7 @@ export default function OutfitsScreen() {
   const [selected, setSelected] = useState<string | null>(null);
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
+  const [stageWidth, setStageWidth] = useState(350);
   const owned = useMemo(() => new Set(rewards.owned), [rewards.owned]);
   const dirty = !!edit && JSON.stringify(edit) !== JSON.stringify(saved);
   const change = (next: Partial<Draft>) => { setEdit(d => ({ ...(d ?? saved), ...next })); setMessage(""); };
@@ -92,13 +96,21 @@ export default function OutfitsScreen() {
   </View>;
   return <PersonalPage title="Outfits" subtitle="" compact back animateTransition fallback="/profile" footer={footer}>
     <View style={s.stack}>
-      <View style={[s.stage, { backgroundColor: a }]} testID="outfits-preview">
-        <View style={[s.stageLow, { backgroundColor: b }]} />
+      <View style={s.stage} testID="outfits-preview" onLayout={e => setStageWidth(e.nativeEvent.layout.width)}>
+        {/* The stage is your chosen picture background, top to bottom. */}
+        <Svg width={stageWidth} height={STAGE_HEIGHT} style={s.stageArt}>
+          <Defs><LinearGradient id="stage-bg" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={a} /><Stop offset="1" stopColor={b} /></LinearGradient></Defs>
+          <Rect x={0} y={0} width={stageWidth} height={STAGE_HEIGHT} fill="url(#stage-bg)" />
+          <Ellipse cx={stageWidth / 2} cy={STAGE_HEIGHT - 14} rx={70} ry={10} fill="#000000" opacity={0.18} />
+        </Svg>
         <View style={s.chips}>
           <View style={s.chip} accessible accessibilityLabel={`${rewards.stardust} Stardust`}><StardustArt size={14} /><Text style={s.chipText}>{rewards.stardust}</Text></View>
           {setInfo && <View style={s.chip}><Text style={s.chipText}>{setInfo.name} set · {setInfo.have} of {setInfo.of}</Text></View>}
         </View>
-        <Adventurer look={draft.look} equipped={draft.equipped} size={132} lanternLevel={profile.level} />
+        {tab === "picture"
+          ? <View style={s.picture}><ProfilePicture look={draft.look} equipped={draft.equipped} level={profile.level} background={draft.background} frame={draft.frame} streak={profile.streak_count ?? 0} size={150} />
+            {!!draft.title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(draft.title)?.name}</Text></View>}</View>
+          : <Adventurer look={draft.look} equipped={draft.equipped} size={132} lanternLevel={profile.level} />}
       </View>
 
       <Segmented<Tab> value={tab} onChange={next => { setTab(next); setSelected(null); }} track={colors.surface}
@@ -129,8 +141,8 @@ export default function OutfitsScreen() {
           <View style={[s.rarity, { backgroundColor: RARITY_COLOR[item.rarity] }]} />
           {on && <Ionicons name="checkmark-circle" size={18} color={colors.progress} style={s.corner} />}
           {!mine && <Ionicons name="lock-closed" size={14} color={colors.tertiary} style={s.corner} />}
-          <ItemArt id={item.id} size={40} locked={!mine} />
-          <Text style={[s.tileText, !mine && { color: colors.muted }]} numberOfLines={1}>{item.name}</Text>
+          <ItemArt id={item.id} size={46} locked={!mine} />
+          <Text style={[s.tileText, !mine && { color: colors.muted }]} numberOfLines={2}>{item.name}</Text>
         </Pressable>;
       })}</View>}
 
@@ -159,7 +171,10 @@ function Pill({ label, on, onPress }: { label: string; on: boolean; onPress: () 
 const s = StyleSheet.create({
   stack: { gap: 16 },
   stage: { ...edge, height: 240, borderRadius: radius.card, overflow: "hidden", alignItems: "center", justifyContent: "flex-end", paddingBottom: 4 },
-  stageLow: { position: "absolute", left: 0, right: 0, bottom: 0, height: 110, opacity: 0.55 },
+  stageArt: { position: "absolute", left: 0, top: 0 },
+  picture: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: 10, paddingTop: 20 },
+  titleChip: { paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: "rgba(9,12,20,0.55)" },
+  titleText: { color: "#C4B5FD", fontSize: 13, fontWeight: "700" },
   chips: { position: "absolute", left: 12, top: 12, gap: 6 },
   chip: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, minHeight: 28, borderRadius: 14, backgroundColor: "rgba(9,12,20,0.55)" },
   chipText: { color: colors.neutral, fontSize: 13, fontWeight: "700" },
@@ -172,10 +187,11 @@ const s = StyleSheet.create({
   pillOn: { backgroundColor: colors.text, borderColor: colors.text },
   pillText: { color: colors.neutral, fontSize: 14, fontWeight: "600" }, pillTextOn: { color: colors.background },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  tile: { ...edge, width: "23%", flexGrow: 1, minHeight: 84, borderRadius: radius.row, alignItems: "center", justifyContent: "center", gap: 4, padding: 6, backgroundColor: colors.surface },
+  // Three square tiles a row, big enough for the art and a two-line name.
+  tile: { ...edge, width: "31.5%", aspectRatio: 1, borderRadius: radius.row, alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 6, backgroundColor: colors.surface },
   tileOn: { backgroundColor: "rgba(45,212,167,0.10)", borderColor: "rgba(45,212,167,0.6)" },
   tileFocus: { borderColor: colors.text },
-  tileText: { color: colors.neutral, fontSize: 12, fontWeight: "600", maxWidth: "100%" },
+  tileText: { color: colors.neutral, fontSize: 12, lineHeight: 15, fontWeight: "600", textAlign: "center", maxWidth: "100%" },
   rarity: { position: "absolute", left: 8, top: 8, width: 7, height: 7, borderRadius: 4 },
   corner: { position: "absolute", right: 6, top: 6 },
   ok: { color: colors.progress, fontSize: 14, lineHeight: 20 },

@@ -48,7 +48,7 @@ export function LevelTierPath({ level, currentXP }: ProgressProps) {
             {!last && <View style={[s.line, lit && s.lineLit]} />}
           </View>
           <View style={[s.tier, current && s.currentTier, !unlocked && s.locked]}>
-            <View style={s.nameRow}><Text style={s.tierTitle}>{tier.title}</Text>{current && <View style={s.herePill}><Text style={s.hereText}>You’re here</Text></View>}</View>
+            <View style={s.nameRow}><Text style={s.tierTitle}>{tier.title}</Text>{current && <View style={s.herePill}><Text style={s.hereText} numberOfLines={1} maxFontSizeMultiplier={1.3}>You’re here</Text></View>}</View>
             <Text style={s.range}>{levelRange}</Text>
             <Text style={s.hint}>{tier.detail}</Text>
           </View>
@@ -90,6 +90,7 @@ const s = StyleSheet.create({
   nameRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 8 },
   tierTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "700" },
   range: { color: colors.accent, fontSize: 13, lineHeight: 18, fontWeight: "600" },
-  herePill: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: colors.level },
+  // Never squeezed: the pill keeps its full width so "You’re here" never wraps or clips.
+  herePill: { flexShrink: 0, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, backgroundColor: colors.level },
   hereText: { color: colors.background, fontSize: 11, lineHeight: 14, fontWeight: "800" },
 });

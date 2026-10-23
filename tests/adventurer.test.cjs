@@ -115,6 +115,7 @@ async function outfits({ online = true, owned = ["cardigan", "beret"], stardust 
     "../components/adventurer/Adventurer": host("Adventurer"), "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
     "expo-router": { useRouter: () => ({ back: () => log.push(["back"]) }) },
+    "react-native-svg": svg, "../components/adventurer/ProfilePicture": host("Picture"),
   }).default;
   let r; await act(async () => { r = create(React.createElement(Screen)); });
   const press = async label => act(async () => r.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === "function")[0].props.onPress());
@@ -176,6 +177,19 @@ test("Outfits buys with enough Stardust after asking, and needs internet to save
     await off.tab("gear"); await off.press("Walking staff, Common, not found yet");
     assert.equal(off.button("Get it for 60 Stardust"), undefined, "no buying offline");
   } finally { await act(async () => off.r.unmount()); }
+});
+
+test("the Picture tab previews your real profile picture, with the frame, background and title you pick", async () => {
+  const ui = await outfits({ owned: ["frame_streak_30", "bg_sunset", "title_artist"] });
+  try {
+    await ui.tab("picture");
+    await ui.press("30-day frame, Rare, owned"); await ui.press("Sunset, Rare, owned"); await ui.press("The Artist, Rare, owned");
+    const pic = ui.r.root.findByType("Picture").props;
+    assert.deepEqual([pic.frame, pic.background, pic.level], ["frame_streak_30", "bg_sunset", 12]);
+    assert.match(ui.words(), /The Artist/);
+    await ui.tab("clothes");
+    assert.equal(ui.r.root.findAllByType("Picture").length, 0, "other tabs show the whole character");
+  } finally { await act(async () => ui.r.unmount()); }
 });
 
 test("Reset and Save look stay fixed below the scrolling outfits", () => {

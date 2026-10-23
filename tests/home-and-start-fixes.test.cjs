@@ -19,3 +19,9 @@ test('one-word names shrink to stay whole; longer names wrap with hyphens', () =
   assert.deepEqual(fitName('  Read before bed '), { numberOfLines: 2, android_hyphenationFrequency: 'normal' });
   assert.equal((src.match(/\{\.\.\.fitName\(/g) || []).length, 3, 'routines, study chips and the grid all use it');
 });
+
+test('the "You’re here" pill in level tiers never wraps or clips', () => {
+  const sheet = fs.readFileSync(path.join(root, 'src/components/LevelTierSheet.tsx'), 'utf8');
+  assert.match(sheet, /<Text style=\{s\.hereText\} numberOfLines=\{1\}[^>]*>You’re here<\/Text>/);
+  assert.match(sheet, /herePill: \{ flexShrink: 0,/);
+});

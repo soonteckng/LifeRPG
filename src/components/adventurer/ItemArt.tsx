@@ -154,10 +154,18 @@ export default memo(function ItemArt({ id, size, locked = false }: { id: string;
       <Circle cx={32} cy={32} r={26} fill={`url(#g-${id})`} stroke="rgba(255,255,255,0.25)" strokeWidth={2} /></G>;
   }
   if (!art && frames[id]) {
-    const c = frames[id];
-    art = <G><Circle cx={32} cy={32} r={22} fill="none" stroke={c} strokeWidth={6} /><Circle cx={32} cy={32} r={16} fill="#1E2436" />
-      <Path d="M32 22 Q38 28 37 33 Q36 40 32 41 Q27 40 27 34 Q27 30 30 27 Q30 31 32 32 Q34 28 32 22 Z" fill={c} />
-      {id === "frame_streak_365" && <Path d="M22 12 L24 4 L28 9 L32 2 L36 9 L40 4 L42 12 Z" fill={c} />}</G>;
+    // Each frame shows its shape: a flame, then studs, laurels, and a crown.
+    const c = frames[id], tier = ["frame_streak_7", "frame_streak_30", "frame_streak_100", "frame_streak_365"].indexOf(id);
+    const leaves = [200, 222, 244, 266, 288, 310, 332].map(deg => { const r = (deg * Math.PI) / 180; return { x: 32 + 25 * Math.cos(r), y: 34 - 25 * Math.sin(r), rot: -deg + 90 }; });
+    art = <G>
+      <Circle cx={32} cy={34} r={22} fill="#1E2436" stroke={c} strokeWidth={tier >= 1 ? 5 : 4} />
+      {tier >= 1 && <Circle cx={32} cy={34} r={17.5} fill="none" stroke={c} strokeWidth={1.4} opacity={0.6} />}
+      {tier === 1 && [[32, 12], [54, 34], [32, 56], [10, 34]].map(([x, y]) => <Circle key={`${x}-${y}`} cx={x} cy={y} r={3.2} fill="#BFDBFE" stroke="#1D4ED8" strokeWidth={1} />)}
+      {tier >= 2 && leaves.map((l, i) => <Ellipse key={i} cx={l.x} cy={l.y} rx={4.6} ry={2.2} fill={tier === 3 ? "#FDE68A" : "#DDD6FE"} rotation={l.rot} origin={`${l.x}, ${l.y}`} />)}
+      <Path d="M32 26 Q38 31.5 37 36 Q36 42 32 43 Q27 42 27 36.6 Q27 32.8 30 30.4 Q30 33.6 32 34.4 Q34 31 32 26 Z" fill={c} />
+      {tier === 3 && <Path d="M20 13 L22 3 L27 9 L32 1 L37 9 L42 3 L44 13 Z" fill="#FBBF24" stroke="#B45309" strokeWidth={1.2} strokeLinejoin="round" />}
+      {tier === 0 && <Path d="M32 5 Q36 9 35.5 12 Q35 15 32 15.5 Q29 15 28.8 12.3 Q28.6 10 30.6 8.6 Q30.6 10.6 32 11 Q33.2 9 32 5 Z" fill={c} />}
+    </G>;
   }
   if (!art && titles[id]) {
     const c = titles[id];
