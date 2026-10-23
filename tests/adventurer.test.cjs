@@ -101,10 +101,10 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
   stop();
 });
 
-async function outfits({ online = true, owned = ["cardigan", "beret"], stardust = 100 } = {}) {
+async function outfits({ online = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100 } = {}) {
   const log = [];
   const rewards = {
-    online, busy: false, stardust, owned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame: null, title: null,
+    online, busy: false, stardust, owned, earned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame, title: null,
     saveAvatar: async draft => { log.push(["save", draft]); return { ok: true, value: {} }; },
     buy: async id => { log.push(["buy", id]); return { ok: true, value: {} }; },
   };
@@ -113,7 +113,7 @@ async function outfits({ online = true, owned = ["cardigan", "beret"], stardust 
     "../components/PersonalUI": { PersonalPage: ({ children, footer }) => React.createElement("Page", null, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
     "../components/adventurer/Adventurer": host("Adventurer"), "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
-    "../context/UserContext": { useUser: () => ({ profile: { level: 12 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
+    "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
     "expo-router": { useRouter: () => ({ back: () => log.push(["back"]) }) },
     "react-native-svg": svg, "../components/adventurer/ProfilePicture": host("Picture"),
   }).default;
@@ -132,8 +132,10 @@ test("Outfits wears what you own, previews what you don't, and saves then goes b
     await ui.press("Skin tone 7"); await ui.press("Braids"); await ui.press("Glasses off");
     assert.deepEqual(ui.preview().look, { skin: "7", hair: "braids", hairColor: "darkbrown", glasses: true });
     await ui.tab("clothes");
+    assert.equal(ui.r.root.findAll(n => n.props.accessibilityLabel === "Oat cardigan, Uncommon, wearing").length, 0, "one part at a time: Hats first");
     await ui.press("Red beret, Common, owned");
     assert.deepEqual(ui.preview().equipped, { top: "cardigan", head: "beret" });
+    await ui.press("Tops");
     await ui.press("Oat cardigan, Uncommon, wearing");
     assert.deepEqual(ui.preview().equipped, { head: "beret" }, "tap again to take it off");
     // Locked: you can try it on to see it, but not save it.
@@ -155,7 +157,8 @@ test("Outfits wears what you own, previews what you don't, and saves then goes b
     await ui.press("Barn owl, Epic, wearing");
     assert.equal(ui.button("Save look").props.disabled, false);
     await act(async () => ui.button("Save look").props.onPress());
-    assert.deepEqual(ui.log, [["save", { look: { skin: "7", hair: "braids", hairColor: "darkbrown", glasses: true }, equipped: { head: "beret" }, background: "bg_dusk", frame: null, title: null }], ["back"]],
+    assert.doesNotMatch(ui.words(), /Tap something|Tap again|free for everyone/, "no hint text");
+    assert.deepEqual(ui.log, [["save", { look: { skin: "7", hair: "braids", hairColor: "darkbrown", glasses: true }, equipped: { head: "beret" }, background: "bg_dusk", title: null }], ["back"]],
       "saved, then back to Profile");
   } finally { await act(async () => ui.r.unmount()); }
 });
@@ -163,7 +166,7 @@ test("Outfits wears what you own, previews what you don't, and saves then goes b
 test("Outfits buys with enough Stardust after asking, and needs internet to save or buy", async () => {
   const ui = await outfits({ stardust: 500 });
   try {
-    await ui.tab("gear"); await ui.press("Walking staff, Common, not found yet");
+    await ui.tab("gear"); await ui.press("In hand"); await ui.press("Walking staff, Common, not found yet");
     await act(async () => ui.button("Get it for 60 Stardust").props.onPress());
     const confirm = ui.r.root.findByType("Confirm").props;
     assert.equal(confirm.confirmLabel, "Buy for 60");
@@ -174,21 +177,30 @@ test("Outfits buys with enough Stardust after asking, and needs internet to save
   try {
     await off.press("Skin tone 2");
     assert.equal(off.button("Save look").props.disabled, true);
-    await off.tab("gear"); await off.press("Walking staff, Common, not found yet");
+    await off.tab("gear"); await off.press("In hand"); await off.press("Walking staff, Common, not found yet");
     assert.equal(off.button("Get it for 60 Stardust"), undefined, "no buying offline");
   } finally { await act(async () => off.r.unmount()); }
 });
 
-test("the Picture tab previews your real profile picture, with the frame, background and title you pick", async () => {
-  const ui = await outfits({ owned: ["frame_streak_30", "bg_sunset", "title_artist"] });
+test("the Picture tab: frames follow your streak and only preview, badges and backgrounds are chosen", async () => {
+  const ui = await outfits({ owned: ["cardigan", "frame_streak_7", "frame_streak_30", "bg_sunset", "title_artist"], frame: "frame_streak_30" });
   try {
     await ui.tab("picture");
-    await ui.press("30-day frame, Rare, owned"); await ui.press("Sunset, Rare, owned"); await ui.press("The Artist, Rare, owned");
-    const pic = ui.r.root.findByType("Picture").props;
-    assert.deepEqual([pic.frame, pic.background, pic.level], ["frame_streak_30", "bg_sunset", 12]);
+    const stage = () => ui.r.root.findAllByType("Picture").find(p => p.props.size === 164).props;
+    assert.equal(stage().frame, "frame_streak_30", "your highest earned frame shows");
+    const labels = ui.r.root.findAll(n => n.type === "Press" && typeof n.props.accessibilityLabel === "string" && /in a row|Level frame/.test(n.props.accessibilityLabel) && typeof n.props.onPress === "function").map(n => n.props.accessibilityLabel);
+    assert.deepEqual(labels, ["Level frame, Earned", "7 days in a row, Earned", "30 days in a row, Showing", "60 days in a row, 27 days to go",
+      "100 days in a row, 67 days to go", "180 days in a row, 147 days to go", "365 days in a row, 332 days to go"]);
+    await ui.press("60 days in a row, 27 days to go");
+    assert.equal(stage().frame, "frame_streak_60", "tapping a frame previews it");
+    assert.match(ui.words(), /Preview/);
+    assert.equal(ui.button("Save look").props.disabled, true, "a frame is never saved");
+    await ui.press("Badges"); await ui.press("The Artist, Rare, owned");
+    await ui.press("Background"); await ui.press("Sunset, Rare, owned");
+    assert.deepEqual([stage().frame, stage().background, stage().level], ["frame_streak_30", "bg_sunset", 12], "leaving Frames ends the preview");
     assert.match(ui.words(), /The Artist/);
-    await ui.tab("clothes");
-    assert.equal(ui.r.root.findAllByType("Picture").length, 0, "other tabs show the whole character");
+    await act(async () => ui.button("Save look").props.onPress());
+    assert.deepEqual(ui.log[0], ["save", { look: LOOK, equipped: { top: "cardigan" }, background: "bg_sunset", title: "title_artist" }]);
   } finally { await act(async () => ui.r.unmount()); }
 });
 
@@ -288,6 +300,158 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
       await assert.rejects(db.query(`select public.save_avatar_v1($1, $2, $3)`, [user, everything, u.avatar.revision]), /don't have that item/);
       const free = (await db.query(`select public.save_avatar_v1($1, $2, $3) s`, [user, { look, equipped: { face: "glasses" }, background: "bg_dusk" }, u.avatar.revision])).rows[0].s;
       assert.deepEqual(free.avatar.equipped, { face: "glasses" }, "free items still work for everyone");
+    } finally { await db.close(); }
+  });
+}
+
+// Round 56: frames follow the streak, and everything earned gets a pop-up.
+test("streak frames draw inside the picture's own box, so Android never cuts the top off", async () => {
+  const Pic = load("src/components/adventurer/ProfilePicture.tsx", { "react-native": native, "react-native-svg": svg, "../AppText": { Text: host("Text") },
+    "./AdventurerArt": host("Art"), "./ItemArt": host("Item") }).default;
+  const { STREAK_FRAMES } = load("src/services/rewardCatalog.ts");
+  const shapes = [];
+  for (const f of STREAK_FRAMES) {
+    let r; await act(async () => { r = create(React.createElement(Pic, { look: LOOK, size: 112, level: 1, frame: f.id })); });
+    const frame = r.root.findAllByType("Svg").find(x => x.props.viewBox);
+    assert.equal(frame.props.viewBox, "-6 -11 112 112", "room above the ring for the flame and crown");
+    assert.notEqual(frame.props.style?.overflow, "visible");
+    shapes.push(`${r.root.findAllByType("Path").length}:${r.root.findAllByType("Circle").length}:${r.root.findAllByType("Circle").find(c => c.props.stroke).props.stroke}`);
+    await act(async () => r.unmount());
+  }
+  assert.equal(new Set(shapes).size, STREAK_FRAMES.length, "every streak frame has its own shape");
+  const fs2 = fs.readFileSync(path.join(root, "src/components/adventurer/ProfilePicture.tsx"), "utf8");
+  assert.doesNotMatch(fs2, /-size \* 0\.02/, "badges stay inside the box too");
+});
+
+test("anything newly earned waits for its pop-up; purchases, old rewards and lower frames don't get one", async () => {
+  const saved = new Map();
+  const storage = { getItem: async k => saved.get(k) ?? null, setItem: async (k, v) => { saved.set(k, v); } };
+  const svc = load("src/services/rewardsService.ts", { "../../lib/supabase": { supabase: {} } });
+  const { createRewardsStore, rewardsSeenKey } = load("src/services/rewardsStore.ts", { "./rewardsService": svc });
+  const state = (earned, owned = earned) => svc.parseRewardsState({ stardust: 0, nextFindSeconds: 1500, owned, earned,
+    avatar: { look: LOOK, equipped: {}, frame: null, background: "bg_dusk", title: null, revision: 1 }, pack: { date: "2026-10-24", goalReached: false, claimed: false, tier: 0, daysInARow: 0 } });
+  const store = createRewardsStore(storage); store.subscribe("a", () => {});
+  const load1 = list => store.load("a", { load: async () => state(list) });
+  await load1(["beret"]);
+  assert.deepEqual(store.snapshot("a").moments, [], "what you had before this version counts as seen");
+  await load1(["beret", "tote", "pet_owl", "frame_streak_7", "frame_streak_30", "frame_streak_60"]);
+  assert.deepEqual(store.snapshot("a").moments, ["tote", "pet_owl", "frame_streak_60"], "one pop-up per new thing; only the highest new frame");
+  await store.act("a", async () => ({ state: state(["beret", "tote", "pet_owl", "frame_streak_7", "frame_streak_30", "frame_streak_60", "cardigan"]) }), ["cardigan"]);
+  assert.deepEqual(store.snapshot("a").moments, ["tote", "pet_owl", "frame_streak_60"], "a purchase gets no pop-up");
+  store.dismissMoment("a", "tote");
+  assert.deepEqual(store.snapshot("a").moments, ["pet_owl", "frame_streak_60"]);
+  // An app restart shows what wasn't closed yet, and never what was.
+  const later = createRewardsStore(storage); later.subscribe("a", () => {});
+  await later.load("a", { load: async () => state(["beret", "tote", "pet_owl", "frame_streak_7", "frame_streak_30", "frame_streak_60", "cardigan"]) });
+  assert.deepEqual(later.snapshot("a").moments, ["pet_owl", "frame_streak_60"]);
+  later.dismissMoment("a", "pet_owl"); later.dismissMoment("a", "frame_streak_60");
+  await later.load("a", { load: async () => state(["beret", "tote", "cardigan"]) });
+  assert.deepEqual(later.snapshot("a").moments, []);
+  // Taken back (the developer "earn again" tool) and given again: it gets its pop-up again.
+  await later.load("a", { load: async () => state(["beret", "tote", "cardigan", "pet_owl"]) });
+  assert.deepEqual(later.snapshot("a").moments, ["pet_owl"]);
+  assert.ok(!JSON.parse(saved.get(rewardsSeenKey("a"))).includes("pet_owl"));
+  // A developer owns everything, but only what they really earned is celebrated.
+  const dev = createRewardsStore(new Map() && { getItem: async () => "[]", setItem: async () => {} }); dev.subscribe("d", () => {});
+  await dev.load("d", { load: async () => state(["pet_cat"], ["beret", "pet_cat", "tote"]) });
+  assert.deepEqual(dev.snapshot("d").moments, ["pet_cat"]);
+});
+
+test("the reward pop-up: one at a time, never during a session or over another sheet, and it checks after each session", async () => {
+  const log = [];
+  let moments = ["frame_streak_30", "pet_owl"], profile = { id: "u", level: 4, current_xp: 10, streak_count: 30 }, sheets = 0, path_ = "/";
+  const rewards = () => ({ online: true, moments, look: LOOK, equipped: {}, background: "bg_dusk",
+    claimSessions: async () => { log.push("claim"); return { ok: true }; }, dismissMoment: id => { log.push(`seen:${id}`); moments = moments.filter(m => m !== id); } });
+  const mod = load("src/components/RewardMoments.tsx", {
+    "react-native": { ...native, Modal: host("Modal"), AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) },
+      Animated: { View: host("AView"), Value: class { constructor(v) { this.v = v; } setValue() {} interpolate() { return 0; } }, spring: () => ({ start() {}, stop() {} }), timing: () => ({}), loop: () => ({ start() {}, stop() {} }) },
+      Easing: { linear: 0 } },
+    "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    "expo-router": { useRouter: () => ({ push: to => log.push(`go:${to}`) }) },
+    "react-native-svg": svg, "./MotionPressable": host("Press"), "./AppText": { Text: host("Text") },
+    "./adventurer/ItemArt": host("Item"), "./adventurer/ProfilePicture": host("Picture"),
+    "../context/UserContext": { useUser: () => ({ profile }) }, "../hooks/useRewards": { useRewards: () => rewards() },
+    "../hooks/useReducedMotion": { useReducedMotion: () => true },
+    "../services/launchIntroState": { launchIntroState: { subscribe: () => () => {}, isDone: () => true } },
+    "../utils/sheetActivity": { registerSheetActivity: () => () => {}, useActiveSheetCount: () => sheets },
+    "../utils/tapHaptics": { tapHaptic: () => log.push("haptic") },
+  });
+  const Moments = mod.default;
+  let r; const render = async inside => act(async () => { if (r) r.update(React.createElement(Moments, { insideSession: inside })); else r = create(React.createElement(Moments, { insideSession: inside })); });
+  const words = () => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
+  const press = label => act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === label)[0].props.onPress());
+  try {
+    await render(true);
+    assert.equal(r.root.findByType("Modal").props.visible, false, "never during a session");
+    assert.deepEqual(log, ["claim"], "checks when the app opens");
+    await render(false);
+    assert.equal(r.root.findByType("Modal").props.visible, true);
+    assert.equal(r.root.findByType("Picture").props.frame, "frame_streak_30", "a frame shows on your own picture");
+    assert.match(words(), /NEW FRAME.*30 days in a row!.*upgrades on its own/);
+    assert.match(words(), /1 more after this/);
+    assert.ok(log.includes("haptic"));
+    await press("Continue");
+    await render(false);
+    assert.match(words(), /NEW FRIEND.*Barn owl joined you.*For 10 hours of focus/);
+    await press("See it in Outfits");
+    assert.deepEqual(log.filter(x => x.startsWith("seen") || x.startsWith("go")), ["seen:frame_streak_30", "seen:pet_owl", "go:/outfits"]);
+    moments = ["beret"]; sheets = 1; await render(false);
+    assert.equal(r.root.findByType("Modal").props.visible, false, "waits for another sheet to close");
+    sheets = 0; await render(false);
+    assert.match(words(), /NEW FIND.*Red beret.*common piece from the Artist set/);
+    // A finished session changes XP: look for new finds and frames again.
+    const before = log.filter(x => x === "claim").length;
+    profile = { ...profile, current_xp: 40 }; await render(false);
+    assert.equal(log.filter(x => x === "claim").length, before + 1);
+    const { momentCopy } = mod; const { rewardItem } = load("src/services/rewardCatalog.ts");
+    assert.match(momentCopy(rewardItem("title_scholar")).body, /every Scholar piece/);
+    assert.equal(momentCopy(rewardItem("decor_bonsai")).outfits, false, "camp pieces don't send you to Outfits");
+    for (const id of ["frame_streak_7", "pet_fox", "bg_night", "title_wanderer"]) assert.doesNotMatch(JSON.stringify(momentCopy(rewardItem(id))), /—/, "no dashes");
+  } finally { await act(async () => r.unmount()); }
+});
+
+if (process.env.SESSION_SQL_PGLITE_ROOT) {
+  let moduleRoot = process.env.SESSION_SQL_PGLITE_ROOT;
+  if (!fs.existsSync(path.join(moduleRoot, "package.json"))) moduleRoot = path.join(moduleRoot, "@electric-sql", "pglite");
+  const { PGlite } = require(moduleRoot);
+  const read = f => fs.readFileSync(path.join(root, "supabase/migrations", f), "utf8");
+  const dev = "11111111-1111-4111-8111-111111111111", user = "22222222-2222-4222-8222-222222222222";
+  test("SQL: the frame follows the highest streak frame earned, 60 and 180 days included; developers re-earn through the real check", async () => {
+    const db = new PGlite();
+    try {
+      await db.exec(`create schema auth; create schema liferpg_auth_private;
+        create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
+        create role authenticated; create role anon;
+        create table auth.users(id uuid primary key); create table liferpg_auth_private.developers(user_id uuid primary key);
+        create table public.profiles(id uuid primary key, timezone text, streak_count int default 0);
+        create table public.activity_sessions(id uuid primary key default gen_random_uuid(), user_id uuid, status text, duration_seconds int, credit_result jsonb, completed_at timestamptz);
+        create table public.daily_progress(user_id uuid, progress_date date, goal_minutes int, goal_completed boolean);
+        insert into auth.users values ('${dev}'), ('${user}'); insert into public.profiles(id, timezone, streak_count) values ('${dev}', 'UTC', 8), ('${user}', 'UTC', 65);
+        insert into liferpg_auth_private.developers values ('${dev}');`);
+      for (const f of ["20261024090000_rewards_core.sql", "20261024100000_rewards_dev_tools.sql", "20261024110000_rewards_dev_unlocks.sql",
+        "20261024120000_rewards_auto_frames.sql", "20261024120100_rewards_dev_reearn.sql"]) await db.exec(read(f));
+      const as = u => db.exec(`select set_config('test.uid', '${u}', false)`);
+      const claim = async u => (await db.query(`select public.claim_session_rewards_v1($1) r`, [u])).rows[0].r;
+      await as(user);
+      const first = await claim(user);
+      assert.deepEqual(first.milestones.map(m => m.item), ["frame_streak_7", "frame_streak_30", "frame_streak_60"]);
+      assert.equal(first.state.avatar.frame, "frame_streak_60", "the reply already shows the upgrade");
+      assert.deepEqual([...first.state.earned].sort(), ["frame_streak_30", "frame_streak_60", "frame_streak_7"]);
+      const look = { skin: "3", hair: "short", hairColor: "darkbrown", glasses: false };
+      const saved = (await db.query(`select public.save_avatar_v1($1, $2, $3) s`, [user, { look, equipped: {}, frame: "frame_streak_7" }, first.state.avatar.revision])).rows[0].s;
+      assert.equal(saved.avatar.frame, "frame_streak_60", "a frame can't be picked; any sent is ignored");
+      await db.exec(`update public.profiles set streak_count = 180 where id = '${user}'`);
+      const more = await claim(user);
+      assert.deepEqual(more.milestones.map(m => m.item), ["frame_streak_100", "frame_streak_180"]);
+      assert.equal(more.state.avatar.frame, "frame_streak_180", "upgrades on its own");
+      await assert.rejects(db.query(`select public.dev_rewards_v1($1, 'reearn', 0)`, [user]), /Only developer accounts/);
+      await as(dev);
+      const d = await claim(dev);
+      assert.equal(d.state.owned.length, 38, "a developer still has everything to try on");
+      assert.deepEqual(d.state.earned, ["frame_streak_7"]); assert.equal(d.state.avatar.frame, "frame_streak_7", "but the frame is their real streak's");
+      const back = (await db.query(`select public.dev_rewards_v1($1, 'reearn', 0) s`, [dev])).rows[0].s;
+      assert.deepEqual([back.earned, back.avatar.frame], [[], null]);
+      assert.deepEqual((await claim(dev)).milestones.map(m => m.item), ["frame_streak_7"], "the real check gives it back");
     } finally { await db.close(); }
   });
 }

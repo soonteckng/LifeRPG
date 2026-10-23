@@ -6,6 +6,7 @@ import { usePathname } from "expo-router";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
 import SaveSuggestedQuest, { type SuggestedQuestCompletion } from "./SaveSuggestedQuest";
 import PostSessionCelebration from "./PostSessionCelebration";
+import RewardMoments from "./RewardMoments";
 import SessionSavingOverlay from "./SessionSavingOverlay";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
@@ -157,5 +158,6 @@ export default function GlobalRewardListener() {
       closeRequested.current = false; setClosing(false); if (!candidate) setHeld(null);
     }} onRetry={retry} />
     <SessionSavingOverlay visible={savingShown} />
-    <PostSessionCelebration insideSession={insideSession || !online} /></>;
+    <PostSessionCelebration insideSession={insideSession || !online} />
+    <RewardMoments insideSession={insideSession} /></>;
 }

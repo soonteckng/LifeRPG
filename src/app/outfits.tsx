@@ -14,11 +14,17 @@ import Svg, { Defs, Ellipse, LinearGradient, Rect, Stop } from "react-native-svg
 import { colors, edge, radius } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useRewards } from "../hooks/useRewards";
-import { REWARD_ITEMS, SETS, rewardItem, setPieces, type RewardItem, type WearSlot } from "../services/rewardCatalog";
+import { REWARD_ITEMS, SETS, STREAK_FRAMES, rewardItem, setPieces, type RewardItem, type WearSlot } from "../services/rewardCatalog";
 import { HAIR_COLORS, HAIR_STYLES, SKIN_TONES, type AdventurerLook } from "../utils/adventurerLook";
 
 type Tab = "look" | "clothes" | "gear" | "pets" | "picture";
-const CLOTHES: WearSlot[] = ["head", "top", "neck", "back", "shoes"], GEAR: WearSlot[] = ["bag", "held"];
+type PicturePart = "frames" | "badges" | "background";
+// Each tab is split into parts. In a clothes or gear part you wear one thing at a time.
+const PARTS: Record<"clothes" | "gear", { slot: WearSlot; label: string }[]> = {
+  clothes: [{ slot: "head", label: "Hats" }, { slot: "top", label: "Tops" }, { slot: "neck", label: "Neck" }, { slot: "back", label: "Cloaks" }, { slot: "shoes", label: "Shoes" }],
+  gear: [{ slot: "bag", label: "Bags" }, { slot: "held", label: "In hand" }],
+};
+const PICTURE_PARTS: { value: PicturePart; label: string }[] = [{ value: "frames", label: "Frames" }, { value: "badges", label: "Badges" }, { value: "background", label: "Background" }];
 const RARITY_COLOR: Record<string, string> = { common: "#C2C8D8", uncommon: "#2DD4A7", rare: "#60A5FA", epic: "#A78BFA", legendary: "#FBBF24" };
 const RARITY_NAME: Record<string, string> = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
 const BG: Record<string, [string, string]> = {
@@ -26,19 +32,27 @@ const BG: Record<string, [string, string]> = {
   bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
 };
 const STAGE_HEIGHT = 240;
-interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; frame: string | null; title: string | null }
+interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; title: string | null }
 
-/** Camp › Outfits: your look, clothes, gear, pet and profile picture, saved to your account. */
+/**
+ * Camp › Outfits: your look, clothes, gear, pet and profile picture, saved to
+ * your account. Frames aren't chosen: your picture always shows the highest
+ * streak frame you've earned, so the Frames part only previews them.
+ */
 export default function OutfitsScreen() {
   const { profile } = useUser();
   const router = useRouter();
   const rewards = useRewards();
-  const saved: Draft = useMemo(() => ({ look: rewards.look, equipped: rewards.equipped, background: rewards.background, frame: rewards.frame, title: rewards.title }),
-    [rewards.look, rewards.equipped, rewards.background, rewards.frame, rewards.title]);
+  const saved: Draft = useMemo(() => ({ look: rewards.look, equipped: rewards.equipped, background: rewards.background, title: rewards.title }),
+    [rewards.look, rewards.equipped, rewards.background, rewards.title]);
   // Until you change something, the page simply shows your saved look.
   const [edit, setEdit] = useState<Draft | null>(null);
   const draft = edit ?? saved;
   const [tab, setTab] = useState<Tab>("look");
+  const [slot, setSlot] = useState<WearSlot>("head");
+  const [picturePart, setPicturePart] = useState<PicturePart>("frames");
+  // A frame you tap is only shown here; your real frame follows your streak.
+  const [framePreview, setFramePreview] = useState<string | null | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
@@ -53,14 +67,13 @@ export default function OutfitsScreen() {
   const tapItem = (item: RewardItem) => {
     setSelected(item.id); setMessage("");
     if (item.kind === "background") return change({ background: item.id });
-    if (item.kind === "frame") return change({ frame: draft.frame === item.id ? null : item.id });
     if (item.kind === "title") return change({ title: draft.title === item.id ? null : item.id });
     const slot = item.slot!;
     const equipped = { ...draft.equipped };
     if (equipped[slot] === item.id) delete equipped[slot]; else equipped[slot] = item.id;
     change({ equipped });
   };
-  const tryingOn = [...Object.values(draft.equipped), draft.frame, draft.title, draft.background]
+  const tryingOn = [...Object.values(draft.equipped), draft.title, draft.background]
     .map(id => id ? rewardItem(id) : undefined).filter((item): item is RewardItem => !!item && !has(item));
   const save = async () => {
     if (tryingOn.length) return;
@@ -75,12 +88,20 @@ export default function OutfitsScreen() {
     setMessage(result.ok ? `${item.name} is yours.` : result.message);
   };
 
-  const worn = (item: RewardItem) => item.kind === "background" ? draft.background === item.id : item.kind === "frame" ? draft.frame === item.id
+  const worn = (item: RewardItem) => item.kind === "background" ? draft.background === item.id
     : item.kind === "title" ? draft.title === item.id : draft.equipped[item.slot!] === item.id;
-  const list = tab === "clothes" ? REWARD_ITEMS.filter(i => i.kind === "wearable" && CLOTHES.includes(i.slot!) && !i.free)
-    : tab === "gear" ? REWARD_ITEMS.filter(i => i.kind === "wearable" && GEAR.includes(i.slot!))
+  const parts = tab === "clothes" || tab === "gear" ? PARTS[tab] : null;
+  const list = parts ? REWARD_ITEMS.filter(i => i.kind === "wearable" && i.slot === slot && !i.free)
     : tab === "pets" ? REWARD_ITEMS.filter(i => i.kind === "pet")
-    : tab === "picture" ? REWARD_ITEMS.filter(i => i.kind === "background" || i.kind === "frame" || i.kind === "title") : [];
+    : tab === "picture" && picturePart === "badges" ? REWARD_ITEMS.filter(i => i.kind === "title")
+    : tab === "picture" && picturePart === "background" ? REWARD_ITEMS.filter(i => i.kind === "background") : [];
+  const earned = new Set(rewards.earned);
+  const streak = profile.streak_count ?? 0;
+  const shownFrame = framePreview === undefined ? rewards.frame : framePreview;
+  const openTab = (next: Tab) => {
+    setTab(next); setSelected(null); setFramePreview(undefined);
+    if (next === "clothes" || next === "gear") setSlot(PARTS[next][0].slot);
+  };
   const focus = selected ? rewardItem(selected) : null;
   const topSet = draft.equipped.top ? rewardItem(draft.equipped.top)?.set : undefined;
   const setInfo = topSet ? { name: SETS[topSet].name, have: setPieces(topSet).filter(has).length, of: setPieces(topSet).length } : null;
@@ -106,14 +127,15 @@ export default function OutfitsScreen() {
         <View style={s.chips}>
           <View style={s.chip} accessible accessibilityLabel={`${rewards.stardust} Stardust`}><StardustArt size={14} /><Text style={s.chipText}>{rewards.stardust}</Text></View>
           {setInfo && <View style={s.chip}><Text style={s.chipText}>{setInfo.name} set · {setInfo.have} of {setInfo.of}</Text></View>}
+          {framePreview !== undefined && framePreview !== rewards.frame && <View style={s.chip}><Text style={s.chipText}>Preview</Text></View>}
         </View>
         {tab === "picture"
-          ? <View style={s.picture}><ProfilePicture look={draft.look} equipped={draft.equipped} level={profile.level} background={draft.background} frame={draft.frame} streak={profile.streak_count ?? 0} size={150} />
+          ? <View style={s.picture}><ProfilePicture look={draft.look} equipped={draft.equipped} level={profile.level} background={draft.background} frame={shownFrame} streak={streak} size={164} />
             {!!draft.title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(draft.title)?.name}</Text></View>}</View>
           : <Adventurer look={draft.look} equipped={draft.equipped} size={132} lanternLevel={profile.level} />}
       </View>
 
-      <Segmented<Tab> value={tab} onChange={next => { setTab(next); setSelected(null); }} track={colors.surface}
+      <Segmented<Tab> value={tab} onChange={openTab} track={colors.surface}
         options={[{ value: "look", label: "Look" }, { value: "clothes", label: "Clothes" }, { value: "gear", label: "Gear" }, { value: "pets", label: "Pets" }, { value: "picture", label: "Picture" }]} />
 
       {tab === "look" ? <View style={s.card}>
@@ -132,7 +154,25 @@ export default function OutfitsScreen() {
             style={[s.swatch, { backgroundColor: h.color }, on && s.swatchOn]} />;
         })}</View>
         <View style={s.pills}><Pill label={draft.look.glasses ? "Glasses on" : "Glasses off"} on={draft.look.glasses} onPress={() => setLook({ glasses: !draft.look.glasses })} /></View>
-        <Text style={p.caption}>Everything here is free for everyone.</Text>
+      </View> : <>
+      {parts && <View style={s.parts} accessibilityRole="radiogroup">{parts.map(part => <Pill key={part.slot} label={part.label} on={slot === part.slot}
+        dot={!!draft.equipped[part.slot]} onPress={() => { setSlot(part.slot); setSelected(null); }} />)}</View>}
+      {tab === "picture" && <View style={s.parts} accessibilityRole="radiogroup">{PICTURE_PARTS.map(part => <Pill key={part.value} label={part.label} on={picturePart === part.value}
+        onPress={() => { setPicturePart(part.value); setSelected(null); setFramePreview(undefined); }} />)}</View>}
+      {tab === "picture" && picturePart === "frames" ? <View style={s.frames}>
+        {[{ id: null, days: 0 }, ...STREAK_FRAMES].map(f => {
+          const showing = (rewards.frame ?? null) === f.id, got = f.id === null || earned.has(f.id), looking = shownFrame === f.id;
+          const name = f.id === null ? "Level frame" : `${f.days} days in a row`;
+          const status = showing ? "Showing" : got ? "Earned" : `${f.days - Math.min(streak, f.days)} days to go`;
+          return <Pressable key={f.id ?? "level"} onPress={() => setFramePreview(f.id)} accessibilityRole="button" accessibilityLabel={`${name}, ${status}`}
+            accessibilityState={{ selected: looking }} style={[s.frameRow, looking && s.tileFocus]}>
+            <ProfilePicture look={draft.look} equipped={{}} level={profile.level} background={draft.background} frame={f.id} size={52} />
+            <Text style={[s.frameName, !got && { color: colors.muted }]} numberOfLines={1}>{name}</Text>
+            {showing ? <View style={s.showing}><Text style={s.showingText}>{status}</Text></View>
+              : got ? <Ionicons name="checkmark-circle" size={20} color={colors.progress} />
+              : <Text style={s.toGo}>{status}</Text>}
+          </Pressable>;
+        })}
       </View> : <View style={s.grid}>{list.map(item => {
         const mine = has(item), on = worn(item);
         return <Pressable key={item.id} onPress={() => tapItem(item)} accessibilityRole="button"
@@ -145,13 +185,13 @@ export default function OutfitsScreen() {
           <Text style={[s.tileText, !mine && { color: colors.muted }]} numberOfLines={2}>{item.name}</Text>
         </Pressable>;
       })}</View>}
+      </>}
 
-      {tab !== "look" && <View style={s.card} accessibilityLiveRegion="polite">
-        {focus ? <>
-          <Text style={p.rowTitle}>{focus.name}</Text>
-          <Text style={p.caption}>{RARITY_NAME[focus.rarity]}{focus.set ? ` · ${SETS[focus.set].name} set` : ""}. {has(focus) ? "Tap again to take it off." : `Previewing. ${focus.hint}.`}</Text>
-          {!has(focus) && !!focus.price && rewards.online && <PersonalButton title={`Get it for ${focus.price} Stardust`} secondary onPress={() => setBuying(focus)} />}
-        </> : <Text style={p.caption}>{tab === "picture" ? "Your frame grows with your level on its own. Streak frames, titles and backgrounds you earn show here." : "Tap something you own to wear it. Locked items say how to get them."}</Text>}
+      {/* Only a locked piece needs a word: how to get it. */}
+      {focus && !has(focus) && focus.kind !== "frame" && <View style={s.card} accessibilityLiveRegion="polite">
+        <Text style={p.rowTitle}>{focus.name}</Text>
+        <Text style={p.caption}>{RARITY_NAME[focus.rarity]}{focus.set ? ` · ${SETS[focus.set].name} set` : ""}. {focus.hint}.</Text>
+        {!!focus.price && rewards.online && <PersonalButton title={`Get it for ${focus.price} Stardust`} secondary onPress={() => setBuying(focus)} />}
       </View>}
 
       {!!message && <Text style={message.endsWith("is yours.") ? s.ok : p.error} accessibilityRole="alert">{message}</Text>}
@@ -162,9 +202,10 @@ export default function OutfitsScreen() {
   </PersonalPage>;
 }
 
-function Pill({ label, on, onPress }: { label: string; on: boolean; onPress: () => void }) {
+function Pill({ label, on, onPress, dot = false }: { label: string; on: boolean; onPress: () => void; dot?: boolean }) {
   return <Pressable onPress={onPress} accessibilityRole="radio" accessibilityLabel={label} accessibilityState={{ checked: on }} style={[s.pill, on && s.pillOn]}>
     <Text style={[s.pillText, on && s.pillTextOn]}>{label}</Text>
+    {dot && <View style={[s.dot, on && { backgroundColor: colors.background }]} />}
   </Pressable>;
 }
 
@@ -183,9 +224,17 @@ const s = StyleSheet.create({
   swatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: "transparent" },
   swatchOn: { borderColor: colors.text },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  pill: { minHeight: 40, paddingHorizontal: 14, borderRadius: 20, justifyContent: "center", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceRaised },
+  pill: { minHeight: 40, paddingHorizontal: 14, borderRadius: 20, flexDirection: "row", alignItems: "center", gap: 6, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surfaceRaised },
   pillOn: { backgroundColor: colors.text, borderColor: colors.text },
   pillText: { color: colors.neutral, fontSize: 14, fontWeight: "600" }, pillTextOn: { color: colors.background },
+  parts: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.progress },
+  frames: { gap: 8 },
+  frameRow: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 68, paddingHorizontal: 10, paddingVertical: 8, borderRadius: radius.row, backgroundColor: colors.surface },
+  frameName: { flex: 1, color: colors.text, fontSize: 15, fontWeight: "700" },
+  showing: { paddingHorizontal: 10, minHeight: 26, borderRadius: 13, justifyContent: "center", backgroundColor: "rgba(45,212,167,0.16)" },
+  showingText: { color: colors.progress, fontSize: 12, fontWeight: "800" },
+  toGo: { color: colors.tertiary, fontSize: 13, fontWeight: "600" },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   // Three square tiles a row, big enough for the art and a two-line name.
   tile: { ...edge, width: "31.5%", aspectRatio: 1, borderRadius: radius.row, alignItems: "center", justifyContent: "center", gap: 4, paddingHorizontal: 6, paddingTop: 10, paddingBottom: 6, backgroundColor: colors.surface },

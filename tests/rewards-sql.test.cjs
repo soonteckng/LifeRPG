@@ -4,6 +4,8 @@
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const root = path.resolve(__dirname, '..');
 const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261024090000_rewards_core.sql'), 'utf8');
+// Items added by later rounds, for the catalog check.
+const laterItems = fs.readFileSync(path.join(root, 'supabase/migrations/20261024120000_rewards_auto_frames.sql'), 'utf8');
 
 test('rewards live in a private schema and change only through checked functions', () => {
   assert.match(sql, /create schema if not exists liferpg_reward_private;\nrevoke all on schema liferpg_reward_private from public, anon, authenticated;/);
@@ -28,7 +30,7 @@ function load(file, mocks) {
 
 test('the app catalog matches the server catalog item for item', () => {
   const catalog = load('src/services/rewardCatalog.ts', {});
-  const rows = [...sql.matchAll(/\('([a-z0-9_]+)', '(wearable|pet|frame|background|decor|title)', (?:'([a-z]+)'|null), (?:'([a-z]+)'|null), '([a-z]+)', (true|false), (?:true|false), (?:true|false), (\d+|null)\)/g)]
+  const rows = [...(sql + laterItems).matchAll(/\('([a-z0-9_]+)', '(wearable|pet|frame|background|decor|title)', (?:'([a-z]+)'|null), (?:'([a-z]+)'|null), '([a-z]+)', (true|false), (?:true|false), (?:true|false), (\d+|null)\)/g)]
     .map(m => ({ id: m[1], kind: m[2], slot: m[3], set: m[4], rarity: m[5], free: m[6] === 'true', price: m[7] === 'null' ? undefined : Number(m[7]) }));
   assert.equal(rows.length, catalog.REWARD_ITEMS.length);
   for (const row of rows) {

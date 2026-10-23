@@ -41,7 +41,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     'expo-router':{usePathname:()=>pathname,Stack:{Screen:host('Options')},useFocusEffect:effect=>React.useEffect(effect,[effect]),
       useNavigation:()=>navigation},
     'expo-router/react-navigation':{usePreventRemove(){}},
-    './SessionResultSheet':host('Result'), './SaveSuggestedQuest':host('SaveQuest'), './PostSessionCelebration':host('Celebration'),
+    './SessionResultSheet':host('Result'), './SaveSuggestedQuest':host('SaveQuest'), './PostSessionCelebration':host('Celebration'), './RewardMoments':host('RewardMoments'),
     '../context/AuthContext':{useAuth:()=>({accessMode:mode,user:mode==='online'?{id:ownerId}:null,localOwner:{id:ownerId,backendId},admissionEpoch,retrySessionVerification:async()=>calls.push('verify')})},
     '../context/TimerContext':{useTimer:()=>Object.assign(timer,api)},
     '../context/UserContext':{useUser:()=>({profile:{id:ownerId,level:1,current_xp:1},reloadProfile:async()=>calls.push('profile')})},

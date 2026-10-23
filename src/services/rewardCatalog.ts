@@ -43,7 +43,9 @@ export const REWARD_ITEMS: readonly RewardItem[] = [
   { id: "pet_fox", name: "Little fox", kind: "pet", slot: "pet", rarity: "epic", hint: "Joins you at 100 hours of focus" },
   { id: "frame_streak_7", name: "7-day frame", kind: "frame", rarity: "uncommon", hint: "Focus 7 days in a row" },
   { id: "frame_streak_30", name: "30-day frame", kind: "frame", rarity: "rare", hint: "Focus 30 days in a row" },
+  { id: "frame_streak_60", name: "60-day frame", kind: "frame", rarity: "rare", hint: "Focus 60 days in a row" },
   { id: "frame_streak_100", name: "100-day frame", kind: "frame", rarity: "epic", hint: "Focus 100 days in a row" },
+  { id: "frame_streak_180", name: "180-day frame", kind: "frame", rarity: "epic", hint: "Focus 180 days in a row" },
   { id: "frame_streak_365", name: "365-day frame", kind: "frame", rarity: "legendary", hint: "Focus 365 days in a row" },
   { id: "title_scholar", name: "The Scholar", kind: "title", set: "scholar", rarity: "rare", hint: "Own every Scholar piece" },
   { id: "title_artist", name: "The Artist", kind: "title", set: "artist", rarity: "rare", hint: "Own every Artist piece" },
@@ -73,6 +75,12 @@ export const SETS: Record<OutfitSet, { name: string; title: string }> = {
 };
 
 export const setPieces = (set: OutfitSet) => REWARD_ITEMS.filter(item => item.kind === "wearable" && item.set === set);
+
+/** Streak frames in order. Your picture always shows the highest one you've earned. */
+export const STREAK_FRAMES = [
+  { id: "frame_streak_7", days: 7 }, { id: "frame_streak_30", days: 30 }, { id: "frame_streak_60", days: 60 },
+  { id: "frame_streak_100", days: 100 }, { id: "frame_streak_180", days: 180 }, { id: "frame_streak_365", days: 365 },
+] as const;
 
 export const PACK_TIERS = [
   { name: "Canvas", days: 1 },

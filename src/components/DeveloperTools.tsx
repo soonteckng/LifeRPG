@@ -70,10 +70,14 @@ export default function DeveloperTools() {
     const r = await rewards.openPack();
     setRewardNote(r.ok ? `${["Canvas", "Leather", "Brass", "Crystal"][r.value.tier]} pack (${r.value.daysInARow} days in a row): ${names(r.value.items) || "no item"}, +${r.value.stardust} Stardust.` : r.message);
   };
-  const dev = async (action: "stardust" | "reopen_pack" | "reset", note: string) => {
+  const dev = async (action: "stardust" | "reopen_pack" | "reearn" | "reset", note: string) => {
     const r = await rewards.developer(action, action === "stardust" ? 500 : 0);
     setRewardNote(r.ok ? note : r.message);
+    return r.ok;
   };
+  // Takes back pets, streak frames and badges, then runs the same check every
+  // phone runs after a session, so they come back with their real pop-ups.
+  const reearn = async () => { if (await dev("reearn", "")) await claim(); };
   const level = (profile.level ?? 1) + (preview?.kind === "level" ? 1 : 0);
   return <>
     <SettingsGroup title="Developer" footer={message || busySession || "Only your developer account sees this. Previews never save anything."}>
@@ -84,12 +88,13 @@ export default function DeveloperTools() {
       <SettingsRow icon="map-outline" tint="#7C3AED" title="Replay the guide" disabled={hasOpenSession || !tour} onPress={() => { setMessage(""); tour?.start(); }} />
       <SettingsRow icon="refresh-outline" tint="#FF9F0A" title="Restart the intro" disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
     </SettingsGroup>
-    <SettingsGroup title="Developer: rewards" footer={rewardNote || `${rewards.stardust} Stardust. These use the real rewards, the same as everyone's. Only the last three are developer-only.`}>
+    <SettingsGroup title="Developer: rewards" footer={rewardNote || `${rewards.stardust} Stardust. These use the real rewards, the same as everyone's. Only the last four are developer-only.`}>
       <SettingsRow first icon="shirt-outline" tint="#2DD4A7" title="Open Outfits" onPress={() => router.navigate("/outfits")} />
       <SettingsRow icon="compass-outline" tint="#60A5FA" title="Check for new finds" disabled={rewards.busy} onPress={() => void claim()} />
       <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" disabled={rewards.busy} onPress={() => void pack()} />
       <SettingsRow icon="sparkles-outline" tint="#A78BFA" title="Add 500 test Stardust" disabled={rewards.busy} onPress={() => void dev("stardust", "Added 500 Stardust.")} />
       <SettingsRow icon="repeat-outline" tint="#64D2FF" title="Let me open today's pack again" disabled={rewards.busy} onPress={() => void dev("reopen_pack", "Today's pack can be opened again. Your days in a row carry on.")} />
+      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn my pets, frames and badges again" disabled={rewards.busy} onPress={() => void reearn()} />
       <SettingsRow icon="trash-outline" tint="#FF6B6B" title="Reset my rewards" disabled={rewards.busy} onPress={() => setResetting(true)} />
     </SettingsGroup>
     {preview && <SessionResultSheet preview visible={shown} sessionId={`preview-${preview.id}`}

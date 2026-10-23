@@ -107,7 +107,7 @@ test("each preview opens a card marked as a preview, and Done closes it", async 
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
       ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
-        "Open Outfits", "Check for new finds", "Open today's pack", "Add 500 test Stardust", "Let me open today's pack again", "Reset my rewards"]);
+        "Open Outfits", "Check for new finds", "Open today's pack", "Add 500 test Stardust", "Let me open today's pack again", "Earn my pets, frames and badges again", "Reset my rewards"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Preview level up");
     let card = ui.result().props;
@@ -214,10 +214,12 @@ test("the rewards rows use the real rewards actions, and the dev-only ones ask t
     assert.equal(ui.groups()[1].props.footer, "Reach your daily goal to open a pack.", "the server's own reason shows");
     await ui.press("Add 500 test Stardust");
     await ui.press("Let me open today's pack again");
+    // Taken back, then the same check every phone runs after a session gives them again.
+    await ui.press("Earn my pets, frames and badges again");
     await ui.press("Reset my rewards");
-    assert.deepEqual(ui.log.filter(x => x.startsWith("dev:")), ["dev:stardust:500", "dev:reopen_pack:0"], "reset waits for a yes");
+    assert.deepEqual(ui.log.filter(x => x.startsWith("dev:")), ["dev:stardust:500", "dev:reopen_pack:0", "dev:reearn:0"], "reset waits for a yes");
     await act(async () => ui.confirm().props.onConfirm());
-    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:stardust:500", "dev:reopen_pack:0", "dev:reset:0"]);
+    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:stardust:500", "dev:reopen_pack:0", "dev:reearn:0", "claim", "dev:reset:0"]);
   } finally { await ui.cleanup(); }
 });
 

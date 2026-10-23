@@ -18,9 +18,12 @@ export interface RewardsState {
   stardust: number;
   nextFindSeconds: number;
   owned: string[];
+  /** What was really earned (developers own everything, but only this is celebrated). */
+  earned: string[];
   avatar: SavedAvatar;
   pack: { date: string; goalReached: boolean; claimed: boolean; tier: number; daysInARow: number };
 }
+export type DevRewardAction = "stardust" | "reopen_pack" | "reearn" | "reset";
 export interface Gift { item: string; rarity: RewardRarity; new: boolean; stardust: number; reason?: "hours" | "streak" | "set" }
 export interface SessionClaim { sessions: { sessionId: string; finds: Gift[]; minutesStardust: number }[]; milestones: Gift[]; state: RewardsState }
 export interface PackOpening { tier: number; daysInARow: number; items: Gift[]; stardust: number; milestones: Gift[]; state: RewardsState }
@@ -50,6 +53,7 @@ export function parseRewardsState(value: unknown): RewardsState {
     nextFindSeconds: value.nextFindSeconds as number,
     // Items the app doesn't know yet (from a newer server) are left out rather than breaking the screen.
     owned: value.owned.filter((id): id is string => typeof id === "string" && !!rewardItem(id)),
+    earned: (Array.isArray(value.earned) ? value.earned : value.owned).filter((id): id is string => typeof id === "string" && !!rewardItem(id)),
     avatar: {
       look: {
         skin: typeof look.skin === "string" ? look.skin : "3",
@@ -103,10 +107,11 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
       if (!isObj(r)) throw new Error("Unexpected rewards reply");
       return { milestones: gifts(r.milestones), state: parseRewardsState(r.state) };
     },
-    saveAvatar: async (avatar: Omit<SavedAvatar, "revision">, expectedRevision: number) =>
-      parseRewardsState(await call("save_avatar_v1", { p_avatar: avatar, p_expected_revision: expectedRevision })),
+    /** The frame isn't saved: it follows the highest streak frame earned. */
+    saveAvatar: async (avatar: Omit<SavedAvatar, "revision" | "frame">, expectedRevision: number) =>
+      parseRewardsState(await call("save_avatar_v1", { p_avatar: { look: avatar.look, equipped: avatar.equipped, background: avatar.background, title: avatar.title }, p_expected_revision: expectedRevision })),
     /** Developer accounts only; the server refuses everyone else. */
-    developer: async (action: "stardust" | "reopen_pack" | "reset", amount = 0) =>
+    developer: async (action: DevRewardAction, amount = 0) =>
       parseRewardsState(await call("dev_rewards_v1", { p_action: action, p_amount: amount })),
   };
 }

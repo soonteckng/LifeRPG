@@ -11,7 +11,8 @@ const backgrounds: Record<string, [string, string]> = {
   bg_dusk: ["#4A3366", "#B86A6A"], bg_forest: ["#24493F", "#3E6B4F"], bg_meadow: ["#6C9CC6", "#A8CC92"],
   bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
 };
-const frames: Record<string, string> = { frame_streak_7: "#FFB020", frame_streak_30: "#60A5FA", frame_streak_100: "#A78BFA", frame_streak_365: "#FBBF24" };
+const frames: Record<string, string> = { frame_streak_7: "#FFB020", frame_streak_30: "#60A5FA", frame_streak_60: "#34D399", frame_streak_100: "#A78BFA", frame_streak_180: "#F472B6", frame_streak_365: "#FBBF24" };
+const LEAF: Record<string, string> = { frame_streak_100: "#DDD6FE", frame_streak_180: "#FBCFE8", frame_streak_365: "#FDE68A" };
 const titles: Record<string, string> = { title_scholar: "#60A5FA", title_artist: "#F472B6", title_wanderer: "#86C27F" };
 
 const ART: Record<string, () => ReactElement> = {
@@ -154,17 +155,19 @@ export default memo(function ItemArt({ id, size, locked = false }: { id: string;
       <Circle cx={32} cy={32} r={26} fill={`url(#g-${id})`} stroke="rgba(255,255,255,0.25)" strokeWidth={2} /></G>;
   }
   if (!art && frames[id]) {
-    // Each frame shows its shape: a flame, then studs, laurels, and a crown.
-    const c = frames[id], tier = ["frame_streak_7", "frame_streak_30", "frame_streak_100", "frame_streak_365"].indexOf(id);
+    // Each frame shows its shape: a flame, studs, gems, laurels, a crown.
+    const c = frames[id], first = id === "frame_streak_7", studs = id === "frame_streak_30" || id === "frame_streak_60";
+    const gems = id === "frame_streak_60" || id === "frame_streak_180", leaf = LEAF[id], crown = id === "frame_streak_365";
     const leaves = [200, 222, 244, 266, 288, 310, 332].map(deg => { const r = (deg * Math.PI) / 180; return { x: 32 + 25 * Math.cos(r), y: 34 - 25 * Math.sin(r), rot: -deg + 90 }; });
     art = <G>
-      <Circle cx={32} cy={34} r={22} fill="#1E2436" stroke={c} strokeWidth={tier >= 1 ? 5 : 4} />
-      {tier >= 1 && <Circle cx={32} cy={34} r={17.5} fill="none" stroke={c} strokeWidth={1.4} opacity={0.6} />}
-      {tier === 1 && [[32, 12], [54, 34], [32, 56], [10, 34]].map(([x, y]) => <Circle key={`${x}-${y}`} cx={x} cy={y} r={3.2} fill="#BFDBFE" stroke="#1D4ED8" strokeWidth={1} />)}
-      {tier >= 2 && leaves.map((l, i) => <Ellipse key={i} cx={l.x} cy={l.y} rx={4.6} ry={2.2} fill={tier === 3 ? "#FDE68A" : "#DDD6FE"} rotation={l.rot} origin={`${l.x}, ${l.y}`} />)}
+      <Circle cx={32} cy={34} r={22} fill="#1E2436" stroke={c} strokeWidth={first ? 4 : 5} />
+      {!first && <Circle cx={32} cy={34} r={17.5} fill="none" stroke={c} strokeWidth={1.4} opacity={0.6} />}
+      {studs && [[32, 12], [54, 34], [32, 56], [10, 34]].map(([x, y]) => <Circle key={`${x}-${y}`} cx={x} cy={y} r={3.2} fill="#E5E7EB" stroke={c} strokeWidth={1.2} />)}
+      {!!leaf && leaves.map((l, i) => <Ellipse key={i} cx={l.x} cy={l.y} rx={4.6} ry={2.2} fill={leaf} rotation={l.rot} origin={`${l.x}, ${l.y}`} />)}
+      {gems && [[16.4, 18.4], [47.6, 18.4], [47.6, 49.6], [16.4, 49.6]].map(([x, y]) => <Path key={`${x}-${y}`} d={`M${x} ${y - 4} L${x + 3} ${y} L${x} ${y + 4} L${x - 3} ${y} Z`} fill="#FFFFFF" stroke={c} strokeWidth={1.2} />)}
       <Path d="M32 26 Q38 31.5 37 36 Q36 42 32 43 Q27 42 27 36.6 Q27 32.8 30 30.4 Q30 33.6 32 34.4 Q34 31 32 26 Z" fill={c} />
-      {tier === 3 && <Path d="M20 13 L22 3 L27 9 L32 1 L37 9 L42 3 L44 13 Z" fill="#FBBF24" stroke="#B45309" strokeWidth={1.2} strokeLinejoin="round" />}
-      {tier === 0 && <Path d="M32 5 Q36 9 35.5 12 Q35 15 32 15.5 Q29 15 28.8 12.3 Q28.6 10 30.6 8.6 Q30.6 10.6 32 11 Q33.2 9 32 5 Z" fill={c} />}
+      {crown && <Path d="M20 13 L22 3 L27 9 L32 1 L37 9 L42 3 L44 13 Z" fill="#FBBF24" stroke="#B45309" strokeWidth={1.2} strokeLinejoin="round" />}
+      {first && <Path d="M32 5 Q36 9 35.5 12 Q35 15 32 15.5 Q29 15 28.8 12.3 Q28.6 10 30.6 8.6 Q30.6 10.6 32 11 Q33.2 9 32 5 Z" fill={c} />}
     </G>;
   }
   if (!art && titles[id]) {
