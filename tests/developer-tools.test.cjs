@@ -64,8 +64,16 @@ test("restarting the intro asks the server, then clears this phone's welcome mar
   assert.equal(await none.mod.restartIntro(""), false); assert.deepEqual(none.calls, []);
 });
 
-async function tools({ developer = true, online = true, session = false, restart = async () => true, reload = async () => true } = {}) {
-  const sheets = [], log = [];
+async function tools({ developer = true, online = true, session = false, restart = async () => true, reload = async () => true, rewardReply = {} } = {}) {
+  const sheets = [], log = [], loads = [];
+  const state = { stardust: 40, nextFindSeconds: 600 };
+  // The same rewards hook every screen uses; each action is logged.
+  const rewards = {
+    stardust: 40, busy: false,
+    claimSessions: async () => { log.push("claim"); return rewardReply.claim ?? { ok: true, value: { sessions: [], milestones: [], state } }; },
+    openPack: async () => { log.push("pack"); return rewardReply.pack ?? { ok: false, message: "Reach your daily goal to open a pack." }; },
+    developer: async (action, amount) => { log.push(`dev:${action}:${amount}`); return rewardReply.dev ?? { ok: true, value: state }; },
+  };
   const Tools = load("src/components/DeveloperTools.tsx", {
     "react-native": { Modal: host("Modal") },
     "./SettingsList": { SettingsGroup: host("Group"), SettingsRow: props => React.createElement("Row", props) },
@@ -78,10 +86,12 @@ async function tools({ developer = true, online = true, session = false, restart
     "../context/AuthContext": { useAuth: () => ({ accessMode: online ? "online" : "offline" }) },
     "../services/developerAccess": { useIsDeveloper: (owner, isOnline) => developer && owner === "dev" && isOnline,
       restartIntro: async owner => { log.push(`restart:${owner}`); return restart(); } },
+    "expo-router": { useRouter: () => ({ navigate: to => log.push(`go:${to}`) }) },
+    "../hooks/useRewards": { useRewards: ({ load }) => { loads.push(load); return rewards; } },
   }).default;
   let renderer; await act(async () => { renderer = create(React.createElement(Tools)); });
   const row = title => renderer.root.findAllByType("Row").find(node => node.props.title === title);
-  return { renderer, sheets, row, log, confirm: () => renderer.root.findAllByType("Confirm")[0], group: () => renderer.root.findByType("Group"), press: async title => act(async () => row(title).props.onPress()),
+  return { renderer, sheets, row, log, loads, confirm: () => renderer.root.findAllByType("Confirm")[0], group: () => renderer.root.findAllByType("Group")[0], groups: () => renderer.root.findAllByType("Group"), press: async title => act(async () => row(title).props.onPress()),
     result: () => renderer.root.findAllByType("Result")[0], cleanup: () => act(async () => renderer.unmount()) };
 }
 
@@ -96,7 +106,8 @@ test("each preview opens a card marked as a preview, and Done closes it", async 
   const ui = await tools();
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
-      ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro"]);
+      ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
+        "Open Outfits", "Check for new finds", "Open today's pack", "Add 500 test Stardust", "Let me open today's pack again", "Reset my rewards"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Preview level up");
     let card = ui.result().props;
@@ -189,4 +200,28 @@ test("only developers can restart the intro, and only the intro mark changes", (
   assert.equal((sql.match(/update /g) || []).length, 1);
   assert.doesNotMatch(sql, /delete |truncate/i);
   assert.match(sql, /revoke all on function public\.dev_restart_intro_v1\(\) from public, anon/);
+});
+
+test("the rewards rows use the real rewards actions, and the dev-only ones ask the server", async () => {
+  const ui = await tools({ rewardReply: { claim: { ok: true, value: { sessions: [{ sessionId: "s", finds: [{ item: "beret", new: true, stardust: 0 }, { item: "tote", new: false, stardust: 5 }], minutesStardust: 6 }],
+    milestones: [{ item: "pet_owl", new: true, stardust: 0 }], state: { nextFindSeconds: 900 } } } } });
+  try {
+    assert.ok(ui.loads.includes(true), "a developer's rewards load");
+    await ui.press("Open Outfits");
+    await ui.press("Check for new finds");
+    assert.match(ui.groups()[1].props.footer, /Red beret \(new\), Canvas tote \(\+5 Stardust\).*\+6 Stardust from minutes.*Unlocked: Barn owl \(new\)/);
+    await ui.press("Open today's pack");
+    assert.equal(ui.groups()[1].props.footer, "Reach your daily goal to open a pack.", "the server's own reason shows");
+    await ui.press("Add 500 test Stardust");
+    await ui.press("Let me open today's pack again");
+    await ui.press("Reset my rewards");
+    assert.deepEqual(ui.log.filter(x => x.startsWith("dev:")), ["dev:stardust:500", "dev:reopen_pack:0"], "reset waits for a yes");
+    await act(async () => ui.confirm().props.onConfirm());
+    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:stardust:500", "dev:reopen_pack:0", "dev:reset:0"]);
+  } finally { await ui.cleanup(); }
+});
+
+test("everyone else never loads rewards from here", async () => {
+  const ui = await tools({ developer: false });
+  try { assert.ok(ui.loads.every(load => load === false)); assert.equal(ui.renderer.root.findAllByType("Row").length, 0); } finally { await ui.cleanup(); }
 });

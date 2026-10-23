@@ -207,6 +207,8 @@ async function screen(file, mocks) {
     "../components/PersonalUI": UI,
     "./CharacterPortrait": host("Portrait"),
     "../components/CharacterPortrait": host("Portrait"),
+    "./CharacterMark": host("Mark"),
+    "../components/CharacterMark": host("Mark"),
     ...mocks,
   }).default;
   let renderer;
@@ -767,6 +769,9 @@ async function profileScreen(overrides = {}) {
     "../../components/PersonalUI": UI,
     "../../components/MoreMenu": (props) => React.createElement("Menu", props),
     "../../components/CharacterPortrait": host("Portrait"),
+    // The new character draws from the shared rewards copy; its drawing has its own tests.
+    "../../components/adventurer/Adventurer": host("Adventurer"),
+    "../../hooks/useRewards": { useRewards: () => ({ look: { skin: "3", hair: "short", hairColor: "darkbrown", glasses: false }, equipped: { top: "cardigan" } }) },
     "../../components/SheetConfirmation": host("Confirm"),
     // Badges and subject breakdowns have their own tests.
     "../../components/MilestonesSheet": { __esModule: true, default: host("MilestonesSheet"), useMilestones: () => ({ ready: true, error: false, retry: async () => {},
@@ -826,7 +831,7 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
       ui.text(),
       /Connect areas|No Life areas connected|Explore your progress/,
     );
-    await ui.press("Personalise profile");
+    await ui.press("Edit name");
     const sheet = ui.renderer.root.findByType("Sheet");
     assert.notEqual(sheet.props.compact, true);
     assert.equal(sheet.props.expanded, true);
@@ -910,14 +915,12 @@ test('Profile level opens the shared tier path with the saved XP balance',async(
  }finally{await ui.cleanup();}
 });
 
-test("Profile opts only its hero into entrance greetings and pauses it behind profile sheets", async () => {
+test("Profile's character pauses its idle motion behind profile sheets", async () => {
   const ui = await profileScreen();
   try {
-    const hero = () => ui.renderer.root.findAllByType("Portrait").find(node => node.props.size === 96);
-    assert.equal(hero().props.greetOnFocus, true);
+    const hero = () => ui.renderer.root.findByType("Adventurer");
     assert.equal(hero().props.animate, true);
-    assert.equal(ui.renderer.root.findAllByType("Portrait").find(node => node.props.interactive === false).props.greetOnFocus, undefined);
-    await ui.press("Personalise profile");
+    await ui.press("Edit name");
     assert.equal(hero().props.animate, false);
     await ui.press("Save changes");
     assert.equal(hero().props.animate, true);
@@ -931,7 +934,7 @@ test("Profile opts only its hero into entrance greetings and pauses it behind pr
 test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
   const ui = await profileScreen();
   try {
-    await ui.press("Personalise profile");
+    await ui.press("Edit name");
     await ui.input("Profile name", "New name");
     assert.equal(ui.renderer.root.findByType("Sheet").props.guardDismiss, true);
     await act(async () =>
@@ -1053,15 +1056,14 @@ test("every saved badge selects a full look and Home shares the same drawing",as
  assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.body)).size,12);
  assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.accessory)).size,12);
  assert.equal(appearance.characterLook("🧙").id,"🧙‍♂️");assert.ok(appearance.characterLook("legacy badge"));
- const Mark=load("src/components/CharacterMark.tsx",{"react-native":Native}).default;
+ // Home, Settings and the session result show your profile picture from the shared rewards copy.
+ const shared={look:{skin:"6",hair:"braids",hairColor:"black",glasses:true},equipped:{top:"overalls",pet:"pet_cat"},background:"bg_night",frame:"frame_streak_7"};
+ const Mark=load("src/components/CharacterMark.tsx",{"react-native":Native,"./adventurer/ProfilePicture":host("Picture"),
+  "../context/UserContext":{useUser:()=>({profile:{level:23,streak_count:9}})},"../hooks/useRewards":{useRewards:()=>shared}}).default;
  let renderer;await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
- const part=id=>renderer.root.findAllByType("View").find(node=>node.props.testID===id);
  try{
-  const canvas=part("character-canvas");assert.equal(canvas.props.style.left+canvas.props.style.width/2,29);
-  const body=part("character-body").props.style[1].backgroundColor,head=part("character-head").props.style[1].backgroundColor;
-  await act(async()=>renderer.update(React.createElement(Mark,{avatar:"🧑‍💻",size:58})));
-  assert.notEqual(part("character-body").props.style[1].backgroundColor,body);assert.notEqual(part("character-head").props.style[1].backgroundColor,head);
-  assert.doesNotMatch(text(renderer.root),/⭐|🧑‍💻/);
+  const pic=renderer.root.findByType("Picture").props;
+  assert.deepEqual([pic.look,pic.equipped,pic.level,pic.background,pic.frame,pic.streak,pic.size],[shared.look,shared.equipped,23,"bg_night","frame_streak_7",9,58]);
  }finally{await act(async()=>renderer.unmount());}
  const Picker=load("src/components/CharacterLookPicker.tsx",{"react-native":Native,"@gorhom/bottom-sheet":{TouchableOpacity:host("Button")},"@expo/vector-icons":{Ionicons:host("Icon")}}).default;
  await act(async()=>{renderer=create(React.createElement(Picker,{value:"🦊",disabled:false,onChange(){}}));});
@@ -1119,7 +1121,7 @@ test("profile editing preserves spaces and uses the same 15-character boundary a
 test("profile name input fills the keyboard-safe parent and rejects over-limit pasted drafts beside the field",async()=>{
  const saves=[];const ui=await profileScreen({'../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:1,current_xp:0,timezone:'Asia/Kuala_Lumpur'},updateProfile:async(...args)=>saves.push(args),reloadProfile:async()=>{}})}});
  try{
-  await ui.press('Personalise profile');assert.equal(ui.renderer.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
+  await ui.press('Edit name');assert.equal(ui.renderer.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
   assert.equal(ui.renderer.root.findByType('Input').props.maxLength,15);assert.ok(ui.renderer.root.findByType('Input').props.onFocus);
   await ui.input('Profile name','A'.repeat(16));await ui.press('Save changes');assert.equal(saves.length,0);assert.match(ui.text(),/1 and 15/);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);
   await ui.input('Profile name','Soon Teck');await ui.press('Save changes');assert.equal(saves[0][0],'Soon Teck');
@@ -1152,7 +1154,7 @@ test('an open profile draft stays editable offline, labels Save as needing inter
   reloadProfile:async()=>{},updateProfile:async(...args)=>saves.push(args),
  })}});
  try{
-  await ui.press('Personalise profile');await ui.input('Profile name','New name');
+  await ui.press('Edit name');await ui.input('Profile name','New name');
   const save=()=>ui.renderer.root.findAllByType('Button').find(n=>text(n)==='Save changes');
   const outgoing=save().props.onPress;
   auth.accessMode='local-only';await ui.update();
@@ -1166,15 +1168,17 @@ test('an open profile draft stays editable offline, labels Save as needing inter
  }finally{await ui.cleanup();}
 });
 
-test("look changes preview locally and save only after confirmation; failed saves retain the chosen look",async()=>{
- let fail=true;const saves=[];
- const ui=await profileScreen({'../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:3,current_xp:20,timezone:'UTC'},reloadProfile:async()=>{},updateProfile:async(...args)=>{saves.push(args);if(fail)throw Error('Offline');}})}});
+test("the name sheet only edits the name; your look lives in Outfits, and the old companion stays saved for older versions",async()=>{
+ let fail=true;const saves=[],routes=[];
+ const ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])},
+  '../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:3,current_xp:20,timezone:'UTC'},reloadProfile:async()=>{},updateProfile:async(...args)=>{saves.push(args);if(fail)throw Error('Offline');}})}});
  try{
-  await ui.press('Personalise profile');await ui.press('Choose Fern');assert.equal(saves.length,0);
-  const portraits=ui.renderer.root.findAllByType('Portrait');assert.equal(portraits.find(node=>node.props.level===3).props.avatar,'⭐');assert.equal(portraits.find(node=>node.props.interactive===false).props.avatar,'🧝‍♂️');
-  await ui.press('Save changes');assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);assert.match(ui.text(),/Couldn’t save/);
-  const selected=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel==='Choose Fern');assert.equal(selected.props.accessibilityState.checked,true);
-  fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon Teck','🧝‍♂️']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
+  const hero=ui.renderer.root.findByType('Adventurer').props;
+  assert.deepEqual(hero.look,{skin:"3",hair:"short",hairColor:"darkbrown",glasses:false});assert.deepEqual(hero.equipped,{top:"cardigan"});assert.equal(hero.lanternLevel,3);
+  await ui.press('Your character. Open Outfits');await ui.press('Outfits');assert.deepEqual(routes,['/outfits','/outfits']);
+  await ui.press('Edit name');assert.equal(ui.renderer.root.findAllByType('Portrait').length,0,'no old look picker');
+  await ui.input('Profile name','Soon');await ui.press('Save changes');assert.match(ui.text(),/Couldn’t save/);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);
+  fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon','⭐']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
 });
 

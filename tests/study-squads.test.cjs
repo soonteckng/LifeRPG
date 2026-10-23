@@ -62,7 +62,7 @@ const rn = { View: host('View'), StyleSheet: { create: v => v, hairlineWidth: 1 
 const sheets = () => load('src/components/SquadSheets.tsx', {
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.overlay) : null,
-  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/ProgressRing': host('Ring'),
+  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'),
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
 
@@ -77,7 +77,7 @@ const mocks = (state, extra = {}) => ({
   // The ••• menu's options are its contract; its popover has its own looks.
   '/MoreMenu': props => React.createElement('Menu', props),
   '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/ProgressRing': host('Ring'),
+  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'),
   '/useSquads': { useSquads: () => state() }, ...extra,
 });
 const squadsTab = (state, navigate = () => {}, choose = () => {}) => load('src/app/(tabs)/squads.tsx', mocks(state, { 'expo-router': { useFocusEffect: () => {}, useRouter: () => ({ navigate }) },

@@ -3,8 +3,9 @@
 // squad calls. Screens use this in the next rounds.
 import { supabase } from "../../lib/supabase";
 import { rewardItem, type RewardRarity } from "./rewardCatalog";
+import type { AdventurerLook } from "../utils/adventurerLook";
 
-export interface AvatarLook { skin: string; hair: string; hairColor: string; glasses: boolean }
+export type AvatarLook = AdventurerLook;
 export interface SavedAvatar {
   look: AvatarLook;
   equipped: Partial<Record<string, string>>;
@@ -104,5 +105,8 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
     },
     saveAvatar: async (avatar: Omit<SavedAvatar, "revision">, expectedRevision: number) =>
       parseRewardsState(await call("save_avatar_v1", { p_avatar: avatar, p_expected_revision: expectedRevision })),
+    /** Developer accounts only; the server refuses everyone else. */
+    developer: async (action: "stardust" | "reopen_pack" | "reset", amount = 0) =>
+      parseRewardsState(await call("dev_rewards_v1", { p_action: action, p_amount: amount })),
   };
 }

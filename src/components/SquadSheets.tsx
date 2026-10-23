@@ -5,6 +5,7 @@ import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import Segmented from "./Segmented";
 import CharacterPortrait from "./CharacterPortrait";
+import CharacterMark from "./CharacterMark";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
@@ -13,9 +14,12 @@ import { cleanSquadCode, SQUAD_CODE_LENGTH, SQUAD_GOALS, SQUAD_LIMITS, validSqua
 import type { Squad, SquadMember } from "../types/squads";
 import SheetTextInput from "./SheetTextInput";
 
-export function SquadFace({ member, size = 36, ring = colors.surface }: { member: Pick<SquadMember, "avatar" | "focusingNow">; size?: number; ring?: string }) {
+// You appear with your own profile picture, the same as on Home. Others keep
+// the look their app last saved until their profile pictures reach squads.
+export function SquadFace({ member, size = 36, ring = colors.surface }: { member: Pick<SquadMember, "avatar" | "focusingNow"> & { isYou?: boolean }; size?: number; ring?: string }) {
   return <View style={{ width: size, height: size }} importantForAccessibility="no-hide-descendants">
-    <View style={[s.face, { width: size, height: size, borderRadius: size / 2 }]}><CharacterPortrait avatar={member.avatar || "🌱"} size={size} animate={false} interactive={false} /></View>
+    {member.isYou ? <CharacterMark size={size} />
+      : <View style={[s.face, { width: size, height: size, borderRadius: size / 2 }]}><CharacterPortrait avatar={member.avatar || "🌱"} size={size} animate={false} interactive={false} /></View>}
     {member.focusingNow && <View style={[s.live, { borderColor: ring }]} />}
   </View>;
 }

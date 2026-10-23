@@ -15,7 +15,6 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { levelTierProgress, requiredCharacterXP } from "../utils/levelTiers";
-import ProgressRing from "../components/ProgressRing";
 import MilestonesSheet, { useMilestones } from "../components/MilestonesSheet";
 import SubjectBreakdown from "../components/SubjectBreakdown";
 import SectionHeader from "../components/SectionHeader";
@@ -24,7 +23,8 @@ import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
 import { focusAreaDetail } from "../utils/focusAreaDetail";
 import AppSheet from "../components/AppSheet";
 import SheetConfirmation from "../components/SheetConfirmation";
-import CharacterPortrait from "../components/CharacterPortrait";
+import Adventurer from "../components/adventurer/Adventurer";
+import { useRewards } from "../hooks/useRewards";
 import {
   Meter,
   PersonalButton,
@@ -40,8 +40,6 @@ import { useStudyPlan } from "../hooks/useStudyPlan";
 import { setupMode } from "../services/setupMode";
 import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
 
-import CharacterLookPicker from "../components/CharacterLookPicker";
-import { characterLook } from "../utils/characterAppearance";
 import SheetTextInput from "../components/SheetTextInput";
 export default function ProfileScreen() {
   const router = useRouter();
@@ -64,7 +62,7 @@ export default function ProfileScreen() {
   const nameScroll = useRef<BottomSheetScrollViewMethods>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState("");
+  const rewards = useRewards();
   const [saving, setSaving] = useState(false);
   const lock = useRef(false);
   const sheetClosing = useRef(false);
@@ -102,12 +100,11 @@ export default function ProfileScreen() {
   const open = () => {
     if (sheetClosing.current) return;
     setName(profile.username);
-    setAvatar(profile.avatar);
     setSaveError("");
     setDiscard(false);
     setSheetOpen(true);
   };
-  const dirty = name.trim() !== profile.username || avatar !== profile.avatar;
+  const dirty = name.trim() !== profile.username;
   const close = () => {
     if (lock.current) return;
     if (dirty) setDiscard(true);
@@ -128,7 +125,8 @@ export default function ProfileScreen() {
     setSaving(true);
     setSaveError("");
     try {
-      await updateProfile(name.trim(), avatar);
+      // The old companion look stays as it was, for older app versions.
+      await updateProfile(name.trim(), profile.avatar);
       if (currentSaveView.current !== saveView) return;
       Keyboard.dismiss();
       sheetClosing.current = true;
@@ -142,31 +140,32 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
-  const chooseLook = useCallback((next: string) => { Keyboard.dismiss(); setAvatar(next); setSaveError(""); }, []);
   const tier = levelTierProgress(profile.level, profile.current_xp).current;
-  const savedLook = characterLook(profile.avatar), draftLook = characterLook(avatar || profile.avatar);
   return (
     <PersonalPage title="Profile" subtitle="" compact back animateTransition expandFromIcon fallback="/">
       <ContentReveal><View style={s.stack}>
         {/* Your character sheet: the companion leads, then your name, level and XP. */}
         <View style={s.hero} testID="profile-companion-card">
-          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={s.portrait}>
+          <Pressable onPress={() => router.navigate("/outfits")} accessibilityRole="button" accessibilityLabel="Your character. Open Outfits" style={s.portrait} testID="profile-character">
             <View style={s.halo} pointerEvents="none" />
-            <ProgressRing size={136} stroke={5} progress={profile.current_xp / required} color={colors.level} track={colors.levelSoft}>
-              <View style={s.glow}><CharacterPortrait avatar={profile.avatar} size={96} level={profile.level} developed={areas.filter(area => area.level > 1 || area.current_xp > 0).length} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} greetOnFocus /></View>
-            </ProgressRing>
-            <View style={s.levelBadge}><Text style={s.levelBadgeText}>Level {profile.level}</Text></View>
+            <Adventurer look={rewards.look} equipped={rewards.equipped} size={100} lanternLevel={profile.level} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} />
+          </Pressable>
+          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={s.levelBadge} hitSlop={8}>
+            <Text style={s.levelBadgeText}>Level {profile.level}</Text>
           </Pressable>
           <View style={s.identity}>
-            <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
-            <Text style={s.tier} numberOfLines={1}>{tier.title} · {savedLook.title}</Text>
+            <View style={s.nameRow}>
+              <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
+              <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Edit name" hitSlop={10} style={s.editName}><Ionicons name="pencil" size={15} color={colors.secondary} /></Pressable>
+            </View>
+            <Text style={s.tier} numberOfLines={1}>{tier.title}</Text>
           </View>
           <View style={s.xp}>
             <View style={s.xpHead}><Text style={s.xpValue}>{profile.current_xp} / {required} XP</Text><Text style={p.caption} numberOfLines={1}>{required - profile.current_xp} to level {profile.level + 1}</Text></View>
             <Meter value={profile.current_xp / required} height={6} color={colors.level} />
           </View>
           <View style={s.heroActions}>
-            <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Personalise profile" style={s.heroButton}><Ionicons name="color-palette-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Personalise</Text></Pressable>
+            <Pressable onPress={() => router.navigate("/outfits")} accessibilityRole="button" accessibilityLabel="Outfits" style={s.heroButton}><Ionicons name="shirt-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Outfits</Text></Pressable>
             <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={[s.heroButton, s.heroPrimary]}><Ionicons name="sparkles-outline" size={17} color={colors.primaryText} /><Text style={[s.heroButtonText, s.heroPrimaryText]}>Level journey</Text></Pressable>
           </View>
         </View>
@@ -228,8 +227,8 @@ export default function ProfileScreen() {
       <MilestonesSheet visible={badgesOpen} onClose={() => setBadgesOpen(false)} />
       <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
-        expanded motionMode="timed" keyboardBehavior="fillParent" label="Personalise profile"
-        header={<View style={p.sheetHeader}><Text style={p.title}>Make it yours</Text><Text style={p.body}>Your name and your companion’s look.</Text></View>}
+        expanded motionMode="timed" keyboardBehavior="fillParent" label="Edit name"
+        header={<View style={p.sheetHeader}><Text style={p.title}>Your name</Text><Text style={p.body}>Shown to your squads and on the leaderboard.</Text></View>}
         footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(16, insets.bottom), backgroundColor: colors.surfaceRaised }}>{!online && <Text testID="profile-save-needs-internet" accessibilityLiveRegion="polite" style={p.caption}>Needs internet</Text>}<PersonalButton title={saving ? "Saving…" : "Save changes"} disabled={saving || !online} accessibilityLabel={online ? "Save changes" : "Save changes. Needs internet"} onPress={() => void save()} /></View>}
         overlay={discard ? <SheetConfirmation title="Discard changes?" message="Your changes haven’t been saved." confirmLabel="Discard changes" cancelLabel="Keep editing"
           onCancel={() => setDiscard(false)} onConfirm={() => { setDiscard(false); Keyboard.dismiss(); sheetClosing.current = true; setSheetOpen(false); }} /> : undefined}>
@@ -239,9 +238,6 @@ export default function ProfileScreen() {
             onFocus={() => nameScroll.current?.scrollTo({ y: 0, animated: false })} value={name} onChangeText={value => { setName(value); setSaveError(""); }} />
           <Text style={p.caption}>Up to {PROFILE_NAME_LIMIT} characters, including spaces.</Text>
           {!!saveError && <Text style={p.error} accessibilityRole="alert">{saveError}</Text>}
-          <View style={s.preview} testID="profile-look-preview"><CharacterPortrait avatar={avatar || profile.avatar} size={116} animate={sheetOpen && !saving} interactive={false} /><View style={s.detail}><Text style={p.rowTitle}>{draftLook.title}</Text><Text style={p.caption}>{draftLook.detail}</Text><Text style={s.growthHint}>Choose a look that feels like you.</Text></View></View>
-          <Text style={p.rowTitle}>Character look</Text>
-          <CharacterLookPicker value={avatar} disabled={saving} onChange={chooseLook} />
         </BottomSheetScrollView>
       </AppSheet>
     </PersonalPage>
@@ -252,8 +248,8 @@ const s = StyleSheet.create({
   hero: { ...edge, alignItems: "center", gap: 14, paddingHorizontal: 18, paddingTop: 24, paddingBottom: 18, borderRadius: radius.card, backgroundColor: colors.surface },
   portrait: { alignItems: "center", justifyContent: "center" },
   // A soft warm halo behind the ring, so the level frame looks earned.
-  halo: { position: "absolute", top: -12, width: 160, height: 160, borderRadius: 80, backgroundColor: "rgba(251,191,36,0.07)" },
-  levelBadge: { marginTop: -14, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
+  halo: { position: "absolute", top: 10, width: 150, height: 150, borderRadius: 75, backgroundColor: "rgba(251,191,36,0.07)" },
+  levelBadge: { marginTop: -10, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
   levelBadgeText: { color: "#2B2200", fontSize: 14, fontWeight: "800" },
   tier: { color: colors.level, fontSize: 15, lineHeight: 20, fontWeight: "600", textAlign: "center" },
   xp: { alignSelf: "stretch", gap: 8, padding: 12, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },
@@ -273,7 +269,9 @@ const s = StyleSheet.create({
   badgeIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft },
   badgeText: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: "600" },
   emptyBadges: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.card, backgroundColor: colors.surface },
-  glow: { width: 116, height: 116, borderRadius: 58, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft }, identity: { alignItems: "center", gap: 4 },
+  identity: { alignItems: "center", gap: 4 },
+  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, maxWidth: "100%" },
+  editName: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised },
   username: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.5, textAlign: "center" },
   growthHint: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   detail: { flex: 1, minWidth: 0, gap: 4 }, history: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
@@ -288,5 +286,4 @@ const s = StyleSheet.create({
   subjectLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   subjectDot: { width: 10, height: 10, borderRadius: 5 },
   subjectTime: { color: colors.secondary, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  preview: { flexDirection: "row", alignItems: "center", minHeight: 132, gap: 14, paddingVertical: 4 },
 });
