@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
 import Pressable from "../components/MotionPressable";
 import { Text } from "../components/AppText";
 import { PersonalButton, PersonalPage, p } from "../components/PersonalUI";
@@ -27,6 +28,7 @@ interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>
 /** Camp › Outfits: your look, clothes, gear, pet and profile picture, saved to your account. */
 export default function OutfitsScreen() {
   const { profile } = useUser();
+  const router = useRouter();
   const rewards = useRewards();
   const saved: Draft = useMemo(() => ({ look: rewards.look, equipped: rewards.equipped, background: rewards.background, frame: rewards.frame, title: rewards.title }),
     [rewards.look, rewards.equipped, rewards.background, rewards.frame, rewards.title]);
@@ -43,9 +45,9 @@ export default function OutfitsScreen() {
   const setLook = (next: Partial<AdventurerLook>) => change({ look: { ...draft.look, ...next } });
   const has = (item: RewardItem) => !!item.free || owned.has(item.id);
 
+  // Anything can be tried on to preview it; only what you own can be saved.
   const tapItem = (item: RewardItem) => {
     setSelected(item.id); setMessage("");
-    if (!has(item)) { if (item.price && rewards.online) setBuying(item); return; }
     if (item.kind === "background") return change({ background: item.id });
     if (item.kind === "frame") return change({ frame: draft.frame === item.id ? null : item.id });
     if (item.kind === "title") return change({ title: draft.title === item.id ? null : item.id });
@@ -54,9 +56,13 @@ export default function OutfitsScreen() {
     if (equipped[slot] === item.id) delete equipped[slot]; else equipped[slot] = item.id;
     change({ equipped });
   };
+  const tryingOn = [...Object.values(draft.equipped), draft.frame, draft.title, draft.background]
+    .map(id => id ? rewardItem(id) : undefined).filter((item): item is RewardItem => !!item && !has(item));
   const save = async () => {
+    if (tryingOn.length) return;
     const result = await rewards.saveAvatar(draft);
-    if (result.ok) { setEdit(null); setMessage("Saved."); } else setMessage(result.message);
+    // Saved: back to Profile, which already shows the new look.
+    if (result.ok) { setEdit(null); router.back(); } else setMessage(result.message);
   };
   const buy = async () => {
     const item = buying; setBuying(null);
@@ -76,7 +82,15 @@ export default function OutfitsScreen() {
   const setInfo = topSet ? { name: SETS[topSet].name, have: setPieces(topSet).filter(has).length, of: setPieces(topSet).length } : null;
   const [a, b] = BG[draft.background] ?? BG.bg_dusk;
 
-  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition fallback="/profile">
+  const footer = <View style={s.footer}>
+    {tryingOn.length > 0 ? <Text style={s.preview} accessibilityLiveRegion="polite">{`Trying on ${tryingOn.map(i => i.name).join(", ")}. Take ${tryingOn.length > 1 ? "them" : "it"} off or get ${tryingOn.length > 1 ? "them" : "it"} to save.`}</Text>
+      : !rewards.online ? <Text style={p.caption}>Needs internet to save or buy.</Text> : null}
+    <View style={s.actions}>
+      <View style={{ flex: 1 }}><PersonalButton title="Reset" secondary disabled={!dirty || rewards.busy} onPress={() => { setEdit(null); setMessage(""); }} /></View>
+      <View style={{ flex: 1.4 }}><PersonalButton title={rewards.busy ? "Saving…" : "Save look"} disabled={!dirty || rewards.busy || !rewards.online || tryingOn.length > 0} onPress={() => void save()} /></View>
+    </View>
+  </View>;
+  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition fallback="/profile" footer={footer}>
     <View style={s.stack}>
       <View style={[s.stage, { backgroundColor: a }]} testID="outfits-preview">
         <View style={[s.stageLow, { backgroundColor: b }]} />
@@ -123,16 +137,12 @@ export default function OutfitsScreen() {
       {tab !== "look" && <View style={s.card} accessibilityLiveRegion="polite">
         {focus ? <>
           <Text style={p.rowTitle}>{focus.name}</Text>
-          <Text style={p.caption}>{RARITY_NAME[focus.rarity]}{focus.set ? ` · ${SETS[focus.set].name} set` : ""}. {has(focus) ? "Tap again to take it off." : focus.hint}.</Text>
+          <Text style={p.caption}>{RARITY_NAME[focus.rarity]}{focus.set ? ` · ${SETS[focus.set].name} set` : ""}. {has(focus) ? "Tap again to take it off." : `Previewing. ${focus.hint}.`}</Text>
+          {!has(focus) && !!focus.price && rewards.online && <PersonalButton title={`Get it for ${focus.price} Stardust`} secondary onPress={() => setBuying(focus)} />}
         </> : <Text style={p.caption}>{tab === "picture" ? "Your frame grows with your level on its own. Streak frames, titles and backgrounds you earn show here." : "Tap something you own to wear it. Locked items say how to get them."}</Text>}
       </View>}
 
-      {!!message && <Text style={message === "Saved." || message.endsWith("is yours.") ? s.ok : p.error} accessibilityRole="alert">{message}</Text>}
-      {!rewards.online && <Text style={p.caption}>Needs internet to save or buy.</Text>}
-      <View style={s.actions}>
-        <View style={{ flex: 1 }}><PersonalButton title="Reset" secondary disabled={!dirty || rewards.busy} onPress={() => { setEdit(null); setMessage(""); }} /></View>
-        <View style={{ flex: 1.4 }}><PersonalButton title={rewards.busy ? "Saving…" : "Save look"} disabled={!dirty || rewards.busy || !rewards.online} onPress={() => void save()} /></View>
-      </View>
+      {!!message && <Text style={message.endsWith("is yours.") ? s.ok : p.error} accessibilityRole="alert">{message}</Text>}
     </View>
     {buying && <SheetConfirmation elevated title={`Get ${buying.name}?`} message={`It costs ${buying.price} Stardust. You have ${rewards.stardust}.`}
       confirmLabel={rewards.stardust >= (buying.price ?? 0) ? `Buy for ${buying.price}` : "Not enough Stardust"} cancelLabel="Not now"
@@ -170,4 +180,6 @@ const s = StyleSheet.create({
   corner: { position: "absolute", right: 6, top: 6 },
   ok: { color: colors.progress, fontSize: 14, lineHeight: 20 },
   actions: { flexDirection: "row", gap: 10 },
+  footer: { gap: 8 },
+  preview: { color: colors.level, fontSize: 13, lineHeight: 18 },
 });

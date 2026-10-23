@@ -105,3 +105,24 @@ test('the page beneath follows the one offset of the page above, and rests at 0 
  assert.equal(shift(),0,'and stays at rest with nothing above, so there is no jump');
  await act(async()=>tree.unmount());
 });
+
+test('a page only drifts aside while another page covers it, so it can never stay stuck to one side', async () => {
+  const listeners = {}, navigation = { canGoBack: () => true, addListener: (event, fn) => { listeners[event] = fn; return () => { delete listeners[event]; }; }, dispatch() {}, goBack() {} };
+  let parallax = [];
+  const offset = { get: () => 0, set() {} };
+  const stack = load('src/utils/pageStack.ts', {});
+  const api = load('src/components/PersonalUI.tsx', { 'react-native': { Platform: { OS: 'android' }, View: host('View'), StyleSheet: { create: value => value, hairlineWidth: 1 }, useWindowDimensions: () => ({ width: 390 }), Animated: { View: host('Animated'), Value: class { setValue() {} interpolate() { return 0; } }, timing: () => ({ start() {}, stop() {} }) } },
+    'expo-router': { useRouter: () => ({ canGoBack: () => true }), useNavigation: () => navigation }, 'expo-router/react-navigation': { usePreventRemove: () => {} },
+    'react-native-safe-area-context': { SafeAreaView: host('Safe'), useSafeAreaInsets: () => ({ bottom: 20 }) }, '@expo/vector-icons': { Ionicons: host('Icon') }, './FeatureTour': { TourScrollView: host('Scroll') },
+    './AppHeader': host('Header'), './MotionPressable': host('Press'), '../hooks/useReducedMotion': { useReducedMotion: () => false }, '../utils/pageStack': stack,
+    './SwipeBack': { __esModule: true, default: props => props.children, useSwipeOffset: () => offset, ParallaxLayer: props => { parallax.push(props.above); return props.children; }, slideTo: () => {} } });
+  let tree; await act(async () => { tree = create(React.createElement(api.PersonalPage, { title: 'Profile', subtitle: '', back: true }, 'Profile')); });
+  // A sliding page is registered above, as if one had slid in.
+  const id = stack.pageStack.reserve(); await act(async () => stack.pageStack.add(id, { swipe: { get: () => 0 } }));
+  parallax = []; await act(async () => listeners.blur());
+  assert.ok(parallax.at(-1), 'covered: it drifts with the page above');
+  // Back in front, it sits straight even if that page was never unregistered.
+  parallax = []; await act(async () => listeners.focus());
+  assert.equal(parallax.at(-1), null);
+  await act(async () => tree.unmount()); stack.pageStack.remove(id);
+});

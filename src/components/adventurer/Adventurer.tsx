@@ -31,10 +31,11 @@ export default memo(function Adventurer({ look, equipped = {}, size, animate = t
     const every = setInterval(() => { setBlink(true); close = setTimeout(() => setBlink(false), BLINK_FOR); }, BLINK_EVERY);
     return () => { clearInterval(every); if (close) clearTimeout(close); };
   }, [moving]);
-  const body = useAnimatedStyle(() => ({ transform: [{ translateY: -breath.value * size * 0.009 }] }));
+  // A slow stretch from the feet: the head rises a little, the feet and lantern stay put.
+  const body = useAnimatedStyle(() => ({ transform: [{ scaleY: 1 + breath.value * 0.022 }] }));
   const pet = equipped.pet;
   return <View style={{ width: size, height: size * 1.5 }} importantForAccessibility="no-hide-descendants">
-    <Animated.View style={body}><AdventurerArt look={look} equipped={equipped} size={size} eyesClosed={blink} lanternLevel={lanternLevel} /></Animated.View>
+    <Animated.View style={[{ transformOrigin: "50% 96%" }, body]}><AdventurerArt look={look} equipped={equipped} size={size} eyesClosed={blink} lanternLevel={lanternLevel} /></Animated.View>
     {!!pet && <View style={{ position: "absolute", left: size * 0.74, top: size * 1.24 }}><ItemArt id={pet} size={size * 0.22} /></View>}
   </View>;
 });

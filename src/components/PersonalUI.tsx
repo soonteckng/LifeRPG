@@ -40,6 +40,7 @@ export function PersonalPage({
   bottomContentInset = 0,
   expandFromIcon = false,
   fallback = "/profile",
+  footer,
 }: {
   title: string;
   subtitle: string;
@@ -53,6 +54,8 @@ export function PersonalPage({
   expandFromIcon?: boolean;
   /** Where Back goes when there is nothing to go back to. */
   fallback?: "/profile" | "/settings" | "/";
+  /** Stays fixed under the scrolling content, like Save on a form. */
+  footer?: ReactNode;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -77,7 +80,17 @@ export function PersonalPage({
     pageStack.add(stackId, slides ? { swipe: offset } : null);
     return () => pageStack.remove(stackId);
   }, [back, slides, offset, stackId]);
-  const above = useSyncExternalStore(pageStack.subscribe, () => pageStack.above<PageMotion>(stackId), () => null);
+  const stacked = useSyncExternalStore(pageStack.subscribe, () => pageStack.above<PageMotion>(stackId), () => null);
+  // A page only drifts aside while another page really covers it. Once this
+  // page is in front again it always sits straight, even if a page above was
+  // left registered by an interrupted transition.
+  const [covered, setCovered] = useState(false);
+  useEffect(() => {
+    const blur = navigation.addListener?.("blur", () => setCovered(true));
+    const focus = navigation.addListener?.("focus", () => setCovered(false));
+    return () => { blur?.(); focus?.(); };
+  }, [navigation]);
+  const above = covered ? stacked : null;
   const origin = settingsTransform(source, frame);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
@@ -167,7 +180,7 @@ export function PersonalPage({
           showsVerticalScrollIndicator={false}
           contentContainerStyle={[
             p.content,
-            { paddingBottom: Math.max(48, insets.bottom + 24, bottomContentInset + 24) },
+            { paddingBottom: footer ? 24 : Math.max(48, insets.bottom + 24, bottomContentInset + 24) },
           ]}
         >
           <View style={{ gap: compact ? 12 : 20 }}>
@@ -179,6 +192,7 @@ export function PersonalPage({
             {children}
           </View>
         </TourScrollView>
+        {footer && <View style={{ paddingHorizontal: 20, paddingTop: 10, paddingBottom: Math.max(16, insets.bottom + 8), borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line, backgroundColor: colors.background }}>{footer}</View>}
       </SafeAreaView>
     </Animated.View></SwipeBack></ParallaxLayer></View>
   );

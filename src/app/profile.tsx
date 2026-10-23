@@ -227,7 +227,7 @@ export default function ProfileScreen() {
       <MilestonesSheet visible={badgesOpen} onClose={() => setBadgesOpen(false)} />
       <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
-        expanded motionMode="timed" keyboardBehavior="fillParent" label="Edit name"
+        compact motionMode="timed" keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" label="Edit name"
         header={<View style={p.sheetHeader}><Text style={p.title}>Your name</Text><Text style={p.body}>Shown to your squads and on the leaderboard.</Text></View>}
         footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(16, insets.bottom), backgroundColor: colors.surfaceRaised }}>{!online && <Text testID="profile-save-needs-internet" accessibilityLiveRegion="polite" style={p.caption}>Needs internet</Text>}<PersonalButton title={saving ? "Saving…" : "Save changes"} disabled={saving || !online} accessibilityLabel={online ? "Save changes" : "Save changes. Needs internet"} onPress={() => void save()} /></View>}
         overlay={discard ? <SheetConfirmation title="Discard changes?" message="Your changes haven’t been saved." confirmLabel="Discard changes" cancelLabel="Keep editing"
@@ -248,7 +248,8 @@ const s = StyleSheet.create({
   hero: { ...edge, alignItems: "center", gap: 14, paddingHorizontal: 18, paddingTop: 24, paddingBottom: 18, borderRadius: radius.card, backgroundColor: colors.surface },
   portrait: { alignItems: "center", justifyContent: "center" },
   // A soft warm halo behind the ring, so the level frame looks earned.
-  halo: { position: "absolute", top: 10, width: 150, height: 150, borderRadius: 75, backgroundColor: "rgba(251,191,36,0.07)" },
+  // A warm glow on the ground, so the character stands rather than floats.
+  halo: { position: "absolute", top: 126, width: 150, height: 30, borderRadius: 75, backgroundColor: "rgba(251,191,36,0.10)" },
   levelBadge: { marginTop: -10, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
   levelBadgeText: { color: "#2B2200", fontSize: 14, fontWeight: "800" },
   tier: { color: colors.level, fontSize: 15, lineHeight: 20, fontWeight: "600", textAlign: "center" },

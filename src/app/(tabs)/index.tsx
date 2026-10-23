@@ -226,10 +226,11 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
             <View style={styles.identity}>
-              <View accessible accessibilityRole="header" accessibilityLabel={homeWelcome(hour < 5 ? 18 : hour, profile?.username)}>
+              {/* Your greeting and name open Profile too, like your picture. */}
+              <TouchableOpacity testID="home-name" onPress={openProfile} accessibilityRole="button" accessibilityLabel={`${homeWelcome(hour < 5 ? 18 : hour, profile?.username)}. Open Profile`}>
                 <Text style={styles.greeting} numberOfLines={1}>{greeting},</Text>
                 <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
-              </View>
+              </TouchableOpacity>
               {/* The level reads as a badge you can open, not a line of small print. */}
               <TouchableOpacity testID="home-level" style={styles.levelChip} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
                 accessibilityLabel={`Level ${level}, ${tier.title}, ${levelShare}% of the way to level ${level + 1}. See your level journey`} haptic={false}>

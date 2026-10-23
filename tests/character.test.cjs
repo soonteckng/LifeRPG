@@ -833,8 +833,11 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
     );
     await ui.press("Edit name");
     const sheet = ui.renderer.root.findByType("Sheet");
-    assert.notEqual(sheet.props.compact, true);
-    assert.equal(sheet.props.expanded, true);
+    // Only the name lives here now, so the sheet is compact and rides above the keyboard.
+    assert.equal(sheet.props.compact, true);
+    assert.notEqual(sheet.props.expanded, true);
+    assert.equal(sheet.props.keyboardBehavior, "interactive");
+    assert.equal(sheet.props.androidKeyboardInputMode, "adjustPan");
     assert.equal(sheet.props.motionMode, "timed");
     assert.equal(sheet.props.guardDismiss, false);
     const scroll = ui.renderer.root.findByType("SheetScroll");
@@ -1118,10 +1121,10 @@ test("profile editing preserves spaces and uses the same 15-character boundary a
  const names=load('src/constants/profile.ts');assert.equal(load('src/constants/onboarding.ts').ONBOARDING_NAME_LIMIT,names.PROFILE_NAME_LIMIT);
 });
 
-test("profile name input fills the keyboard-safe parent and rejects over-limit pasted drafts beside the field",async()=>{
+test("profile name sheet stays above the keyboard and rejects over-limit pasted drafts beside the field",async()=>{
  const saves=[];const ui=await profileScreen({'../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:1,current_xp:0,timezone:'Asia/Kuala_Lumpur'},updateProfile:async(...args)=>saves.push(args),reloadProfile:async()=>{}})}});
  try{
-  await ui.press('Edit name');assert.equal(ui.renderer.root.findByType('Sheet').props.keyboardBehavior,'fillParent');
+  await ui.press('Edit name');assert.equal(ui.renderer.root.findByType('Sheet').props.keyboardBehavior,'interactive');
   assert.equal(ui.renderer.root.findByType('Input').props.maxLength,15);assert.ok(ui.renderer.root.findByType('Input').props.onFocus);
   await ui.input('Profile name','A'.repeat(16));await ui.press('Save changes');assert.equal(saves.length,0);assert.match(ui.text(),/1 and 15/);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);
   await ui.input('Profile name','Soon Teck');await ui.press('Save changes');assert.equal(saves[0][0],'Soon Teck');

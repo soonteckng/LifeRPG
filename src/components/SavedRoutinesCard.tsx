@@ -41,6 +41,15 @@ const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind ==
 /** A study subject on Home's Start row. */
 export interface StudyChip { key: string; name: string; caption: string; color: string; onPress: () => void }
 
+// A one-word name like "Mathematics" shrinks a little to stay whole on one
+// line instead of breaking mid-word; longer names wrap to two lines and break
+// long words with a hyphen.
+export function fitName(name: string) {
+  return /\s/.test(name.trim())
+    ? { numberOfLines: 2, android_hyphenationFrequency: "normal" as const }
+    : { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 };
+}
+
 export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [] }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
@@ -239,7 +248,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         accessibilityRole="button" accessibilityLabel={`${editing ? "" : "Edit "}${entry.name}, ${routineDuration(entry.seconds)}${editing ? ". Done editing" : ""}`}
         accessibilityActions={[{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.gridTile}>
         <View style={s.gridTop}><View style={[s.gridIcon, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="repeat" size={15} color={tint} /></View></View>
-        <Text style={s.gridName} numberOfLines={2}>{entry.name}</Text>
+        <Text style={s.gridName} {...fitName(entry.name)}>{entry.name}</Text>
         <Text style={s.gridCaption} numberOfLines={2}>{caption}</Text>
       </Pressable>
       {editing ? <EditBadges placement="corner" name={entry.name} onEdit={() => { setArranging(false); if (saved) edit(routine); else editLegacy(task!); }}
@@ -281,13 +290,13 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
           accessibilityRole="button" accessibilityState={{ disabled }} accessibilityLabel={`Start routine ${entry.name}, ${routineDuration(entry.seconds)}`}
           accessibilityHint={entry.kind === "saved" ? "Hold to edit" : undefined} style={[s.startChip, disabled && s.startChipOff]}>
           <View style={[s.startPlay, { backgroundColor: areaTint(tint, 0.2) }]}><Ionicons name="play" size={14} color={tint} style={s.nudge} /></View>
-          <View style={s.flex}><Text style={s.chipName} numberOfLines={2}>{entry.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{routineDuration(entry.seconds)}</Text></View>
+          <View style={s.flex}><Text style={s.chipName} {...fitName(entry.name)}>{entry.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{routineDuration(entry.seconds)}</Text></View>
         </Pressable>;
       })}
       {studyChips.map(chip => <Pressable key={chip.key} disabled={anyBlocked} onPress={chip.onPress} testID={`home-study-${chip.key}`}
         accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }} accessibilityLabel={`Study ${chip.name}. ${chip.caption}`} style={[s.startChip, anyBlocked && s.startChipOff]}>
         <View style={[s.startPlay, { backgroundColor: areaTint(chip.color, 0.2) }]}><Ionicons name="school" size={15} color={chip.color} /></View>
-        <View style={s.flex}><Text style={s.chipName} numberOfLines={2}>{chip.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{chip.caption}</Text></View>
+        <View style={s.flex}><Text style={s.chipName} {...fitName(chip.name)}>{chip.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{chip.caption}</Text></View>
       </Pressable>)}
       {onAnyActivity && <Pressable disabled={anyBlocked} onPress={onAnyActivity} testID="home-just-focus" accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }}
         accessibilityLabel="Any activity. Start focusing, your time" style={[s.startChip, anyBlocked && s.startChipOff]}>
