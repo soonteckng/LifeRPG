@@ -19,7 +19,6 @@ import { colors, edge } from "../constants/theme";
 import { DAILY_GOAL_PRESETS, validateDailyGoal } from "../utils/dailyGoal";
 import { INTRO_PAGES, ONBOARDING_NAME_LIMIT } from "../constants/onboarding";
 import { useSessionProtection } from "../context/SessionProtectionContext";
-import { ProtectionSettingsSheet } from "./SessionProtectionControl";
 
 const TITLES = ["What would you like to make time for?", "What should we call you?", "A little time for you", "Keep distractions away"];
 // Steps: 0 areas you'd like to make time for, 1 name, 2 goal, 3 app protection (Android only), 4–6 intro pages.
@@ -45,10 +44,14 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const [busy, setBusy] = useState(false), [error, setError] = useState("");
   const [celebrating, setCelebrating] = useState(false), [confirmed, setConfirmed] = useState(false);
   const protection = useSessionProtection();
-  // Once protection is allowed, the same app list as Settings, so nobody
-  // finishes the intro with every app covered by surprise.
-  const [appsOpen, setAppsOpen] = useState(false);
+  // Protection is two pages: first the three permissions it needs, then (only
+  // once all three are allowed) which apps stay open, so nobody finishes the
+  // intro with every app covered by surprise.
+  const [choosingApps, setChoosingApps] = useState(false);
+  const [allowed, setAllowed] = useState<string[]>([]), [search, setSearch] = useState("");
+  const appsSeeded = useRef(false);
   const caps = protection.capabilities;
+  const appsReady = !!(caps?.usage && caps.overlay && caps.notifications);
   const refreshProtection = protection.refresh;
   // Permissions are granted in Android Settings; re-read them on return.
   useEffect(() => {
@@ -88,7 +91,14 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     }
     if (step === GOAL_STEP) { const validation = validateDailyGoal(goal); if (validation) { setError(validation); return; } }
     if (step === GOAL_STEP && !protection.supported) { changeStep(FIRST_INTRO); return; }
-    if (step === PROTECTION_STEP && caps?.usage && caps.overlay && caps.notifications) await protection.choose("allow-list", protection.selection.mode === "allow-list" ? protection.selection.allowed : []).catch(() => false);
+    if (step === PROTECTION_STEP && appsReady && !choosingApps) {
+      // First visit starts from any saved choice; coming back keeps your ticks.
+      if (!appsSeeded.current) { appsSeeded.current = true; setAllowed(protection.selection.mode === "allow-list" ? protection.selection.allowed : []); }
+      setSearch("");
+      void refreshProtection();
+      transition.change(() => setChoosingApps(true)); return;
+    }
+    if (step === PROTECTION_STEP && choosingApps) { await protection.choose("allow-list", allowed).catch(() => false); setChoosingApps(false); }
     if (step < LAST_STEP) { changeStep(step + 1); return; }
     if (!savedFinish.current && (!name.trim() || name.trim().length > ONBOARDING_NAME_LIMIT)) {
       setStep(NAME_STEP); setError(`Choose a name between 1 and ${ONBOARDING_NAME_LIMIT} characters.`); return;
@@ -132,35 +142,47 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
     "LifeRPG can cover distracting apps while you focus. Optional, and you can change it in Settings.",
   ];
   const firstLabel = areas.length ? "Continue" : "Skip for now";
-  const allowedCount = protection.selection.mode === "allow-list" ? protection.selection.allowed.length : 0;
-  return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 6 : 7) + offset} title={intro?.title ?? TITLES[step]} subtitle={intro?.body ?? subtitles[step]} opacity={transition.opacity}
-    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === NAME_STEP ? "Checking…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !(caps?.usage && caps.overlay && caps.notifications) ? "Maybe later" : "Continue"} onNext={() => void next()}
-    onBack={step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? GOAL_STEP : step - 1) : undefined}
+  const appsPage = step === PROTECTION_STEP && choosingApps;
+  const query = search.trim().toLowerCase();
+  const phoneApps = protection.apps ?? [];
+  const apps = [...phoneApps].sort((a, b) => a.label.localeCompare(b.label)).filter(app => !query || app.label.toLowerCase().includes(query));
+  const toggleApp = (pkg: string) => setAllowed(current => current.includes(pkg) ? current.filter(item => item !== pkg) : current.length < 64 ? [...current, pkg] : current);
+  return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 6 : 7) + offset} title={appsPage ? "Choose your apps" : intro?.title ?? TITLES[step]} subtitle={appsPage ? "Tick the apps you need while you focus. Everything else is covered during a session." : intro?.body ?? subtitles[step]} opacity={transition.opacity}
+    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === NAME_STEP ? "Checking…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !appsReady ? "Maybe later" : "Continue"} onNext={() => void next()}
+    onBack={appsPage ? () => transition.change(() => setChoosingApps(false)) : step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? GOAL_STEP : step - 1) : undefined}
     error={(step === NAME_STEP ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <IdeaAreaPicker value={areas} onChange={setAreas} disabled={busy} />}
     {step === NAME_STEP && <View style={s.choices}><TextInput accessibilityLabel="Your name" value={name} onChangeText={value => { setName(value); setError(""); }} maxLength={ONBOARDING_NAME_LIMIT} placeholder="Your name" placeholderTextColor={colors.muted} style={[s.input, !!error && { borderColor: colors.danger }]} autoCapitalize="words" autoComplete="name" returnKeyType="next" onSubmitEditing={() => void next()} editable={!busy && !transition.moving} />{!!error && <Text testID="onboarding-name-error" style={s.inputError} accessibilityRole="alert">{error}</Text>}<Text style={s.hint}>Up to {ONBOARDING_NAME_LIMIT} characters. Make it feel like you.</Text></View>}
     {step === GOAL_STEP && <View style={s.choices}><View style={s.goals}>{DAILY_GOAL_PRESETS.map(minutes => <Pressable key={minutes} accessibilityRole="radio" accessibilityLabel={`${minutes} min`} accessibilityState={{ checked: goal === minutes }} disabled={busy} onPress={() => setGoal(minutes)} style={[s.goal, goal === minutes && s.selected]}><Text style={s.goalNumber}>{minutes}</Text><Text style={s.hint}>min / day</Text></Pressable>)}</View><Text style={s.hint}>You can change your goal in Settings once a week, and it kicks in the next day. A quiet day never takes away what you’ve earned.</Text></View>}
-    {step === PROTECTION_STEP && <View style={s.choices}>
+    {step === PROTECTION_STEP && !choosingApps && <View style={s.choices}>
       <View style={s.permissionList}>{permissionRows.map((row, index) => <View key={row.kind} style={[s.permissionRow, index > 0 && s.permissionDivider]}>
         <Ionicons name={row.icon} size={20} color={row.granted ? colors.accent : colors.secondary} />
         <View style={s.permissionCopy}><Text style={s.permissionTitle}>{row.title}</Text><Text style={s.permissionHint} numberOfLines={1}>{row.hint}</Text></View>
         {row.granted ? <Ionicons name="checkmark-circle" size={22} color={colors.accent} accessibilityLabel={`${row.title} allowed`} />
           : <Pressable onPress={() => void row.allow()} accessibilityRole="button" accessibilityLabel={`Allow ${row.title}`} style={s.allow}><Text style={s.allowText}>Allow</Text></Pressable>}
       </View>)}</View>
-      {caps?.usage && caps.overlay && caps.notifications && <Pressable onPress={() => setAppsOpen(true)} accessibilityRole="button" testID="onboarding-allowed-apps"
-        accessibilityLabel={`Allowed apps, ${allowedCount}. Choose apps that stay open`} style={s.appsRow}>
-        <Ionicons name="apps-outline" size={20} color={colors.accent} />
-        <View style={s.permissionCopy}><Text style={s.permissionTitle}>Allowed apps{allowedCount ? ` · ${allowedCount}` : ""}</Text>
-          <Text style={s.permissionHint} numberOfLines={1}>{allowedCount ? "These stay open while you focus" : "Keep notes, music or a calculator open"}</Text></View>
-        <Ionicons name="chevron-forward" size={18} color={colors.tertiary} />
-      </Pressable>}
+      {!appsReady && <Text style={s.permissionHint}>Allow all three to turn protection on. Next, you’ll pick the apps that stay open.</Text>}
       {/* Two facts, one line each: the break, and what is never blocked. */}
       <View style={s.facts}>
         <View style={s.fact}><Ionicons name="cafe-outline" size={18} color={colors.secondary} /><Text style={s.permissionHint}>One 5-minute break per session</Text></View>
         <View style={s.fact}><Ionicons name="call-outline" size={18} color={colors.secondary} /><Text style={s.permissionHint}>Calls and Settings can never be blocked</Text></View>
       </View>
     </View>}
-    {protection.supported && <ProtectionSettingsSheet visible={appsOpen && step === PROTECTION_STEP} onClose={() => setAppsOpen(false)} />}
+    {appsPage && <View style={s.choices}>
+      {phoneApps.length > 12 && <TextInput accessibilityLabel="Search apps" value={search} onChangeText={setSearch} placeholder="Search apps" placeholderTextColor={colors.muted}
+        autoCapitalize="none" autoCorrect={false} style={s.search} />}
+      {!phoneApps.length ? <View style={s.permissionList}><View style={s.permissionRow}><Text style={[s.permissionHint, s.flex]}>Finding the apps on this phone…</Text>
+        <Pressable onPress={() => void refreshProtection()} accessibilityRole="button" style={s.allow}><Text style={s.allowText}>Retry</Text></Pressable></View></View>
+      : <View style={s.permissionList}>{apps.map((app, index) => {
+        const on = allowed.includes(app.packageName);
+        return <Pressable key={app.packageName} onPress={() => toggleApp(app.packageName)} accessibilityRole="checkbox" accessibilityState={{ checked: on }} accessibilityLabel={app.label}
+          testID={`onboarding-app-${app.packageName}`} style={[s.appRow, index > 0 && s.permissionDivider]}>
+          <Text style={[s.permissionTitle, s.flex]} numberOfLines={1}>{app.label}</Text>
+          <View style={[s.check, on && s.checkOn]}>{on && <Ionicons name="checkmark" size={15} color={colors.background} />}</View>
+        </Pressable>;
+      })}{!apps.length && <View style={s.permissionRow}><Text style={s.permissionHint}>No apps match “{search.trim()}”.</Text></View>}</View>}
+      <Text style={s.permissionHint}>{allowed.length ? `${allowed.length} ${allowed.length === 1 ? "app stays" : "apps stay"} open. You can change this in Settings.` : "None picked yet. Calls, Settings and LifeRPG always stay open."}</Text>
+    </View>}
     {intro && <><View style={s.illustration}><View style={s.symbol}><Ionicons name={intro.icon} size={44} color={colors.accent} /></View></View><View style={s.note}><Text style={s.noteBody}>{intro.detail}</Text></View></>}
   </OnboardingFrame>;
 }
@@ -171,7 +193,11 @@ const s = StyleSheet.create({
   permissionCopy: { flex: 1, minWidth: 0, gap: 1 }, permissionTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
   // The same sizes as the areas list on the first page, so every intro page reads alike.
   permissionHint: { color: colors.secondary, fontSize: 14, lineHeight: 18 },
-  appsRow: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 64, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, backgroundColor: colors.surface },
+  appRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 52, paddingHorizontal: 16, paddingVertical: 8 },
+  check: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: colors.tertiary, alignItems: "center", justifyContent: "center" },
+  checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  search: { minHeight: 48, borderRadius: 14, borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface, paddingHorizontal: 14, color: colors.text, fontSize: 16 },
+  flex: { flex: 1, minWidth: 0 },
   facts: { gap: 10, paddingHorizontal: 6 }, fact: { flexDirection: "row", alignItems: "center", gap: 10 },
   allow: { minHeight: 36, paddingHorizontal: 16, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   allowText: { color: colors.accent, fontSize: 15, fontWeight: "600" },

@@ -70,7 +70,7 @@ export default function DeleteAccount() {
     {step === "ask" && <SheetConfirmation elevated destructive title="Delete your account?" message={message}
       confirmLabel="Continue" cancelLabel="Keep my account"
       onCancel={close} onConfirm={() => { setTyped(""); setWait(DELETE_WAIT_SECONDS); setStep("type"); }} />}
-    <AppSheet label="Confirm account deletion" motionMode="timed" compact visible={step === "type"} guardDismiss={busy} onRequestClose={close}
+    <AppSheet label="Confirm account deletion" motionMode="timed" compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" visible={step === "type"} guardDismiss={busy} onRequestClose={close}
       header={<View style={p.sheetHeader}><Text style={p.title}>Type your username</Text></View>}>
       <BottomSheetScrollView contentContainerStyle={p.sheetBody} keyboardShouldPersistTaps="handled">
         <Text style={p.body}>To delete your account for good, type <Text style={s.name}>{name}</Text> below.</Text>

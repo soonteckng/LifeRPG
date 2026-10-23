@@ -170,7 +170,7 @@ test('setup sections fade upwards in order without animating layout or the pinne
 
 test('Android setup asks about app protection with Allow buttons, names what can never be blocked and saves the allow list once ready', async () => {
   const env = environment(true); const calls = []; let caps = { usage: false, overlay: false, notifications: false }, tree;
-  const protection = () => ({ supported: true, selection: { mode: 'normal', allowed: [] }, capabilities: caps,
+  const protection = () => ({ supported: true, selection: { mode: 'normal', allowed: [] }, capabilities: caps, apps: [{ packageName: 'notes.app', label: 'Notes' }, { packageName: 'music.app', label: 'Music' }],
     refresh: async () => { calls.push('refresh'); }, openPermission: async kind => { calls.push(['open', kind]); }, choose: async (...args) => { calls.push(['choose', ...args]); return true; } });
   const Journey = env.load('src/components/OnboardingJourney.tsx', {
     'react-native': { View: props => React.createElement('View', props, props.children), StyleSheet: { create: value => value, hairlineWidth: 1 }, Keyboard: { dismiss() {} }, AppState: { addEventListener: () => ({ remove() {} }) } },
@@ -195,19 +195,27 @@ test('Android setup asks about app protection with Allow buttons, names what can
     assert.doesNotMatch(copy, /During a session, only the apps you allow/, 'no long paragraph to read');
     assert.doesNotMatch(copy, /Protection on Home/, 'protection lives in Settings now');
     assert.equal(tree.root.findAllByType('Segmented').length, 0, 'allow list is the one mode, so there is nothing to pick');
-    const appsRow = () => tree.root.findAll(node => node.props.testID === 'onboarding-allowed-apps' && typeof node.props.onPress === 'function')[0];
-    assert.equal(appsRow(), undefined, 'apps come after the permissions');
+    assert.match(JSON.stringify(tree.toJSON()), /Allow all three to turn protection on/);
     caps = { usage: true, overlay: true, notifications: true };
     await act(async () => tree.update(React.createElement(Journey, { initialStep: 3 })));
-    // Once protection is allowed, the same app list as Settings is one tap away.
-    assert.ok(appsRow());
-    assert.equal(tree.root.findByType('ProtectionSheet').props.visible, false);
-    await act(async () => appsRow().props.onPress());
-    assert.equal(tree.root.findByType('ProtectionSheet').props.visible, true);
-    await act(async () => tree.root.findByType('ProtectionSheet').props.onClose());
-    assert.equal(tree.root.findByType('ProtectionSheet').props.visible, false);
+    assert.doesNotMatch(JSON.stringify(tree.toJSON()), /Allow all three/);
+    // Page two: once all three are allowed, Continue opens the app list instead of moving on.
     await act(async () => button('Continue').props.onPress());
-    assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list', []]]);
+    assert.equal(tree.root.findByType('Frame').props.title, 'Choose your apps');
+    assert.ok(calls.includes('refresh'), 'the app list is loaded');
+    assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [], 'nothing is saved yet');
+    const app = pkg => tree.root.findAll(node => node.props.testID === `onboarding-app-${pkg}` && typeof node.props.onPress === 'function')[0];
+    assert.ok(app('notes.app') && app('music.app'));
+    await act(async () => app('notes.app').props.onPress());
+    assert.equal(app('notes.app').props.accessibilityState.checked, true);
+    // Back returns to the permissions page, and forward again keeps your ticks.
+    await act(async () => tree.root.findByType('Frame').props.onBack());
+    assert.equal(tree.root.findByType('Frame').props.title, 'Keep distractions away');
+    await act(async () => button('Continue').props.onPress());
+    await act(async () => app('notes.app').props.onPress());
+    await act(async () => app('music.app').props.onPress());
+    await act(async () => button('Continue').props.onPress());
+    assert.deepEqual(calls.filter(call => Array.isArray(call) && call[0] === 'choose'), [['choose', 'allow-list', ['music.app']]]);
     assert.equal(tree.root.findByType('Frame').props.step, 5);
   } finally { await act(async () => tree.unmount()); }
 });

@@ -173,3 +173,8 @@ test('Settings shows Delete account after Sign out, at the bottom', () => {
   assert.ok(settings.indexOf('title="Sign out"') < settings.indexOf('<DeleteAccount />'));
   assert.ok(settings.indexOf('<DeleteAccount />') < settings.indexOf('<AppBuildInfo />'));
 });
+
+test('the username sheet rises above the keyboard, like the other sheets with a text box', () => {
+  const src = fs.readFileSync(path.join(root, 'src/components/DeleteAccount.tsx'), 'utf8');
+  assert.match(src, /keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" visible=\{step === "type"\}/);
+});

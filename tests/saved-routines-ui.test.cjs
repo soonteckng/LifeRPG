@@ -332,3 +332,31 @@ test('the widget goes to the one routine that was just made, never a guess', asy
   assert.equal(await api.pinNewSavedRoutine(scope, before), false, 'two new ones cannot be told apart');
   assert.deepEqual(pinned, []); assert.equal(api.pinSavedRoutine, original);
 });
+
+test('Home Start row holds study subjects beside routines, before Any activity', async () => {
+  for (const withRoutine of [true, false]) {
+    const calls = [], state = { ready: true, scope, online: true, routines: withRoutine ? [routine] : [], pendingCount: 0, conflicts: [] };
+    const Component = load('src/components/SavedRoutinesCard.tsx', { ...base(), './SheetHeader': host('Header'), 'expo-haptics': { selectionAsync: async () => {} }, 'expo-router': { useRouter: () => ({ push: target => calls.push(['route', target]) }) },
+      '../hooks/useSavedRoutines': { useSavedRoutines: () => state }, '../context/UserContext': { useUser: () => ({ hapticsEnabled: false }) }, '../context/TimerContext': { useTimer: () => prepTimer(calls) },
+      '../services/savedRoutineService': { resolveSavedRoutine: async () => routine }, '../services/routineWidgetService': { routineWidgetsSupported: async () => false, pinSavedRoutine: async () => true }, './RoutineEditorSheet': host('Editor') }).default;
+    const studyChips = [{ key: 'math', name: 'Mathematics', caption: 'Study', color: '#BF5AF2', onPress: () => calls.push('study:math') }];
+    let ui; await act(async () => { ui = create(React.createElement(Component, { subjects, layout: 'start', limit: 3, suggestions: false, onSeeAll() {}, onAnyActivity: () => calls.push('any'), studyChips })); });
+    try {
+      const labels = ui.root.findAllByType('Press').map(x => x.props.accessibilityLabel).filter(Boolean);
+      const study = labels.indexOf('Study Mathematics. Study'), any = labels.indexOf('Any activity. Start focusing, your time');
+      assert.ok(study >= 0, 'the subject is a chip'); assert.ok(any > study, 'Any activity stays last');
+      if (withRoutine) assert.ok(labels.findIndex(l => /^Start routine/.test(l)) < study, 'routines come first');
+      else assert.equal(labels.includes('Start a focus session. Any activity, your time'), false, 'a subject alone is enough for the chip row');
+      await act(async () => ui.root.findAllByType('Press').find(x => x.props.accessibilityLabel === 'Study Mathematics. Study').props.onPress());
+      assert.ok(calls.includes('study:math'));
+    } finally { await act(async () => ui.unmount()); }
+  }
+});
+
+test('Home passes up to two study subjects, most recently studied first, and routines fill the rest', () => {
+  const home = require('node:fs').readFileSync(require('node:path').resolve(__dirname, '../src/app/(tabs)/index.tsx'), 'utf8');
+  assert.match(home, /\.sort\(\(a, b\) => \(lastStudied\.get\(b\.id\) \?\? 0\) - \(lastStudied\.get\(a\.id\) \?\? 0\)/);
+  assert.match(home, /course\.id !== nextCourse\?\.id/, 'the subject already shown as Revise is not repeated');
+  assert.match(home, /\.slice\(0, 2\)/);
+  assert.match(home, /limit=\{Math\.max\(1, 3 - studyChips\.length\)\} suggestions=\{false\} studyChips=\{studyChips\}/);
+});

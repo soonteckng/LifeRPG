@@ -27,7 +27,7 @@ import { CircleButton } from "../../components/SectionHeader";
 import { useStudyPlan } from "../../hooks/useStudyPlan";
 import { useStudyLauncher } from "../../hooks/useStudyLauncher";
 import { useJustFocus } from "../../hooks/useJustFocus";
-import { daysUntil, upcomingExams } from "../../utils/studyPlan";
+import { courseColor, daysUntil, upcomingExams } from "../../utils/studyPlan";
 import { rememberSettingsOrigin } from "../../utils/settingsOrigin";
 import { useAuth } from "../../context/AuthContext";
 import { useQuests } from "../../context/QuestContext";
@@ -200,6 +200,15 @@ export default function HomeScreen() {
   const nextExam = upcomingExams(plan.exams).find(exam => daysUntil(exam.examDate) <= 7 && plan.courses.some(course => course.id === exam.courseId));
   const nextCourse = nextExam ? plan.courses.find(course => course.id === nextExam.courseId) ?? null : null;
   const examDays = nextExam ? daysUntil(nextExam.examDate) : 0;
+  // Start holds routines and study subjects together: up to two subjects,
+  // the ones you studied most recently first, and routines fill the rest, so
+  // with Any activity the chips stay an even two by two. A subject with an
+  // exam this week already leads as Revise.
+  const lastStudied = new Map<string, number>();
+  for (const item of plan.recent) lastStudied.set(item.courseId, Math.max(lastStudied.get(item.courseId) ?? 0, item.completedAt));
+  const studyCourses = plan.courses.filter(course => course.deletedAt == null && course.id !== nextCourse?.id)
+    .sort((a, b) => (lastStudied.get(b.id) ?? 0) - (lastStudied.get(a.id) ?? 0) || a.name.localeCompare(b.name)).slice(0, 2);
+  const studyChips = studyCourses.map(course => ({ key: course.id, name: course.name, caption: "Study", color: courseColor(course.id), onPress: () => launcher.study(course) }));
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
@@ -266,7 +275,7 @@ export default function HomeScreen() {
 
           {/* Start: your routines as chips, then Any activity. An exam this week leads. */}
           <TourAnchor id="home-quests"><SavedRoutinesCard layout="start" subjects={subjects} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={openQuestSession}
-            limit={3} suggestions={false} onSeeAll={() => router.navigate("/routines")} onAnyActivity={justFocus}
+            limit={Math.max(1, 3 - studyChips.length)} suggestions={false} studyChips={studyChips} onSeeAll={() => router.navigate("/routines")} onAnyActivity={justFocus}
             lead={nextCourse && !hasOpenSession && !settling && !needsReview ? <TouchableOpacity testID="home-revise" onPress={() => launcher.study(nextCourse)} accessibilityRole="button"
               accessibilityLabel={`Revise ${nextCourse.name}. ${examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`}`} style={styles.reviseChip}>
               <View style={styles.revisePlay}><Ionicons name="play" size={14} color={colors.primary} style={styles.nudge} /></View>

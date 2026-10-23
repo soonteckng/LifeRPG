@@ -38,7 +38,10 @@ import { ideaAreaTitle } from "./IdeaAreaPicker";
 type RoutineTemplate = RoutineIdea;
 const kindColor = (kind: FocusAreaKind) => FOCUS_AREAS.find(area => area.kind === kind)?.color ?? colors.accent;
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine }: {
+/** A study subject on Home's Start row. */
+export interface StudyChip { key: string; name: string; caption: string; color: string; onPress: () => void }
+
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [] }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
@@ -46,6 +49,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   onSeeAll?: () => void;
   /** "start": Home's Start row, routines as chips that start at once, then Any activity. */
   layout?: "list" | "start" | "grid"; lead?: ReactNode; onAnyActivity?: () => void;
+  /** On Home's Start row, study subjects sit beside your routines, each one tap from a session. */
+  studyChips?: readonly StudyChip[];
   /** On Routines, the guide wraps your own routines (title, + and grid) to point at them. */
   wrapMine?: (mine: ReactNode) => ReactNode;
 }) {
@@ -267,7 +272,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {!!entries.length && <SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
         onPress={() => { feedback(); if (active && routines.ready) { setShowDone(false); setManage(true); } else onSeeAll?.(); }} />}
     </View>
-    {visibleEntries.length || lead ? <View style={s.startChips}>
+    {visibleEntries.length || lead || studyChips.length ? <View style={s.startChips}>
       {lead}
       {visibleEntries.map(entry => {
         const disabled = chipDisabled(entry), area = areaOf(entry.areaId), tint = lifeAreaColor(entry.areaId, area?.color_code);
@@ -279,6 +284,11 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
           <View style={s.flex}><Text style={s.chipName} numberOfLines={2}>{entry.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{routineDuration(entry.seconds)}</Text></View>
         </Pressable>;
       })}
+      {studyChips.map(chip => <Pressable key={chip.key} disabled={anyBlocked} onPress={chip.onPress} testID={`home-study-${chip.key}`}
+        accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }} accessibilityLabel={`Study ${chip.name}. ${chip.caption}`} style={[s.startChip, anyBlocked && s.startChipOff]}>
+        <View style={[s.startPlay, { backgroundColor: areaTint(chip.color, 0.2) }]}><Ionicons name="school" size={15} color={chip.color} /></View>
+        <View style={s.flex}><Text style={s.chipName} numberOfLines={2}>{chip.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{chip.caption}</Text></View>
+      </Pressable>)}
       {onAnyActivity && <Pressable disabled={anyBlocked} onPress={onAnyActivity} testID="home-just-focus" accessibilityRole="button" accessibilityState={{ disabled: anyBlocked }}
         accessibilityLabel="Any activity. Start focusing, your time" style={[s.startChip, anyBlocked && s.startChipOff]}>
         <View style={[s.startPlay, s.anyPlay]}><Ionicons name="add" size={17} color={colors.text} /></View>
