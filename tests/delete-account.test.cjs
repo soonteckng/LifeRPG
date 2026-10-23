@@ -37,7 +37,7 @@ test('the phone forgets only the deleted account', async () => {
   assert.equal(removed.length, 3, 'nothing is removed for a malformed owner');
 });
 
-async function screen({ session = false, online = true, unsynced = 0, deleted = true } = {}) {
+async function screen({ session = false, online = true, unsynced = 0, deleted = true, developer = false } = {}) {
   const log = [], timers = [];
   const realSet = global.setTimeout, realClear = global.clearTimeout;
   // The ten-second wait runs on a fake clock, one tick per "second".
@@ -59,6 +59,7 @@ async function screen({ session = false, online = true, unsynced = 0, deleted = 
     '../context/UserContext': { useUser: () => ({ profile: { id: owner, username: '8k' } }) },
     '../context/TimerContext': { useTimer: () => ({ hasOpenSession: session, unsyncedSessionCount: unsynced }) },
     '../services/accountDeletion': { deleteMyAccount: async () => { log.push('delete'); return deleted; }, forgetAccountOnPhone: async id => { log.push(`forget:${id}`); } },
+    '../services/developerAccess': { useIsDeveloper: () => developer },
   });
   let renderer; await act(async () => { renderer = create(React.createElement(Delete.default)); });
   const find = id => renderer.root.findAll(n => n.props.testID === id && typeof n.type !== 'string')[0];
@@ -176,5 +177,18 @@ test('Settings shows Delete account after Sign out, at the bottom', () => {
 
 test('the username sheet rises above the keyboard, like the other sheets with a text box', () => {
   const src = fs.readFileSync(path.join(root, 'src/components/DeleteAccount.tsx'), 'utf8');
-  assert.match(src, /keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" visible=\{step === "type"\}/);
+  assert.match(src, /keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" visible=\{step === "type" && !protectedAccount\}/);
+});
+
+test('a developer account is protected: the row is locked, nothing opens, and the server refuses too', async () => {
+  const ui = await screen({ developer: true });
+  try {
+    assert.equal(ui.row().props.disabled, true); assert.equal(ui.row().props.value, 'Locked');
+    await act(async () => ui.row().props.onPress());
+    assert.equal(ui.confirm(), undefined); assert.equal(ui.sheet(), undefined);
+    assert.match(ui.footer(), /protected/);
+    assert.deepEqual(ui.log, []);
+    const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261024140100_round58_dev_protection.sql'), 'utf8');
+    assert.match(sql, /liferpg_auth_private\.developers where user_id = v_user\) then\n\s+raise exception 'This account is protected/);
+  } finally { await ui.cleanup(); }
 });

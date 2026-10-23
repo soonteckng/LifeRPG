@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import Pressable from "../components/MotionPressable";
@@ -31,7 +31,6 @@ const BG: Record<string, [string, string]> = {
   bg_dusk: ["#4A3366", "#B86A6A"], bg_forest: ["#24493F", "#3E6B4F"], bg_meadow: ["#6C9CC6", "#A8CC92"],
   bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
 };
-const STAGE_HEIGHT = 240;
 interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; title: string | null }
 
 /**
@@ -57,6 +56,9 @@ export default function OutfitsScreen() {
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
   const [stageWidth, setStageWidth] = useState(350);
+  // A shorter stage on smaller phones, so the choices below keep enough room.
+  const { height: screenHeight } = useWindowDimensions();
+  const STAGE_HEIGHT = screenHeight < 760 ? 210 : 240, roomy = STAGE_HEIGHT >= 240;
   const owned = useMemo(() => new Set(rewards.owned), [rewards.owned]);
   const dirty = !!edit && JSON.stringify(edit) !== JSON.stringify(saved);
   const change = (next: Partial<Draft>) => { setEdit(d => ({ ...(d ?? saved), ...next })); setMessage(""); };
@@ -115,9 +117,9 @@ export default function OutfitsScreen() {
       <View style={{ flex: 1.4 }}><PersonalButton title={rewards.busy ? "Saving…" : "Save look"} disabled={!dirty || rewards.busy || !rewards.online || tryingOn.length > 0} onPress={() => void save()} /></View>
     </View>
   </View>;
-  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition fallback="/profile" footer={footer}>
-    <View style={s.stack}>
-      <View style={s.stage} testID="outfits-preview" onLayout={e => setStageWidth(e.nativeEvent.layout.width)}>
+  // The character and the tabs stay in view while the choices scroll under them.
+  const pinned = <>
+      <View style={[s.stage, { height: STAGE_HEIGHT }]} testID="outfits-preview" onLayout={e => setStageWidth(e.nativeEvent.layout.width)}>
         {/* The stage is your chosen picture background, top to bottom. */}
         <Svg width={stageWidth} height={STAGE_HEIGHT} style={s.stageArt}>
           <Defs><LinearGradient id="stage-bg" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={a} /><Stop offset="1" stopColor={b} /></LinearGradient></Defs>
@@ -130,14 +132,16 @@ export default function OutfitsScreen() {
           {framePreview !== undefined && framePreview !== rewards.frame && <View style={s.chip}><Text style={s.chipText}>Preview</Text></View>}
         </View>
         {tab === "picture"
-          ? <View style={s.picture}><ProfilePicture look={draft.look} equipped={draft.equipped} level={profile.level} background={draft.background} frame={shownFrame} streak={streak} size={164} />
+          ? <View style={s.picture}><ProfilePicture look={draft.look} equipped={draft.equipped} level={profile.level} background={draft.background} frame={shownFrame} streak={streak} size={roomy ? 164 : 146} />
             {!!draft.title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(draft.title)?.name}</Text></View>}</View>
-          : <Adventurer look={draft.look} equipped={draft.equipped} size={132} lanternLevel={profile.level} />}
+          : <Adventurer look={draft.look} equipped={draft.equipped} size={roomy ? 132 : 122} lanternLevel={profile.level} />}
       </View>
 
       <Segmented<Tab> value={tab} onChange={openTab} track={colors.surface}
         options={[{ value: "look", label: "Look" }, { value: "clothes", label: "Clothes" }, { value: "gear", label: "Gear" }, { value: "pets", label: "Pets" }, { value: "picture", label: "Picture" }]} />
-
+  </>;
+  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition fallback="/profile" footer={footer} pinned={pinned}>
+    <View style={s.stack}>
       {tab === "look" ? <View style={s.card}>
         <Text style={p.rowTitle}>Skin</Text>
         <View style={s.swatches}>{SKIN_TONES.map((tone, i) => {
@@ -211,9 +215,9 @@ function Pill({ label, on, onPress, dot = false }: { label: string; on: boolean;
 
 const s = StyleSheet.create({
   stack: { gap: 16 },
-  stage: { ...edge, height: 240, borderRadius: radius.card, overflow: "hidden", alignItems: "center", justifyContent: "flex-end", paddingBottom: 4 },
+  stage: { ...edge, borderRadius: radius.card, overflow: "hidden", alignItems: "center", justifyContent: "flex-end", paddingBottom: 4 },
   stageArt: { position: "absolute", left: 0, top: 0 },
-  picture: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: 10, paddingTop: 20 },
+  picture: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: 8, paddingTop: 12 },
   titleChip: { paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: "rgba(9,12,20,0.55)" },
   titleText: { color: "#C4B5FD", fontSize: 13, fontWeight: "700" },
   chips: { position: "absolute", left: 12, top: 12, gap: 6 },

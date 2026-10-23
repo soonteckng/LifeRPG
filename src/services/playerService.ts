@@ -1,11 +1,18 @@
-// Player cards and who sees your stats. Every call carries the signed-in
-// owner, and answers are checked against the same owner, like squads.
+// Player cards: you, or a squad mate. Stats are part of being in a squad.
+// Every call carries the signed-in owner, and answers are checked against the
+// same owner, like squads.
 import { supabase } from "../../lib/supabase";
 import { parsePlayerLook } from "../utils/playerLook";
+import { rewardItem } from "./rewardCatalog";
 import type { PlayerLook } from "../types/squads";
 
-export type StatsVisibility = "squads" | "private";
-export interface PlayerStats { streak: number; totalSeconds: number; sessions: number; collected: number; since: string | null }
+export interface PlayerStats {
+  streak: number; totalSeconds: number; sessions: number; collected: number; since: string | null;
+  longestSeconds: number; daysFocused: number;
+  /** Seconds focused on each of the last seven days, oldest first, today last. */
+  last7: number[];
+  pets: string[]; badges: string[];
+}
 export interface PlayerCard { id: string; isYou: boolean; name: string; level: number; look: PlayerLook | null; statsShared: boolean; stats: PlayerStats | null }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -18,7 +25,12 @@ export function parsePlayerCard(value: unknown): PlayerCard {
   if (isObj(value.stats)) {
     const t = value.stats;
     if (!count(t.streak) || !count(t.totalSeconds) || !count(t.sessions) || !count(t.collected)) throw new Error("Unexpected player reply");
-    stats = { streak: t.streak as number, totalSeconds: t.totalSeconds as number, sessions: t.sessions as number, collected: t.collected as number, since: typeof t.since === "string" ? t.since : null };
+    const n = (v: unknown) => (count(v) ? v as number : 0);
+    const ids = (v: unknown, kind: string) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string" && rewardItem(id)?.kind === kind) : [];
+    stats = { streak: t.streak as number, totalSeconds: t.totalSeconds as number, sessions: t.sessions as number, collected: t.collected as number, since: typeof t.since === "string" ? t.since : null,
+      longestSeconds: n(t.longestSeconds), daysFocused: n(t.daysFocused),
+      last7: Array.isArray(t.last7) && t.last7.length === 7 ? t.last7.map(n) : [0, 0, 0, 0, 0, 0, 0],
+      pets: ids(t.pets, "pet"), badges: ids(t.badges, "title") };
   }
   return { id: value.id, isYou: value.isYou, name: value.name.slice(0, 80), level: value.level as number, look: parsePlayerLook(value.look), statsShared: value.statsShared, stats };
 }
@@ -35,13 +47,7 @@ export function createPlayerClient(ownerId: string, verifyOwner: () => Promise<s
     if (await verifyOwner() !== ownerId) throw new Error("Account changed");
     return data as unknown;
   };
-  const visibility = (r: unknown): StatsVisibility => {
-    if (!isObj(r) || (r.showStats !== "squads" && r.showStats !== "private")) throw new Error("Unexpected player reply");
-    return r.showStats;
-  };
   return {
     card: async (playerId: string) => parsePlayerCard(await call("get_player_card_v1", { p_player: playerId })),
-    statsVisibility: async () => visibility(await call("get_stats_visibility_v1")),
-    setStatsVisibility: async (show: StatsVisibility) => visibility(await call("set_stats_visibility_v1", { p_show: show })),
   };
 }

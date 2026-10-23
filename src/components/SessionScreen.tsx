@@ -43,6 +43,7 @@ import { setupMode, type SetupMode } from "../services/setupMode";
 import { studySelection } from "../services/studySelection";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
+import SessionBackdrop from "./session/SessionBackdrop";
 
 type Picker = "duration" | "area" | null;
 
@@ -408,10 +409,15 @@ export default function SessionScreen() {
     : timer.syncStatus === "waiting" ? timer.isCompleted ? "Your finished session is saved on this phone. We’ll confirm it when you reconnect." : "Waiting to confirm your saved session state."
     : timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one.";
 
+  // While you focus, you walk the trail behind the timer (see SessionBackdrop).
+  const onTrail = phase === "running" || phase === "paused";
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
-    <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
+    <SessionBackdrop phase={phase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
+      walking={phase === "running" && !breakActive && !timer.awaitingStart} minutes={Math.round(timer.duration / 60)}
+      area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />
+    <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
       <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
@@ -524,6 +530,7 @@ function SheetChoice({ label, detail, onPress }: { label: string; detail?: strin
 const styles = StyleSheet.create({
   suggestionInstruction: { paddingHorizontal: 12, paddingVertical: 6, marginTop: 6, marginBottom: 8 },
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
+  onTrail: { backgroundColor: "transparent" },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },
   timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },

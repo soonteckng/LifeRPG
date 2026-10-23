@@ -1,6 +1,6 @@
 // Talks to the rewards functions on the server. Every call carries the
 // signed-in owner, and answers are checked against the same owner, like the
-// squad calls. Screens use this in the next rounds.
+// squad calls.
 import { supabase } from "../../lib/supabase";
 import { rewardItem, type RewardRarity } from "./rewardCatalog";
 import type { AdventurerLook } from "../utils/adventurerLook";
@@ -22,10 +22,12 @@ export interface RewardsState {
   earned: string[];
   avatar: SavedAvatar;
   pack: { date: string; goalReached: boolean; claimed: boolean; tier: number; daysInARow: number };
+  /** Today's walk on the trail: focused seconds and finds made today. */
+  today: { seconds: number; finds: number };
 }
-export type DevRewardAction = "stardust" | "reopen_pack" | "reearn" | "reset";
+export type DevRewardAction = "stardust" | "reopen_pack" | "find" | "next_milestones" | "reearn";
 export interface Gift { item: string; rarity: RewardRarity; new: boolean; stardust: number; reason?: "hours" | "streak" | "set" }
-export interface SessionClaim { sessions: { sessionId: string; finds: Gift[]; minutesStardust: number }[]; milestones: Gift[]; state: RewardsState }
+export interface SessionClaim { sessions: { sessionId: string; finds: Gift[]; minutesStardust: number; seconds: number }[]; milestones: Gift[]; state: RewardsState }
 export interface PackOpening { tier: number; daysInARow: number; items: Gift[]; stardust: number; milestones: Gift[]; state: RewardsState }
 
 const RARITIES = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
@@ -68,6 +70,9 @@ export function parseRewardsState(value: unknown): RewardsState {
       revision: a.revision as number,
     },
     pack: { date: p.date, goalReached: p.goalReached, claimed: p.claimed, tier: p.tier as number, daysInARow: p.daysInARow as number },
+    // Older servers leave today out; nothing walked yet is the safe reading.
+    today: isObj(value.today) && count(value.today.seconds) !== null && count(value.today.finds) !== null
+      ? { seconds: value.today.seconds as number, finds: value.today.finds as number } : { seconds: 0, finds: 0 },
   };
 }
 
@@ -91,7 +96,8 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
       return {
         sessions: r.sessions.map(s => {
           if (!isObj(s) || typeof s.sessionId !== "string" || count(s.minutesStardust) === null) throw new Error("Unexpected rewards reply");
-          return { sessionId: s.sessionId, finds: gifts(s.finds), minutesStardust: s.minutesStardust as number };
+          return { sessionId: s.sessionId, finds: gifts(s.finds), minutesStardust: s.minutesStardust as number,
+            seconds: count(s.seconds) ?? (s.minutesStardust as number) * 300 };
         }),
         milestones: gifts(r.milestones),
         state: parseRewardsState(r.state),
@@ -110,8 +116,10 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
     /** The frame isn't saved: it follows the highest streak frame earned. */
     saveAvatar: async (avatar: Omit<SavedAvatar, "revision" | "frame">, expectedRevision: number) =>
       parseRewardsState(await call("save_avatar_v1", { p_avatar: { look: avatar.look, equipped: avatar.equipped, background: avatar.background, title: avatar.title }, p_expected_revision: expectedRevision })),
-    /** Developer accounts only; the server refuses everyone else. */
-    developer: async (action: DevRewardAction, amount = 0) =>
-      parseRewardsState(await call("dev_rewards_v1", { p_action: action, p_amount: amount })),
+    /** Developer accounts only; the server refuses everyone else. Test finds and milestones come back as gifts. */
+    developer: async (action: DevRewardAction, amount = 0) => {
+      const r = await call("dev_rewards_v1", { p_action: action, p_amount: amount });
+      return { state: parseRewardsState(r), gifts: isObj(r) && Array.isArray(r.gifts) ? gifts(r.gifts) : [] };
+    },
   };
 }

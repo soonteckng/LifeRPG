@@ -63,8 +63,12 @@ test("the profile picture grows its frame with level and shows a pet and long st
   assert.ok(circles(mid) > circles(low), "studs from level 21");
   assert.ok(high.root.findAllByType("Path").length > mid.root.findAllByType("Path").length, "laurels and a crown at 100");
   assert.equal(high.root.findAllByType("Item")[0].props.id, "pet_owl");
-  assert.equal(high.root.findAllByType("Text")[0].props.children, 12);
-  assert.equal(low.root.findAllByType("Item").length, 0); assert.equal(low.root.findAllByType("Text").length, 0);
+  const texts = r => r.root.findAllByType("Text").map(t => t.props.children);
+  assert.deepEqual(texts(high), [100, 12], "the level, then the 12-day streak");
+  assert.equal(low.root.findAllByType("Item").length, 0); assert.deepEqual(texts(low), [1], "only the level: no pet, no short streak");
+  const noLevel = await render({ showLevel: false });
+  assert.equal(noLevel.root.findAllByType("Text").length, 0);
+  await act(async () => noLevel.unmount());
   const small = await render({ size: 32, equipped: { pet: "pet_owl" }, streak: 40 });
   assert.equal(small.root.findAllByType("Item").length + small.root.findAllByType("Text").length, 0, "tiny pictures stay clean");
   assert.equal(low.root.findByType("Art").props.crop, "portrait");
@@ -109,8 +113,8 @@ async function outfits({ online = true, owned = ["cardigan", "beret"], earned = 
     buy: async id => { log.push(["buy", id]); return { ok: true, value: {} }; },
   };
   const Screen = load("src/app/outfits.tsx", {
-    "react-native": native, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
-    "../components/PersonalUI": { PersonalPage: ({ children, footer }) => React.createElement("Page", null, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
+    "react-native": { ...native, useWindowDimensions: () => ({ width: 390, height: 844 }) }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
+    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", null, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
     "../components/adventurer/Adventurer": host("Adventurer"), "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
@@ -206,7 +210,8 @@ test("the Picture tab: frames follow your streak and only preview, badges and ba
 
 test("Reset and Save look stay fixed below the scrolling outfits", () => {
   const page = fs.readFileSync(path.join(root, "src/app/outfits.tsx"), "utf8");
-  assert.match(page, /<PersonalPage title="Outfits"[^>]*footer=\{footer\}>/);
+  assert.match(page, /<PersonalPage title="Outfits"[^>]*footer=\{footer\} pinned=\{pinned\}>/);
+  assert.match(page, /const pinned = <>\n\s+<View style=\{\[s\.stage/, "the character stays in view while the choices scroll");
   const ui = fs.readFileSync(path.join(root, "src/components/PersonalUI.tsx"), "utf8");
   assert.match(ui, /<\/TourScrollView>\n\s*\{footer && <View/, "the footer sits outside the scroll view");
 });
@@ -360,7 +365,7 @@ test("anything newly earned waits for its pop-up; purchases, old rewards and low
 test("the reward pop-up: one at a time, never during a session or over another sheet, and it checks after each session", async () => {
   const log = [];
   let moments = ["frame_streak_30", "pet_owl"], profile = { id: "u", level: 4, current_xp: 10, streak_count: 30 }, sheets = 0, path_ = "/";
-  const rewards = () => ({ online: true, moments, look: LOOK, equipped: {}, background: "bg_dusk",
+  const rewards = () => ({ online: true, moments, reveals: [], look: LOOK, equipped: {}, background: "bg_dusk", today: { seconds: 0, finds: 0 }, nextFindSeconds: 1500,
     claimSessions: async () => { log.push("claim"); return { ok: true }; }, dismissMoment: id => { log.push(`seen:${id}`); moments = moments.filter(m => m !== id); } });
   const mod = load("src/components/RewardMoments.tsx", {
     "react-native": { ...native, Modal: host("Modal"), AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) },
@@ -375,9 +380,13 @@ test("the reward pop-up: one at a time, never during a session or over another s
     "../services/launchIntroState": { launchIntroState: { subscribe: () => () => {}, isDone: () => true } },
     "../utils/sheetActivity": { registerSheetActivity: () => () => {}, useActiveSheetCount: () => sheets },
     "../utils/tapHaptics": { tapHaptic: () => log.push("haptic") },
+    "./rewards/RevealScreens": { ExpeditionReveal: host("Expedition"), PackReveal: host("PackOpen") },
+    "./rewards/rarity": { RARITY_COLOR: { common: "#C2C8D8", uncommon: "#2DD4A7", rare: "#60A5FA", epic: "#A78BFA", legendary: "#FBBF24" } },
   });
   const Moments = mod.default;
-  let r; const render = async inside => act(async () => { if (r) r.update(React.createElement(Moments, { insideSession: inside })); else r = create(React.createElement(Moments, { insideSession: inside })); });
+  // A pop-up waits a moment after everything else closes (see SETTLE_MS).
+  let r; const render = async inside => { await act(async () => { if (r) r.update(React.createElement(Moments, { insideSession: inside })); else r = create(React.createElement(Moments, { insideSession: inside })); });
+    await act(async () => { await new Promise(done => setTimeout(done, 480)); }); };
   const words = () => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
   const press = label => act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === label)[0].props.onPress());
   try {

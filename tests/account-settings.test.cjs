@@ -142,7 +142,6 @@ async function settings(options = {}, file = "src/app/settings.tsx") {
     "../components/DeleteAccount": props => React.createElement("DeleteAccount", props),
     "../hooks/useAppPreferences": { useAppPreferences: () => ({ reduceMotion: false, examReminders: true, hints: [] }) },
     "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; } } },
-    "../hooks/usePlayer": { useStatsVisibility: () => options.stats ?? ({ value: "squads", busy: false, error: "", online: true, set: async () => {} }) },
     "../hooks/useFocusDurationPreference": { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, choose: async () => {} }) },
     "../components/CharacterMark": host("Mark"),
     "react-native": { ...Native, AppState: { addEventListener: (_, fn) => { foreground = fn; return { remove() {} }; } },
@@ -467,14 +466,10 @@ test("Settings and Daily goal share the last goal reading, so the goal page open
   cache.forgetDailyGoal("account"); assert.equal(cache.cachedDailyGoal("account"), null);
 });
 
-test("Settings › Squads: one switch shares your all-time stats with your squads, on by default", async () => {
-  const sets = [];
-  const ui = await settings({ stats: { value: "squads", busy: false, error: "", online: true, set: async v => { sets.push(v); } } });
+test("Settings has no stats-sharing switch: stats are part of being in a squad", async () => {
+  const ui = await settings();
   try {
-    const toggle = ui.renderer.root.findAllByType("Switch").find(n => n.props.accessibilityLabel === "Share my stats with my squads");
-    assert.equal(toggle.props.value, true);
-    assert.match(ui.text(), /Squad mates can see your all-time focus/);
-    await act(async () => toggle.props.onValueChange(false));
-    assert.deepEqual(sets, ["private"]);
+    assert.equal(ui.renderer.root.findAllByType("Switch").find(n => n.props.accessibilityLabel === "Share my stats with my squads"), undefined);
+    assert.doesNotMatch(ui.text(), /Share my stats/);
   } finally { await ui.cleanup(); }
 });

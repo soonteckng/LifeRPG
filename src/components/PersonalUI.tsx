@@ -41,6 +41,7 @@ export function PersonalPage({
   expandFromIcon = false,
   fallback = "/profile",
   footer,
+  pinned,
 }: {
   title: string;
   subtitle: string;
@@ -56,6 +57,8 @@ export function PersonalPage({
   fallback?: "/profile" | "/settings" | "/";
   /** Stays fixed under the scrolling content, like Save on a form. */
   footer?: ReactNode;
+  /** Stays fixed above the scrolling content, like a preview you keep in view. */
+  pinned?: ReactNode;
 }) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -174,6 +177,7 @@ export function PersonalPage({
         )}
         {floatingAction && <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection:"row", justifyContent:"flex-end", alignItems:"center" }}>{action}</View>}
         {!back && !floatingAction && <AppHeader title={title} action={action} />}
+        {pinned && <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10, gap: 12 }}>{pinned}</View>}
         <TourScrollView
           tourBottomInset={bottomContentInset}
           keyboardShouldPersistTaps="handled"

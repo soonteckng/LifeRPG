@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import { createPlayerClient, type PlayerCard, type StatsVisibility } from "../services/playerService";
+import { createPlayerClient, type PlayerCard } from "../services/playerService";
 
 function usePlayerClient() {
   const auth = useAuth();
@@ -11,7 +11,12 @@ function usePlayerClient() {
   return useCallback(() => owner && online ? createPlayerClient(owner, async () => (await verifier.current())?.id ?? null) : null, [owner, online]);
 }
 
-/** Someone's player card, loaded when it opens. Offline it simply stays empty. */
+// The last card seen for each player, so reopening one shows it at once.
+const cards = new Map<string, PlayerCard>();
+/** How long the card sheet takes to rise; loading waits for it, so it never stutters. */
+export const CARD_SETTLE_MS = 320;
+
+/** Someone's player card, loaded once the sheet has opened. Offline it shows what was last seen. */
 export function usePlayerCard(playerId: string | null) {
   const client = usePlayerClient();
   const [state, setState] = useState<{ id: string | null; card: PlayerCard | null; failed: boolean }>({ id: null, card: null, failed: false });
@@ -19,34 +24,13 @@ export function usePlayerCard(playerId: string | null) {
     const c = client();
     if (!playerId || !c) return;
     let live = true;
-    c.card(playerId).then(card => { if (live) setState({ id: playerId, card, failed: false }); },
-      () => { if (live) setState({ id: playerId, card: null, failed: true }); });
-    return () => { live = false; };
+    const later = setTimeout(() => {
+      c.card(playerId).then(card => { cards.set(playerId, card); if (live) setState({ id: playerId, card, failed: false }); },
+        () => { if (live) setState({ id: playerId, card: null, failed: true }); });
+    }, CARD_SETTLE_MS);
+    return () => { live = false; clearTimeout(later); };
   }, [playerId, client]);
   const mine = state.id === playerId;
-  return { card: mine ? state.card : null, loading: !!playerId && !!client() && !mine, failed: mine && state.failed, online: !!client() };
-}
-
-/** Who sees your focus stats on your player card: your squads (the default) or only you. */
-export function useStatsVisibility() {
-  const client = usePlayerClient();
-  const [value, setValue] = useState<StatsVisibility | null>(null);
-  const [busy, setBusy] = useState(false), [error, setError] = useState("");
-  useEffect(() => {
-    const c = client();
-    if (!c) return;
-    let live = true;
-    c.statsVisibility().then(v => { if (live) setValue(v); }, () => {});
-    return () => { live = false; };
-  }, [client]);
-  const set = async (next: StatsVisibility) => {
-    const c = client();
-    if (!c || busy) return;
-    const before = value;
-    setBusy(true); setError(""); setValue(next);
-    try { setValue(await c.setStatsVisibility(next)); }
-    catch { setValue(before); setError("Couldn't save that. Check your connection and try again."); }
-    finally { setBusy(false); }
-  };
-  return { value, busy, error, online: !!client(), set };
+  const card = mine && state.card ? state.card : playerId ? cards.get(playerId) ?? null : null;
+  return { card, loading: !!playerId && !!client() && !mine, failed: mine && state.failed && !card, online: !!client() };
 }

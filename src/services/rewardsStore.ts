@@ -1,4 +1,4 @@
-import type { RewardsState, createRewardsClient } from "./rewardsService";
+import type { Gift, RewardsState, createRewardsClient } from "./rewardsService";
 import { parseRewardsState } from "./rewardsService";
 import { STREAK_FRAMES } from "./rewardCatalog";
 
@@ -7,11 +7,20 @@ import { STREAK_FRAMES } from "./rewardCatalog";
 // phone (per account) so the character still shows offline.
 
 type Client = ReturnType<typeof createRewardsClient>;
-/** moments: things just earned, waiting for their pop-up, oldest first. */
-export interface RewardsSnapshot { state: RewardsState | null; loading: boolean; busy: boolean; error: string | null; moments: string[] }
+/**
+ * A screen that shows several rewards at once: coming back from a session
+ * (the finds and Stardust it brought) or opening today's supply pack.
+ */
+export type Reveal =
+  | { id: string; kind: "expedition"; seconds: number | null; finds: Gift[]; stardust: number }
+  | { id: string; kind: "pack"; tier: number; daysInARow: number; items: Gift[]; stardust: number };
+/** The items a reveal shows; their single pop-ups wait for it and then count as seen. */
+export const revealItems = (reveal: Reveal) => (reveal.kind === "pack" ? reveal.items : reveal.finds).filter(g => g.new).map(g => g.item);
+/** moments: things just earned, waiting for their pop-up, oldest first. reveals show before them. */
+export interface RewardsSnapshot { state: RewardsState | null; loading: boolean; busy: boolean; error: string | null; moments: string[]; reveals: Reveal[] }
 interface Storage { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void> }
 
-const EMPTY: RewardsSnapshot = { state: null, loading: false, busy: false, error: null, moments: [] };
+const EMPTY: RewardsSnapshot = { state: null, loading: false, busy: false, error: null, moments: [], reveals: [] };
 export const rewardsCacheKey = (ownerId: string) => `liferpg.rewards.v1.${ownerId}`;
 export const rewardsSeenKey = (ownerId: string) => `liferpg.rewards.seen.v1.${ownerId}`;
 const frameRank = (id: string) => STREAK_FRAMES.findIndex(f => f.id === id);
@@ -67,6 +76,15 @@ export function createRewardsStore(storage: Storage) {
     queue.set(owner, run);
     return run;
   };
+  const dismiss = (owner: string | null, id: string | string[]) => {
+    if (!owner) return;
+    const ids = Array.isArray(id) ? id : [id];
+    set(owner, { moments: (snapshots.get(owner)?.moments ?? []).filter(m => !ids.includes(m)) });
+    const run = (queue.get(owner) ?? Promise.resolve()).then(async () => {
+      writeSeen(owner, new Set([...((await readSeen(owner)) ?? []), ...ids]));
+    }).catch(() => {});
+    queue.set(owner, run);
+  };
   const keep = (owner: string, state: RewardsState, quiet: string[] = []) => {
     set(owner, { state, error: null });
     void storage.setItem(rewardsCacheKey(owner), JSON.stringify(state)).catch(() => {});
@@ -98,15 +116,20 @@ export function createRewardsStore(storage: Storage) {
       catch (cause) { set(owner, { error: rewardsErrorMessage(cause) }); }
       finally { set(owner, { loading: false }); }
     },
-    /** Runs one change at a time per account; returns an error message or the result. */
-    /** Marks a pop-up as seen. */
-    dismissMoment(owner: string | null, id: string) {
+    /** Marks pop-ups as seen. */
+    dismissMoment: (owner: string | null, id: string | string[]) => dismiss(owner, id),
+    /** Queues a return or pack screen. One per id. */
+    addReveal(owner: string | null, reveal: Reveal) {
       if (!owner) return;
-      set(owner, { moments: (snapshots.get(owner)?.moments ?? []).filter(m => m !== id) });
-      const run = (queue.get(owner) ?? Promise.resolve()).then(async () => {
-        writeSeen(owner, new Set([...((await readSeen(owner)) ?? []), id]));
-      }).catch(() => {});
-      queue.set(owner, run);
+      const reveals = snapshots.get(owner)?.reveals ?? [];
+      if (!reveals.some(r => r.id === reveal.id)) set(owner, { reveals: [...reveals, reveal] });
+    },
+    /** Closes a return or pack screen; what it showed counts as seen. */
+    dismissReveal(owner: string | null, id: string) {
+      if (!owner) return;
+      const reveal = (snapshots.get(owner)?.reveals ?? []).find(r => r.id === id);
+      set(owner, { reveals: (snapshots.get(owner)?.reveals ?? []).filter(r => r.id !== id) });
+      if (reveal) dismiss(owner, revealItems(reveal));
     },
     /** Runs one change at a time per account; returns an error message or the result. Items in quiet (a purchase) get no pop-up. */
     async act<T extends { state: RewardsState } | RewardsState>(owner: string | null, work: (() => Promise<T>) | null, quiet: string[] = []): Promise<{ ok: true; value: T } | { ok: false; message: string }> {

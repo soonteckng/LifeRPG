@@ -43,7 +43,7 @@ function SquadsTab() {
   const detail = useSquadDetail(only, squads);
   if (only) return <View style={s.screen}>
     {/* Joining or starting another squad sits up top, beside the squad's options. */}
-    <PersonalPage title={only.name} subtitle="" compact bottomContentInset={bottomInset}
+    <PersonalPage title="Squads" subtitle="" compact bottomContentInset={bottomInset}
       action={squads.online ? <View style={s.actions}>
         <CircleButton size={36} label="Join or start another squad" onPress={detail.join} />
         <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" />

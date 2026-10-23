@@ -43,6 +43,10 @@ import { readHomeSnapshot, saveHomeSnapshot } from "../../services/homeSnapshot"
 import { getTodayProgress } from "../../services/dailyProgressService";
 import { prefetchCharacterData } from "../../hooks/useCharacterData";
 import { prefetchProgress } from "../../hooks/useProgressData";
+import { useRewards } from "../../hooks/useRewards";
+import { StardustArt } from "../../components/adventurer/ItemArt";
+import PackArt, { PACK_COLORS } from "../../components/rewards/PackArt";
+import { PACK_TIERS } from "../../services/rewardCatalog";
 
 /**
  * Home is a dashboard: today's goal, what's coming up and how the week is
@@ -58,6 +62,10 @@ export default function HomeScreen() {
   const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
   const dockHeight = useFloatingDockHeight(floatingDockKey(bannerVisible, insets.bottom, width, fontScale), dockEstimate);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
+  // Your Stardust and today's supply pack. Opening it shows the pack screen.
+  const rewards = useRewards({ load: false });
+  const [packMessage, setPackMessage] = useState("");
+  const openPack = async () => { setPackMessage(""); const r = await rewards.openPack(); if (!r.ok) setPackMessage(r.message); };
   const owner = profile?.id ?? "";
   const { hasOpenSession, sessionSummary } = timer;
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
@@ -240,6 +248,11 @@ export default function HomeScreen() {
                 <Ionicons name="chevron-forward" size={13} color={colors.level} />
               </TouchableOpacity>
             </View>
+            {/* Stardust, beside you: what finds, packs and minutes have earned, spent in Outfits. */}
+            <TouchableOpacity testID="home-stardust" onPress={() => router.navigate("/outfits")} style={styles.stardust} hitSlop={6}
+              accessibilityRole="button" accessibilityLabel={`${rewards.stardust} Stardust. Open Outfits`}>
+              <StardustArt size={16} /><Text style={styles.stardustText} numberOfLines={1}>{rewards.stardust.toLocaleString()}</Text>
+            </TouchableOpacity>
             <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
           </View></TourAnchor>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -269,6 +282,9 @@ export default function HomeScreen() {
               {(hasOpenSession || settling) && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{settling ? "Session finished" : timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
               {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
             </TouchableOpacity>
+            {/* Today's supply pack: earned by reaching the goal, bigger for days in a row. */}
+            {rewards.pack && rewards.online && <HomePack tier={rewards.pack.tier} ready={rewards.pack.goalReached && !rewards.pack.claimed} opened={rewards.pack.claimed}
+              busy={rewards.busy} message={packMessage} onOpen={() => void openPack()} />}
             {needsReview && <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Review saved session</Text>
             </TouchableOpacity>}
@@ -297,12 +313,35 @@ export default function HomeScreen() {
     </SafeAreaView>
   );
 }
+function HomePack({ tier, ready, opened, busy, message, onOpen }: { tier: number; ready: boolean; opened: boolean; busy: boolean; message: string; onOpen: () => void }) {
+  const t = Math.max(0, Math.min(3, tier)), name = PACK_TIERS[t].name;
+  if (ready) return <TouchableOpacity testID="home-pack" onPress={onOpen} disabled={busy} accessibilityRole="button" accessibilityLabel={`Open today's ${name} pack`}
+    style={[styles.pack, { borderColor: PACK_COLORS[t] + "88", backgroundColor: PACK_COLORS[t] + "18" }]}>
+    <PackArt tier={t} size={44} />
+    <View style={styles.packCopy}><Text style={styles.packTitle} numberOfLines={1}>{`Your ${name} pack is ready`}</Text>
+      <Text style={styles.packDetail} numberOfLines={1}>{message || "Tap to open it"}</Text></View>
+    <Ionicons name="chevron-forward" size={18} color={PACK_COLORS[t]} />
+  </TouchableOpacity>;
+  return <View testID="home-pack" style={styles.packQuiet} accessible accessibilityLabel={opened ? "Today's pack is open. Another one tomorrow." : `Reach today's goal to open a ${name} pack.`}>
+    <PackArt tier={t} size={28} open={opened} />
+    <Text style={styles.packHint} numberOfLines={1}>{opened ? "Today's pack is open · another tomorrow" : `Reach your goal to open a ${name} pack`}</Text>
+  </View>;
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 16 },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 },
+  stardust: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 34, paddingHorizontal: 11, borderRadius: 17, backgroundColor: "rgba(167,139,250,0.14)", borderWidth: 1, borderColor: "rgba(167,139,250,0.35)", marginRight: -6 },
+  stardustText: { color: "#DDD6FE", fontSize: 14, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  pack: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
+  packCopy: { flex: 1, minWidth: 0, gap: 1 },
+  packTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  packDetail: { color: colors.secondary, fontSize: 13 },
+  packQuiet: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2 },
+  packHint: { flex: 1, color: colors.secondary, fontSize: 13 },
   identity: { flex: 1, minWidth: 0, gap: 6 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6 },

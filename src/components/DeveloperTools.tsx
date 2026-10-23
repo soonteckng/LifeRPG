@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Modal } from "react-native";
+import { Modal, StyleSheet, View } from "react-native";
+import { Text } from "./AppText";
 import { SettingsGroup, SettingsRow } from "./SettingsList";
 import SessionResultSheet from "./SessionResultSheet";
 import SessionSavingOverlay from "./SessionSavingOverlay";
@@ -13,6 +14,8 @@ import { requiredCharacterXP } from "../utils/levelTiers";
 import { useRouter } from "expo-router";
 import { useRewards } from "../hooks/useRewards";
 import { rewardItem } from "../services/rewardCatalog";
+import type { DevRewardAction } from "../services/rewardsService";
+import { colors, edge } from "../constants/theme";
 
 type Preview = "level" | "complete" | "recovered";
 const SAVING_PREVIEW_MS = 3000;
@@ -36,7 +39,7 @@ export default function DeveloperTools() {
   const [shown, setShown] = useState(false);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
-  const [rewardNote, setRewardNote] = useState(""), [resetting, setResetting] = useState(false);
+  const [rewardNote, setRewardNote] = useState("");
   useEffect(() => {
     if (!saving) return;
     const timeout = setTimeout(() => setSaving(false), SAVING_PREVIEW_MS);
@@ -57,27 +60,29 @@ export default function DeveloperTools() {
   };
   const busySession = hasOpenSession ? "Finish or end your session first." : "";
   const names = (gifts: { item: string; new: boolean; stardust: number }[]) => gifts.map(g => `${rewardItem(g.item)?.name ?? g.item}${g.new ? " (new)" : ` (+${g.stardust} Stardust)`}`).join(", ");
+  // Every row says what happened. Finds, packs and milestones also open the
+  // same return screen, pack screen and pop-ups everyone sees.
+  const note = (text: string, ok = true) => setRewardNote(text ? `${ok ? "✓" : "!"} ${text}` : "");
   const claim = async () => {
-    setRewardNote("Checking…");
+    note("Checking…");
     const r = await rewards.claimSessions();
-    if (!r.ok) return setRewardNote(r.message);
+    if (!r.ok) return note(r.message, false);
     const finds = r.value.sessions.flatMap(x => x.finds), dust = r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0);
     const parts = [finds.length ? `Finds: ${names(finds)}` : "", dust ? `+${dust} Stardust from minutes` : "", r.value.milestones.length ? `Unlocked: ${names(r.value.milestones)}` : ""].filter(Boolean);
-    setRewardNote(parts.length ? parts.join(". ") + "." : `Nothing new yet. Next find in ${Math.ceil(r.value.state.nextFindSeconds / 60)} min of focus.`);
+    note(parts.length ? parts.join(". ") + "." : `Nothing new since your last check. Next find in ${Math.ceil(r.value.state.nextFindSeconds / 60)} min of focus.`);
   };
   const pack = async () => {
-    setRewardNote("Opening…");
+    note("Opening…");
     const r = await rewards.openPack();
-    setRewardNote(r.ok ? `${["Canvas", "Leather", "Brass", "Crystal"][r.value.tier]} pack (${r.value.daysInARow} days in a row): ${names(r.value.items) || "no item"}, +${r.value.stardust} Stardust.` : r.message);
+    if (r.ok) note(`${["Canvas", "Leather", "Brass", "Crystal"][r.value.tier]} pack (${r.value.daysInARow} days in a row): ${names(r.value.items) || "no item"}, +${r.value.stardust} Stardust.`);
+    else note(/already opened/.test(r.message) ? "Today's pack is already open. Use “Let me open today's pack again” first." : r.message, false);
   };
-  const dev = async (action: "stardust" | "reopen_pack" | "reearn" | "reset", note: string) => {
+  const dev = async (action: DevRewardAction, done: (gifts: { item: string; new: boolean; stardust: number }[]) => string) => {
+    note("One moment…");
     const r = await rewards.developer(action, action === "stardust" ? 500 : 0);
-    setRewardNote(r.ok ? note : r.message);
-    return r.ok;
+    if (r.ok) note(done(r.value.gifts));
+    else note(/Unknown developer action/.test(r.message) ? "This needs the Round 58 SQL. Run it in the SQL Editor first." : r.message, false);
   };
-  // Takes back pets, streak frames and badges, then runs the same check every
-  // phone runs after a session, so they come back with their real pop-ups.
-  const reearn = async () => { if (await dev("reearn", "")) await claim(); };
   const level = (profile.level ?? 1) + (preview?.kind === "level" ? 1 : 0);
   return <>
     <SettingsGroup title="Developer" footer={message || busySession || "Only your developer account sees this. Previews never save anything."}>
@@ -88,15 +93,23 @@ export default function DeveloperTools() {
       <SettingsRow icon="map-outline" tint="#7C3AED" title="Replay the guide" disabled={hasOpenSession || !tour} onPress={() => { setMessage(""); tour?.start(); }} />
       <SettingsRow icon="refresh-outline" tint="#FF9F0A" title="Restart the intro" disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
     </SettingsGroup>
-    <SettingsGroup title="Developer: rewards" footer={rewardNote || `${rewards.stardust} Stardust. These use the real rewards, the same as everyone's. Only the last four are developer-only.`}>
+    <SettingsGroup title="Developer: rewards" footer={`${rewards.stardust} Stardust. These use the real rewards, the same as everyone's; the rows marked “test” are developer-only.`}>
       <SettingsRow first icon="shirt-outline" tint="#2DD4A7" title="Open Outfits" onPress={() => router.navigate("/outfits")} />
       <SettingsRow icon="compass-outline" tint="#60A5FA" title="Check for new finds" disabled={rewards.busy} onPress={() => void claim()} />
-      <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" disabled={rewards.busy} onPress={() => void pack()} />
-      <SettingsRow icon="sparkles-outline" tint="#A78BFA" title="Add 500 test Stardust" disabled={rewards.busy} onPress={() => void dev("stardust", "Added 500 Stardust.")} />
-      <SettingsRow icon="repeat-outline" tint="#64D2FF" title="Let me open today's pack again" disabled={rewards.busy} onPress={() => void dev("reopen_pack", "Today's pack can be opened again. Your days in a row carry on.")} />
-      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn my pets, frames and badges again" disabled={rewards.busy} onPress={() => void reearn()} />
-      <SettingsRow icon="trash-outline" tint="#FF6B6B" title="Reset my rewards" disabled={rewards.busy} onPress={() => setResetting(true)} />
+      <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" subtitle="Developers don't need the daily goal" disabled={rewards.busy} onPress={() => void pack()} />
+      <SettingsRow icon="repeat-outline" tint="#64D2FF" title="Let me open today's pack again" subtitle="Test" disabled={rewards.busy}
+        onPress={() => void dev("reopen_pack", () => "Today's pack can be opened again. Your days in a row carry on.")} />
+      <SettingsRow icon="diamond-outline" tint="#A78BFA" title="Find something now" subtitle="Test · one real find roll" disabled={rewards.busy}
+        onPress={() => void dev("find", gifts => gifts.length ? `Found ${names(gifts)}.` : "Nothing came up. Try again.")} />
+      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn the next pet, frame and badge" subtitle="Test · shows their pop-ups" disabled={rewards.busy}
+        onPress={() => void dev("next_milestones", gifts => gifts.length ? `Earned ${names(gifts)}.` : "You've earned every pet, frame and badge.")} />
+      <SettingsRow icon="arrow-undo-outline" tint="#FF9F0A" title="Take back pets, frames and badges" subtitle="Test · so you can earn them again" disabled={rewards.busy}
+        onPress={() => void dev("reearn", () => "Pets, frames and badges taken back. Earn them again from the row above.")} />
+      <SettingsRow icon="sparkles-outline" tint="#A78BFA" title="Add 500 test Stardust" subtitle="Test" disabled={rewards.busy}
+        onPress={() => void dev("stardust", () => "Added 500 Stardust. It shows on Home beside your picture.")} />
+      <SettingsRow icon="lock-closed-outline" tint="#8E8E93" title="Reset my rewards" value="Locked" subtitle="Turned off to keep this account safe" disabled onPress={() => {}} />
     </SettingsGroup>
+    {!!rewardNote && <View style={ds.note} accessibilityLiveRegion="polite" testID="dev-reward-note"><Text style={ds.noteText}>{rewardNote}</Text></View>}
     {preview && <SessionResultSheet preview visible={shown} sessionId={`preview-${preview.id}`}
       xpEarned={25} minutesSpent={25} durationSeconds={1500} recovered={preview.kind === "recovered"}
       questTitle="Preview session" areaTitle="Study" isLevelUp={preview.kind === "level"} newLevel={level}
@@ -106,12 +119,13 @@ export default function DeveloperTools() {
       message="You'll see the intro and the guide like a new player. Your name and goal are filled in, and your level, sessions, routines and squads all stay."
       confirmLabel={restarting === "busy" ? "Restarting…" : "Restart intro"} cancelLabel="Not now"
       onCancel={() => { if (restarting !== "busy") setRestarting(null); }} onConfirm={() => void restart()} />}
-    {resetting && <SheetConfirmation elevated title="Reset your rewards?"
-      message="Your items, Stardust, packs and saved look go back to the start. Sessions, levels and everything else stay."
-      confirmLabel="Reset rewards" cancelLabel="Not now" onCancel={() => setResetting(false)}
-      onConfirm={() => { setResetting(false); void dev("reset", "Rewards reset. Check for new finds to collect from today's sessions again."); }} />}
     <Modal visible={saving} transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={() => setSaving(false)}>
       <SessionSavingOverlay visible={saving} />
     </Modal>
   </>;
 }
+
+const ds = StyleSheet.create({
+  note: { ...edge, marginTop: -12, marginHorizontal: 4, padding: 12, borderRadius: 14, backgroundColor: "rgba(45,212,167,0.10)" },
+  noteText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+});

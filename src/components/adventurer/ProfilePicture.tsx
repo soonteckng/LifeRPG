@@ -36,10 +36,13 @@ const VIEW = 112, OX = 6, OY = 11, PHOTO = 43;
 /**
  * The profile picture: the person from the shoulders up, in a frame that
  * grows with their level, or the highest streak frame they've earned, with
- * their pet peeking out and a flame for streaks of 7+ days on larger sizes.
+ * their level at the bottom, their pet peeking out and a flame for streaks of
+ * 7+ days on larger sizes.
  */
-export default memo(function ProfilePicture({ look, equipped = {}, level, background = "bg_dusk", frame = null, streak = 0, size }: {
+export default memo(function ProfilePicture({ look, equipped = {}, level, background = "bg_dusk", frame = null, streak = 0, size, showLevel = true }: {
   look: AdventurerLook; equipped?: Partial<Record<string, string>>; level: number; background?: string; frame?: string | null; streak?: number; size: number;
+  /** The level sits on the picture like the pet and streak, from 56 pt up. */
+  showLevel?: boolean;
 }) {
   const u = size / VIEW, inner = PHOTO * 2 * u, left = (50 + OX - PHOTO) * u, top = (50 + OY - PHOTO) * u;
   const o = frameOrnaments(level, frame), ring = o.ring, metal = o.metal;
@@ -79,7 +82,13 @@ export default memo(function ProfilePicture({ look, equipped = {}, level, backgr
     {!!pet && size >= 40 && <View style={{ position: "absolute", right: 0, bottom: 0, width: petBox, height: petBox, borderRadius: petBox / 2, backgroundColor: "#131826", borderWidth: size >= 80 ? 2 : 1.5, borderColor: ring, alignItems: "center", justifyContent: "center" }}>
       <ItemArt id={pet} size={Math.round(petBox * 0.72)} />
     </View>}
-    {streak >= 7 && size >= 72 && <View style={{ position: "absolute", left: 0, bottom: 0, height: Math.round(size * 0.2), paddingHorizontal: Math.round(size * 0.05), borderRadius: size * 0.1, backgroundColor: "#1E2436", borderWidth: 1.5, borderColor: "#FFB020", flexDirection: "row", alignItems: "center", gap: 2 }}>
+    {showLevel && size >= 56 && <View style={{ position: "absolute", left: size / 2 - Math.round(size * 0.17), width: Math.round(size * 0.34), bottom: size * 0.005, height: Math.round(size * 0.19),
+      borderRadius: size * 0.1, backgroundColor: tierColor(level), borderWidth: size >= 100 ? 2 : 1.5, borderColor: "#131826", alignItems: "center", justifyContent: "center" }}
+      testID="picture-level">
+      <Text style={{ color: "#131826", fontSize: Math.max(10, Math.round(size * 0.115)), fontWeight: "900" }} maxFontSizeMultiplier={1.15} numberOfLines={1}>{level}</Text>
+    </View>}
+    {/* The streak sits top left, clear of the level and the pet below. */}
+    {streak >= 7 && size >= 72 && <View style={{ position: "absolute", left: 0, top: size * 0.04, height: Math.round(size * 0.2), paddingHorizontal: Math.round(size * 0.05), borderRadius: size * 0.1, backgroundColor: "#1E2436", borderWidth: 1.5, borderColor: "#FFB020", flexDirection: "row", alignItems: "center", gap: 2 }}>
       <Svg width={size * 0.12} height={size * 0.12} viewBox="0 0 24 24"><Path d="M12 2 Q18 8 17 14 Q16 21 12 22 Q7 21 6.5 15 Q6 10 10 7 Q10 11 12 12 Q14 8 12 2 Z" fill="#FFB020" /></Svg>
       <Text style={{ color: "#FFD68A", fontSize: Math.round(size * 0.11), fontWeight: "800" }} maxFontSizeMultiplier={1.2}>{streak}</Text>
     </View>}

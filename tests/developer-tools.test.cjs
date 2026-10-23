@@ -72,10 +72,11 @@ async function tools({ developer = true, online = true, session = false, restart
     stardust: 40, busy: false,
     claimSessions: async () => { log.push("claim"); return rewardReply.claim ?? { ok: true, value: { sessions: [], milestones: [], state } }; },
     openPack: async () => { log.push("pack"); return rewardReply.pack ?? { ok: false, message: "Reach your daily goal to open a pack." }; },
-    developer: async (action, amount) => { log.push(`dev:${action}:${amount}`); return rewardReply.dev ?? { ok: true, value: state }; },
+    developer: async (action, amount) => { log.push(`dev:${action}:${amount}`); return rewardReply.dev ?? { ok: true, value: { state, gifts: action === "find" ? [{ item: "beret", new: true, stardust: 0 }] : [] } }; },
   };
   const Tools = load("src/components/DeveloperTools.tsx", {
-    "react-native": { Modal: host("Modal") },
+    "react-native": { Modal: host("Modal"), View: host("View"), StyleSheet: { create: v => v } }, "./AppText": { Text: host("Text") },
+    "../constants/theme": { colors: new Proxy({}, { get: () => "#000" }), edge: {} },
     "./SettingsList": { SettingsGroup: host("Group"), SettingsRow: props => React.createElement("Row", props) },
     "./SessionResultSheet": props => { sheets.push(props); return React.createElement("Result", props); },
     "./SessionSavingOverlay": host("Saving"),
@@ -107,7 +108,8 @@ test("each preview opens a card marked as a preview, and Done closes it", async 
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
       ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
-        "Open Outfits", "Check for new finds", "Open today's pack", "Add 500 test Stardust", "Let me open today's pack again", "Earn my pets, frames and badges again", "Reset my rewards"]);
+        "Open Outfits", "Check for new finds", "Open today's pack", "Let me open today's pack again", "Find something now", "Earn the next pet, frame and badge",
+        "Take back pets, frames and badges", "Add 500 test Stardust", "Reset my rewards"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Preview level up");
     let card = ui.result().props;
@@ -202,24 +204,31 @@ test("only developers can restart the intro, and only the intro mark changes", (
   assert.match(sql, /revoke all on function public\.dev_restart_intro_v1\(\) from public, anon/);
 });
 
-test("the rewards rows use the real rewards actions, and the dev-only ones ask the server", async () => {
+test("the rewards rows use the real rewards actions, each says what happened, and reset is locked", async () => {
   const ui = await tools({ rewardReply: { claim: { ok: true, value: { sessions: [{ sessionId: "s", finds: [{ item: "beret", new: true, stardust: 0 }, { item: "tote", new: false, stardust: 5 }], minutesStardust: 6 }],
     milestones: [{ item: "pet_owl", new: true, stardust: 0 }], state: { nextFindSeconds: 900 } } } } });
+  const note = () => ui.renderer.root.findAll(n => n.props.testID === "dev-reward-note")[0];
+  const noteText = () => JSON.stringify(note().findAllByType("Text").map(t => t.props.children));
   try {
     assert.ok(ui.loads.includes(true), "a developer's rewards load");
+    assert.match(ui.groups()[1].props.footer, /^40 Stardust/);
     await ui.press("Open Outfits");
     await ui.press("Check for new finds");
-    assert.match(ui.groups()[1].props.footer, /Red beret \(new\), Canvas tote \(\+5 Stardust\).*\+6 Stardust from minutes.*Unlocked: Barn owl \(new\)/);
+    assert.match(noteText(), /✓ Finds: Red beret \(new\), Canvas tote \(\+5 Stardust\).*\+6 Stardust from minutes.*Unlocked: Barn owl \(new\)/);
     await ui.press("Open today's pack");
-    assert.equal(ui.groups()[1].props.footer, "Reach your daily goal to open a pack.", "the server's own reason shows");
-    await ui.press("Add 500 test Stardust");
+    assert.match(noteText(), /! Reach your daily goal to open a pack/, "the server's own reason shows");
     await ui.press("Let me open today's pack again");
-    // Taken back, then the same check every phone runs after a session gives them again.
-    await ui.press("Earn my pets, frames and badges again");
-    await ui.press("Reset my rewards");
-    assert.deepEqual(ui.log.filter(x => x.startsWith("dev:")), ["dev:stardust:500", "dev:reopen_pack:0", "dev:reearn:0"], "reset waits for a yes");
-    await act(async () => ui.confirm().props.onConfirm());
-    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:stardust:500", "dev:reopen_pack:0", "dev:reearn:0", "claim", "dev:reset:0"]);
+    await ui.press("Find something now");
+    assert.match(noteText(), /Found Red beret \(new\)/);
+    await ui.press("Earn the next pet, frame and badge");
+    await ui.press("Take back pets, frames and badges");
+    await ui.press("Add 500 test Stardust");
+    assert.match(noteText(), /Added 500 Stardust/);
+    const reset = ui.row("Reset my rewards");
+    assert.equal(reset.props.disabled, true); assert.equal(reset.props.value, "Locked");
+    await act(async () => reset.props.onPress());
+    assert.equal(ui.confirm(), undefined, "nothing to confirm: reset is off");
+    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:reopen_pack:0", "dev:find:0", "dev:next_milestones:0", "dev:reearn:0", "dev:stardust:500"]);
   } finally { await ui.cleanup(); }
 });
 

@@ -180,7 +180,7 @@ test('Home stays a dashboard when suggestions were on: no suggestion card, and o
   '../../components/AppText':{Text:host('Text')},
   'expo-haptics':{},'expo-router':{useRouter:()=>({navigate:route=>routes.push(route)}),useFocusEffect:()=>{}},
   'expo-router/js-tabs':{useBottomTabBarHeight:()=>90},
-  '../../components/ProgressRing':host('ProgressRing'),'../../components/CharacterMark':host('Mark'),'../../components/ContentReveal':props=>props.children,
+  '../../components/ProgressRing':host('ProgressRing'),'../../components/CharacterMark':host('Mark'),"../../hooks/useRewards":{useRewards:()=>({stardust:1000,pack:{tier:1,goalReached:true,claimed:false},online:true,busy:false,openPack:async()=>({ok:true}),look:{skin:"3",hair:"short",hairColor:"darkbrown",glasses:false},equipped:{},background:"bg_dusk",frame:null})},"../../components/rewards/PackArt":{__esModule:true,default:host("PackArt"),PACK_COLORS:["#D9C9A3","#C98A55","#E2B44C","#A78BFA"]},"../../components/adventurer/ItemArt":{__esModule:true,default:host("ItemArt"),StardustArt:host("StardustArt")},'../../components/ContentReveal':props=>props.children,
   '../../context/UserContext':{useUser:()=>({profile:{id:'owner',username:'Soon',level:1,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
   '../../context/TimerContext':{useTimer:()=>timer},'../context/TimerContext':{useTimer:()=>timer},
   '../../context/QuestContext':{useQuests:()=>({tasks:[quest],subjects:[{id:2,title:'Knowledge'}],loading:false,refresh:async()=>{}})},

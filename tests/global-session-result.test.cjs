@@ -58,7 +58,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     '@expo/vector-icons':{Ionicons:host('Icon')},
     './MotionPressable':host('Button'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),
     './AppHeader':host('Header'),'./AppSheet':host('Sheet'),'./SheetConfirmation':host('Confirm'),
-    './SessionCountdown':host('Countdown'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
+    './SessionCountdown':host('Countdown'),'./session/SessionBackdrop':host('Backdrop'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
     '../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/afterTransition':{afterTransition:()=>()=>{}},
     '../utils/sessionTransition':{traceSession(){}},
   };

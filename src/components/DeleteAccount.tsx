@@ -13,6 +13,7 @@ import { useAuth } from "../context/AuthContext";
 import { useUser } from "../context/UserContext";
 import { useTimer } from "../context/TimerContext";
 import { deleteMyAccount, forgetAccountOnPhone } from "../services/accountDeletion";
+import { useIsDeveloper } from "../services/developerAccess";
 
 export const DELETE_WAIT_SECONDS = 10;
 const sameName = (typed: string, name: string) => !!name.trim() && typed.trim().toLowerCase() === name.trim().toLowerCase();
@@ -21,7 +22,8 @@ const sameName = (typed: string, name: string) => !!name.trim() && typed.trim().
  * Settings → Delete account, in two steps so it can't happen by accident:
  * first what will be deleted, then type your username and wait ten seconds
  * before Delete forever unlocks. Then the account and its data are deleted on
- * the server, this phone forgets it, and you're signed out.
+ * the server, this phone forgets it, and you're signed out. Developer
+ * accounts are protected: the row is locked here and the server refuses too.
  */
 export default function DeleteAccount() {
   const { profile } = useUser();
@@ -31,6 +33,7 @@ export default function DeleteAccount() {
   const [typed, setTyped] = useState(""), [wait, setWait] = useState(DELETE_WAIT_SECONDS);
   const lock = useRef(false);
   const online = accessMode === "online";
+  const protectedAccount = useIsDeveloper(profile.id, online);
   const blocked = !!(hasOpenSession || isRestoring || restoreError || actionBusy);
   const unsynced = unsyncedSessionCount ?? 0;
   const name = profile.username ?? "";
@@ -40,7 +43,7 @@ export default function DeleteAccount() {
     const timer = setTimeout(() => setWait(seconds => Math.max(0, seconds - 1)), 1000);
     return () => clearTimeout(timer);
   }, [step, wait]);
-  const ready = step === "type" && wait === 0 && sameName(typed, name) && !busy && !blocked && online;
+  const ready = !protectedAccount && step === "type" && wait === 0 && sameName(typed, name) && !busy && !blocked && online;
   const close = () => { if (!busy) setStep(null); };
   const remove = async () => {
     if (lock.current || !ready) return;
@@ -56,7 +59,7 @@ export default function DeleteAccount() {
     // The account no longer exists, so signing out here only clears this phone.
     await signOut().catch(() => null);
   };
-  const footer = error || (blocked ? "Finish or end your session before deleting your account." : !online ? "Deleting your account needs internet." : "Deletes your account and everything in it. This can’t be undone.");
+  const footer = protectedAccount ? "This developer account is protected, so it can’t be deleted from the app." : error || (blocked ? "Finish or end your session before deleting your account." : !online ? "Deleting your account needs internet." : "Deletes your account and everything in it. This can’t be undone.");
   const message = [
     "Your level, sessions, routines, subjects, exams and streak are deleted for good, on every device.",
     "Squads you lead pass to the next member, so your friends keep them.",
@@ -65,12 +68,13 @@ export default function DeleteAccount() {
   const label = busy ? "Deleting…" : wait > 0 ? `Delete forever (${wait})` : "Delete forever";
   return <>
     <SettingsGroup footer={footer}>
-      <SettingsRow first danger icon="trash-outline" title="Delete account" disabled={blocked || !online || busy} onPress={() => { setError(""); setStep("ask"); }} />
+      <SettingsRow first danger={!protectedAccount} icon={protectedAccount ? "lock-closed-outline" : "trash-outline"} title="Delete account" value={protectedAccount ? "Locked" : undefined}
+        disabled={protectedAccount || blocked || !online || busy} onPress={() => { if (protectedAccount) return; setError(""); setStep("ask"); }} />
     </SettingsGroup>
-    {step === "ask" && <SheetConfirmation elevated destructive title="Delete your account?" message={message}
+    {step === "ask" && !protectedAccount && <SheetConfirmation elevated destructive title="Delete your account?" message={message}
       confirmLabel="Continue" cancelLabel="Keep my account"
       onCancel={close} onConfirm={() => { setTyped(""); setWait(DELETE_WAIT_SECONDS); setStep("type"); }} />}
-    <AppSheet label="Confirm account deletion" motionMode="timed" compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" visible={step === "type"} guardDismiss={busy} onRequestClose={close}
+    <AppSheet label="Confirm account deletion" motionMode="timed" compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" visible={step === "type" && !protectedAccount} guardDismiss={busy} onRequestClose={close}
       header={<View style={p.sheetHeader}><Text style={p.title}>Type your username</Text></View>}>
       <BottomSheetScrollView contentContainerStyle={p.sheetBody} keyboardShouldPersistTaps="handled">
         <Text style={p.body}>To delete your account for good, type <Text style={s.name}>{name}</Text> below.</Text>

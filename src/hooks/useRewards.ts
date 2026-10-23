@@ -45,11 +45,36 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
     earned: snap.state?.earned ?? [],
     dismissMoment: (id: string) => rewardsStore.dismissMoment(owner, id),
     stardust: snap.state?.stardust ?? 0,
-    claimSessions: () => act(c => c.claimSessions),
-    openPack: () => act(c => c.openPack),
+    // Coming back from sessions with something to show opens the return screen.
+    claimSessions: async () => {
+      const r = await act(c => c.claimSessions);
+      if (r.ok && r.value.sessions.length) {
+        const finds = r.value.sessions.flatMap(x => x.finds);
+        rewardsStore.addReveal(owner, { id: `return:${r.value.sessions.map(x => x.sessionId).join(",")}`, kind: "expedition",
+          seconds: r.value.sessions.reduce((n, x) => n + x.seconds, 0), finds,
+          stardust: r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0) + finds.reduce((n, g) => n + g.stardust, 0) });
+      }
+      return r;
+    },
+    openPack: async () => {
+      const r = await act(c => c.openPack);
+      if (r.ok) rewardsStore.addReveal(owner, { id: `pack:${r.value.state.pack.date}:${r.value.daysInARow}`, kind: "pack", tier: r.value.tier, daysInARow: r.value.daysInARow,
+        items: r.value.items, stardust: r.value.stardust + r.value.items.reduce((n, g) => n + g.stardust, 0) });
+      return r;
+    },
     // Something you just bought gets no pop-up; you chose it.
     buy: (itemId: string) => act(c => () => c.buy(itemId), [itemId]),
     saveAvatar: (next: Omit<SavedAvatar, "revision" | "frame">) => act(c => () => c.saveAvatar(next, avatar?.revision ?? 1)),
-    developer: (action: DevRewardAction, amount = 0) => act(c => () => c.developer(action, amount)),
+    // A test find comes back through the same return screen as a real one.
+    developer: async (action: DevRewardAction, amount = 0) => {
+      const r = await act(c => () => c.developer(action, amount));
+      if (r.ok && action === "find" && r.value.gifts.length)
+        rewardsStore.addReveal(owner, { id: `find:${Date.now()}`, kind: "expedition", seconds: null, finds: r.value.gifts, stardust: r.value.gifts.reduce((n, g) => n + g.stardust, 0) });
+      return r;
+    },
+    dismissReveal: (id: string) => rewardsStore.dismissReveal(owner, id),
+    today: snap.state?.today ?? { seconds: 0, finds: 0 },
+    nextFindSeconds: snap.state?.nextFindSeconds ?? 1500,
+    pack: snap.state?.pack ?? null,
   };
 }
