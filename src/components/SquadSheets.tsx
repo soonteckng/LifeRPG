@@ -4,24 +4,33 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import Segmented from "./Segmented";
-import CharacterPortrait from "./CharacterPortrait";
 import CharacterMark from "./CharacterMark";
+import ProfilePicture from "./adventurer/ProfilePicture";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
 import { studyTime } from "../utils/studyPlan";
 import { cleanSquadCode, SQUAD_CODE_LENGTH, SQUAD_GOALS, SQUAD_LIMITS, validSquadName } from "../utils/squads";
-import type { Squad, SquadMember } from "../types/squads";
+import { normalizeLook } from "../utils/adventurerLook";
+import { levelTierProgress } from "../utils/levelTiers";
+import { rewardItem } from "../services/rewardCatalog";
+import { usePlayerCard } from "../hooks/usePlayer";
+import type { PlayerLook, Squad, SquadMember } from "../types/squads";
 import SheetTextInput from "./SheetTextInput";
 
-// You appear with your own profile picture, the same as on Home. Others keep
-// the look their app last saved until their profile pictures reach squads.
-export function SquadFace({ member, size = 36, ring = colors.surface }: { member: Pick<SquadMember, "avatar" | "focusingNow"> & { isYou?: boolean }; size?: number; ring?: string }) {
+// Everyone appears with their own profile picture: you from your own saved
+// look (the same as Home), others from the look their app last saved.
+type Face = Pick<SquadMember, "focusingNow"> & { isYou?: boolean; level?: number; streak?: number; look?: PlayerLook | null };
+export function SquadFace({ member, size = 36, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
   return <View style={{ width: size, height: size }} importantForAccessibility="no-hide-descendants">
-    {member.isYou ? <CharacterMark size={size} />
-      : <View style={[s.face, { width: size, height: size, borderRadius: size / 2 }]}><CharacterPortrait avatar={member.avatar || "🌱"} size={size} animate={false} interactive={false} /></View>}
+    {member.isYou ? <CharacterMark size={size} /> : <PlayerPicture member={member} size={size} />}
     {member.focusingNow && <View style={[s.live, { borderColor: ring }]} />}
   </View>;
+}
+function PlayerPicture({ member, size }: { member: Face; size: number }) {
+  const look = member.look;
+  return <ProfilePicture look={normalizeLook(look?.look as Parameters<typeof normalizeLook>[0])} equipped={look?.equipped ?? {}} level={member.level ?? 1} background={look?.background ?? "bg_dusk"}
+    frame={look?.frame ?? null} streak={member.streak ?? 0} size={size} />;
 }
 
 /** Rename a squad and set its weekly goal. Only the leader sees this. */
@@ -108,24 +117,48 @@ export function SquadJoinSheet({ visible, online, leading = null, leadCount, mem
 }
 
 /**
- * One member, tapped on the leaderboard: their week at a glance. The leader
- * can remove them here, deliberately, with two clear choices: a plain remove
- * (they can rejoin with the code), or remove and change the code, for when
- * the code reached someone it shouldn't have.
+ * A player card: tap anyone on the leaderboard. Their picture, name, badge
+ * and level always show; their all-time focus stats show unless they keep
+ * them to themselves. The leader can remove someone here, deliberately, with
+ * two clear choices: a plain remove (they can rejoin with the code), or
+ * remove and change the code, for when the code reached the wrong person.
  */
 export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismiss, onRemove }: {
   member: SquadMember | null; place: number | null; leader: boolean; busy: boolean;
   onClose: () => void; onDismiss?: () => void; onRemove: (member: SquadMember, newCode: boolean) => void;
 }) {
   const canRemove = leader && !!member && !member.isYou;
-  return <AppSheet visible={!!member} onRequestClose={onClose} onDismiss={onDismiss} compact label="squad member" motionMode="timed"
-    header={member ? <SheetHeader title={member.isYou ? `${member.name} (you)` : member.name} subtitle={`Level ${member.level}${member.isOwner ? " · Squad leader" : ""}${member.focusingNow ? " · Focusing now" : ""}`} onClose={onClose} /> : undefined}>
+  const { card, loading, failed } = usePlayerCard(member?.id ?? null);
+  const look = card?.look ?? member?.look ?? null, title = look?.title ? rewardItem(look.title)?.name : undefined;
+  const tier = member ? levelTierProgress(card?.level ?? member.level, 0).current : null;
+  const stats = card?.stats, since = stats?.since ? new Date(stats.since) : null;
+  return <AppSheet visible={!!member} onRequestClose={onClose} onDismiss={onDismiss} compact label="player card" motionMode="timed"
+    header={member ? <SheetHeader title={member.isYou ? `${member.name} (you)` : member.name} subtitle={`${member.isOwner ? "Squad leader" : "Squad member"}${member.focusingNow ? " · Focusing now" : ""}`} onClose={onClose} /> : undefined}>
     {member && <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      <View style={s.hero} testID="player-card">
+        {member.isYou ? <CharacterMark size={124} /> : <PlayerPicture member={{ ...member, look }} size={124} />}
+        <View style={s.heroText}>
+          {!!title && <View style={s.badge}><Text style={s.badgeText} numberOfLines={1}>{title}</Text></View>}
+          <Text style={[s.tier, { color: tier?.color }]}>{`Level ${card?.level ?? member.level} · ${tier?.title}`}</Text>
+        </View>
+      </View>
       <View style={s.facts}>
         <View style={s.fact}><Text style={s.factValue}>{place ? `#${place}` : "–"}</Text><Text style={s.factLabel}>{place ? "this week" : "not ranked yet"}</Text></View>
         <View style={s.fact}><Text style={s.factValue}>{studyTime(member.weekSeconds)}</Text><Text style={s.factLabel}>focused this week</Text></View>
         <View style={s.fact}><Text style={s.factValue}>{member.streak}</Text><Text style={s.factLabel}>day streak</Text></View>
       </View>
+      {stats ? <>
+        <Text style={s.label}>All time</Text>
+        <View style={s.facts}>
+          <View style={s.fact}><Text style={s.factValue}>{studyTime(stats.totalSeconds)}</Text><Text style={s.factLabel}>focused</Text></View>
+          <View style={s.fact}><Text style={s.factValue}>{stats.sessions}</Text><Text style={s.factLabel}>{stats.sessions === 1 ? "session" : "sessions"}</Text></View>
+          <View style={s.fact}><Text style={s.factValue}>{stats.collected}</Text><Text style={s.factLabel}>{stats.collected === 1 ? "find" : "finds"}</Text></View>
+        </View>
+        {since && <Text style={s.hint}>{`Focusing since ${since.toLocaleDateString(undefined, { month: "long", year: "numeric" })}`}</Text>}
+        {member.isYou && card && !card.statsShared && <Text style={s.hint}>Only you see these. You can share them with your squads in Settings.</Text>}
+      </> : card ? <Text style={s.hint}>{`${member.name} keeps their stats to themselves.`}</Text>
+        : loading ? <Text style={s.hint}>Loading their stats…</Text>
+        : failed ? <Text style={s.hint}>Couldn’t load their stats right now.</Text> : null}
       {canRemove && <>
         <Pressable disabled={busy} onPress={() => onRemove(member, false)} accessibilityRole="button" accessibilityLabel={`Remove ${member.name}`} style={[s.remove, busy && s.disabled]}>
           <Text style={s.removeText}>Remove from squad</Text></Pressable>
@@ -139,13 +172,17 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
 
 const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 },
+  hero: { alignItems: "center", gap: 10, paddingTop: 4 },
+  heroText: { alignItems: "center", gap: 6 },
+  badge: { paddingHorizontal: 12, minHeight: 26, borderRadius: 13, justifyContent: "center", backgroundColor: "rgba(167,139,250,0.16)" },
+  badgeText: { color: "#C4B5FD", fontSize: 13, fontWeight: "700" },
+  tier: { fontSize: 15, fontWeight: "700" },
   facts: { flexDirection: "row", gap: 8 },
   fact: { ...edge, flex: 1, minHeight: 76, padding: 12, gap: 2, borderRadius: 16, backgroundColor: colors.sheetCard, justifyContent: "center" },
   factValue: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", fontVariant: ["tabular-nums"] },
   factLabel: { color: colors.secondary, fontSize: 13, lineHeight: 17 },
   remove: { minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
   removeText: { color: colors.danger, fontSize: 16, fontWeight: "600" },
-  face: { overflow: "hidden", backgroundColor: colors.selection, alignItems: "center", justifyContent: "center" },
   live: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },

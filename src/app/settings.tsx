@@ -14,6 +14,7 @@ import { useAuth } from "../context/AuthContext";
 import { useTimer } from "../context/TimerContext";
 import { useAppPreferences } from "../hooks/useAppPreferences";
 import { useFocusDurationPreference } from "../hooks/useFocusDurationPreference";
+import { useStatsVisibility } from "../hooks/usePlayer";
 import { appPreferences } from "../services/appPreferences";
 import { getDailyGoalSettings } from "../services/dailyGoalService";
 import { readNotificationPermission, type NotificationPermission } from "../services/notificationPermissionService";
@@ -34,6 +35,7 @@ export default function SettingsScreen() {
   const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer({ live: false });
   const preferences = useAppPreferences();
   const duration = useFocusDurationPreference(profile.id);
+  const stats = useStatsVisibility();
   const [goal, setGoal] = useState<{ owner: string; today: number; next: number | null } | null>(() => {
     const known = cachedDailyGoal(profile.id);
     return known ? { owner: profile.id, today: known.today_goal_minutes, next: known.pending ? known.next_goal_minutes : null } : null;
@@ -82,6 +84,13 @@ export default function SettingsScreen() {
       <SettingsGroup title="Feel" footer={preferenceError ?? undefined}>
         <SettingsRow first icon="phone-portrait-outline" tint="#FF9F0A" title="Haptic feedback"
           toggle={{ value: hapticsEnabled, onChange: value => { setHapticsEnabled(value); setTapHapticsEnabled(value); if (value) tapHaptic(); } }} />
+      </SettingsGroup>
+
+      <SettingsGroup title="Squads" footer={stats.error || (!stats.online ? "Connect to the internet to change this." : stats.value === "private"
+        ? "Squad mates see your picture, name, level and this week. Your all-time stats stay with you."
+        : "Squad mates can see your all-time focus, sessions and finds on your player card.")}>
+        <SettingsRow first icon="people-outline" tint="#2DD4A7" title="Share my stats with my squads" disabled={!stats.online || stats.busy || stats.value === null}
+          toggle={{ value: stats.value !== "private", onChange: value => void stats.set(value ? "squads" : "private") }} />
       </SettingsGroup>
 
       <SettingsGroup title="Notifications">

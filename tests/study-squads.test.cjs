@@ -62,7 +62,8 @@ const rn = { View: host('View'), StyleSheet: { create: v => v, hairlineWidth: 1 
 const sheets = () => load('src/components/SquadSheets.tsx', {
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.overlay) : null,
-  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'),
+  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'),
+  '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
 
@@ -77,7 +78,8 @@ const mocks = (state, extra = {}) => ({
   // The ••• menu's options are its contract; its popover has its own looks.
   '/MoreMenu': props => React.createElement('Menu', props),
   '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'),
+  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'),
+  '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
   '/useSquads': { useSquads: () => state() }, ...extra,
 });
 const squadsTab = (state, navigate = () => {}, choose = () => {}) => load('src/app/(tabs)/squads.tsx', mocks(state, { 'expo-router': { useFocusEffect: () => {}, useRouter: () => ({ navigate }) },
@@ -103,8 +105,8 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   const first = pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now');
   assert.equal(first.props.onLongPress, undefined, 'no hidden hold-to-remove');
   await act(async () => first.props.onPress());
-  const sheet = () => ui.root.findAllByType('Sheet').find(x => x.props.label === 'squad member');
-  assert.ok(sheet(), 'a tap shows their week');
+  const sheet = () => ui.root.findAllByType('Sheet').find(x => x.props.label === 'player card');
+  assert.ok(sheet(), 'a tap opens their player card');
   await act(async () => pressLabel(ui.root, 'Remove User 2').props.onPress());
   assert.equal(calls.length, 0, 'removing asks first');
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
@@ -298,4 +300,39 @@ test('Create follows the account limits from the server: one led squad by defaul
     await act(async () => ui.update(render({ leading: 'Calc crew', leadCount: 10, memberships: 10, limits: { lead: 10, member: 10 } })));
     assert.equal(submit().props.disabled, true, 'still a limit, just a higher one');
   } finally { await act(async () => ui.unmount()); }
+});
+
+// Round 57: everyone's own picture, and a player card that respects "Share my stats".
+test('squad faces are everyone\'s real picture, and the player card shows all-time stats only when shared', async () => {
+  let reply = { card: null, loading: true, failed: false };
+  const ui = load('src/components/SquadSheets.tsx', {
+    'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
+    '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
+    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/CharacterMark': host('Mark'), '/ProfilePicture': host('Picture'),
+    '/usePlayer': { usePlayerCard: id => ({ ...reply, asked: id }) },
+  });
+  const look = { look: { skin: '6', hair: 'bun', hairColor: 'black', glasses: true }, equipped: { top: 'cardigan' }, background: 'bg_night', frame: 'frame_streak_30', title: 'title_artist' };
+  const friend = { ...member(2), look, streak: 31 };
+  let r; await act(async () => { r = create(React.createElement(ui.SquadFace, { member: friend, size: 36 })); });
+  const pic = r.root.findByType('Picture').props;
+  assert.deepEqual([pic.look.skin, pic.equipped.top, pic.background, pic.frame, pic.level, pic.streak], ['6', 'cardigan', 'bg_night', 'frame_streak_30', 2, 31]);
+  await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(3), look: null }, size: 36 })));
+  assert.equal(r.root.findByType('Picture').props.look.skin, '3', 'no saved look yet: the starting character');
+  await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(1), isYou: true }, size: 36 })));
+  assert.equal(r.root.findAllByType('Mark').length, 1, 'you, from your own saved look');
+  const card = props => React.createElement(ui.SquadMemberSheet, { member: friend, place: 1, leader: false, busy: false, onClose() {}, onRemove() {}, ...props });
+  const words2 = () => r.root.findAllByType('Text').map(t => [].concat(t.props.children).join('')).join(' | ');
+  await act(async () => r.update(card()));
+  assert.ok(r.root.findAll(n => n.props.testID === 'player-card').length > 0);
+  assert.match(words2(), /The Artist/); assert.match(words2(), /Level 2 · First steps/); assert.match(words2(), /Loading their stats/);
+  reply = { card: { id: friend.id, isYou: false, name: 'User 2', level: 12, look, statsShared: true, stats: { streak: 31, totalSeconds: 36000, sessions: 1, collected: 7, since: '2026-09-02T10:00:00Z' } }, loading: false, failed: false };
+  await act(async () => r.update(card({ place: 2 })));
+  assert.match(words2(), /All time/); assert.match(words2(), /10h 00m/); assert.match(words2(), /\| 1 \| session/); assert.match(words2(), /7 \| finds/); assert.match(words2(), /Focusing since/);
+  assert.match(words2(), /Level 12 · Rhythm/, 'the freshest level from the card');
+  reply = { card: { ...reply.card, statsShared: false, stats: null }, loading: false, failed: false };
+  await act(async () => r.update(card({ place: 3 })));
+  assert.match(words2(), /User 2 keeps their stats to themselves/); assert.doesNotMatch(words2(), /All time/);
+  await act(async () => r.unmount());
+  const svc = fs.readFileSync(require('path').join(__dirname, '..', 'src/services/playerService.ts'), 'utf8');
+  assert.match(svc, /p_expected_owner: ownerId/);
 });

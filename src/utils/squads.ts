@@ -7,7 +7,8 @@ const anyUuid = (value: unknown): value is string => typeof value === "string" &
 
 export function validSquadMember(value: unknown): value is SquadMember {
   return object(value) && anyUuid(value.id) && typeof value.isYou === "boolean" && typeof value.isOwner === "boolean" && typeof value.name === "string" && value.name.length <= 80
-    && typeof value.avatar === "string" && value.avatar.length <= 80 && count(value.level) && count(value.streak) && count(value.weekSeconds) && typeof value.focusingNow === "boolean";
+    && typeof value.avatar === "string" && value.avatar.length <= 80 && count(value.level) && count(value.streak) && count(value.weekSeconds) && typeof value.focusingNow === "boolean"
+    && (value.look === undefined || value.look === null || object(value.look));
 }
 export function validSquad(value: unknown): value is Squad {
   return object(value) && anyUuid(value.id) && typeof value.name === "string" && value.name.length <= 40 && typeof value.code === "string" && /^[A-HJ-NP-Z2-9]{6}$/.test(value.code)

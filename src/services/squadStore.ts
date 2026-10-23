@@ -1,6 +1,7 @@
 import type { Squad, SquadStatus } from "../types/squads";
 import type { JournalScope } from "../types/sessionJournal";
 import { squadMessage, validSquad, weekStart } from "../utils/squads";
+import { parsePlayerLook } from "../utils/playerLook";
 
 interface Storage { getItem: (key: string) => Promise<string | null>; setItem: (key: string, value: string) => Promise<void> }
 export interface SquadTransport {
@@ -15,7 +16,9 @@ export interface SquadTransport {
 export interface SquadState { ready: boolean; loading: boolean; error: string | null; squads: Squad[] }
 const initial: SquadState = { ready: false, loading: false, error: null, squads: [] };
 const offline = "Couldn't reach your squads. Check your connection and try again.";
-const withGoal = (squad: Squad): Squad => ({ ...squad, goalMinutes: squad.goalMinutes ?? null });
+// Each member's look is checked once here, so every screen draws a clean one.
+const withGoal = (squad: Squad): Squad => ({ ...squad, goalMinutes: squad.goalMinutes ?? null,
+  members: squad.members.map(member => ({ ...member, look: parsePlayerLook(member.look) })) });
 const key = (scope: JournalScope) => `liferpg:squads:v1:${scope.backendId}:${scope.ownerId}`;
 
 /** Squads are online-only; the last list is kept so the tab never looks empty offline. */

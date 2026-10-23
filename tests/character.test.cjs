@@ -608,6 +608,7 @@ test("Settings prevents logout while a session is running, paused or unresolved"
       ...sheetMocks,
       "../components/DeveloperTools": () => null,
       "../components/DeleteAccount": () => null,
+      "../hooks/usePlayer": { useStatsVisibility: () => ({ value: "squads", busy: false, error: "", online: false, set: async () => {} }) },
       "expo-router": { useRouter: () => ({ navigate() {} }) },
       "expo-notifications": {
         getPermissionsAsync: async () => ({ granted: true }),
@@ -727,6 +728,7 @@ test("Settings renders in Expo Go even when notification import would throw", as
     ...sheetMocks,
     "../components/DeveloperTools": () => null,
       "../components/DeleteAccount": () => null,
+      "../hooks/usePlayer": { useStatsVisibility: () => ({ value: "squads", busy: false, error: "", online: false, set: async () => {} }) },
     expo: { isRunningInExpoGo: () => true },
     "expo-router": { useRouter: () => ({ navigate() {} }) },
     "../context/UserContext": {
