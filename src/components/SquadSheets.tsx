@@ -27,9 +27,10 @@ import SheetTextInput from "./SheetTextInput";
 // look (the same as Home), others from the look their app last saved.
 type Face = Pick<SquadMember, "focusingNow"> & { isYou?: boolean; level?: number; streak?: number; look?: PlayerLook | null };
 export function SquadFace({ member, size = 48, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
-  return <View style={{ width: size, height: size }} importantForAccessibility="no-hide-descendants">
+  // The level pill sits below the picture, so the face is taller than wide.
+  return <View style={{ width: size }} importantForAccessibility="no-hide-descendants">
     {member.isYou ? <CharacterMark size={size} /> : <PlayerPicture member={member} size={size} />}
-    {member.focusingNow && <View style={[s.live, { borderColor: ring }]} />}
+    {member.focusingNow && <View style={[s.live, { top: size - 11, borderColor: ring }]} />}
   </View>;
 }
 function PlayerPicture({ member, size }: { member: Face; size: number }) {
@@ -273,7 +274,7 @@ const s = StyleSheet.create({
   factLabel: { color: colors.secondary, fontSize: 13, lineHeight: 17 },
   remove: { minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
   removeText: { color: colors.danger, fontSize: 16, fontWeight: "600" },
-  live: { position: "absolute", right: -1, bottom: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
+  live: { position: "absolute", right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   chip: { ...edge, minHeight: 36, paddingHorizontal: 14, borderRadius: 18, justifyContent: "center", backgroundColor: colors.sheetCard },
   chipOn: { backgroundColor: colors.accentSoft }, chipText: { color: colors.text, fontSize: 15, fontWeight: "600" }, chipTextOn: { color: colors.accent },

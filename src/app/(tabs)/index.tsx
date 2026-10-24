@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
   levelTitle: { flexShrink: 1, color: colors.level, fontSize: 14, lineHeight: 18, fontWeight: "700" },
   levelTrack: { flexShrink: 0, width: 36, height: 5, borderRadius: 3, backgroundColor: "rgba(251,191,36,0.22)", overflow: "hidden" },
   levelFill: { height: 5, borderRadius: 3, backgroundColor: colors.level },
-  avatarFrame: { width: 70, height: 70, alignItems: "center", justifyContent: "center" },
+  avatarFrame: { width: 70, alignItems: "center" },
   today: { ...edge, padding: 18, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
   todayDone: { borderColor: "rgba(52,211,153,0.28)" },
   todayHead: { flexDirection: "row", alignItems: "center", gap: 10 },

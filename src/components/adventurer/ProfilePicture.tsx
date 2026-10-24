@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { View } from "react-native";
-import Svg, { Circle, Defs, G, LinearGradient, Path, Stop } from "react-native-svg";
+import Svg, { Circle, Defs, G, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 import AdventurerArt from "./AdventurerArt";
 import ItemArt from "./ItemArt";
 import { Text } from "../AppText";
@@ -28,6 +28,20 @@ export function frameOrnaments(level: number, frame: string | null): Ornaments {
 // crown and leaves always fit inside the picture (Android cuts off anything
 // drawn outside an image's box).
 const VIEW = 112, OX = 6, OY = 11, PHOTO = 43;
+const PILL_GAP = 2;
+
+/**
+ * The level pill under a picture of this size: long enough for any level
+ * (three digits included), and the height it adds below the picture.
+ * Pictures under 36 pt are too small for it.
+ */
+export function levelPill(size: number, level: number, show = true) {
+  if (!show || size < 36) return null;
+  const font = Math.max(10, Math.round(size * 0.12)), height = Math.max(16, Math.round(size * 0.19), font + 7);
+  const digits = String(Math.max(1, Math.floor(Number.isFinite(level) ? level : 1))).length;
+  const width = Math.round(Math.max(size * 0.44, height * 2.1, digits * font * 0.64 + font * 1.6));
+  return { font, height, width, border: size >= 100 ? 2 : 1.5, room: height + PILL_GAP };
+}
 
 /**
  * The profile picture: the person from the shoulders up, in a frame that
@@ -37,14 +51,12 @@ const VIEW = 112, OX = 6, OY = 11, PHOTO = 43;
  */
 export default memo(function ProfilePicture({ look, equipped = {}, level, background = "bg_dusk", frame = null, streak = 0, size: outer, showLevel = true }: {
   look: AdventurerLook; equipped?: Partial<Record<string, string>>; level: number; background?: string; frame?: string | null; streak?: number; size: number;
-  /** The level sits at the bottom of the picture, from 36 pt up. */
+  /** The level, in a pill right below the frame, from 36 pt up (it adds `levelPill(size).room` of height). */
   showLevel?: boolean;
 }) {
-  // The level hangs from the bottom of the frame, below your face and shirt:
-  // the picture draws a little smaller to make room for it underneath.
-  const levelShown = showLevel && outer >= 36;
-  const pillFont = Math.max(9, Math.round(outer * 0.115)), pillHeight = Math.max(16, Math.round(outer * 0.2), pillFont + 8);
-  const size = levelShown ? outer - Math.round(pillHeight * 0.62) : outer, offset = (outer - size) / 2;
+  // The level sits in its own long pill right below the frame, never over
+  // the picture: the picture keeps its full size and the pill adds height below.
+  const size = outer, pill = levelPill(outer, level, showLevel);
   const u = size / VIEW, inner = PHOTO * 2 * u, left = (50 + OX - PHOTO) * u, top = (50 + OY - PHOTO) * u;
   const o = frameOrnaments(level, frame), ring = o.ring, metal = o.metal;
   const [a, b] = pictureColors(background);
@@ -54,8 +66,8 @@ export default memo(function ProfilePicture({ look, equipped = {}, level, backgr
     const ang = ((side < 0 ? 205 + i * 16 : 335 - i * 16) * Math.PI) / 180;
     leaves.push({ x: 50 + 48 * Math.cos(ang), y: 50 - 48 * Math.sin(ang), r: (-ang * 180) / Math.PI + (side < 0 ? 90 : -90) });
   }
-  return <View style={{ width: outer, height: outer }} importantForAccessibility="no-hide-descendants">
-    <View style={{ position: "absolute", left: offset, top: 0, width: size, height: size }}>
+  return <View style={{ width: outer, height: outer + (pill?.room ?? 0) }} importantForAccessibility="no-hide-descendants">
+    <View style={{ position: "absolute", left: 0, top: 0, width: size, height: size }}>
     <View style={{ position: "absolute", left, top, width: inner, height: inner, borderRadius: inner / 2, overflow: "hidden" }}>
       <Svg width={inner} height={inner} style={{ position: "absolute" }}><Defs><LinearGradient id={`pp-${background}`} x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={a} /><Stop offset="1" stopColor={b} /></LinearGradient></Defs>
         <Circle cx={inner / 2} cy={inner / 2} r={inner / 2} fill={`url(#pp-${background})`} /></Svg>
@@ -91,12 +103,13 @@ export default memo(function ProfilePicture({ look, equipped = {}, level, backgr
       <Text style={{ color: "#FFD68A", fontSize: Math.round(size * 0.11), fontWeight: "800" }} maxFontSizeMultiplier={1.2}>{streak}</Text>
     </View>}
     </View>
-    {levelShown && <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center" }}>
-      <View testID="picture-level" style={{ minWidth: Math.round(outer * 0.34), height: pillHeight, paddingHorizontal: Math.max(4, Math.round(outer * 0.04)),
-        borderRadius: pillHeight / 2, backgroundColor: tierColor(level), borderWidth: outer >= 100 ? 2 : 1.5, borderColor: "#131826", alignItems: "center", justifyContent: "center" }}>
-        <Text style={{ color: "#131826", fontSize: pillFont, lineHeight: pillFont + 2, fontWeight: "900", includeFontPadding: false, textAlignVertical: "center" }}
-          maxFontSizeMultiplier={1} numberOfLines={1}>{level}</Text>
-      </View>
+    {pill && <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, top: outer + PILL_GAP, alignItems: "center" }}>
+      {/* Drawn, so the number sits exactly in the middle on every phone. */}
+      <Svg testID="picture-level" width={pill.width} height={pill.height} accessibilityLabel={`Level ${level}`}>
+        <Rect x={pill.border / 2} y={pill.border / 2} width={pill.width - pill.border} height={pill.height - pill.border} rx={(pill.height - pill.border) / 2}
+          fill={tierColor(level)} stroke="#131826" strokeWidth={pill.border} />
+        <SvgText x={pill.width / 2} y={pill.height / 2 + pill.font * 0.36} fontSize={pill.font} fontWeight="900" fill="#131826" textAnchor="middle">{String(level)}</SvgText>
+      </Svg>
     </View>}
   </View>;
 });

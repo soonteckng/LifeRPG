@@ -43,12 +43,14 @@ test("the session card opens on you back at camp in the morning, with the time r
   await act(async () => r.unmount());
 });
 
-test("today's trail is a map you can scroll, with a stop every 20 minutes up to its end; you walk from where you were", async () => {
+test("today's trail fits in view, with a stop every 20 minutes up to its end; it draws once settled, and you walk from where you were", async () => {
   const scrolls = [], log = [];
+  let settle = null;
   const Scroll = React.forwardRef((props, ref) => { React.useImperativeHandle(ref, () => ({ scrollTo: to => scrolls.push(to) })); return React.createElement("Scroll", props, props.children); });
   const lerp = (x, i, o) => { if (x <= i[0]) return o[0]; for (let k = 1; k < i.length; k++) if (x <= i[k]) return o[k - 1] + (o[k] - o[k - 1]) * (x - i[k - 1]) / (i[k] - i[k - 1]); return o[o.length - 1]; };
   const Trail = load("src/components/rewards/TodayTrail.tsx", {
-    "react-native": { View: host("View"), ScrollView: Scroll, StyleSheet: { create: v => v } }, "react-native-svg": svg,
+    "react-native": { View: host("View"), ScrollView: Scroll, StyleSheet: { create: v => v, absoluteFill: {} } }, "react-native-svg": svg,
+    "../../utils/afterTransition": { afterTransition: work => { settle = work; return () => {}; } },
     "react-native-reanimated": { __esModule: true, default: { View: host("AView"), createAnimatedComponent: c => c }, Easing: { inOut: x => x, cubic: 0 }, interpolate: lerp,
       runOnJS: f => f, useAnimatedProps: fn => fn(), useAnimatedReaction: () => {}, useAnimatedStyle: fn => fn(), useSharedValue: v => React.useRef({ value: v }).current,
       withDelay: (delay, x) => { log.push(["walk", delay, x]); return x; }, withTiming: (to, _c, done) => { done?.(true); return to; }, withSpring: to => to },
@@ -58,15 +60,15 @@ test("today's trail is a map you can scroll, with a stop every 20 minutes up to 
   const props = { seconds: 2400, fromSeconds: 1800, findSeconds: 1200, stops: 6, finds: 2, complete: false, nextFindSeconds: 1200, look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null };
   let r; await act(async () => { r = create(React.createElement(Trail, props)); });
   assert.match(words(r), /40 m.*walked today.*2 of 6.*finds today.*20 min.*to next find/);
+  assert.equal(r.root.findAll(n => n.type === "SvgText").length, 0, "the map waits for the screen to settle");
+  const frame = r.root.findByProps({ testID: "today-trail-map" });
+  await act(async () => { frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 420 } } }); settle(); });
   assert.deepEqual(log.find(e => e[0] === "walk").slice(2), [2], "you walk on to the second stop, 40 minutes");
   const labels = r.root.findAll(n => n.type === "SvgText").map(n => [].concat(n.props.children).join(""));
   assert.ok(labels.includes("20 min") && labels.includes("Next find · 60 min") && labels.includes("Trail's end · 120 min") && labels.includes("CAMP"), labels.join(", "));
-  const map = r.root.findByProps({ testID: "today-trail-map" });
-  assert.equal(map.props.nestedScrollEnabled, true, "it scrolls inside a page");
-  const frame = r.root.findAll(n => n.type === "View" && typeof n.props.onLayout === "function")[0];
-  await act(async () => { frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 300 } } }); });
-  await act(async () => { await new Promise(done => setTimeout(done, 20)); });
-  assert.equal(scrolls.length, 1, "it opens on where you are");
+  assert.equal(r.root.findAll(n => n.type === "Scroll").length, 0, "no scrolling: the whole trail is in view");
+  const ys = r.root.findAll(n => n.type === "SvgText" && /min$/.test([].concat(n.props.children).join("")) && n.props.y !== undefined).map(n => n.props.y);
+  assert.ok(Math.min(...ys) > 0 && Math.max(...ys) < 420, "every stop fits inside the map");
   assert.equal(r.root.findAllByProps({ testID: "trail-complete" }).length, 0);
   // Past the end you wait at the end; the session that got you there brings the trail's reward.
   log.length = 0;

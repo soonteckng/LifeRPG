@@ -85,7 +85,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
 const s = StyleSheet.create({
   board: { gap: 16 }, flex: { flex: 1, minWidth: 0 },
   hero: { gap: 8, paddingHorizontal: 4 },
-  faces: { flexDirection: "row", alignItems: "center", marginBottom: 2 }, faceSlot: { borderRadius: 22, borderWidth: 2, borderColor: colors.background },
+  faces: { flexDirection: "row", alignItems: "flex-start", marginBottom: 2 }, faceSlot: {},
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", letterSpacing: -0.6 },
   card: { ...edge, gap: 8, borderRadius: radius.card, backgroundColor: colors.surface, padding: 16 },
   label: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.8, textTransform: "uppercase" },

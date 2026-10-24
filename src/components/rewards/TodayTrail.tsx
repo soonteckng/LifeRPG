@@ -1,5 +1,5 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { memo, useEffect, useMemo, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import Animated, { Easing, interpolate, runOnJS, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
@@ -10,21 +10,24 @@ import { colors, edge, radius } from "../../constants/theme";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { TRAIL_ZONES, trailZone, walked } from "../../utils/trail";
 import { tapHaptic } from "../../utils/tapHaptics";
+import { afterTransition } from "../../utils/afterTransition";
 import type { AdventurerLook } from "../../utils/adventurerLook";
 
-const STEP = 104, PAD_TOP = 84, PAD_BOTTOM = 64, SAMPLES = 20, AVATAR = 44;
+// The whole trail fits the space it's given: no scrolling, every stop in view.
+const PAD_TOP = 50, PAD_BOTTOM = 34, MIN_STEP = 34, MAX_STEP = 104, SAMPLES = 20, AVATAR = 40;
 const AnimatedPath = Animated.createAnimatedComponent(Path);
 
 /** The stops, winding up from camp at the bottom to the trail's end at the top. */
-function points(count: number, width: number) {
-  const height = PAD_TOP + PAD_BOTTOM + count * STEP;
+function points(count: number, width: number, height: number, step: number) {
   return Array.from({ length: count + 1 }, (_, i) => ({
     x: i === 0 || i === count ? width * 0.5 : width * (i % 2 ? 0.7 : 0.3) + (i % 3 - 1) * width * 0.04,
-    y: height - PAD_BOTTOM - i * STEP,
+    y: height - PAD_BOTTOM - i * step,
   }));
 }
-const controls = (a: { x: number; y: number }, b: { x: number; y: number }) =>
-  [{ x: a.x, y: a.y - STEP * 0.45 }, { x: b.x, y: b.y + STEP * 0.45 }] as const;
+const controls = (a: { x: number; y: number }, b: { x: number; y: number }) => {
+  const bend = Math.abs(a.y - b.y) * 0.45;
+  return [{ x: a.x, y: a.y - bend }, { x: b.x, y: b.y + bend }] as const;
+};
 const curve = (pts: { x: number; y: number }[]) => pts.map((p, i) => {
   if (!i) return `M${p.x} ${p.y}`;
   const [c1, c2] = controls(pts[i - 1], p);
@@ -49,27 +52,52 @@ function sample(pts: { x: number; y: number }[]) {
 
 /**
  * Today's trail: camp at the bottom, a stop with a find every few focused
- * minutes, and the trail's end at the top. You stand where today's focus has
- * taken you; given `fromSeconds`, you walk there from where you were. Past
- * the end you wait at the end; it starts again tomorrow.
+ * minutes, and the trail's end at the top, all in view. You stand where
+ * today's focus has taken you; given `fromSeconds`, you walk there from where
+ * you were. Past the end you wait at the end; it starts again tomorrow. The
+ * map draws once the screen around it has settled, so opening stays smooth.
  */
 export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, stops, finds, complete, bonus = 0, nextFindSeconds,
   look, equipped, level, background, frame, fill = false, delay = 450 }: {
   seconds: number; fromSeconds?: number; findSeconds: number; stops: number; finds: number; complete: boolean; bonus?: number; nextFindSeconds: number;
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
-  /** Grow to fill the space it's given (the map scrolls inside). */
+  /** Grow to fill the space it's given; the whole trail fits inside. */
   fill?: boolean; delay?: number;
 }) {
-  const reduced = useReducedMotion();
-  const [width, setWidth] = useState(320), [viewport, setViewport] = useState(0);
-  const count = Math.max(1, stops), height = PAD_TOP + PAD_BOTTOM + count * STEP;
-  const pts = useMemo(() => points(count, width), [count, width]);
-  const path = useMemo(() => sample(pts), [pts]);
+  const [box, setBox] = useState({ width: 0, height: 0 }), [ready, setReady] = useState(false);
+  useEffect(() => afterTransition(() => setReady(true)), []);
+  const count = Math.max(1, stops), minutesPerStop = Math.round(findSeconds / 60);
   const at = (s: number) => Math.min(count, Math.max(0, s / Math.max(1, findSeconds)));
-  const to = at(seconds), from = fromSeconds === undefined ? to : Math.min(to, at(fromSeconds));
+  const to = at(seconds), ended = to >= count, zone = trailZone(Math.floor(to));
+  const toNext = Math.max(1, Math.ceil(nextFindSeconds / 60));
+  const label = ended || complete ? "Trail complete for today" : `${toNext} min to your next find`;
+  return <View style={[s.card, fill && s.fill]} testID="today-trail">
+    <View style={s.stats}>
+      <View style={s.stat}><Text style={s.value} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{walked(seconds)}</Text><Text style={s.label}>walked today</Text></View>
+      <View style={s.stat}><Text style={[s.value, { color: colors.level }]}>{`${Math.min(finds, count)} of ${count}`}</Text><Text style={s.label}>finds today</Text></View>
+      <View style={s.stat}>{ended || complete ? <><Ionicons name="flag" size={18} color="#C4B5FD" /><Text style={s.label}>trail complete</Text></>
+        : <><Text style={s.value}>{`${toNext} min`}</Text><Text style={s.label}>to next find</Text></>}</View>
+    </View>
+    <View style={[s.map, fill ? s.fill : { height: 380 }]} testID="today-trail-map" onLayout={e => setBox({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}
+      accessible accessibilityLabel={`Today's trail, ${count * minutesPerStop} minutes long, a find every ${minutesPerStop} minutes. You're in ${zone.name}, ${walked(seconds)} walked, ${Math.min(finds, count)} of ${count} finds. ${label}.`}>
+      {ready && box.width > 0 && box.height > 0 && <TrailMap width={box.width} height={box.height} count={count} minutesPerStop={minutesPerStop}
+        to={to} from={fromSeconds === undefined ? to : Math.min(to, at(fromSeconds))} bonus={bonus} delay={delay}
+        look={look} equipped={equipped} level={level} background={background} frame={frame} />}
+    </View>
+  </View>;
+});
+
+/** The drawing and the walk. Redrawn only when the trail itself changes. */
+const TrailMap = memo(function TrailMap({ width, height, count, minutesPerStop, to, from, bonus, delay, look, equipped, level, background, frame }: {
+  width: number; height: number; count: number; minutesPerStop: number; to: number; from: number; bonus: number; delay: number;
+  look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
+}) {
+  const reduced = useReducedMotion();
+  const step = Math.max(MIN_STEP, Math.min(MAX_STEP, (height - PAD_TOP - PAD_BOTTOM) / count));
+  const pts = useMemo(() => points(count, width, height, step), [count, width, height, step]);
+  const path = useMemo(() => sample(pts), [pts]);
+  const trail = useMemo(() => curve(pts), [pts]);
   const ended = to >= count, crossed = ended && from < count;
-  const minutesPerStop = Math.round(findSeconds / 60);
-  const zone = trailZone(Math.floor(to));
   // Walk from where you were to where you are now, after a moment.
   const walk = useSharedValue(reduced ? to : from);
   const [arrived, setArrived] = useState(reduced || from >= to);
@@ -88,15 +116,6 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
   const you = useAnimatedStyle(() => ({ transform: [
     { translateX: interpolate(walk.value, ts, xs) - AVATAR / 2 }, { translateY: interpolate(walk.value, ts, ys) - AVATAR / 2 }] }));
   const walkedLine = useAnimatedProps(() => ({ strokeDashoffset: total - interpolate(walk.value, ts, lens) }));
-  // Open on where you'll be, with where you set off from in view too.
-  const map = useRef<ScrollView>(null);
-  const focusY = interpolate(to, path.ts, path.ys);
-  useEffect(() => {
-    if (!viewport) return;
-    const y = Math.max(0, Math.min(height - viewport, focusY - viewport * 0.4));
-    const t = setTimeout(() => map.current?.scrollTo({ y, animated: false }), 0);
-    return () => clearTimeout(t);
-  }, [viewport, height, focusY]);
   // Reaching the end on this walk: the trail's own reward.
   const party = useSharedValue(0);
   const celebrate = crossed && arrived;
@@ -108,69 +127,56 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
   const partyStyle = useAnimatedStyle(() => ({ opacity: party.value, transform: [{ scale: 0.8 + party.value * 0.2 }, { translateY: (1 - party.value) * 20 }] }));
   const bands = TRAIL_ZONES.map((z, i) => {
     const start = Math.min(count, z.from), end = Math.min(count, TRAIL_ZONES[i + 1]?.from ?? count + 1);
-    const bottom = i === 0 ? height : pts[start].y + STEP / 2, top = end >= count ? 0 : pts[end].y + STEP / 2;
+    const bottom = i === 0 ? height : pts[start].y + step / 2, top = end >= count ? 0 : pts[end].y + step / 2;
     return { ...z, top, bottom };
   }).filter(b => b.bottom > b.top + 1);
-  const next = Math.floor(to) + 1, toNext = Math.max(1, Math.ceil(nextFindSeconds / 60));
-  const label = ended || complete ? "Trail complete for today" : `${toNext} min to your next find`;
-  return <View style={[s.card, fill && s.fill]} testID="today-trail">
-    <View style={s.stats}>
-      <View style={s.stat}><Text style={s.value}>{walked(seconds)}</Text><Text style={s.label}>walked today</Text></View>
-      <View style={s.stat}><Text style={[s.value, { color: colors.level }]}>{`${Math.min(finds, count)} of ${count}`}</Text><Text style={s.label}>finds today</Text></View>
-      <View style={s.stat}>{ended || complete ? <><Ionicons name="flag" size={18} color="#C4B5FD" /><Text style={s.label}>trail complete</Text></>
-        : <><Text style={s.value}>{`${toNext} min`}</Text><Text style={s.label}>to next find</Text></>}</View>
-    </View>
-    <View style={[s.map, fill ? s.fill : { height: 360 }]} onLayout={e => { setWidth(e.nativeEvent.layout.width); setViewport(e.nativeEvent.layout.height); }}
-      accessible accessibilityLabel={`Today's trail, ${count * minutesPerStop} minutes long, a find every ${minutesPerStop} minutes. You're in ${zone.name}, ${walked(seconds)} walked, ${Math.min(finds, count)} of ${count} finds. ${label}.`}>
-      <ScrollView ref={map} showsVerticalScrollIndicator={false} nestedScrollEnabled testID="today-trail-map">
-        <View style={{ width, height }}>
-          <Svg width={width} height={height}>
-            <Defs>{bands.map(b => <LinearGradient key={b.name} id={`band-${b.from}`} x1="0" y1="0" x2="0" y2="1">
-              <Stop offset="0" stopColor={b.color} stopOpacity={0.03} /><Stop offset="1" stopColor={b.color} stopOpacity={0.14} /></LinearGradient>)}</Defs>
-            {bands.map(b => <G key={b.name}>
-              <Rect x={0} y={b.top} width={width} height={b.bottom - b.top} fill={`url(#band-${b.from})`} />
-              <SvgText x={16} y={b.bottom - 14} fill={b.color} fontSize={11} fontWeight="800" letterSpacing={1.4}>{b.name.toUpperCase()}</SvgText>
-            </G>)}
-            {/* A little landmark for each place. */}
-            {bands.some(b => b.from === 2) && (() => { const b = bands.find(x => x.from === 2)!; return <Ellipse cx={width * 0.18} cy={(b.top + b.bottom) / 2} rx={34} ry={12} fill="#93C5FD" opacity={0.25} />; })()}
-            {bands.some(b => b.from === 4) && (() => { const b = bands.find(x => x.from === 4)!, y = (b.top + b.bottom) / 2; return <Path d={`M${width * 0.84} ${y + 14} L${width * 0.88} ${y - 12} L${width * 0.92} ${y + 14} Z M${width * 0.9} ${y + 14} L${width * 0.93} ${y - 2} L${width * 0.96} ${y + 14} Z`} fill="#FDBA74" opacity={0.35} />; })()}
-            <Path d={curve(pts)} stroke="rgba(255,255,255,0.28)" strokeWidth={3} strokeDasharray="2 8" strokeLinecap="round" fill="none" />
-            <AnimatedPath d={curve(pts)} stroke={colors.level} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={[total, total]} animatedProps={walkedLine} />
-            {pts.slice(1).map((p, i) => {
-              const n = i + 1, reached = n <= Math.floor(to + 1e-6), last = n === count, left = p.x < width / 2;
-              const mins = n * minutesPerStop;
-              return <G key={n}>
-                {last ? <G>
-                  <Circle cx={p.x} cy={p.y} r={18} fill={reached ? "#2A2140" : "#151B2B"} stroke={reached ? "#C4B5FD" : "rgba(255,255,255,0.35)"} strokeWidth={2.5} />
-                  <Path d={`M${p.x - 5} ${p.y + 9} L${p.x - 5} ${p.y - 9} L${p.x + 8} ${p.y - 5} L${p.x - 5} ${p.y - 1}`} stroke={reached ? "#C4B5FD" : "rgba(255,255,255,0.6)"} strokeWidth={2.2} strokeLinejoin="round" fill={reached ? "#C4B5FD" : "none"} />
-                </G> : reached ? <G><Circle cx={p.x} cy={p.y} r={13} fill="#1E2436" stroke={colors.level} strokeWidth={2.5} />
-                  <Path d={`M${p.x} ${p.y - 6} L${p.x + 1.8} ${p.y - 1.8} L${p.x + 6} ${p.y} L${p.x + 1.8} ${p.y + 1.8} L${p.x} ${p.y + 6} L${p.x - 1.8} ${p.y + 1.8} L${p.x - 6} ${p.y} L${p.x - 1.8} ${p.y - 1.8} Z`} fill="#C4B5FD" /></G>
-                  : n === next ? <Circle cx={p.x} cy={p.y} r={11} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth={2} strokeDasharray="3 3" />
-                  : <Circle cx={p.x} cy={p.y} r={5} fill="rgba(255,255,255,0.22)" />}
-                {last ? <SvgText x={p.x} y={p.y - 28} fill={reached ? "#E9E3FF" : "rgba(255,255,255,0.6)"} fontSize={12} fontWeight="800" textAnchor="middle">
-                  {`Trail's end · ${mins} min`}</SvgText>
-                  : <SvgText x={left ? p.x + 20 : p.x - 20} y={p.y + 4} fill={reached ? "#E5E7EB" : "rgba(255,255,255,0.5)"} fontSize={11} fontWeight="600" textAnchor={left ? "start" : "end"}>
-                  {n === next && !ended ? `Next find · ${mins} min` : `${mins} min`}</SvgText>}
-              </G>;
-            })}
-            <Rect x={pts[0].x - 26} y={pts[0].y - 11} width={52} height={22} rx={8} fill="#14B8A6" />
-            <SvgText x={pts[0].x} y={pts[0].y + 4} fill="#04211D" fontSize={10} fontWeight="800" textAnchor="middle">CAMP</SvgText>
-          </Svg>
-          <Animated.View pointerEvents="none" style={[s.you, you]}>
-            <ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} size={AVATAR} showLevel={false} />
-          </Animated.View>
-        </View>
-      </ScrollView>
-      {celebrate && <Animated.View style={[s.party, partyStyle]} testID="trail-complete" accessible accessibilityLiveRegion="polite"
-        accessibilityLabel={`Trail complete. ${bonus ? `${bonus} Stardust.` : ""} It starts again tomorrow.`}>
-        <Ionicons name="flag" size={22} color="#C4B5FD" />
-        <View style={s.partyCopy}>
-          <Text style={s.partyTitle}>Trail complete</Text>
-          <Text style={s.partyBody}>{`You walked all ${count * minutesPerStop} minutes today. It starts again tomorrow.`}</Text>
-        </View>
-        {bonus > 0 && <View style={s.partyDust}><StardustArt size={14} /><Text style={s.partyDustText}>{`+${bonus}`}</Text></View>}
-      </Animated.View>}
-    </View>
+  const next = Math.floor(to) + 1, small = step < 60;
+  const node = small ? 10 : 13, font = small ? 10 : 11;
+  return <View style={StyleSheet.absoluteFill}>
+    <Svg width={width} height={height}>
+      <Defs>{bands.map(b => <LinearGradient key={b.name} id={`band-${b.from}`} x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0" stopColor={b.color} stopOpacity={0.03} /><Stop offset="1" stopColor={b.color} stopOpacity={0.14} /></LinearGradient>)}</Defs>
+      {bands.map(b => <G key={b.name}>
+        <Rect x={0} y={b.top} width={width} height={b.bottom - b.top} fill={`url(#band-${b.from})`} />
+        <SvgText x={14} y={b.bottom - 10} fill={b.color} fontSize={10} fontWeight="800" letterSpacing={1.4}>{b.name.toUpperCase()}</SvgText>
+      </G>)}
+      {/* A little landmark for each place. */}
+      {bands.some(b => b.from === 2) && (() => { const b = bands.find(x => x.from === 2)!; return <Ellipse cx={width * 0.16} cy={(b.top + b.bottom) / 2} rx={30} ry={10} fill="#93C5FD" opacity={0.22} />; })()}
+      {bands.some(b => b.from === 4) && (() => { const b = bands.find(x => x.from === 4)!, y = (b.top + b.bottom) / 2; return <Path d={`M${width * 0.84} ${y + 12} L${width * 0.88} ${y - 10} L${width * 0.92} ${y + 12} Z M${width * 0.9} ${y + 12} L${width * 0.93} ${y - 2} L${width * 0.96} ${y + 12} Z`} fill="#FDBA74" opacity={0.32} />; })()}
+      <Path d={trail} stroke="rgba(255,255,255,0.28)" strokeWidth={3} strokeDasharray="2 8" strokeLinecap="round" fill="none" />
+      <AnimatedPath d={trail} stroke={colors.level} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={[total, total]} animatedProps={walkedLine} />
+      {pts.slice(1).map((p, i) => {
+        const n = i + 1, reached = n <= Math.floor(to + 1e-6), last = n === count, left = p.x < width / 2;
+        const mins = n * minutesPerStop;
+        return <G key={n}>
+          {last ? <G>
+            <Circle cx={p.x} cy={p.y} r={node + 4} fill={reached ? "#2A2140" : "#151B2B"} stroke={reached ? "#C4B5FD" : "rgba(255,255,255,0.35)"} strokeWidth={2.5} />
+            <Path d={`M${p.x - 4} ${p.y + 7} L${p.x - 4} ${p.y - 7} L${p.x + 7} ${p.y - 4} L${p.x - 4} ${p.y - 1}`} stroke={reached ? "#C4B5FD" : "rgba(255,255,255,0.6)"} strokeWidth={2} strokeLinejoin="round" fill={reached ? "#C4B5FD" : "none"} />
+          </G> : reached ? <G><Circle cx={p.x} cy={p.y} r={node} fill="#1E2436" stroke={colors.level} strokeWidth={2.5} />
+            <Path d={`M${p.x} ${p.y - 5} L${p.x + 1.5} ${p.y - 1.5} L${p.x + 5} ${p.y} L${p.x + 1.5} ${p.y + 1.5} L${p.x} ${p.y + 5} L${p.x - 1.5} ${p.y + 1.5} L${p.x - 5} ${p.y} L${p.x - 1.5} ${p.y - 1.5} Z`} fill="#C4B5FD" /></G>
+            : n === next ? <Circle cx={p.x} cy={p.y} r={node - 2} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth={2} strokeDasharray="3 3" />
+            : <Circle cx={p.x} cy={p.y} r={4} fill="rgba(255,255,255,0.22)" />}
+          {last ? <SvgText x={p.x} y={p.y - node - 10} fill={reached ? "#E9E3FF" : "rgba(255,255,255,0.6)"} fontSize={font + 1} fontWeight="800" textAnchor="middle">
+            {`Trail's end · ${mins} min`}</SvgText>
+            : <SvgText x={left ? p.x + node + 7 : p.x - node - 7} y={p.y + 4} fill={reached ? "#E5E7EB" : "rgba(255,255,255,0.5)"} fontSize={font} fontWeight="600" textAnchor={left ? "start" : "end"}>
+            {n === next && !ended ? `Next find · ${mins} min` : `${mins} min`}</SvgText>}
+        </G>;
+      })}
+      <Rect x={pts[0].x - 24} y={pts[0].y - 10} width={48} height={20} rx={8} fill="#14B8A6" />
+      <SvgText x={pts[0].x} y={pts[0].y + 4} fill="#04211D" fontSize={10} fontWeight="800" textAnchor="middle">CAMP</SvgText>
+    </Svg>
+    <Animated.View pointerEvents="none" style={[s.you, you]}>
+      <ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} size={AVATAR} showLevel={false} />
+    </Animated.View>
+    {celebrate && <Animated.View style={[s.party, partyStyle]} testID="trail-complete" accessible accessibilityLiveRegion="polite"
+      accessibilityLabel={`Trail complete. ${bonus ? `${bonus} Stardust.` : ""} It starts again tomorrow.`}>
+      <Ionicons name="flag" size={22} color="#C4B5FD" />
+      <View style={s.partyCopy}>
+        <Text style={s.partyTitle}>Trail complete</Text>
+        <Text style={s.partyBody}>{`You walked all ${count * minutesPerStop} minutes today. It starts again tomorrow.`}</Text>
+      </View>
+      {bonus > 0 && <View style={s.partyDust}><StardustArt size={14} /><Text style={s.partyDustText}>{`+${bonus}`}</Text></View>}
+    </Animated.View>}
   </View>;
 });
 
@@ -181,7 +187,7 @@ const s = StyleSheet.create({
   stat: { flex: 1, gap: 2, paddingVertical: 10, paddingHorizontal: 10, borderRadius: 14, backgroundColor: "rgba(255,255,255,0.05)", justifyContent: "center" },
   value: { color: colors.text, fontSize: 18, lineHeight: 23, fontWeight: "800", fontVariant: ["tabular-nums"] },
   label: { color: colors.secondary, fontSize: 12, lineHeight: 16 },
-  map: { borderRadius: 16, overflow: "hidden", backgroundColor: "#0D1220", minHeight: 220 },
+  map: { borderRadius: 16, overflow: "hidden", backgroundColor: "#0D1220", minHeight: 260 },
   you: { position: "absolute", left: 0, top: 0, width: AVATAR, height: AVATAR },
   party: { position: "absolute", left: 10, right: 10, bottom: 10, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 18,
     backgroundColor: "#211B38", borderWidth: 1, borderColor: "rgba(196,181,253,0.45)" },

@@ -68,18 +68,19 @@ test("Home opens today's trail from a map button between your name and Settings;
   await act(async () => r.unmount());
 });
 
-test("the level hangs below the picture: the picture draws smaller to leave it room, clear of the face and shirt", async () => {
+test("the level sits below the picture at its full size, clear of the face and shirt, on Home, squads and Outfits", async () => {
   const Picture = load("src/components/adventurer/ProfilePicture.tsx", {
     "react-native": { View: host("View") }, "react-native-svg": svg, "./AdventurerArt": host("Art"), "./ItemArt": host("Item"), "../AppText": { Text: host("Text") },
   }).default;
   for (const size of [48, 70, 146]) {
     let r; await act(async () => { r = create(React.createElement(Picture, { look: {}, level: 9, size })); });
     const up = node => { let n = node.parent; while (n && n.type !== "View") n = n.parent; return n; };
-    const photoNode = up(r.root.findByType("Art")), photo = photoNode.props.style, art = up(photoNode).props.style;
-    const pill = r.root.findByProps({ testID: "picture-level" }).props.style;
-    const photoBottom = art.top + photo.top + photo.height, pillTop = size - pill.height;
-    assert.ok(art.width < size, `${size}: the picture makes room`);
-    assert.ok(pillTop >= photoBottom - size * 0.08, `${size}: the level only touches the frame's bottom edge (${pillTop} vs ${photoBottom})`);
+    const photoNode = up(r.root.findByType("Art")), art = up(photoNode).props.style;
+    const pillTop = r.root.findAll(n => n.type === "View" && n.props.style?.left === 0 && n.props.style?.right === 0)[0].props.style.top;
+    assert.equal(art.width, size, `${size}: the picture keeps its full size`);
+    assert.ok(pillTop >= size, `${size}: the pill starts below the picture`);
     await act(async () => r.unmount());
   }
+  for (const [file, pattern] of [["src/components/CharacterMark.tsx", /<View style=\{\{ width: size \}\}/], ["src/components/SquadSheets.tsx", /<View style=\{\{ width: size \}\}/],
+    ["src/app/(tabs)/index.tsx", /avatarFrame: \{ width: 70, alignItems: "center" \}/]]) assert.match(read(file), pattern, `${file}: room for the pill below`);
 });

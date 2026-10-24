@@ -61,21 +61,27 @@ test("a level preview is a developer's alone: tied to their account, nothing sav
   assert.match(tools, /if \(!developer\) return null;/, "only the Developer section can set it");
 });
 
-test("your level always sits at the bottom, your pet at the top right, and the level is never cut off", async () => {
-  const Picture = load("src/components/adventurer/ProfilePicture.tsx", {
+test("your level sits in a long pill right below the ring, never over the picture; your pet sits top right", async () => {
+  const pic = load("src/components/adventurer/ProfilePicture.tsx", {
     "react-native": { View: host("View") }, "react-native-svg": svg, "./AdventurerArt": host("Art"), "./ItemArt": host("Item"), "../AppText": { Text: host("Text") },
-  }).default;
-  for (const size of [36, 44, 70, 146]) {
-    let r; await act(async () => { r = create(React.createElement(Picture, { look: {}, equipped: { pet: "pet_owl" }, level: 21, size })); });
-    const pill = r.root.findByProps({ testID: "picture-level" }), holder = pill.parent;
+  });
+  for (const [size, level] of [[36, 2], [48, 100], [70, 21], [146, 7]]) {
+    let r; await act(async () => { r = create(React.createElement(pic.default, { look: {}, equipped: { pet: "pet_owl" }, level, size })); });
+    const pill = r.root.findByProps({ testID: "picture-level" }), holder = pill.parent.parent ?? pill.parent;
+    const box = r.root.findAll(n => n.type === "View" && n.props.style?.width === size && typeof n.props.style?.height === "number")[0].props.style;
+    const below = r.root.findAll(n => n.type === "View" && n.props.style?.top === size + 2)[0];
     const pet = r.root.findByProps({ testID: "picture-pet" }).props.style;
-    const text = pill.findByType("Text").props.style;
-    assert.deepEqual([holder.props.style.bottom, holder.props.style.alignItems], [0, "center"], `${size}: the level is centred at the bottom`);
+    const number = r.root.findAll(n => n.type === "SvgText" || n.type === "SvgdText").find(n => [].concat(n.props.children).join("") === String(level));
+    assert.ok(below, `${size}: the pill starts below the picture's box, so it never covers it`);
+    assert.equal(box.height, size + pic.levelPill(size, level).room, `${size}: the picture is a little taller, with room for the pill`);
     assert.deepEqual([pet.top, pet.right], [0, 0], `${size}: the pet is at the top right`);
-    assert.ok(text.lineHeight <= pill.props.style.height - 3, `${size}: the number fits inside its pill`);
-    assert.equal(pill.props.style.backgroundColor, "#E98ABC", "Dedication's colour, as on the level road");
+    assert.ok(pill.props.width >= pill.props.height * 2, `${size}: a long pill`);
+    assert.ok(number, `${size}: the level, drawn centred in its pill`);
+    assert.equal(number.props.textAnchor, "middle");
+    void holder;
     await act(async () => r.unmount());
   }
+  assert.ok(pic.levelPill(48, 100).width >= pic.levelPill(48, 7).width && pic.levelPill(48, 1000).width > pic.levelPill(48, 7).width, "long enough for three digits from the start, and longer still if needed");
 });
 
 test("Home wears your tier's colours, shows your level on your picture, and keeps the This week and Squad tiles short", () => {
@@ -98,5 +104,5 @@ test("Outfits calls the picture tab Profile, and its chips sit in a row above yo
   assert.match(outfits, /\{ value: "picture", label: "Profile" \}/);
   assert.match(outfits, /\{setName && !picture &&/, "the set chip belongs to clothes, not your profile picture");
   assert.match(outfits, /<View style=\{\[s\.chips, picture && s\.chipsRow\]\}>/);
-  assert.match(outfits, /size=\{Math\.min\(roomy \? 164 : 146, height - PICTURE_ROOM\)\}/, "the picture fits below the chips");
+  assert.match(outfits, /size=\{pictureFits\(Math\.min\(roomy \? 164 : 146, height - PICTURE_ROOM\), height - PICTURE_ROOM\)\}/, "the picture and its level pill fit below the chips");
 });

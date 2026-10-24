@@ -11,7 +11,8 @@ export default function CharacterMark({ size = 52, showLevel = true }: { size?: 
   const { profile } = useUser();
   const rewards = useRewards();
   const { level } = useShownLevel(profile.id, profile.level);
-  return <View style={{ width: size, height: size }} importantForAccessibility="no-hide-descendants">
+  // Its level pill adds a little height below the picture.
+  return <View style={{ width: size }} importantForAccessibility="no-hide-descendants">
     <ProfilePicture look={rewards.look} equipped={rewards.equipped} level={level} background={rewards.background}
       frame={rewards.frame} streak={profile.streak_count ?? 0} size={size} showLevel={showLevel} />
   </View>;

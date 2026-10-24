@@ -21,7 +21,7 @@ function load(file, mocks = {}, cache = new Map()) {
   return mod.exports;
 }
 const host = type => function Host(props) { return React.createElement(type, props, props.children); };
-const svg = { __esModule: true, default: host("Svg"), G: host("G"), Path: host("Path"), Circle: host("Circle"), Ellipse: host("Ellipse"), Rect: host("Rect"), Defs: host("Defs"), LinearGradient: host("LinearGradient"), Stop: host("Stop") };
+const svg = { __esModule: true, default: host("Svg"), G: host("G"), Path: host("Path"), Circle: host("Circle"), Ellipse: host("Ellipse"), Rect: host("Rect"), Defs: host("Defs"), LinearGradient: host("LinearGradient"), Stop: host("Stop"), Text: host("SvgText") };
 const native = { View: host("View"), StyleSheet: { create: v => v, hairlineWidth: 1 } };
 const drawing = () => load("src/components/adventurer/AdventurerArt.tsx", { "react-native-svg": svg });
 const LOOK = { skin: "3", hair: "short", hairColor: "darkbrown", glasses: false };
@@ -63,16 +63,16 @@ test("the profile picture grows its frame with level and shows a pet and long st
   assert.ok(circles(mid) > circles(low), "studs from level 21");
   assert.ok(high.root.findAllByType("Path").length > mid.root.findAllByType("Path").length, "laurels and a crown at 100");
   assert.equal(high.root.findAllByType("Item")[0].props.id, "pet_owl");
-  const texts = r => r.root.findAllByType("Text").map(t => t.props.children);
-  assert.deepEqual(texts(high), [12, 100], "the 12-day streak, then the level hanging below");
-  assert.equal(low.root.findAllByType("Item").length, 0); assert.deepEqual(texts(low), [1], "only the level: no pet, no short streak");
+  const texts = r => [...r.root.findAllByType("Text"), ...r.root.findAllByType("SvgText")].map(t => [].concat(t.props.children).join(""));
+  assert.deepEqual(texts(high), ["12", "100"], "the 12-day streak, then the level below the picture");
+  assert.equal(low.root.findAllByType("Item").length, 0); assert.deepEqual(texts(low), ["1"], "only the level: no pet, no short streak");
   const noLevel = await render({ showLevel: false });
-  assert.equal(noLevel.root.findAllByType("Text").length, 0);
+  assert.equal(texts(noLevel).length, 0);
   await act(async () => noLevel.unmount());
   const small = await render({ size: 30, equipped: { pet: "pet_owl" }, streak: 40 });
-  assert.equal(small.root.findAllByType("Item").length + small.root.findAllByType("Text").length, 0, "tiny pictures stay clean");
+  assert.equal(small.root.findAllByType("Item").length + texts(small).length, 0, "tiny pictures stay clean");
   const squadSize = await render({ size: 44, level: 7, equipped: { pet: "pet_owl" } });
-  assert.deepEqual([squadSize.root.findAllByType("Item").length, texts(squadSize)], [1, [7]], "squad-size pictures show the pet and the level");
+  assert.deepEqual([squadSize.root.findAllByType("Item").length, texts(squadSize)], [1, ["7"]], "squad-size pictures show the pet and the level");
   await act(async () => squadSize.unmount());
   assert.equal(low.root.findByType("Art").props.crop, "portrait");
   for (const r of [low, mid, high, small]) await act(async () => r.unmount());
@@ -134,7 +134,7 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
     "../components/adventurer/Adventurer": Adventurer, "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
     "expo-router": { useRouter: () => ({ back: () => log.push(["back"]) }), useLocalSearchParams: () => params },
-    "react-native-svg": svg, "../components/adventurer/ProfilePicture": Picture,
+    "react-native-svg": svg, "../components/adventurer/ProfilePicture": { __esModule: true, default: Picture, levelPill: size => size >= 36 ? { room: 20, height: 18, width: 40, font: 11, border: 1.5 } : null },
   }), Screen = mod.default;
   let r; await act(async () => { r = create(React.createElement(Screen)); });
   const press = async label => act(async () => r.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === "function")[0].props.onPress());
@@ -506,6 +506,7 @@ test("streak frames draw inside the picture's own box, so Android never cuts the
   for (const f of STREAK_FRAMES) {
     let r; await act(async () => { r = create(React.createElement(Pic, { look: LOOK, size: 112, level: 1, frame: f.id })); });
     const frame = r.root.findAllByType("Svg").find(x => x.props.viewBox);
+    assert.ok(frame, "the frame's own drawing");
     assert.equal(frame.props.viewBox, "-6 -11 112 112", "room above the ring for the flame and crown");
     assert.notEqual(frame.props.style?.overflow, "visible");
     shapes.push(`${r.root.findAllByType("Path").length}:${r.root.findAllByType("Circle").length}:${r.root.findAllByType("Circle").find(c => c.props.stroke).props.stroke}`);

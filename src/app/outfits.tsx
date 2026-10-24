@@ -9,7 +9,7 @@ import Segmented from "../components/Segmented";
 import SheetConfirmation from "../components/SheetConfirmation";
 import Adventurer from "../components/adventurer/Adventurer";
 import ItemArt, { StardustArt } from "../components/adventurer/ItemArt";
-import ProfilePicture from "../components/adventurer/ProfilePicture";
+import ProfilePicture, { levelPill } from "../components/adventurer/ProfilePicture";
 import { useShownLevel } from "../services/levelPreview";
 import Svg, { Defs, Ellipse, LinearGradient, Rect, Stop } from "react-native-svg";
 import { colors, edge, radius } from "../constants/theme";
@@ -27,6 +27,8 @@ const PARTS: Record<"clothes" | "gear", { slot: WearSlot; label: string }[]> = {
 };
 /** Room the profile tab keeps above your picture for its chips, and below it for your badge. */
 const CHIP_ROW = 48, PICTURE_ROOM = CHIP_ROW + 8 + 6 + 30;
+/** The largest picture up to `size` whose level pill still fits in `room`. */
+const pictureFits = (size: number, room: number) => { let s = size; while (s > 60 && s + (levelPill(s, 999)?.room ?? 0) > room) s -= 2; return s; };
 const PICTURE_PARTS: { value: PicturePart; label: string }[] = [{ value: "frames", label: "Frames" }, { value: "badges", label: "Badges" }, { value: "background", label: "Background" }];
 const RARITY_COLOR: Record<string, string> = { common: "#C2C8D8", uncommon: "#2DD4A7", rare: "#60A5FA", epic: "#A78BFA", legendary: "#FBBF24" };
 const RARITY_NAME: Record<string, string> = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
@@ -260,7 +262,7 @@ const OutfitsPreview = memo(function OutfitsPreview({ height, roomy, a, b, stard
       {previewingFrame && <View style={s.chip}><Text style={s.chipText}>Preview</Text></View>}
     </View>
     {picture
-      ? <View style={s.picture}><ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} streak={streak} size={Math.min(roomy ? 164 : 146, height - PICTURE_ROOM)} />
+      ? <View style={s.picture}><ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} streak={streak} size={pictureFits(Math.min(roomy ? 164 : 146, height - PICTURE_ROOM), height - PICTURE_ROOM)} />
         {!!title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(title)?.name}</Text></View>}</View>
       : <Adventurer look={look} equipped={equipped} size={roomy ? 132 : 122} lanternLevel={level} />}
   </View>;
@@ -296,7 +298,7 @@ const FrameRow = memo(function FrameRow({ id, name, status, looking, showing, go
 }) {
   return <Pressable onPress={() => select(id)} accessibilityRole="button" accessibilityLabel={`${name}, ${status}`}
     accessibilityState={{ selected: looking }} style={[s.frameRow, looking && s.tileFocus]}>
-    {portraitReady ? <ProfilePicture look={look} equipped={FRAME_EQUIPMENT} level={level} background={background} frame={id} size={52} />
+    {portraitReady ? <ProfilePicture look={look} equipped={FRAME_EQUIPMENT} level={level} background={background} frame={id} size={52} showLevel={false} />
       : <View style={s.frameSlot} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" />}
     <Text style={[s.frameName, !got && { color: colors.muted }]} numberOfLines={1}>{name}</Text>
     {showing ? <View style={s.showing}><Text style={s.showingText}>{status}</Text></View>

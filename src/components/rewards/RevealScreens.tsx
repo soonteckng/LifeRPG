@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { Easing, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from "react-native-reanimated";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import Pressable from "../MotionPressable";
 import { Text } from "../AppText";
@@ -49,9 +49,22 @@ function GiftRow({ gift }: { gift: Gift }) {
  * found goes straight to the trail. "See it in Outfits" comes back to the card.
  */
 export function ExpeditionReveal({ reveal, player, onClose, onOutfits }: Props<Extract<Reveal, { kind: "expedition" }>>) {
+  const reduced = useReducedMotion();
   const [step, setStep] = useState<"found" | "trail">(reveal.finds.length ? "found" : "trail");
-  if (step === "found") return <FoundCard reveal={reveal} onContinue={() => setStep("trail")} onOutfits={onOutfits} />;
-  return <TrailStep reveal={reveal} player={player} onClose={onClose} />;
+  // The card fades away, then the trail fades in (its map draws once it has settled).
+  const shown = useSharedValue(1);
+  const toTrail = () => {
+    if (reduced) { setStep("trail"); return; }
+    shown.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) }, done => { if (done) runOnJS(setStep)("trail"); });
+  };
+  useEffect(() => {
+    if (step === "trail" && !reduced) shown.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.quad) });
+  }, [step, shown, reduced]);
+  const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
+  return <Animated.View style={[s.page, fade]}>
+    {step === "found" ? <FoundCard reveal={reveal} onContinue={toTrail} onOutfits={onOutfits} />
+      : <TrailStep reveal={reveal} player={player} onClose={onClose} />}
+  </Animated.View>;
 }
 
 // The card plays in order: the card rises, each find is dealt onto it, then
