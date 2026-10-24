@@ -1,30 +1,26 @@
-# LifeRPG handoff (from Claude, after Round 59)
+# LifeRPG handoff (from Claude, after Round 65)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
 this file wins. When something is unclear, ask Soon Teck before changing code.
-
-Round 61 addendum: the working base is now `0116adc` (Round 60 on
-`feature/next`). Round 61's JS fixes pass 1,422 app tests, typecheck and lint;
-see `docs/round61-responsiveness.md` for current scope and verification. The
-Round 59 state table below is historical. Runtime guidance below has been
-corrected against the installed preview APK.
+How to deliver a round (patch, bundle zip, SQL, the exact commands and the
+reply) is in section 4.2, with a full worked example. Use that exact format.
 
 ---
 
-## 1. Where things stand (checked 24 Oct 2026)
+## 1. Where things stand (checked 25 Oct 2026)
 
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest commit | `3434a24` "Round 59: one session scene, rewards before leaving, Home header room" |
-| `main` | 14 rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Tree identical to the last verified build: **1,466 tests pass, `tsc` clean, `expo lint` clean** |
-| Installed preview runtime (Android) | `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Publish from Soon Teck's original Windows repository with its existing native inputs and local `.gitignore` preserved. A clean LF checkout computes `de0355adda848fb7ff4453b91b284c71253e25c9`, which does not target that APK. |
+| Latest commit | `d42f326` "Round 65: level pill below the picture, whole trail in view, smooth trail" |
+| `main` | Many rounds behind `feature/next`. Never commit to `main`. |
+| Code health | **1,533 tests pass** (with the PGlite SQL tests), `tsc` clean, `expo lint` clean |
+| Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
-| Supabase health | No Postgres errors in the last 24 h. The only API errors (404 `dev_rewards_v1`, 400 `open_daily_pack_v1`) happened *before* the Round 58 SQL was applied, so they're resolved. |
-| Round 58 SQL | Applied. Live functions confirmed: dev reset refused, dev account delete refused, `next_milestones` dev action present, stats-visibility functions and `player_settings` table gone, `liferpg_reward_private.state()` is VOLATILE. |
-| Pending SQL | None. Round 59 needed no database change. |
+| Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
+| **Pending SQL** | **Round 64, `supabase/migrations/20261025090000_round64_daily_trail.sql`: NOT run yet.** Soon Teck is deciding whether he wants finds capped at 6 a day (a find every 20 focused minutes, 120-minute trail, +50 Stardust for the end). Until it runs, the server keeps the old rule (a find every 25 minutes, no cap) and the app follows whatever the server says (`findSeconds`, `trailSeconds`; fallback `LEGACY_TRAIL`). Don't run it yourself; if he says yes, he runs it in the SQL Editor. |
+| Waiting on the phone | Round 65 visual fixes and the real session flow (Start → walk-away → session; finds card → trail walk) haven't been checked on his phone yet. He'll send feedback. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
 does **not** show in `list_migrations`. That's expected; the live functions match the file.
@@ -106,31 +102,76 @@ SESSION_SQL_PGLITE_ROOT=/tmp/pglite/node_modules npm test
 
 Always run them when you touch SQL.
 
-### 4.2 Hand-off format
+### 4.2 Hand-off format (use exactly this)
 
-- Commit on your branch with a message like `Round 60: <short summary>` and a bullet body.
-- Soon Teck applies, pushes and publishes himself. He's on Windows (PowerShell, repo at `C:\Users\soonteck\LifeRPG`). **Always give him the exact copy-paste commands.** If you deliver a patch, give him:
-  ```powershell
-  git am "$HOME\Downloads\round-60.patch"
-  git push
-  npx eas-cli update --channel preview --environment preview --platform android --message "Round 60: ..."
-  ```
-- Fallback when Hermes crashes on Windows during the bundle step: build the bundle yourself and give him a zip:
-  ```bash
-  EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
-  EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-  npx expo export --platform android --clear --output-dir dist --dump-assetmap
-  # zip dist/ as dist-round-60.zip
-  ```
-  He then runs:
-  ```powershell
-  Expand-Archive "$HOME\Downloads\dist-round-60.zip" -DestinationPath dist -Force
-  npx eas-cli update --channel preview --environment preview --platform android --message "Round 60" --skip-bundler --input-dir dist
-  ```
-- **SQL order:** publish the app update first, *then* run the SQL, because older installed versions may still call what the SQL changes or drops. Say this explicitly whenever a round has SQL.
-- Migrations that only add or replace functions can be applied with the Supabase tool (`apply_migration`). Anything with `drop` or `delete`: give Soon Teck the SQL to run in the SQL Editor, and add the file under `supabase/migrations/`.
+Soon Teck applies, pushes and publishes everything himself, on Windows
+(PowerShell), in his own repo at `C:\Users\soonteck\LifeRPG`. You never push.
+Every round he gets the same three things, named the same way, plus the exact
+commands to copy and paste:
+
+| File | What it is | How you make it |
+|---|---|---|
+| `round-NN.patch` | The round as one commit | `git format-patch -1 HEAD --stdout > round-NN.patch` |
+| `dist-round-NN.zip` | A prebuilt Android bundle, in case his PC crashes while bundling (Hermes on Windows sometimes does) | the `expo export` command below, then zip the *contents* of the output folder |
+| `round-NN-<name>.sql` | Only when the round changes the database | a copy of the new file in `supabase/migrations/` |
+
+**Making them (on your side):**
+
+```bash
+# 1. One commit for the round, on top of feature/next.
+git add -A src tests docs supabase
+git commit -m "Round 66: <short summary>" -m "- <what changed, one line each>"
+
+# 2. The patch, then prove it applies cleanly to the commit before it.
+git format-patch -1 HEAD --stdout > out/round-66.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-66.patch \
+  && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
+
+# 3. The backup bundle.
+EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
+EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
+npx expo export --platform android --clear --output-dir dist66 --dump-assetmap
+(cd dist66 && zip -qr ../out/dist-round-66.zip .)
+```
+
+Then send him the files (he downloads them to `Downloads`). Don't paste a
+patch into the chat.
+
+**The commands you give him (worked example, Round 66):**
+
+```powershell
+git am "$HOME\Downloads\round-66.patch"
+git push
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 66: <short summary>"
+```
+
+If Windows crashes during the bundle step:
+
+```powershell
+Expand-Archive "$HOME\Downloads\dist-round-66.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 66" --skip-bundler --input-dir dist
+```
+
+If the round has SQL, it always comes **after** publishing: "Open
+`round-66-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+Older installed versions may still call what the SQL changes.
+
+If a patch was built on a commit he doesn't have yet, say which patch goes
+first (`git am` the earlier one, then this one).
+
+**Your reply to him (shape, keep it short):**
+
+1. One line: what this round fixes, plus tests / typecheck / lint / fingerprint status, and whether there's SQL.
+2. The commands above, in that order.
+3. Answers to any direct questions he asked.
+4. What changed, grouped by the points he raised, in plain words (no code names).
+5. What still needs checking on his phone.
+
+Other notes:
+
+- Migrations that only add or replace functions can go through the Supabase tool (`apply_migration`) after he agrees. Anything with `drop`, `delete` or `alter table`: he runs it in the SQL Editor, and the file goes under `supabase/migrations/`.
 - Updates often need the app closed and reopened twice to load. That's normal for expo-updates.
-- Your reply to him: short. What changed (grouped by the issues he raised), what still needs his eyes on a real phone, any SQL with its order, then the commands. Answer his direct questions first.
+- He replies with screenshots and numbered issues. Fix all of them in one round unless he says otherwise.
 
 ---
 
@@ -148,7 +189,9 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 | Session result | `SessionResultSheet.tsx`, `LevelUpModal.tsx`, `CompletionDetails.tsx`, `ArrivalBanner.tsx` |
 | Protected sessions | `SessionProtectionContext.tsx`, `nativeFocusProtection.ts`, `protectedSessionStart.ts`, `SessionProtectionControl.tsx` (one 5-min break per session) |
 | Rewards client | `src/hooks/useRewards.ts` (exports `useRewards` and `rewardsStore`), `src/services/rewardsService.ts`, `rewardsStore.ts`, `rewardCatalog.ts` |
-| Rewards UI | `RewardMoments.tsx` (pop-up host), `GlobalRewardListener.tsx`, `rewards/RevealScreens.tsx` (return-to-camp and pack screens), `rewards/TodayTrail.tsx`, `rewards/PackArt.tsx` |
+| Rewards UI | `RewardMoments.tsx` (pop-up host; "See it in Outfits" visits and returns), `GlobalRewardListener.tsx`, `rewards/RevealScreens.tsx` (finds card, then the trail; pack screen), `rewards/TodayTrail.tsx` (the map, fits its space, draws after settling), `rewards/TrailSheet.tsx` (the map from Home), `rewards/PackArt.tsx` |
+| Profile picture | `adventurer/ProfilePicture.tsx` (pet top right, streak top left, level in a drawn pill below the ring: `levelPill(size, level)` gives its size and the extra height), `CharacterMark.tsx` (you, everywhere) |
+| Level colours | `utils/adventurerLook.ts` `tierColor` / `levelColors` (= the level-road tier colours), `services/levelPreview.ts` (developer-only preview of another tier) |
 | Outfits | `src/app/outfits.tsx` (`outfitsOpening(id)` deep-links to the item's category), `components/adventurer/*` |
 | Home | `src/app/(tabs)/index.tsx`, `SavedRoutinesCard.tsx` (the Start card and its See all sheet) |
 | Developer tools | `src/components/DeveloperTools.tsx`, `services/developerAccess.ts` |
@@ -182,9 +225,11 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ---
 
-## 7. Your first task: a full review for bugs, edge cases and race conditions
+## 7. Your first task, and the review checklist
 
-Before new features, audit `feature/next` and report findings **ranked by severity, each with a concrete failure scenario** (inputs/state → wrong result). Fix only after Soon Teck agrees, except clear crash or data-loss bugs, which you fix with tests. Don't refactor working code for style.
+**First:** Soon Teck will send his test results for Rounds 64 and 65 (screenshots and numbered issues). Fix those as the next round (Round 66), in the format in section 4.2.
+
+Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out of it). Use the list below when he asks for another review, or when a fix touches these areas. Report findings ranked by severity, each with a concrete failure scenario, and fix only after he agrees (crash or data-loss bugs: fix with tests).
 
 ### 7.1 Areas Claude flags as most likely to hide bugs
 
