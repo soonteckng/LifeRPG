@@ -4,12 +4,8 @@ import Svg, { Circle, Defs, G, LinearGradient, Path, Stop } from "react-native-s
 import AdventurerArt from "./AdventurerArt";
 import ItemArt from "./ItemArt";
 import { Text } from "../AppText";
-import { tierColor, type AdventurerLook } from "../../utils/adventurerLook";
+import { pictureColors, tierColor, type AdventurerLook } from "../../utils/adventurerLook";
 
-const BACKGROUNDS: Record<string, [string, string]> = {
-  bg_dusk: ["#4A3366", "#B86A6A"], bg_forest: ["#24493F", "#3E6B4F"], bg_meadow: ["#6C9CC6", "#A8CC92"],
-  bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
-};
 type Ornaments = { ring: string; double: boolean; metal: [string, string]; studs: boolean; gems: boolean; laurel: boolean; crown: boolean; flame: boolean };
 // Each streak frame has its own shape, not just its own colour, and each one
 // keeps what the one before it had.
@@ -41,13 +37,15 @@ const VIEW = 112, OX = 6, OY = 11, PHOTO = 43;
  */
 export default memo(function ProfilePicture({ look, equipped = {}, level, background = "bg_dusk", frame = null, streak = 0, size, showLevel = true }: {
   look: AdventurerLook; equipped?: Partial<Record<string, string>>; level: number; background?: string; frame?: string | null; streak?: number; size: number;
-  /** The level sits on the picture like the pet and streak, from 56 pt up. */
+  /** The level sits at the bottom of the picture, from 36 pt up. */
   showLevel?: boolean;
 }) {
   const u = size / VIEW, inner = PHOTO * 2 * u, left = (50 + OX - PHOTO) * u, top = (50 + OY - PHOTO) * u;
   const o = frameOrnaments(level, frame), ring = o.ring, metal = o.metal;
-  const [a, b] = BACKGROUNDS[background] ?? BACKGROUNDS.bg_dusk;
-  const pet = equipped.pet, petBox = Math.round(size * 0.36);
+  const [a, b] = pictureColors(background);
+  const pet = equipped.pet, petBox = Math.max(14, Math.round(size * 0.36));
+  // The level stays readable on small pictures and never gets cut off.
+  const pillFont = Math.max(9, Math.round(size * 0.115)), pillHeight = Math.max(16, Math.round(size * 0.2), pillFont + 8);
   const leaves: { x: number; y: number; r: number }[] = [];
   if (o.laurel) for (const side of [-1, 1]) for (let i = 0; i < 7; i++) {
     const ang = ((side < 0 ? 205 + i * 16 : 335 - i * 16) * Math.PI) / 180;
@@ -79,14 +77,16 @@ export default memo(function ProfilePicture({ look, equipped = {}, level, backgr
         <Path d="M50 -2 Q54.5 2.5 53.8 6 Q53 9.4 50 9.8 Q46.6 9.4 46.4 6.2 Q46.2 3.6 48.6 1.8 Q48.6 4.4 50 5 Q51.4 2.6 50 -2 Z" fill={ring} /></G>}
       {o.crown && <G><Path d="M36 6 L37 -6 L43.5 0 L50 -9 L56.5 0 L63 -6 L64 6 Z" fill="#F3E3AE" stroke="#B8994E" strokeWidth={1.2} strokeLinejoin="round" /><Circle cx={50} cy={-1} r={2.2} fill={ring} /></G>}
     </Svg>
-    {!!pet && size >= 40 && <View style={{ position: "absolute", right: 0, bottom: 0, width: petBox, height: petBox, borderRadius: petBox / 2, backgroundColor: "#131826", borderWidth: size >= 80 ? 2 : 1.5, borderColor: ring, alignItems: "center", justifyContent: "center" }}>
+    {/* Your pet sits top right, the level always at the bottom, the streak top left. */}
+    {!!pet && size >= 32 && <View testID="picture-pet" style={{ position: "absolute", right: 0, top: 0, width: petBox, height: petBox, borderRadius: petBox / 2, backgroundColor: "#131826", borderWidth: size >= 80 ? 2 : 1.5, borderColor: ring, alignItems: "center", justifyContent: "center" }}>
       <ItemArt id={pet} size={Math.round(petBox * 0.72)} />
     </View>}
-    {/* With a pet beside it, the level moves a little left so the two never touch. */}
-    {showLevel && size >= 56 && <View style={{ position: "absolute", left: size * (pet ? 0.43 : 0.5) - Math.round(size * 0.17), width: Math.round(size * 0.34), bottom: size * 0.005, height: Math.round(size * 0.19),
-      borderRadius: size * 0.1, backgroundColor: tierColor(level), borderWidth: size >= 100 ? 2 : 1.5, borderColor: "#131826", alignItems: "center", justifyContent: "center" }}
-      testID="picture-level">
-      <Text style={{ color: "#131826", fontSize: Math.max(10, Math.round(size * 0.115)), fontWeight: "900" }} maxFontSizeMultiplier={1.15} numberOfLines={1}>{level}</Text>
+    {showLevel && size >= 36 && <View pointerEvents="none" style={{ position: "absolute", left: 0, right: 0, bottom: 0, alignItems: "center" }}>
+      <View testID="picture-level" style={{ minWidth: Math.round(size * 0.34), height: pillHeight, paddingHorizontal: Math.max(4, Math.round(size * 0.04)),
+        borderRadius: pillHeight / 2, backgroundColor: tierColor(level), borderWidth: size >= 100 ? 2 : 1.5, borderColor: "#131826", alignItems: "center", justifyContent: "center" }}>
+        <Text style={{ color: "#131826", fontSize: pillFont, lineHeight: pillFont + 2, fontWeight: "900", includeFontPadding: false, textAlignVertical: "center" }}
+          maxFontSizeMultiplier={1} numberOfLines={1}>{level}</Text>
+      </View>
     </View>}
     {/* The streak sits top left, clear of the level and the pet below. */}
     {streak >= 7 && size >= 72 && <View style={{ position: "absolute", left: 0, top: size * 0.04, height: Math.round(size * 0.2), paddingHorizontal: Math.round(size * 0.05), borderRadius: size * 0.1, backgroundColor: "#1E2436", borderWidth: 1.5, borderColor: "#FFB020", flexDirection: "row", alignItems: "center", gap: 2 }}>

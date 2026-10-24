@@ -69,8 +69,11 @@ test("the profile picture grows its frame with level and shows a pet and long st
   const noLevel = await render({ showLevel: false });
   assert.equal(noLevel.root.findAllByType("Text").length, 0);
   await act(async () => noLevel.unmount());
-  const small = await render({ size: 32, equipped: { pet: "pet_owl" }, streak: 40 });
+  const small = await render({ size: 30, equipped: { pet: "pet_owl" }, streak: 40 });
   assert.equal(small.root.findAllByType("Item").length + small.root.findAllByType("Text").length, 0, "tiny pictures stay clean");
+  const squadSize = await render({ size: 44, level: 7, equipped: { pet: "pet_owl" } });
+  assert.deepEqual([squadSize.root.findAllByType("Item").length, texts(squadSize)], [1, [7]], "squad-size pictures show the pet and the level");
+  await act(async () => squadSize.unmount());
   assert.equal(low.root.findByType("Art").props.crop, "portrait");
   for (const r of [low, mid, high, small]) await act(async () => r.unmount());
 });

@@ -61,22 +61,21 @@ test("a level preview is a developer's alone: tied to their account, nothing sav
   assert.match(tools, /if \(!developer\) return null;/, "only the Developer section can set it");
 });
 
-test("your level sits on your picture in your tier's colour, moved left so it never touches your pet", async () => {
+test("your level always sits at the bottom, your pet at the top right, and the level is never cut off", async () => {
   const Picture = load("src/components/adventurer/ProfilePicture.tsx", {
     "react-native": { View: host("View") }, "react-native-svg": svg, "./AdventurerArt": host("Art"), "./ItemArt": host("Item"), "../AppText": { Text: host("Text") },
   }).default;
-  const pill = async equipped => {
-    let r; await act(async () => { r = create(React.createElement(Picture, { look: {}, equipped, level: 21, size: 146 })); });
-    const node = r.root.findByProps({ testID: "picture-level" }), style = node.props.style;
-    const petBox = r.root.findAll(n => n.type === "View" && n.props.style?.right === 0 && n.props.style?.bottom === 0)[0];
-    const petLeft = petBox ? 146 - petBox.props.style.width : null;
+  for (const size of [36, 44, 70, 146]) {
+    let r; await act(async () => { r = create(React.createElement(Picture, { look: {}, equipped: { pet: "pet_owl" }, level: 21, size })); });
+    const pill = r.root.findByProps({ testID: "picture-level" }), holder = pill.parent;
+    const pet = r.root.findByProps({ testID: "picture-pet" }).props.style;
+    const text = pill.findByType("Text").props.style;
+    assert.deepEqual([holder.props.style.bottom, holder.props.style.alignItems], [0, "center"], `${size}: the level is centred at the bottom`);
+    assert.deepEqual([pet.top, pet.right], [0, 0], `${size}: the pet is at the top right`);
+    assert.ok(text.lineHeight <= pill.props.style.height - 3, `${size}: the number fits inside its pill`);
+    assert.equal(pill.props.style.backgroundColor, "#E98ABC", "Dedication's colour, as on the level road");
     await act(async () => r.unmount());
-    return { style, petLeft };
-  };
-  const alone = await pill({}), withPet = await pill({ pet: "pet_owl" });
-  assert.equal(alone.style.left + alone.style.width / 2, 73, "centred with no pet");
-  assert.ok(withPet.style.left + withPet.style.width < withPet.petLeft, "clear of the pet, with a gap");
-  assert.equal(withPet.style.backgroundColor, "#E98ABC", "Dedication's colour, as on the level road");
+  }
 });
 
 test("Home wears your tier's colours, shows your level on your picture, and keeps the This week and Squad tiles short", () => {

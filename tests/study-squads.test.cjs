@@ -62,7 +62,7 @@ const rn = { View: host('View'), StyleSheet: { create: v => v, hairlineWidth: 1 
 const sheets = () => load('src/components/SquadSheets.tsx', {
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.overlay) : null,
-  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
+  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
   '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
@@ -78,7 +78,7 @@ const mocks = (state, extra = {}) => ({
   // The ••• menu's options are its contract; its popover has its own looks.
   '/MoreMenu': props => React.createElement('Menu', props),
   '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
+  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
   '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
   '/useSquads': { useSquads: () => state() }, ...extra,
 });
@@ -309,7 +309,7 @@ test('squad faces are everyone\'s real picture, and the player card has the same
   const ui = load('src/components/SquadSheets.tsx', {
     'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
     '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/CharacterMark': host('Mark'), '/ProfilePicture': host('Picture'),
+    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/CharacterMark': host('Mark'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) },
     'react-native-svg': svgMock, '/ItemArt': host('ItemArt'),
     '/usePlayer': { usePlayerCard: id => ({ ...reply, asked: id }) },
   });
@@ -326,6 +326,9 @@ test('squad faces are everyone\'s real picture, and the player card has the same
   const words2 = () => r.root.findAllByType('Text').map(t => [].concat(t.props.children).join('')).join(' | ');
   await act(async () => r.update(card()));
   assert.ok(r.root.findAll(n => n.props.testID === 'player-card').length > 0);
+  const whole = r.root.findByType('Character').props;
+  assert.deepEqual([whole.look.skin, whole.equipped.top, whole.lanternLevel], ['6', 'cardigan', 2], 'the card shows their whole character, as they dressed it');
+  assert.equal(r.root.findAllByType('Picture').length, 0, 'the whole character, not the round picture');
   assert.match(words2(), /The Artist/); assert.match(words2(), /Level 2 · First steps/); assert.match(words2(), /Focusing now/);
   assert.match(words2(), /#2 \| on the board/); assert.match(words2(), /2h 35m \| focused/);
   reply = { card: { id: friend.id, isYou: false, name: 'User 2', level: 12, look, statsShared: true, stats: { streak: 31, totalSeconds: 36000, sessions: 1, collected: 7, since: '2026-09-02T10:00:00Z',

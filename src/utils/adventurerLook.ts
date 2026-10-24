@@ -51,6 +51,13 @@ export function tierColor(level: number) {
   return color;
 }
 
+const BACKGROUNDS: Record<string, [string, string]> = {
+  bg_dusk: ["#4A3366", "#B86A6A"], bg_forest: ["#24493F", "#3E6B4F"], bg_meadow: ["#6C9CC6", "#A8CC92"],
+  bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
+};
+/** A picture background's two colours, top to bottom. */
+export const pictureColors = (background: string | null | undefined): [string, string] => BACKGROUNDS[background ?? ""] ?? BACKGROUNDS.bg_dusk;
+
 /**
  * Your level's colours: the colour of your tier on the level road, used for
  * the level on your picture, Home, Profile and the road itself.

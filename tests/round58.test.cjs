@@ -147,26 +147,31 @@ test("return and pack screens: walk back, see what you found and today's trail; 
     "react-native": { View: host("View"), ScrollView: host("Scroll"), StyleSheet: { create: v => v }, useWindowDimensions: () => ({ width: 390, height: 844 }) },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     "react-native-reanimated": { __esModule: true, default: { View: host("AView") }, Easing: { inOut: x => x, out: x => x, sin: 0, quad: 0 }, useAnimatedStyle: () => ({}), useSharedValue: v => ({ value: v }),
-      withRepeat: x => x, withSequence: x => x, withSpring: x => x, withTiming: x => x },
+      withRepeat: x => x, withSequence: x => x, withSpring: x => x, withTiming: x => x, withDelay: (_d, x) => x },
+    "react-native-svg": { __esModule: true, default: host("Svg"), Defs: host("Defs"), RadialGradient: host("RG"), Rect: host("Rect"), Stop: host("Stop") },
     "@expo/vector-icons": { Ionicons: host("Icon") }, "../MotionPressable": host("Press"), "../AppText": { Text: host("Text") },
-    "../adventurer/Adventurer": host("Adventurer"), "../adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
+    "../adventurer/Adventurer": host("Adventurer"), "../adventurer/ProfilePicture": host("Picture"), "../adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../session/TrailScenes": { CampScene: host("Camp") }, "./PackArt": { __esModule: true, default: host("Pack"), PACK_COLORS: ["#1", "#2", "#3", "#4"] },
     "./TodayTrail": host("Trail"), "../../hooks/useReducedMotion": { useReducedMotion: () => true }, "../../utils/tapHaptics": { tapHaptic: () => log.push("haptic") },
   };
   const { ExpeditionReveal, PackReveal } = load("src/components/rewards/RevealScreens.tsx", mods);
   const player = { look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null, today: { seconds: 4500, finds: 3 }, nextFindSeconds: 420 };
   const reveal = { id: "r", kind: "expedition", seconds: 2700, finds: [{ item: "beret", rarity: "common", new: true, stardust: 0 }, { item: "tote", rarity: "common", new: false, stardust: 5 }], stardust: 14 };
-  const words = r => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
+  const words = r => JSON.stringify(r.root.findAllByType("Text").map(t => [].concat(t.props.children).map(c => (c && typeof c === "object" ? "" : c)).join("")));
   const press = (r, label) => act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === label)[0].props.onPress());
   let r; await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal, player, onClose: () => log.push("close"), onOutfits: item => log.push(`outfits:${item}`) })); });
   assert.ok(r.root.findAllByType("Camp").length && r.root.findAllByType("Adventurer").length, "back at camp, walking in");
   assert.match(words(r), /BACK AT CAMP.*45 minutes, done.*Your pack looks heavier · 2 finds/);
   await press(r, "See what you found");
-  assert.match(words(r), /FROM YOUR 45-MINUTE WALK.*What you found.*Red beret.*NEW.*Canvas tote.*\+5.*\+14 Stardust/);
-  assert.deepEqual(r.root.findByType("Trail").props.seconds, 4500, "today's trail so far");
+  assert.match(words(r), /FROM YOUR 45-MINUTE WALK.*You found 2 things.*Red beret.*NEW.*Canvas tote.*\+5.*\+14 Stardust/);
+  assert.match(words(r), /LANTERN LAKE.*walked today.*1 h 15 m.*to the next find.*7 min/, "today's trail so far, as one line to the next find");
+  assert.equal(r.root.findAllByType("Trail").length, 0, "the full map waits behind Map");
+  await press(r, "See today's trail map");
+  assert.deepEqual([r.root.findByType("Trail").props.seconds, r.root.findByType("Trail").props.fill], [4500, true], "the map fills the page");
+  await press(r, "Back to your finds");
+  assert.equal(r.root.findAllByType("Trail").length, 0);
   await press(r, "See it in Outfits"); await press(r, "Continue");
   assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits:beret", "close"], "Outfits opens on the new find");
-  assert.equal(r.root.findByType("Trail").props.fill, true, "the trail fills the page, no gap below");
   await act(async () => r.unmount());
   // A short session with nothing yet: say so kindly, and how far the next find is.
   log.length = 0;
