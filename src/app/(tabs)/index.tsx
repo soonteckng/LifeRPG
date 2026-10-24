@@ -73,11 +73,11 @@ export default function HomeScreen() {
   const [todayOpen, setTodayOpen] = useState(false);
   const [tiersOpen, setTiersOpen] = useState(false);
   const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus();
-  const avatar = useRef<View>(null), settingsIcon = useRef<View>(null);
-  // Profile and Settings grow out of their button, then shrink back into it.
-  const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings") => {
+  const avatar = useRef<View>(null), settingsIcon = useRef<View>(null), stardustIcon = useRef<View>(null);
+  // Profile, Settings and Outfits (from Stardust) grow out of their button, then shrink back into it.
+  const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings" | "/outfits") => {
     let opened = false;
-    const open = () => { if (!opened) { opened = true; router.navigate(path); } };
+    const open = () => { if (!opened) { opened = true; if (path === "/outfits") router.navigate({ pathname: path, params: { from: "home" } }); else router.navigate(path); } };
     const fallback = setTimeout(open, 100);
     source.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
   };
@@ -217,6 +217,11 @@ export default function HomeScreen() {
   const studyCourses = plan.courses.filter(course => course.deletedAt == null && course.id !== nextCourse?.id)
     .sort((a, b) => (lastStudied.get(b.id) ?? 0) - (lastStudied.get(a.id) ?? 0) || a.name.localeCompare(b.name)).slice(0, 2);
   const studyChips = studyCourses.map(course => ({ key: course.id, name: course.name, caption: "Study", color: courseColor(course.id), onPress: () => launcher.study(course) }));
+  // Every subject, for See all.
+  const allStudyChips = plan.courses.filter(course => course.deletedAt == null)
+    .sort((a, b) => (lastStudied.get(b.id) ?? 0) - (lastStudied.get(a.id) ?? 0) || a.name.localeCompare(b.name))
+    .map(course => ({ key: course.id, name: course.name, caption: course.id === nextCourse?.id ? `Revise · ${examDays === 0 ? "exam today" : examDays === 1 ? "exam tomorrow" : `exam in ${examDays} days`}` : "Study",
+      color: courseColor(course.id), onPress: () => launcher.study(course) }));
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
@@ -233,27 +238,34 @@ export default function HomeScreen() {
                 </ProgressRing>
               </TouchableOpacity>
             </View>
+            {/* Two lines beside you: your name with Settings, then your level and Stardust. */}
             <View style={styles.identity}>
-              {/* Your greeting and name open Profile too, like your picture. */}
-              <TouchableOpacity testID="home-name" onPress={openProfile} accessibilityRole="button" accessibilityLabel={`${homeWelcome(hour < 5 ? 18 : hour, profile?.username)}. Open Profile`}>
-                <Text style={styles.greeting} numberOfLines={1}>{greeting},</Text>
-                <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
-              </TouchableOpacity>
-              {/* The level reads as a badge you can open, not a line of small print. */}
-              <TouchableOpacity testID="home-level" style={styles.levelChip} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
-                accessibilityLabel={`Level ${level}, ${tier.title}, ${levelShare}% of the way to level ${level + 1}. See your level journey`} haptic={false}>
-                <View style={styles.levelBadge}><Text style={styles.levelNumber}>{level}</Text></View>
-                <Text style={styles.levelTitle} numberOfLines={1}>{tier.title}</Text>
-                <View style={styles.levelTrack}><View style={[styles.levelFill, { width: `${Math.max(4, levelShare)}%` }]} /></View>
-                <Ionicons name="chevron-forward" size={13} color={colors.level} />
-              </TouchableOpacity>
+              <View style={styles.nameRow}>
+                {/* Your greeting and name open Profile too, like your picture. */}
+                <TouchableOpacity testID="home-name" style={styles.nameButton} onPress={openProfile} accessibilityRole="button" accessibilityLabel={`${homeWelcome(hour < 5 ? 18 : hour, profile?.username)}. Open Profile`}>
+                  <Text style={styles.greeting} numberOfLines={1}>{greeting},</Text>
+                  <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
+                </TouchableOpacity>
+                <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
+              </View>
+              <View style={styles.chipRow}>
+                {/* The level reads as a badge you can open, not a line of small print. */}
+                <TouchableOpacity testID="home-level" style={styles.levelChip} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
+                  accessibilityLabel={`Level ${level}, ${tier.title}, ${levelShare}% of the way to level ${level + 1}. See your level journey`} haptic={false}>
+                  <View style={styles.levelBadge}><Text style={styles.levelNumber}>{level}</Text></View>
+                  <Text style={styles.levelTitle} numberOfLines={1}>{tier.title}</Text>
+                  <View style={styles.levelTrack}><View style={[styles.levelFill, { width: `${Math.max(4, levelShare)}%` }]} /></View>
+                  <Ionicons name="chevron-forward" size={13} color={colors.level} />
+                </TouchableOpacity>
+                {/* Stardust: what finds, packs and minutes have earned, spent in Outfits, which grows out of it. */}
+                <View ref={stardustIcon} collapsable={false}>
+                  <TouchableOpacity testID="home-stardust" onPress={() => openFrom(stardustIcon, "/outfits")} style={styles.stardust} hitSlop={6}
+                    accessibilityRole="button" accessibilityLabel={`${rewards.stardust} Stardust. Open Outfits`}>
+                    <StardustArt size={15} /><Text style={styles.stardustText} numberOfLines={1}>{rewards.stardust.toLocaleString()}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             </View>
-            {/* Stardust, beside you: what finds, packs and minutes have earned, spent in Outfits. */}
-            <TouchableOpacity testID="home-stardust" onPress={() => router.navigate("/outfits")} style={styles.stardust} hitSlop={6}
-              accessibilityRole="button" accessibilityLabel={`${rewards.stardust} Stardust. Open Outfits`}>
-              <StardustArt size={16} /><Text style={styles.stardustText} numberOfLines={1}>{rewards.stardust.toLocaleString()}</Text>
-            </TouchableOpacity>
-            <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
           </View></TourAnchor>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
             accessibilityRole="button" accessibilityLabel="Retry loading Home" style={styles.retry}>
@@ -292,7 +304,7 @@ export default function HomeScreen() {
 
           {/* Start: your routines as chips, then Any activity. An exam this week leads. */}
           <TourAnchor id="home-quests"><SavedRoutinesCard layout="start" subjects={subjects} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={openQuestSession}
-            limit={Math.max(1, 3 - studyChips.length)} suggestions={false} studyChips={studyChips} onSeeAll={() => router.navigate("/routines")} onAnyActivity={justFocus}
+            limit={Math.max(1, 3 - studyChips.length)} suggestions={false} studyChips={studyChips} allStudyChips={allStudyChips} onSeeAll={() => router.navigate("/routines")} onAnyActivity={justFocus}
             lead={nextCourse && !hasOpenSession && !settling && !needsReview ? <TouchableOpacity testID="home-revise" onPress={() => launcher.study(nextCourse)} accessibilityRole="button"
               accessibilityLabel={`Revise ${nextCourse.name}. ${examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`}`} style={styles.reviseChip}>
               <View style={styles.revisePlay}><Ionicons name="play" size={14} color={colors.primary} style={styles.nudge} /></View>
@@ -334,7 +346,7 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 16 },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 },
-  stardust: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 34, paddingHorizontal: 11, borderRadius: 17, backgroundColor: "rgba(167,139,250,0.14)", borderWidth: 1, borderColor: "rgba(167,139,250,0.35)", marginRight: -6 },
+  stardust: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: "rgba(167,139,250,0.14)", borderWidth: 1, borderColor: "rgba(167,139,250,0.35)" },
   stardustText: { color: "#DDD6FE", fontSize: 14, fontWeight: "800", fontVariant: ["tabular-nums"] },
   pack: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
   packCopy: { flex: 1, minWidth: 0, gap: 1 },
@@ -342,10 +354,13 @@ const styles = StyleSheet.create({
   packDetail: { color: colors.secondary, fontSize: 13 },
   packQuiet: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2 },
   packHint: { flex: 1, color: colors.secondary, fontSize: 13 },
-  identity: { flex: 1, minWidth: 0, gap: 6 },
+  identity: { flex: 1, minWidth: 0, gap: 8 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  nameButton: { flex: 1, minWidth: 0 },
+  chipRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6 },
-  levelChip: { alignSelf: "flex-start", maxWidth: "100%", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4, paddingRight: 10, borderRadius: 15, backgroundColor: colors.levelSoft },
+  levelChip: { flexShrink: 1, minWidth: 0, minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4, paddingRight: 10, borderRadius: 15, backgroundColor: colors.levelSoft },
   levelBadge: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.level },
   levelNumber: { color: "#2B2200", fontSize: 12, fontWeight: "800", fontVariant: ["tabular-nums"] },
   levelTitle: { flexShrink: 1, color: colors.level, fontSize: 14, lineHeight: 18, fontWeight: "700" },

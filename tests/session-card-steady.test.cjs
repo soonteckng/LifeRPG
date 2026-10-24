@@ -15,7 +15,7 @@ function sheet(){
   '@gorhom/bottom-sheet':{BottomSheetScrollView:React.forwardRef((p,ref)=>React.createElement('Scroll',p,p.children))},
   'react-native-svg':{__esModule:true,default:host('Svg'),Defs:host('Defs'),RadialGradient:host('RG'),Rect:host('Rect'),Stop:host('Stop')},
   './AppSheet':AppSheet,'expo-haptics':{notificationAsync:async()=>{},NotificationFeedbackType:{Success:'s'}},
-  './MotionPressable':host('Press'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),'./CharacterMark':host('Companion'),
+  './ArrivalBanner':require('./helpers/arrival-banner-mock.cjs'),'./MotionPressable':host('Press'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),'./CharacterMark':host('Companion'),
   '../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{id:'me',level:2,current_xp:40,timezone:'Asia/Kuala_Lumpur'}})},
   '../services/dailyAchievementQueue':{dailyAchievementQueue:{enqueue(){}}},
  }).default;

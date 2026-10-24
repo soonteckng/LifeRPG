@@ -23,8 +23,10 @@ export interface RevealPlayer {
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
   today: { seconds: number; finds: number }; nextFindSeconds: number;
 }
-type Props<R> = { reveal: R; player: RevealPlayer; onClose: () => void; onOutfits: () => void };
+/** onOutfits gets the item to show there, so Outfits opens on its category. */
+type Props<R> = { reveal: R; player: RevealPlayer; onClose: () => void; onOutfits: (item: string) => void };
 const wearable = (g: Gift) => { const k = rewardItem(g.item)?.kind; return g.new && (k === "wearable" || k === "background" || k === "pet"); };
+const firstWearable = (gifts: Gift[]) => gifts.find(wearable)?.item;
 
 /** One thing found: its picture, name and rarity, and whether it's new or became Stardust. */
 function GiftRow({ gift }: { gift: Gift }) {
@@ -59,7 +61,8 @@ export function ExpeditionReveal({ reveal, player, onClose, onOutfits }: Props<E
   // Down the path towards you, growing as you come closer.
   const walker = useAnimatedStyle(() => ({ opacity: Math.min(1, walk.value * 3), transform: [{ translateY: (1 - walk.value) * -height * 0.26 }, { translateX: (1 - walk.value) * width * 0.05 }, { scale: 0.4 + walk.value * 0.6 }] }));
   const minutes = reveal.seconds === null ? null : Math.round(reveal.seconds / 60);
-  const found = reveal.finds.length;
+  const found = reveal.finds.length, empty = !found && reveal.stardust === 0, show = firstWearable(reveal.finds);
+  const nextFind = Math.max(1, Math.ceil(player.nextFindSeconds / 60));
   if (step === "back") {
     const size = Math.min(150, width * 0.36);
     return <View style={s.page} testID="reveal-expedition">
@@ -67,31 +70,49 @@ export function ExpeditionReveal({ reveal, player, onClose, onOutfits }: Props<E
       <View style={[s.campCopy, { top: insets.top + 40 }]}>
         <View style={s.campChip}><Ionicons name="checkmark-circle" size={15} color="#2DD4A7" /><Text style={s.campChipText}>BACK AT CAMP</Text></View>
         <Text style={s.campTitle} numberOfLines={2}>{minutes ? `${minutes} ${minutes === 1 ? "minute" : "minutes"}, done` : "Back at camp"}</Text>
-        <Text style={s.campBody}>{found ? `Your pack looks heavier · ${found} ${found === 1 ? "find" : "finds"}` : `+${reveal.stardust} Stardust from the trail`}</Text>
+        <Text style={s.campBody}>{found ? `Your pack looks heavier · ${found} ${found === 1 ? "find" : "finds"}`
+          : empty ? `Nothing found this time · your next find is ${nextFind} min away` : `+${reveal.stardust} Stardust from the trail`}</Text>
       </View>
       <Animated.View pointerEvents="none" style={[{ position: "absolute", left: width / 2 - size / 2, bottom: height * 0.13 }, walker]}>
         <Adventurer look={player.look} equipped={player.equipped} size={size} />
       </Animated.View>
       <View style={[s.bottom, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
-        <Pressable onPress={() => setStep("found")} accessibilityRole="button" accessibilityLabel="See what you found" style={s.primary}><Text style={s.primaryText}>See what you found</Text></Pressable>
+        {/* A short walk with nothing to show ends here; anything found has its own page. */}
+        {empty ? <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
+          : <Pressable onPress={() => setStep("found")} accessibilityRole="button" accessibilityLabel="See what you found" style={s.primary}><Text style={s.primaryText}>{found ? "See what you found" : "See your trail"}</Text></Pressable>}
       </View>
     </View>;
   }
-  return <View style={[s.page, s.dark, { paddingTop: insets.top + 16 }]} testID="reveal-expedition-found">
-    <ScrollView contentContainerStyle={s.scroll} showsVerticalScrollIndicator={false}>
-      <Text style={s.eyebrow}>{minutes ? `FROM YOUR ${minutes}-MINUTE WALK` : "FROM THE TRAIL"}</Text>
-      <Text style={s.heading} accessibilityRole="header">{found ? "What you found" : "Stardust on the way"}</Text>
-      <View style={s.gifts}>{reveal.finds.map((g, i) => <GiftRow key={`${g.item}-${i}`} gift={g} />)}</View>
-      <View style={s.dustRow} accessible accessibilityLabel={`${reveal.stardust} Stardust`}>
-        <StardustArt size={22} /><Text style={s.dustBig}>{`+${reveal.stardust} Stardust`}</Text>
-      </View>
-      <TodayTrail seconds={player.today.seconds} finds={player.today.finds} nextFindSeconds={player.nextFindSeconds}
-        look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
-    </ScrollView>
-    <View style={[s.bottomStatic, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
-      <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
-      {reveal.finds.some(wearable) && <Pressable onPress={onOutfits} accessibilityRole="button" accessibilityLabel="See it in Outfits" style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
+  // One screen, no scrolling: what you found side by side, then the trail map fills the rest (it scrolls).
+  return <View style={[s.page, s.dark, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }]} testID="reveal-expedition-found">
+    <Text style={s.eyebrow}>{minutes ? `FROM YOUR ${minutes}-MINUTE WALK` : "FROM THE TRAIL"}</Text>
+    <Text style={s.heading} accessibilityRole="header">{found ? "What you found" : "Stardust on the way"}</Text>
+    {found > 0 && <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.giftStrip} contentContainerStyle={s.giftCards}>
+      {reveal.finds.map((g, i) => <GiftCard key={`${g.item}-${i}`} gift={g} />)}
+    </ScrollView>}
+    <View style={s.dustRow} accessible accessibilityLabel={`${reveal.stardust} Stardust`}>
+      <StardustArt size={22} /><Text style={s.dustBig}>{`+${reveal.stardust} Stardust`}</Text>
     </View>
+    <TodayTrail fill seconds={player.today.seconds} finds={player.today.finds} nextFindSeconds={player.nextFindSeconds}
+      look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
+    <View style={s.bottomStatic}>
+      <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
+      {!!show && <Pressable onPress={() => onOutfits(show)} accessibilityRole="button" accessibilityLabel="See it in Outfits" style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
+    </View>
+  </View>;
+}
+
+/** A find as a card, for a row of them. */
+function GiftCard({ gift }: { gift: Gift }) {
+  const item = rewardItem(gift.item);
+  if (!item) return null;
+  const color = RARITY_COLOR[gift.rarity];
+  return <View style={[s.card, { borderColor: color + "66" }]} accessible accessibilityLabel={`${item.name}, ${RARITY_NAME[gift.rarity]}${gift.new ? ", new" : `, already yours, ${gift.stardust} Stardust instead`}`}>
+    <View style={[s.cardArt, { backgroundColor: color + "1F" }]}><ItemArt id={gift.item} size={52} /></View>
+    <Text style={s.cardName} numberOfLines={2}>{item.name}</Text>
+    <Text style={[s.giftRarity, { color }]} numberOfLines={1}>{RARITY_NAME[gift.rarity]}</Text>
+    {gift.new ? <View style={s.newPill}><Text style={s.newText}>NEW</Text></View>
+      : <View style={s.dustPill}><StardustArt size={13} /><Text style={s.dustText}>{`+${gift.stardust}`}</Text></View>}
   </View>;
 }
 
@@ -138,7 +159,7 @@ export function PackReveal({ reveal, onClose, onOutfits }: Props<Extract<Reveal,
     <View style={s.bottomStatic}>
       {open ? <>
         <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
-        {reveal.items.some(wearable) && <Pressable onPress={onOutfits} accessibilityRole="button" accessibilityLabel="See it in Outfits" style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
+        {!!firstWearable(reveal.items) && <Pressable onPress={() => onOutfits(firstWearable(reveal.items)!)} accessibilityRole="button" accessibilityLabel="See it in Outfits" style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
       </> : <Pressable onPress={openIt} accessibilityRole="button" accessibilityLabel={`Open your ${name} pack`} style={[s.primary, { backgroundColor: color }]}><Text style={[s.primaryText, { color: "#14111F" }]}>Open it</Text></Pressable>}
     </View>
   </View>;
@@ -153,12 +174,17 @@ const s = StyleSheet.create({
   campTitle: { color: "#FFFFFF", fontSize: 30, lineHeight: 36, fontWeight: "800", textAlign: "center", textShadowColor: "rgba(0,0,0,0.35)", textShadowRadius: 8 },
   campBody: { color: "#F3F4F6", fontSize: 16, lineHeight: 22, textAlign: "center" },
   bottom: { position: "absolute", left: 20, right: 20, bottom: 0, gap: 8 },
-  bottomStatic: { gap: 8, paddingTop: 12 },
+  bottomStatic: { gap: 4, paddingTop: 12 },
   scroll: { gap: 14, paddingBottom: 16 },
   eyebrow: { color: colors.level, fontSize: 12, letterSpacing: 1.6, fontWeight: "800", textAlign: "center" },
   heading: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "800", textAlign: "center" },
   sub: { color: colors.secondary, fontSize: 15, textAlign: "center" },
   gifts: { gap: 8 },
+  giftStrip: { flexGrow: 0, marginTop: 14, marginHorizontal: -20 },
+  giftCards: { gap: 10, paddingHorizontal: 20 },
+  card: { width: 128, alignItems: "center", gap: 4, padding: 12, borderRadius: 20, borderWidth: 1.5, backgroundColor: "rgba(255,255,255,0.04)" },
+  cardArt: { width: 72, height: 72, borderRadius: 22, alignItems: "center", justifyContent: "center", marginBottom: 2 },
+  cardName: { color: colors.text, fontSize: 14, lineHeight: 18, fontWeight: "700", textAlign: "center", minHeight: 36 },
   gift: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.05)" },
   giftArt: { width: 60, height: 60, borderRadius: 16, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   giftName: { color: colors.text, fontSize: 16, fontWeight: "700" },
@@ -167,7 +193,7 @@ const s = StyleSheet.create({
   newText: { color: "#052E25", fontSize: 11, fontWeight: "900", letterSpacing: 1 },
   dustPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, minHeight: 24, borderRadius: 12, backgroundColor: "rgba(167,139,250,0.18)" },
   dustText: { color: "#DDD6FE", fontSize: 13, fontWeight: "800" },
-  dustRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 6 },
+  dustRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingTop: 10, paddingBottom: 12 },
   dustBig: { color: "#DDD6FE", fontSize: 18, fontWeight: "800" },
   packTop: { alignItems: "center", gap: 6 },
   packCenter: { flex: 1, alignItems: "center", justifyContent: "center", gap: 16 },

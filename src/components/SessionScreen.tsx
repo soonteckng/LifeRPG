@@ -43,7 +43,8 @@ import { setupMode, type SetupMode } from "../services/setupMode";
 import { studySelection } from "../services/studySelection";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
-import SessionBackdrop from "./session/SessionBackdrop";
+import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
+import { rewardsStore } from "../hooks/useRewards";
 
 type Picker = "duration" | "area" | null;
 
@@ -97,6 +98,8 @@ export default function SessionScreen() {
     setPickerOwner(presentationScope); setPicker(null);
   }
   const [confirmEnd, setConfirmEnd] = useState(false);
+  // A protected session's one break is easy to tap by mistake, so it asks first.
+  const [confirmBreak, setConfirmBreak] = useState(false);
   // End can be asked for while the start (or a break) is still being
   // confirmed. It then waits for that answer and ends right after it, so the
   // ✕ always responds and a session is never left half-ended.
@@ -182,6 +185,24 @@ export default function SessionScreen() {
   const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && (!task || !locked && !selectableQuests.some(item => item.id === timer.linkedTaskId));
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
+  // Setting off: a fresh start walks you out of camp at dusk before the timer
+  // shows (tap to skip). Reopening a running session goes straight to it.
+  // A session started just before this screen opened (from a routine on Home, say) still sets off.
+  const [introSeen, setIntroSeen] = useState(() => phase === "running" && !timer.recoveredSession && timer.duration - timer.timeLeft <= 2 ? "setup" : phase);
+  const [intro, setIntro] = useState(false), [skipToken, setSkipToken] = useState(0);
+  if (introSeen !== phase) {
+    setIntroSeen(phase);
+    if (introSeen === "setup" && phase === "running" && !reducedMotion) setIntro(true);
+    else if (phase !== "running" && phase !== "paused") setIntro(false);
+  }
+  const [introFade] = useState(() => new Animated.Value(1));
+  useLayoutEffect(() => {
+    if (intro) { introFade.setValue(0); return; }
+    const appear = Animated.timing(introFade, { toValue: 1, duration: 450, useNativeDriver: true });
+    appear.start();
+    return () => appear.stop();
+  }, [intro, introFade]);
+  if (confirmBreak && (!onlineSurfaces || !liveTimer.hasOpenSession || liveTimer.breakSecondsLeft > 0)) setConfirmBreak(false);
   const compactSetup = phase === "setup" && !isQuest;
   // Setup sits in the middle of the free space instead of leaving a gap above Start.
   const [setupFit, setSetupFit] = useState({ view: 0, content: 0 });
@@ -313,10 +334,26 @@ export default function SessionScreen() {
   const endAcknowledgement = useRef({ ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed });
   const pendingExit = useRef<{ ownerId: typeof ownerId; source: string } | null>(null);
   const resultSessionId = endSnapshot?.sessionId ?? visibleTimer.sessionSummary?.sessionId ?? visibleTimer.sessionId;
+  // A finished session shows what the walk brought (back at camp, finds, the
+  // trail) before you leave: Done waits here until those screens are closed.
+  const rewardsOwner = ownerId ?? null;
+  const rewardsNow = useSyncExternalStore(useCallback(listener => rewardsStore.subscribe(rewardsOwner, listener), [rewardsOwner]),
+    () => rewardsStore.snapshot(rewardsOwner), () => rewardsStore.snapshot(rewardsOwner));
+  const rewardsPending = rewardsNow.reveals.length > 0 || rewardsNow.busy;
+  const [holdForRewards, setHoldForRewards] = useState(false);
+  const rewardsPendingRef = useRef(rewardsPending);
+  useEffect(() => { rewardsPendingRef.current = rewardsPending; }, [rewardsPending]);
   useEffect(() => globalSessionLifecycle.subscribe(result => {
     if (!ownerId || result.ownerId !== ownerId || result.scope !== presentationScope || result.sessionId !== (resultSessionId ?? null)) return;
+    if (!endRequested && rewardsPending) { setHoldForRewards(true); return; }
     minimise(endRequested ? "session-ended" : "completion");
-  }), [ownerId, presentationScope, resultSessionId, endRequested, minimise]);
+  }), [ownerId, presentationScope, resultSessionId, endRequested, minimise, rewardsPending]);
+  useEffect(() => {
+    if (!holdForRewards) return;
+    // Leaves once they're closed; never stranded: if they can't show, leave anyway.
+    const limit = setTimeout(() => { setHoldForRewards(false); minimise("completion"); }, rewardsPending ? 15000 : 0);
+    return () => clearTimeout(limit);
+  }, [holdForRewards, rewardsPending, minimise]);
   useEffect(() => {
     const previous = endAcknowledgement.current;
     endAcknowledgement.current = { ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed };
@@ -336,7 +373,10 @@ export default function SessionScreen() {
     const exit = () => {
       const requested = pendingExit.current;
       if (cancelled || !requested || requested.ownerId !== ownerId) return;
-      pendingExit.current = null; minimise(requested.source);
+      pendingExit.current = null;
+      // A finished session waits for its rewards screens before leaving.
+      if (requested.source === "settled-session" && rewardsPendingRef.current) { setHoldForRewards(true); return; }
+      minimise(requested.source);
     };
     if (typeof globalThis.requestAnimationFrame === "function") {
       const frame = globalThis.requestAnimationFrame(exit);
@@ -409,14 +449,15 @@ export default function SessionScreen() {
     : timer.syncStatus === "waiting" ? timer.isCompleted ? "Your finished session is saved on this phone. We’ll confirm it when you reconnect." : "Waiting to confirm your saved session state."
     : timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one.";
 
-  // While you focus, you walk the trail behind the timer (see SessionBackdrop).
-  const onTrail = phase === "running" || phase === "paused";
+  // While you focus, you walk the trail behind the timer (see SessionBackdrop),
+  // and a finished or ended session keeps its scene behind its card.
+  const onTrail = phase === "running" || phase === "paused" || phase === "completed" || phase === "ended";
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={phase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-      walking={phase === "running" && !breakActive && !timer.awaitingStart} minutes={Math.round(timer.duration / 60)}
-      area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />
+      walking={phase === "running" && !breakActive && !timer.awaitingStart} intro={intro} skipToken={skipToken} onIntroEnd={() => setIntro(false)} />
+    <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
@@ -449,9 +490,7 @@ export default function SessionScreen() {
           onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
           onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
-          {breakActive && <Text style={styles.activeTitle} accessibilityRole="timer">Break · {sessionTime(timer.breakSecondsLeft)} left. Apps unlock now and protection returns automatically.</Text>}
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.startCheckVisible ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
-            {phase !== "setup" && !timer.isCompleted && phase !== "ended" && <View style={styles.protectionStatus}><SessionProtectionControl statusOnly activeSurface={onlineSurfaces} /></View>}
             {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setupStack}>
               {/* Floats, so a background refresh never pushes the setup around. */}
@@ -494,7 +533,7 @@ export default function SessionScreen() {
           {!timer.isCompleted && <>
             <View style={styles.actionRow}>
             <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
-              onPress={timer.hasOpenSession ? () => void (breakActive ? timer.resumeTimer() : timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()) : start}
+              onPress={timer.hasOpenSession ? () => { if (breakActive) void timer.resumeTimer(); else if (timer.isRunning && timer.protectedSession) setConfirmBreak(true); else void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()); } : start}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.primaryText} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.primaryText} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
@@ -515,7 +554,12 @@ export default function SessionScreen() {
       <FocusDurationSheet visible={onlineSurfaces && !sessionSummary && picker === "duration"} seconds={timer.duration} disabled={locked} onClose={() => setPicker(null)} onSave={applyDuration} />
       {onlineSurfaces && confirmEnd && !sessionSummary && <SheetConfirmation elevated title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
         onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); if (liveTimer.actionBusy) setEndQueued(true); else endNow(); }} />}
+      {onlineSurfaces && confirmBreak && <SheetConfirmation elevated title="Take your 5-minute break?" message="You get one break each session. Your apps unlock and the timer waits for up to 5 minutes; break time isn’t recorded."
+        cancelLabel="Keep focusing" confirmLabel="Start break" onCancel={() => setConfirmBreak(false)} onConfirm={() => { setConfirmBreak(false); void timer.pauseTimer(); }} />}
     </SafeAreaView>
+    </Animated.View>
+    {intro && <SessionIntroWords minutes={Math.round(timer.duration / 60)} onSkip={() => setSkipToken(n => n + 1)}
+      area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />}
     </Animated.View>
   );
 }

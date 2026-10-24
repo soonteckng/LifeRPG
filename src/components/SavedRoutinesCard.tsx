@@ -50,7 +50,7 @@ export function fitName(name: string) {
     : { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 };
 }
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [] }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [], allStudyChips = studyChips }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
@@ -60,6 +60,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   layout?: "list" | "start" | "grid"; lead?: ReactNode; onAnyActivity?: () => void;
   /** On Home's Start row, study subjects sit beside your routines, each one tap from a session. */
   studyChips?: readonly StudyChip[];
+  /** Every study subject, for "See all" on Home's Start row (the row itself shows up to two). */
+  allStudyChips?: readonly StudyChip[];
   /** On Routines, the guide wraps your own routines (title, + and grid) to point at them. */
   wrapMine?: (mine: ReactNode) => ReactNode;
 }) {
@@ -278,7 +280,9 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const startView = layout === "start" ? <View style={s.startCard} testID="saved-routines-card">
     <View style={s.startHead}>
       <Text style={s.startTitle} accessibilityRole="header">Start</Text>
-      {!!entries.length && <SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
+      {/* See all opens everything you can start: your routines and your study subjects. */}
+      {(!!entries.length || !!allStudyChips.length) && <SeeAll count={entries.length + allStudyChips.length > limit + studyChips.length ? entries.length + allStudyChips.length : undefined}
+        accessibilityLabel="See everything you can start"
         onPress={() => { feedback(); if (active && routines.ready) { setShowDone(false); setManage(true); } else onSeeAll?.(); }} />}
     </View>
     {visibleEntries.length || lead || studyChips.length ? <View style={s.startChips}>
@@ -376,9 +380,20 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
       {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
     </View>}
-    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} attached compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title={showDone ? "Done today" : "My Routines"} subtitle={showDone ? "Finished today. Tap one to edit it." : "Tap one to edit it, or ▶ to start."} onClose={() => setManage(false)} />}>
+    <AppSheet key={`manage:${surfaceKey}`} visible={manage && active} onRequestClose={() => setManage(false)} onDismiss={afterSheetDismiss} closeInstantly={leaving} attached compact maxHeightRatio={0.82} label="routines" header={<SheetHeader title={showDone ? "Done today" : layout === "start" ? "Start" : "My Routines"} subtitle={showDone ? "Finished today. Tap one to edit it." : layout === "start" ? "Your routines and study subjects. Tap ▶ to start." : "Tap one to edit it, or ▶ to start."} onClose={() => setManage(false)} />}>
       <BottomSheetScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={[s.list, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
+        {layout === "start" && !showDone && !!allStudyChips.length && !!entries.length && <Text style={s.sheetSection} accessibilityRole="header">Routines</Text>}
         {showDone ? done.map(task => legacyRow(task, true, true)) : entries.map(entry => row(entry, true))}
+        {layout === "start" && !showDone && !!allStudyChips.length && <>
+          <Text style={s.sheetSection} accessibilityRole="header">Study</Text>
+          {allStudyChips.map(chip => <Pressable key={chip.key} disabled={anyBlocked} testID={`start-study-${chip.key}`}
+            onPress={() => { feedback(); afterManageDismiss.current = { surfaceKey, open: chip.onPress }; setManage(false); }}
+            accessibilityRole="button" accessibilityLabel={`Study ${chip.name}. ${chip.caption}`} style={[s.row, s.studyRow, anyBlocked && s.startChipOff]}>
+            <View style={[s.startPlay, { backgroundColor: areaTint(chip.color, 0.2) }]}><Ionicons name="school" size={15} color={chip.color} /></View>
+            <View style={s.detail}><Text style={s.chipName} numberOfLines={1}>{chip.name}</Text><Text style={s.chipCaption} numberOfLines={1}>{chip.caption}</Text></View>
+            <Ionicons name="play" size={16} color={chip.color} />
+          </Pressable>)}
+        </>}
         {!!done.length && <Pressable accessibilityRole="button" onPress={() => { feedback(); setShowDone(value => !value); }} style={s.manage}><Text style={s.link}>{showDone ? "Back to your routines" : `Done today (${done.length})`}</Text></Pressable>}
         {onSeeAll ? <View style={s.halves}>
           <Pressable onPress={() => edit(null)} disabled={routines.routines.length >= 32} accessibilityRole="button" accessibilityLabel="Add routine" style={[s.addRow, s.half]}><Ionicons name="add" size={20} color={colors.accent} /><Text style={s.link}>Add routine</Text></Pressable>
@@ -471,11 +486,14 @@ const s = StyleSheet.create({
   startTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },
   // Two chips to a row, wrapping, so every way to start is visible at once.
   startChips: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  startChip: { ...edge, flexBasis: "45%", flexGrow: 1, minHeight: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingLeft: 10, paddingRight: 12, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },
+  // Every Start chip is the same size, whether it's a routine, a subject or Any activity.
+  startChip: { ...edge, flexBasis: "45%", flexGrow: 1, minHeight: 78, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingLeft: 10, paddingRight: 12, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },
   startChipOff: { opacity: 0.45 },
   startPlay: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
   anyPlay: { backgroundColor: colors.accentSoft }, nudge: { marginLeft: 2 },
   chipName: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  sheetSection: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "700", letterSpacing: 0.6, textTransform: "uppercase", paddingHorizontal: 4, paddingTop: 6 },
+  studyRow: { ...edge, borderRadius: radius.row },
   chipCaption: { color: colors.secondary, fontSize: 13, lineHeight: 17 },
   startWide: { minHeight: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 28, backgroundColor: colors.primary },
   startWideText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },

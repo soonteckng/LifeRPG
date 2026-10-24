@@ -6,7 +6,7 @@ const root = path.resolve(__dirname, '..');
 
 test('the whole name block on Home opens Profile', () => {
   const home = fs.readFileSync(path.join(root, 'src/app/(tabs)/index.tsx'), 'utf8');
-  assert.match(home, /<TouchableOpacity testID="home-name" onPress=\{openProfile\} accessibilityRole="button"/);
+  assert.match(home, /<TouchableOpacity testID="home-name" style=\{styles\.nameButton\} onPress=\{openProfile\} accessibilityRole="button"/);
   assert.match(home, /testID="home-avatar"[^>]*onPress=\{openProfile\}/);
 });
 

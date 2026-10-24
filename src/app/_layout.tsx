@@ -198,8 +198,10 @@ function AppContent() {
               options={{ ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }}
             />
             {/* Settings' own pages slide in from the right, like the phone's own settings. */}
-            {/* Outfits slides in from Profile like Settings' own pages. */}
-            <Stack.Screen name="outfits" options={secondaryNativeOptions(reducedMotion)} />
+            {/* Outfits slides in from Profile like Settings' own pages; from Home's Stardust it grows out of the button, like Settings. */}
+            <Stack.Screen name="outfits" options={({ route }) => (route.params as { from?: string } | undefined)?.from === "home"
+              ? { ...secondaryNativeOptions(reducedMotion), presentation: "transparentModal", animation: "none", gestureEnabled: false, contentStyle: { backgroundColor: "transparent" } }
+              : secondaryNativeOptions(reducedMotion)} />
             <Stack.Screen name="settings-goal" options={secondaryNativeOptions(reducedMotion)} />
             <Stack.Screen name="settings-notifications" options={secondaryNativeOptions(reducedMotion)} />
             <Stack.Screen name="settings-sessions" options={secondaryNativeOptions(reducedMotion)} />

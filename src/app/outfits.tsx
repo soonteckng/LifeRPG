@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import Pressable from "../components/MotionPressable";
 import { Text } from "../components/AppText";
 import { PersonalButton, PersonalPage, p } from "../components/PersonalUI";
@@ -33,6 +33,27 @@ const BG: Record<string, [string, string]> = {
 };
 interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; title: string | null }
 
+/** Where Outfits opens to show one item: its tab and part, and what to put on. */
+export function outfitsOpening(id: string | undefined) {
+  const item = id ? rewardItem(id) : undefined;
+  if (!item) return null;
+  if (item.kind === "wearable" && item.slot && item.slot !== "face") {
+    const tab = PARTS.clothes.some(p => p.slot === item.slot) ? "clothes" as const : "gear" as const;
+    return { tab, slot: item.slot, item: item.id, wear: item };
+  }
+  if (item.kind === "pet") return { tab: "pets" as const, item: item.id, wear: item };
+  if (item.kind === "background") return { tab: "picture" as const, part: "background" as const, item: item.id, wear: item };
+  if (item.kind === "title") return { tab: "picture" as const, part: "badges" as const, item: item.id, wear: item };
+  if (item.kind === "frame") return { tab: "picture" as const, part: "frames" as const, item: item.id, frame: item.id };
+  return null;
+}
+function wearing(saved: Draft, item: RewardItem): Draft | null {
+  if (item.kind === "background") return saved.background === item.id ? null : { ...saved, background: item.id };
+  if (item.kind === "title") return saved.title === item.id ? null : { ...saved, title: item.id };
+  if (!item.slot || saved.equipped[item.slot] === item.id) return null;
+  return { ...saved, equipped: { ...saved.equipped, [item.slot]: item.id } };
+}
+
 /**
  * Camp › Outfits: your look, clothes, gear, pet and profile picture, saved to
  * your account. Frames aren't chosen: your picture always shows the highest
@@ -44,15 +65,18 @@ export default function OutfitsScreen() {
   const rewards = useRewards();
   const saved: Draft = useMemo(() => ({ look: rewards.look, equipped: rewards.equipped, background: rewards.background, title: rewards.title }),
     [rewards.look, rewards.equipped, rewards.background, rewards.title]);
+  // Opened from a reward ("See it in Outfits"): start on its category, wearing it to try.
+  const params = useLocalSearchParams<{ show?: string; from?: string }>();
+  const [opening] = useState(() => outfitsOpening(typeof params.show === "string" ? params.show : undefined));
   // Until you change something, the page simply shows your saved look.
-  const [edit, setEdit] = useState<Draft | null>(null);
+  const [edit, setEdit] = useState<Draft | null>(() => opening?.wear ? wearing(saved, opening.wear) : null);
   const draft = edit ?? saved;
-  const [tab, setTab] = useState<Tab>("look");
-  const [slot, setSlot] = useState<WearSlot>("head");
-  const [picturePart, setPicturePart] = useState<PicturePart>("frames");
+  const [tab, setTab] = useState<Tab>(opening?.tab ?? "look");
+  const [slot, setSlot] = useState<WearSlot>(opening?.slot ?? "head");
+  const [picturePart, setPicturePart] = useState<PicturePart>(opening?.part ?? "frames");
   // A frame you tap is only shown here; your real frame follows your streak.
-  const [framePreview, setFramePreview] = useState<string | null | undefined>(undefined);
-  const [selected, setSelected] = useState<string | null>(null);
+  const [framePreview, setFramePreview] = useState<string | null | undefined>(opening?.frame);
+  const [selected, setSelected] = useState<string | null>(opening?.item ?? null);
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
   const [stageWidth, setStageWidth] = useState(350);
@@ -140,7 +164,8 @@ export default function OutfitsScreen() {
       <Segmented<Tab> value={tab} onChange={openTab} track={colors.surface}
         options={[{ value: "look", label: "Look" }, { value: "clothes", label: "Clothes" }, { value: "gear", label: "Gear" }, { value: "pets", label: "Pets" }, { value: "picture", label: "Picture" }]} />
   </>;
-  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition fallback="/profile" footer={footer} pinned={pinned}>
+  const fromHome = params.from === "home";
+  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition expandFromIcon={fromHome} fallback={fromHome ? "/" : "/profile"} footer={footer} pinned={pinned}>
     <View style={s.stack}>
       {tab === "look" ? <View style={s.card}>
         <Text style={p.rowTitle}>Skin</Text>

@@ -171,6 +171,7 @@ async function pickerSetup(rows,initial={}){
     '../hooks/useReducedMotion':{useReducedMotion:()=>true},'./AppText':{Text:host('Text')},'./MotionPressable':host('Button'),
     './AppHeader':host('Header'),'./AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children):null,
     './CompletionDetails':{CompletionHero:host('Hero'),CompletionRows:host('Rows')},
+    '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),
   };
   for(const child of ['SaveSuggestedQuest','LevelUpModal','ProgressRing','SessionCountdown','FocusLengthControl','FocusDurationSheet','SheetConfirmation','session/SessionBackdrop']) mocks[`./${child}`]=host(child);
   const Screen=load('src/components/SessionScreen.tsx',mocks).default;

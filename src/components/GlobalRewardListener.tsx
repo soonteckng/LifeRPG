@@ -159,5 +159,6 @@ export default function GlobalRewardListener() {
     }} onRetry={retry} />
     <SessionSavingOverlay visible={savingShown} />
     <PostSessionCelebration insideSession={insideSession || !online} />
-    <RewardMoments insideSession={insideSession} /></>;
+    {/* Inside a session the reward screens wait until it has finished, then show before you leave it. */}
+    <RewardMoments insideSession={insideSession && (timer.hasOpenSession || timer.endingSession || timer.isRestoring)} claimKey={summary?.sessionId ?? null} /></>;
 }

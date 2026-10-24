@@ -70,44 +70,76 @@ test("a return or pack screen comes before single pop-ups, and closing it marks 
   assert.deepEqual(store.snapshot("a").moments, ["tote", "pet_owl"], "the beret was shown on the return screen; the owl still gets its pop-up");
 });
 
-test("the trail shows only while a session runs, and you set off from camp only on a fresh start", async () => {
-  const log = [];
+test("one scene for the whole session: set off at dusk, fade into a very dark night, then one fade into morning", async () => {
+  const log = [], ended = [];
   let reduced = false;
+  const AView = host("AView");
   const mod = load("src/components/session/SessionBackdrop.tsx", {
-    "react-native": { View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, absoluteFill: {} }, useWindowDimensions: () => ({ width: 390, height: 844 }) },
-    "react-native-reanimated": { __esModule: true, default: { View: host("AView") }, Easing: { inOut: x => x, quad: 0 }, runOnJS: f => f, useAnimatedStyle: () => ({}), useSharedValue: v => ({ value: v }), withDelay: (_d, x) => x, withTiming: x => x },
+    "react-native": { View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, absoluteFill: {} }, useWindowDimensions: () => ({ width: 390, height: 844 }),
+      Animated: { View: host("RNView"), Value: class { constructor(v) { this.v = v; } }, timing: (_v, config) => ({ start() { log.push(["words", config.toValue, config.delay]); }, stop() {} }) } },
+    "react-native-reanimated": { __esModule: true, default: { View: AView }, Easing: { inOut: x => x, quad: 0 }, interpolate: (v, i, o) => o[0] + (o[1] - o[0]) * v,
+      runOnJS: f => f, useAnimatedStyle: fn => fn(), useSharedValue: v => React.useRef({ value: v }).current, withDelay: (delay, x) => { log.push(["delay", delay]); return x; },
+      withTiming: (to, config, done) => { log.push(["timing", to, config?.duration]); done?.(true); return to; } },
     "../AppText": { Text: host("Text") }, "../adventurer/AdventurerBack": host("Walker"),
-    "./TrailScenes": { NightTrail: props => { log.push(["trail", props.light, props.walking]); return React.createElement("Night", props); }, CampScene: host("Camp") },
+    "./TrailScenes": { TrailScene: props => React.createElement("Scene", props), FireGlow: host("Fire"), Fireflies: host("Flies") },
     "../../hooks/useRewards": { useRewards: () => ({ look: LOOK, equipped: {}, today: { seconds: 3000, finds: 2 } }) },
     "../../hooks/useReducedMotion": { useReducedMotion: () => reduced },
   });
   const Backdrop = mod.default;
-  const props = (phase, progress = 0.1, walking = true) => ({ phase, progress, walking, minutes: 45, area: "Learning" });
+  const props = (phase, progress = 0.1, intro = false, skipToken = 0) => ({ phase, progress, walking: phase === "running", intro, skipToken, onIntroEnd: () => ended.push("end") });
+  const lights = r => r.root.findAllByType("Scene").map(n => n.props.light);
+  const layer = (r, light) => { let n = r.root.findAllByType("Scene").find(x => x.props.light === light); while (n && n.type !== "AView") n = n.parent; return n; };
+  const opacity = node => [].concat(node.props.style).reduce((o, x) => (x && "opacity" in x ? x.opacity : o), undefined);
   let r; await act(async () => { r = create(React.createElement(Backdrop, props("setup"))); });
   assert.equal(r.toJSON(), null, "nothing behind setup");
-  await act(async () => r.update(React.createElement(Backdrop, props("running"))));
-  const off = () => r.root.findAll(n => typeof n.type === "string" && n.props.testID === "session-setting-off");
-  assert.equal(off().length, 1, "a fresh start sets off from camp");
-  assert.match(JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children)), /SETTING OFF.*Off to the Lantern Lake.*45 min · Learning.*Tap anywhere to skip/);
-  await act(async () => r.root.findByProps({ accessibilityLabel: "Skip" }).props.onPress());
-  assert.equal(off().length, 0, "tap skips it");
-  await act(async () => r.update(React.createElement(Backdrop, props("paused", 0.95, false))));
-  assert.deepEqual(log.at(-1).slice(1), [0.84, false], "dawn near the end; standing still while paused");
+  // A fresh start: the same place in three lights, one over another.
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.01, true))));
+  assert.deepEqual(lights(r), ["night", "morning", "dusk"], "one scene, not two: dusk and morning fade over the night");
+  assert.ok(log.some(e => e[0] === "delay" && e[1] === mod.WALK_MS), "you walk away first, then the light changes");
+  assert.ok(log.some(e => e[0] === "timing" && e[1] === 0 && e[2] === mod.NIGHT_FADE_MS), "dusk fades into night in one go");
+  assert.equal(mod.NIGHT_FADE_MS, 2000);
+  assert.deepEqual(ended, ["end"], "the timer comes back once you're on your way");
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.5, false))));
+  assert.equal(opacity(layer(r, "dusk")), 0, "night while you focus");
+  assert.equal(opacity(layer(r, "morning")), 0);
+  // Near the end, one slow fade into morning, never a change every second.
+  log.length = 0;
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.91))));
   await act(async () => r.update(React.createElement(Backdrop, props("running", 0.95))));
-  assert.equal(off().length, 0, "resuming never sets off again");
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.99))));
+  assert.deepEqual(log.filter(e => e[0] === "timing"), [["timing", 1, mod.MORNING_FADE_MS]], "one fade, started once");
+  assert.equal(opacity(layer(r, "morning")), 1);
+  // Finished: the same morning stays behind the card.
+  await act(async () => r.update(React.createElement(Backdrop, props("completed", 1))));
+  assert.deepEqual(lights(r), ["night", "morning", "dusk"]);
+  assert.equal(opacity(layer(r, "morning")), 1, "the session card sits on the same scene, not a black screen");
+  // Ending early keeps the night.
+  await act(async () => r.update(React.createElement(Backdrop, props("ended", 0.95))));
+  await act(async () => r.update(React.createElement(Backdrop, props("ended", 0.96))));
+  assert.equal(opacity(layer(r, "morning")), 0);
   await act(async () => r.unmount());
-  // Reopening a session that was already running goes straight to the trail.
-  await act(async () => { r = create(React.createElement(Backdrop, props("running"))); });
-  assert.equal(off().length, 0);
+  // Skipping finishes quickly.
+  ended.length = 0; log.length = 0;
+  await act(async () => { r = create(React.createElement(Backdrop, props("running", 0.01, true, 0))); });
+  ended.length = 0; log.length = 0;
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.01, true, 1))));
+  assert.ok(log.some(e => e[0] === "timing" && e[1] === 0 && e[2] === 700), "a skip fades to night quicker");
+  assert.equal(ended.length, 1);
   await act(async () => r.unmount());
-  reduced = true;
-  await act(async () => { r = create(React.createElement(Backdrop, props("setup"))); });
-  await act(async () => r.update(React.createElement(Backdrop, props("running"))));
-  assert.equal(off().length, 0, "less motion: no walk-off");
+  // The words while you set off; tap anywhere to skip.
+  let skips = 0;
+  await act(async () => { r = create(React.createElement(mod.SessionIntroWords, { minutes: 45, area: "Learning", onSkip: () => skips++ })); });
+  assert.match(JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children)), /SETTING OFF.*Off to the Lantern Lake.*45 min · Learning.*Tap anywhere to skip/);
+  assert.ok(log.some(e => e[0] === "words" && e[1] === 0 && e[2] === mod.WALK_MS), "the words fade as the light changes");
+  await act(async () => r.root.findByProps({ accessibilityLabel: "Skip" }).props.onPress());
+  assert.equal(skips, 1);
   await act(async () => r.unmount());
   const screen = fs.readFileSync(path.join(root, "src/components/SessionScreen.tsx"), "utf8");
   assert.match(screen, /<SessionBackdrop phase=\{phase\}/);
+  assert.match(screen, /if \(introSeen === "setup" && phase === "running" && !reducedMotion\) setIntro\(true\)/, "you set off only on a fresh start, and not with less motion");
   assert.match(screen, /style=\{\[styles\.screen, onTrail && styles\.onTrail\]\}/, "the screen is see-through only while on the trail");
+  const scenes = fs.readFileSync(path.join(root, "src/components/session/TrailScenes.tsx"), "utf8");
+  assert.match(scenes, /night: \{ skyTop: "#03050C"/, "night is very dark; only the timer is bright");
 });
 
 test("return and pack screens: walk back, see what you found and today's trail; open the pack, then its contents", async () => {
@@ -127,14 +159,23 @@ test("return and pack screens: walk back, see what you found and today's trail; 
   const reveal = { id: "r", kind: "expedition", seconds: 2700, finds: [{ item: "beret", rarity: "common", new: true, stardust: 0 }, { item: "tote", rarity: "common", new: false, stardust: 5 }], stardust: 14 };
   const words = r => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
   const press = (r, label) => act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === label)[0].props.onPress());
-  let r; await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal, player, onClose: () => log.push("close"), onOutfits: () => log.push("outfits") })); });
+  let r; await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal, player, onClose: () => log.push("close"), onOutfits: item => log.push(`outfits:${item}`) })); });
   assert.ok(r.root.findAllByType("Camp").length && r.root.findAllByType("Adventurer").length, "back at camp, walking in");
   assert.match(words(r), /BACK AT CAMP.*45 minutes, done.*Your pack looks heavier · 2 finds/);
   await press(r, "See what you found");
   assert.match(words(r), /FROM YOUR 45-MINUTE WALK.*What you found.*Red beret.*NEW.*Canvas tote.*\+5.*\+14 Stardust/);
   assert.deepEqual(r.root.findByType("Trail").props.seconds, 4500, "today's trail so far");
   await press(r, "See it in Outfits"); await press(r, "Continue");
-  assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits", "close"]);
+  assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits:beret", "close"], "Outfits opens on the new find");
+  assert.equal(r.root.findByType("Trail").props.fill, true, "the trail fills the page, no gap below");
+  await act(async () => r.unmount());
+  // A short session with nothing yet: say so kindly, and how far the next find is.
+  log.length = 0;
+  await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, seconds: 60, finds: [], stardust: 0 }, player: { ...player, nextFindSeconds: 1320 }, onClose: () => log.push("close"), onOutfits() {} })); });
+  assert.match(words(r), /Nothing found this time · your next find is 22 min away/);
+  assert.equal(r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === "See what you found").length, 0, "no empty page to open");
+  await press(r, "Continue");
+  assert.deepEqual(log.filter(x => x !== "haptic"), ["close"]);
   await act(async () => r.unmount());
   // A test find has no session length.
   await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, seconds: null, finds: [], stardust: 6 }, player, onClose() {}, onOutfits() {} })); });
@@ -158,7 +199,7 @@ test("the pop-up host shows a return or pack screen first, and closing it marks 
     Animated: { View: host("AView"), Value: class { setValue() {} interpolate() { return 0; } }, spring: () => ({ start() {}, stop() {} }), timing: () => ({}), loop: () => ({ start() {}, stop() {} }) }, Easing: { linear: 0 } };
   const Moments = load("src/components/RewardMoments.tsx", {
     "react-native": native, "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    "expo-router": { useRouter: () => ({ push: to => log.push(`go:${to}`) }) },
+    "expo-router": { useRouter: () => ({ push: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?show=${to.params?.show}`) }) },
     "react-native-svg": { __esModule: true, default: host("Svg"), G: host("G"), Path: host("Path") }, "./MotionPressable": host("Press"), "./AppText": { Text: host("Text") },
     "./adventurer/ItemArt": host("Item"), "./adventurer/ProfilePicture": host("Picture"),
     "../context/UserContext": { useUser: () => ({ profile: { id: "u", level: 4, current_xp: 1, streak_count: 1 } }) }, "../hooks/useRewards": { useRewards: () => rewards() },
@@ -173,8 +214,8 @@ test("the pop-up host shows a return or pack screen first, and closing it marks 
   await wait();
   assert.equal(r.root.findByType("Modal").props.visible, true);
   assert.equal(r.root.findAllByType("PackOpen").length, 1); assert.equal(r.root.findAllByType("Picture").length, 0, "the owl waits");
-  await act(async () => r.root.findByType("PackOpen").props.onOutfits());
-  assert.deepEqual(log, ["reveal:pack:x", "go:/outfits"]);
+  await act(async () => r.root.findByType("PackOpen").props.onOutfits("bg_meadow"));
+  assert.deepEqual(log, ["reveal:pack:x", "go:/outfits?show=bg_meadow"], "Outfits opens on what you got");
   await act(async () => r.update(React.createElement(Moments, { insideSession: false }))); await wait();
   assert.equal(r.root.findAllByType("PackOpen").length, 0);
   assert.match(JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children)), /Barn owl joined you/, "then the pop-ups");
@@ -183,7 +224,7 @@ test("the pop-up host shows a return or pack screen first, and closing it marks 
 
 test("Home shows your Stardust beside you and today's supply pack in Today", () => {
   const home = fs.readFileSync(path.join(root, "src/app/(tabs)/index.tsx"), "utf8");
-  assert.match(home, /testID="home-stardust" onPress=\{\(\) => router\.navigate\("\/outfits"\)\}/);
+  assert.match(home, /testID="home-stardust" onPress=\{\(\) => openFrom\(stardustIcon, "\/outfits"\)\}/, "Outfits grows from the Stardust chip, like Settings and Profile");
   assert.match(home, /accessibilityLabel=\{`\$\{rewards\.stardust\} Stardust\. Open Outfits`\}/);
   assert.match(home, /<HomePack tier=\{rewards\.pack\.tier\} ready=\{rewards\.pack\.goalReached && !rewards\.pack\.claimed\}/);
   assert.match(home, /accessibilityLabel=\{`Open today's \$\{name\} pack`\}/);

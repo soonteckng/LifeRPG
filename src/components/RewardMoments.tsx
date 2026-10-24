@@ -40,7 +40,7 @@ export function momentCopy(item: RewardItem): { eyebrow: string; title: string; 
  * then one pop-up for each other thing earned: a pet, a badge, or the next
  * streak frame. It waits for other sheets and never shows during a session.
  */
-export default function RewardMoments({ insideSession }: { insideSession: boolean }) {
+export default function RewardMoments({ insideSession, claimKey = null }: { insideSession: boolean; claimKey?: string | null }) {
   const { profile } = useUser();
   const rewards = useRewards();
   const router = useRouter();
@@ -55,6 +55,8 @@ export default function RewardMoments({ insideSession }: { insideSession: boolea
   useLayoutEffect(() => { claim.current = rewards.claimSessions; });
   const progress = `${profile.id}:${profile.level}:${profile.current_xp}:${profile.streak_count}`;
   useEffect(() => { if (rewards.online && profile.id) void claim.current(); }, [rewards.online, profile.id, progress]);
+  // And as soon as a finished session's result arrives, so its finds are ready by the time you tap Done.
+  useEffect(() => { if (claimKey && rewards.online) void claim.current(); }, [claimKey, rewards.online]);
 
   const reveal = rewards.reveals[0];
   const id = reveal ? undefined : rewards.moments[0];
@@ -76,16 +78,18 @@ export default function RewardMoments({ insideSession }: { insideSession: boolea
   }, [visible, activityId]);
   const player = { look: rewards.look, equipped: rewards.equipped, level: profile.level, background: rewards.background, frame: rewards.frame,
     today: rewards.today, nextFindSeconds: rewards.nextFindSeconds };
-  const closeReveal = (outfits: boolean) => { if (!reveal) return; rewards.dismissReveal(reveal.id); if (outfits) router.push("/outfits"); };
+  // "See it in Outfits" opens Outfits on that item's own category, previewing it.
+  const showInOutfits = (item: string) => router.push({ pathname: "/outfits", params: { show: item } });
+  const closeReveal = (show: string | null) => { if (!reveal) return; rewards.dismissReveal(reveal.id); if (show) showInOutfits(show); };
   return <Modal testID="reward-moment" visible={visible} transparent animationType="fade" statusBarTranslucent
-    onRequestClose={() => { if (reveal) closeReveal(false); else if (id) rewards.dismissMoment(id); }}>
+    onRequestClose={() => { if (reveal) closeReveal(null); else if (id) rewards.dismissMoment(id); }}>
     {visible && reveal && (reveal.kind === "pack"
-      ? <PackReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(false)} onOutfits={() => closeReveal(true)} />
-      : <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(false)} onOutfits={() => closeReveal(true)} />)}
+      ? <PackReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)} onOutfits={closeReveal} />
+      : <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)} onOutfits={closeReveal} />)}
     {visible && !reveal && item && <Moment key={item.id} item={item} left={rewards.moments.length} level={profile.level} look={rewards.look} equipped={rewards.equipped} background={rewards.background}
       streak={profile.streak_count ?? 0}
       onClose={() => rewards.dismissMoment(item.id)}
-      onOutfits={() => { rewards.dismissMoment(item.id); router.push("/outfits"); }} />}
+      onOutfits={() => { rewards.dismissMoment(item.id); showInOutfits(item.id); }} />}
   </Modal>;
 }
 

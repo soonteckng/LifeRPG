@@ -105,29 +105,44 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
   stop();
 });
 
-async function outfits({ online = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100 } = {}) {
+async function outfits({ online = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {} } = {}) {
   const log = [];
   const rewards = {
     online, busy: false, stardust, owned, earned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame, title: null,
     saveAvatar: async draft => { log.push(["save", draft]); return { ok: true, value: {} }; },
     buy: async id => { log.push(["buy", id]); return { ok: true, value: {} }; },
   };
-  const Screen = load("src/app/outfits.tsx", {
+  const mod = load("src/app/outfits.tsx", {
     "react-native": { ...native, useWindowDimensions: () => ({ width: 390, height: 844 }) }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
     "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", null, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
     "../components/adventurer/Adventurer": host("Adventurer"), "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
-    "expo-router": { useRouter: () => ({ back: () => log.push(["back"]) }) },
+    "expo-router": { useRouter: () => ({ back: () => log.push(["back"]) }), useLocalSearchParams: () => params },
     "react-native-svg": svg, "../components/adventurer/ProfilePicture": host("Picture"),
-  }).default;
+  }), Screen = mod.default;
   let r; await act(async () => { r = create(React.createElement(Screen)); });
   const press = async label => act(async () => r.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === "function")[0].props.onPress());
   const tab = async value => act(async () => r.root.findByType("Segmented").props.onChange(value));
   const button = title => r.root.findAllByType("Button").find(b => b.props.title === title);
   const words = () => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
-  return { r, log, press, tab, button, words, preview: () => r.root.findByType("Adventurer").props };
+  return { r, log, press, tab, button, words, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
 }
+
+test("See it in Outfits opens on the item's own category, already tried on", async () => {
+  const ui = await outfits({ owned: ["cardigan", "beret", "pet_owl"], params: { show: "pet_owl" } });
+  const opening = ui.opening;
+  assert.equal(opening("pet_owl").tab, "pets", "a pet opens Pets");
+  assert.deepEqual([opening("frame_streak_30").tab, opening("frame_streak_30").part], ["picture", "frames"], "a frame opens Picture › Frames");
+  assert.equal(opening("title_scholar").part, "badges", "a badge opens Picture › Badges");
+  assert.equal(opening("beret").tab, "clothes");
+  assert.equal(opening("beret").slot, "head", "clothes open on their own slot");
+  assert.equal(opening("nonsense"), null, "anything else opens Outfits as usual");
+  try {
+    assert.equal(ui.r.root.findByType("Segmented").props.value, "pets");
+    assert.equal(ui.button("Save look").props.disabled, false, "the owl is tried on, ready to keep");
+  } finally { await act(async () => ui.r.unmount()); }
+});
 
 test("Outfits wears what you own, previews what you don't, and saves then goes back to Profile", async () => {
   const ui = await outfits();
@@ -372,7 +387,7 @@ test("the reward pop-up: one at a time, never during a session or over another s
       Animated: { View: host("AView"), Value: class { constructor(v) { this.v = v; } setValue() {} interpolate() { return 0; } }, spring: () => ({ start() {}, stop() {} }), timing: () => ({}), loop: () => ({ start() {}, stop() {} }) },
       Easing: { linear: 0 } },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    "expo-router": { useRouter: () => ({ push: to => log.push(`go:${to}`) }) },
+    "expo-router": { useRouter: () => ({ push: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?show=${to.params?.show}`) }) },
     "react-native-svg": svg, "./MotionPressable": host("Press"), "./AppText": { Text: host("Text") },
     "./adventurer/ItemArt": host("Item"), "./adventurer/ProfilePicture": host("Picture"),
     "../context/UserContext": { useUser: () => ({ profile }) }, "../hooks/useRewards": { useRewards: () => rewards() },
@@ -403,7 +418,7 @@ test("the reward pop-up: one at a time, never during a session or over another s
     await render(false);
     assert.match(words(), /NEW FRIEND.*Barn owl joined you.*For 10 hours of focus/);
     await press("See it in Outfits");
-    assert.deepEqual(log.filter(x => x.startsWith("seen") || x.startsWith("go")), ["seen:frame_streak_30", "seen:pet_owl", "go:/outfits"]);
+    assert.deepEqual(log.filter(x => x.startsWith("seen") || x.startsWith("go")), ["seen:frame_streak_30", "seen:pet_owl", "go:/outfits?show=pet_owl"], "Outfits opens on the pet, in Pets");
     moments = ["beret"]; sheets = 1; await render(false);
     assert.equal(r.root.findByType("Modal").props.visible, false, "waits for another sheet to close");
     sheets = 0; await render(false);

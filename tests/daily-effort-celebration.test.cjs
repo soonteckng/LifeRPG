@@ -194,7 +194,7 @@ async function resultHarness(overrides={}) {
     "@gorhom/bottom-sheet":{BottomSheetScrollView:host("Scroll")},
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./AppSheet":props=>React.createElement("Sheet",props,props.header,props.children,props.footer),
-    "./MotionPressable":host("Button"),"./ProgressRing":host("Ring"),"./CharacterMark":host("Companion"),"./SaveSuggestedQuest":()=>null,
+    "./ArrivalBanner":require("./helpers/arrival-banner-mock.cjs"),"./MotionPressable":host("Button"),"./ProgressRing":host("Ring"),"./CharacterMark":host("Companion"),"./SaveSuggestedQuest":()=>null,
     "../context/UserContext":{useUser:()=>({hapticsEnabled:false,profile})},"expo-haptics":{},
     "../services/dailyAchievementQueue":{dailyAchievementQueue:queue},
   }).default;

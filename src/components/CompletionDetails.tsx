@@ -6,6 +6,7 @@ import { type } from "../constants/typography";
 import { durationLabel } from "../utils/sessionSetup";
 import { Text } from "./AppText";
 import ProgressRing from "./ProgressRing";
+import ArrivalBanner from "./ArrivalBanner";
 
 export type CompletionData = {
   durationSeconds: number;
@@ -18,16 +19,8 @@ export type CompletionData = {
 // Presentation only: neither surface awards, resets nor dismisses a session.
 export function CompletionHero({ seconds, title, levelUp = false, compact = false }: {seconds: number; title?: string; levelUp?: boolean; compact?: boolean}) {
   const {fontScale} = useWindowDimensions();
-  if (compact) return <View style={s.compactHero}>
-    <View style={[s.badge, fontScale > 1.3 && s.badgeSmall]}>
-      <Ionicons name={levelUp ? "sparkles" : "checkmark"} size={26} color={colors.accent} />
-    </View>
-    <View style={s.compactHeroCopy}>
-      <Text style={s.caption}>Time recorded</Text>
-      <Text style={s.compactTime}>{durationLabel(seconds)}</Text>
-      {!!title && <Text style={s.compactQuest}>{title}</Text>}
-    </View>
-  </View>;
+  // The session card: you back at camp in the morning, with the time recorded.
+  if (compact) return <ArrivalBanner seconds={seconds} title={title} levelUp={levelUp} />;
   return <View style={s.hero}>
     <ProgressRing size={fontScale > 1.3 ? 112 : 144} progress={1} stroke={8}>
       <Ionicons name={levelUp ? "sparkles-outline" : "checkmark"} size={52} color={colors.accent} />

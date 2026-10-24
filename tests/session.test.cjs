@@ -556,7 +556,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       p.visible && React.createElement("Button",{accessibilityLabel:"Done ending session",onPress:p.onClose},"Done")),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
     "./SessionCountdown":p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"})),
-    "./session/SessionBackdrop":p=>React.createElement("Backdrop",p),
+    "./session/SessionBackdrop":{__esModule:true,default:p=>React.createElement("Backdrop",p),SessionIntroWords:p=>React.createElement("IntroWords",p)},
     "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
     "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
@@ -565,6 +565,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "../hooks/useSavedRoutines":{useSavedRoutines:()=>savedRoutines},
     "./SubjectSetupRow":p=>React.createElement("SubjectRow",p),
     "../hooks/useReducedMotion":{useReducedMotion:()=>motionPreference.value},
+    "../hooks/useRewards":require("./helpers/rewards-store-mock.cjs"),
   }, cache).default;
   let renderer;
   await act(async()=>{renderer=create(React.createElement(Screen));});
@@ -1530,6 +1531,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
     "@gorhom/bottom-sheet":{BottomSheetScrollView:CompletionScroll},
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
+    "./ArrivalBanner":require("./helpers/arrival-banner-mock.cjs"),
     "@expo/vector-icons":{Ionicons:host("Icon")},
     "./ProgressRing":host("Ring"),"./CharacterMark":host("Companion"),
     "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
@@ -1556,7 +1558,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(actions.findByType('Button').props.accessibilityRole,'button');
     assert.equal(text(actions.findByType('Button')),'Done');
     assert.equal(actions.findByType('GuidedBoundary').props.compact,true);
-    assert.ok(renderer.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===56)),'the compact hero shows its badge');
+    assert.equal(renderer.root.findAllByProps({testID:'session-arrival'}).length,1,'the card opens on the arrival banner');
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
     assert.match(text(renderer.root),/Character XP\+1/);
@@ -1576,7 +1578,7 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     fontScale=1.6;
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
-    assert.ok(renderer.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'large text gets a smaller decorative badge instead of reducing text or hiding actions');
+    assert.equal(renderer.root.findAllByProps({testID:'session-arrival'}).length,1,'large text keeps the arrival banner, which grows with its words, and the actions');
     assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
     assert.equal(scrollResets.length,2);
     await act(async()=>renderer.root.findByType("Button").props.onPress());
@@ -1769,6 +1771,40 @@ test("repeated terminal-clear publications only dismiss the anchored session rou
     assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,1);
   }finally{await ui.cleanup();}
 });
+test("the 5-minute break asks first; keeping focus changes nothing", async () => {
+  const ui = await screenSetup({hasOpenSession:true,isRunning:true,protectedSession:true,breakUsed:false,breakSecondsLeft:0});
+  try {
+    const confirm = () => ui.root().findAllByType("Confirm").find(node => node.props.title === "Take your 5-minute break?");
+    assert.equal(confirm(), undefined);
+    await ui.press("5-min break");
+    assert.ok(confirm(), "a tap asks before the break starts");
+    assert.equal(confirm().props.confirmLabel, "Start break");
+    assert.equal(confirm().props.cancelLabel, "Keep focusing");
+    assert.equal(ui.calls.filter(c => c[0] === "pause").length, 0, "nothing paused yet");
+    await act(async () => confirm().props.onCancel());
+    assert.equal(confirm(), undefined);
+    assert.equal(ui.calls.filter(c => c[0] === "pause").length, 0, "keeping focus changes nothing");
+    await ui.press("5-min break");
+    await act(async () => confirm().props.onConfirm());
+    assert.equal(ui.calls.filter(c => c[0] === "pause").length, 1, "Start break starts it once");
+    assert.equal(confirm(), undefined);
+  } finally { await ui.cleanup(); }
+});
+
+test("a finished session shows its rewards before going back to the app", async () => {
+  const rewards = require("./helpers/rewards-store-mock.cjs");
+  rewards.set({ reveals: [{ id: "expedition:s1", kind: "expedition" }] });
+  const ui = await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{questTitle:"Read",durationSeconds:1800,xpEarned:30,goldEarned:5}});
+  try {
+    await ui.update({isCompleted:false,sessionSummary:null,summaryViewed:true});
+    await act(async () => { await new Promise(done => setTimeout(done, 20)); });
+    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 0, "Done stays here while the return screen shows");
+    await act(async () => rewards.set({ reveals: [] }));
+    await act(async () => { await new Promise(done => setTimeout(done, 20)); });
+    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 1, "closing it goes back to the app, last");
+  } finally { rewards.reset(); await ui.cleanup(); }
+});
+
 test("a pending protected control keeps its label and shows busy feedback after the first tap", async () => {
   const ui = await screenSetup({hasOpenSession:true,isRunning:true,protectedSession:true,breakUsed:false,breakSecondsLeft:0,actionBusy:true});
   try {

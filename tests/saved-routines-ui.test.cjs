@@ -360,3 +360,21 @@ test('Home passes up to two study subjects, most recently studied first, and rou
   assert.match(home, /\.slice\(0, 2\)/);
   assert.match(home, /limit=\{Math\.max\(1, 3 - studyChips\.length\)\} suggestions=\{false\} studyChips=\{studyChips\}/);
 });
+test('Home Start: See all lists your routines and every study subject, and a subject starts once the sheet has closed',async()=>{
+ const studied=[];const chip=(key,name,caption)=>({key,name,caption,color:'#60A5FA',onPress:()=>studied.push(key)});
+ const h=await heldStartCard({layout:'start',onSeeAll:()=>{},studyChips:[chip('c1','Mathematics','Revise · 2 days ago')],allStudyChips:[chip('c1','Mathematics','Revise · 2 days ago'),chip('c2','History','Study')]});
+ try{
+  await act(async()=>press(h.ui.root,'See everything you can start'));
+  const sheet=manageSheet(h.ui.root);assert.equal(sheet.props.visible,true);
+  const words=JSON.stringify(sheet.findAllByType('Text').map(t=>t.props.children));
+  assert.match(words,/Routines.*Study/,'routines, then study, each with its own heading');
+  const labels=sheet.findAllByType('Press').map(x=>x.props.accessibilityLabel);
+  assert.ok(labels.includes('Start routine Review notes'));
+  assert.ok(labels.includes('Study Mathematics. Revise · 2 days ago'));assert.ok(labels.includes('Study History. Study'),'every subject, not only the ones on the card');
+  await act(async()=>press(h.ui.root,'Study History. Study'));
+  assert.deepEqual(studied,[],'it waits for the sheet to slide away');
+  assert.equal(manageSheet(h.ui.root).props.visible,false);
+  await act(async()=>manageSheet(h.ui.root).props.onDismiss());
+  assert.deepEqual(studied,['c2']);
+ }finally{await h.cleanup();}
+});

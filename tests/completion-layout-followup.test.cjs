@@ -40,7 +40,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     '@gorhom/bottom-sheet':{BottomSheetScrollView:Scroll},
     '@expo/vector-icons':{Ionicons:host('Icon')},
     './ProgressRing':host('Ring'),'./CharacterMark':host('Companion'),
-    './MotionPressable':host('Button'),
+    './ArrivalBanner':require('./helpers/arrival-banner-mock.cjs'),'./MotionPressable':host('Button'),
     './SaveSuggestedQuest':() => saveVisible ? React.createElement('Button',{},'Save as quest') : null,
     './AppSheet':values=>React.createElement('Sheet',values,values.header,values.children,React.createElement('NativeFooter',null,values.footer)),
     '../context/UserContext':{useUser:()=>({hapticsEnabled:false,profile:{level:1,current_xp:1}})},
@@ -93,7 +93,7 @@ test('short screen with large text keeps measured actions visible while details 
     assert.ok(height-28-72-210>0,'the body has remaining space after real header and action heights');
     assert.equal(ui.scroll().props.style.flex,1);
     assert.equal([].concat(ui.actions().props.style)[0].flexShrink,0);
-    assert.ok(ui.tree.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'large text uses the smaller badge');
+    assert.equal(ui.tree.root.findAllByProps({testID:'session-arrival'}).length,1,'large text keeps the same arrival banner');
     assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Done']);
   } finally {await ui.cleanup();}
 });
@@ -126,7 +126,7 @@ test('offline pending Done stays reachable during sync and the same result becom
     await ui.update({visible:true,pending:false,localSaved:false,syncBusy:false,recovered:true,xpEarned:1,areaXpEarned:null,creditVersion:1,completedAtMs:Date.UTC(2026,9,13,4)});
     assert.match(text(ui.tree.root),/Earlier session saved/);
     assert.match(text(ui.tree.root),/Finished.*13 Oct 2026/);
-    assert.ok(ui.tree.root.findAllByType('View').some(view=>[].concat(view.props.style).some(style=>style?.width===48)),'online and offline use the same compact hero');
+    assert.equal(ui.tree.root.findAllByProps({testID:'session-arrival'}).length,1,'online and offline use the same arrival banner');
     assert.match(text(ui.tree.root),/Character XP\+1/);
   } finally {await ui.cleanup();}
 });
