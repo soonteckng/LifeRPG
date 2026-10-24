@@ -114,7 +114,7 @@ export const SessionIntroWords = memo(function SessionIntroWords({ minutes, area
     <Pressable style={fill} onPress={onSkip} accessibilityRole="button" accessibilityLabel="Skip">
       <View style={s.copy} pointerEvents="none">
         <Text style={s.eyebrow}>SETTING OFF</Text>
-        <Text style={s.title} numberOfLines={2}>{`Off to the ${trailZone(trailStops(rewards.today.seconds)).name}`}</Text>
+        <Text style={s.title} numberOfLines={2}>{`Off to the ${trailZone(trailStops(rewards.today.seconds, rewards.trail?.findSeconds)).name}`}</Text>
         <Text style={s.detail} numberOfLines={1}>{`${minutes} min · ${area}`}</Text>
       </View>
       <Text style={s.skip}>Tap anywhere to skip</Text>

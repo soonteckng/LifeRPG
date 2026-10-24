@@ -23,7 +23,7 @@ function load(file, mocks = {}, cache = new Map()) {
 const host = type => function Host(props) { return React.createElement(type, props, props.children); };
 const LOOK = { skin: "3", hair: "short", hairColor: "darkbrown", glasses: false };
 
-test("finds are dealt one by one with a buzz each, the Stardust counts up, and you walk on along the trail", async () => {
+test("every find lands on one big card in turn with a buzz each, the Stardust counts up, then Continue opens the trail", async () => {
   const log = [];
   global.requestAnimationFrame = cb => setTimeout(() => cb(Date.now()), 16);
   global.cancelAnimationFrame = id => clearTimeout(id);
@@ -40,23 +40,22 @@ test("finds are dealt one by one with a buzz each, the Stardust counts up, and y
     "./TodayTrail": host("Trail"), "../../hooks/useReducedMotion": { useReducedMotion: () => false },
     "../../utils/tapHaptics": { tapHaptic: style => log.push(["haptic", style]) },
   });
-  const player = { look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null, today: { seconds: 4500, finds: 3 }, nextFindSeconds: 420 };
+  const player = { look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null, today: { seconds: 4500, finds: 3 }, nextFindSeconds: 420, trail: { findSeconds: 1200, stops: 6, complete: false } };
   const reveal = { id: "r", kind: "expedition", seconds: 2700, stardust: 14,
     finds: [{ item: "beret", rarity: "common", new: true, stardust: 0 }, { item: "tote", rarity: "common", new: false, stardust: 5 }, { item: "pet_owl", rarity: "epic", new: true, stardust: 0 }] };
   let r; await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal, player, onClose() {}, onOutfits() {} })); });
-  await act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === "See what you found")[0].props.onPress());
   const dust = () => r.root.findAll(n => n.type === "Text" && typeof n.props.children === "string" && / Stardust$/.test(n.props.children))[0].props.children;
   assert.equal(dust(), "+0 Stardust", "the Stardust waits for the cards");
   const deals = log.filter(e => e[0] === "delay" && e[2]?.spring === 1).map(e => e[1]);
-  assert.deepEqual(deals, [350, 630, 910], "each find is dealt in turn");
+  assert.deepEqual(deals, [420, 680, 940], "each find is dealt onto the one card in turn");
   await act(async () => { await new Promise(done => setTimeout(done, 2000)); });
   assert.equal(dust(), "+14 Stardust", "then it counts up to the total");
   const buzzes = log.filter(e => e[0] === "haptic").map(e => e[1]);
   assert.deepEqual(buzzes.slice(1, 4), ["success", "light", "success"], "a buzz per card: new or rare finds buzz more");
-  const walk = log.filter(e => e[0] === "delay" && e[1] === 350 + 3 * 280 + 300);
-  assert.equal(walk.length, 1, "you walk on once the cards are down");
-  assert.equal(walk[0][2], 75 / 100, "to where today's walk has reached, on the way to the next find");
-  assert.ok(log.some(e => e[0] === "delay" && e[1] === 910 && e[2] === 1), "the epic find starts to glow as it lands");
+  assert.ok(log.some(e => e[0] === "delay" && e[1] === 940 && e[2] === 1), "the epic find starts to glow as it lands");
+  assert.equal(r.root.findAllByType("Trail").length, 0, "the trail waits for Continue");
+  await act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === "Continue")[0].props.onPress());
+  assert.equal(r.root.findByType("Trail").props.fromSeconds, 1800);
   await act(async () => r.unmount());
   delete global.requestAnimationFrame; delete global.cancelAnimationFrame;
 });

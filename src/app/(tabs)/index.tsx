@@ -1,6 +1,7 @@
 import { tapHaptic } from "../../utils/tapHaptics";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
 import LevelTierSheet from "../../components/LevelTierSheet";
+import TrailSheet from "../../components/rewards/TrailSheet";
 import DailyGoalSheet from "../../components/DailyGoalSheet";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
@@ -72,7 +73,7 @@ export default function HomeScreen() {
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
   const [goalSettings, setGoalSettings] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
-  const [tiersOpen, setTiersOpen] = useState(false);
+  const [tiersOpen, setTiersOpen] = useState(false), [trailOpen, setTrailOpen] = useState(false);
   const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus();
   const avatar = useRef<View>(null), settingsIcon = useRef<View>(null), stardustIcon = useRef<View>(null);
   // Profile, Settings and Outfits (from Stardust) grow out of their button, then shrink back into it.
@@ -248,6 +249,8 @@ export default function HomeScreen() {
                   <Text style={styles.greeting} numberOfLines={1}>{greeting},</Text>
                   <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
                 </TouchableOpacity>
+                {/* Today's trail, between your name and Settings: your name keeps the room it needs and shortens first. */}
+                <CircleButton icon="map-outline" size={44} label="Open today's trail" onPress={() => { feedback(); setTrailOpen(true); }} testID="home-trail" />
                 <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
               </View>
               <View style={styles.chipRow}>
@@ -319,6 +322,7 @@ export default function HomeScreen() {
         </View>
         </ContentReveal>
       </TourScrollView>
+      <TrailSheet visible={trailOpen} onClose={() => setTrailOpen(false)} />
       <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
       <TodaySheet visible={todayOpen} canChangeGoal={accessMode === "online"} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
         streak={streakDays} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
@@ -357,7 +361,7 @@ const styles = StyleSheet.create({
   packQuiet: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2 },
   packHint: { flex: 1, color: colors.secondary, fontSize: 13 },
   identity: { flex: 1, minWidth: 0, gap: 8 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   nameButton: { flex: 1, minWidth: 0 },
   // Your tier on the left, Stardust on the right under Settings. If they
   // don't both fit (large text), Stardust moves below and stays on the right.

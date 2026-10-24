@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAuth } from "../context/AuthContext";
-import { createRewardsClient, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
+import { createRewardsClient, LEGACY_TRAIL, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
 import { createRewardsStore } from "../services/rewardsStore";
 import { normalizeLook } from "../utils/adventurerLook";
 
@@ -49,10 +49,12 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
     claimSessions: async () => {
       const r = await act(c => c.claimSessions);
       if (r.ok && r.value.sessions.length) {
-        const finds = r.value.sessions.flatMap(x => x.finds);
+        // Every session claimed together shows on one card: all their finds at once.
+        const finds = r.value.sessions.flatMap(x => x.finds), seconds = r.value.sessions.reduce((n, x) => n + x.seconds, 0);
+        const trailStardust = r.value.sessions.reduce((n, x) => n + x.trailStardust, 0);
         rewardsStore.addReveal(owner, { id: `return:${r.value.sessions.map(x => x.sessionId).join(",")}`, kind: "expedition",
-          seconds: r.value.sessions.reduce((n, x) => n + x.seconds, 0), finds,
-          stardust: r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0) + finds.reduce((n, g) => n + g.stardust, 0) });
+          seconds, finds, trailStardust, fromSeconds: Math.max(0, r.value.state.today.seconds - seconds),
+          stardust: r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0) + finds.reduce((n, g) => n + g.stardust, 0) + trailStardust });
       }
       return r;
     },
@@ -78,7 +80,8 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
     showEmptyReturn: (seconds: number) => rewardsStore.addReveal(owner, { id: `empty:${Date.now()}`, kind: "expedition", seconds, finds: [], stardust: 0 }),
     dismissReveal: (id: string) => rewardsStore.dismissReveal(owner, id),
     today: snap.state?.today ?? { seconds: 0, finds: 0 },
-    nextFindSeconds: snap.state?.nextFindSeconds ?? 1500,
+    nextFindSeconds: snap.state?.nextFindSeconds ?? LEGACY_TRAIL.findSeconds,
+    trail: snap.state?.trail ?? { ...LEGACY_TRAIL, complete: false },
     pack: snap.state?.pack ?? null,
   };
 }

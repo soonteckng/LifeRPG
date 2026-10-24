@@ -106,12 +106,4 @@ export const Fireflies = memo(function Fireflies({ width, height, active, opacit
   })}</Animated.View>;
 });
 
-/** Camp in the morning: where you come back to after a session. */
-export const CampScene = memo(function CampScene({ width, height }: { width: number; height: number }) {
-  return <View style={[fill, { overflow: "hidden" }]} pointerEvents="none" importantForAccessibility="no-hide-descendants">
-    <TrailScene width={width} height={height} light="morning" />
-    <FireGlow width={width} height={height} />
-  </View>;
-});
-
 export const sceneStyles = StyleSheet.create({ fill });

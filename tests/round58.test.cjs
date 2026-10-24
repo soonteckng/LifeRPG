@@ -141,7 +141,7 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   assert.match(scenes, /night: \{ skyTop: "#03050C"/, "night is very dark; only the timer is bright");
 });
 
-test("return and pack screens: walk back, see what you found and today's trail; open the pack, then its contents", async () => {
+test("after a session: one card with every find, then today's trail; a session with nothing found goes straight to the trail; packs open", async () => {
   const log = [];
   const mods = {
     "react-native": { View: host("View"), ScrollView: host("Scroll"), StyleSheet: { create: v => v }, useWindowDimensions: () => ({ width: 390, height: 844 }) },
@@ -155,35 +155,37 @@ test("return and pack screens: walk back, see what you found and today's trail; 
     "./TodayTrail": host("Trail"), "../../hooks/useReducedMotion": { useReducedMotion: () => true }, "../../utils/tapHaptics": { tapHaptic: () => log.push("haptic") },
   };
   const { ExpeditionReveal, PackReveal } = load("src/components/rewards/RevealScreens.tsx", mods);
-  const player = { look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null, today: { seconds: 4500, finds: 3 }, nextFindSeconds: 420 };
+  const player = { look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null, today: { seconds: 4500, finds: 3 }, nextFindSeconds: 420,
+    trail: { findSeconds: 1200, stops: 6, complete: false } };
   const reveal = { id: "r", kind: "expedition", seconds: 2700, finds: [{ item: "beret", rarity: "common", new: true, stardust: 0 }, { item: "tote", rarity: "common", new: false, stardust: 5 }], stardust: 14 };
   const words = r => JSON.stringify(r.root.findAllByType("Text").map(t => [].concat(t.props.children).map(c => (c && typeof c === "object" ? "" : c)).join("")));
   const press = (r, label) => act(async () => r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === label)[0].props.onPress());
   let r; await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal, player, onClose: () => log.push("close"), onOutfits: item => log.push(`outfits:${item}`) })); });
-  assert.ok(r.root.findAllByType("Camp").length && r.root.findAllByType("Adventurer").length, "back at camp, walking in");
-  assert.match(words(r), /BACK AT CAMP.*45 minutes, done.*Your pack looks heavier · 2 finds/);
-  await press(r, "See what you found");
-  assert.match(words(r), /FROM YOUR 45-MINUTE WALK.*You found 2 things.*Red beret.*NEW.*Canvas tote.*\+5.*\+14 Stardust/);
-  assert.match(words(r), /LANTERN LAKE.*walked today.*1 h 15 m.*to the next find.*7 min/, "today's trail so far, as one line to the next find");
-  assert.equal(r.root.findAllByType("Trail").length, 0, "the full map waits behind Map");
-  await press(r, "See today's trail map");
-  assert.deepEqual([r.root.findByType("Trail").props.seconds, r.root.findByType("Trail").props.fill], [4500, true], "the map fills the page");
-  await press(r, "Back to your finds");
-  assert.equal(r.root.findAllByType("Trail").length, 0);
-  await press(r, "See it in Outfits"); await press(r, "Continue");
-  assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits:beret", "close"], "Outfits opens on the new find");
+  assert.match(words(r), /FROM YOUR 45-MINUTE WALK.*You found 2 things.*Red beret.*Common.*NEW.*Canvas tote.*\+5.*\+14 Stardust.*Spend Stardust in Outfits/,
+    "every find from the session on one card, and what Stardust is for");
+  assert.equal(r.root.findAllByType("Trail").length, 0, "the trail comes next");
+  await press(r, "See it in Outfits");
+  assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits:beret"], "Outfits opens on the new find");
+  await press(r, "Continue");
+  const trail = r.root.findByType("Trail").props;
+  assert.deepEqual([trail.seconds, trail.fromSeconds, trail.findSeconds, trail.stops, trail.fill], [4500, 1800, 1200, 6, true], "you walk on from where you were before these 45 minutes");
+  assert.match(words(r), /45 MINUTES FURTHER.*Today's trail/);
+  await press(r, "Continue");
+  assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits:beret", "close"]);
   await act(async () => r.unmount());
-  // A short session with nothing yet: say so kindly, and how far the next find is.
+  // Nothing found: straight to the trail, with how far the next find is on the map.
   log.length = 0;
-  await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, seconds: 60, finds: [], stardust: 0 }, player: { ...player, nextFindSeconds: 1320 }, onClose: () => log.push("close"), onOutfits() {} })); });
-  assert.match(words(r), /Nothing found this time · your next find is 22 min away/);
-  assert.equal(r.root.findAll(n => n.type === "Press" && n.props.accessibilityLabel === "See what you found").length, 0, "no empty page to open");
+  await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, seconds: 60, finds: [], stardust: 0, fromSeconds: 4440 }, player, onClose: () => log.push("close"), onOutfits() {} })); });
+  assert.match(words(r), /1 MINUTE FURTHER.*On your way/);
+  assert.equal(r.root.findByType("Trail").props.fromSeconds, 4440);
   await press(r, "Continue");
   assert.deepEqual(log.filter(x => x !== "haptic"), ["close"]);
   await act(async () => r.unmount());
-  // A test find has no session length.
-  await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, seconds: null, finds: [], stardust: 6 }, player, onClose() {}, onOutfits() {} })); });
-  assert.match(words(r), /Back at camp.*\+6 Stardust from the trail/);
+  // Reaching the end of the trail brings its bonus onto the map.
+  await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, seconds: 1800, finds: [], stardust: 56, trailStardust: 50, fromSeconds: 6000 },
+    player: { ...player, today: { seconds: 7800, finds: 6 }, trail: { findSeconds: 1200, stops: 6, complete: true } }, onClose() {}, onOutfits() {} })); });
+  assert.match(words(r), /\+56 Stardust/);
+  assert.deepEqual([r.root.findByType("Trail").props.bonus, r.root.findByType("Trail").props.complete], [50, true]);
   await act(async () => r.unmount());
   await act(async () => { r = create(React.createElement(PackReveal, { reveal: { id: "p", kind: "pack", tier: 2, daysInARow: 7, items: [{ item: "bg_sunset", rarity: "rare", new: true, stardust: 0 }], stardust: 41 }, player, onClose() {}, onOutfits() {} })); });
   assert.match(words(r), /TODAY'S SUPPLY PACK.*Brass pack.*7 days in a row/);
@@ -196,14 +198,15 @@ test("return and pack screens: walk back, see what you found and today's trail; 
 
 test("the pop-up host shows a return or pack screen first, and closing it marks it seen", async () => {
   const log = [];
+  let pathname = "/";
   let reveals = [{ id: "pack:x", kind: "pack", tier: 0, daysInARow: 1, items: [], stardust: 10 }], moments = ["pet_owl"];
-  const rewards = () => ({ online: true, moments, reveals, look: LOOK, equipped: {}, background: "bg_dusk", frame: null, today: { seconds: 0, finds: 0 }, nextFindSeconds: 1500,
+  const rewards = () => ({ online: true, moments, reveals, look: LOOK, equipped: {}, background: "bg_dusk", frame: null, today: { seconds: 0, finds: 0 }, nextFindSeconds: 1500, trail: { findSeconds: 1200, stops: 6, complete: false },
     claimSessions: async () => ({ ok: true }), dismissMoment: id => log.push(`moment:${id}`), dismissReveal: id => { log.push(`reveal:${id}`); reveals = []; } });
   const native = { View: host("View"), StyleSheet: { create: v => v }, Modal: host("Modal"), AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) },
     Animated: { View: host("AView"), Value: class { setValue() {} interpolate() { return 0; } }, spring: () => ({ start() {}, stop() {} }), timing: () => ({}), loop: () => ({ start() {}, stop() {} }) }, Easing: { linear: 0 } };
   const Moments = load("src/components/RewardMoments.tsx", {
     "react-native": native, "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    "expo-router": { useRouter: () => ({ push: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?show=${to.params?.show}`) }) },
+    "expo-router": { usePathname: () => pathname, useRouter: () => ({ push: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?show=${to.params?.show}`) }) },
     "react-native-svg": { __esModule: true, default: host("Svg"), G: host("G"), Path: host("Path") }, "./MotionPressable": host("Press"), "./AppText": { Text: host("Text") },
     "./adventurer/ItemArt": host("Item"), "./adventurer/ProfilePicture": host("Picture"),
     "../context/UserContext": { useUser: () => ({ profile: { id: "u", level: 4, current_xp: 1, streak_count: 1 } }) }, "../hooks/useRewards": { useRewards: () => rewards() },
@@ -223,6 +226,24 @@ test("the pop-up host shows a return or pack screen first, and closing it marks 
   await act(async () => r.update(React.createElement(Moments, { insideSession: false }))); await wait();
   assert.equal(r.root.findAllByType("PackOpen").length, 0);
   assert.match(JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children)), /Barn owl joined you/, "then the pop-ups");
+  await act(async () => r.unmount());
+  // From the finds card, Outfits is a visit: coming back shows the same card again.
+  log.length = 0; moments = [];
+  reveals = [{ id: "return:s1", kind: "expedition", seconds: 1500, finds: [{ item: "beret", rarity: "common", new: true, stardust: 0 }], stardust: 5 }];
+  const show = () => act(async () => r.update(React.createElement(Moments, { insideSession: false })));
+  await act(async () => { r = create(React.createElement(Moments, { insideSession: false })); }); await wait();
+  const card = () => r.root.findAllByType("Expedition")[0];
+  assert.equal(card().props.player.trail.findSeconds, 1200, "the trail's rules come from the server");
+  await act(async () => card().props.onOutfits("beret"));
+  assert.deepEqual(log, ["go:/outfits?show=beret"], "nothing is dismissed");
+  assert.equal(r.root.findByType("Modal").props.visible, false, "the card steps aside for Outfits");
+  pathname = "/outfits"; await show(); await wait();
+  assert.equal(r.root.findByType("Modal").props.visible, false, "and waits while you're there");
+  pathname = "/"; await show(); await wait();
+  assert.equal(r.root.findByType("Modal").props.visible, true, "back from Outfits: the same card");
+  assert.equal(card().props.reveal.id, "return:s1");
+  await act(async () => card().props.onClose());
+  assert.deepEqual(log, ["go:/outfits?show=beret", "reveal:return:s1"], "Continue on the trail closes it");
   await act(async () => r.unmount());
 });
 

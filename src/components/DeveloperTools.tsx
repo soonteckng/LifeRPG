@@ -26,8 +26,6 @@ import { tapHaptic } from "../utils/tapHaptics";
 
 type Preview = "level" | "complete" | "recovered";
 const SAVING_PREVIEW_MS = 3000;
-/** One find comes from 25 focused minutes. */
-const FIND_SECONDS = 25 * 60;
 
 /**
  * Previews for the developer account only. The server decides who is a
@@ -92,7 +90,7 @@ export default function DeveloperTools() {
   };
   // Coming back from a session, on demand. Real sessions waiting to be claimed
   // come first; with none, a developer still sees the return screen, with one
-  // real find roll from a 25-minute walk.
+  // real find roll from one stop's walk.
   const claim = async () => {
     if (claimLock.current) return;
     claimLock.current = true; feedbackForScope({ claiming: true, note: "", claim: "Checking…" });
@@ -103,7 +101,7 @@ export default function DeveloperTools() {
       const finds = r.value.sessions.flatMap(x => x.finds), dust = r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0);
       const parts = [finds.length ? `Finds: ${names(finds)}` : "", dust ? `+${dust} Stardust from minutes` : "", r.value.milestones.length ? `Unlocked: ${names(r.value.milestones)}` : ""].filter(Boolean);
       if (parts.length || r.value.sessions.length) { feedbackForScope({ claim: `✓ ${parts.length ? parts.join(". ") + "." : "Back at camp."}` }); return; }
-      const roll = await rewards.developer("find", 0, FIND_SECONDS);
+      const roll = await rewards.developer("find", 0, rewards.trail.findSeconds);
       if (currentRewardScope.current !== rewardScope) return;
       feedbackForScope({ claim: roll.ok ? `✓ No sessions waiting, so here's a test walk: ${names(roll.value.gifts) || "nothing this time"}.` : `! ${roll.message}` });
     } catch {

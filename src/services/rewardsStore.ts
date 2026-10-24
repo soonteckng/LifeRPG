@@ -12,7 +12,9 @@ type Client = ReturnType<typeof createRewardsClient>;
  * (the finds and Stardust it brought) or opening today's supply pack.
  */
 export type Reveal =
-  | { id: string; kind: "expedition"; seconds: number | null; finds: Gift[]; stardust: number }
+  | { id: string; kind: "expedition"; seconds: number | null; finds: Gift[]; stardust: number;
+      /** Where today's trail stood before these sessions, and the trail bonus they reached. */
+      fromSeconds?: number; trailStardust?: number }
   | { id: string; kind: "pack"; tier: number; daysInARow: number; items: Gift[]; stardust: number };
 /** The items a reveal shows; their single pop-ups wait for it and then count as seen. */
 export const revealItems = (reveal: Reveal) => (reveal.kind === "pack" ? reveal.items : reveal.finds).filter(g => g.new).map(g => g.item);

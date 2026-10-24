@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Animated, AppState, Easing, Modal, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { usePathname, useRouter } from "expo-router";
 import Svg, { G, Path } from "react-native-svg";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
@@ -64,7 +64,18 @@ export default function RewardMoments({ insideSession, claimKey = null }: { insi
   // Wait a moment once everything else has closed, so a celebration that
   // opens right after the session card (like the daily goal) goes first.
   const key = reveal?.id ?? id ?? null;
-  const wanted = !!key && (!!reveal || !!item) && !insideSession && introDone && active && otherSheets === 0;
+  // "See it in Outfits" from the finds card steps away to Outfits and comes
+  // back to the same card afterwards; the card waits while you're there.
+  const pathname = usePathname();
+  const [away, setAway] = useState<{ id: string; arrived: boolean } | null>(null);
+  if (away && !away.arrived && pathname === "/outfits") setAway({ ...away, arrived: true });
+  if (away && (away.arrived ? pathname !== "/outfits" : away.id !== reveal?.id)) setAway(null);
+  useEffect(() => {
+    if (!away || away.arrived) return;
+    const giveUp = setTimeout(() => setAway(null), 1500);
+    return () => clearTimeout(giveUp);
+  }, [away]);
+  const wanted = !!key && (!!reveal || !!item) && !insideSession && introDone && active && otherSheets === 0 && !(away && away.id === key);
   const [readyFor, setReadyFor] = useState<string | null>(null);
   useEffect(() => {
     if (!wanted || readyFor === key) return;
@@ -77,7 +88,7 @@ export default function RewardMoments({ insideSession, claimKey = null }: { insi
     return registerSheetActivity(activityId);
   }, [visible, activityId]);
   const player = { look: rewards.look, equipped: rewards.equipped, level: profile.level, background: rewards.background, frame: rewards.frame,
-    today: rewards.today, nextFindSeconds: rewards.nextFindSeconds };
+    today: rewards.today, nextFindSeconds: rewards.nextFindSeconds, trail: rewards.trail };
   // "See it in Outfits" opens Outfits on that item's own category, previewing it.
   const showInOutfits = (item: string) => router.push({ pathname: "/outfits", params: { show: item } });
   const closeReveal = (show: string | null) => { if (!reveal) return; rewards.dismissReveal(reveal.id); if (show) showInOutfits(show); };
@@ -85,7 +96,8 @@ export default function RewardMoments({ insideSession, claimKey = null }: { insi
     onRequestClose={() => { if (reveal) closeReveal(null); else if (id) rewards.dismissMoment(id); }}>
     {visible && reveal && (reveal.kind === "pack"
       ? <PackReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)} onOutfits={closeReveal} />
-      : <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)} onOutfits={closeReveal} />)}
+      : <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)}
+        onOutfits={show => { setAway({ id: reveal.id, arrived: false }); showInOutfits(show); }} />)}
     {visible && !reveal && item && <Moment key={item.id} item={item} left={rewards.moments.length} level={profile.level} look={rewards.look} equipped={rewards.equipped} background={rewards.background}
       streak={profile.streak_count ?? 0}
       onClose={() => rewards.dismissMoment(item.id)}

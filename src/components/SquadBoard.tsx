@@ -34,7 +34,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
   const label = (member: SquadMember, place: number | null) => `${place ? `${place}.` : "Not ranked yet."} ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)} this week, level ${member.level}${member.focusingNow ? ", focusing now" : ""}`;
   return <View style={s.board} testID="squad-board">
     <View style={s.hero}>
-      <View style={s.faces}>{squad.members.slice(0, 5).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={member} size={48} ring={colors.background} /></View>)}</View>
+      <View style={s.faces}>{squad.members.slice(0, 5).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={member} size={54} ring={colors.background} /></View>)}</View>
       <Text style={s.name} accessibilityRole="header" numberOfLines={2}>{squad.name}</Text>
       <Text style={s.caption}>{squad.members.length} {squad.members.length === 1 ? "member" : "members"}{squad.ownerIsYou ? " · you lead this squad" : ""}{live ? ` · ${live} focusing now` : ""}</Text>
     </View>

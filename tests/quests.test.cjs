@@ -42,6 +42,7 @@ function load(relativePath, mocks, cache = new Map()) {
     if (name === "../context/QuestContext" && mocks["../../context/QuestContext"]) return mocks["../../context/QuestContext"];
     if (name.endsWith("/useFocusDurationPreference") && !Object.hasOwn(mocks, name)) return {useFocusDurationPreference:()=>({ready:true,selectedSeconds:1800,value:{customSeconds:null},choose:async()=>{}})};
     if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
+    if (name.endsWith("/TrailSheet")) return props=>React.createElement("TrailSheet",props);
     if (name.endsWith("/CharacterMark")) return props => React.createElement("CharacterMark", props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>React.createElement("TourAnchor",props,props.children), TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
@@ -672,7 +673,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../hooks/useRewards": { useRewards: () => ({ stardust: 0, pack: null, online: false, busy: false, openPack: async () => ({ ok: true }) }) },
     "../../components/rewards/PackArt": { __esModule: true, default: host("PackArt"), PACK_COLORS: ["#D9C9A3", "#C98A55", "#E2B44C", "#A78BFA"] },
     "../../components/adventurer/ItemArt": { __esModule: true, default: host("ItemArt"), StardustArt: host("StardustArt") },
-    "../../components/CharacterMark": host("CharacterMark"), "../../components/LevelTierSheet": host("LevelTierSheet"),
+    "../../components/CharacterMark": host("CharacterMark"), "../../components/LevelTierSheet": host("LevelTierSheet"), "../../components/rewards/TrailSheet": host("TrailSheet"),
     "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary, ...homeFlags,
       setNotes: () => {}, setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setDurationInSeconds: seconds => sessionCalls.push(["seconds",seconds]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },

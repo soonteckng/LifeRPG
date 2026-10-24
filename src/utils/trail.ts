@@ -1,5 +1,5 @@
-// Today's trail: every 25 focused minutes is one stop, and every stop brings
-// a find. The trail starts at camp each morning and passes through places
+// Today's trail: every few focused minutes is one stop (the server says how
+// many: 20 from Round 64), and every stop brings a find, up to the trail's end. The trail starts at camp each morning and passes through places
 // with names, so a long day of focus feels like a long walk.
 import { FIND_SECONDS } from "../services/rewardCatalog";
 
@@ -10,8 +10,8 @@ export const TRAIL_ZONES = [
   { name: "Starfall Ridge", color: "#C4B5FD", from: 6 },
 ] as const;
 
-/** Stops walked so far today (fractional), from today's focused seconds. */
-export const trailStops = (seconds: number) => Math.max(0, seconds) / FIND_SECONDS;
+/** Stops walked so far today (fractional), from today's focused seconds and the server's find interval. */
+export const trailStops = (seconds: number, findSeconds: number = FIND_SECONDS) => Math.max(0, seconds) / Math.max(1, findSeconds);
 export function trailZone(stops: number) {
   return [...TRAIL_ZONES].reverse().find(zone => stops >= zone.from) ?? TRAIL_ZONES[0];
 }

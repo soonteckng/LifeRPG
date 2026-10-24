@@ -80,7 +80,7 @@ async function tools({ developer = true, online = true, session = false, restart
     stardust: 40, busy: false,
     claimSessions: async () => { log.push("claim"); return typeof rewardReply.claim === "function" ? rewardReply.claim() : rewardReply.claim ?? { ok: true, value: { sessions: [], milestones: [], state } }; },
     openPack: async () => { log.push("pack"); return rewardReply.pack ?? { ok: false, message: "Reach your daily goal to open a pack." }; },
-    showEmptyReturn: seconds => log.push(`empty:${seconds}`),
+    showEmptyReturn: seconds => log.push(`empty:${seconds}`), trail: { findSeconds: 1500, stops: 6, complete: false },
     developer: async (action, amount, seconds) => { log.push(`dev:${action}:${amount}${seconds ? `:${seconds}` : ""}`); return rewardReply.dev ?? { ok: true, value: { state, gifts: action === "find" ? [{ item: "beret", new: true, stardust: 0 }] : [] } }; },
   };
   const Tools = load("src/components/DeveloperTools.tsx", {
@@ -364,7 +364,8 @@ test("the real reward client: real sessions show their return screen; with none,
     assert.deepEqual(ui.rewards().reveals.map(reveal => ({ kind: reveal.kind, seconds: reveal.seconds })), [{ kind: "expedition", seconds: 1500 }], "the return screen, from a 25-minute walk");
     await ui.press("Come back from a session");
     assert.match(ui.row("Come back from a session").props.status, /Red beret \(new\).*6 Stardust from minutes/);
-    assert.deepEqual(ui.rewards().reveals.at(-1), { id: "return:session-1", kind: "expedition", seconds: 1800, finds: [{ item: "beret", rarity: "uncommon", new: true, stardust: 0 }], stardust: 6 },
+    assert.deepEqual(ui.rewards().reveals.at(-1), { id: "return:session-1", kind: "expedition", seconds: 1800, finds: [{ item: "beret", rarity: "uncommon", new: true, stardust: 0 }], stardust: 6,
+      trailStardust: 0, fromSeconds: 0 },
       "a real session's return screen, with no test grant");
     assert.deepEqual(calls.map(call => call.name), ["get_rewards_v1", "claim_session_rewards_v1", "dev_rewards_v1", "claim_session_rewards_v1"]);
     assert.ok(calls.every(call => call.args.p_expected_owner === "dev"));

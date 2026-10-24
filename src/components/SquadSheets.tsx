@@ -26,7 +26,7 @@ import SheetTextInput from "./SheetTextInput";
 // Everyone appears with their own profile picture: you from your own saved
 // look (the same as Home), others from the look their app last saved.
 type Face = Pick<SquadMember, "focusingNow"> & { isYou?: boolean; level?: number; streak?: number; look?: PlayerLook | null };
-export function SquadFace({ member, size = 44, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
+export function SquadFace({ member, size = 48, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
   return <View style={{ width: size, height: size }} importantForAccessibility="no-hide-descendants">
     {member.isYou ? <CharacterMark size={size} /> : <PlayerPicture member={member} size={size} />}
     {member.focusingNow && <View style={[s.live, { borderColor: ring }]} />}

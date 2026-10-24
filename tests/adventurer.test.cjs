@@ -64,7 +64,7 @@ test("the profile picture grows its frame with level and shows a pet and long st
   assert.ok(high.root.findAllByType("Path").length > mid.root.findAllByType("Path").length, "laurels and a crown at 100");
   assert.equal(high.root.findAllByType("Item")[0].props.id, "pet_owl");
   const texts = r => r.root.findAllByType("Text").map(t => t.props.children);
-  assert.deepEqual(texts(high), [100, 12], "the level, then the 12-day streak");
+  assert.deepEqual(texts(high), [12, 100], "the 12-day streak, then the level hanging below");
   assert.equal(low.root.findAllByType("Item").length, 0); assert.deepEqual(texts(low), [1], "only the level: no pet, no short streak");
   const noLevel = await render({ showLevel: false });
   assert.equal(noLevel.root.findAllByType("Text").length, 0);
@@ -560,7 +560,7 @@ test("the reward pop-up: one at a time, never during a session or over another s
       Animated: { View: host("AView"), Value: class { constructor(v) { this.v = v; } setValue() {} interpolate() { return 0; } }, spring: () => ({ start() {}, stop() {} }), timing: () => ({}), loop: () => ({ start() {}, stop() {} }) },
       Easing: { linear: 0 } },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    "expo-router": { useRouter: () => ({ push: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?show=${to.params?.show}`) }) },
+    "expo-router": { usePathname: () => "/", useRouter: () => ({ push: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?show=${to.params?.show}`) }) },
     "react-native-svg": svg, "./MotionPressable": host("Press"), "./AppText": { Text: host("Text") },
     "./adventurer/ItemArt": host("Item"), "./adventurer/ProfilePicture": host("Picture"),
     "../context/UserContext": { useUser: () => ({ profile }) }, "../hooks/useRewards": { useRewards: () => rewards() },

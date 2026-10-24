@@ -24,10 +24,20 @@ export interface RewardsState {
   pack: { date: string; goalReached: boolean; claimed: boolean; tier: number; daysInARow: number };
   /** Today's walk on the trail: focused seconds and finds made today. */
   today: { seconds: number; finds: number };
+  /**
+   * Today's trail: a stop with a find every `findSeconds` of focus, `stops`
+   * of them; reaching the end (`complete`) gives a bonus once a day.
+   */
+  trail: { findSeconds: number; stops: number; complete: boolean };
 }
 export type DevRewardAction = "stardust" | "reopen_pack" | "find" | "next_milestones" | "reearn";
 export interface Gift { item: string; rarity: RewardRarity; new: boolean; stardust: number; reason?: "hours" | "streak" | "set" }
-export interface SessionClaim { sessions: { sessionId: string; finds: Gift[]; minutesStardust: number; seconds: number }[]; milestones: Gift[]; state: RewardsState }
+export interface SessionClaim {
+  sessions: { sessionId: string; finds: Gift[]; minutesStardust: number; seconds: number; daySecondsBefore: number | null; trailStardust: number }[];
+  milestones: Gift[]; state: RewardsState;
+}
+/** Before the daily trail (Round 64 SQL), a find came every 25 minutes and the map showed 6 stops. */
+export const LEGACY_TRAIL = { findSeconds: 1500, stops: 6 } as const;
 export interface PackOpening { tier: number; daysInARow: number; items: Gift[]; stardust: number; milestones: Gift[]; state: RewardsState }
 
 const RARITIES = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
@@ -73,6 +83,12 @@ export function parseRewardsState(value: unknown): RewardsState {
     // Older servers leave today out; nothing walked yet is the safe reading.
     today: isObj(value.today) && count(value.today.seconds) !== null && count(value.today.finds) !== null
       ? { seconds: value.today.seconds as number, finds: value.today.finds as number } : { seconds: 0, finds: 0 },
+    trail: {
+      findSeconds: (count(value.findSeconds) ?? 0) > 0 ? value.findSeconds as number : LEGACY_TRAIL.findSeconds,
+      stops: (count(value.trailSeconds) ?? 0) > 0 && (count(value.findSeconds) ?? 0) > 0
+        ? Math.max(1, Math.round((value.trailSeconds as number) / (value.findSeconds as number))) : LEGACY_TRAIL.stops,
+      complete: isObj(value.today) && value.today.trailComplete === true,
+    },
   };
 }
 
@@ -97,7 +113,8 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
         sessions: r.sessions.map(s => {
           if (!isObj(s) || typeof s.sessionId !== "string" || count(s.minutesStardust) === null) throw new Error("Unexpected rewards reply");
           return { sessionId: s.sessionId, finds: gifts(s.finds), minutesStardust: s.minutesStardust as number,
-            seconds: count(s.seconds) ?? (s.minutesStardust as number) * 300 };
+            seconds: count(s.seconds) ?? (s.minutesStardust as number) * 300,
+            daySecondsBefore: count(s.daySecondsBefore), trailStardust: count(s.trailStardust) ?? 0 };
         }),
         milestones: gifts(r.milestones),
         state: parseRewardsState(r.state),
