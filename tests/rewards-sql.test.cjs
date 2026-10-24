@@ -3,7 +3,7 @@
 // character's look. Everything is decided on the server.
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261024090000_rewards_core.sql'), 'utf8');
+const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261024090000_rewards_core.sql'), 'utf8').replace(/\r\n/g, '\n');
 // Items added by later rounds, for the catalog check.
 const laterItems = fs.readFileSync(path.join(root, 'supabase/migrations/20261024120000_rewards_auto_frames.sql'), 'utf8');
 

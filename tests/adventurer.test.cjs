@@ -107,6 +107,14 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
 
 async function outfits({ online = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {} } = {}) {
   const log = [];
+  const renders = { adventurer: 0, thumbnails: 0, portrait: 0 };
+  // Match the real portrait's memo boundary. Stage art is deliberately not
+  // memoised here, so unrelated tabs prove the stage itself stays isolated.
+  const Adventurer = props => { renders.adventurer++; return React.createElement("Adventurer", props); };
+  const Picture = React.memo(function Picture(props) {
+    if (props.size === 52) renders.thumbnails++; else renders.portrait++;
+    return React.createElement("Picture", props);
+  });
   const rewards = {
     online, busy: false, stardust, owned, earned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame, title: null,
     saveAvatar: async draft => { log.push(["save", draft]); return { ok: true, value: {} }; },
@@ -116,17 +124,17 @@ async function outfits({ online = true, owned = ["cardigan", "beret"], earned = 
     "react-native": { ...native, useWindowDimensions: () => ({ width: 390, height: 844 }) }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
     "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", null, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
-    "../components/adventurer/Adventurer": host("Adventurer"), "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
+    "../components/adventurer/Adventurer": Adventurer, "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
     "expo-router": { useRouter: () => ({ back: () => log.push(["back"]) }), useLocalSearchParams: () => params },
-    "react-native-svg": svg, "../components/adventurer/ProfilePicture": host("Picture"),
+    "react-native-svg": svg, "../components/adventurer/ProfilePicture": Picture,
   }), Screen = mod.default;
   let r; await act(async () => { r = create(React.createElement(Screen)); });
   const press = async label => act(async () => r.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === "function")[0].props.onPress());
   const tab = async value => act(async () => r.root.findByType("Segmented").props.onChange(value));
   const button = title => r.root.findAllByType("Button").find(b => b.props.title === title);
   const words = () => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
-  return { r, log, press, tab, button, words, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
+  return { r, log, renders, press, tab, button, words, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
 }
 
 test("See it in Outfits opens on the item's own category, already tried on", async () => {
@@ -223,12 +231,46 @@ test("the Picture tab: frames follow your streak and only preview, badges and ba
   } finally { await act(async () => ui.r.unmount()); }
 });
 
-test("Reset and Save look stay fixed below the scrolling outfits", () => {
+test("unrelated Outfits tab changes reuse the stage; preview changes still redraw it", async () => {
+  const ui = await outfits({ owned: ["cardigan", "pet_owl"] });
+  try {
+    assert.equal(ui.renders.adventurer, 1);
+    for (const tab of ["clothes", "gear", "pets"]) await ui.tab(tab);
+    assert.equal(ui.renders.adventurer, 1, "one standing character is kept across tabs, without rebuilding the stage");
+    await ui.press("Barn owl, Epic, owned");
+    assert.equal(ui.preview().equipped.pet, "pet_owl");
+    assert.equal(ui.renders.adventurer, 2, "equipping a pet updates the real preview");
+    await ui.tab("look");
+    await ui.press("Skin tone 7");
+    assert.equal(ui.preview().look.skin, "7");
+    assert.equal(ui.renders.adventurer, 3);
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("frame previews redraw the main portrait without rebuilding seven unchanged sample portraits", async () => {
+  const ui = await outfits({ frame: "frame_streak_30" });
+  try {
+    await ui.tab("picture");
+    assert.deepEqual([ui.renders.thumbnails, ui.renders.portrait], [7, 1]);
+    await ui.press("60 days in a row, 27 days to go");
+    await ui.press("180 days in a row, 147 days to go");
+    assert.deepEqual([ui.renders.thumbnails, ui.renders.portrait], [7, 3], "the unchanged frame samples survive each preview selection");
+    const chosen = ui.r.root.findAll(n => n.type === "Press" && n.props.accessibilityState?.selected);
+    assert.equal(chosen.length, 1);
+    assert.match(chosen[0].props.accessibilityLabel, /^180 days/);
+    assert.equal(ui.button("Save look").props.disabled, true, "preview still cannot change the earned frame");
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("Reset and Save look stay fixed below the scrolling outfits", async () => {
   const page = fs.readFileSync(path.join(root, "src/app/outfits.tsx"), "utf8");
   assert.match(page, /<PersonalPage title="Outfits"[^>]*footer=\{footer\} pinned=\{pinned\}>/);
-  assert.match(page, /const pinned = <>\n\s+<View style=\{\[s\.stage/, "the character stays in view while the choices scroll");
-  const ui = fs.readFileSync(path.join(root, "src/components/PersonalUI.tsx"), "utf8");
-  assert.match(ui, /<\/TourScrollView>\n\s*\{footer && <View/, "the footer sits outside the scroll view");
+  const ui = await outfits();
+  try {
+    assert.ok(ui.r.root.findAll(n => n.type === "View" && n.props.testID === "outfits-preview").length, "the pinned preview keeps its testID and layout");
+  } finally { await act(async () => ui.r.unmount()); }
+  const personal = fs.readFileSync(path.join(root, "src/components/PersonalUI.tsx"), "utf8");
+  assert.match(personal, /<\/TourScrollView>\s*\{footer && <View/, "the footer sits outside the scroll view");
 });
 
 const devSql = fs.readFileSync(path.join(root, "supabase/migrations/20261024100000_rewards_dev_tools.sql"), "utf8");
@@ -379,7 +421,7 @@ test("anything newly earned waits for its pop-up; purchases, old rewards and low
 
 test("the reward pop-up: one at a time, never during a session or over another sheet, and it checks after each session", async () => {
   const log = [];
-  let moments = ["frame_streak_30", "pet_owl"], profile = { id: "u", level: 4, current_xp: 10, streak_count: 30 }, sheets = 0, path_ = "/";
+  let moments = ["frame_streak_30", "pet_owl"], profile = { id: "u", level: 4, current_xp: 10, streak_count: 30 }, sheets = 0;
   const rewards = () => ({ online: true, moments, reveals: [], look: LOOK, equipped: {}, background: "bg_dusk", today: { seconds: 0, finds: 0 }, nextFindSeconds: 1500,
     claimSessions: async () => { log.push("claim"); return { ok: true }; }, dismissMoment: id => { log.push(`seen:${id}`); moments = moments.filter(m => m !== id); } });
   const mod = load("src/components/RewardMoments.tsx", {

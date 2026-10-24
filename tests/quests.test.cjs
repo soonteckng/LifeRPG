@@ -1220,6 +1220,29 @@ test('Home level button opens and dismisses the tier path without changing its t
  }finally{await ui.cleanup();}
 });
 
+test('Home keeps full tier text and lets its header badges wrap on a small phone with large text',async()=>{
+ const ui=await quickHomeSetup(null,undefined,null,'src/app/(tabs)/index.tsx',{
+  'react-native':{...native,ScrollView:host('ScrollView'),useWindowDimensions:()=>({width:360,height:640,fontScale:1.8})},
+  '../../context/UserContext':{useUser:()=>({profile:{id:'owner-a',username:'A very long student name',level:1,current_xp:0,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
+  '../../hooks/useRewards':{useRewards:()=>({stardust:123456789,pack:{tier:1,goalReached:false,claimed:false},online:true,busy:false,openPack:async()=>({ok:true})})},
+ });
+ try{
+  const level=ui.button('home-level'),dust=ui.button('home-stardust');
+  const title=level.findAllByType('Text').find(node=>node.props.children==='First steps');
+  assert.ok(title,'the full tier name is still present');
+  assert.equal(title.props.numberOfLines,undefined,'a tier can wrap instead of being cut off');
+  assert.equal(title.props.adjustsFontSizeToFit,undefined,'large system text is respected');
+  assert.equal(level.parent.parent.props.style.flexWrap,'wrap','Stardust moves to a new row rather than squeezing the tier');
+  assert.equal(level.props.style.maxWidth,'100%','the level badge stays within the identity column');
+  const badge=level.findAllByType('View').find(node=>node.findAllByType('Text').some(text=>text.props.children===1));
+  assert.equal(badge.props.style.height,undefined,'the level number can grow with system text');
+  assert.equal(badge.props.style.width,undefined,'multi-digit levels are not forced into a 22px disc');
+  assert.match(dust.props.accessibilityLabel,/123456789 Stardust/);
+  await act(async()=>level.props.onPress());
+  assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,true);
+ }finally{await ui.cleanup();}
+});
+
 test('Home: the goal ring opens Today, its ••• changes the goal, and Settings sits by the avatar',async()=>{
  const ui=await quickHomeSetup();
  try{

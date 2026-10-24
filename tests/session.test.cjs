@@ -505,7 +505,7 @@ test("duration parser rejects ambiguous input rather than silently substituting"
   for(const input of ["1","30","480"]) assert.equal(validatedSessionMinutes(input),Number(input));
 });
 
-async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android") {
+async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android", freshTimerResult = false) {
   const calls = [], keyboardListeners = {}, animations = [];
   const cache = new Map();
   const lifecycle = load("src/services/globalSessionLifecycle.ts", {}, cache).globalSessionLifecycle;
@@ -559,7 +559,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "./session/SessionBackdrop":{__esModule:true,default:p=>React.createElement("Backdrop",p),SessionIntroWords:p=>React.createElement("IntroWords",p)},
     "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
-    "../context/TimerContext":{useTimer:()=>state},"../context/QuestContext":{useQuests:()=>quests},
+    "../context/TimerContext":{useTimer:()=>freshTimerResult ? {...state} : state},"../context/QuestContext":{useQuests:()=>quests},
     "../context/AuthContext":{useAuth:()=>({accessMode:state.accessMode ?? 'online',user:{id:state.ownerId ?? 'owner-a'},
       localOwner:{id:state.ownerId ?? 'owner-a',backendId:state.backendId ?? 'test-backend'},admissionEpoch:state.admissionEpoch ?? 1})},
     "../hooks/useSavedRoutines":{useSavedRoutines:()=>savedRoutines},
@@ -592,6 +592,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     keyboard:async()=>{keyboard=true;await act(async()=>keyboardListeners.keyboardDidShow());},
     back:async()=>{await act(async()=>back());},
     finishExit:async(finished=true)=>{await act(async()=>exitCallback?.({finished}));},
+    reopen:async(changes={})=>{await act(async()=>renderer.unmount());state={...state,...changes};await act(async()=>{renderer=create(React.createElement(Screen));});},
     cleanup:async()=>{await act(async()=>renderer.unmount());},
   };
 }
@@ -1667,6 +1668,106 @@ test("reduced motion keeps phase controls readable and skips timer relocation an
   assert.equal(ui.root().findByProps({testID:"session-actions-motion"}).props.style[1].opacity.value, 1);
   assert.ok(ui.button("Pause"));
   await ui.cleanup();
+});
+
+test("a newly merged live timer object on every render cannot loop the retained session snapshot", async () => {
+  const ui = await screenSetup({sessionId:"fresh-wrapper",hasOpenSession:true,isRunning:true,duration:60,timeLeft:47}, {}, true, {value:false}, "android", true);
+  try {
+    assert.equal(ui.root().findByType("DurationControl").props.seconds,47);
+    await ui.update({timeLeft:46});
+    assert.equal(ui.root().findByType("DurationControl").props.seconds,46);
+    await ui.press("Pause"); assert.equal(ui.calls.filter(([name])=>name==="pause").length,1);
+    await ui.press("End session"); await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+    await ui.update({hasOpenSession:false,sessionEnded:true,isRunning:false,duration:1800,timeLeft:1800});
+    assert.equal(ui.root().findByType("DurationControl").props.seconds,46,"End keeps the final actual reading, not the reset draft");
+    assert.equal(ui.calls.filter(([name])=>name==="reset").length,1);
+  } finally { await ui.cleanup(); }
+});
+
+test("a quick minimise and reopen never repeats the fresh session intro, while a different session still sets off", async()=>{
+  const ui=await screenSetup({sessionId:"first-start",protectionSessionId:"client-start",hasOpenSession:true,isRunning:true,duration:60,timeLeft:60},{},false,{value:false});
+  try {
+    const backdrop=()=>ui.root().findByType("Backdrop").props;
+    assert.equal(backdrop().intro,true,"a genuinely fresh start keeps the setting-off scene");
+    await ui.update({sessionId:"server-start",timeLeft:59});
+    await ui.reopen();
+    assert.equal(backdrop().intro,false,"minimising before two seconds cannot replay the intro");
+    await ui.reopen({sessionId:"second-start",protectionSessionId:"second-client",timeLeft:60});
+    assert.equal(backdrop().intro,true,"a different session still receives its own intro");
+  } finally {await ui.cleanup();}
+});
+
+test("nullable start ids cannot suppress a later session intro; recovered and reduced-motion opens stay still", async()=>{
+  const preference={value:false};
+  const ui=await screenSetup({sessionId:null,protectionSessionId:null,hasOpenSession:true,isRunning:true,duration:60,timeLeft:60},{},false,preference);
+  try {
+    const backdrop=()=>ui.root().findByType("Backdrop").props;
+    assert.equal(backdrop().intro,true);
+    await ui.update({sessionId:"resolved-start"});await ui.reopen();
+    assert.equal(backdrop().intro,false,"the resolved id is remembered even if it arrived during the intro");
+    await ui.reopen({sessionId:null,timeLeft:60});
+    assert.equal(backdrop().intro,true,"there is no shared null marker that hides future fresh starts");
+    await ui.reopen({sessionId:"recovered-start",recoveredSession:true});
+    assert.equal(backdrop().intro,false);
+    preference.value=true;
+    await ui.reopen({sessionId:"reduced-start",recoveredSession:false});
+    assert.equal(backdrop().intro,false);
+    preference.value=false;await ui.reopen();
+    assert.equal(backdrop().intro,false,"turning motion back on does not replay a session already visited");
+    await ui.reopen({sessionId:null,hasOpenSession:false,isRunning:false,isRestoring:true});
+    await ui.update({sessionId:"restored-later",hasOpenSession:true,isRunning:true,isRestoring:false,recoveredSession:true});
+    assert.equal(backdrop().intro,false,"a recovery arriving after the route mounts cannot masquerade as a fresh Start");
+  } finally {await ui.cleanup();}
+});
+
+test("manual End preserves measured details and action space and never animates the stopped timer behind its result", async () => {
+  const ui = await screenSetup({sessionId:"end-layout",hasOpenSession:true,isRunning:true,duration:60,timeLeft:47}, {}, true, {value:false});
+  try {
+    const stage = ui.root().findByProps({testID:"session-timer-stage"});
+    const flatten = value => [].concat(value).filter(Boolean).reduce((all,part)=>({...all,...part}),{});
+    await act(async()=>{
+      stage.props.onLayout({nativeEvent:{layout:{y:14}}});
+      ui.root().findByType("Scroll").props.onLayout({nativeEvent:{layout:{height:68}}});
+      ui.root().findByProps({testID:"session-actions-motion"}).props.onLayout({nativeEvent:{layout:{height:116}}});
+    });
+    ui.animations.length=0;
+    await ui.press("End session"); await act(async()=>ui.root().findByType("Confirm").props.onConfirm());
+    await ui.update({hasOpenSession:false,sessionEnded:true,isRunning:false});
+    assert.equal(flatten(ui.root().findByType("Scroll").props.style).height,68);
+    assert.equal(flatten(ui.root().findByProps({testID:"session-actions-motion"}).props.style).height,116);
+    await act(async()=>stage.props.onLayout({nativeEvent:{layout:{y:44}}}));
+    assert.equal(ui.animations.some(animation=>animation.duration===300),false,"a terminal layout must not bounce back to its old position");
+    assert.equal(ui.button("End session"),undefined,"the spacer cannot remain an interactive End button");
+    assert.equal(ui.button("Stopped").props.disabled,true);
+    assert.equal(ui.root().findByType("DurationControl").props.seconds,47);
+  } finally { await ui.cleanup(); }
+});
+
+test("reopening running and paused timers uses shared choices without another refresh; setup still refreshes", async () => {
+  for (const isRunning of [true,false]) {
+    let refreshes=0;
+    const ui=await screenSetup({hasOpenSession:true,isRunning,timeLeft:600},{refresh:async()=>{refreshes++;}});
+    try {
+      assert.equal(refreshes,0);
+      await ui.update({timeLeft:599});
+      assert.equal(refreshes,0);
+    } finally {await ui.cleanup();}
+  }
+  let refreshes=0;
+  const ui=await screenSetup({}, {refresh:async()=>{refreshes++;}});
+  try { assert.equal(refreshes,1); } finally {await ui.cleanup();}
+});
+
+test("saving a completed session leaves no hidden progress SVG composited over the trail", async () => {
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true,duration:60,timeLeft:1});
+  try {
+    assert.ok(ui.root().findAllByType("Svg").length>0,"the live timer has a ring");
+    const stage=ui.root().findByProps({testID:"session-timer-stage"});
+    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0});
+    assert.equal(ui.root().findByProps({testID:"session-timer-stage"}),stage,"geometry stays mounted while saving");
+    assert.equal(ui.root().findAllByType("Svg").length,0,"the invisible native SVG is no longer drawn under the saving portal");
+    assert.ok(ui.root().findByType("Backdrop"),"the expedition scene remains behind the result");
+  } finally {await ui.cleanup();}
 });
 
 test("Quick Start atomically replaces stale quest draft, blocks rapid starts, and preserves exact settings on retry", async () => {

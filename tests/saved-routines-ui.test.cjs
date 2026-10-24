@@ -174,6 +174,37 @@ test('suggested routines stay offered after other routines exist; a saved one le
   assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Ideas to start with'),'ideas sit under their own title, as chips');
  }finally{await act(async()=>ui.unmount());}
 });
+test('an odd final idea shares the paired-card width, including after filtering and saving an idea',async()=>{
+ const state={ready:true,scope,online:true,routines:[{...routine,name:'Read before bed'}],pendingCount:0,conflicts:[]};
+ const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
+ const ideaButtons=()=>ui.root.findAllByType('Press').filter(x=>/^Add .*, \d+ minutes,/.test(x.props.accessibilityLabel));
+ const spacer=()=>ui.root.findAllByType('View').find(x=>x.props.testID==='routine-idea-spacer');
+ const checkOddRow=()=>{
+  assert.equal(ideaButtons().length%2,1);
+  const empty=spacer();assert.ok(empty,'the odd row keeps a second layout slot');
+  assert.deepEqual(empty.props.style[0],ideaButtons().at(-1).props.style,'both slots share the same flex basis and growth');
+  assert.equal(empty.props.style[1].opacity,0);
+  assert.equal(empty.props.pointerEvents,'none');
+  assert.equal(empty.props.accessibilityElementsHidden,true);
+  assert.equal(empty.props.importantForAccessibility,'no-hide-descendants');
+  assert.equal(empty.props.onPress,undefined,'the empty slot is not an extra action');
+ };
+ try{
+  assert.equal(ideaButtons().length,39);checkOddRow();
+  await act(async()=>press(ui.root,'Wellbeing ideas'));
+  assert.equal(ideaButtons().length,7);checkOddRow();
+  const gratitude=ideaButtons().find(x=>x.props.accessibilityLabel.startsWith('Add Gratitude list,'));
+  await act(async()=>gratitude.props.onPress());
+  assert.equal(ui.root.findByType('Editor').props.initialName,'Gratitude list','the final card still opens its own editor');
+  await act(async()=>press(ui.root,'Learning ideas'));
+  assert.equal(ideaButtons().length,8);assert.equal(spacer(),undefined,'an even grid needs no spacer');
+  state.routines=[];
+  await act(async()=>ui.update(React.createElement(Component,{subjects})));
+  await act(async()=>press(ui.root,'All ideas'));
+  assert.equal(ideaButtons().length,40);assert.equal(spacer(),undefined);
+ }finally{await act(async()=>ui.unmount());}
+});
 test('idea chips narrow to one area in a fixed order, and All shows everything',async()=>{
  const state={ready:true,scope,online:true,routines:[],pendingCount:0,conflicts:[]};
  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push(){}})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>({})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;

@@ -371,7 +371,11 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
             <Text style={s.ideaText} numberOfLines={2}>{template.name}</Text>
             <Text style={s.caption} numberOfLines={1}>{template.minutes} min · {focusAreaTitle(area?.title)}</Text>
           </Pressable>;
-        })}</View>
+        })}
+          {/* Keep an odd final idea the same width as a paired card. The
+              invisible cell shares the row's gap without being a control. */}
+          {suggestions.length % 2 === 1 && <View testID="routine-idea-spacer" style={[s.idea, s.ideaSpacer]} pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />}
+        </View>
       </View>}
       {!!done.length && (onSeeAll ? <Text style={s.caption}>{done.length} completed today</Text>
         : <Pressable disabled={!active} onPress={() => { feedback(); setShowDone(true); setManage(true); }} accessibilityRole="button" accessibilityLabel={`Done today, ${done.length}`} style={s.manage}><Text style={s.link}>Done today ({done.length})</Text></Pressable>)}
@@ -446,6 +450,7 @@ const s = StyleSheet.create({
   chipOn: { backgroundColor: colors.text, borderColor: colors.text },
   chipText: { color: colors.secondary, fontSize: 14, fontWeight: "600" }, chipTextOn: { color: colors.background },
   idea: { ...edge, flexBasis: "40%", flexGrow: 1, maxWidth: "50%", minHeight: 112, padding: 12, gap: 4, borderRadius: 18, backgroundColor: colors.surface },
+  ideaSpacer: { opacity: 0 },
   ideaTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 4 },
   ideaIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center" },
   ideaText: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },

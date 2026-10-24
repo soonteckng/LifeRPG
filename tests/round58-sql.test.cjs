@@ -3,7 +3,7 @@
 // reset and deletion, today's trail numbers, and fuller player cards.
 const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs'), path = require('node:path');
 const root = path.resolve(__dirname, '..');
-const read = f => fs.readFileSync(path.join(root, 'supabase/migrations', f), 'utf8');
+const read = f => fs.readFileSync(path.join(root, 'supabase/migrations', f), 'utf8').replace(/\r\n/g, '\n');
 const auto = read('20261024140000_round58_rewards_cards.sql'), manual = read('20261024140100_round58_dev_protection.sql');
 
 test('Round 58 SQL: no table of everyone is touched, and the risky parts check for developers on the server', () => {
@@ -23,9 +23,11 @@ if (process.env.SESSION_SQL_PGLITE_ROOT) {
   async function setup() {
     const db = new PGlite();
     await db.exec(fs.readFileSync(path.join(root, 'tests/sql/progression-bootstrap.sql'), 'utf8'));
+    // Squad focus_streak requires a valid member time zone. The dedicated
+    // rewards-sql test keeps coverage of the rewards invalid-zone fallback.
     await db.exec(`alter table public.activity_sessions add column if not exists client_session_id uuid; alter table public.activity_sessions add column if not exists credit_result jsonb;
       insert into auth.users(id) values('${dev}'),('${user}');
-      insert into public.profiles(id, username, timezone, level) values ('${dev}','Dev','Asia/Kuala_Lumpur',12),('${user}','Ali','Not/AZone',3) on conflict (id) do nothing;
+      insert into public.profiles(id, username, timezone, level) values ('${dev}','Dev','Asia/Kuala_Lumpur',12),('${user}','Ali','UTC',3) on conflict (id) do nothing;
       create schema if not exists liferpg_auth_private; create table liferpg_auth_private.developers(user_id uuid primary key); insert into liferpg_auth_private.developers values ('${dev}');`);
     for (const f of ['20261018120000_study_plan', '20261018140000_study_squads', '20261018160000_study_extras', '20261024090000_rewards_core', '20261024100000_rewards_dev_tools',
       '20261024110000_rewards_dev_unlocks', '20261024120000_rewards_auto_frames']) await db.exec(read(`${f}.sql`));

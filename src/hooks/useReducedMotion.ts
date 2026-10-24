@@ -1,24 +1,50 @@
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { AccessibilityInfo } from "react-native";
 
-// A newly opened screen should reuse the resolved app preference rather than
-// briefly changing its animation mode on every mount.
-let lastKnownReducedMotion: boolean | undefined;
+// Buttons, portraits and screens all follow the same OS setting. Reading it
+// and adding a native listener for every button made large lists expensive to
+// open. Share one subscription, retaining the last value between screens.
+let reducedMotion = true;
+const listeners = new Set<() => void>();
+let subscription: ReturnType<typeof AccessibilityInfo.addEventListener> | null = null;
+let lifetime: object | null = null;
+const snapshot = () => reducedMotion;
+const serverSnapshot = () => true;
 
-// Only the phone's own accessibility setting. The app keeps its motion otherwise.
-export function useReducedMotion() {
-  const [reduced, setReduced] = useState(lastKnownReducedMotion ?? true);
-  useEffect(() => {
-    let mounted = true;
-    const update = (value: boolean) => {
-      lastKnownReducedMotion = value;
-      if (mounted) setReduced(value);
-    };
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => {
-      if (mounted) update(value);
+function publish(value: boolean) {
+  if (reducedMotion === value) return;
+  reducedMotion = value;
+  listeners.forEach(listener => listener());
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  if (!subscription) {
+    const current = {};
+    lifetime = current;
+    let changed = false;
+    subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", value => {
+      if (lifetime !== current) return;
+      changed = true;
+      publish(value);
+    });
+    void AccessibilityInfo.isReduceMotionEnabled().then(value => {
+      // A slow initial read must not override a newer accessibility event, or
+      // update a later subscription after all previous consumers unmounted.
+      if (lifetime === current && !changed) publish(value);
     }).catch(() => {});
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", update);
-    return () => { mounted = false; subscription.remove(); };
-  }, []);
-  return reduced;
+  }
+  return () => {
+    listeners.delete(listener);
+    if (listeners.size) return;
+    lifetime = null;
+    subscription?.remove();
+    subscription = null;
+  };
+}
+
+// Only the phone's own accessibility setting. Unknown means no motion until
+// resolved, and every mounted consumer reacts to an OS change together.
+export function useReducedMotion() {
+  return useSyncExternalStore(subscribe, snapshot, serverSnapshot);
 }

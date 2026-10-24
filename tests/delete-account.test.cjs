@@ -188,7 +188,7 @@ test('a developer account is protected: the row is locked, nothing opens, and th
     assert.equal(ui.confirm(), undefined); assert.equal(ui.sheet(), undefined);
     assert.match(ui.footer(), /protected/);
     assert.deepEqual(ui.log, []);
-    const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261024140100_round58_dev_protection.sql'), 'utf8');
+    const sql = fs.readFileSync(path.join(root, 'supabase/migrations/20261024140100_round58_dev_protection.sql'), 'utf8').replace(/\r\n/g, '\n');
     assert.match(sql, /liferpg_auth_private\.developers where user_id = v_user\) then\n\s+raise exception 'This account is protected/);
   } finally { await ui.cleanup(); }
 });

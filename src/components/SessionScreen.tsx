@@ -47,6 +47,23 @@ import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
 import { rewardsStore } from "../hooks/useRewards";
 
 type Picker = "duration" | "area" | null;
+// A route can be minimised and reopened before even its first timer tick.
+// Remember that visit for this app run, independently of the route lifetime.
+// Recovered sessions already skip the intro after a full app restart.
+const seenSessionIntros = new Set<string>();
+const MAX_SEEN_INTROS = 100;
+function rememberSessionIntro(key: string) {
+  seenSessionIntros.add(key);
+  if (seenSessionIntros.size > MAX_SEEN_INTROS) seenSessionIntros.delete(seenSessionIntros.values().next().value!);
+}
+
+// useTimer merges its live clock into a new object on each render. Comparing
+// that wrapper's identity would schedule another render forever; compare the
+// actual fields so only a real timer change updates the outgoing snapshot.
+function sameTimerSnapshot(previous: ReturnType<typeof useTimer>, next: ReturnType<typeof useTimer>) {
+  const keys = Object.keys(next) as (keyof typeof next)[];
+  return Object.keys(previous).length === keys.length && keys.every(key => Object.is(previous[key], next[key]));
+}
 
 export default function SessionScreen() {
   const liveTimer = useTimer();
@@ -59,12 +76,12 @@ export default function SessionScreen() {
   const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
   const presentable = liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded;
-  const [heldTimer, setHeldTimer] = useState<{ ownerId: string | undefined; timer: typeof liveTimer } | null>(() => presentable ? { ownerId, timer: liveTimer } : null);
-  if (presentable && (!heldTimer || heldTimer.ownerId !== ownerId || heldTimer.timer !== liveTimer)) setHeldTimer({ ownerId, timer: liveTimer });
-  const visibleTimer = useMemo(() => !presentable && heldTimer && heldTimer.ownerId === ownerId ? {
+  const [heldTimer, setHeldTimer] = useState<{ scope: string; timer: typeof liveTimer } | null>(() => presentable ? { scope: presentationScope, timer: liveTimer } : null);
+  if (presentable && (!heldTimer || heldTimer.scope !== presentationScope || !sameTimerSnapshot(heldTimer.timer, liveTimer))) setHeldTimer({ scope: presentationScope, timer: liveTimer });
+  const visibleTimer = useMemo(() => !presentable && heldTimer && heldTimer.scope === presentationScope ? {
     ...heldTimer.timer, isRestoring:liveTimer.isRestoring, restoreError:liveTimer.restoreError,
     actionBusy:liveTimer.actionBusy, actionError:liveTimer.actionError,
-  } : liveTimer, [presentable, heldTimer, ownerId, liveTimer]);
+  } : liveTimer, [presentable, heldTimer, presentationScope, liveTimer]);
   const captureEndSnapshot = (source: typeof liveTimer) => ({sessionId:source.sessionId, duration:source.duration, timeLeft:source.timeLeft,
     isRunning:source.isRunning, linkedTaskId:source.linkedTaskId, targetAttributeId:source.targetAttributeId,
     activityType:source.activityType, notes:source.notes});
@@ -146,6 +163,7 @@ export default function SessionScreen() {
   const stageY = useRef<number | null>(null);
   const stagePhase = useRef<string | null>(null);
   const stageAnimation = useRef<Animated.CompositeAnimation | null>(null);
+  const [activeLayout, setActiveLayout] = useState<{ details?: number; actions?: number }>({});
   const lastPhase = useRef<string | null>(null);
   useEffect(() => () => stageAnimation.current?.stop(), []);
   useEffect(() => {
@@ -161,7 +179,7 @@ export default function SessionScreen() {
     // screen opens (centring, choices loading) snaps, so nothing bounces in.
     if (!phaseChanged && stageAnimation.current) return;
     stageAnimation.current?.stop(); stageAnimation.current = null;
-    if (previousY === null || reducedMotion || !phaseChanged || Math.abs(previousY - nextY) < 1) {
+    if (previousY === null || reducedMotion || !phaseChanged || phase === "ended" || phase === "completed" || Math.abs(previousY - nextY) < 1) {
       timerTranslate.setValue(0);
       return;
     }
@@ -188,20 +206,34 @@ export default function SessionScreen() {
   // Setting off: a fresh start walks you out of camp at dusk before the timer
   // shows (tap to skip). Reopening a running session goes straight to it.
   // A session started just before this screen opened (from a routine on Home, say) still sets off.
-  const [introSeen, setIntroSeen] = useState(() => phase === "running" && !timer.recoveredSession && timer.duration - timer.timeLeft <= 2 ? "setup" : phase);
+  // The client id remains stable when Start receives its server id. Keep both
+  // aliases; never share a generic null-id marker across separate sessions.
+  const introClientKey = timer.protectionSessionId ? JSON.stringify([presentationScope, timer.protectionSessionId]) : null;
+  const introServerKey = timer.sessionId ? JSON.stringify([presentationScope, timer.sessionId]) : null;
+  const [introSeen, setIntroSeen] = useState(() => phase === "running" && !timer.recoveredSession && timer.duration - timer.timeLeft <= 2
+    && !(introClientKey && seenSessionIntros.has(introClientKey)) && !(introServerKey && seenSessionIntros.has(introServerKey)) ? "setup" : phase);
   const [intro, setIntro] = useState(false), [skipToken, setSkipToken] = useState(0);
+  const finishIntro = useCallback(() => setIntro(false), []);
+  useLayoutEffect(() => {
+    if (phase !== "running" && phase !== "paused") return;
+    if (introClientKey) rememberSessionIntro(introClientKey);
+    if (introServerKey) rememberSessionIntro(introServerKey);
+  }, [phase, introClientKey, introServerKey]);
   if (introSeen !== phase) {
     setIntroSeen(phase);
-    if (introSeen === "setup" && phase === "running" && !reducedMotion) setIntro(true);
+    if (introSeen === "setup" && phase === "running" && !reducedMotion) {
+      const visited = introClientKey && seenSessionIntros.has(introClientKey) || introServerKey && seenSessionIntros.has(introServerKey);
+      if (!timer.recoveredSession && timer.duration - timer.timeLeft <= 2 && !visited) setIntro(true);
+    }
     else if (phase !== "running" && phase !== "paused") setIntro(false);
   }
   const [introFade] = useState(() => new Animated.Value(1));
   useLayoutEffect(() => {
     if (intro) { introFade.setValue(0); return; }
-    const appear = Animated.timing(introFade, { toValue: 1, duration: 450, useNativeDriver: true });
+    const appear = Animated.timing(introFade, { toValue: 1, duration: reducedMotion ? 0 : 450, useNativeDriver: true });
     appear.start();
     return () => appear.stop();
-  }, [intro, introFade]);
+  }, [intro, introFade, reducedMotion]);
   if (confirmBreak && (!onlineSurfaces || !liveTimer.hasOpenSession || liveTimer.breakSecondsLeft > 0)) setConfirmBreak(false);
   const compactSetup = phase === "setup" && !isQuest;
   // Setup sits in the middle of the free space instead of leaving a gap above Start.
@@ -222,7 +254,12 @@ export default function SessionScreen() {
   const [subjectPicker, setSubjectPicker] = useState(false);
   if (!onlineSurfaces && subjectPicker) setSubjectPicker(false);
 
-  useEffect(() => afterTransition(() => { void refresh(); }), [refresh]);
+  // The shared provider already owns loaded routine/category data. Returning
+  // to a live timer must not start another choices request during its slide.
+  useEffect(() => {
+    if (phase !== "setup") return;
+    return afterTransition(() => { void refresh(); });
+  }, [phase, refresh]);
   useEffect(() => { if (sessionSummary && rewardsVisible) Keyboard.dismiss(); }, [sessionSummary, rewardsVisible]);
   useEffect(() => {
     if (!locked && !isQuest && !routineName && timer.targetAttributeId === null && general) timer.setTargetAttributeId(general.id);
@@ -456,7 +493,7 @@ export default function SessionScreen() {
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={phase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-      walking={phase === "running" && !breakActive && !timer.awaitingStart} intro={intro} skipToken={skipToken} onIntroEnd={() => setIntro(false)} />
+      walking={phase === "running" && !breakActive && !timer.awaitingStart} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
@@ -473,7 +510,9 @@ export default function SessionScreen() {
           <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }, compactSetup && { marginTop: -(labelHeight + rowHeight) }]}>
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
-            {(phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
+            {/* Keep the timer's geometry, but don't composite a hidden SVG over
+              the scene while the completed result is being saved. */}
+            {!timer.isCompleted && (phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
               progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={breakActive ? colors.streak : phase === "completed" ? colors.progress : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : phase === "setup" ? colors.accent : colors.progress} />}
           </Animated.View>
@@ -486,8 +525,8 @@ export default function SessionScreen() {
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
           </Animated.View>
         </View>
-        <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled"
-          onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
+        <ScrollView style={phase === "setup" && !isQuest ? styles.flex : [styles.activeDetails, phase === "setup" && { maxHeight: Math.max(100, height - timerStageHeight - 220) }, phase === "ended" && activeLayout.details !== undefined && { height: activeLayout.details }]} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled"
+          onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); if (phase === "running" || phase === "paused") setActiveLayout(layout => layout.details === view ? layout : { ...layout, details: view }); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
           onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
           {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.startCheckVisible ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
@@ -525,7 +564,8 @@ export default function SessionScreen() {
 
           </Animated.View>
         </ScrollView>
-        <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}]}>
+        <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}, phase === "ended" && activeLayout.actions !== undefined && { height: activeLayout.actions }]}
+          onLayout={event => { if (phase === "running" || phase === "paused") { const height = Math.round(event.nativeEvent.layout.height); setActiveLayout(layout => layout.actions === height ? layout : { ...layout, actions: height }); } }}>
           {needsRecovery && <View testID="session-recovery-actions">
             <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
             <Action label="Retry" disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
@@ -537,9 +577,9 @@ export default function SessionScreen() {
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.primaryText} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.primaryText} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
-            {timer.hasOpenSession && phase !== "ended" && <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[styles.endControl, endQueued && styles.disabled]}>{endQueued ? <ActivityIndicator color={colors.text} /> : <Ionicons name="close" size={23} color={colors.text} />}</TouchableOpacity>}
+            {timer.hasOpenSession && (phase === "ended" ? <View style={[styles.endControl, styles.endedControl]} importantForAccessibility="no-hide-descendants" /> : <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[styles.endControl, endQueued && styles.disabled]}>{endQueued ? <ActivityIndicator color={colors.text} /> : <Ionicons name="close" size={23} color={colors.text} />}</TouchableOpacity>)}
             </View>
-            {timer.hasOpenSession && phase !== "ended" && <Text style={styles.cancelHint}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
+            {timer.hasOpenSession && <Text style={[styles.cancelHint, phase === "ended" && styles.endedControl]} accessibilityElementsHidden={phase === "ended"} importantForAccessibility={phase === "ended" ? "no-hide-descendants" : "auto"}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -582,6 +622,7 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: "row", gap: 10 },
   activePrimary: { backgroundColor: colors.surface },
   endControl: { width: 56, minHeight: 56, alignItems: "center", justifyContent: "center", borderRadius: 28, backgroundColor: colors.surface },
+  endedControl: { opacity: 0 },
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
   activeTimerAnchor: { flex: 1 },
   timerAnchor: { paddingHorizontal: 20, paddingBottom: 8, alignItems: "center", justifyContent: "center", flexShrink: 0 },

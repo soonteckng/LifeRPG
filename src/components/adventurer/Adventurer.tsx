@@ -1,5 +1,6 @@
-import { memo, useEffect, useState } from "react";
-import { View } from "react-native";
+import { memo, useContext, useEffect, useState } from "react";
+import { AppState, View } from "react-native";
+import { NavigationContext } from "expo-router/react-navigation";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withSequence, withTiming } from "react-native-reanimated";
 import AdventurerArt from "./AdventurerArt";
 import ItemArt from "./ItemArt";
@@ -16,21 +17,34 @@ const BLINK_EVERY = 4800, BLINK_FOR = 140;
 export default memo(function Adventurer({ look, equipped = {}, size, animate = true, lanternLevel = 0 }: {
   look: AdventurerLook; equipped?: Partial<Record<string, string>>; size: number; animate?: boolean; lanternLevel?: number;
 }) {
-  const reduced = useReducedMotion();
+  const reduced = useReducedMotion(), navigation = useContext(NavigationContext);
   const moving = animate && !reduced;
   const breath = useSharedValue(0);
   const [blink, setBlink] = useState(false);
   useEffect(() => {
-    if (!moving) { cancelAnimation(breath); breath.value = 0; return; }
-    breath.value = withRepeat(withSequence(withTiming(1, { duration: 1700, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 1700, easing: Easing.inOut(Easing.sin) })), -1);
-    return () => cancelAnimation(breath);
-  }, [moving, breath]);
-  useEffect(() => {
-    if (!moving) { setBlink(false); return; }
+    let foreground = !AppState.currentState || AppState.currentState === "active";
+    let every: ReturnType<typeof setInterval> | undefined;
     let close: ReturnType<typeof setTimeout> | undefined;
-    const every = setInterval(() => { setBlink(true); close = setTimeout(() => setBlink(false), BLINK_FOR); }, BLINK_EVERY);
-    return () => { clearInterval(every); if (close) clearTimeout(close); };
-  }, [moving]);
+    const stop = () => {
+      if (every !== undefined) clearInterval(every);
+      if (close !== undefined) clearTimeout(close);
+      every = undefined; close = undefined;
+      cancelAnimation(breath); breath.value = 0; setBlink(false);
+    };
+    const start = () => {
+      stop();
+      if (!moving || !foreground || (navigation && !navigation.isFocused())) return;
+      breath.value = withRepeat(withSequence(withTiming(1, { duration: 1700, easing: Easing.inOut(Easing.sin) }), withTiming(0, { duration: 1700, easing: Easing.inOut(Easing.sin) })), -1);
+      every = setInterval(() => { setBlink(true); close = setTimeout(() => setBlink(false), BLINK_FOR); }, BLINK_EVERY);
+    };
+    start();
+    if (!moving) return stop;
+    // Routes remain mounted behind Outfits and other pages. Cancel directly on
+    // blur, even if navigation freezes React rendering for that hidden route.
+    const focus = navigation?.addListener("focus", start), blur = navigation?.addListener("blur", stop);
+    const app = AppState.addEventListener("change", state => { foreground = state === "active"; if (foreground) start(); else stop(); });
+    return () => { focus?.(); blur?.(); app.remove(); stop(); };
+  }, [moving, navigation, breath]);
   // A slow stretch from the feet: the head rises a little, the feet and lantern stay put.
   const body = useAnimatedStyle(() => ({ transform: [{ scaleY: 1 + breath.value * 0.022 }] }));
   const pet = equipped.pet;

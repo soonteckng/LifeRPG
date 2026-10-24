@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -32,6 +32,9 @@ const BG: Record<string, [string, string]> = {
   bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
 };
 interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; title: string | null }
+// The frame samples have no outfit. A new `{}` on every tap defeats the
+// portrait's memo and rebuilds every sample's SVG when only the preview changed.
+const FRAME_EQUIPMENT = {};
 
 /** Where Outfits opens to show one item: its tab and part, and what to put on. */
 export function outfitsOpening(id: string | undefined) {
@@ -79,7 +82,6 @@ export default function OutfitsScreen() {
   const [selected, setSelected] = useState<string | null>(opening?.item ?? null);
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
-  const [stageWidth, setStageWidth] = useState(350);
   // A shorter stage on smaller phones, so the choices below keep enough room.
   const { height: screenHeight } = useWindowDimensions();
   const STAGE_HEIGHT = screenHeight < 760 ? 210 : 240, roomy = STAGE_HEIGHT >= 240;
@@ -143,23 +145,11 @@ export default function OutfitsScreen() {
   </View>;
   // The character and the tabs stay in view while the choices scroll under them.
   const pinned = <>
-      <View style={[s.stage, { height: STAGE_HEIGHT }]} testID="outfits-preview" onLayout={e => setStageWidth(e.nativeEvent.layout.width)}>
-        {/* The stage is your chosen picture background, top to bottom. */}
-        <Svg width={stageWidth} height={STAGE_HEIGHT} style={s.stageArt}>
-          <Defs><LinearGradient id="stage-bg" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={a} /><Stop offset="1" stopColor={b} /></LinearGradient></Defs>
-          <Rect x={0} y={0} width={stageWidth} height={STAGE_HEIGHT} fill="url(#stage-bg)" />
-          <Ellipse cx={stageWidth / 2} cy={STAGE_HEIGHT - 14} rx={70} ry={10} fill="#000000" opacity={0.18} />
-        </Svg>
-        <View style={s.chips}>
-          <View style={s.chip} accessible accessibilityLabel={`${rewards.stardust} Stardust`}><StardustArt size={14} /><Text style={s.chipText}>{rewards.stardust}</Text></View>
-          {setInfo && <View style={s.chip}><Text style={s.chipText}>{setInfo.name} set · {setInfo.have} of {setInfo.of}</Text></View>}
-          {framePreview !== undefined && framePreview !== rewards.frame && <View style={s.chip}><Text style={s.chipText}>Preview</Text></View>}
-        </View>
-        {tab === "picture"
-          ? <View style={s.picture}><ProfilePicture look={draft.look} equipped={draft.equipped} level={profile.level} background={draft.background} frame={shownFrame} streak={streak} size={roomy ? 164 : 146} />
-            {!!draft.title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(draft.title)?.name}</Text></View>}</View>
-          : <Adventurer look={draft.look} equipped={draft.equipped} size={roomy ? 132 : 122} lanternLevel={profile.level} />}
-      </View>
+      <OutfitsPreview height={STAGE_HEIGHT} roomy={roomy} a={a} b={b} stardust={rewards.stardust}
+        setName={setInfo?.name} setHave={setInfo?.have} setTotal={setInfo?.of}
+        previewingFrame={framePreview !== undefined && framePreview !== rewards.frame}
+        picture={tab === "picture"} look={draft.look} equipped={draft.equipped} level={profile.level}
+        background={draft.background} frame={shownFrame} streak={streak} title={draft.title} />
 
       <Segmented<Tab> value={tab} onChange={openTab} track={colors.surface}
         options={[{ value: "look", label: "Look" }, { value: "clothes", label: "Clothes" }, { value: "gear", label: "Gear" }, { value: "pets", label: "Pets" }, { value: "picture", label: "Picture" }]} />
@@ -193,14 +183,8 @@ export default function OutfitsScreen() {
           const showing = (rewards.frame ?? null) === f.id, got = f.id === null || earned.has(f.id), looking = shownFrame === f.id;
           const name = f.id === null ? "Level frame" : `${f.days} days in a row`;
           const status = showing ? "Showing" : got ? "Earned" : `${f.days - Math.min(streak, f.days)} days to go`;
-          return <Pressable key={f.id ?? "level"} onPress={() => setFramePreview(f.id)} accessibilityRole="button" accessibilityLabel={`${name}, ${status}`}
-            accessibilityState={{ selected: looking }} style={[s.frameRow, looking && s.tileFocus]}>
-            <ProfilePicture look={draft.look} equipped={{}} level={profile.level} background={draft.background} frame={f.id} size={52} />
-            <Text style={[s.frameName, !got && { color: colors.muted }]} numberOfLines={1}>{name}</Text>
-            {showing ? <View style={s.showing}><Text style={s.showingText}>{status}</Text></View>
-              : got ? <Ionicons name="checkmark-circle" size={20} color={colors.progress} />
-              : <Text style={s.toGo}>{status}</Text>}
-          </Pressable>;
+          return <FrameRow key={f.id ?? "level"} id={f.id} name={name} status={status} looking={looking}
+            showing={showing} got={got} select={setFramePreview} look={draft.look} level={profile.level} background={draft.background} />;
         })}
       </View> : <View style={s.grid}>{list.map(item => {
         const mine = has(item), on = worn(item);
@@ -230,6 +214,48 @@ export default function OutfitsScreen() {
       onCancel={() => setBuying(null)} onConfirm={() => { if (rewards.stardust >= (buying.price ?? 0)) void buy(); else setBuying(null); }} />}
   </PersonalPage>;
 }
+
+// Tab selections and fetch/busy messages do not change the illustration. Keep
+// those commits away from the SVG tree and its breathing/blink animations.
+const OutfitsPreview = memo(function OutfitsPreview({ height, roomy, a, b, stardust, setName, setHave, setTotal,
+  previewingFrame, picture, look, equipped, level, background, frame, streak, title }: {
+  height: number; roomy: boolean; a: string; b: string; stardust: number; setName?: string; setHave?: number; setTotal?: number;
+  previewingFrame: boolean; picture: boolean; look: AdventurerLook; equipped: Draft["equipped"]; level: number;
+  background: string; frame: string | null; streak: number; title: string | null;
+}) {
+  const [stageWidth, setStageWidth] = useState(350);
+  return <View style={[s.stage, { height }]} testID="outfits-preview" onLayout={e => setStageWidth(e.nativeEvent.layout.width)}>
+    {/* The stage is your chosen picture background, top to bottom. */}
+    <Svg width={stageWidth} height={height} style={s.stageArt}>
+      <Defs><LinearGradient id="stage-bg" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={a} /><Stop offset="1" stopColor={b} /></LinearGradient></Defs>
+      <Rect x={0} y={0} width={stageWidth} height={height} fill="url(#stage-bg)" />
+      <Ellipse cx={stageWidth / 2} cy={height - 14} rx={70} ry={10} fill="#000000" opacity={0.18} />
+    </Svg>
+    <View style={s.chips}>
+      <View style={s.chip} accessible accessibilityLabel={`${stardust} Stardust`}><StardustArt size={14} /><Text style={s.chipText}>{stardust}</Text></View>
+      {setName && <View style={s.chip}><Text style={s.chipText}>{setName} set · {setHave} of {setTotal}</Text></View>}
+      {previewingFrame && <View style={s.chip}><Text style={s.chipText}>Preview</Text></View>}
+    </View>
+    {picture
+      ? <View style={s.picture}><ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} streak={streak} size={roomy ? 164 : 146} />
+        {!!title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(title)?.name}</Text></View>}</View>
+      : <Adventurer look={look} equipped={equipped} size={roomy ? 132 : 122} lanternLevel={level} />}
+  </View>;
+});
+
+const FrameRow = memo(function FrameRow({ id, name, status, looking, showing, got, select, look, level, background }: {
+  id: string | null; name: string; status: string; looking: boolean; showing: boolean; got: boolean;
+  select: (frame: string | null) => void; look: AdventurerLook; level: number; background: string;
+}) {
+  return <Pressable onPress={() => select(id)} accessibilityRole="button" accessibilityLabel={`${name}, ${status}`}
+    accessibilityState={{ selected: looking }} style={[s.frameRow, looking && s.tileFocus]}>
+    <ProfilePicture look={look} equipped={FRAME_EQUIPMENT} level={level} background={background} frame={id} size={52} />
+    <Text style={[s.frameName, !got && { color: colors.muted }]} numberOfLines={1}>{name}</Text>
+    {showing ? <View style={s.showing}><Text style={s.showingText}>{status}</Text></View>
+      : got ? <Ionicons name="checkmark-circle" size={20} color={colors.progress} />
+      : <Text style={s.toGo}>{status}</Text>}
+  </Pressable>;
+});
 
 function Pill({ label, on, onPress, dot = false }: { label: string; on: boolean; onPress: () => void; dot?: boolean }) {
   return <Pressable onPress={onPress} accessibilityRole="radio" accessibilityLabel={label} accessibilityState={{ checked: on }} style={[s.pill, on && s.pillOn]}>

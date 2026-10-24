@@ -1,6 +1,6 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Animated as RNAnimated, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
-import Animated, { Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
+import Animated, { cancelAnimation, Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { Text } from "../AppText";
 import AdventurerWalking from "../adventurer/AdventurerBack";
 import { FireGlow, Fireflies, TrailScene } from "./TrailScenes";
@@ -26,20 +26,28 @@ const fill = { position: "absolute" as const, left: 0, top: 0, right: 0, bottom:
  * into morning in one slow change, and a finished session stays in that
  * morning light behind its card. Ending early keeps the night.
  */
-export default function SessionBackdrop({ phase, progress, walking, intro, skipToken, onIntroEnd }: {
+type BackdropProps = {
   phase: Phase; progress: number; walking: boolean; intro: boolean; skipToken: number; onIntroEnd: () => void;
-}) {
+};
+const isMorning = ({ phase, progress }: Pick<BackdropProps, "phase" | "progress">) => phase === "completed" || (phase !== "ended" && progress >= MORNING_AT);
+
+export default memo(function SessionBackdrop({ phase, progress, walking, intro, skipToken, onIntroEnd }: BackdropProps) {
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const rewards = useRewards({ load: false });
   const shown = phase === "running" || phase === "paused" || phase === "completed" || phase === "ended";
-  const morning = phase === "completed" || (phase !== "ended" && progress >= MORNING_AT);
+  const morning = isMorning({ phase, progress });
+  // Invisible full-screen SVGs still incur native mount and drawing work.
+  // Keep only the light on show, plus its neighbour during a crossfade.
+  const [nightMounted, setNightMounted] = useState(!morning);
+  const [dayMounted, setDayMounted] = useState(morning);
   const walk = useSharedValue(intro ? 0 : 1), dusk = useSharedValue(intro ? 1 : 0), day = useSharedValue(morning ? 1 : 0);
   const endRef = useRef(onIntroEnd);
-  useEffect(() => { endRef.current = onIntroEnd; });
+  useLayoutEffect(() => { endRef.current = onIntroEnd; }, [onIntroEnd]);
   // One effect runs the setting-off: start it, or (after a skip) finish it quickly.
   const skipAtStart = useRef(skipToken);
   useLayoutEffect(() => {
+    if (reduced) { walk.value = 1; dusk.value = 0; if (intro) endRef.current(); return; }
     if (!intro) { walk.value = 1; dusk.value = 0; skipAtStart.current = skipToken; return; }
     const finish = () => endRef.current();
     if (skipToken !== skipAtStart.current) {
@@ -51,9 +59,22 @@ export default function SessionBackdrop({ phase, progress, walking, intro, skipT
     walk.value = 0; dusk.value = 1;
     walk.value = withTiming(1, { duration: WALK_MS, easing: Easing.inOut(Easing.quad) });
     dusk.value = withDelay(WALK_MS, withTiming(0, { duration: NIGHT_FADE_MS, easing: Easing.inOut(Easing.quad) }, ok => { if (ok) runOnJS(finish)(); }));
-  }, [intro, skipToken, walk, dusk]);
+  }, [intro, skipToken, reduced, walk, dusk]);
+  useEffect(() => () => { cancelAnimation(walk); cancelAnimation(dusk); cancelAnimation(day); }, [walk, dusk, day]);
   useEffect(() => {
-    day.value = withTiming(morning ? 1 : 0, { duration: reduced ? 0 : MORNING_FADE_MS, easing: Easing.inOut(Easing.quad) });
+    if (reduced) {
+      cancelAnimation(day); day.value = morning ? 1 : 0;
+      setNightMounted(!morning); setDayMounted(morning);
+      return;
+    }
+    let current = true;
+    if (morning) setDayMounted(true);
+    else setNightMounted(true);
+    // The native completion can already be queued for JS when End or Reduce
+    // Motion changes the target. Never let that old callback remove its light.
+    const settle = () => { if (!current) return; if (morning) setNightMounted(false); else setDayMounted(false); };
+    day.value = withTiming(morning ? 1 : 0, { duration: MORNING_FADE_MS, easing: Easing.inOut(Easing.quad) }, ok => { if (ok) runOnJS(settle)(); });
+    return () => { current = false; cancelAnimation(day); };
   }, [morning, reduced, day]);
   const size = height < 720 ? 32 : 40;
   // From big in the foreground at camp to small up the road, where you walk while you focus.
@@ -64,16 +85,18 @@ export default function SessionBackdrop({ phase, progress, walking, intro, skipT
   const dayLayer = useAnimatedStyle(() => ({ opacity: day.value }));
   if (!shown) return null;
   return <View style={StyleSheet.absoluteFill} testID="session-trail" pointerEvents="none">
-    <TrailScene width={width} height={height} light="night" />
-    <Animated.View style={[fill, dayLayer]}><TrailScene width={width} height={height} light="morning" /></Animated.View>
-    <Animated.View style={[fill, duskLayer]}><TrailScene width={width} height={height} light="dusk" /></Animated.View>
+    {nightMounted && <TrailScene width={width} height={height} light="night" />}
+    {dayMounted && <Animated.View style={[fill, dayLayer]}><TrailScene width={width} height={height} light="morning" /></Animated.View>}
+    {intro && !reduced && <Animated.View style={[fill, duskLayer]}><TrailScene width={width} height={height} light="dusk" /></Animated.View>}
     <FireGlow width={width} height={height} />
     <Fireflies width={width} height={height} active={walking && !morning} />
     <Animated.View style={[s.walker, { left: width / 2 - size / 2, top }, walker]}>
       <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={walking || intro} />
     </Animated.View>
   </View>;
-}
+}, (previous, next) => previous.phase === next.phase && isMorning(previous) === isMorning(next)
+  && previous.walking === next.walking && previous.intro === next.intro && previous.skipToken === next.skipToken
+  && previous.onIntroEnd === next.onIntroEnd);
 
 /**
  * The words while you set off, above everything (the timer waits, hidden,

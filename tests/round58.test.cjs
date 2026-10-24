@@ -78,7 +78,7 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
     "react-native": { View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, absoluteFill: {} }, useWindowDimensions: () => ({ width: 390, height: 844 }),
       Animated: { View: host("RNView"), Value: class { constructor(v) { this.v = v; } }, timing: (_v, config) => ({ start() { log.push(["words", config.toValue, config.delay]); }, stop() {} }) } },
     "react-native-reanimated": { __esModule: true, default: { View: AView }, Easing: { inOut: x => x, quad: 0 }, interpolate: (v, i, o) => o[0] + (o[1] - o[0]) * v,
-      runOnJS: f => f, useAnimatedStyle: fn => fn(), useSharedValue: v => React.useRef({ value: v }).current, withDelay: (delay, x) => { log.push(["delay", delay]); return x; },
+      cancelAnimation() {}, runOnJS: f => f, useAnimatedStyle: fn => fn(), useSharedValue: v => React.useRef({ value: v }).current, withDelay: (delay, x) => { log.push(["delay", delay]); return x; },
       withTiming: (to, config, done) => { log.push(["timing", to, config?.duration]); done?.(true); return to; } },
     "../AppText": { Text: host("Text") }, "../adventurer/AdventurerBack": host("Walker"),
     "./TrailScenes": { TrailScene: props => React.createElement("Scene", props), FireGlow: host("Fire"), Fireflies: host("Flies") },
@@ -92,16 +92,15 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   const opacity = node => [].concat(node.props.style).reduce((o, x) => (x && "opacity" in x ? x.opacity : o), undefined);
   let r; await act(async () => { r = create(React.createElement(Backdrop, props("setup"))); });
   assert.equal(r.toJSON(), null, "nothing behind setup");
-  // A fresh start: the same place in three lights, one over another.
+  // A fresh start: dusk fades over night; the unused morning SVG stays unmounted.
   await act(async () => r.update(React.createElement(Backdrop, props("running", 0.01, true))));
-  assert.deepEqual(lights(r), ["night", "morning", "dusk"], "one scene, not two: dusk and morning fade over the night");
+  assert.deepEqual(lights(r), ["night", "dusk"], "only the two lights needed for the intro are mounted");
   assert.ok(log.some(e => e[0] === "delay" && e[1] === mod.WALK_MS), "you walk away first, then the light changes");
   assert.ok(log.some(e => e[0] === "timing" && e[1] === 0 && e[2] === mod.NIGHT_FADE_MS), "dusk fades into night in one go");
   assert.equal(mod.NIGHT_FADE_MS, 2000);
   assert.deepEqual(ended, ["end"], "the timer comes back once you're on your way");
   await act(async () => r.update(React.createElement(Backdrop, props("running", 0.5, false))));
-  assert.equal(opacity(layer(r, "dusk")), 0, "night while you focus");
-  assert.equal(opacity(layer(r, "morning")), 0);
+  assert.deepEqual(lights(r), ["night"], "night while you focus, without drawing hidden dusk or morning scenes");
   // Near the end, one slow fade into morning, never a change every second.
   log.length = 0;
   await act(async () => r.update(React.createElement(Backdrop, props("running", 0.91))));
@@ -111,12 +110,12 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   assert.equal(opacity(layer(r, "morning")), 1);
   // Finished: the same morning stays behind the card.
   await act(async () => r.update(React.createElement(Backdrop, props("completed", 1))));
-  assert.deepEqual(lights(r), ["night", "morning", "dusk"]);
+  assert.deepEqual(lights(r), ["morning"]);
   assert.equal(opacity(layer(r, "morning")), 1, "the session card sits on the same scene, not a black screen");
   // Ending early keeps the night.
   await act(async () => r.update(React.createElement(Backdrop, props("ended", 0.95))));
   await act(async () => r.update(React.createElement(Backdrop, props("ended", 0.96))));
-  assert.equal(opacity(layer(r, "morning")), 0);
+  assert.deepEqual(lights(r), ["night"]);
   await act(async () => r.unmount());
   // Skipping finishes quickly.
   ended.length = 0; log.length = 0;
@@ -136,7 +135,7 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   await act(async () => r.unmount());
   const screen = fs.readFileSync(path.join(root, "src/components/SessionScreen.tsx"), "utf8");
   assert.match(screen, /<SessionBackdrop phase=\{phase\}/);
-  assert.match(screen, /if \(introSeen === "setup" && phase === "running" && !reducedMotion\) setIntro\(true\)/, "you set off only on a fresh start, and not with less motion");
+  assert.match(screen, /if \(introSeen === "setup" && phase === "running" && !reducedMotion\)/, "you set off only on a fresh start, and not with less motion");
   assert.match(screen, /style=\{\[styles\.screen, onTrail && styles\.onTrail\]\}/, "the screen is see-through only while on the trail");
   const scenes = fs.readFileSync(path.join(root, "src/components/session/TrailScenes.tsx"), "utf8");
   assert.match(scenes, /night: \{ skyTop: "#03050C"/, "night is very dark; only the timer is bright");

@@ -253,12 +253,12 @@ export default function HomeScreen() {
                 <TouchableOpacity testID="home-level" style={styles.levelChip} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
                   accessibilityLabel={`Level ${level}, ${tier.title}, ${levelShare}% of the way to level ${level + 1}. See your level journey`} haptic={false}>
                   <View style={styles.levelBadge}><Text style={styles.levelNumber}>{level}</Text></View>
-                  <Text style={styles.levelTitle} numberOfLines={1}>{tier.title}</Text>
+                  <Text style={styles.levelTitle}>{tier.title}</Text>
                   <View style={styles.levelTrack}><View style={[styles.levelFill, { width: `${Math.max(4, levelShare)}%` }]} /></View>
                   <Ionicons name="chevron-forward" size={13} color={colors.level} />
                 </TouchableOpacity>
                 {/* Stardust: what finds, packs and minutes have earned, spent in Outfits, which grows out of it. */}
-                <View ref={stardustIcon} collapsable={false}>
+                <View ref={stardustIcon} collapsable={false} style={styles.stardustSlot}>
                   <TouchableOpacity testID="home-stardust" onPress={() => openFrom(stardustIcon, "/outfits")} style={styles.stardust} hitSlop={6}
                     accessibilityRole="button" accessibilityLabel={`${rewards.stardust} Stardust. Open Outfits`}>
                     <StardustArt size={15} /><Text style={styles.stardustText} numberOfLines={1}>{rewards.stardust.toLocaleString()}</Text>
@@ -347,7 +347,8 @@ const styles = StyleSheet.create({
   layout: { gap: 16 },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 },
   stardust: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: "rgba(167,139,250,0.14)", borderWidth: 1, borderColor: "rgba(167,139,250,0.35)" },
-  stardustText: { color: "#DDD6FE", fontSize: 14, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  stardustSlot: { maxWidth: "100%" },
+  stardustText: { flexShrink: 1, color: "#DDD6FE", fontSize: 14, fontWeight: "800", fontVariant: ["tabular-nums"] },
   pack: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
   packCopy: { flex: 1, minWidth: 0, gap: 1 },
   packTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
@@ -357,14 +358,16 @@ const styles = StyleSheet.create({
   identity: { flex: 1, minWidth: 0, gap: 8 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   nameButton: { flex: 1, minWidth: 0 },
-  chipRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  // Wrap Stardust below the level when they do not both fit, rather than
+  // squeezing the tier title. At large text sizes the title can wrap too.
+  chipRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6 },
-  levelChip: { flexShrink: 1, minWidth: 0, minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4, paddingRight: 10, borderRadius: 15, backgroundColor: colors.levelSoft },
-  levelBadge: { width: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.level },
+  levelChip: { flexShrink: 1, minWidth: 0, maxWidth: "100%", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4, paddingRight: 10, paddingVertical: 4, borderRadius: 15, backgroundColor: colors.levelSoft },
+  levelBadge: { minWidth: 22, minHeight: 22, paddingHorizontal: 4, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.level },
   levelNumber: { color: "#2B2200", fontSize: 12, fontWeight: "800", fontVariant: ["tabular-nums"] },
   levelTitle: { flexShrink: 1, color: colors.level, fontSize: 14, lineHeight: 18, fontWeight: "700" },
-  levelTrack: { width: 36, height: 5, borderRadius: 3, backgroundColor: "rgba(251,191,36,0.22)", overflow: "hidden" },
+  levelTrack: { flexShrink: 0, width: 36, height: 5, borderRadius: 3, backgroundColor: "rgba(251,191,36,0.22)", overflow: "hidden" },
   levelFill: { height: 5, borderRadius: 3, backgroundColor: colors.level },
   avatarFrame: { width: 68, height: 68, alignItems: "center", justifyContent: "center" },
   avatarDisc: { ...edge, width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised },
