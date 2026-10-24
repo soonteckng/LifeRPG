@@ -47,16 +47,8 @@ import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
 import { rewardsStore } from "../hooks/useRewards";
 
 type Picker = "duration" | "area" | null;
-// A route can be minimised and reopened before even its first timer tick.
-// Remember that visit for this app run, independently of the route lifetime.
-// Recovered sessions already skip the intro after a full app restart.
-const seenSessionIntros = new Set<string>();
-const MAX_SEEN_INTROS = 100;
-function rememberSessionIntro(key: string) {
-  seenSessionIntros.add(key);
-  if (seenSessionIntros.size > MAX_SEEN_INTROS) seenSessionIntros.delete(seenSessionIntros.values().next().value!);
-}
-
+/** At most this long the night scene waits for a started session to show. */
+const LAUNCH_WAIT_MS = 4000;
 // useTimer merges its live clock into a new object on each render. Comparing
 // that wrapper's identity would schedule another render forever; compare the
 // actual fields so only a real timer change updates the outgoing snapshot.
@@ -203,37 +195,45 @@ export default function SessionScreen() {
   const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && (!task || !locked && !selectableQuests.some(item => item.id === timer.linkedTaskId));
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
-  // Setting off: a fresh start walks you out of camp at dusk before the timer
-  // shows (tap to skip). Reopening a running session goes straight to it.
-  // A session started just before this screen opened (from a routine on Home, say) still sets off.
-  // The client id remains stable when Start receives its server id. Keep both
-  // aliases; never share a generic null-id marker across separate sessions.
-  const introClientKey = timer.protectionSessionId ? JSON.stringify([presentationScope, timer.protectionSessionId]) : null;
-  const introServerKey = timer.sessionId ? JSON.stringify([presentationScope, timer.sessionId]) : null;
-  const [introSeen, setIntroSeen] = useState(() => phase === "running" && !timer.recoveredSession && timer.duration - timer.timeLeft <= 2
-    && !(introClientKey && seenSessionIntros.has(introClientKey)) && !(introServerKey && seenSessionIntros.has(introServerKey)) ? "setup" : phase);
-  const [intro, setIntro] = useState(false), [skipToken, setSkipToken] = useState(0);
-  const finishIntro = useCallback(() => setIntro(false), []);
-  useLayoutEffect(() => {
-    if (phase !== "running" && phase !== "paused") return;
-    if (introClientKey) rememberSessionIntro(introClientKey);
-    if (introServerKey) rememberSessionIntro(introServerKey);
-  }, [phase, introClientKey, introServerKey]);
-  if (introSeen !== phase) {
-    setIntroSeen(phase);
-    if (introSeen === "setup" && phase === "running" && !reducedMotion) {
-      const visited = introClientKey && seenSessionIntros.has(introClientKey) || introServerKey && seenSessionIntros.has(introServerKey);
-      if (!timer.recoveredSession && timer.duration - timer.timeLeft <= 2 && !visited) setIntro(true);
-    }
-    else if (phase !== "running" && phase !== "paused") setIntro(false);
-  }
+  // Setting off: Start first walks you out of camp at dusk and into the night,
+  // and only then starts the session, so the walk never takes time from it.
+  // Skipping ends the walk early and starts it then. Reopening a session that
+  // is already running goes straight to it.
+  const [departing, setDeparting] = useState<{ scope: string; seconds: number; title: string | undefined } | null>(null);
+  const [skipToken, setSkipToken] = useState(0);
+  // Between the walk ending and the session showing as started, the night
+  // scene stays (never a flash of setup); a failed start shows setup again.
+  const [launching, setLaunching] = useState(false);
+  if (launching && (phase !== "setup" || timer.actionError || timer.restoreError)) setLaunching(false);
+  useEffect(() => {
+    if (!launching) return;
+    const fallback = setTimeout(() => setLaunching(false), LAUNCH_WAIT_MS);
+    return () => clearTimeout(fallback);
+  }, [launching]);
+  const intro = departing !== null;
+  const settingOff = intro || launching;
+  const startNow = useRef(timer.startTimer);
+  useEffect(() => { startNow.current = timer.startTimer; });
+  const departingRef = useRef(departing), scopeRef = useRef(presentationScope), openRef = useRef(timer.hasOpenSession);
+  useEffect(() => { departingRef.current = departing; scopeRef.current = presentationScope; openRef.current = timer.hasOpenSession; });
+  const finishIntro = useCallback(() => {
+    const leaving = departingRef.current;
+    departingRef.current = null;
+    setDeparting(null);
+    // Never start for another account, or over a session that began meanwhile.
+    if (!leaving || leaving.scope !== scopeRef.current || openRef.current) return;
+    setLaunching(true);
+    void startNow.current(leaving.seconds, leaving.title);
+  }, []);
+  const cancelDeparture = useCallback(() => { departingRef.current = null; setDeparting(null); }, []);
+  if (departing && (departing.scope !== presentationScope || timer.hasOpenSession || timer.isCompleted || timer.isRestoring)) setDeparting(null);
   const [introFade] = useState(() => new Animated.Value(1));
   useLayoutEffect(() => {
-    if (intro) { introFade.setValue(0); return; }
-    const appear = Animated.timing(introFade, { toValue: 1, duration: reducedMotion ? 0 : 450, useNativeDriver: true });
-    appear.start();
-    return () => appear.stop();
-  }, [intro, introFade, reducedMotion]);
+    // Setup fades away as you set off; the timer fades in once you're on your way.
+    const fade = Animated.timing(introFade, { toValue: settingOff ? 0 : 1, duration: reducedMotion ? 0 : settingOff ? 220 : 450, useNativeDriver: true });
+    fade.start();
+    return () => fade.stop();
+  }, [settingOff, introFade, reducedMotion]);
   if (confirmBreak && (!onlineSurfaces || !liveTimer.hasOpenSession || liveTimer.breakSecondsLeft > 0)) setConfirmBreak(false);
   const compactSetup = phase === "setup" && !isQuest;
   // Setup sits in the middle of the free space instead of leaving a gap above Start.
@@ -425,9 +425,13 @@ export default function SessionScreen() {
     liveTimer.isRestoring, liveTimer.actionBusy, liveTimer.restoreError, liveTimer.summaryViewed,
     liveTimer.sessionId, ownerId, endRequested, minimise]);
   useFocusEffect(useCallback(() => {
-    const subscription = BackHandler.addEventListener("hardwareBackPress", () => { minimise("android-back"); return true; });
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      // Back while setting off stays here, ready, without starting.
+      if (departingRef.current) { cancelDeparture(); return true; }
+      minimise("android-back"); return true;
+    });
     return () => subscription.remove();
-  }, [minimise]));
+  }, [minimise, cancelDeparture]));
 
   const applyDuration = (seconds: number) => {
     if (!validSessionSeconds(seconds)) return;
@@ -437,12 +441,16 @@ export default function SessionScreen() {
     if (locked) return;
     applyDuration(value * 60);
   };
-  const start = () => {
+  const start = (again = false) => {
     if (locked || missingQuest || timer.restoreError || picker || !validSessionSeconds(timer.duration)) return;
     // Study needs a subject first; Start opens the subject picker instead.
     if (sessionMode === "study" && !chosenCourse) { setSubjectPicker(true); return; }
+    if (departing) return;
     Keyboard.dismiss();
-    void timer.startTimer(timer.duration, task?.title ?? routineName ?? undefined);
+    const title = task?.title ?? routineName ?? undefined;
+    // A retry after a failed start doesn't walk out again.
+    if (reducedMotion || again) { void timer.startTimer(timer.duration, title); return; }
+    setDeparting({ scope: presentationScope, seconds: timer.duration, title });
   };
   // Back to any activity: the category stays, the routine's link and name go.
   const clearRoutine = () => {
@@ -455,7 +463,7 @@ export default function SessionScreen() {
     if (timer.restoreError) timer.retryRestore();
     else if (timer.isCompleted) void timer.retryCompletion();
     else if (timer.hasOpenSession) void timer.retryAction();
-    else start();
+    else start(true);
   };
   const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading routine…" : "Routine unavailable") : suggestion?.title ?? routineName ?? "Free session");
   const contextExam = chosenCourse ? upcomingExams(study.exams).find(exam => exam.courseId === chosenCourse.id) : undefined;
@@ -492,12 +500,13 @@ export default function SessionScreen() {
 
   // While you focus, you walk the trail behind the timer (see SessionBackdrop),
   // and a finished or ended session keeps its scene behind its card.
-  const onTrail = phase === "running" || phase === "paused" || phase === "completed" || phase === "ended";
+  const scenePhase = settingOff ? "running" : phase;
+  const onTrail = scenePhase === "running" || scenePhase === "paused" || scenePhase === "completed" || scenePhase === "ended";
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
-    <SessionBackdrop phase={phase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-      walking={phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro} />
+    <SessionBackdrop phase={scenePhase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
+      walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
@@ -577,7 +586,7 @@ export default function SessionScreen() {
           {!timer.isCompleted && <>
             <View style={styles.actionRow}>
             <TouchableOpacity style={[styles.primary, styles.flex, timer.hasOpenSession && styles.activePrimary, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
-              onPress={timer.hasOpenSession ? () => { if (breakActive) void timer.resumeTimer(); else if (timer.isRunning && timer.protectedSession) setConfirmBreak(true); else void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()); } : start}
+              onPress={timer.hasOpenSession ? () => { if (breakActive) void timer.resumeTimer(); else if (timer.isRunning && timer.protectedSession) setConfirmBreak(true); else void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()); } : () => start()}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
               {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.primaryText} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? "pause" : "play"} size={18} color={timer.hasOpenSession ? colors.text : colors.primaryText} />}<Text style={[styles.primaryText, timer.hasOpenSession && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>

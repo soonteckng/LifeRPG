@@ -223,11 +223,11 @@ test("Outfits buys with enough Stardust after asking, and needs internet to save
   } finally { await act(async () => off.r.unmount()); }
 });
 
-test("the Picture tab: frames follow your streak and only preview, badges and backgrounds are chosen", async () => {
+test("the Profile tab: frames follow your streak and only preview, badges and backgrounds are chosen", async () => {
   const ui = await outfits({ owned: ["cardigan", "frame_streak_7", "frame_streak_30", "bg_sunset", "title_artist"], frame: "frame_streak_30" });
   try {
     await ui.tab("picture");
-    const stage = () => ui.r.root.findAllByType("Picture").find(p => p.props.size === 164).props;
+    const stage = () => ui.r.root.findAllByType("Picture").find(p => p.props.size >= 100).props;
     assert.equal(stage().frame, "frame_streak_30", "your highest earned frame shows");
     const labels = ui.r.root.findAll(n => n.type === "Press" && typeof n.props.accessibilityLabel === "string" && /in a row|Level frame/.test(n.props.accessibilityLabel) && typeof n.props.onPress === "function").map(n => n.props.accessibilityLabel);
     assert.deepEqual(labels, ["Level frame, Earned", "7 days in a row, Earned", "30 days in a row, Showing", "60 days in a row, 27 days to go",
@@ -285,7 +285,7 @@ test("Picture opens with three portraits, while all frame choices remain immedia
     const frames = () => ui.r.root.findAll(n => n.type === "Press" && /^(Level frame|\d+ days in a row),/.test(n.props.accessibilityLabel ?? ""));
     assert.equal(frames().length, 7, "labels, status and press targets are never deferred");
     await ui.press("365 days in a row, 332 days to go");
-    const stage = () => ui.r.root.findAllByType("Picture").find(p => p.props.size === 164);
+    const stage = () => ui.r.root.findAllByType("Picture").find(p => p.props.size >= 100);
     assert.equal(stage().props.frame, "frame_streak_365", "a tap previews the frame before its thumbnail is drawn");
     assert.equal(ui.renders.thumbnails, 2);
     assert.equal(ui.button("Save look").props.disabled, true);

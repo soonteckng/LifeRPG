@@ -65,13 +65,17 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
     // Something you just bought gets no pop-up; you chose it.
     buy: (itemId: string) => act(c => () => c.buy(itemId), [itemId]),
     saveAvatar: (next: Omit<SavedAvatar, "revision" | "frame">) => act(c => () => c.saveAvatar(next, avatar?.revision ?? 1)),
-    // A test find comes back through the same return screen as a real one.
-    developer: async (action: DevRewardAction, amount = 0) => {
+    // A test find comes back through the same return screen as a real one;
+    // `walkSeconds` shows it as the walk a find takes (25 minutes).
+    developer: async (action: DevRewardAction, amount = 0, walkSeconds: number | null = null) => {
       const r = await act(c => () => c.developer(action, amount));
       if (r.ok && action === "find" && r.value.gifts.length)
-        rewardsStore.addReveal(owner, { id: `find:${Date.now()}`, kind: "expedition", seconds: null, finds: r.value.gifts, stardust: r.value.gifts.reduce((n, g) => n + g.stardust, 0) });
+        rewardsStore.addReveal(owner, { id: `find:${Date.now()}`, kind: "expedition", seconds: walkSeconds, finds: r.value.gifts, stardust: r.value.gifts.reduce((n, g) => n + g.stardust, 0) });
       return r;
     },
+    // Developer preview: the return screen after a short session that found
+    // nothing yet. It's the real screen with nothing given.
+    showEmptyReturn: (seconds: number) => rewardsStore.addReveal(owner, { id: `empty:${Date.now()}`, kind: "expedition", seconds, finds: [], stardust: 0 }),
     dismissReveal: (id: string) => rewardsStore.dismissReveal(owner, id),
     today: snap.state?.today ?? { seconds: 0, finds: 0 },
     nextFindSeconds: snap.state?.nextFindSeconds ?? 1500,

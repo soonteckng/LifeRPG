@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Modal, StyleSheet, View } from "react-native";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "./AppText";
 import { SettingsGroup, SettingsRow } from "./SettingsList";
 import SessionResultSheet from "./SessionResultSheet";
@@ -10,15 +10,24 @@ import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useTimer } from "../context/TimerContext";
 import { restartIntro, useIsDeveloper } from "../services/developerAccess";
-import { requiredCharacterXP } from "../utils/levelTiers";
+import { LEVEL_TIERS, requiredCharacterXP } from "../utils/levelTiers";
 import { useRouter } from "expo-router";
 import { useRewards } from "../hooks/useRewards";
 import { rewardItem } from "../services/rewardCatalog";
 import type { DevRewardAction } from "../services/rewardsService";
 import { colors, edge } from "../constants/theme";
+import { Ionicons } from "@expo/vector-icons";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import AppSheet from "./AppSheet";
+import SheetHeader from "./SheetHeader";
+import { levelPreview, useShownLevel } from "../services/levelPreview";
+import { tapHaptic } from "../utils/tapHaptics";
 
 type Preview = "level" | "complete" | "recovered";
 const SAVING_PREVIEW_MS = 3000;
+/** One find comes from 25 focused minutes. */
+const FIND_SECONDS = 25 * 60;
 
 /**
  * Previews for the developer account only. The server decides who is a
@@ -39,6 +48,9 @@ export default function DeveloperTools() {
   const [shown, setShown] = useState(false);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const [tiersOpen, setTiersOpen] = useState(false);
+  const shownLevel = useShownLevel(profile.id, profile.level);
   const rewardScope = JSON.stringify([profile.id, auth.admissionEpoch]);
   const [feedback, setFeedback] = useState({ scope: rewardScope, note: "", claim: "", claiming: false });
   const rewardNote = feedback.scope === rewardScope ? feedback.note : "";
@@ -78,6 +90,9 @@ export default function DeveloperTools() {
     if (currentRewardScope.current !== rewardScope) return;
     feedbackForScope({ claim: "", note: text ? `${ok ? "✓" : "!"} ${text}` : "" });
   };
+  // Coming back from a session, on demand. Real sessions waiting to be claimed
+  // come first; with none, a developer still sees the return screen, with one
+  // real find roll from a 25-minute walk.
   const claim = async () => {
     if (claimLock.current) return;
     claimLock.current = true; feedbackForScope({ claiming: true, note: "", claim: "Checking…" });
@@ -87,18 +102,38 @@ export default function DeveloperTools() {
       if (!r.ok) { feedbackForScope({ claim: `! ${r.message}` }); return; }
       const finds = r.value.sessions.flatMap(x => x.finds), dust = r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0);
       const parts = [finds.length ? `Finds: ${names(finds)}` : "", dust ? `+${dust} Stardust from minutes` : "", r.value.milestones.length ? `Unlocked: ${names(r.value.milestones)}` : ""].filter(Boolean);
-      feedbackForScope({ claim: `✓ ${parts.length ? parts.join(". ") + "." : `Nothing new since your last check. Next find in ${Math.ceil(r.value.state.nextFindSeconds / 60)} min of focus.`}` });
+      if (parts.length || r.value.sessions.length) { feedbackForScope({ claim: `✓ ${parts.length ? parts.join(". ") + "." : "Back at camp."}` }); return; }
+      const roll = await rewards.developer("find", 0, FIND_SECONDS);
+      if (currentRewardScope.current !== rewardScope) return;
+      feedbackForScope({ claim: roll.ok ? `✓ No sessions waiting, so here's a test walk: ${names(roll.value.gifts) || "nothing this time"}.` : `! ${roll.message}` });
     } catch {
       if (currentRewardScope.current === rewardScope) feedbackForScope({ claim: "! Couldn't check your finds. Please try again." });
     } finally {
       if (currentRewardScope.current === rewardScope) { claimLock.current = false; feedbackForScope({ claiming: false }); }
     }
   };
+  // Developers have no daily limit: an opened pack is reopened and opened again.
   const pack = async () => {
     note("Opening…");
-    const r = await rewards.openPack();
+    let r = await rewards.openPack();
+    if (!r.ok && /already opened/.test(r.message)) {
+      const again = await rewards.developer("reopen_pack", 0);
+      if (again.ok) r = await rewards.openPack();
+    }
     if (r.ok) note(`${["Canvas", "Leather", "Brass", "Crystal"][r.value.tier]} pack (${r.value.daysInARow} days in a row): ${names(r.value.items) || "no item"}, +${r.value.stardust} Stardust.`);
-    else note(/already opened/.test(r.message) ? "Today's pack is already open. Use “Let me open today's pack again” first." : r.message, false);
+    else note(r.message, false);
+  };
+  // The next pet, frame and badge, with their pop-ups. With all of them
+  // earned, they're taken back first so the pop-ups can show again.
+  const milestones = async () => {
+    note("One moment…");
+    let r = await rewards.developer("next_milestones", 0);
+    if (r.ok && !r.value.gifts.length) {
+      const back = await rewards.developer("reearn", 0);
+      if (back.ok) r = await rewards.developer("next_milestones", 0);
+    }
+    if (r.ok) note(r.value.gifts.length ? `Earned ${names(r.value.gifts)}.` : "Nothing to earn right now.");
+    else note(r.message, false);
   };
   const dev = async (action: DevRewardAction, done: (gifts: { item: string; new: boolean; stardust: number }[]) => string) => {
     note("One moment…");
@@ -118,14 +153,16 @@ export default function DeveloperTools() {
     </SettingsGroup>
     <SettingsGroup title="Developer: rewards" footer={`${rewards.stardust} Stardust. These use the real rewards, the same as everyone's; the rows marked “test” are developer-only.`}>
       <SettingsRow first icon="shirt-outline" tint="#2DD4A7" title="Open Outfits" onPress={() => router.navigate("/outfits")} />
-      <SettingsRow icon="compass-outline" tint="#60A5FA" title="Check for new finds" status={claimNote} testID="dev-reward-claim" busy={claiming} disabled={rewards.busy || claiming} onPress={() => void claim()} />
-      <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" subtitle="Developers don't need the daily goal" disabled={rewards.busy} onPress={() => void pack()} />
-      <SettingsRow icon="repeat-outline" tint="#64D2FF" title="Let me open today's pack again" subtitle="Test" disabled={rewards.busy}
-        onPress={() => void dev("reopen_pack", () => "Today's pack can be opened again. Your days in a row carry on.")} />
+      <SettingsRow icon="color-palette-outline" tint={shownLevel.previewing ? LEVEL_TIERS.findLast(t => shownLevel.level >= t.level)?.color : "#C1A8FA"} title="Preview level colours"
+        subtitle="Test · see each tier's colours on your picture, Home and Profile" value={shownLevel.previewing ? `Level ${shownLevel.level}` : "Off"} testID="dev-level-preview" onPress={() => setTiersOpen(true)} />
+      <SettingsRow icon="compass-outline" tint="#60A5FA" title="Come back from a session" subtitle="Your finds, or a test walk if there are none" status={claimNote} testID="dev-reward-claim" busy={claiming} disabled={rewards.busy || claiming} onPress={() => void claim()} />
+      <SettingsRow icon="moon-outline" tint="#A3ABC2" title="Come back with nothing" subtitle="Test · the screen after a short session" disabled={rewards.busy}
+        onPress={() => { rewards.showEmptyReturn(60); note("Showing the screen after a 1-minute session."); }} />
+      <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" subtitle="Any time, as often as you like" disabled={rewards.busy} onPress={() => void pack()} />
       <SettingsRow icon="diamond-outline" tint="#A78BFA" title="Find something now" subtitle="Test · one real find roll" disabled={rewards.busy}
         onPress={() => void dev("find", gifts => gifts.length ? `Found ${names(gifts)}.` : "Nothing came up. Try again.")} />
-      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn the next pet, frame and badge" subtitle="Test · shows their pop-ups" disabled={rewards.busy}
-        onPress={() => void dev("next_milestones", gifts => gifts.length ? `Earned ${names(gifts)}.` : "You've earned every pet, frame and badge.")} />
+      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn the next pet, frame and badge" subtitle="Test · shows their pop-ups, again and again" disabled={rewards.busy}
+        onPress={() => void milestones()} />
       <SettingsRow icon="arrow-undo-outline" tint="#FF9F0A" title="Take back pets, frames and badges" subtitle="Test · so you can earn them again" disabled={rewards.busy}
         onPress={() => void dev("reearn", () => "Pets, frames and badges taken back. Earn them again from the row above.")} />
       <SettingsRow icon="sparkles-outline" tint="#A78BFA" title="Add 500 test Stardust" subtitle="Test" disabled={rewards.busy}
@@ -142,6 +179,23 @@ export default function DeveloperTools() {
       message="You'll see the intro and the guide like a new player. Your name and goal are filled in, and your level, sessions, routines and squads all stay."
       confirmLabel={restarting === "busy" ? "Restarting…" : "Restart intro"} cancelLabel="Not now"
       onCancel={() => { if (restarting !== "busy") setRestarting(null); }} onConfirm={() => void restart()} />}
+    <AppSheet visible={tiersOpen} onRequestClose={() => setTiersOpen(false)} attached compact maxHeightRatio={0.86} label="level colours" motionMode="timed"
+      header={<SheetHeader title="Preview level colours" subtitle="Only on this phone, for this account, until you close the app." onClose={() => setTiersOpen(false)} />}>
+      <BottomSheetScrollView contentContainerStyle={[ds.sheet, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
+        {[null, ...LEVEL_TIERS].map((tier, index) => {
+          const on = tier ? shownLevel.previewing && LEVEL_TIERS.findLast(t => shownLevel.level >= t.level)?.level === tier.level : !shownLevel.previewing;
+          return <Pressable key={tier?.level ?? "mine"} accessibilityRole="radio" accessibilityState={{ checked: on }} testID={`dev-tier-${tier?.level ?? "mine"}`}
+            accessibilityLabel={tier ? `${tier.title}, level ${tier.level}` : `My level, ${profile.level ?? 1}`}
+            onPress={() => { tapHaptic(); levelPreview.set(profile.id, tier ? tier.level : null); setTiersOpen(false); }}
+            style={[ds.tier, index > 0 && ds.tierLine]}>
+            <View style={[ds.swatch, { backgroundColor: tier?.color ?? colors.surfaceRaised }]}>{!tier && <Ionicons name="person" size={14} color={colors.text} />}</View>
+            <View style={ds.tierCopy}><Text style={ds.tierName}>{tier ? tier.title : "My real level"}</Text>
+              <Text style={ds.tierLevel}>{tier ? `Level ${tier.level}` : `Level ${profile.level ?? 1}`}</Text></View>
+            {on && <Ionicons name="checkmark-circle" size={20} color={colors.progress} />}
+          </Pressable>;
+        })}
+      </BottomSheetScrollView>
+    </AppSheet>
     <Modal visible={saving} transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={() => setSaving(false)}>
       <SessionSavingOverlay visible={saving} />
     </Modal>
@@ -151,4 +205,11 @@ export default function DeveloperTools() {
 const ds = StyleSheet.create({
   note: { ...edge, marginTop: -12, marginHorizontal: 4, padding: 12, borderRadius: 14, backgroundColor: "rgba(45,212,167,0.10)" },
   noteText: { color: colors.text, fontSize: 14, lineHeight: 20 },
+  sheet: { paddingHorizontal: 20, paddingTop: 4 },
+  tier: { flexDirection: "row", alignItems: "center", gap: 14, minHeight: 56, paddingVertical: 8 },
+  tierLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  swatch: { width: 30, height: 30, borderRadius: 15, alignItems: "center", justifyContent: "center" },
+  tierCopy: { flex: 1, minWidth: 0 },
+  tierName: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  tierLevel: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
 });

@@ -134,8 +134,8 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   assert.equal(skips, 1);
   await act(async () => r.unmount());
   const screen = fs.readFileSync(path.join(root, "src/components/SessionScreen.tsx"), "utf8");
-  assert.match(screen, /<SessionBackdrop phase=\{phase\}/);
-  assert.match(screen, /if \(introSeen === "setup" && phase === "running" && !reducedMotion\)/, "you set off only on a fresh start, and not with less motion");
+  assert.match(screen, /<SessionBackdrop phase=\{scenePhase\}/);
+  assert.match(screen, /if \(reducedMotion \|\| again\) \{ void timer\.startTimer/, "less motion (or a retry) starts at once; otherwise Start sets off first (see session tests)");
   assert.match(screen, /style=\{\[styles\.screen, onTrail && styles\.onTrail\]\}/, "the screen is see-through only while on the trail");
   const scenes = fs.readFileSync(path.join(root, "src/components/session/TrailScenes.tsx"), "utf8");
   assert.match(scenes, /night: \{ skyTop: "#03050C"/, "night is very dark; only the timer is bright");

@@ -82,7 +82,8 @@ export default memo(function ProfilePicture({ look, equipped = {}, level, backgr
     {!!pet && size >= 40 && <View style={{ position: "absolute", right: 0, bottom: 0, width: petBox, height: petBox, borderRadius: petBox / 2, backgroundColor: "#131826", borderWidth: size >= 80 ? 2 : 1.5, borderColor: ring, alignItems: "center", justifyContent: "center" }}>
       <ItemArt id={pet} size={Math.round(petBox * 0.72)} />
     </View>}
-    {showLevel && size >= 56 && <View style={{ position: "absolute", left: size / 2 - Math.round(size * 0.17), width: Math.round(size * 0.34), bottom: size * 0.005, height: Math.round(size * 0.19),
+    {/* With a pet beside it, the level moves a little left so the two never touch. */}
+    {showLevel && size >= 56 && <View style={{ position: "absolute", left: size * (pet ? 0.43 : 0.5) - Math.round(size * 0.17), width: Math.round(size * 0.34), bottom: size * 0.005, height: Math.round(size * 0.19),
       borderRadius: size * 0.1, backgroundColor: tierColor(level), borderWidth: size >= 100 ? 2 : 1.5, borderColor: "#131826", alignItems: "center", justifyContent: "center" }}
       testID="picture-level">
       <Text style={{ color: "#131826", fontSize: Math.max(10, Math.round(size * 0.115)), fontWeight: "900" }} maxFontSizeMultiplier={1.15} numberOfLines={1}>{level}</Text>

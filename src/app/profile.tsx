@@ -19,6 +19,8 @@ import MilestonesSheet, { useMilestones } from "../components/MilestonesSheet";
 import SubjectBreakdown from "../components/SubjectBreakdown";
 import SectionHeader from "../components/SectionHeader";
 import LevelTierSheet from "../components/LevelTierSheet";
+import { useShownLevel } from "../services/levelPreview";
+import { levelColors } from "../utils/adventurerLook";
 import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
 import { focusAreaDetail } from "../utils/focusAreaDetail";
 import AppSheet from "../components/AppSheet";
@@ -79,7 +81,7 @@ export default function ProfileScreen() {
     }, [reloadProfile]),
   );
   const areas = profileFocusAreaGrowth(data?.areas ?? []);
-  const required = requiredCharacterXP(profile.level);
+  const required = requiredCharacterXP(profile.level ?? 1);
   const selectedArea = areas.find(area => area.id === areaId) ?? null;
   const areaDetail = selectedArea && data ? focusAreaDetail(selectedArea, data.areas, data.sessions, profile.timezone) : null;
   const selectedKind = focusAreaKind(selectedArea?.title);
@@ -140,7 +142,9 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
-  const tier = levelTierProgress(profile.level, profile.current_xp).current;
+  // Your level as drawn, in your tier's colour (a developer can preview another tier).
+  const { level } = useShownLevel(profile.id, profile.level), tint = levelColors(level);
+  const tier = levelTierProgress(level, profile.current_xp).current;
   return (
     <PersonalPage title="Profile" subtitle="" compact back animateTransition expandFromIcon fallback="/">
       <ContentReveal><View style={s.stack}>
@@ -148,21 +152,21 @@ export default function ProfileScreen() {
         <View style={s.hero} testID="profile-companion-card">
           <Pressable onPress={() => router.navigate("/outfits")} accessibilityRole="button" accessibilityLabel="Your character. Open Outfits" style={s.portrait} testID="profile-character">
             <View style={s.halo} pointerEvents="none" />
-            <Adventurer look={rewards.look} equipped={rewards.equipped} size={100} lanternLevel={profile.level} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} />
+            <Adventurer look={rewards.look} equipped={rewards.equipped} size={100} lanternLevel={level} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} />
           </Pressable>
-          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${profile.level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={s.levelBadge} hitSlop={8}>
-            <Text style={s.levelBadgeText}>Level {profile.level}</Text>
+          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={[s.levelBadge, { backgroundColor: tint.color }]} hitSlop={8}>
+            <Text style={[s.levelBadgeText, { color: tint.ink }]}>Level {level}</Text>
           </Pressable>
           <View style={s.identity}>
             <View style={s.nameRow}>
               <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
               <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Edit name" hitSlop={10} style={s.editName}><Ionicons name="pencil" size={15} color={colors.secondary} /></Pressable>
             </View>
-            <Text style={s.tier} numberOfLines={1}>{tier.title}</Text>
+            <Text style={[s.tier, { color: tint.color }]} numberOfLines={1}>{tier.title}</Text>
           </View>
           <View style={s.xp}>
-            <View style={s.xpHead}><Text style={s.xpValue}>{profile.current_xp} / {required} XP</Text><Text style={p.caption} numberOfLines={1}>{required - profile.current_xp} to level {profile.level + 1}</Text></View>
-            <Meter value={profile.current_xp / required} height={6} color={colors.level} />
+            <View style={s.xpHead}><Text style={[s.xpValue, { color: tint.color }]}>{profile.current_xp} / {required} XP</Text><Text style={p.caption} numberOfLines={1}>{required - profile.current_xp} to level {level + 1}</Text></View>
+            <Meter value={profile.current_xp / required} height={6} color={tint.color} />
           </View>
           <View style={s.heroActions}>
             <Pressable onPress={() => router.navigate("/outfits")} accessibilityRole="button" accessibilityLabel="Outfits" style={s.heroButton}><Ionicons name="shirt-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Outfits</Text></Pressable>
@@ -225,7 +229,7 @@ export default function ProfileScreen() {
         extra={recentAreaSessions.length ? <SubjectBreakdown owner={profile.id} sessions={recentAreaSessions} /> : null}
         onDismiss={() => { const next = afterArea.current; afterArea.current = null; setLeavingArea(false); next?.(); }} />
       <MilestonesSheet visible={badgesOpen} onClose={() => setBadgesOpen(false)} />
-      <LevelTierSheet visible={tiersOpen} level={profile.level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
+      <LevelTierSheet visible={tiersOpen} level={level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         compact motionMode="timed" keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" label="Edit name"
         header={<View style={p.sheetHeader}><Text style={p.title}>Your name</Text><Text style={p.body}>Shown to your squads and on the leaderboard.</Text></View>}

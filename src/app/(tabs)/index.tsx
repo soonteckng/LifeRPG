@@ -9,7 +9,8 @@ import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
 import CharacterMark from "../../components/CharacterMark";
 import ContentReveal from "../../components/ContentReveal";
-import ProgressRing from "../../components/ProgressRing";
+import { useShownLevel } from "../../services/levelPreview";
+import { levelColors } from "../../utils/adventurerLook";
 import { levelTierProgress, requiredCharacterXP } from "../../utils/levelTiers";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
@@ -173,7 +174,9 @@ export default function HomeScreen() {
   const dailyGoalMinutes = todayGoal ?? profile?.daily_goal_minutes ?? 60;
   const safeCompletedSeconds = Math.max(0, completedSeconds);
   const remainingSeconds = Math.max(0, dailyGoalMinutes * 60 - safeCompletedSeconds);
-  const level = profile?.level ?? 1;
+  // Your level as drawn (a developer can preview another tier's colours).
+  const level = useShownLevel(profile?.id, profile?.level).level;
+  const levelTint = levelColors(level);
   const levelShare = Math.max(0, Math.min(99, Math.floor(((profile?.current_xp ?? 0) / requiredCharacterXP(level)) * 100)));
   const tier = levelTierProgress(level, profile?.current_xp ?? 0).current;
   const displayName = profile?.username?.trim() || "Hero";
@@ -232,13 +235,12 @@ export default function HomeScreen() {
           {/* You: your companion and level on the left, Settings on the right. */}
           <TourAnchor id="home-identity"><View style={styles.identityRow}>
             <View ref={avatar} collapsable={false}>
-              <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="Your companion, level, badges and categories">
-                <ProgressRing size={64} stroke={3} progress={levelShare / 100} color={colors.level} track={colors.levelSoft}>
-                  <View style={styles.avatarDisc}><CharacterMark size={42} avatar={profile?.avatar ?? "🌱"} /></View>
-                </ProgressRing>
+              <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint={`Level ${level}. Your companion, badges and categories`}>
+                {/* Your picture, with your level on it, like everywhere else. */}
+                <CharacterMark size={70} />
               </TouchableOpacity>
             </View>
-            {/* Two lines beside you: your name with Settings, then your level and Stardust. */}
+            {/* Two lines beside you: your name with Settings, then your tier on the left and Stardust on the right, under Settings. */}
             <View style={styles.identity}>
               <View style={styles.nameRow}>
                 {/* Your greeting and name open Profile too, like your picture. */}
@@ -250,12 +252,11 @@ export default function HomeScreen() {
               </View>
               <View style={styles.chipRow}>
                 {/* The level reads as a badge you can open, not a line of small print. */}
-                <TouchableOpacity testID="home-level" style={styles.levelChip} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
+                <TouchableOpacity testID="home-level" style={[styles.levelChip, { backgroundColor: levelTint.soft }]} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
                   accessibilityLabel={`Level ${level}, ${tier.title}, ${levelShare}% of the way to level ${level + 1}. See your level journey`} haptic={false}>
-                  <View style={styles.levelBadge}><Text style={styles.levelNumber}>{level}</Text></View>
-                  <Text style={styles.levelTitle}>{tier.title}</Text>
-                  <View style={styles.levelTrack}><View style={[styles.levelFill, { width: `${Math.max(4, levelShare)}%` }]} /></View>
-                  <Ionicons name="chevron-forward" size={13} color={colors.level} />
+                  <Text style={[styles.levelTitle, { color: levelTint.color }]}>{tier.title}</Text>
+                  <View style={[styles.levelTrack, { backgroundColor: levelTint.track }]}><View style={[styles.levelFill, { backgroundColor: levelTint.color, width: `${Math.max(4, levelShare)}%` }]} /></View>
+                  <Ionicons name="chevron-forward" size={13} color={levelTint.color} />
                 </TouchableOpacity>
                 {/* Stardust: what finds, packs and minutes have earned, spent in Outfits, which grows out of it. */}
                 <View ref={stardustIcon} collapsable={false} style={styles.stardustSlot}>
@@ -347,7 +348,7 @@ const styles = StyleSheet.create({
   layout: { gap: 16 },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 },
   stardust: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: "rgba(167,139,250,0.14)", borderWidth: 1, borderColor: "rgba(167,139,250,0.35)" },
-  stardustSlot: { maxWidth: "100%" },
+  stardustSlot: { maxWidth: "100%", marginLeft: "auto" },
   stardustText: { flexShrink: 1, color: "#DDD6FE", fontSize: 14, fontWeight: "800", fontVariant: ["tabular-nums"] },
   pack: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
   packCopy: { flex: 1, minWidth: 0, gap: 1 },
@@ -358,19 +359,16 @@ const styles = StyleSheet.create({
   identity: { flex: 1, minWidth: 0, gap: 8 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 10 },
   nameButton: { flex: 1, minWidth: 0 },
-  // Wrap Stardust below the level when they do not both fit, rather than
-  // squeezing the tier title. At large text sizes the title can wrap too.
+  // Your tier on the left, Stardust on the right under Settings. If they
+  // don't both fit (large text), Stardust moves below and stays on the right.
   chipRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6 },
-  levelChip: { flexShrink: 1, minWidth: 0, maxWidth: "100%", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 4, paddingRight: 10, paddingVertical: 4, borderRadius: 15, backgroundColor: colors.levelSoft },
-  levelBadge: { minWidth: 22, minHeight: 22, paddingHorizontal: 4, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.level },
-  levelNumber: { color: "#2B2200", fontSize: 12, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  levelChip: { flexShrink: 1, minWidth: 0, maxWidth: "100%", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingRight: 10, paddingVertical: 4, borderRadius: 15, backgroundColor: colors.levelSoft },
   levelTitle: { flexShrink: 1, color: colors.level, fontSize: 14, lineHeight: 18, fontWeight: "700" },
   levelTrack: { flexShrink: 0, width: 36, height: 5, borderRadius: 3, backgroundColor: "rgba(251,191,36,0.22)", overflow: "hidden" },
   levelFill: { height: 5, borderRadius: 3, backgroundColor: colors.level },
-  avatarFrame: { width: 68, height: 68, alignItems: "center", justifyContent: "center" },
-  avatarDisc: { ...edge, width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised },
+  avatarFrame: { width: 70, height: 70, alignItems: "center", justifyContent: "center" },
   today: { ...edge, padding: 18, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
   todayDone: { borderColor: "rgba(52,211,153,0.28)" },
   todayHead: { flexDirection: "row", alignItems: "center", gap: 10 },

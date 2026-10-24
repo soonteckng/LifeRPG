@@ -10,6 +10,7 @@ import SheetConfirmation from "../components/SheetConfirmation";
 import Adventurer from "../components/adventurer/Adventurer";
 import ItemArt, { StardustArt } from "../components/adventurer/ItemArt";
 import ProfilePicture from "../components/adventurer/ProfilePicture";
+import { useShownLevel } from "../services/levelPreview";
 import Svg, { Defs, Ellipse, LinearGradient, Rect, Stop } from "react-native-svg";
 import { colors, edge, radius } from "../constants/theme";
 import { useUser } from "../context/UserContext";
@@ -24,6 +25,8 @@ const PARTS: Record<"clothes" | "gear", { slot: WearSlot; label: string }[]> = {
   clothes: [{ slot: "head", label: "Hats" }, { slot: "top", label: "Tops" }, { slot: "neck", label: "Neck" }, { slot: "back", label: "Cloaks" }, { slot: "shoes", label: "Shoes" }],
   gear: [{ slot: "bag", label: "Bags" }, { slot: "held", label: "In hand" }],
 };
+/** Room the profile tab keeps above your picture for its chips, and below it for your badge. */
+const CHIP_ROW = 48, PICTURE_ROOM = CHIP_ROW + 8 + 6 + 30;
 const PICTURE_PARTS: { value: PicturePart; label: string }[] = [{ value: "frames", label: "Frames" }, { value: "badges", label: "Badges" }, { value: "background", label: "Background" }];
 const RARITY_COLOR: Record<string, string> = { common: "#C2C8D8", uncommon: "#2DD4A7", rare: "#60A5FA", epic: "#A78BFA", legendary: "#FBBF24" };
 const RARITY_NAME: Record<string, string> = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
@@ -79,6 +82,7 @@ export default function OutfitsScreen() {
     [rewards.look, rewards.equipped, rewards.background, rewards.title]);
   // Opened from a reward ("See it in Outfits"): start on its category, wearing it to try.
   const params = useLocalSearchParams<{ show?: string; from?: string }>();
+  const shownLevel = useShownLevel(profile.id, profile.level).level;
   const [opening] = useState(() => outfitsOpening(typeof params.show === "string" ? params.show : undefined));
   // A reward preview follows the real saved avatar as its cache loads. Taking
   // a copy of the initial placeholder here could later save default hair and
@@ -173,11 +177,11 @@ export default function OutfitsScreen() {
       <OutfitsPreview height={STAGE_HEIGHT} roomy={roomy} a={a} b={b} stardust={rewards.stardust}
         setName={setInfo?.name} setHave={setInfo?.have} setTotal={setInfo?.of}
         previewingFrame={framePreview !== undefined && framePreview !== rewards.frame}
-        picture={tab === "picture"} look={draft.look} equipped={draft.equipped} level={profile.level}
+        picture={tab === "picture"} look={draft.look} equipped={draft.equipped} level={shownLevel}
         background={draft.background} frame={shownFrame} streak={streak} title={draft.title} />
 
       <Segmented<Tab> value={tab} onChange={openTab} track={colors.surface}
-        options={[{ value: "look", label: "Look" }, { value: "clothes", label: "Clothes" }, { value: "gear", label: "Gear" }, { value: "pets", label: "Pets" }, { value: "picture", label: "Picture" }]} />
+        options={[{ value: "look", label: "Look" }, { value: "clothes", label: "Clothes" }, { value: "gear", label: "Gear" }, { value: "pets", label: "Pets" }, { value: "picture", label: "Profile" }]} />
   </>;
   const fromHome = params.from === "home";
   return <PersonalPage title="Outfits" subtitle="" compact back animateTransition expandFromIcon={fromHome} fallback={fromHome ? "/" : "/profile"} footer={footer} pinned={pinned}>
@@ -204,7 +208,7 @@ export default function OutfitsScreen() {
       {tab === "picture" && <View style={s.parts} accessibilityRole="radiogroup">{PICTURE_PARTS.map(part => <Pill key={part.value} label={part.label} on={picturePart === part.value}
         onPress={() => { setPicturePart(part.value); setSelected(null); setFramePreview(undefined); }} />)}</View>}
       {tab === "picture" && picturePart === "frames" ? <FrameChoices savedFrame={rewards.frame} shownFrame={shownFrame}
-        earned={earned} streak={streak} select={setFramePreview} look={draft.look} level={profile.level} background={draft.background} /> : <View style={s.grid}>{list.map(item => {
+        earned={earned} streak={streak} select={setFramePreview} look={draft.look} level={shownLevel} background={draft.background} /> : <View style={s.grid}>{list.map(item => {
         const mine = has(item), on = worn(item);
         return <Pressable key={item.id} onPress={() => tapItem(item)} accessibilityRole="button"
           accessibilityLabel={`${item.name}, ${RARITY_NAME[item.rarity]}${on ? ", wearing" : mine ? ", owned" : ", not found yet"}`}
@@ -249,13 +253,14 @@ const OutfitsPreview = memo(function OutfitsPreview({ height, roomy, a, b, stard
       <Rect x={0} y={0} width={stageWidth} height={height} fill="url(#stage-bg)" />
       <Ellipse cx={stageWidth / 2} cy={height - 14} rx={70} ry={10} fill="#000000" opacity={0.18} />
     </Svg>
-    <View style={s.chips}>
+    {/* On the profile tab the chips sit in one row above your picture, never over it. */}
+    <View style={[s.chips, picture && s.chipsRow]}>
       <View style={s.chip} accessible accessibilityLabel={`${stardust} Stardust`}><StardustArt size={14} /><Text style={s.chipText}>{stardust}</Text></View>
-      {setName && <View style={s.chip}><Text style={s.chipText}>{setName} set · {setHave} of {setTotal}</Text></View>}
+      {setName && !picture && <View style={s.chip}><Text style={s.chipText}>{setName} set · {setHave} of {setTotal}</Text></View>}
       {previewingFrame && <View style={s.chip}><Text style={s.chipText}>Preview</Text></View>}
     </View>
     {picture
-      ? <View style={s.picture}><ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} streak={streak} size={roomy ? 164 : 146} />
+      ? <View style={s.picture}><ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} streak={streak} size={Math.min(roomy ? 164 : 146, height - PICTURE_ROOM)} />
         {!!title && <View style={s.titleChip}><Text style={s.titleText}>{rewardItem(title)?.name}</Text></View>}</View>
       : <Adventurer look={look} equipped={equipped} size={roomy ? 132 : 122} lanternLevel={level} />}
   </View>;
@@ -311,10 +316,11 @@ const s = StyleSheet.create({
   stack: { gap: 16 },
   stage: { ...edge, borderRadius: radius.card, overflow: "hidden", alignItems: "center", justifyContent: "flex-end", paddingBottom: 4 },
   stageArt: { position: "absolute", left: 0, top: 0 },
-  picture: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: 8, paddingTop: 12 },
+  picture: { flex: 1, alignSelf: "stretch", alignItems: "center", justifyContent: "center", gap: 6, paddingTop: CHIP_ROW, paddingBottom: 8 },
   titleChip: { paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: "rgba(9,12,20,0.55)" },
   titleText: { color: "#C4B5FD", fontSize: 13, fontWeight: "700" },
   chips: { position: "absolute", left: 12, top: 12, gap: 6 },
+  chipsRow: { right: 12, flexDirection: "row", flexWrap: "wrap" },
   chip: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 10, minHeight: 28, borderRadius: 14, backgroundColor: "rgba(9,12,20,0.55)" },
   chipText: { color: colors.neutral, fontSize: 13, fontWeight: "700" },
   card: { ...edge, gap: 10, padding: 14, borderRadius: radius.tile, backgroundColor: colors.surface },

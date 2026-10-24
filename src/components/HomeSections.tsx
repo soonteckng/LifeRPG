@@ -105,12 +105,13 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
     <Text style={s.tileName} numberOfLines={1}>{squad.name}</Text>
     {/* Who's in it, so the tile feels like your people rather than a number. */}
     <View style={s.tileFaces}>
-      {squad.members.slice(0, 4).map((member, index) => <View key={member.id} style={[s.tileFace, index > 0 && { marginLeft: -8 }]}><SquadFace member={member} size={26} ring={colors.surface} /></View>)}
+      {squad.members.slice(0, 4).map((member, index) => <View key={member.id} style={[s.tileFace, index > 0 && { marginLeft: -8 }]}><SquadFace member={member} size={30} ring={colors.surface} /></View>)}
       <Text style={[s.caption, s.flex]} numberOfLines={1}>{live ? `${live} focusing now` : place ? place[0].toUpperCase() + place.slice(1) : `${squad.members.length} ${squad.members.length === 1 ? "member" : "members"}`}</Text>
     </View>
     <View style={s.tileFoot}>
       <Text style={s.caption} numberOfLines={1}><Text style={s.tileStrong}>{studyTime(squadTotal(squad))}</Text>{squad.goalMinutes ? ` / ${squad.goalMinutes / 60}h` : " together"}</Text>
       {progress !== null && <View style={s.tileTrack}><View style={[s.tileFillBar, { width: `${Math.max(progress > 0 ? 4 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
+      <Text style={s.caption} numberOfLines={1}>{progress === null ? "Together this week" : progress >= 1 ? "Squad goal reached" : `${Math.round(progress * 100)}% of the squad goal`}</Text>
     </View>
     </View>
     {/* One clear layer over the whole card takes every tap, wherever it lands. */}
@@ -187,12 +188,14 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
   const changeLine = !week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`;
+  // The Home tile keeps to one short line each: hours and minutes, and the change.
+  const tileChange = !week?.seconds ? "Start your week" : change === null ? "Your week so far" : change >= 0 ? `+${studyTime(change)} on last week` : `${studyTime(-change)} behind last week`;
   return <View style={tile ? s.tileSection : s.section} testID="home-week">
     {tile ? <View style={[s.card, s.tile]}>
       <View style={s.tileFill} importantForAccessibility="no-hide-descendants">
       <Text style={s.tileLabel}>This week</Text>
-      <Text style={s.tileTotal}>{durationLabel(week?.seconds ?? 0)}</Text>
-      <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={2}>{changeLine}</Text>
+      <Text style={s.tileTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{studyTime(week?.seconds ?? 0)}</Text>
+      <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>{tileChange}</Text>
       <View style={s.tileFoot}>
         <Text style={s.caption} numberOfLines={1}>Focus on {week?.activeDays ?? 0} of 7 days</Text>
         <WeekBars height={30} />
@@ -242,7 +245,7 @@ const s = StyleSheet.create({
   tileFill: { flex: 1, gap: 4 },
   tileTap: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 2, borderRadius: radius.card },
   tileFaces: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
-  tileFace: { borderRadius: 15, borderWidth: 2, borderColor: colors.surface },
+  tileFace: { borderRadius: 17, borderWidth: 2, borderColor: colors.surface },
   tileHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 6 },
   tileLabel: { color: colors.secondary, fontSize: 14, lineHeight: 19, fontWeight: "600" },
   tileMeta: { flexShrink: 1, color: colors.secondary, fontSize: 13, lineHeight: 18 },

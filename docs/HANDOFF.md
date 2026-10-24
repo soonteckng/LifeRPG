@@ -165,7 +165,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ### Session flow after Round 59
 
-1. Start runs the intro: you walk away from camp at dusk (`WALK_MS` 2400), then the same scene fades to a very dark night (`NIGHT_FADE_MS` 2000). The timer fades in after. Tap anywhere skips it. There's no intro on resume, reopen, a recovered session, or with Reduce Motion.
+1. Start runs the walk-away **before** the session starts (Round 62): you walk away from camp at dusk (`WALK_MS` 2400), then the same scene fades to a very dark night (`NIGHT_FADE_MS` 2000), and only then is `startTimer` called, so the walk takes none of the session's time. Tap anywhere skips (the session starts after the quick fade). Back during the walk cancels it and stays on setup. The night stays up until the session shows as started (`launching`, 4 s fallback; a failed start shows setup again). No walk with Reduce Motion, on Retry, or for a session that's already running.
 2. Night until 90% (`MORNING_AT`), then one fade into morning (`MORNING_FADE_MS` 2500). A finished session stays in morning behind its card; ending early stays at night.
 3. The 5-min break asks first ("Take your 5-minute break?" with Start break / Keep focusing).
 4. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** while reward reveals are pending or busy (15 s fallback), so the order is: card → what you found → back to the app last.
@@ -255,6 +255,8 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R62 (Claude):** session starts after the walk-away; developer tools can show every reward screen on demand (return screen with a real find roll when no sessions wait, empty return screen, pack reopened automatically, milestones taken back and re-earned automatically); level colours follow the level-road tiers everywhere (`levelColors`), with a developer-only, in-memory level preview (`services/levelPreview.ts`); level number on the Home picture (no extra ring), tier chip left and Stardust right under Settings; level pill moves left of the pet; Outfits' Picture tab renamed Profile, with its chips in a row above the picture; This week and Squad tiles shortened.
+- **R60–61 (Codex):** timer rendering and background expiry, Picture responsiveness, developer reward feedback, rewards and Outfits races, squad refresh visibility.
 - **R59:** one session scene (dusk → dark night → morning), break confirmation, protection line removed, rewards shown before leaving the session, morning arrival banner on the result card, scrollable trail map, Outfits deep-links to the item's category, Home header split into two rows, Outfits grows from the Stardust chip, Start See all lists routines and study.
 - **R58:** trail and camp, supply packs, Stardust on Home, player cards, dev protection SQL, level tiers road.
 - **R52–57:** rewards database, new character, Outfits, frames, pop-ups, squads player cards.

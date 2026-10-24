@@ -80,10 +80,15 @@ async function tools({ developer = true, online = true, session = false, restart
     stardust: 40, busy: false,
     claimSessions: async () => { log.push("claim"); return typeof rewardReply.claim === "function" ? rewardReply.claim() : rewardReply.claim ?? { ok: true, value: { sessions: [], milestones: [], state } }; },
     openPack: async () => { log.push("pack"); return rewardReply.pack ?? { ok: false, message: "Reach your daily goal to open a pack." }; },
-    developer: async (action, amount) => { log.push(`dev:${action}:${amount}`); return rewardReply.dev ?? { ok: true, value: { state, gifts: action === "find" ? [{ item: "beret", new: true, stardust: 0 }] : [] } }; },
+    showEmptyReturn: seconds => log.push(`empty:${seconds}`),
+    developer: async (action, amount, seconds) => { log.push(`dev:${action}:${amount}${seconds ? `:${seconds}` : ""}`); return rewardReply.dev ?? { ok: true, value: { state, gifts: action === "find" ? [{ item: "beret", new: true, stardust: 0 }] : [] } }; },
   };
   const Tools = load("src/components/DeveloperTools.tsx", {
-    "react-native": { Modal: host("Modal"), View: host("View"), StyleSheet: { create: v => v } }, "./AppText": { Text: host("Text") },
+    "react-native": { Modal: host("Modal"), View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, hairlineWidth: 1 } }, "./AppText": { Text: host("Text") },
+    "@expo/vector-icons": { Ionicons: host("Icon") }, "@gorhom/bottom-sheet": { BottomSheetScrollView: host("Scroll") },
+    "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    "./AppSheet": props => props.visible ? React.createElement("Sheet", props, props.header, props.children) : null, "./SheetHeader": host("Header"),
+    "../utils/tapHaptics": { tapHaptic: () => log.push("haptic") },
     "../constants/theme": { colors: new Proxy({}, { get: () => "#000" }), edge: {} },
     "./SettingsList": { SettingsGroup: host("Group"), SettingsRow: props => React.createElement("Row", props,
       props.status ? React.createElement("Text", { testID: `${props.testID}-status` }, props.status) : null) },
@@ -118,7 +123,7 @@ test("each preview opens a card marked as a preview, and Done closes it", async 
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
       ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
-        "Open Outfits", "Check for new finds", "Open today's pack", "Let me open today's pack again", "Find something now", "Earn the next pet, frame and badge",
+        "Open Outfits", "Preview level colours", "Come back from a session", "Come back with nothing", "Open today's pack", "Find something now", "Earn the next pet, frame and badge",
         "Take back pets, frames and badges", "Add 500 test Stardust", "Reset my rewards"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Preview level up");
@@ -223,11 +228,10 @@ test("the rewards rows use the real rewards actions, each says what happened, an
     assert.ok(ui.loads.includes(true), "a developer's rewards load");
     assert.match(ui.groups()[1].props.footer, /^40 Stardust/);
     await ui.press("Open Outfits");
-    await ui.press("Check for new finds");
+    await ui.press("Come back from a session");
     assert.match(noteText(), /✓ Finds: Red beret \(new\), Canvas tote \(\+5 Stardust\).*\+6 Stardust from minutes.*Unlocked: Barn owl \(new\)/);
     await ui.press("Open today's pack");
     assert.match(noteText(), /! Reach your daily goal to open a pack/, "the server's own reason shows");
-    await ui.press("Let me open today's pack again");
     await ui.press("Find something now");
     assert.match(noteText(), /Found Red beret \(new\)/);
     await ui.press("Earn the next pet, frame and badge");
@@ -238,7 +242,8 @@ test("the rewards rows use the real rewards actions, each says what happened, an
     assert.equal(reset.props.disabled, true); assert.equal(reset.props.value, "Locked");
     await act(async () => reset.props.onPress());
     assert.equal(ui.confirm(), undefined, "nothing to confirm: reset is off");
-    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:reopen_pack:0", "dev:find:0", "dev:next_milestones:0", "dev:reearn:0", "dev:stardust:500"]);
+    assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:find:0",
+      "dev:next_milestones:0", "dev:reearn:0", "dev:next_milestones:0", "dev:reearn:0", "dev:stardust:500"], "with every milestone earned, they're taken back and earned again");
   } finally { await ui.cleanup(); }
 });
 
@@ -247,17 +252,32 @@ test("everyone else never loads rewards from here", async () => {
   try { assert.ok(ui.loads.every(load => load === false)); assert.equal(ui.renderer.root.findAllByType("Row").length, 0); } finally { await ui.cleanup(); }
 });
 
-test("checking with nothing unclaimed responds beside the same row without inventing a find", async () => {
+test("with no sessions waiting, a developer still comes back to camp: one real find roll, shown beside the same row", async () => {
   const ui = await tools();
   try {
-    await ui.press("Check for new finds");
-    const row = ui.row("Check for new finds");
-    assert.match(row.props.status, /Nothing new since your last check.*10 min of focus/);
+    await ui.press("Come back from a session");
+    const row = ui.row("Come back from a session");
+    assert.match(row.props.status, /No sessions waiting, so here's a test walk: Red beret \(new\)/);
     assert.equal(row.props.testID, "dev-reward-claim");
     assert.equal(row.props.busy, false);
     assert.equal(row.findAllByType("Text").length, 1, "feedback is inside the tapped row, not below the whole group");
     assert.equal(ui.renderer.root.findAll(n => n.props.testID === "dev-reward-note").length, 0);
-    assert.deepEqual(ui.log, ["claim"], "the check never runs the test find grant");
+    assert.deepEqual(ui.log, ["claim", "dev:find:0:1500"], "real sessions first, then the real find roll, shown as a 25-minute walk");
+  } finally { await ui.cleanup(); }
+});
+
+test("a developer can open today's pack again and again, and see the screen after a short session", async () => {
+  let opened = 0;
+  const ui = await tools({ rewardReply: { get pack() { opened++; return opened === 1 ? { ok: false, message: "Today's pack is already opened" }
+    : { ok: true, value: { tier: 1, daysInARow: 3, items: [], stardust: 20 } }; } } });
+  try {
+    await ui.press("Open today's pack");
+    assert.deepEqual(ui.log.filter(x => /^(pack|dev)/.test(x)), ["pack", "dev:reopen_pack:0", "pack"], "an opened pack is reopened, then opened");
+    assert.match(JSON.stringify(ui.renderer.root.findByProps({ testID: "dev-reward-note" }).findAllByType("Text").map(t => t.props.children)), /Leather pack \(3 days in a row\)/);
+    const empties = [];
+    ui.rewards().showEmptyReturn = seconds => empties.push(seconds);
+    await ui.press("Come back with nothing");
+    assert.deepEqual(empties, [60], "the real return screen, after a 1-minute session, with nothing given");
   } finally { await ui.cleanup(); }
 });
 
@@ -266,15 +286,15 @@ test("the check responds immediately, ignores a double tap and returns to an ena
   const pending = new Promise(yes => { resolve = yes; });
   const ui = await tools({ rewardReply: { claim: () => pending } });
   try {
-    await act(async () => { const row = ui.row("Check for new finds"); row.props.onPress(); row.props.onPress(); });
+    await act(async () => { const row = ui.row("Come back from a session"); row.props.onPress(); row.props.onPress(); });
     assert.deepEqual(ui.log, ["claim"]);
-    assert.equal(ui.row("Check for new finds").props.status, "Checking…");
-    assert.equal(ui.row("Check for new finds").props.busy, true);
-    assert.equal(ui.row("Check for new finds").props.disabled, true);
+    assert.equal(ui.row("Come back from a session").props.status, "Checking…");
+    assert.equal(ui.row("Come back from a session").props.busy, true);
+    assert.equal(ui.row("Come back from a session").props.disabled, true);
     await act(async () => resolve({ ok: true, value: { sessions: [], milestones: [], state: { nextFindSeconds: 600 } } }));
-    assert.equal(ui.row("Check for new finds").props.busy, false);
-    assert.equal(ui.row("Check for new finds").props.disabled, false);
-    assert.match(ui.row("Check for new finds").props.status, /Nothing new/);
+    assert.equal(ui.row("Come back from a session").props.busy, false);
+    assert.equal(ui.row("Come back from a session").props.disabled, false);
+    assert.match(ui.row("Come back from a session").props.status, /test walk/);
   } finally { await ui.cleanup(); }
 });
 
@@ -282,11 +302,11 @@ test("failed reward checks show a calm local result and do not get stuck checkin
   for (const claim of [{ ok: false, message: "One moment, still saving." }, () => { throw Error("private unexpected failure"); }]) {
     const ui = await tools({ rewardReply: { claim } });
     try {
-      await ui.press("Check for new finds");
-      assert.match(ui.row("Check for new finds").props.status, /^! (One moment|Couldn't check)/);
-      assert.doesNotMatch(ui.row("Check for new finds").props.status, /private unexpected/);
-      assert.equal(ui.row("Check for new finds").props.busy, false);
-      assert.equal(ui.row("Check for new finds").props.disabled, false);
+      await ui.press("Come back from a session");
+      assert.match(ui.row("Come back from a session").props.status, /^! (One moment|Couldn't check)/);
+      assert.doesNotMatch(ui.row("Come back from a session").props.status, /private unexpected/);
+      assert.equal(ui.row("Come back from a session").props.busy, false);
+      assert.equal(ui.row("Come back from a session").props.disabled, false);
     } finally { await ui.cleanup(); }
   }
 });
@@ -296,12 +316,12 @@ test("a delayed developer check cannot show the previous account admission's res
   const pending = new Promise(yes => { resolve = yes; });
   const ui = await tools({ rewardReply: { claim: () => pending } });
   try {
-    await ui.press("Check for new finds");
+    await ui.press("Come back from a session");
     await ui.scope("other", 2); await ui.scope("dev", 3);
-    assert.equal(ui.row("Check for new finds").props.status, "");
+    assert.equal(ui.row("Come back from a session").props.status, "");
     await act(async () => resolve({ ok: true, value: { sessions: [], milestones: [], state: { nextFindSeconds: 600 } } }));
-    assert.equal(ui.row("Check for new finds").props.status, "");
-    assert.equal(ui.row("Check for new finds").props.disabled, false);
+    assert.equal(ui.row("Come back from a session").props.status, "");
+    assert.equal(ui.row("Come back from a session").props.disabled, false);
   } finally { await ui.cleanup(); }
 });
 
@@ -312,7 +332,7 @@ test("a settings action's result is readable in full and announced beside its st
     "../constants/theme": { colors: {}, edge: {}, radius: { card: 24 } },
   }).SettingsRow;
   let tree;
-  await act(async () => { tree = create(React.createElement(Row, { icon: "compass-outline", title: "Check for new finds", status: "Nothing new since your last check.",
+  await act(async () => { tree = create(React.createElement(Row, { icon: "compass-outline", title: "Come back from a session", status: "Nothing new since your last check.",
     testID: "dev-reward-claim", busy: true, disabled: true, onPress() {} })); });
   try {
     const button = tree.root.findByType("Press"), status = tree.root.findByProps({ testID: "dev-reward-claim-status" });
@@ -328,27 +348,25 @@ const serverRewards = (stardust = 40) => ({ stardust, nextFindSeconds: 600, owne
     background: "bg_dusk", title: null, revision: 1 },
   pack: { date: "2026-10-24", goalReached: false, claimed: false, tier: 0, daysInARow: 0 }, today: { seconds: 0, finds: 0 } });
 
-test("the real reward client shows empty checks and queues normal session finds once, without a test grant", async () => {
+test("the real reward client: real sessions show their return screen; with none, the developer's test walk uses the real find roll", async () => {
   const calls = []; let claims = 0;
   const ui = await tools({ transport: async (name, args) => {
     calls.push({ name, args });
     if (name === "get_rewards_v1") return { data: serverRewards(), error: null };
+    if (name === "dev_rewards_v1") { assert.equal(args.p_action, "find"); return { data: { ...serverRewards(47), gifts: [{ item: "tote", rarity: "common", new: true, stardust: 0 }] }, error: null }; }
     assert.equal(name, "claim_session_rewards_v1"); claims++;
     const sessions = claims === 2 ? [{ sessionId: "session-1", finds: [{ item: "beret", rarity: "uncommon", new: true, stardust: 0 }], seconds: 1800, minutesStardust: 6 }] : [];
     return { data: { sessions, milestones: [], state: serverRewards(46) }, error: null };
   } });
   try {
-    await ui.press("Check for new finds");
-    assert.match(ui.row("Check for new finds").props.status, /Nothing new since your last check/);
-    assert.equal(ui.rewards().reveals.length, 0);
-    await ui.press("Check for new finds");
-    assert.match(ui.row("Check for new finds").props.status, /Red beret \(new\).*6 Stardust from minutes/);
-    assert.deepEqual(ui.rewards().reveals.map(reveal => ({ id: reveal.id, kind: reveal.kind, seconds: reveal.seconds, stardust: reveal.stardust })),
-      [{ id: "return:session-1", kind: "expedition", seconds: 1800, stardust: 6 }]);
-    await ui.press("Check for new finds");
-    assert.equal(ui.rewards().reveals.length, 1, "an empty replay does not duplicate the return screen");
-    assert.equal(ui.rewards().stardust, 46);
-    assert.deepEqual(calls.map(call => call.name), ["get_rewards_v1", "claim_session_rewards_v1", "claim_session_rewards_v1", "claim_session_rewards_v1"]);
+    await ui.press("Come back from a session");
+    assert.match(ui.row("Come back from a session").props.status, /test walk: Canvas tote \(new\)/);
+    assert.deepEqual(ui.rewards().reveals.map(reveal => ({ kind: reveal.kind, seconds: reveal.seconds })), [{ kind: "expedition", seconds: 1500 }], "the return screen, from a 25-minute walk");
+    await ui.press("Come back from a session");
+    assert.match(ui.row("Come back from a session").props.status, /Red beret \(new\).*6 Stardust from minutes/);
+    assert.deepEqual(ui.rewards().reveals.at(-1), { id: "return:session-1", kind: "expedition", seconds: 1800, finds: [{ item: "beret", rarity: "uncommon", new: true, stardust: 0 }], stardust: 6 },
+      "a real session's return screen, with no test grant");
+    assert.deepEqual(calls.map(call => call.name), ["get_rewards_v1", "claim_session_rewards_v1", "dev_rewards_v1", "claim_session_rewards_v1"]);
     assert.ok(calls.every(call => call.args.p_expected_owner === "dev"));
   } finally { await ui.cleanup(); }
 });
@@ -364,7 +382,7 @@ test("the real reward transport cannot publish an old owner's delayed claim into
     sent(); return pending;
   } });
   try {
-    await ui.press("Check for new finds"); await started;
+    await ui.press("Come back from a session"); await started;
     await ui.scope("other", 2);
     await act(async () => resolve({ data: { sessions: [{ sessionId: "old-session", seconds: 1800, minutesStardust: 6,
       finds: [{ item: "beret", rarity: "uncommon", new: true, stardust: 0 }] }], milestones: [], state: serverRewards(999) }, error: null }));

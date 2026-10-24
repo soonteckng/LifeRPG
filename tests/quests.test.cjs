@@ -1233,10 +1233,13 @@ test('Home keeps full tier text and lets its header badges wrap on a small phone
   assert.equal(title.props.numberOfLines,undefined,'a tier can wrap instead of being cut off');
   assert.equal(title.props.adjustsFontSizeToFit,undefined,'large system text is respected');
   assert.equal(level.parent.parent.props.style.flexWrap,'wrap','Stardust moves to a new row rather than squeezing the tier');
-  assert.equal(level.props.style.maxWidth,'100%','the level badge stays within the identity column');
-  const badge=level.findAllByType('View').find(node=>node.findAllByType('Text').some(text=>text.props.children===1));
-  assert.equal(badge.props.style.height,undefined,'the level number can grow with system text');
-  assert.equal(badge.props.style.width,undefined,'multi-digit levels are not forced into a 22px disc');
+  const levelStyle=Object.assign({},...[].concat(level.props.style));
+  assert.equal(levelStyle.maxWidth,'100%','the level badge stays within the identity column');
+  assert.equal(levelStyle.backgroundColor,'#AAB3FF29','the badge wears its tier colour, as on the level road');
+  assert.equal(level.findAllByType('Text').some(text=>text.props.children===1),false,'the level number sits on your picture now, not twice');
+  const flat=node=>Object.assign({},...[].concat(node?.props?.style??[]));
+  let slot=dust;while(slot&&flat(slot).marginLeft===undefined)slot=slot.parent;
+  assert.equal(flat(slot).marginLeft,'auto','Stardust sits on the right, under Settings');
   assert.match(dust.props.accessibilityLabel,/123456789 Stardust/);
   await act(async()=>level.props.onPress());
   assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,true);

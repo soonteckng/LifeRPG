@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import AppSheet from "./AppSheet";
+import { tierColor } from "../utils/adventurerLook";
 import CharacterMark from "./CharacterMark";
 import ProgressRing from "./ProgressRing";
 import * as Haptics from "expo-haptics";
@@ -177,10 +178,11 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
       </View> : <>
       {/* A level up is its own moment: the companion and the new level lead. */}
       {isLevelUp && !pending && !rejected && level != null && <View style={s.levelHero} testID="session-level-up" accessible accessibilityLabel={`You reached Level ${level}`}>
-        <ProgressRing size={112} stroke={4} progress={1} color={colors.level} track={colors.levelSoft}>
-          <View style={s.levelDisc}><CharacterMark size={70} avatar={profile?.avatar ?? "🌱"} /></View>
+        {/* The new level in its tier's colour, as on your picture and the level road. */}
+        <ProgressRing size={112} stroke={4} progress={1} color={tierColor(level)} track={`${tierColor(level)}29`}>
+          <View style={s.levelDisc}><CharacterMark size={70} showLevel={false} /></View>
         </ProgressRing>
-        <View style={s.levelBadge}><Ionicons name="sparkles" size={13} color="#2B2200" /><Text style={s.levelBadgeText}>Level {level}</Text></View>
+        <View style={[s.levelBadge, { backgroundColor: tierColor(level) }]}><Ionicons name="sparkles" size={13} color="#131826" /><Text style={s.levelBadgeText}>Level {level}</Text></View>
         <Text style={s.levelLine}>You reached Level {level}</Text>
       </View>}
       <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
@@ -211,7 +213,7 @@ const s = StyleSheet.create({
   levelHero: { alignItems: "center", gap: 10, paddingTop: 4, paddingBottom: 4 },
   levelDisc: { width: 92, height: 92, borderRadius: 46, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   levelBadge: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: -26, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, backgroundColor: colors.level },
-  levelBadgeText: { color: "#2B2200", fontSize: 14, lineHeight: 18, fontWeight: "800" },
+  levelBadgeText: { color: "#131826", fontSize: 14, lineHeight: 18, fontWeight: "800" },
   levelLine: { color: colors.success, fontSize: 17, lineHeight: 22, fontWeight: "600" },
   done: { minHeight: 54, alignItems: "center", justifyContent: "center", borderRadius: 27, backgroundColor: colors.primary },
   doneText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },

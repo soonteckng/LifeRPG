@@ -1775,6 +1775,7 @@ test("free and quest starts reveal visible controls and settle the same mounted 
     assert.equal(ui.animations.some(a => a.duration === 300), false);
     ui.animations.length = 0; // Ignore the route entry animation already verified elsewhere.
     await ui.press("Start");
+    await act(async () => ui.root().findByType("Backdrop").props.onIntroEnd()); // The walk ends, then the session starts.
     assert.equal(ui.calls.filter(c => c[0] === "start").length, 1);
     await ui.update({actionBusy:true});
     assert.equal(ui.animations.some(a => a.duration === 280 && a.from === 0), false);
@@ -1825,40 +1826,75 @@ test("a newly merged live timer object on every render cannot loop the retained 
   } finally { await ui.cleanup(); }
 });
 
-test("a quick minimise and reopen never repeats the fresh session intro, while a different session still sets off", async()=>{
-  const ui=await screenSetup({sessionId:"first-start",protectionSessionId:"client-start",hasOpenSession:true,isRunning:true,duration:60,timeLeft:60},{},false,{value:false});
+test("Start sets off first: the session starts only once the walk ends or is skipped, so it takes none of your time", async()=>{
+  const ui=await screenSetup({},{},false,{value:false});
   try {
     const backdrop=()=>ui.root().findByType("Backdrop").props;
-    assert.equal(backdrop().intro,true,"a genuinely fresh start keeps the setting-off scene");
-    await ui.update({sessionId:"server-start",timeLeft:59});
-    await ui.reopen();
-    assert.equal(backdrop().intro,false,"minimising before two seconds cannot replay the intro");
-    await ui.reopen({sessionId:"second-start",protectionSessionId:"second-client",timeLeft:60});
-    assert.equal(backdrop().intro,true,"a different session still receives its own intro");
+    const starts=()=>ui.calls.filter(c=>c[0]==="start");
+    assert.equal(backdrop().phase,"setup");
+    await ui.press("Start");
+    assert.equal(starts().length,0,"nothing is counting while you walk away");
+    assert.deepEqual([backdrop().phase,backdrop().intro,backdrop().walking],["running",true,true],"the walk plays on the trail scene");
+    assert.equal(ui.root().findAllByType("IntroWords").length,1);
+    await act(async()=>backdrop().onIntroEnd());
+    assert.deepEqual(starts(),[["start",1800,undefined]],"the session starts when the walk ends, with the length you chose");
+    assert.equal(backdrop().intro,false);
+    assert.equal(ui.root().findAllByType("IntroWords").length,0);
+    assert.equal(backdrop().phase,"running","the night stays while the start is confirmed: no flash of setup");
+    await ui.update({awaitingStart:true});await ui.update({awaitingStart:false,hasOpenSession:true,isRunning:true,timeLeft:1800});
+    assert.equal(backdrop().phase,"running");
+    await act(async()=>backdrop().onIntroEnd());
+    assert.equal(starts().length,1,"a late second end never starts twice");
   } finally {await ui.cleanup();}
 });
 
-test("nullable start ids cannot suppress a later session intro; recovered and reduced-motion opens stay still", async()=>{
-  const preference={value:false};
-  const ui=await screenSetup({sessionId:null,protectionSessionId:null,hasOpenSession:true,isRunning:true,duration:60,timeLeft:60},{},false,preference);
+test("skipping starts the session as soon as the quick fade ends; Back while setting off stays here without starting", async()=>{
+  const ui=await screenSetup({},{},false,{value:false});
   try {
     const backdrop=()=>ui.root().findByType("Backdrop").props;
-    assert.equal(backdrop().intro,true);
-    await ui.update({sessionId:"resolved-start"});await ui.reopen();
-    assert.equal(backdrop().intro,false,"the resolved id is remembered even if it arrived during the intro");
-    await ui.reopen({sessionId:null,timeLeft:60});
-    assert.equal(backdrop().intro,true,"there is no shared null marker that hides future fresh starts");
-    await ui.reopen({sessionId:"recovered-start",recoveredSession:true});
-    assert.equal(backdrop().intro,false);
-    preference.value=true;
-    await ui.reopen({sessionId:"reduced-start",recoveredSession:false});
-    assert.equal(backdrop().intro,false);
-    preference.value=false;await ui.reopen();
-    assert.equal(backdrop().intro,false,"turning motion back on does not replay a session already visited");
-    await ui.reopen({sessionId:null,hasOpenSession:false,isRunning:false,isRestoring:true});
-    await ui.update({sessionId:"restored-later",hasOpenSession:true,isRunning:true,isRestoring:false,recoveredSession:true});
-    assert.equal(backdrop().intro,false,"a recovery arriving after the route mounts cannot masquerade as a fresh Start");
-  } finally {await ui.cleanup();}
+    const starts=()=>ui.calls.filter(c=>c[0]==="start");
+    await ui.press("Start");
+    const token=backdrop().skipToken;
+    await act(async()=>ui.root().findByType("IntroWords").props.onSkip());
+    assert.equal(backdrop().skipToken,token+1,"the scene finishes quickly");
+    assert.equal(starts().length,0,"and the session waits for it");
+    await act(async()=>backdrop().onIntroEnd());
+    assert.equal(starts().length,1);
+    await ui.cleanup();
+    const again=await screenSetup({},{},false,{value:false});
+    await again.press("Start");
+    await again.back();
+    assert.equal(again.root().findByType("Backdrop").props.intro,false,"Back cancels setting off");
+    assert.equal(again.calls.filter(c=>c[0]==="dismiss").length,0,"and stays on setup");
+    await act(async()=>again.root().findByType("Backdrop").props.onIntroEnd());
+    assert.equal(again.calls.filter(c=>c[0]==="start").length,0,"nothing starts after a cancelled walk");
+    await again.press("Start");
+    await act(async()=>again.root().findByType("Backdrop").props.onIntroEnd());
+    assert.equal(again.root().findByType("Backdrop").props.phase,"running");
+    await again.update({actionError:"Couldn't start. Check your connection."});
+    assert.equal(again.root().findByType("Backdrop").props.phase,"setup","a failed start shows setup again, with its message");
+    await again.cleanup();
+  } catch (error) { await ui.cleanup().catch(()=>{}); throw error; }
+});
+
+test("no walk with Reduce Motion, for a session already running, or after the account changes mid-walk", async()=>{
+  const reduced=await screenSetup({},{},false,{value:true});
+  try {
+    await reduced.press("Start");
+    assert.equal(reduced.calls.filter(c=>c[0]==="start").length,1,"less motion starts at once");
+    assert.equal(reduced.root().findByType("Backdrop").props.intro,false);
+  } finally {await reduced.cleanup();}
+  const running=await screenSetup({sessionId:"already",hasOpenSession:true,isRunning:true,duration:60,timeLeft:60},{},false,{value:false});
+  try { assert.equal(running.root().findByType("Backdrop").props.intro,false,"a session started elsewhere opens straight on the timer"); } finally {await running.cleanup();}
+  const switched=await screenSetup({},{},false,{value:false});
+  try {
+    await switched.press("Start");
+    const end=switched.root().findByType("Backdrop").props.onIntroEnd;
+    await switched.update({ownerId:"owner-b"});
+    assert.equal(switched.root().findByType("Backdrop").props.intro,false,"another account never sees this walk");
+    await act(async()=>end());
+    assert.equal(switched.calls.filter(c=>c[0]==="start").length,0,"and nothing starts for them");
+  } finally {await switched.cleanup();}
 });
 
 test("manual End preserves measured details and action space and never animates the stopped timer behind its result", async () => {

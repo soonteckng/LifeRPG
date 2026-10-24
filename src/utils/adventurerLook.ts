@@ -51,6 +51,15 @@ export function tierColor(level: number) {
   return color;
 }
 
+/**
+ * Your level's colours: the colour of your tier on the level road, used for
+ * the level on your picture, Home, Profile and the road itself.
+ */
+export function levelColors(level: number) {
+  const color = tierColor(level);
+  return { color, soft: `${color}29`, track: `${color}3D`, ink: "#131826" };
+}
+
 /** The camp lantern grows with level: iron, then silver with a gem, brass, pale gold. */
 export function levelLanternColors(level: number) {
   if (!(level > 0)) return null;
