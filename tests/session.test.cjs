@@ -60,12 +60,16 @@ const definitiveServerRejection = () => Object.assign(Error("Server rejected the
 
 async function providerSetup(overrides = {}, notifications = null, nativeLifecycle = null, protectionNative = null) {
   let state, show = true, tick, foreground;
-  const summarySnapshots = [];
+  const summarySnapshots = [], timerFrames = [];
   const calls = [];
   const realInterval = global.setInterval, realClear = global.clearInterval, realNow = Date.now;
   let now = PROVIDER_NOW, uuidIndex = 0, serverIndex = 0, loadedInitial = false, sessionReads = 0;
-  const serverRows = new Map(), values = new Map();
-  const storage = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => { values.set(key, value); } };
+  const serverRows = new Map(), rowScopes = new Map(), values = new Map();
+  let beforeWrite = null, refreshCapability = async () => null;
+  const storage = { getItem: async key => values.get(key) ?? null, setItem: async (key, value) => {
+    if (beforeWrite) await beforeWrite(key, value);
+    values.set(key, value);
+  } };
   global.setInterval = (fn) => { tick = fn; return 1; };
   global.clearInterval = () => {};
   Date.now = () => now;
@@ -98,7 +102,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     if (loadedInitial) return;
     const source = await service.getOpenActivitySession();
     loadedInitial = true;
-    if (source) { const row = normalizeRow(source); serverRows.set(row.id, row); }
+    if (source) { const row = normalizeRow(source); serverRows.set(row.id, row); rowScopes.set(row.id, PROVIDER_SCOPE); }
   }
   const elapsed = row => row.elapsed_seconds * 1000 + (row.status === "active" ? Math.max(0, now - Date.parse(row.last_resumed_at)) : 0);
   service.createJournalSessionTransport = scope => ({
@@ -107,7 +111,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
         activityType: setup.activityType, taskId: setup.taskId, subjectId: setup.subjectId, notes: setup.notes }));
       const row = normalizeRow({ id, target_duration_seconds: setup.targetSeconds, activity_type: setup.activityType,
         task_id: setup.taskId, subject_id: setup.subjectId, notes: setup.notes, status: "active", started_at: new Date(now).toISOString() });
-      serverRows.set(id, row); return id;
+      serverRows.set(id, row); rowScopes.set(id, scope); return id;
     },
     async pause(id) {
       await service.pauseActivitySession(id);
@@ -130,10 +134,18 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
       row.completed_at = new Date(now).toISOString(); row.credit_result = saved;
       return { sessionId: id, durationSeconds: saved.duration_seconds, result: saved };
     },
-    async readSession(id) { sessionReads++; await initialRows(); return serverRows.has(id) ? mapper(serverRows.get(id), scope, observe()) : null; },
+    async readSession(id) {
+      sessionReads++; await initialRows(); const owner = rowScopes.get(id);
+      return serverRows.has(id) && owner?.ownerId === scope.ownerId && owner?.backendId === scope.backendId ? mapper(serverRows.get(id), scope, observe()) : null;
+    },
     async readOpenSessions() {
       await initialRows();
-      return { complete: true, sessions: [...serverRows.values()].filter(row => ["active", "paused"].includes(row.status)).map(row => mapper(row, scope, observe())) };
+      // Mirror the real transport's backend scope and account RLS. A delayed
+      // old-account receipt must not become an incoming account's server row.
+      return { complete: true, sessions: [...serverRows.values()].filter(row => {
+        const owner = rowScopes.get(row.id);
+        return owner?.ownerId === scope.ownerId && owner?.backendId === scope.backendId && ["active", "paused"].includes(row.status);
+      }).map(row => mapper(row, scope, observe())) };
     },
   });
   const reloadProfile = async () => true;
@@ -160,7 +172,7 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "../services/protectedSessionStart": { prepareProtectedSession },
     "../services/sessionService": service,
     "../services/offlineSessionService": {
-      createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, refreshIfStale: async () => null, readFreshGrant: () => null }),
+      createOfflineCapabilityCache: () => ({ load: async () => null, refresh: async () => null, refreshIfStale: () => refreshCapability(), readFreshGrant: () => null }),
       createOfflineSessionTransport: () => ({ readSnapshot: async () => null, submit: async () => { throw Error("Offline capability is disabled in this legacy fixture"); } }),
     },
     "../utils/countdownTicker": { createCountdownTicker: (callback) => {
@@ -171,7 +183,14 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
     "./UserContext": { useUser: () => ({ reloadProfile }) },
     "./AuthContext": { useAuth: () => auth },
   });
-  function Capture() { state = useTimer(); summarySnapshots.push({ owner: auth.user?.id, backend: auth.localOwner?.backendId, epoch: auth.admissionEpoch, summary: state.sessionSummary }); return null; }
+  function Capture() {
+    state = useTimer();
+    summarySnapshots.push({ owner: auth.user?.id, backend: auth.localOwner?.backendId, epoch: auth.admissionEpoch, summary: state.sessionSummary });
+    timerFrames.push({ owner: auth.user?.id, backend: auth.localOwner?.backendId, epoch: auth.admissionEpoch,
+      sessionId: state.sessionId, timeLeft: state.timeLeft, isRunning: state.isRunning,
+      isCompleted: state.isCompleted, hasOpenSession: state.hasOpenSession, summary: state.sessionSummary });
+    return null;
+  }
   function Page() { return React.createElement("Page"); }
   // A screen that never shows the countdown, like Home or a tab.
   let stillRenders = 0, still;
@@ -180,7 +199,8 @@ async function providerSetup(overrides = {}, notifications = null, nativeLifecyc
   let renderer;
   await act(async () => { renderer=create(React.createElement(Harness)); await flush(); });
   return {
-    state: () => state, still: () => still, stillRenders: () => stillRenders, calls, verifications: () => verifications, verificationKinds: () => [...verificationKinds], summarySnapshots, sessionReads: () => sessionReads,
+    state: () => state, still: () => still, stillRenders: () => stillRenders, calls, verifications: () => verifications, verificationKinds: () => [...verificationKinds], summarySnapshots, timerFrames, sessionReads: () => sessionReads,
+    beforeWrite: callback => { beforeWrite = callback; }, refreshCapability: callback => { refreshCapability = callback; },
     persistedJournal: () => JSON.parse([...values].find(([key]) => key.startsWith("liferpg:session-journal:v1:"))?.[1] ?? "null"),
     run: async (fn) => { await act(async () => { await fn(state); await flush(); }); },
     advance: async (seconds) => { now += seconds*1000; await act(async () => { tick?.(); await flush(); }); },
@@ -1009,6 +1029,127 @@ test("foreground recovery and notifications retain exact remaining seconds",asyn
   await ui.run(s=>s.pauseTimer());await ui.run(s=>s.resumeTimer());
   assert.equal(scheduled.filter(n=>n.trigger?.seconds).at(-1).trigger.seconds,899);
   await ui.cleanup();
+});
+
+test("returning after the deadline settles the durable result before slow capability or completion replies", async () => {
+  const capability = deferred(), completion = deferred();
+  let completions = 0;
+  const ui = await providerSetup({ completeActivitySession: async () => { completions++; return completion.promise; } });
+  try {
+    await ui.run(s => s.startTimer(60, 'Read'));
+    await ui.advance(1);
+    await ui.background(); ui.backgroundTime(120);
+    ui.refreshCapability(() => capability.promise);
+    await ui.foreground();
+    assert.equal(ui.state().isCompleted, true, 'local terminal state does not wait for optional network work');
+    assert.equal(ui.state().hasOpenSession, false);
+    assert.equal(ui.persistedJournal().records[0].state, 'completed', 'completion is durable before it is presented');
+    assert.equal(ui.state().sessionSummary, null, 'no reward or receipt is fabricated while the network waits');
+    assert.equal(completions, 0);
+    capability.resolve(); await ui.run(() => {});
+    assert.equal(completions, 1);
+    assert.equal(ui.state().sessionSummary, null);
+    completion.resolve({ ...result, duration_seconds: 60, minutes: 1 }); await ui.run(() => {});
+    assert.equal(ui.state().sessionSummary.durationSeconds, 60);
+    assert.equal(ui.state().syncStatus, 'saved');
+    await ui.foreground();
+    assert.equal(completions, 1, 'another foreground cannot award or submit the completed session twice');
+  } finally { capability.resolve(); completion.resolve(result); await ui.cleanup(); }
+});
+
+test("an expired foreground stays pending through a failed completion without inventing saved progress", async () => {
+  let completions = 0;
+  const ui = await providerSetup({ completeActivitySession: async () => { completions++; throw Error('Offline'); } });
+  try {
+    await ui.run(s => s.startTimer(60));
+    await ui.background(); ui.backgroundTime(61); await ui.foreground();
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(ui.state().hasOpenSession, false);
+    assert.equal(ui.state().syncStatus, 'waiting');
+    assert.equal(ui.state().sessionSummary, null);
+    assert.equal(ui.persistedJournal().records[0].state, 'completed');
+    assert.equal(completions, 1);
+    await ui.advance(0.1);
+    assert.equal(completions, 1, 'a display tick does not bypass the existing retry backoff');
+  } finally { await ui.cleanup(); }
+});
+
+test("foreground cannot call a result completed before the local journal write has settled", async () => {
+  const disk = deferred(); let completions = 0;
+  const ui = await providerSetup({ completeActivitySession: async () => { completions++; return result; } });
+  let screen;
+  try {
+    await ui.run(s => s.startTimer(60));
+    await ui.background(); ui.backgroundTime(61);
+    ui.beforeWrite(async (key, value) => {
+      if (key.startsWith('liferpg:session-journal:v1:') && JSON.parse(value).records.some(record => record.state === 'completed')) await disk.promise;
+    });
+    await ui.foreground();
+    assert.equal(ui.state().isCompleted, false);
+    assert.equal(ui.state().sessionSummary, null);
+    assert.equal(completions, 0);
+    screen = await screenSetup(ui.state());
+    const anchor = screen.root().findByProps({ testID: 'session-timer-anchor' });
+    assert.equal(anchor.props.importantForAccessibility, 'no-hide-descendants');
+    assert.equal([].concat(anchor.props.style).filter(Boolean).at(-1).opacity, 0, 'expired digits are not flashed while persistence waits');
+    assert.equal(screen.root().findAllByType('Svg').length, 0);
+    assert.equal(screen.root().findByType('Backdrop').props.walking, false);
+    disk.resolve(); await ui.run(() => {});
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(completions, 1);
+  } finally { disk.resolve(); await screen?.cleanup(); await ui.cleanup(); }
+});
+
+test("a paused session returning after its old deadline keeps the exact paused time and earns nothing", async () => {
+  const ui = await providerSetup();
+  try {
+    await ui.run(s => s.startTimer(60)); await ui.advance(7);
+    await ui.run(s => s.pauseTimer());
+    await ui.background(); ui.backgroundTime(3600); await ui.foreground();
+    assert.equal(ui.state().isRunning, false);
+    assert.equal(ui.state().timeLeft, 53);
+    assert.equal(ui.state().hasOpenSession, true);
+    assert.equal(ui.state().isCompleted, false);
+    assert.equal(ui.state().sessionSummary, null);
+    assert.equal(ui.calls.filter(([name]) => name === 'complete').length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test("cold recovery of an expired session waits for its real receipt instead of opening a zero countdown", async () => {
+  const completion = deferred();
+  const ui = await providerSetup({
+    getOpenActivitySession: async () => ({ id: 'expired-recovered', status: 'active', target_duration_seconds: 60, elapsed_seconds: 60 }),
+    completeActivitySession: () => completion.promise,
+  });
+  let screen;
+  try {
+    assert.equal(ui.state().isCompleted, true);
+    assert.equal(ui.state().sessionSummary, null);
+    screen = await screenSetup(ui.state());
+    assert.equal(screen.root().findByProps({ testID: 'session-timer-anchor' }).props.importantForAccessibility, 'no-hide-descendants');
+    assert.equal(screen.root().findAllByType('Svg').length, 0);
+    completion.resolve(result); await ui.run(() => {});
+    assert.equal(ui.state().sessionSummary.sessionId, fixtureServerId('expired-recovered'));
+    assert.equal(ui.state().sessionSummary.durationSeconds, 60);
+  } finally { completion.resolve(result); await screen?.cleanup(); await ui.cleanup(); }
+});
+
+test("a scope change clears the old live countdown immediately, including while its completion reply is delayed", async () => {
+  for (const kind of ['owner', 'backend']) {
+    const completion = deferred();
+    const ui = await providerSetup({ completeActivitySession: () => completion.promise });
+    try {
+      await ui.run(s => s.startTimer(60)); await ui.advance(10);
+      const previousId = ui.state().sessionId;
+      await ui.background(); ui.backgroundTime(60); await ui.foreground();
+      const before = ui.timerFrames.length;
+      await ui.changeScope(kind);
+      completion.resolve(result); await ui.run(() => {});
+      const incoming = ui.timerFrames.slice(before);
+      assert.ok(incoming.length > 0);
+      assert.ok(incoming.every(frame => frame.sessionId !== previousId && frame.summary === null), `the outgoing owner or backend has no live presentation in the incoming scope: ${JSON.stringify(incoming)}`);
+    } finally { completion.resolve(result); await ui.cleanup(); }
+  }
 });
 
 

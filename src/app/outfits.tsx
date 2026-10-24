@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from "react";
+import { memo, startTransition, useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -32,9 +32,18 @@ const BG: Record<string, [string, string]> = {
   bg_night: ["#141B3A", "#4A5AA0"], bg_library: ["#6B4A30", "#3A2416"], bg_sunset: ["#F59E6B", "#B4532A"],
 };
 interface Draft { look: AdventurerLook; equipped: Partial<Record<string, string>>; background: string; title: string | null }
+interface Edit { draft: Draft; base: string; ready: boolean }
+// Compare only editable values. Object replacement, inventory refreshes and an
+// automatically upgraded streak frame must not invalidate a person's draft.
+function editableLook(draft: Draft) {
+  const { skin, hair, hairColor, glasses } = draft.look;
+  const equipment = Object.entries(draft.equipped).filter(([, id]) => typeof id === "string").sort(([a], [b]) => a.localeCompare(b));
+  return JSON.stringify([skin, hair, hairColor, glasses, equipment, draft.background, draft.title]);
+}
 // The frame samples have no outfit. A new `{}` on every tap defeats the
 // portrait's memo and rebuilds every sample's SVG when only the preview changed.
 const FRAME_EQUIPMENT = {};
+const FRAME_CHOICES = [{ id: null, days: 0 }, ...STREAK_FRAMES];
 
 /** Where Outfits opens to show one item: its tab and part, and what to put on. */
 export function outfitsOpening(id: string | undefined) {
@@ -71,9 +80,13 @@ export default function OutfitsScreen() {
   // Opened from a reward ("See it in Outfits"): start on its category, wearing it to try.
   const params = useLocalSearchParams<{ show?: string; from?: string }>();
   const [opening] = useState(() => outfitsOpening(typeof params.show === "string" ? params.show : undefined));
-  // Until you change something, the page simply shows your saved look.
-  const [edit, setEdit] = useState<Draft | null>(() => opening?.wear ? wearing(saved, opening.wear) : null);
-  const draft = edit ?? saved;
+  // A reward preview follows the real saved avatar as its cache loads. Taking
+  // a copy of the initial placeholder here could later save default hair and
+  // clothes over the person's existing outfit.
+  const [openingWear, setOpeningWear] = useState(opening?.wear ?? null);
+  const openingDraft = useMemo(() => openingWear ? wearing(saved, openingWear) ?? saved : saved, [saved, openingWear]);
+  const [edit, setEdit] = useState<Edit | null>(null);
+  const draft = edit?.draft ?? openingDraft;
   const [tab, setTab] = useState<Tab>(opening?.tab ?? "look");
   const [slot, setSlot] = useState<WearSlot>(opening?.slot ?? "head");
   const [picturePart, setPicturePart] = useState<PicturePart>(opening?.part ?? "frames");
@@ -82,12 +95,20 @@ export default function OutfitsScreen() {
   const [selected, setSelected] = useState<string | null>(opening?.item ?? null);
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
+  const active = useRef(true);
+  useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   // A shorter stage on smaller phones, so the choices below keep enough room.
   const { height: screenHeight } = useWindowDimensions();
   const STAGE_HEIGHT = screenHeight < 760 ? 210 : 240, roomy = STAGE_HEIGHT >= 240;
   const owned = useMemo(() => new Set(rewards.owned), [rewards.owned]);
-  const dirty = !!edit && JSON.stringify(edit) !== JSON.stringify(saved);
-  const change = (next: Partial<Draft>) => { setEdit(d => ({ ...(d ?? saved), ...next })); setMessage(""); };
+  const ready = !!rewards.state?.avatar;
+  const savedKey = editableLook(saved);
+  const dirty = editableLook(draft) !== savedKey;
+  const editConflict = !!edit && (!edit.ready || edit.base !== savedKey);
+  const change = (next: Partial<Draft>) => {
+    setEdit(current => ({ draft: { ...(current?.draft ?? openingDraft), ...next }, base: current?.base ?? savedKey, ready: current?.ready ?? ready }));
+    setMessage("");
+  };
   const setLook = (next: Partial<AdventurerLook>) => change({ look: { ...draft.look, ...next } });
   const has = (item: RewardItem) => !!item.free || owned.has(item.id);
 
@@ -104,8 +125,9 @@ export default function OutfitsScreen() {
   const tryingOn = [...Object.values(draft.equipped), draft.title, draft.background]
     .map(id => id ? rewardItem(id) : undefined).filter((item): item is RewardItem => !!item && !has(item));
   const save = async () => {
-    if (tryingOn.length) return;
+    if (!ready || editConflict || tryingOn.length) return;
     const result = await rewards.saveAvatar(draft);
+    if (!active.current) return;
     // Saved: back to Profile, which already shows the new look.
     if (result.ok) { setEdit(null); router.back(); } else setMessage(result.message);
   };
@@ -113,6 +135,7 @@ export default function OutfitsScreen() {
     const item = buying; setBuying(null);
     if (!item) return;
     const result = await rewards.buy(item.id);
+    if (!active.current) return;
     setMessage(result.ok ? `${item.name} is yours.` : result.message);
   };
 
@@ -136,11 +159,13 @@ export default function OutfitsScreen() {
   const [a, b] = BG[draft.background] ?? BG.bg_dusk;
 
   const footer = <View style={s.footer}>
-    {tryingOn.length > 0 ? <Text style={s.preview} accessibilityLiveRegion="polite">{`Trying on ${tryingOn.map(i => i.name).join(", ")}. Take ${tryingOn.length > 1 ? "them" : "it"} off or get ${tryingOn.length > 1 ? "them" : "it"} to save.`}</Text>
+    {!ready ? <Text style={p.caption} accessibilityLiveRegion="polite">Loading your saved look…</Text>
+      : editConflict ? <Text style={p.error} accessibilityRole="alert">Your saved look changed. Reset to review it before saving.</Text>
+      : tryingOn.length > 0 ? <Text style={s.preview} accessibilityLiveRegion="polite">{`Trying on ${tryingOn.map(i => i.name).join(", ")}. Take ${tryingOn.length > 1 ? "them" : "it"} off or get ${tryingOn.length > 1 ? "them" : "it"} to save.`}</Text>
       : !rewards.online ? <Text style={p.caption}>Needs internet to save or buy.</Text> : null}
     <View style={s.actions}>
-      <View style={{ flex: 1 }}><PersonalButton title="Reset" secondary disabled={!dirty || rewards.busy} onPress={() => { setEdit(null); setMessage(""); }} /></View>
-      <View style={{ flex: 1.4 }}><PersonalButton title={rewards.busy ? "Saving…" : "Save look"} disabled={!dirty || rewards.busy || !rewards.online || tryingOn.length > 0} onPress={() => void save()} /></View>
+      <View style={{ flex: 1 }}><PersonalButton title="Reset" secondary disabled={(!dirty && !editConflict) || rewards.busy} onPress={() => { setEdit(null); setOpeningWear(null); setMessage(""); }} /></View>
+      <View style={{ flex: 1.4 }}><PersonalButton title={rewards.busy ? "Saving…" : "Save look"} disabled={!dirty || !ready || editConflict || rewards.busy || !rewards.online || tryingOn.length > 0} onPress={() => void save()} /></View>
     </View>
   </View>;
   // The character and the tabs stay in view while the choices scroll under them.
@@ -178,15 +203,8 @@ export default function OutfitsScreen() {
         dot={!!draft.equipped[part.slot]} onPress={() => { setSlot(part.slot); setSelected(null); }} />)}</View>}
       {tab === "picture" && <View style={s.parts} accessibilityRole="radiogroup">{PICTURE_PARTS.map(part => <Pill key={part.value} label={part.label} on={picturePart === part.value}
         onPress={() => { setPicturePart(part.value); setSelected(null); setFramePreview(undefined); }} />)}</View>}
-      {tab === "picture" && picturePart === "frames" ? <View style={s.frames}>
-        {[{ id: null, days: 0 }, ...STREAK_FRAMES].map(f => {
-          const showing = (rewards.frame ?? null) === f.id, got = f.id === null || earned.has(f.id), looking = shownFrame === f.id;
-          const name = f.id === null ? "Level frame" : `${f.days} days in a row`;
-          const status = showing ? "Showing" : got ? "Earned" : `${f.days - Math.min(streak, f.days)} days to go`;
-          return <FrameRow key={f.id ?? "level"} id={f.id} name={name} status={status} looking={looking}
-            showing={showing} got={got} select={setFramePreview} look={draft.look} level={profile.level} background={draft.background} />;
-        })}
-      </View> : <View style={s.grid}>{list.map(item => {
+      {tab === "picture" && picturePart === "frames" ? <FrameChoices savedFrame={rewards.frame} shownFrame={shownFrame}
+        earned={earned} streak={streak} select={setFramePreview} look={draft.look} level={profile.level} background={draft.background} /> : <View style={s.grid}>{list.map(item => {
         const mine = has(item), on = worn(item);
         return <Pressable key={item.id} onPress={() => tapItem(item)} accessibilityRole="button"
           accessibilityLabel={`${item.name}, ${RARITY_NAME[item.rarity]}${on ? ", wearing" : mine ? ", owned" : ", not found yet"}`}
@@ -243,13 +261,38 @@ const OutfitsPreview = memo(function OutfitsPreview({ height, roomy, a, b, stard
   </View>;
 });
 
-const FrameRow = memo(function FrameRow({ id, name, status, looking, showing, got, select, look, level, background }: {
-  id: string | null; name: string; status: string; looking: boolean; showing: boolean; got: boolean;
+// Keep the choices responsive immediately. Mounting the seven detailed SVG
+// portraits in the tab-press commit stalled slower phones even though later
+// previews were memoised. The first visible samples draw now; the rest take
+// one animation frame each, without moving their rows or delaying taps.
+function FrameChoices({ savedFrame, shownFrame, earned, streak, select, look, level, background }: {
+  savedFrame: string | null; shownFrame: string | null; earned: Set<string>; streak: number;
   select: (frame: string | null) => void; look: AdventurerLook; level: number; background: string;
+}) {
+  const [portraits, setPortraits] = useState(2);
+  useEffect(() => {
+    if (portraits >= FRAME_CHOICES.length) return;
+    let active = true;
+    const frame = requestAnimationFrame(() => { if (active) startTransition(() => setPortraits(portraits + 1)); });
+    return () => { active = false; cancelAnimationFrame(frame); };
+  }, [portraits]);
+  return <View style={s.frames}>{FRAME_CHOICES.map((f, index) => {
+    const showing = (savedFrame ?? null) === f.id, got = f.id === null || earned.has(f.id), looking = shownFrame === f.id;
+    const name = f.id === null ? "Level frame" : `${f.days} days in a row`;
+    const status = showing ? "Showing" : got ? "Earned" : `${f.days - Math.min(streak, f.days)} days to go`;
+    return <FrameRow key={f.id ?? "level"} id={f.id} name={name} status={status} looking={looking}
+      showing={showing} got={got} portraitReady={index < portraits} select={select} look={look} level={level} background={background} />;
+  })}</View>;
+}
+
+const FrameRow = memo(function FrameRow({ id, name, status, looking, showing, got, portraitReady, select, look, level, background }: {
+  id: string | null; name: string; status: string; looking: boolean; showing: boolean; got: boolean;
+  portraitReady: boolean; select: (frame: string | null) => void; look: AdventurerLook; level: number; background: string;
 }) {
   return <Pressable onPress={() => select(id)} accessibilityRole="button" accessibilityLabel={`${name}, ${status}`}
     accessibilityState={{ selected: looking }} style={[s.frameRow, looking && s.tileFocus]}>
-    <ProfilePicture look={look} equipped={FRAME_EQUIPMENT} level={level} background={background} frame={id} size={52} />
+    {portraitReady ? <ProfilePicture look={look} equipped={FRAME_EQUIPMENT} level={level} background={background} frame={id} size={52} />
+      : <View style={s.frameSlot} pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants" />}
     <Text style={[s.frameName, !got && { color: colors.muted }]} numberOfLines={1}>{name}</Text>
     {showing ? <View style={s.showing}><Text style={s.showingText}>{status}</Text></View>
       : got ? <Ionicons name="checkmark-circle" size={20} color={colors.progress} />
@@ -285,6 +328,7 @@ const s = StyleSheet.create({
   parts: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.progress },
   frames: { gap: 8 },
+  frameSlot: { width: 52, height: 52 },
   frameRow: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, minHeight: 68, paddingHorizontal: 10, paddingVertical: 8, borderRadius: radius.row, backgroundColor: colors.surface },
   frameName: { flex: 1, color: colors.text, fontSize: 15, fontWeight: "700" },
   showing: { paddingHorizontal: 10, minHeight: 26, borderRadius: 13, justifyContent: "center", backgroundColor: "rgba(45,212,167,0.16)" },

@@ -4,6 +4,12 @@ Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
 this file wins. When something is unclear, ask Soon Teck before changing code.
 
+Round 61 addendum: the working base is now `0116adc` (Round 60 on
+`feature/next`). Round 61's JS fixes pass 1,422 app tests, typecheck and lint;
+see `docs/round61-responsiveness.md` for current scope and verification. The
+Round 59 state table below is historical. Runtime guidance below has been
+corrected against the installed preview APK.
+
 ---
 
 ## 1. Where things stand (checked 24 Oct 2026)
@@ -14,7 +20,7 @@ this file wins. When something is unclear, ask Soon Teck before changing code.
 | Latest commit | `3434a24` "Round 59: one session scene, rewards before leaving, Home header room" |
 | `main` | 14 rounds behind `feature/next`. Never commit to `main`. |
 | Code health | Tree identical to the last verified build: **1,466 tests pass, `tsc` clean, `expo lint` clean** |
-| Native fingerprint (Android) | `de0355adda848fb7ff4453b91b284c71253e25c9`, unchanged, so updates ship over the air |
+| Installed preview runtime (Android) | `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Publish from Soon Teck's original Windows repository with its existing native inputs and local `.gitignore` preserved. A clean LF checkout computes `de0355adda848fb7ff4453b91b284c71253e25c9`, which does not target that APK. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Supabase health | No Postgres errors in the last 24 h. The only API errors (404 `dev_rewards_v1`, 400 `open_daily_pack_v1`) happened *before* the Round 58 SQL was applied, so they're resolved. |
 | Round 58 SQL | Applied. Live functions confirmed: dev reset refused, dev account delete refused, `next_milestones` dev action present, stats-visibility functions and `player_settings` table gone, `liferpg_reward_private.state()` is VOLATILE. |
@@ -40,7 +46,7 @@ No guilt or punishment mechanics; no ads during focus, auth or recovery.
 
 1. **Don't break existing functions.** Every change keeps current behaviour working unless Soon Teck asked to change it.
 2. **Ask first** before any database, auth, dependency or build-config change. Explain what and why, then wait for a yes.
-3. **No native or config changes.** The Android fingerprint must stay `de0355adda848fb7ff4453b91b284c71253e25c9`. That means JS/TS only: no new native modules, no `app.json`/`app.config` plugin changes, no new packages with native code. Native work goes on the build list (section 10).
+3. **No native or config changes.** The installed preview runtime is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Keep native inputs unchanged and compare fingerprints in the same checkout/environment; do not normalize native files, create a clean LF publishing checkout, or override the runtime to force a match. That means JS/TS only: no new native modules, no `app.json`/`app.config` plugin changes, no new packages with native code. Native work goes on the build list (section 10).
 4. **Never touch** `.gitignore`, `eas.json`, or `modules/focus-protection-spike/android`.
 5. **Never push to `main`.** Work on a branch off `feature/next` (or a PR into it). Soon Teck merges and pushes.
 6. **Never run sign-ups or send test emails**, and never put Soon Teck's email address anywhere (code, logs, requests).
@@ -81,8 +87,14 @@ npm ci                                   # once
 npx tsc --noEmit                         # no output = pass
 npx expo lint --no-cache                 # no output = pass
 npm test                                 # node:test, all must pass
-npx expo-updates fingerprint:generate --platform android   # hash must equal de0355adda848fb7ff4453b91b284c71253e25c9
+npx expo-updates fingerprint:generate --platform android   # compare before/after in the same environment
 ```
+
+The installed preview APK accepts runtime `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`.
+Publish from `C:\Users\soonteck\LifeRPG`, preserving its existing local `.gitignore`
+and native files. The earlier instruction to publish from a clean LF checkout was
+incorrect: its `de0355...` runtime produces a successful upload that this APK cannot
+load. Do not rebuild or change runtime configuration for a JS-only fix.
 
 **SQL tests** use PGlite and are skipped unless `SESSION_SQL_PGLITE_ROOT` points
 at a `node_modules` folder that has `@electric-sql/pglite@^0.4.6`:

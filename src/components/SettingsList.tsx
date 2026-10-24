@@ -15,8 +15,8 @@ export function SettingsGroup({ title, footer, children }: { title?: string; foo
 }
 type Icon = React.ComponentProps<typeof Ionicons>["name"];
 /** One setting: a tinted icon, a name, and a value, switch or chevron. Rows after the first get an inset divider. */
-export function SettingsRow({ icon, tint = colors.accent, title, value, subtitle, onPress, toggle, first = false, danger = false, disabled = false }: {
-  icon: Icon; tint?: string; title: string; value?: string; subtitle?: string; onPress?: () => void; first?: boolean; danger?: boolean; disabled?: boolean;
+export function SettingsRow({ icon, tint = colors.accent, title, value, subtitle, status, testID, busy, onPress, toggle, first = false, danger = false, disabled = false }: {
+  icon: Icon; tint?: string; title: string; value?: string; subtitle?: string; status?: string; testID?: string; busy?: boolean; onPress?: () => void; first?: boolean; danger?: boolean; disabled?: boolean;
   toggle?: { value: boolean; onChange: (value: boolean) => void };
 }) {
   const body = <>
@@ -25,13 +25,14 @@ export function SettingsRow({ icon, tint = colors.accent, title, value, subtitle
     <View style={[s.copy, !!value && s.copyFirst]}>
       <Text style={[s.rowTitle, danger && { color: colors.danger }]} numberOfLines={1}>{title}</Text>
       {!!subtitle && <Text style={s.subtitle} numberOfLines={2}>{subtitle}</Text>}
+      {!!status && <Text style={s.subtitle} testID={testID ? `${testID}-status` : undefined} accessibilityLiveRegion="polite">{status}</Text>}
     </View>
     {!!value && <Text style={s.value} numberOfLines={1} ellipsizeMode="tail">{value}</Text>}
     {toggle ? <Switch accessibilityLabel={title} value={toggle.value} disabled={disabled} onValueChange={toggle.onChange}
       trackColor={{ false: colors.selection, true: colors.accentFill }} />
       : onPress ? <Ionicons name="chevron-forward" size={16} color={colors.tertiary} /> : null}
   </>;
-  return onPress && !toggle ? <Pressable onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={value ? `${title}, ${value}` : title}
+  return onPress && !toggle ? <Pressable testID={testID} onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={value ? `${title}, ${value}` : title} accessibilityState={{ disabled, ...(busy === undefined ? {} : { busy }) }}
     style={[s.row, disabled && s.disabled]}>{body}</Pressable> : <View style={[s.row, disabled && s.disabled]}>{body}</View>;
 }
 const s = StyleSheet.create({

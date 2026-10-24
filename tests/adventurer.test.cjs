@@ -11,13 +11,13 @@ function load(file, mocks = {}, cache = new Map()) {
   if (cache.has(filename)) return cache.get(filename).exports;
   const mod = { exports: {} }; cache.set(filename, mod);
   const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
-  new Function("require", "module", "exports", code)(name => {
+  new Function("require", "module", "exports", "requestAnimationFrame", "cancelAnimationFrame", code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
     const resolved = [".ts", ".tsx"].map(ext => target + ext).find(fs.existsSync);
     return load(path.relative(root, resolved), mocks, cache);
-  }, mod, mod.exports);
+  }, mod, mod.exports, mocks.requestAnimationFrame ?? globalThis.requestAnimationFrame, mocks.cancelAnimationFrame ?? globalThis.cancelAnimationFrame);
   return mod.exports;
 }
 const host = type => function Host(props) { return React.createElement(type, props, props.children); };
@@ -105,8 +105,9 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
   stop();
 });
 
-async function outfits({ online = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {} } = {}) {
+async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar } = {}) {
   const log = [];
+  const frames = new Map(); let frameId = 0;
   const renders = { adventurer: 0, thumbnails: 0, portrait: 0 };
   // Match the real portrait's memo boundary. Stage art is deliberately not
   // memoised here, so unrelated tabs prove the stage itself stays isolated.
@@ -116,11 +117,14 @@ async function outfits({ online = true, owned = ["cardigan", "beret"], earned = 
     return React.createElement("Picture", props);
   });
   const rewards = {
+    state: ready ? { avatar: {} } : null,
     online, busy: false, stardust, owned, earned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame, title: null,
-    saveAvatar: async draft => { log.push(["save", draft]); return { ok: true, value: {} }; },
+    saveAvatar: async draft => { log.push(["save", draft]); return saveAvatar ? saveAvatar(draft) : { ok: true, value: {} }; },
     buy: async id => { log.push(["buy", id]); return { ok: true, value: {} }; },
   };
   const mod = load("src/app/outfits.tsx", {
+    requestAnimationFrame: callback => { const id = ++frameId; frames.set(id, callback); return id; },
+    cancelAnimationFrame: id => frames.delete(id),
     "react-native": { ...native, useWindowDimensions: () => ({ width: 390, height: 844 }) }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
     "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", null, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
@@ -134,7 +138,17 @@ async function outfits({ online = true, owned = ["cardigan", "beret"], earned = 
   const tab = async value => act(async () => r.root.findByType("Segmented").props.onChange(value));
   const button = title => r.root.findAllByType("Button").find(b => b.props.title === title);
   const words = () => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
-  return { r, log, renders, press, tab, button, words, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
+  const nextFrame = async () => {
+    const callbacks = [...frames.values()]; frames.clear();
+    await act(async () => callbacks.forEach(callback => callback(0)));
+  };
+  const finishFrames = async () => {
+    let count = 0;
+    while (frames.size) { assert.ok(count++ < 10, "thumbnail work must be bounded"); await nextFrame(); }
+  };
+  const updateRewards = async changes => { Object.assign(rewards, changes); await act(async () => r.update(React.createElement(Screen))); };
+  return { r, log, renders, press, tab, button, words, nextFrame, finishFrames, pendingFrames: () => frames.size,
+    updateRewards, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
 }
 
 test("See it in Outfits opens on the item's own category, already tried on", async () => {
@@ -251,6 +265,7 @@ test("frame previews redraw the main portrait without rebuilding seven unchanged
   const ui = await outfits({ frame: "frame_streak_30" });
   try {
     await ui.tab("picture");
+    await ui.finishFrames();
     assert.deepEqual([ui.renders.thumbnails, ui.renders.portrait], [7, 1]);
     await ui.press("60 days in a row, 27 days to go");
     await ui.press("180 days in a row, 147 days to go");
@@ -260,6 +275,119 @@ test("frame previews redraw the main portrait without rebuilding seven unchanged
     assert.match(chosen[0].props.accessibilityLabel, /^180 days/);
     assert.equal(ui.button("Save look").props.disabled, true, "preview still cannot change the earned frame");
   } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("Picture opens with three portraits, while all frame choices remain immediately usable", async () => {
+  const ui = await outfits({ frame: "frame_streak_30" });
+  try {
+    await ui.tab("picture");
+    assert.deepEqual([ui.renders.thumbnails, ui.renders.portrait], [2, 1], "tab entry does not mount all eight SVG portraits together");
+    const frames = () => ui.r.root.findAll(n => n.type === "Press" && /^(Level frame|\d+ days in a row),/.test(n.props.accessibilityLabel ?? ""));
+    assert.equal(frames().length, 7, "labels, status and press targets are never deferred");
+    await ui.press("365 days in a row, 332 days to go");
+    const stage = () => ui.r.root.findAllByType("Picture").find(p => p.props.size === 164);
+    assert.equal(stage().props.frame, "frame_streak_365", "a tap previews the frame before its thumbnail is drawn");
+    assert.equal(ui.renders.thumbnails, 2);
+    assert.equal(ui.button("Save look").props.disabled, true);
+    for (let count = 3; count <= 7; count++) {
+      await ui.nextFrame();
+      assert.equal(ui.renders.thumbnails, count, "only one extra thumbnail mounts per frame");
+      assert.equal(stage().props.frame, "frame_streak_365");
+    }
+    assert.equal(ui.pendingFrames(), 0);
+    assert.equal(frames().filter(n => n.props.accessibilityState.selected).length, 1);
+  } finally { await act(async () => ui.r.unmount()); }
+  assert.equal(ui.pendingFrames(), 0);
+});
+
+test("leaving Picture or Frames cancels pending portrait work without changing a saved look", async () => {
+  const ui = await outfits({ frame: "frame_streak_30" });
+  try {
+    await ui.tab("picture");
+    assert.equal(ui.pendingFrames(), 1);
+    await ui.tab("pets");
+    assert.equal(ui.pendingFrames(), 0);
+    const draws = ui.renders.thumbnails;
+    await ui.nextFrame();
+    assert.equal(ui.renders.thumbnails, draws, "the hidden list draws nothing");
+    await ui.tab("picture");
+    assert.equal(ui.pendingFrames(), 1);
+    await ui.press("Badges");
+    assert.equal(ui.pendingFrames(), 0);
+    await ui.press("Frames");
+    assert.equal(ui.pendingFrames(), 1);
+    assert.deepEqual(ui.log, [], "art scheduling never saves or buys anything");
+  } finally { await act(async () => ui.r.unmount()); }
+  assert.equal(ui.pendingFrames(), 0, "unmount releases the outstanding frame callback");
+});
+
+test("a reward deep link waits for the saved avatar and preserves its late-arriving look and equipment", async () => {
+  const ui = await outfits({ ready: false, owned: ["cardigan", "beret", "tote", "pet_owl", "bg_night"], params: { show: "pet_owl" } });
+  try {
+    assert.equal(ui.button("Save look").props.disabled, true);
+    await act(async () => ui.button("Save look").props.onPress());
+    assert.deepEqual(ui.log, [], "a placeholder avatar can never be submitted");
+    const look = { skin: "7", hair: "coily", hairColor: "black", glasses: true };
+    await ui.updateRewards({ state: { avatar: {} }, look, equipped: { top: "cardigan", head: "beret", bag: "tote" }, background: "bg_night", title: null });
+    assert.deepEqual(ui.preview().look, look);
+    assert.deepEqual(ui.preview().equipped, { top: "cardigan", head: "beret", bag: "tote", pet: "pet_owl" });
+    assert.equal(ui.button("Save look").props.disabled, false);
+    await act(async () => ui.button("Save look").props.onPress());
+    assert.deepEqual(ui.log[0], ["save", { look, equipped: { top: "cardigan", head: "beret", bag: "tote", pet: "pet_owl" }, background: "bg_night", title: null }]);
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("manual changes made before the saved avatar loads require Reset instead of overwriting that avatar", async () => {
+  const ui = await outfits({ ready: false });
+  try {
+    await ui.press("Skin tone 7");
+    const edited = ui.preview().look;
+    await ui.updateRewards({ state: { avatar: {} }, look: { ...LOOK, hair: "coily" }, equipped: { top: "cardigan", head: "beret" } });
+    assert.deepEqual(ui.preview().look, edited, "keep the person's visible draft until they choose Reset");
+    assert.match(ui.words(), /Your saved look changed.*Reset to review/);
+    assert.equal(ui.button("Save look").props.disabled, true);
+    await act(async () => ui.button("Save look").props.onPress());
+    assert.deepEqual(ui.log, []);
+    assert.equal(ui.button("Reset").props.disabled, false);
+    await act(async () => ui.button("Reset").props.onPress());
+    assert.equal(ui.preview().look.hair, "coily");
+    assert.deepEqual(ui.preview().equipped, { top: "cardigan", head: "beret" });
+    assert.doesNotMatch(ui.words(), /Reset to review/);
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("an external outfit change fences a manual draft, but equivalent snapshots and automatic frames do not", async () => {
+  const ui = await outfits({ owned: ["cardigan", "beret", "pet_owl"] });
+  try {
+    await ui.updateRewards({ equipped: { top: "cardigan", head: "beret" } });
+    await ui.press("Skin tone 7");
+    await ui.updateRewards({ state: { avatar: {} }, look: { ...LOOK }, equipped: { head: "beret", absent: undefined, top: "cardigan" }, frame: "frame_streak_60", stardust: 110, owned: ["cardigan", "beret", "pet_owl", "tote"] });
+    assert.equal(ui.button("Save look").props.disabled, false, "a refresh with the same editable values leaves the draft valid");
+    await ui.updateRewards({ look: { ...LOOK, hair: "long" }, equipped: { head: "beret", top: "cardigan" } });
+    assert.equal(ui.preview().look.skin, "7", "do not silently rebase a manual choice");
+    assert.equal(ui.preview().look.hair, "short");
+    assert.equal(ui.button("Save look").props.disabled, true);
+    await act(async () => ui.button("Save look").props.onPress());
+    assert.deepEqual(ui.log, []);
+    await act(async () => ui.button("Reset").props.onPress());
+    assert.equal(ui.preview().look.hair, "long");
+    await ui.press("Skin tone 6");
+    assert.equal(ui.button("Save look").props.disabled, false);
+    await act(async () => ui.button("Save look").props.onPress());
+    assert.equal(ui.log[0][1].look.hair, "long");
+    assert.equal(ui.log[0][1].look.skin, "6");
+    assert.deepEqual(ui.log[0][1].equipped, { head: "beret", top: "cardigan" });
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("a saved look reply after Outfits unmounts cannot navigate the person's new screen", async () => {
+  let finish;
+  const ui = await outfits({ saveAvatar: () => new Promise(resolve => { finish = resolve; }) });
+  await ui.press("Skin tone 7");
+  await act(async () => { ui.button("Save look").props.onPress(); });
+  await act(async () => ui.r.unmount());
+  await act(async () => finish({ ok: true, value: {} }));
+  assert.equal(ui.log.filter(([event]) => event === "back").length, 0);
 });
 
 test("Reset and Save look stay fixed below the scrolling outfits", async () => {

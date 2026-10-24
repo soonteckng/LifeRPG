@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Modal, StyleSheet, View } from "react-native";
 import { Text } from "./AppText";
 import { SettingsGroup, SettingsRow } from "./SettingsList";
@@ -39,7 +39,19 @@ export default function DeveloperTools() {
   const [shown, setShown] = useState(false);
   const [saving, setSaving] = useState(false);
   const router = useRouter();
-  const [rewardNote, setRewardNote] = useState("");
+  const rewardScope = JSON.stringify([profile.id, auth.admissionEpoch]);
+  const [feedback, setFeedback] = useState({ scope: rewardScope, note: "", claim: "", claiming: false });
+  const rewardNote = feedback.scope === rewardScope ? feedback.note : "";
+  const claimNote = feedback.scope === rewardScope ? feedback.claim : "";
+  const claiming = feedback.scope === rewardScope && feedback.claiming;
+  const feedbackForScope = (next: Partial<Omit<typeof feedback, "scope">>) => setFeedback(previous => ({
+    ...(previous.scope === rewardScope ? previous : { note: "", claim: "", claiming: false }), scope: rewardScope, ...next,
+  }));
+  const claimLock = useRef(false);
+  const currentRewardScope = useRef(rewardScope);
+  useLayoutEffect(() => {
+    currentRewardScope.current = rewardScope; claimLock.current = false;
+  }, [rewardScope]);
   useEffect(() => {
     if (!saving) return;
     const timeout = setTimeout(() => setSaving(false), SAVING_PREVIEW_MS);
@@ -62,14 +74,25 @@ export default function DeveloperTools() {
   const names = (gifts: { item: string; new: boolean; stardust: number }[]) => gifts.map(g => `${rewardItem(g.item)?.name ?? g.item}${g.new ? " (new)" : ` (+${g.stardust} Stardust)`}`).join(", ");
   // Every row says what happened. Finds, packs and milestones also open the
   // same return screen, pack screen and pop-ups everyone sees.
-  const note = (text: string, ok = true) => setRewardNote(text ? `${ok ? "✓" : "!"} ${text}` : "");
+  const note = (text: string, ok = true) => {
+    if (currentRewardScope.current !== rewardScope) return;
+    feedbackForScope({ claim: "", note: text ? `${ok ? "✓" : "!"} ${text}` : "" });
+  };
   const claim = async () => {
-    note("Checking…");
-    const r = await rewards.claimSessions();
-    if (!r.ok) return note(r.message, false);
-    const finds = r.value.sessions.flatMap(x => x.finds), dust = r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0);
-    const parts = [finds.length ? `Finds: ${names(finds)}` : "", dust ? `+${dust} Stardust from minutes` : "", r.value.milestones.length ? `Unlocked: ${names(r.value.milestones)}` : ""].filter(Boolean);
-    note(parts.length ? parts.join(". ") + "." : `Nothing new since your last check. Next find in ${Math.ceil(r.value.state.nextFindSeconds / 60)} min of focus.`);
+    if (claimLock.current) return;
+    claimLock.current = true; feedbackForScope({ claiming: true, note: "", claim: "Checking…" });
+    try {
+      const r = await rewards.claimSessions();
+      if (currentRewardScope.current !== rewardScope) return;
+      if (!r.ok) { feedbackForScope({ claim: `! ${r.message}` }); return; }
+      const finds = r.value.sessions.flatMap(x => x.finds), dust = r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0);
+      const parts = [finds.length ? `Finds: ${names(finds)}` : "", dust ? `+${dust} Stardust from minutes` : "", r.value.milestones.length ? `Unlocked: ${names(r.value.milestones)}` : ""].filter(Boolean);
+      feedbackForScope({ claim: `✓ ${parts.length ? parts.join(". ") + "." : `Nothing new since your last check. Next find in ${Math.ceil(r.value.state.nextFindSeconds / 60)} min of focus.`}` });
+    } catch {
+      if (currentRewardScope.current === rewardScope) feedbackForScope({ claim: "! Couldn't check your finds. Please try again." });
+    } finally {
+      if (currentRewardScope.current === rewardScope) { claimLock.current = false; feedbackForScope({ claiming: false }); }
+    }
   };
   const pack = async () => {
     note("Opening…");
@@ -95,7 +118,7 @@ export default function DeveloperTools() {
     </SettingsGroup>
     <SettingsGroup title="Developer: rewards" footer={`${rewards.stardust} Stardust. These use the real rewards, the same as everyone's; the rows marked “test” are developer-only.`}>
       <SettingsRow first icon="shirt-outline" tint="#2DD4A7" title="Open Outfits" onPress={() => router.navigate("/outfits")} />
-      <SettingsRow icon="compass-outline" tint="#60A5FA" title="Check for new finds" disabled={rewards.busy} onPress={() => void claim()} />
+      <SettingsRow icon="compass-outline" tint="#60A5FA" title="Check for new finds" status={claimNote} testID="dev-reward-claim" busy={claiming} disabled={rewards.busy || claiming} onPress={() => void claim()} />
       <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" subtitle="Developers don't need the daily goal" disabled={rewards.busy} onPress={() => void pack()} />
       <SettingsRow icon="repeat-outline" tint="#64D2FF" title="Let me open today's pack again" subtitle="Test" disabled={rewards.busy}
         onPress={() => void dev("reopen_pack", () => "Today's pack can be opened again. Your days in a row carry on.")} />

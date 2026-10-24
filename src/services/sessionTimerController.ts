@@ -667,8 +667,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       // The single manual reconnect action must still verify the owner. Local
       // admission permits timing, never authenticated server reconciliation.
       if (force && options.offline.isLocalOnly()) await verify();
-      if (!options.offline.isLocalOnly()) await bounded(options.offline.refresh());
+      // Settle the elapsed timer on this phone before optional capability I/O.
+      // The durable journal marks completion; only the server confirms credit.
       await expireLocal();
+      if (!options.offline.isLocalOnly()) await bounded(options.offline.refresh());
       await syncClientQueue(force);
       if (selected()?.clientTiming || options.offline.isLocalOnly()) { publish({ restoreError: false }); return; }
     }

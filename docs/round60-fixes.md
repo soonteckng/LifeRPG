@@ -59,9 +59,12 @@ existing rules. No native, dependency, auth, app configuration or SQL changes.
   replaced with dimension-preserving placeholders in that isolated harness.
 - Android runtime fingerprint in a clean LF checkout, both before and after the
   application patch: `de0355adda848fb7ff4453b91b284c71253e25c9`.
-- Windows CRLF checkouts produce a different fingerprint despite equivalent
-  native sources. Publish from a clean LF checkout; do not override the runtime
-  version or change native files to force compatibility.
+- Runtime correction after delivery: that LF hash is not the installed preview
+  APK's runtime. The working preview accepts
+  `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Publish from the original
+  `C:\Users\soonteck\LifeRPG` checkout, preserving its native inputs and existing
+  local `.gitignore`. The former advice to use a clean LF publishing checkout was
+  incorrect. Do not override the runtime or change native files to force a match.
 - Physical Android compositing, gesture frame timing and tap latency have not
   been profiled. In particular, removal of the saving rectangle and smooth
   reopening still need installed-phone confirmation. No claim of measured FPS.

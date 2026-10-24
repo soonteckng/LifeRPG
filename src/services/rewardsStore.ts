@@ -38,6 +38,9 @@ export function createRewardsStore(storage: Storage) {
   const snapshots = new Map<string, RewardsSnapshot>();
   const listeners = new Map<string, Set<() => void>>();
   const loaded = new Set<string>();
+  // A refresh that began before a claim/purchase/save may return an older
+  // wallet and look. It must never roll back that newer result or its cache.
+  const mutationVersion = new Map<string, number>();
   const set = (owner: string, next: Partial<RewardsSnapshot>) => {
     snapshots.set(owner, { ...(snapshots.get(owner) ?? EMPTY), ...next });
     listeners.get(owner)?.forEach(l => l());
@@ -110,10 +113,14 @@ export function createRewardsStore(storage: Storage) {
     async load(owner: string | null, client: Client | null) {
       if (!owner) return;
       await readCache(owner);
-      if (!client || snapshots.get(owner)?.loading) return;
+      if (!client || snapshots.get(owner)?.loading || snapshots.get(owner)?.busy) return;
+      const version = mutationVersion.get(owner) ?? 0;
       set(owner, { loading: true });
-      try { await keep(owner, await client.load()); }
-      catch (cause) { set(owner, { error: rewardsErrorMessage(cause) }); }
+      try {
+        const value = await client.load();
+        if (version === (mutationVersion.get(owner) ?? 0)) await keep(owner, value);
+      }
+      catch (cause) { if (version === (mutationVersion.get(owner) ?? 0)) set(owner, { error: rewardsErrorMessage(cause) }); }
       finally { set(owner, { loading: false }); }
     },
     /** Marks pop-ups as seen. */
@@ -138,6 +145,7 @@ export function createRewardsStore(storage: Storage) {
       set(owner, { busy: true });
       try {
         const value = await work();
+        mutationVersion.set(owner, (mutationVersion.get(owner) ?? 0) + 1);
         await keep(owner, "state" in value ? value.state : value, quiet);
         return { ok: true, value };
       } catch (cause) { return { ok: false, message: rewardsErrorMessage(cause) }; }

@@ -472,6 +472,10 @@ export default function SessionScreen() {
     : phase === "completed" && sessionSummary ? sessionSummary.durationSeconds
     : timer.finishing ? 0 : timer.timeLeft;
   const breakActive = timer.breakSecondsLeft > 0;
+  // Foreground can discover the deadline before its durable journal write
+  // settles. Keep the scene's geometry without flashing an expired 00:00.
+  // This is presentation only: the existing saved result still owns completion.
+  const hideCountdown = timer.isCompleted || !endingPresentation && timer.hasOpenSession && !timer.awaitingStart && !breakActive && timer.timeLeft <= 0;
   const breakSpent = timer.protectedSession && timer.breakUsed && !breakActive;
   const disabled = breakSpent || cancellationSaved || timer.endingSession || timer.actionBusy || timer.isRestoring || timer.restoreError || timer.awaitingStart || (timer.hasOpenSession && timer.syncStatus === "waiting") || (!timer.hasOpenSession && (missingQuest || !validSessionSeconds(timer.duration) || !!picker));
   const immediateControl = timer.hasOpenSession || timer.awaitingStart || endRequested;
@@ -493,7 +497,7 @@ export default function SessionScreen() {
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={phase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-      walking={phase === "running" && !breakActive && !timer.awaitingStart} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro} />
+      walking={phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
@@ -502,9 +506,9 @@ export default function SessionScreen() {
       {!online && <View style={styles.offline}><OfflineStatus /></View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
-          importantForAccessibility={timer.isCompleted ? "no-hide-descendants" : "auto"}
+          importantForAccessibility={hideCountdown ? "no-hide-descendants" : "auto"}
           testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor,
-            compactSetup ? { height: rowHeight + 24 + setupTop, paddingTop: setupTop, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, timer.isCompleted && {opacity:0}]}>
+            compactSetup ? { height: rowHeight + 24 + setupTop, paddingTop: setupTop, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, hideCountdown && {opacity:0}]}>
           {/* While setting up, only the digits row shows; the full stage sits above
             it unseen, so starting glides the same digits into the ring. */}
           <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
@@ -512,7 +516,7 @@ export default function SessionScreen() {
           <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
             {/* Keep the timer's geometry, but don't composite a hidden SVG over
               the scene while the completed result is being saved. */}
-            {!timer.isCompleted && (phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
+            {!hideCountdown && (phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
               progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
               color={breakActive ? colors.streak : phase === "completed" ? colors.progress : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : phase === "setup" ? colors.accent : colors.progress} />}
           </Animated.View>

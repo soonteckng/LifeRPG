@@ -65,8 +65,13 @@ function useLiveRefresh(refresh: () => Promise<void>, online: boolean) {
   useEffect(() => {
     if (previous.current === yours) return;
     previous.current = yours;
+    // Retained Home/squad screens also observe session changes while covered.
+    // Their next focus refresh already catches up; don't read in the background.
+    if (!shown.current || !online) return;
     // A moment for the server to record the change, then read it back.
-    const soon = setTimeout(() => { void latest.current(); }, 800);
+    const soon = setTimeout(() => {
+      if (shown.current && AppState.currentState === "active") void latest.current();
+    }, 800);
     return () => clearTimeout(soon);
-  }, [yours]);
+  }, [yours, online]);
 }

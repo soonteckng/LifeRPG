@@ -114,6 +114,32 @@ test('End at exact local deadline queues completion, not cancellation', async ()
   assert.equal(c.getSnapshot().record.state, 'completed'); h.online = true; await c.refresh(true);
   assert.equal(h.submissions[0].ending, 'completed'); assert.equal(h.credits, 1); await c.dispose();
 });
+test('foreground after a protected break resumes the remaining focus time and completes only at its adjusted deadline', async () => {
+  for (const offline of [false, true]) {
+    const h = harness(); h.online = !offline;
+    const c = h.create();
+    try {
+      await c.initialize(); assert.equal(await c.start({ ...setup, targetSeconds: 600 }, true), true);
+      h.advance(5000); assert.equal(await c.pause(), true);
+      assert.equal(c.getSnapshot().breakSecondsLeft, 300);
+      assert.equal(c.getSnapshot().timeLeft, 595);
+      h.advance(302000); await c.refresh();
+      assert.equal(c.getSnapshot().breakSecondsLeft, 0);
+      assert.equal(c.getSnapshot().record.state, 'running');
+      assert.equal(c.getSnapshot().timeLeft, 593, 'the five-minute break earns no focus time');
+      assert.equal(c.getSnapshot().receipt, null);
+      assert.equal(h.credits, 0); assert.equal(h.calls.filter(name => name === 'complete').length, 0);
+      h.advance(592000); await c.refresh();
+      assert.equal(c.getSnapshot().timeLeft, 1);
+      assert.equal(c.getSnapshot().record.state, 'running');
+      h.advance(1000); await c.end();
+      assert.equal(c.getSnapshot().record.state, 'completed', 'End at the adjusted exact zero completes instead of cancelling');
+      h.online = true; await c.refresh(true);
+      assert.equal(h.credits, 1); assert.equal(c.getSnapshot().receipt.durationSeconds, 600);
+      await c.refresh(true); assert.equal(h.credits, 1);
+    } finally { await c.dispose(); }
+  }
+});
 test('online Start then offline controls use the protected baseline and finalize the same row', async () => {
   const h = harness(); const c = h.create(); await c.initialize(); await c.start(setup); const serverId = c.getSnapshot().record.serverSessionId;
   assert.ok(c.getSnapshot().record.serverCheckpoint); h.advance(1000); h.online = false; await c.pause(); h.advance(2000); await c.resume(); h.advance(2000); await c.tick();

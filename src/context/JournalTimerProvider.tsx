@@ -18,6 +18,7 @@ import { createSessionCountdownCoordinator } from "../services/sessionCountdownC
 import { getSessionNotifications } from "../utils/sessionNotifications";
 import { validSessionSeconds } from "../utils/sessionSetup";
 import { createCountdownTicker } from "../utils/countdownTicker";
+import { runtimeContextKey, sessionClockReading, matchingSessionClockReading, type SessionClockReading } from "../utils/sessionClockPresentation";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { encodeRoutineSession, readRoutineSession } from "../utils/routineSession";
 import type { JournalClock, JournalScope, JournalSetup } from "../types/sessionJournal";
@@ -74,14 +75,14 @@ interface TimerContextType {
 // The countdown changes every second; everything else changes rarely. Ticks go
 // to this small store, so only screens that show the time re-render each
 // second, and the rest of the app (every tab, Home's cards) stays still.
-type ClockReading = { timeLeft: number; displayTimeLeft: number | null; interactionTimeLeft: number | null; breakSecondsLeft: number };
+type ClockReading = SessionClockReading;
 function createClockStore() {
-  let value: ClockReading = { timeLeft: 0, displayTimeLeft: null, interactionTimeLeft: null, breakSecondsLeft: 0 };
+  let value: ClockReading = { contextKey: null, timeLeft: 0, displayTimeLeft: null, interactionTimeLeft: null, breakSecondsLeft: 0 };
   const listeners = new Set<() => void>();
   return {
     get: () => value,
     set(next: ClockReading) {
-      if (next.timeLeft === value.timeLeft && next.displayTimeLeft === value.displayTimeLeft
+      if (next.contextKey === value.contextKey && next.timeLeft === value.timeLeft && next.displayTimeLeft === value.displayTimeLeft
         && next.interactionTimeLeft === value.interactionTimeLeft && next.breakSecondsLeft === value.breakSecondsLeft) return;
       value = next; listeners.forEach(listener => listener());
     },
@@ -119,9 +120,12 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const runtimeRef = useRef(initialRuntime);
   const [renderer, setRenderer] = useState<{ scopeKey: string; native: boolean } | null>(null);
   const startInFlight = useRef(false);
-  const [runtime, setRuntime] = useState(initialRuntime);
+  const [runtimeState, setRuntime] = useState(initialRuntime);
   const [clock] = useState(createClockStore);
+  const committedClockKey = useRef<string | null>(null);
+  const pendingClock = useRef<ClockReading | null>(null);
   const [runtimeScopeKey, setRuntimeScopeKey] = useState<string | null>(null);
+  const runtime = runtimeScopeKey === controllerScopeKey ? runtimeState : initialRuntime;
   const [draft, setDraft] = useState({ seconds: 1800, activityType: "other", subjectId: null as number | null,
     taskId: null as number | null, notes: "" });
   const [protectionFailure, setProtectionFailure] = useState<{ scope: string | null; message: string } | null>(null);
@@ -190,23 +194,16 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         next.interaction?.kind ?? "-", next.finishing ?? false, next.rewardsVisible, (next.breakSecondsLeft ?? 0) > 0, next.error ? "error" : "ok"].join("|");
       if (shape !== traced) { traced = shape; sessionTrail("timer", { shape, left: next.timeLeft }); }
       ticker.reschedule();
-      clock.set({ timeLeft: next.timeLeft, displayTimeLeft: next.displayTimeLeft ?? null, interactionTimeLeft: next.interaction?.timeLeft ?? null, breakSecondsLeft: next.breakSecondsLeft ?? 0 });
+      const reading = sessionClockReading(next, snapshotScopeKey);
+      pendingClock.current = reading;
+      // Live seconds can publish immediately within the committed phase. A
+      // phase change waits for its context, so it cannot make the old running
+      // screen flash zero or jump back to a stale positive countdown.
+      if (reading.contextKey === committedClockKey.current) clock.set(reading);
       setRuntimeScopeKey(snapshotScopeKey);
       // Seconds alone go to the clock store; the app re-renders only when what
       // a session *is* changes (started, paused, a break begins or ends, saved).
-      setRuntime(current =>
-      current.record?.clientSessionId === next.record?.clientSessionId
-      && current.record?.revision === next.record?.revision
-      && current.restoring === next.restoring && current.busy === next.busy && current.error === next.error
-      && current.restoreError === next.restoreError && current.syncStatus === next.syncStatus
-      && current.ending === next.ending && current.unsyncedSessionCount === next.unsyncedSessionCount
-      && current.interaction?.kind === next.interaction?.kind && (current.interaction?.timeLeft == null) === (next.interaction?.timeLeft == null)
-      && (current.displayTimeLeft == null) === (next.displayTimeLeft == null) && current.finishing === next.finishing
-      && (current.breakSecondsLeft ?? 0) > 0 === (next.breakSecondsLeft ?? 0) > 0
-      && current.recovered === next.recovered
-      && current.offlineAvailable === next.offlineAvailable
-      && current.cloudSaveVersion === next.cloudSaveVersion
-      && current.rewardsVisible === next.rewardsVisible ? current : next);
+      setRuntime(current => runtimeContextKey(current, snapshotScopeKey) === reading.contextKey ? current : next);
     });
     void controller.initialize();
     const appState = AppState.addEventListener("change", next => {
@@ -268,11 +265,20 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const sessionEnded = record?.state === "cancelled";
   const setup = record && (open || isCompleted || runtime.ending || sessionEnded) ? record.setup : null;
   const duration = setup?.targetSeconds ?? draft.seconds;
-  const liveTime = (reading: ClockReading) => ({
-    timeLeft: reading.displayTimeLeft ?? reading.interactionTimeLeft ?? (record && record.state !== "cancelled" ? reading.timeLeft : draft.seconds),
-    breakSecondsLeft: reading.breakSecondsLeft,
-  });
-  const { timeLeft } = liveTime({ timeLeft: runtime.timeLeft, displayTimeLeft: runtime.displayTimeLeft ?? null, interactionTimeLeft: runtime.interaction?.timeLeft ?? null, breakSecondsLeft: runtime.breakSecondsLeft ?? 0 });
+  const runtimeReading = sessionClockReading(runtime, controllerScopeKey);
+  useLayoutEffect(() => {
+    committedClockKey.current = runtimeReading.contextKey;
+    const latest = pendingClock.current;
+    if (latest?.contextKey === runtimeReading.contextKey) clock.set(latest);
+  }, [clock, runtimeReading.contextKey]);
+  const liveTime = (reading: ClockReading) => {
+    const current = matchingSessionClockReading(runtimeReading, reading);
+    return {
+      timeLeft: current.displayTimeLeft ?? current.interactionTimeLeft ?? (record && record.state !== "cancelled" ? current.timeLeft : draft.seconds),
+      breakSecondsLeft: current.breakSecondsLeft,
+    };
+  };
+  const { timeLeft } = liveTime(runtimeReading);
   const notes = setup?.notes ?? draft.notes;
   const linkedTaskId = setup ? setup.taskId : draft.taskId;
   const targetAttributeId = setup ? setup.subjectId : draft.subjectId;
