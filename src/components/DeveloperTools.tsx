@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, View } from "react-native";
+import { Modal, Pressable, Share, StyleSheet, View } from "react-native";
 import { Text } from "./AppText";
 import { SettingsGroup, SettingsRow } from "./SettingsList";
 import SessionResultSheet from "./SessionResultSheet";
@@ -23,6 +23,7 @@ import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import { levelPreview, useShownLevel } from "../services/levelPreview";
 import { tapHaptic } from "../utils/tapHaptics";
+import { readSessionTrail } from "../services/sessionTrail";
 
 type Preview = "level" | "complete" | "recovered";
 const SAVING_PREVIEW_MS = 3000;
@@ -58,9 +59,12 @@ export default function DeveloperTools() {
     ...(previous.scope === rewardScope ? previous : { note: "", claim: "", claiming: false }), scope: rewardScope, ...next,
   }));
   const claimLock = useRef(false);
+  const logShareLock = useRef(false);
+  const [logShare, setLogShare] = useState({ scope: rewardScope, busy: false });
+  const sharingLog = logShare.scope === rewardScope && logShare.busy;
   const currentRewardScope = useRef(rewardScope);
   useLayoutEffect(() => {
-    currentRewardScope.current = rewardScope; claimLock.current = false;
+    currentRewardScope.current = rewardScope; claimLock.current = false; logShareLock.current = false;
   }, [rewardScope]);
   useEffect(() => {
     if (!saving) return;
@@ -68,6 +72,19 @@ export default function DeveloperTools() {
     return () => clearTimeout(timeout);
   }, [saving]);
   if (!developer) return null;
+  const shareLog = async () => {
+    if (logShareLock.current) return;
+    logShareLock.current = true; setLogShare({ scope: rewardScope, busy: true }); setMessage("");
+    try {
+      const log = await readSessionTrail();
+      if (currentRewardScope.current !== rewardScope) return;
+      await Share.share({ message: log || "No session events yet." });
+    } catch {
+      if (currentRewardScope.current === rewardScope) setMessage("Couldn't open sharing. Please try again.");
+    } finally {
+      if (currentRewardScope.current === rewardScope) { logShareLock.current = false; setLogShare({ scope: rewardScope, busy: false }); }
+    }
+  };
   const open = (kind: Preview) => { setPreview({ kind, id: Date.now() }); setShown(true); };
   const restart = async () => {
     if (restartLock.current) return;
@@ -142,7 +159,9 @@ export default function DeveloperTools() {
   const level = (profile.level ?? 1) + (preview?.kind === "level" ? 1 : 0);
   return <>
     <SettingsGroup title="Developer" footer={message || busySession || "Only your developer account sees this. Previews never save anything."}>
-      <SettingsRow first icon="trophy-outline" tint="#FBBF24" title="Preview level up" onPress={() => open("level")} />
+      <SettingsRow first icon="share-outline" title="Share session log" subtitle="Share this phone's recent timer events" testID="dev-share-session-log"
+        busy={sharingLog} disabled={sharingLog} onPress={() => void shareLog()} />
+      <SettingsRow icon="trophy-outline" tint="#FBBF24" title="Preview level up" onPress={() => open("level")} />
       <SettingsRow icon="checkmark-circle-outline" tint="#2DD4A7" title="Preview session complete" onPress={() => open("complete")} />
       <SettingsRow icon="cloud-done-outline" tint="#64D2FF" title="Preview earlier session saved" onPress={() => open("recovered")} />
       <SettingsRow icon="hourglass-outline" tint="#A3ABC2" title="Preview saving screen" onPress={() => setSaving(true)} />

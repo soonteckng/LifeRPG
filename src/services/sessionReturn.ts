@@ -1,27 +1,27 @@
 /** Presentation only. This never starts, completes or credits a session. */
 export const RETURN_TO_CAMP_MS = 1800;
-let active: string | null = null;
-const done = new Set<string>();
+type ReturnState = { readonly active: string | null; readonly completed: readonly string[] };
+let state: ReturnState = { active: null, completed: [] };
 const listeners = new Set<() => void>();
 const notify = () => { for (const listener of [...listeners]) listener(); };
-function remember(key: string) {
-  done.add(key);
-  if (done.size > 64) done.delete(done.values().next().value!);
-}
+const remember = (key: string) => [...state.completed.filter(value => value !== key), key].slice(-64);
 export const sessionReturnKey = (scope: string, sessionId: string | null | undefined) => sessionId ? JSON.stringify([scope, sessionId]) : null;
 export const sessionReturn = {
-  snapshot: () => active,
+  snapshot: () => state.active,
+  // Completion is reactive state too. Reading a mutable Set separately lets
+  // React Compiler retain an old answer after the active walk finishes.
+  stateSnapshot: () => state,
   subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-  completed: (key: string) => done.has(key),
+  completed: (key: string) => state.completed.includes(key),
   begin(key: string) {
-    if (done.has(key)) return false;
-    if (active === key) return true;
-    if (active) remember(active);
-    active = key; notify(); return true;
+    if (state.completed.includes(key)) return false;
+    if (state.active === key) return true;
+    state = { active: key, completed: state.active ? remember(state.active) : state.completed };
+    notify(); return true;
   },
   finish(key: string) {
-    if (active !== key) return;
-    remember(key); active = null; notify();
+    if (state.active !== key) return;
+    state = { active: null, completed: remember(key) }; notify();
   },
 };
 

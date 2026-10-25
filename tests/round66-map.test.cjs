@@ -28,7 +28,7 @@ const labels = ui => ui.root.findAllByType("SvgText").map(node => [].concat(node
 
 function harness({ reduced = false, fontScale = 1 } = {}) {
   const animations = [], cancelled = [], haptics = [];
-  let pictures = 0;
+  let pictures = 0, worklets = 0;
   const useSharedValue = initial => {
     const ref = React.useRef(null);
     if (!ref.current) {
@@ -56,12 +56,12 @@ function harness({ reduced = false, fontScale = 1 } = {}) {
     "../services/rewardCatalog": { FIND_SECONDS: 1500 },
     "react-native-reanimated": { __esModule: true, default: { View: host("AView"), createAnimatedComponent: component => component },
       Easing: { inOut: value => value, cubic: 0 }, useSharedValue, interpolate, runOnJS: callback => callback,
-      useAnimatedReaction: () => {}, useAnimatedProps: callback => ({ current: callback }), useAnimatedStyle: callback => ({ current: callback }),
+      useAnimatedReaction: () => { worklets++; }, useAnimatedProps: callback => { worklets++; return { current: callback }; }, useAnimatedStyle: callback => { worklets++; return { current: callback }; },
       withTiming: (to, config, done) => ({ to, config, done }), withDelay: (delay, animation) => ({ ...animation, delay }), withSpring: to => to,
       cancelAnimation: shared => cancelled.push(shared) },
   };
   const Trail = load("src/components/rewards/TodayTrail.tsx", mocks).default;
-  return { Trail, mocks, animations, cancelled, haptics, pictures: () => pictures,
+  return { Trail, mocks, animations, cancelled, haptics, pictures: () => pictures, worklets: () => worklets,
     finish: animation => act(async () => { animation.shared.value = animation.to; animation.done?.(true); }) };
 }
 async function mountMap(h, props = {}, size = layout()) {
@@ -88,7 +88,7 @@ test("the complete map paints on its first measured layout, with four stops and 
 
 test("each completed minute updates the existing map and marker without remounting or waiting", async () => {
   const h = harness(), ui = await mountMap(h);
-  const position = () => ui.root.findAllByType("AView").find(node => node.props.pointerEvents === "none").props.style[1].current().transform;
+  const position = () => { const style = ui.root.findByProps({ testID: "today-trail-marker" }).props.style[1]; return (style.current ? style.current() : style).transform; };
   try {
     const before = position();
     assert.match(words(ui), /1 m.*0 of 4.*29 min/);
@@ -237,4 +237,34 @@ test("Round 67: the Home sheet's map is drawn with the sheet, and its measured s
   await act(async () => { ui = create(React.createElement(h.Trail, { ...base })); });
   assert.equal(hasMap(ui), false, "a map without a remembered place still waits for its layout");
   await act(async () => ui.unmount());
+});
+
+
+test("Round 68: the Home map has its full first frame without creating stationary animation worklets", async () => {
+  const h = harness(); let ui;
+  await act(async () => { ui = create(React.createElement(h.Trail, { ...base, sizeKey: "r68-home", initialSize: { width: 300, height: 400 } })); });
+  try {
+    assert.equal(h.worklets(), 0, "Home's static path and marker do not install animated styles, SVG props or reactions");
+    assert.equal(h.pictures(), 1, "the complete portrait is present immediately, never delayed");
+    assert.equal(ui.root.findAllByType("SvgLinearGradient").length, 4);
+    assert.ok(labels(ui).includes("MEADOW") && labels(ui).includes("STARFALL RIDGE") && labels(ui).some(label => label.startsWith("Trail's end") && label.endsWith("120 min")));
+    assert.equal(ui.root.findByProps({ testID: "today-trail-artwork" }).props.renderToHardwareTextureAndroid, true);
+    const path = ui.root.findAllByType("SvgPath").find(node => node.props.strokeWidth === 5);
+    assert.ok(Number.isFinite(path.props.strokeDashoffset));
+    assert.equal(path.props.animatedProps, undefined);
+    await act(async () => ui.root.findByProps({ testID: "today-trail-map" }).props.onLayout(layout(310, 420)));
+    assert.equal(h.worklets(), 0, "a corrected measurement still does not register animations during the slide");
+  } finally { await act(async () => ui.unmount()); }
+});
+
+test("Round 68: post-session trail walks keep their live animated path and do not rasterize moving content", async () => {
+  const h = harness(), ui = await mountMap(h, { seconds: 2400, fromSeconds: 1800, finds: 1 });
+  try {
+    assert.ok(h.worklets() > 0);
+    assert.equal(ui.root.findByProps({ testID: "today-trail-artwork" }).props.renderToHardwareTextureAndroid, false);
+    const path = ui.root.findAllByType("SvgPath").find(node => node.props.strokeWidth === 5);
+    assert.ok(path.props.animatedProps);
+    assert.equal(h.animations.length, 1);
+    assert.equal(h.animations[0].to, 2400 / 1800);
+  } finally { await act(async () => ui.unmount()); }
 });

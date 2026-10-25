@@ -1,13 +1,14 @@
-import { useRef, useState } from "react";
+import { memo, useRef, useState } from "react";
 import { Keyboard, StyleSheet, View, type TextInput } from "react-native";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import Segmented from "./Segmented";
-import CharacterMark from "./CharacterMark";
 import ProfilePicture from "./adventurer/ProfilePicture";
 import Adventurer from "./adventurer/Adventurer";
 import { useRewards } from "../hooks/useRewards";
+import { useUser } from "../context/UserContext";
+import { useShownLevel } from "../services/levelPreview";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
@@ -26,11 +27,27 @@ import SheetTextInput from "./SheetTextInput";
 // Everyone appears with their own profile picture: you from your own saved
 // look (the same as Home), others from the look their app last saved.
 type Face = Pick<SquadMember, "focusingNow"> & { isYou?: boolean; level?: number; streak?: number; look?: PlayerLook | null };
-export function SquadFace({ member, size = 48, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
+export const SquadFace = memo(function SquadFace({ member, size = 48, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
   // The level pill sits below the picture, so the face is taller than wide.
   return <View style={{ width: size }} importantForAccessibility="no-hide-descendants">
-    {member.isYou ? <CharacterMark size={size} /> : <PlayerPicture member={member} size={size} />}
+    {member.isYou ? <YourSquadPicture size={size} /> : <PlayerPicture member={member} size={size} />}
     {member.focusingNow && <View style={[s.live, { top: size - 11, borderColor: ring }]} />}
+  </View>;
+}, (previous, next) => previous.size === next.size && previous.ring === next.ring
+  && previous.member.isYou === next.member.isYou && previous.member.level === next.member.level
+  && previous.member.streak === next.member.streak && previous.member.look === next.member.look
+  && previous.member.focusingNow === next.member.focusingNow);
+
+// The surrounding Home/squad screen already loads rewards. Extra copies of
+// your picture follow that shared saved look without refreshing the wallet
+// while the leaderboard is mounting and its sheet is starting to slide.
+function YourSquadPicture({ size }: { size: number }) {
+  const { profile } = useUser();
+  const rewards = useRewards({ load: false });
+  const { level } = useShownLevel(profile.id, profile.level);
+  return <View style={{ width: size }} importantForAccessibility="no-hide-descendants">
+    <ProfilePicture look={rewards.look} equipped={rewards.equipped} level={level} background={rewards.background}
+      frame={rewards.frame} streak={profile.streak_count ?? 0} size={size} />
   </View>;
 }
 function PlayerPicture({ member, size }: { member: Face; size: number }) {

@@ -2,14 +2,16 @@
 // The whole way back from a finished session, with the real pieces: the timer
 // screen, the result card's listener, the reward screens and the rewards store.
 const test=require('node:test'),assert=require('node:assert/strict');
-const fs=require('node:fs'),path=require('node:path'),ts=require('typescript');
+const fs=require('node:fs'),path=require('node:path'),ts=require('typescript'),babel=require('@babel/core');
 const React=require('react'),{act,create}=require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT=true;
 function load(file,mocks,cache){
   const filename=path.resolve(__dirname,'..',file);
   if(cache.has(filename))return cache.get(filename).exports;
   const module={exports:{}};cache.set(filename,module);
-  const source=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
+  let input=fs.readFileSync(filename,'utf8');
+  if(filename.endsWith('GlobalRewardListener.tsx')) input=babel.transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
+  const source=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',source)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});

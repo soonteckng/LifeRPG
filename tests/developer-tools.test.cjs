@@ -64,7 +64,7 @@ test("restarting the intro asks the server, then clears this phone's welcome mar
   assert.equal(await none.mod.restartIntro(""), false); assert.deepEqual(none.calls, []);
 });
 
-async function tools({ developer = true, online = true, session = false, restart = async () => true, reload = async () => true, rewardReply = {}, transport = null } = {}) {
+async function tools({ developer = true, online = true, session = false, restart = async () => true, reload = async () => true, rewardReply = {}, transport = null, readTrail = async () => "timer fixture", share = async () => ({ action: "sharedAction" }) } = {}) {
   const sheets = [], log = [], loads = [];
   let profileOwner = "dev", admissionEpoch = 1;
   const authValue = () => ({ user: { id: profileOwner }, accessMode: online ? "online" : "offline", admissionEpoch,
@@ -84,7 +84,8 @@ async function tools({ developer = true, online = true, session = false, restart
     developer: async (action, amount, seconds) => { log.push(`dev:${action}:${amount}${seconds ? `:${seconds}` : ""}`); return rewardReply.dev ?? { ok: true, value: { state, gifts: action === "find" ? [{ item: "beret", new: true, stardust: 0 }] : [] } }; },
   };
   const Tools = load("src/components/DeveloperTools.tsx", {
-    "react-native": { Modal: host("Modal"), View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, hairlineWidth: 1 } }, "./AppText": { Text: host("Text") },
+    "../services/sessionTrail": { readSessionTrail: () => { log.push("read-session-log"); return readTrail(); } },
+    "react-native": { Share: { share: value => { log.push(value); return share(value); } }, Modal: host("Modal"), View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, hairlineWidth: 1 } }, "./AppText": { Text: host("Text") },
     "@expo/vector-icons": { Ionicons: host("Icon") }, "@gorhom/bottom-sheet": { BottomSheetScrollView: host("Scroll") },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     "./AppSheet": props => props.visible ? React.createElement("Sheet", props, props.header, props.children) : null, "./SheetHeader": host("Header"),
@@ -122,7 +123,7 @@ test("each preview opens a card marked as a preview, and Done closes it", async 
   const ui = await tools();
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
-      ["Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
+      ["Share session log", "Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
         "Open Outfits", "Preview level colours", "Come back from a session", "Come back with nothing", "Open today's pack", "Find something now", "Earn the next pet, frame and badge",
         "Take back pets, frames and badges", "Add 500 test Stardust", "Reset my rewards"]);
     assert.equal(ui.result(), undefined);
@@ -393,5 +394,48 @@ test("the real reward transport cannot publish an old owner's delayed claim into
     assert.equal(ui.renderer.root.findAllByType("Row").length, 0);
     assert.equal(calls.filter(call => call.name === "claim_session_rewards_v1").length, 1);
     assert.equal(calls.find(call => call.name === "claim_session_rewards_v1").args.p_expected_owner, "dev");
+  } finally { await ui.cleanup(); }
+});
+
+
+test("the visible developer log button shares the existing on-phone trail with a safe empty fallback", async () => {
+  for (const text of ["2026-10-26 timer {\"phase\":\"completed\"}", ""]) {
+    const ui = await tools({ readTrail: async () => text });
+    try {
+      assert.equal(ui.row("Share session log").props.testID, "dev-share-session-log");
+      await ui.press("Share session log");
+      assert.deepEqual(ui.log, ["read-session-log", { message: text || "No session events yet." }]);
+      assert.equal(ui.row("Share session log").props.disabled, false);
+    } finally { await ui.cleanup(); }
+  }
+});
+
+test("sharing the session log locks repeat taps and recovers from a read or share failure", async () => {
+  let resolve; const pending = new Promise(done => { resolve = done; });
+  const ui = await tools({ readTrail: () => pending });
+  try {
+    await ui.press("Share session log"); await ui.press("Share session log");
+    assert.deepEqual(ui.log, ["read-session-log"]);
+    assert.equal(ui.row("Share session log").props.busy, true);
+    await act(async () => resolve("timer fixture"));
+    assert.equal(ui.row("Share session log").props.busy, false);
+  } finally { await ui.cleanup(); }
+  for (const options of [{ readTrail: async () => { throw Error("storage"); } }, { share: async () => { throw Error("share"); } }]) {
+    const failed = await tools(options);
+    try {
+      await failed.press("Share session log");
+      assert.equal(failed.row("Share session log").props.disabled, false);
+      assert.match(failed.group().props.footer, /Couldn't open sharing/);
+    } finally { await failed.cleanup(); }
+  }
+});
+
+test("a log read that finishes after switching accounts cannot open the share sheet", async () => {
+  let resolve; const ui = await tools({ readTrail: () => new Promise(done => { resolve = done; }) });
+  try {
+    await ui.press("Share session log"); await ui.scope("another-owner", 2);
+    await act(async () => resolve("private local events"));
+    assert.deepEqual(ui.log, ["read-session-log"]);
+    assert.equal(ui.row("Share session log"), undefined);
   } finally { await ui.cleanup(); }
 });

@@ -61,12 +61,12 @@ export default function GlobalRewardListener() {
   const nextWitness = !insideSession || !ownerId || timer.endingSession || timer.sessionEnded || timer.summaryViewed
     ? null : timer.hasOpenSession ? openReturnKey : witnessedOpen;
   if (nextWitness !== witnessedOpen) setWitnessedOpen(nextWitness);
-  useSyncExternalStore(sessionReturn.subscribe, sessionReturn.snapshot, sessionReturn.snapshot);
+  const returnState = useSyncExternalStore(sessionReturn.subscribe, sessionReturn.stateSnapshot, sessionReturn.stateSnapshot);
   // Only a session we saw running on this route walks back. Reopened results,
   // recovery and early End go straight to their existing result presentation.
   const returnKey = insideSession && ownerId && !reducedMotion && timer.isCompleted && !timer.hasOpenSession && !timer.recoveredSession
     && !timer.summaryViewed && timer.syncStatus !== "rejected" && !timer.endingSession && !timer.sessionEnded
-    && openReturnKey && witnessedOpen === openReturnKey && !sessionReturn.completed(openReturnKey) ? openReturnKey : null;
+    && openReturnKey && witnessedOpen === openReturnKey && !returnState.completed.includes(openReturnKey) ? openReturnKey : null;
   useLayoutEffect(() => {
     if (!returnKey || !sessionReturn.begin(returnKey)) return;
     const finish = () => sessionReturn.finish(returnKey);

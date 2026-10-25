@@ -3,7 +3,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const fs = require('node:fs'), path = require('node:path'), ts = require('typescript');
 const React = require('react'), {act, create} = require('react-test-renderer');
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const host = type => props => React.createElement(type, props, props.children);
+const host = type => function Host(props) { return React.createElement(type, props, props.children); };
 const deferred = () => { let resolve; const promise = new Promise(done => {resolve=done;}); return {promise,resolve}; };
 function load(relative,mocks,cache=new Map()) {
   const filename=path.resolve(__dirname,'..',relative);
@@ -26,13 +26,17 @@ async function setup(options={}) {
   const calls=[], values=new Map(), modules=new Map();
   let timer={hasOpenSession:false,endingSession:false,awaitingStart:false,isCompleted:false,isRestoring:false,actionBusy:false,
     startFreeTimer:async(...args)=>{calls.push(['start',...args]);return options.start?options.start(...args):options.started??true;},...options.timer};
-  const router={dismissTo:route=>calls.push(['route',route]),replace:route=>calls.push(['replace',route])};
+  const stackRouter = require('expo-router/build/react-navigation/routers/StackRouter').StackRouter({});
+  const stackOptions = { routeNames: ['(tabs)', 'session', 'routine-start'], routeParamList: {}, routeGetIdList: { session: () => 'session' } };
+  let stack = options.stack ?? null;
+  const navigation = { getState: () => stack, dispatch: action => { if (stack) stack = stackRouter.getStateForAction(stack, typeof action === 'function' ? action(stack) : action, stackOptions); } };
+  const router={dismissTo:route=>{calls.push(['route',route]); if (stack) navigation.dispatch({ type: 'POP_TO', payload: { name: 'session' } });},replace:route=>calls.push(['replace',route])};
   let routine;
   const mocks={
     'react-native':{View:host('View'),ActivityIndicator:host('Spinner')},
     'react-native-safe-area-context':{SafeAreaView:host('SafeArea')},
-    'expo-router':{useLocalSearchParams:()=>({widgetNonce:nonce}),useRouter:()=>router},
-    '../components/AppText':{Text:host('Text')},'../components/ContentReveal':host('Reveal'),
+    'expo-router':{useLocalSearchParams:()=>({widgetNonce:nonce}),useRouter:()=>router,useNavigation:()=>navigation},
+    '../components/AppText':{Text:host('Text')},'../components/MotionPressable':host('Pressable'),'../components/ContentReveal':host('Reveal'),
     '../components/PersonalUI':{p:{},PersonalButton:props=>React.createElement('Button',{onPress:props.onPress},props.title)},
     '../context/TimerContext':{useTimer:()=>timer},
     '../context/AuthContext':{useAuth:()=>({user:options.mode==='local-only'?null:{id:ownerId},localOwner:{id:ownerId,backendId:'widget-fixture'},accessMode:options.mode??'online'})},
@@ -51,7 +55,7 @@ async function setup(options={}) {
   const Component=load('src/app/routine-start.tsx',mocks,modules).default;
   let renderer;const render=()=>React.createElement(Component);
   await act(async()=>{renderer=create(render());});
-  return{calls,routine,root:()=>renderer.root,
+  return{calls,routine,root:()=>renderer.root,stack:()=>stack,back:()=>navigation.dispatch({ type: 'GO_BACK' }),
     edit:async changes=>act(async()=>{assert.equal(await service.savedRoutineStore.save(scope,{...draft,...changes},routine.id),true);}),
     remove:async()=>act(async()=>{assert.equal(await service.savedRoutineStore.remove(scope,routine.id),true);}),
     update:async changes=>act(async()=>{if(changes.ownerId)ownerId=changes.ownerId;if(changes.nonce)nonce=changes.nonce;
@@ -75,7 +79,7 @@ test('a cold widget proof resolves the latest durable routine and starts with it
 test('a widget opens the current running, ending, starting or completed session without creating another',async()=>{
   for(const flag of ['hasOpenSession','endingSession','awaitingStart','isCompleted']) {
     const ui=await setup({timer:{[flag]:true}});
-    try{assert.equal(ui.calls.filter(c=>c[0]==='start').length,0);assert.deepEqual(ui.calls.filter(c=>c[0]==='route'),[['route','/session']]);}
+    try{const notice=ui.root().findAllByProps({testID:'widget-return-session'})[0];if(notice)await act(async()=>notice.props.onPress());assert.equal(ui.calls.filter(c=>c[0]==='start').length,0);assert.deepEqual(ui.calls.filter(c=>c[0]==='route'),[['route','/session']]);}
     finally{await ui.cleanup();}
   }
 });
@@ -174,4 +178,86 @@ test('a widget tap with a session already open goes back to that session screen,
   assert.deepEqual(opened.routes.map(r => r.name), ['(tabs)', 'session'], 'with none open, it takes this page\'s place');
   const source = fs.readFileSync(path.join(__dirname, '..', 'src/app/routine-start.tsx'), 'utf8');
   assert.doesNotMatch(source, /router\.replace\("\/session"\)/);
+});
+
+
+test('a later widget launch removes consumed launcher pages below the existing session before it is dismissed', async () => {
+  const { StackRouter } = require('expo-router/build/react-navigation/routers/StackRouter');
+  const { getStateFromPath } = require('expo-router/build/react-navigation/core/getStateFromPath');
+  const { getActionFromState } = require('expo-router/build/react-navigation/core/getActionFromState');
+  const config = { initialRouteName: '(tabs)', screens: { '(tabs)': '', session: 'session', 'routine-start': 'routine-start' } };
+  const state = { stale: false, type: 'stack', key: 'root', index: 2, routeNames: ['(tabs)', 'session', 'routine-start'], preloadedRoutes: [],
+    routes: [ { key: 'tabs-live', name: '(tabs)' }, { key: 'launcher-consumed', name: 'routine-start', params: { widgetNonce: 'old' } },
+      { key: 'session-live', name: 'session', params: { mode: 'routine' } } ] };
+  const intent = getActionFromState(getStateFromPath('/routine-start?widgetNonce=new', config), config);
+  assert.equal(intent.type, 'NAVIGATE', 'the warm native link opens a launcher above the live session');
+  const stack = StackRouter({}).getStateForAction(state, intent, { routeNames: state.routeNames, routeParamList: {}, routeGetIdList: { session: () => 'session' } });
+  assert.equal(stack.routes.at(-1).name, 'routine-start');
+  const ui = await setup({ stack, timer: { hasOpenSession: true } });
+  try {
+    const resume = ui.root().findAllByProps({ testID: 'widget-return-session' })[0];
+    if (resume) await act(async () => resume.props.onPress());
+    assert.deepEqual(ui.stack().routes.map(route => route.key), ['tabs-live', 'session-live'], 'only the existing session remains above Home, with its native key unchanged');
+    ui.back();
+    assert.deepEqual(ui.stack().routes.map(route => route.name), ['(tabs)'], 'one close cannot uncover an already-consumed launcher spinner');
+    assert.equal(ui.calls.filter(call => call[0] === 'start').length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+
+test('a different running routine is explained before returning, without replacing or starting the requested one', async () => {
+  const ui = await setup({ timer: { hasOpenSession: true, notes: 'liferpg:routine:v1:{"name":"Another routine"}', duration: 1800, targetAttributeId: 4 } });
+  try {
+    assert.match(text(ui.root()), /A session is already running/);
+    assert.match(text(ui.root()), /Finish or end your current session before starting this routine/);
+    assert.equal(ui.root().findAllByType('Spinner').length, 0);
+    assert.deepEqual(ui.calls.filter(call => call[0] === 'start' || call[0] === 'route'), []);
+    const button = ui.root().findByProps({ testID: 'widget-return-session' });
+    assert.equal(button.props.accessibilityRole, 'button');
+    assert.equal(button.props.accessibilityLabel, 'Return to current session');
+    await act(async () => button.props.onPress());
+    assert.deepEqual(ui.calls.filter(call => call[0] === 'route'), [['route', '/session']]);
+    assert.equal(ui.calls.filter(call => call[0] === 'start').length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+test('the same routine goes straight back to its session without an unnecessary notice', async () => {
+  const ui = await setup({ timer: { hasOpenSession: true, notes: 'liferpg:routine:v1:{"name":"Review notes"}', duration: 90, targetAttributeId: 7 } });
+  try {
+    assert.equal(ui.root().findAllByProps({ testID: 'widget-return-session' }).length, 0);
+    assert.deepEqual(ui.calls.filter(call => call[0] === 'route'), [['route', '/session']]);
+    assert.equal(ui.calls.filter(call => call[0] === 'start').length, 0);
+  } finally { await ui.cleanup(); }
+});
+
+
+test('a stale return button cannot navigate after the account scope changes', async () => {
+  const ui = await setup({ timer: { hasOpenSession: true } });
+  try {
+    const oldPress = ui.root().findByProps({ testID: 'widget-return-session' }).props.onPress;
+    await ui.update({ ownerId: OWNER_B });
+    await act(async () => oldPress());
+    assert.deepEqual(ui.calls.filter(call => call[0] === 'route'), []);
+  } finally { await ui.cleanup(); }
+});
+
+test('launcher cleanup leaves ordinary history untouched and ignores a hidden launcher callback', () => {
+  const { staleWidgetLauncherReset } = load('src/utils/widgetSessionNavigation.ts', {});
+  const state = { key: 'root', index: 2, routes: [ { key: 'tabs', name: '(tabs)' }, { key: 'live', name: 'session' }, { key: 'launch', name: 'routine-start' } ] };
+  assert.equal(staleWidgetLauncherReset(state), null, 'ordinary POP_TO is sufficient for the normal launch');
+  assert.equal(staleWidgetLauncherReset({ ...state, index: 1 }), null, 'a hidden launcher never changes the stack');
+});
+
+
+test('a newer widget intent supersedes an older pending proof on the same launcher screen', async () => {
+  const older = deferred(), newer = deferred();
+  const ui = await setup({ proof: (_scope, nonce) => nonce === 'widget-nonce-a' ? older.promise : newer.promise });
+  try {
+    await ui.update({ nonce: 'widget-nonce-b' });
+    await act(async () => older.resolve({ routineId: ui.routine.id }));
+    assert.deepEqual(ui.calls.filter(call => call[0] === 'start' || call[0] === 'route'), [], 'the superseded proof cannot start or navigate the current launcher');
+    await act(async () => newer.resolve({ routineId: ui.routine.id }));
+    assert.equal(ui.calls.filter(call => call[0] === 'start').length, 1);
+    assert.equal(ui.calls.filter(call => call[0] === 'route').length, 1);
+  } finally { await ui.cleanup(); }
 });

@@ -1,5 +1,5 @@
-import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { StyleSheet, View, useWindowDimensions } from "react-native";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { StyleSheet, View, useWindowDimensions, type ViewStyle } from "react-native";
 import Animated, { cancelAnimation, Easing, interpolate, runOnJS, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useSharedValue, withDelay, withSpring, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Defs, Ellipse, G, LinearGradient, Path, Rect, Stop, Text as SvgText } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
@@ -118,17 +118,40 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
   </View>;
 });
 
-/** The drawing and the walk. Redrawn only when the trail itself changes. */
-const TrailMap = memo(function TrailMap({ width, height, count, minutesPerStop, to, from, next, finds, bonus, delay, look, equipped, level, background, frame }: {
+type TrailMapProps = {
   width: number; height: number; count: number; minutesPerStop: number; to: number; from: number; next: number; finds: number; bonus: number; delay: number;
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
-}) {
-  const reduced = useReducedMotion();
-  const gradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+};
+
+function useTrailGeometry(width: number, height: number, count: number) {
   const step = Math.max(1, Math.min(MAX_STEP, (height - PAD_TOP - PAD_BOTTOM) / count));
   const pts = useMemo(() => points(count, width, height, step), [count, width, height, step]);
   const path = useMemo(() => sample(pts), [pts]);
   const trail = useMemo(() => curve(pts), [pts]);
+  return { step, pts, path, trail };
+}
+
+/** Home has no walk to animate: do not register UI worklets for its first frame. */
+const TrailMap = memo(function TrailMap(props: TrailMapProps) {
+  return props.from === props.to ? <StationaryTrailMap {...props} /> : <WalkingTrailMap {...props} />;
+});
+
+function StationaryTrailMap(props: TrailMapProps) {
+  const geometry = useTrailGeometry(props.width, props.height, props.count);
+  const { path } = geometry;
+  const marker: ViewStyle = { transform: [
+    { translateX: interpolate(props.to, path.ts, path.xs) - AVATAR / 2 },
+    { translateY: interpolate(props.to, path.ts, path.ys) - AVATAR / 2 },
+  ] };
+  return <TrailArtwork {...props} geometry={geometry} marker={marker}
+    offset={path.length - interpolate(props.to, path.ts, path.lens)} />;
+}
+
+function WalkingTrailMap(props: TrailMapProps) {
+  const { width, height, count, minutesPerStop, to, from, bonus, delay } = props;
+  const geometry = useTrailGeometry(width, height, count);
+  const { path } = geometry;
+  const reduced = useReducedMotion();
   const ended = to >= count, crossed = ended && from < count;
   // Walk from where you were to where you are now, after a moment.
   const walk = useSharedValue(reduced ? to : from);
@@ -170,6 +193,28 @@ const TrailMap = memo(function TrailMap({ width, height, count, minutesPerStop, 
     return () => { cancelAnimation(party); party.value = 0; };
   }, [celebrate, party, reduced, walkKey]);
   const partyStyle = useAnimatedStyle(() => ({ opacity: party.value, transform: [{ scale: 0.8 + party.value * 0.2 }, { translateY: (1 - party.value) * 20 }] }));
+  return <TrailArtwork {...props} geometry={geometry} animatedMarker={you} animatedLine={walkedLine}>
+    {celebrate && <Animated.View style={[s.party, partyStyle]} testID="trail-complete" accessible accessibilityLiveRegion="polite"
+      accessibilityLabel={`Trail complete. ${bonus ? `${bonus} Stardust.` : ""} It starts again tomorrow.`}>
+      <Ionicons name="flag" size={22} color="#C4B5FD" />
+      <View style={s.partyCopy}>
+        <Text style={s.partyTitle}>Trail complete</Text>
+        <Text style={s.partyBody}>{`You walked all ${count * minutesPerStop} minutes today. It starts again tomorrow.`}</Text>
+      </View>
+      {bonus > 0 && <View style={s.partyDust}><StardustArt size={14} /><Text style={s.partyDustText}>{`+${bonus}`}</Text></View>}
+    </Animated.View>}
+  </TrailArtwork>;
+}
+
+/** Same geometry, gradients, portrait and labels for static and walking maps. */
+const TrailArtwork = memo(function TrailArtwork({ width, height, count, minutesPerStop, to, next, finds, look, equipped, level, background, frame,
+  geometry: { step, pts, path, trail }, marker, animatedMarker, offset, animatedLine, children }: TrailMapProps & {
+    geometry: ReturnType<typeof useTrailGeometry>; marker?: ViewStyle; offset?: number;
+    animatedMarker?: ReturnType<typeof useAnimatedStyle<ViewStyle>>;
+    animatedLine?: Partial<{ strokeDashoffset: number }>; children?: ReactNode;
+}) {
+  const gradientId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const ended = to >= count;
   const zones = scaledTrailZones(count);
   const bands = zones.map((z, i) => {
     const start = Math.min(count, z.from), end = Math.min(count, zones[i + 1]?.from ?? count + 1);
@@ -178,7 +223,7 @@ const TrailMap = memo(function TrailMap({ width, height, count, minutesPerStop, 
   }).filter(b => b.bottom > b.top + 1);
   const small = step < 60;
   const node = small ? 10 : 13, font = small ? 10 : 11;
-  return <View style={StyleSheet.absoluteFill}>
+  return <View style={StyleSheet.absoluteFill} renderToHardwareTextureAndroid={!animatedLine} testID="today-trail-artwork">
     <Svg width={width} height={height}>
       <Defs>{bands.map(b => <LinearGradient key={b.name} id={`band-${gradientId}-${b.from}`} x1="0" y1="0" x2="0" y2="1">
         <Stop offset="0" stopColor={b.color} stopOpacity={0.03} /><Stop offset="1" stopColor={b.color} stopOpacity={0.14} /></LinearGradient>)}</Defs>
@@ -190,7 +235,8 @@ const TrailMap = memo(function TrailMap({ width, height, count, minutesPerStop, 
       {bands.some(b => b.name === "Lantern Lake") && (() => { const b = bands.find(x => x.name === "Lantern Lake")!; return <Ellipse cx={width * 0.16} cy={(b.top + b.bottom) / 2} rx={30} ry={10} fill="#93C5FD" opacity={0.22} />; })()}
       {bands.some(b => b.name === "Red Canyon") && (() => { const b = bands.find(x => x.name === "Red Canyon")!, y = (b.top + b.bottom) / 2; return <Path d={`M${width * 0.84} ${y + 12} L${width * 0.88} ${y - 10} L${width * 0.92} ${y + 12} Z M${width * 0.9} ${y + 12} L${width * 0.93} ${y - 2} L${width * 0.96} ${y + 12} Z`} fill="#FDBA74" opacity={0.32} />; })()}
       <Path d={trail} stroke="rgba(255,255,255,0.28)" strokeWidth={3} strokeDasharray="2 8" strokeLinecap="round" fill="none" />
-      <AnimatedPath d={trail} stroke={colors.level} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={[total, total]} animatedProps={walkedLine} />
+      {animatedLine ? <AnimatedPath d={trail} stroke={colors.level} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={[path.length, path.length]} animatedProps={animatedLine} />
+        : <Path d={trail} stroke={colors.level} strokeWidth={5} strokeLinecap="round" fill="none" strokeDasharray={[path.length, path.length]} strokeDashoffset={offset} />}
       {pts.slice(1).map((p, i) => {
         const n = i + 1, last = n === count, reached = last ? ended : n <= finds, left = p.x < width / 2;
         const mins = n * minutesPerStop;
@@ -211,18 +257,12 @@ const TrailMap = memo(function TrailMap({ width, height, count, minutesPerStop, 
       <Rect x={pts[0].x - 24} y={pts[0].y - 10} width={48} height={20} rx={8} fill="#14B8A6" />
       <SvgText x={pts[0].x} y={pts[0].y + 4} fill="#04211D" fontSize={10} fontWeight="800" textAnchor="middle">CAMP</SvgText>
     </Svg>
-    <Animated.View pointerEvents="none" style={[s.you, you]}>
+    {animatedLine ? <Animated.View testID="today-trail-marker" pointerEvents="none" style={[s.you, animatedMarker]}>
       <ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} size={AVATAR} showLevel={false} />
-    </Animated.View>
-    {celebrate && <Animated.View style={[s.party, partyStyle]} testID="trail-complete" accessible accessibilityLiveRegion="polite"
-      accessibilityLabel={`Trail complete. ${bonus ? `${bonus} Stardust.` : ""} It starts again tomorrow.`}>
-      <Ionicons name="flag" size={22} color="#C4B5FD" />
-      <View style={s.partyCopy}>
-        <Text style={s.partyTitle}>Trail complete</Text>
-        <Text style={s.partyBody}>{`You walked all ${count * minutesPerStop} minutes today. It starts again tomorrow.`}</Text>
-      </View>
-      {bonus > 0 && <View style={s.partyDust}><StardustArt size={14} /><Text style={s.partyDustText}>{`+${bonus}`}</Text></View>}
-    </Animated.View>}
+    </Animated.View> : <View testID="today-trail-marker" pointerEvents="none" style={[s.you, marker]}>
+      <ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} size={AVATAR} showLevel={false} />
+    </View>}
+    {children}
   </View>;
 });
 

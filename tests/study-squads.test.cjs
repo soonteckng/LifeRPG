@@ -62,7 +62,7 @@ const rn = { View: host('View'), StyleSheet: { create: v => v, hairlineWidth: 1 
 const sheets = () => load('src/components/SquadSheets.tsx', {
   'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
   '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children, props.overlay) : null,
-  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
+  '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': props => React.createElement('Segmented', props), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/UserContext': { useUser: () => ({ profile: { id: 'me', level: 2, streak_count: 1 } }) }, '/levelPreview': { useShownLevel: () => ({ level: 2 }) }, '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
   '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
 });
 const pressLabel = (root, label) => root.findAllByType('Press').find(x => x.props.accessibilityLabel === label);
@@ -78,7 +78,7 @@ const mocks = (state, extra = {}) => ({
   // The ••• menu's options are its contract; its popover has its own looks.
   '/MoreMenu': props => React.createElement('Menu', props),
   '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
+  '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/UserContext': { useUser: () => ({ profile: { id: 'me', level: 2, streak_count: 1 } }) }, '/levelPreview': { useShownLevel: () => ({ level: 2 }) }, '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
   '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
   '/useSquads': { useSquads: () => state() }, ...extra,
 });
@@ -309,7 +309,7 @@ test('squad faces are everyone\'s real picture, and the player card has the same
   const ui = load('src/components/SquadSheets.tsx', {
     'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
     '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/CharacterMark': host('Mark'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) },
+    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/CharacterMark': host('Mark'), '/UserContext': { useUser: () => ({ profile: { id: 'me', level: 2, streak_count: 1 } }) }, '/levelPreview': { useShownLevel: () => ({ level: 2 }) }, '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) },
     'react-native-svg': svgMock, '/ItemArt': host('ItemArt'),
     '/usePlayer': { usePlayerCard: id => ({ ...reply, asked: id }) },
   });
@@ -321,7 +321,7 @@ test('squad faces are everyone\'s real picture, and the player card has the same
   await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(3), look: null }, size: 36 })));
   assert.equal(r.root.findByType('Picture').props.look.skin, '3', 'no saved look yet: the starting character');
   await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(1), isYou: true }, size: 36 })));
-  assert.equal(r.root.findAllByType('Mark').length, 1, 'you, from your own saved look');
+  assert.deepEqual([r.root.findByType('Picture').props.look.skin, r.root.findByType('Picture').props.equipped.pet, r.root.findByType('Picture').props.level, r.root.findByType('Picture').props.streak], ['2', 'pet_owl', 2, 1], 'you, from the same shared saved look, previewed level and current streak');
   const card = props => React.createElement(ui.SquadMemberSheet, { member: friend, place: 2, leader: false, busy: false, onClose() {}, onRemove() {}, ...props });
   const words2 = () => r.root.findAllByType('Text').map(t => [].concat(t.props.children).join('')).join(' | ');
   await act(async () => r.update(card()));
