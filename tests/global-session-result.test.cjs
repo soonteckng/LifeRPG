@@ -27,7 +27,9 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     actionBusy:false,isRestoring:false,actionError:null,syncStatus:'idle',summaryViewed:false,rewardsVisible:false,clientReported:false,
     sessionId:'local',sessionSummary:null,linkedTaskId:null,targetAttributeId:1,notes:'',recoveredSession:false,...overrides};
   let ownerId='owner-a',backendId='test-backend',admissionEpoch=1;const calls=[];
-  const animations=[];
+  const animations=[];let reduced=false;
+  const appListeners=new Set();
+  const app={currentState:'active',addEventListener:(_event,listener)=>{appListeners.add(listener);return{remove:()=>appListeners.delete(listener)};}};
   const dismissals=[];const unsubscribe=lifecycle.subscribe(result=>dismissals.push(result));
   const api={
     acknowledgeSummary(){calls.push('viewed');timer={...timer,summaryViewed:true};},
@@ -47,7 +49,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     '../context/UserContext':{useUser:()=>({profile:{id:ownerId,level:1,current_xp:1},reloadProfile:async()=>calls.push('profile')})},
     '../context/QuestContext':{useQuests:()=>({tasks:[{id:7,title:'An existing quest'}],subjects:[{id:1,title:'Learning',color_code:'#60A5FA'}]})},
     '../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope:{ownerId,backendId},ready:true,routines:[]})},
-    'react-native':{View:host('View'),ScrollView:host('Scroll'),KeyboardAvoidingView:host('KeyboardView'),ActivityIndicator:host('Spinner'),
+    'react-native':{AppState:app,View:host('View'),ScrollView:host('Scroll'),KeyboardAvoidingView:host('KeyboardView'),ActivityIndicator:host('Spinner'),
       StyleSheet:{create:styles=>styles,hairlineWidth:1},Platform:{OS:'android'},useWindowDimensions:()=>({width:390,height:844,fontScale:1}),
       Keyboard:{isVisible:()=>false,dismiss(){},addListener:()=>({remove(){}})},BackHandler:{addEventListener:()=>({remove(){}})},
       PanResponder:{create:handlers=>({panHandlers:handlers})},
@@ -59,7 +61,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     './ArrivalBanner':require('./helpers/arrival-banner-mock.cjs'),'./MotionPressable':host('Button'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),
     './AppHeader':host('Header'),'./AppSheet':host('Sheet'),'./SheetConfirmation':host('Confirm'),
     './SessionCountdown':host('Countdown'),'./session/SessionBackdrop':host('Backdrop'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
-    '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),'../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/afterTransition':{afterTransition:()=>()=>{}},
+    '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),'../hooks/useReducedMotion':{useReducedMotion:()=>reduced},'../utils/afterTransition':{afterTransition:()=>()=>{}},
     '../utils/sessionTransition':{traceSession(){}},
   };
   const navigation={canGoBack:()=>true,getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),
@@ -69,12 +71,88 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
   const Tree=()=>React.createElement(React.Fragment,null,Screen&&React.createElement(Screen),React.createElement(Presenter));
   let renderer;await act(async()=>{renderer=create(React.createElement(Tree));});
   const intro=load('src/services/launchIntroState.ts',mocks,cache).launchIntroState;
+  const returning=load('src/services/sessionReturn.ts',mocks,cache);
   return{calls,dismissals,animations,intro,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
+    returning:()=>returning.sessionReturn.snapshot(),
+    reduce:async()=>{reduced=true;await act(async()=>renderer.update(React.createElement(Tree)));},
+    app:async state=>act(async()=>{app.currentState=state;for(const listener of appListeners)listener(state);}),
     update:async(changes={},nextMode=mode,nextPath=pathname,nextOwner=ownerId,nextBackend=backendId,nextEpoch=admissionEpoch)=>{timer={...timer,...changes};mode=nextMode;pathname=nextPath;ownerId=nextOwner;backendId=nextBackend;admissionEpoch=nextEpoch;await act(async()=>renderer.update(React.createElement(Tree)));},
     done:async()=>act(async()=>{renderer.root.findByType('Result').props.onClose();renderer.update(React.createElement(Tree));}),
     dismiss:async()=>act(async()=>renderer.root.findByType('Result').props.onDismiss()),
     cleanup:async()=>{unsubscribe();await act(async()=>renderer.unmount());}};
 }
+
+test('a fresh timer completion returns to camp before its result, then never repeats for the same session',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
+  try {
+    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,sessionSummary:{...summary,recovered:false}});
+    assert.equal(ui.result().props.visible,false,'the result does not cover the return walk');
+    const backdrop=ui.root().findByType('Backdrop');assert.equal(backdrop.props.returning,true);
+    assert.ok(ui.returning());
+    assert.equal(ui.root().findByType('RewardMoments').props.insideSession,true,'reward screens also wait for the walk');
+    await act(async()=>backdrop.props.onReturnEnd());
+    assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,true);
+    await ui.update({sessionSummary:{...summary,recovered:false,xpEarned:2}});
+    assert.equal(ui.root().findByType('Backdrop').props.returning,false);
+    assert.equal(ui.result().props.visible,true,'a later receipt refresh cannot replay the arrival');
+  } finally {await ui.cleanup();}
+});
+
+test('return animation has a bounded fallback and does not wait for a native callback forever',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session');
+  try {
+    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
+    assert.equal(ui.result().props.visible,false);
+    await act(async()=>t.mock.timers.tick(2149));assert.equal(ui.result().props.visible,false);
+    await act(async()=>t.mock.timers.tick(1));assert.equal(ui.result().props.visible,true);
+    assert.equal(ui.returning(),null);
+  } finally {await ui.cleanup();}
+});
+
+test('Reduce Motion, background and leaving the timer release an interrupted return without replay',async()=>{
+  for(const interruption of ['reduce','background','navigate']){
+    const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
+    try {
+      await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
+      assert.ok(ui.returning());const old=ui.root().findByType('Backdrop').props.onReturnEnd;
+      if(interruption==='reduce')await ui.reduce();
+      else if(interruption==='background')await ui.app('background');
+      else await ui.update({},'online','/');
+      assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,true);
+      await act(async()=>old());assert.equal(ui.result().props.visible,true);
+      if(interruption==='background')await ui.app('active');
+      await ui.update({},'online','/session');assert.equal(ui.returning(),null);
+    } finally {await ui.cleanup();}
+  }
+});
+
+test('a delayed return callback cannot cover a different account and recovered results skip the walk',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
+  try {
+    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
+    const old=ui.root().findByType('Backdrop').props.onReturnEnd;
+    await ui.update({sessionId:'incoming',isCompleted:false,isRestoring:true,sessionSummary:null},'online','/session','owner-b');
+    assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,false);
+    await act(async()=>old());assert.equal(ui.result().props.visible,false);
+    await ui.update({isRestoring:false,isCompleted:true,recoveredSession:true,sessionSummary:{...summary,sessionId:'incoming'}});
+    assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,true);
+  } finally {await ui.cleanup();}
+});
+
+test('an old account arrival callback cannot finish a newer account return walk',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
+  try {
+    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
+    const old=ui.root().findByType('Backdrop').props.onReturnEnd;
+    await ui.update({sessionId:'new-running',hasOpenSession:true,isRunning:true,isCompleted:false,sessionSummary:null,timeLeft:10},'online','/session','owner-b');
+    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,sessionSummary:{...summary,sessionId:'new-running',recovered:false}});
+    const active=ui.returning();assert.ok(active);assert.equal(ui.result().props.visible,false);
+    await act(async()=>old());assert.equal(ui.returning(),active);assert.equal(ui.result().props.visible,false);
+    await act(async()=>ui.root().findByType('Backdrop').props.onReturnEnd());
+    assert.equal(ui.result().props.visible,true);
+  } finally {await ui.cleanup();}
+});
 
 test('the real timer route and global End sheet stay together through delayed cancellation, then Done closes both once',async()=>{
   const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:31},'online','/session',true);

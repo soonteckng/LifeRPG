@@ -19,7 +19,7 @@ import { tapHaptic } from "../../utils/tapHaptics";
 
 export interface RevealPlayer {
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
-  today: { seconds: number; finds: number }; nextFindSeconds: number; trail: { findSeconds: number; stops: number; complete: boolean };
+  today: { seconds: number; finds: number; pendingFinds?: number }; nextFindSeconds: number; trail: { findSeconds: number; stops: number; complete: boolean };
 }
 /** onOutfits gets the item to show there, so Outfits opens on its category. */
 type Props<R> = { reveal: R; player: RevealPlayer; onClose: () => void; onOutfits: (item: string) => void };
@@ -166,16 +166,21 @@ function FindTile({ gift, index, art, columns, big, reduced }: { gift: Gift; ind
 /** Today's trail after a session: you walk on from where you were, and the end of the trail has its own reward. */
 function TrailStep({ reveal, player, onClose }: { reveal: Extract<Reveal, { kind: "expedition" }>; player: RevealPlayer; onClose: () => void }) {
   const insets = useSafeAreaInsets();
-  const minutes = reveal.seconds === null ? null : Math.round(reveal.seconds / 60);
   const nothing = !reveal.finds.length;
+  // A queued reveal belongs to the day and progress of its claim. A later
+  // session, refresh or midnight must not retarget its walk while it is open.
+  const trail = reveal.trail ?? { ...player.trail, ...player.today, nextFindSeconds: player.nextFindSeconds,
+    fromSeconds: reveal.fromSeconds ?? Math.max(0, player.today.seconds - (reveal.seconds ?? 0)) };
+  const walked = reveal.trail ? Math.max(0, trail.seconds - trail.fromSeconds) : reveal.seconds;
+  const minutes = walked === null ? null : Math.round(walked / 60);
   return <View style={[s.page, s.dark, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }]} testID={nothing ? "reveal-expedition" : "reveal-expedition-trail"}>
     <Text style={s.eyebrow}>{minutes ? `${minutes} ${minutes === 1 ? "MINUTE" : "MINUTES"} FURTHER` : "TODAY'S TRAIL"}</Text>
     <Text style={s.heading} accessibilityRole="header">{nothing ? reveal.stardust ? `+${reveal.stardust} Stardust` : "On your way" : "Today's trail"}</Text>
-    <View style={s.trailArea}>
-      <TodayTrail fill seconds={player.today.seconds} fromSeconds={reveal.fromSeconds ?? Math.max(0, player.today.seconds - (reveal.seconds ?? 0))}
-        findSeconds={player.trail.findSeconds} stops={player.trail.stops} finds={player.today.finds} complete={player.trail.complete} bonus={reveal.trailStardust ?? 0}
-        nextFindSeconds={player.nextFindSeconds} look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
-    </View>
+    <ScrollView style={s.flex} contentContainerStyle={s.trailArea}>
+      <TodayTrail fill seconds={trail.seconds} fromSeconds={trail.fromSeconds}
+        findSeconds={trail.findSeconds} stops={trail.stops} finds={trail.finds} complete={trail.complete} bonus={reveal.trailStardust ?? 0}
+        nextFindSeconds={trail.nextFindSeconds} pendingFinds={trail.pendingFinds} look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
+    </ScrollView>
     <View style={s.bottomStatic}>
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
     </View>
@@ -259,7 +264,7 @@ const s = StyleSheet.create({
   rarityBig: { fontSize: 15 },
   pillBig: { minHeight: 28, paddingHorizontal: 12, marginTop: 4 },
   cardFoot: { gap: 2, paddingBottom: 16, paddingHorizontal: 16, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(255,255,255,0.08)" },
-  trailArea: { flex: 1, paddingTop: 14 },
+  trailArea: { flexGrow: 1, paddingTop: 14 },
 
 
 

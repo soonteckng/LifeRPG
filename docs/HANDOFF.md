@@ -1,4 +1,4 @@
-# LifeRPG handoff (from Claude, after Round 65)
+# LifeRPG handoff (after Round 66)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,13 +13,13 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest commit | `d42f326` "Round 65: level pill below the picture, whole trail in view, smooth trail" |
+| Latest delivered round | Round 66 patch, based on `9eaada662fff8f3a83effef5231bc16908ae119b` after Round 65. Prepared locally; user applies and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | **1,533 tests pass** (with the PGlite SQL tests), `tsc` clean, `expo lint` clean |
+| Code health | Round 66: full suite **1,575 passed**; final focused checks **73 passed**, including 15 isolated SQL tests. Typecheck and full Expo lint clean. See `docs/round66-trail.md` for verification limits. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| **Pending SQL** | **Round 64, `supabase/migrations/20261025090000_round64_daily_trail.sql`: NOT run yet.** Soon Teck is deciding whether he wants finds capped at 6 a day (a find every 20 focused minutes, 120-minute trail, +50 Stardust for the end). Until it runs, the server keeps the old rule (a find every 25 minutes, no cap) and the app follows whatever the server says (`findSeconds`, `trailSeconds`; fallback `LEGACY_TRAIL`). Don't run it yourself; if he says yes, he runs it in the SQL Editor. |
+| **Pending SQL** | **Round 66, `20261025090001_round66_daily_trail.sql`, proposal only, NOT applied live.** Four finds at 30/60/90/120 minutes, 120-minute trail, existing planned +50 Stardust end bonus. This replaces the pending Round 64 proposal; do not run the old Round 64 SQL afterward. Publish first, then the user reviews/runs Round 66 SQL. Until then the client follows the old live rules. |
 | Waiting on the phone | Round 65 visual fixes and the real session flow (Start → walk-away → session; finds card → trail walk) haven't been checked on his phone yet. He'll send feedback. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -189,7 +189,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 | Session result | `SessionResultSheet.tsx`, `LevelUpModal.tsx`, `CompletionDetails.tsx`, `ArrivalBanner.tsx` |
 | Protected sessions | `SessionProtectionContext.tsx`, `nativeFocusProtection.ts`, `protectedSessionStart.ts`, `SessionProtectionControl.tsx` (one 5-min break per session) |
 | Rewards client | `src/hooks/useRewards.ts` (exports `useRewards` and `rewardsStore`), `src/services/rewardsService.ts`, `rewardsStore.ts`, `rewardCatalog.ts` |
-| Rewards UI | `RewardMoments.tsx` (pop-up host; "See it in Outfits" visits and returns), `GlobalRewardListener.tsx`, `rewards/RevealScreens.tsx` (finds card, then the trail; pack screen), `rewards/TodayTrail.tsx` (the map, fits its space, draws after settling), `rewards/TrailSheet.tsx` (the map from Home), `rewards/PackArt.tsx` |
+| Rewards UI | `RewardMoments.tsx` (pop-up host; "See it in Outfits" visits and returns), `GlobalRewardListener.tsx`, `rewards/RevealScreens.tsx` (finds card, then the trail; pack screen), `rewards/TodayTrail.tsx` (the map, draws on first layout; accessible host scrolls if large text needs space), `rewards/TrailSheet.tsx` (the map from Home), `rewards/PackArt.tsx` |
 | Profile picture | `adventurer/ProfilePicture.tsx` (pet top right, streak top left, level in a drawn pill below the ring: `levelPill(size, level)` gives its size and the extra height), `CharacterMark.tsx` (you, everywhere) |
 | Level colours | `utils/adventurerLook.ts` `tierColor` / `levelColors` (= the level-road tier colours), `services/levelPreview.ts` (developer-only preview of another tier) |
 | Outfits | `src/app/outfits.tsx` (`outfitsOpening(id)` deep-links to the item's category), `components/adventurer/*` |
@@ -200,7 +200,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ### Rewards rules (current)
 
-- **Stardust:** 1 per 5 focused minutes; spent in Outfits on items you haven't found. A **find** at each stop of today's trail: every 20 focused minutes of the day, up to 6 (120 minutes), then +50 Stardust for the trail's end (Round 64 SQL; before it, every 25 minutes with no cap).
+- **Stardust:** 1 per 5 focused minutes; spent in Outfits on items you haven't found. A **find** at each stop of today's trail: every 30 eligible focused minutes of the day, up to 4 (120 minutes), then +50 Stardust for the trail's end (Round 66 SQL proposal; before installation, the app follows the old server rules).
 - **Daily supply pack:** opens once you reach your **daily goal** (default 30 min). Tiers climb with days in a row. The dev account can open it any time from Developer › Rewards (the same `open_daily_pack_v1`, with a dev bypass on the server).
 - Pets, streak frames and badges are milestones. Frames upgrade on their own (no choosing).
 - Server side, everything is in the private schema `liferpg_reward_private`, reached through `SECURITY DEFINER` RPCs in `public`. Each RPC takes `p_expected_owner` and checks it with `liferpg_reward_private.signed_in()`; `EXECUTE` is revoked from `anon`.
@@ -211,7 +211,8 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 1. Start runs the walk-away **before** the session starts (Round 62): you walk away from camp at dusk (`WALK_MS` 2400), then the same scene fades to a very dark night (`NIGHT_FADE_MS` 2000), and only then is `startTimer` called, so the walk takes none of the session's time. Tap anywhere skips (the session starts after the quick fade). Back during the walk cancels it and stays on setup. The night stays up until the session shows as started (`launching`, 4 s fallback; a failed start shows setup again). No walk with Reduce Motion, on Retry, or for a session that's already running.
 2. Night until 90% (`MORNING_AT`), then one fade into morning (`MORNING_FADE_MS` 2500). A finished session stays in morning behind its card; ending early stays at night.
 3. The 5-min break asks first ("Take your 5-minute break?" with Start break / Keep focusing).
-4. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** while reward reveals are pending or busy (15 s fallback), so the order is: card → what you found → back to the app last.
+4. On a fresh finish witnessed inside the timer, the character walks back to camp for 1.8 seconds before the result card. It is presentation only; Reduce Motion, recovered results and early End skip it. A bounded fallback and route/account/background cleanup release the card if the animation is interrupted.
+5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** while reward reveals are pending or busy (15 s fallback), so the order is: card → what you found → back to the app last.
 
 ---
 
@@ -300,6 +301,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R66 (Codex):** map paints on first measured layout; shared refresh on opening/reconnect; preserved cached rules and coalesced busy reward checks; frozen per-reveal day and walk endpoints; restored return-to-camp with interruption guards. Proposed SQL replaces pending R64 with four 30-minute stops and excludes developer gifts from the trail. Large-text statistics use full-width rows, and the containing page can scroll without compressing the map. See `docs/round66-trail.md`. No live SQL or publication performed.
 - **R65 (Claude):** the level is a long pill drawn in SVG (number exactly centred) right below the picture's ring, never over it; pictures with a level are taller than wide (`levelPill(size, level).room`), so wrappers set only their width. Today's trail fits its space with no scrolling (step from the measured height) and draws after the sheet/screen settles (`afterTransition`); the finds card fades into the trail.
 - **R64 (Claude):** today's trail becomes the rewards (SQL `20261025090000_round64_daily_trail.sql`, run AFTER publishing): a find every 20 focused minutes of the day, 6 stops (120 min), +50 Stardust once a day for reaching the end; past it, minutes give Stardust only. The app reads `findSeconds`/`trailSeconds`/`today.trailComplete` from the state and falls back to the old 25-minute rule (`LEGACY_TRAIL`) on an older server. After a session: one card with every find (≈80% of the screen, finds dealt in turn, Stardust counts up), then today's trail where you walk from `fromSeconds` to now; nothing found goes straight to the trail; "See it in Outfits" from the card visits Outfits and comes back to the same card (`RewardMoments` `away`). Home has a map button between the name and Settings opening `TrailSheet`. The level now hangs below the profile picture (the picture draws smaller to make room). Removed the unused `CampScene` and the Round 63 one-line trail.
 - **R63 (Claude):** profile picture layout: pet top right (from 32 pt), level always bottom centre (from 36 pt) in a pill sized so the number is never cut off; squad faces bigger (44, hero 48) so pets and levels show; the player card shows the whole character on their picture background; the found page redesigned as an animated reveal (finds dealt one by one with haptics, rare ones glow, Stardust counts up, you walk on along a one-line trail to the next find, full map behind "Map"); `pictureColors` moved to `utils/adventurerLook`.

@@ -21,6 +21,9 @@ import { RARITY_COLOR as RARITY_COLORS } from "./rewards/rarity";
 const RARITY_COLOR = RARITY_COLORS;
 const SETTLE_MS = 450;
 const RARITY_NAME: Record<string, string> = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
+function pendingTrailKey(account: string, today: { seconds: number; pendingFinds?: number; date?: string } | undefined, packDay?: string) {
+  return (today?.pendingFinds ?? 0) > 0 ? `${account}:${today?.date ?? packDay ?? ""}:${today!.seconds}:${today!.pendingFinds}` : null;
+}
 
 /** The words for each kind of reward. */
 export function momentCopy(item: RewardItem): { eyebrow: string; title: string; body: string; outfits: boolean } {
@@ -53,10 +56,50 @@ export default function RewardMoments({ insideSession, claimKey = null }: { insi
   // A finished session shows up as new XP or a new streak day: check for finds then.
   const claim = useRef(rewards.claimSessions);
   useLayoutEffect(() => { claim.current = rewards.claimSessions; });
-  const progress = `${profile.id}:${profile.level}:${profile.current_xp}:${profile.streak_count}`;
-  useEffect(() => { if (rewards.online && profile.id) void claim.current(); }, [rewards.online, profile.id, progress]);
-  // And as soon as a finished session's result arrives, so its finds are ready by the time you tap Done.
-  useEffect(() => { if (claimKey && rewards.online) void claim.current(); }, [claimKey, rewards.online]);
+  const account = `${rewards.owner ?? profile.id}:${rewards.admissionEpoch ?? 0}`;
+  const progress = `${account}:${profile.level}:${profile.current_xp}:${profile.streak_count}`;
+  const pendingFinds = pendingTrailKey(account, rewards.today, rewards.pack?.date);
+  const checked = useRef<{ progress: string | null; session: string | null; pending: string | null }>({ progress: null, session: null, pending: null });
+  const backlogFollowups = useRef(new Set<string>());
+  const forcedPending = useRef<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [claimAttempt, retryClaim] = useState(0);
+  useEffect(() => {
+    // An app-open claim or another reward action can still be in flight when
+    // completion arrives. Leave that trigger pending, then check once the
+    // shared mutation lock clears. Do not drop it or retry failed HTTP calls.
+    if (!rewards.online) { checked.current = { progress: null, session: null, pending: null }; forcedPending.current = null; return; }
+    if (!active || !profile.id || rewards.owner && rewards.owner !== profile.id || rewards.busy) return;
+    const session = claimKey ? `${account}:${claimKey}` : null;
+    const pending = !!pendingFinds && checked.current.pending !== pendingFinds;
+    const newSession = !!session && checked.current.session !== session;
+    const followup = !!pendingFinds && forcedPending.current === pendingFinds;
+    if (!newSession && checked.current.progress === progress && !pending && !followup) return;
+    const rememberFollowup = (key: string) => {
+      backlogFollowups.current.add(key);
+      if (backlogFollowups.current.size > 64) backlogFollowups.current.delete(backlogFollowups.current.values().next().value!);
+    };
+    // The first check may already know about a pending stop from the phone
+    // cache. Only a subsequent check consumes that stop's bounded follow-up.
+    if (pendingFinds && checked.current.progress?.startsWith(`${account}:`)) rememberFollowup(pendingFinds);
+    forcedPending.current = null;
+    // One catch-up for a distinct server-reported pending stop (for example
+    // after the first 50 old sessions). Never poll or loop on an HTTP failure.
+    checked.current = { progress, session: session ?? checked.current.session, pending: pendingFinds ?? checked.current.pending };
+    void claim.current().then(result => {
+      if (!mounted.current || !checked.current.progress?.startsWith(`${account}:`)) return;
+      if (result.ok && result.value?.sessions?.length === 50) {
+        const key = pendingTrailKey(account, result.value.state?.today, result.value.state?.pack?.date);
+        if (key && !backlogFollowups.current.has(key)) {
+          rememberFollowup(key); forcedPending.current = key; retryClaim(attempt => attempt + 1);
+        }
+      }
+      if (mounted.current && !result.ok && result.message === "One moment, still saving." && checked.current.progress === progress) {
+        checked.current = { progress: null, session: null, pending: null }; retryClaim(attempt => attempt + 1);
+      }
+    });
+  }, [active, rewards.online, rewards.busy, rewards.owner, profile.id, account, progress, claimKey, claimAttempt, pendingFinds]);
 
   const reveal = rewards.reveals[0];
   const id = reveal ? undefined : rewards.moments[0];

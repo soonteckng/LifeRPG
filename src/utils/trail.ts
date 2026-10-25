@@ -10,10 +10,18 @@ export const TRAIL_ZONES = [
   { name: "Starfall Ridge", color: "#C4B5FD", from: 6 },
 ] as const;
 
+/** Keep all four places on shorter trails without changing the old six-stop map. */
+export function scaledTrailZones(count = 6) {
+  const total = Math.max(1, Math.floor(count));
+  if (total === 6) return TRAIL_ZONES;
+  const zones = TRAIL_ZONES.slice(0, Math.min(total, TRAIL_ZONES.length));
+  return zones.map((zone, i) => ({ ...zone, from: Math.round(i * (total - 1) / Math.max(1, zones.length - 1)) }));
+}
+
 /** Stops walked so far today (fractional), from today's focused seconds and the server's find interval. */
 export const trailStops = (seconds: number, findSeconds: number = FIND_SECONDS) => Math.max(0, seconds) / Math.max(1, findSeconds);
-export function trailZone(stops: number) {
-  return [...TRAIL_ZONES].reverse().find(zone => stops >= zone.from) ?? TRAIL_ZONES[0];
+export function trailZone(stops: number, count = 6) {
+  return [...scaledTrailZones(count)].reverse().find(zone => stops >= zone.from) ?? TRAIL_ZONES[0];
 }
 
 /** "1 h 15 m", "45 m", "0 m". */

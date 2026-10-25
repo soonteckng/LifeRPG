@@ -1,4 +1,4 @@
-import type { Gift, RewardsState, createRewardsClient } from "./rewardsService";
+import type { ClaimedTrail, Gift, RewardsState, createRewardsClient } from "./rewardsService";
 import { parseRewardsState } from "./rewardsService";
 import { STREAK_FRAMES } from "./rewardCatalog";
 
@@ -14,7 +14,7 @@ type Client = ReturnType<typeof createRewardsClient>;
 export type Reveal =
   | { id: string; kind: "expedition"; seconds: number | null; finds: Gift[]; stardust: number;
       /** Where today's trail stood before these sessions, and the trail bonus they reached. */
-      fromSeconds?: number; trailStardust?: number }
+      fromSeconds?: number; trailStardust?: number; trail?: ClaimedTrail }
   | { id: string; kind: "pack"; tier: number; daysInARow: number; items: Gift[]; stardust: number };
 /** The items a reveal shows; their single pop-ups wait for it and then count as seen. */
 export const revealItems = (reveal: Reveal) => (reveal.kind === "pack" ? reveal.items : reveal.finds).filter(g => g.new).map(g => g.item);

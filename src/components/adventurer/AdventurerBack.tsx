@@ -3,6 +3,7 @@ import { View } from "react-native";
 import Animated, { cancelAnimation, Easing, useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated";
 import Svg, { Circle, Ellipse, G, Path, Rect } from "react-native-svg";
 import ItemArt from "./ItemArt";
+import AdventurerArt from "./AdventurerArt";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { darken, hairColor, skinColor, type AdventurerLook } from "../../utils/adventurerLook";
 
@@ -73,7 +74,7 @@ export const AdventurerBackArt = memo(function AdventurerBackArt({ look, equippe
  * Walking away up the trail: legs step and the body bobs. Still when the
  * session is paused or the phone asks for less motion.
  */
-export default memo(function AdventurerWalking({ look, equipped = {}, size, walking = true }: { look: AdventurerLook; equipped?: Equipped; size: number; walking?: boolean }) {
+export default memo(function AdventurerWalking({ look, equipped = {}, size, walking = true, facing = "away" }: { look: AdventurerLook; equipped?: Equipped; size: number; walking?: boolean; facing?: "away" | "camp" }) {
   const reduced = useReducedMotion();
   const step = useSharedValue(0);
   const moving = walking && !reduced;
@@ -90,10 +91,12 @@ export default memo(function AdventurerWalking({ look, equipped = {}, size, walk
   const pet = equipped.pet;
   const layer = { position: "absolute" as const, left: 0, top: 0 };
   return <View style={{ width: size, height: size * 1.5 }} importantForAccessibility="no-hide-descendants">
+    {facing === "camp" ? <Animated.View style={[layer, body]}><AdventurerArt look={look} equipped={equipped} size={size} /></Animated.View> : <>
     <Svg width={size} height={size * 1.5} viewBox="0 0 200 300" style={layer}><Ellipse cx={100} cy={288} rx={52} ry={7} fill="#000000" opacity={0.32} /></Svg>
     <Animated.View style={[layer, left]}><AdventurerBackArt look={look} equipped={equipped} size={size} part="legL" /></Animated.View>
     <Animated.View style={[layer, right]}><AdventurerBackArt look={look} equipped={equipped} size={size} part="legR" /></Animated.View>
     <Animated.View style={[layer, body]}><AdventurerBackArt look={look} equipped={equipped} size={size} part="body" /></Animated.View>
+    </>}
     {!!pet && <Animated.View style={[{ position: "absolute", left: size * 0.86, top: size * 1.2 }, body]}><ItemArt id={pet} size={size * 0.24} /></Animated.View>}
   </View>;
 });

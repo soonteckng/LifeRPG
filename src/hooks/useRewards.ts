@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAuth } from "../context/AuthContext";
-import { createRewardsClient, LEGACY_TRAIL, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
+import { claimedTrail, createRewardsClient, LEGACY_TRAIL, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
 import { createRewardsStore } from "../services/rewardsStore";
 import { normalizeLook } from "../utils/adventurerLook";
 
@@ -34,6 +34,8 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
   const owned = useMemo(() => snap.state?.owned ?? [], [snap.state?.owned]);
   return {
     ...snap,
+    owner,
+    admissionEpoch: auth.admissionEpoch,
     online,
     refresh,
     look,
@@ -52,8 +54,10 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
         // Every session claimed together shows on one card: all their finds at once.
         const finds = r.value.sessions.flatMap(x => x.finds), seconds = r.value.sessions.reduce((n, x) => n + x.seconds, 0);
         const trailStardust = r.value.sessions.reduce((n, x) => n + x.trailStardust, 0);
+        const todayTrailStardust = r.value.state.today.date ? r.value.sessions.filter(x => x.creditedDate === r.value.state.today.date).reduce((n, x) => n + x.trailStardust, 0) : trailStardust;
+        const trail = claimedTrail(r.value);
         rewardsStore.addReveal(owner, { id: `return:${r.value.sessions.map(x => x.sessionId).join(",")}`, kind: "expedition",
-          seconds, finds, trailStardust, fromSeconds: Math.max(0, r.value.state.today.seconds - seconds),
+          seconds, finds, trailStardust: todayTrailStardust, fromSeconds: trail.fromSeconds, trail,
           stardust: r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0) + finds.reduce((n, g) => n + g.stardust, 0) + trailStardust });
       }
       return r;
@@ -68,7 +72,7 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
     buy: (itemId: string) => act(c => () => c.buy(itemId), [itemId]),
     saveAvatar: (next: Omit<SavedAvatar, "revision" | "frame">) => act(c => () => c.saveAvatar(next, avatar?.revision ?? 1)),
     // A test find comes back through the same return screen as a real one;
-    // `walkSeconds` shows it as the walk a find takes (25 minutes).
+    // `walkSeconds` shows it as the walk the current server's find interval takes.
     developer: async (action: DevRewardAction, amount = 0, walkSeconds: number | null = null) => {
       const r = await act(c => () => c.developer(action, amount));
       if (r.ok && action === "find" && r.value.gifts.length)

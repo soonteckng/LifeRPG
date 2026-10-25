@@ -3,6 +3,7 @@ import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "expo-router";
+import { AppState } from "react-native";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
 import SaveSuggestedQuest, { type SuggestedQuestCompletion } from "./SaveSuggestedQuest";
 import PostSessionCelebration from "./PostSessionCelebration";
@@ -17,6 +18,8 @@ import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { sessionTrail } from "../services/sessionTrail";
 import { launchIntroState } from "../services/launchIntroState";
+import { RETURN_TO_CAMP_MS, sessionReturn, sessionReturnKey } from "../services/sessionReturn";
+import { useReducedMotion } from "../hooks/useReducedMotion";
 
 type PresentedResult = {
   ownerId: string;
@@ -52,6 +55,28 @@ export default function GlobalRewardListener() {
   useLayoutEffect(() => { closeRequested.current = false; }, [accountKey]);
   const online = auth.accessMode !== "local-only";
   const summary = timer.sessionSummary;
+  const reducedMotion = useReducedMotion();
+  const openReturnKey = sessionReturnKey(presentationScope, timer.sessionId);
+  const [witnessedOpen, setWitnessedOpen] = useState<string | null>(null);
+  const nextWitness = !insideSession || !ownerId || timer.endingSession || timer.sessionEnded || timer.summaryViewed
+    ? null : timer.hasOpenSession ? openReturnKey : witnessedOpen;
+  if (nextWitness !== witnessedOpen) setWitnessedOpen(nextWitness);
+  useSyncExternalStore(sessionReturn.subscribe, sessionReturn.snapshot, sessionReturn.snapshot);
+  // Only a session we saw running on this route walks back. Reopened results,
+  // recovery and early End go straight to their existing result presentation.
+  const returnKey = insideSession && ownerId && !reducedMotion && timer.isCompleted && !timer.hasOpenSession && !timer.recoveredSession
+    && !timer.summaryViewed && timer.syncStatus !== "rejected" && !timer.endingSession && !timer.sessionEnded
+    && openReturnKey && witnessedOpen === openReturnKey && !sessionReturn.completed(openReturnKey) ? openReturnKey : null;
+  useLayoutEffect(() => {
+    if (!returnKey || !sessionReturn.begin(returnKey)) return;
+    const finish = () => sessionReturn.finish(returnKey);
+    // Native callbacks may be interrupted by navigation or the app sleeping.
+    // The result can never be stranded behind a cosmetic animation.
+    const limit = setTimeout(finish, RETURN_TO_CAMP_MS + 350);
+    const app = AppState?.addEventListener("change", state => { if (state !== "active") finish(); });
+    if (AppState?.currentState && AppState.currentState !== "active") finish();
+    return () => { clearTimeout(limit); app?.remove(); finish(); };
+  }, [returnKey]);
   const ending = timer.endingSession || timer.sessionEnded;
   const terminal = timer.isCompleted || ending || !!summary;
   const rejected = terminal && timer.syncStatus === "rejected";
@@ -148,9 +173,9 @@ export default function GlobalRewardListener() {
   }, [online, summary, reloadProfile]);
   // Never over the launch logo: the card appears once the app has opened.
   const introDone = useSyncExternalStore(launchIntroState.subscribe, launchIntroState.isDone, launchIntroState.isDone);
-  const shown = visible && introDone;
+  const shown = visible && introDone && !returnKey;
   const savingShown = waiting && !expired && saving.key === pendingKey && saving.phase === "saving" && !!ownerId && terminal
-    && !timer.hasOpenSession && !timer.summaryViewed && introDone;
+    && !timer.hasOpenSession && !timer.summaryViewed && introDone && !returnKey;
   return <><SessionResultSheet {...displayed?.props} visible={shown}
     saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!shown} completion={displayed.saveCompletion} />}
     onClose={done} onDismiss={() => {
@@ -160,5 +185,5 @@ export default function GlobalRewardListener() {
     <SessionSavingOverlay visible={savingShown} />
     <PostSessionCelebration insideSession={insideSession || !online} />
     {/* Inside a session the reward screens wait until it has finished, then show before you leave it. */}
-    <RewardMoments insideSession={insideSession && (timer.hasOpenSession || timer.endingSession || timer.isRestoring)} claimKey={summary?.sessionId ?? null} /></>;
+    <RewardMoments insideSession={insideSession && (timer.hasOpenSession || timer.endingSession || timer.isRestoring || !!returnKey)} claimKey={summary?.sessionId ?? null} /></>;
 }

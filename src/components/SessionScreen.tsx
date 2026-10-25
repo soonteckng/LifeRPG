@@ -45,6 +45,7 @@ import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
 import { rewardsStore } from "../hooks/useRewards";
+import { sessionReturn, sessionReturnKey } from "../services/sessionReturn";
 
 type Picker = "duration" | "area" | null;
 /** At most this long the night scene waits for a started session to show. */
@@ -92,6 +93,10 @@ export default function SessionScreen() {
   const timer = useMemo(() => endingPresentation && endSnapshot ? { ...visibleTimer, ...endSnapshot, hasOpenSession: true } : visibleTimer, [endingPresentation, endSnapshot, visibleTimer]);
   const insets = useSafeAreaInsets();
   const { sessionSummary, rewardsVisible } = timer;
+  const returningKey = useSyncExternalStore(sessionReturn.subscribe, sessionReturn.snapshot, sessionReturn.snapshot);
+  const ownReturnKey = sessionReturnKey(presentationScope, timer.sessionId);
+  const returning = !!ownReturnKey && returningKey === ownReturnKey;
+  const finishReturn = useCallback(() => { if (ownReturnKey) sessionReturn.finish(ownReturnKey); }, [ownReturnKey]);
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const study = useStudyPlan();
   const navigation = useNavigation();
@@ -506,7 +511,8 @@ export default function SessionScreen() {
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={scenePhase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-      walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro} />
+      walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro}
+      returning={returning} onReturnEnd={finishReturn} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>

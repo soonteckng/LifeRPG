@@ -27,7 +27,7 @@ const words = r => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.
 
 test("the session card opens on you back at camp in the morning, with the time recorded", async () => {
   const Banner = load("src/components/ArrivalBanner.tsx", {
-    "react-native": { View: host("View"), StyleSheet: { create: v => v, absoluteFill: {} } }, "react-native-svg": svg, "@expo/vector-icons": { Ionicons: host("Icon") },
+    "react-native": { useWindowDimensions: () => ({ width: 360, height: 640, fontScale: 1 }), View: host("View"), StyleSheet: { create: v => v, absoluteFill: {} } }, "react-native-svg": svg, "@expo/vector-icons": { Ionicons: host("Icon") },
     "./AppText": { Text: host("Text") }, "./adventurer/AdventurerArt": host("You"), "../hooks/useRewards": { useRewards: () => ({ look: LOOK, equipped: { top: "cardigan" } }) },
   }).default;
   let r; await act(async () => { r = create(React.createElement(Banner, { seconds: 2700, title: "Mathematics" })); });
@@ -43,26 +43,24 @@ test("the session card opens on you back at camp in the morning, with the time r
   await act(async () => r.unmount());
 });
 
-test("today's trail fits in view, with a stop every 20 minutes up to its end; it draws once settled, and you walk from where you were", async () => {
+test("today's trail fits in view, draws on its first layout, and you walk from where you were", async () => {
   const scrolls = [], log = [];
-  let settle = null;
   const Scroll = React.forwardRef((props, ref) => { React.useImperativeHandle(ref, () => ({ scrollTo: to => scrolls.push(to) })); return React.createElement("Scroll", props, props.children); });
   const lerp = (x, i, o) => { if (x <= i[0]) return o[0]; for (let k = 1; k < i.length; k++) if (x <= i[k]) return o[k - 1] + (o[k] - o[k - 1]) * (x - i[k - 1]) / (i[k] - i[k - 1]); return o[o.length - 1]; };
   const Trail = load("src/components/rewards/TodayTrail.tsx", {
-    "react-native": { View: host("View"), ScrollView: Scroll, StyleSheet: { create: v => v, absoluteFill: {} } }, "react-native-svg": svg,
-    "../../utils/afterTransition": { afterTransition: work => { settle = work; return () => {}; } },
+    "react-native": { useWindowDimensions: () => ({ width: 360, height: 640, fontScale: 1 }), View: host("View"), ScrollView: Scroll, StyleSheet: { create: v => v, absoluteFill: {} } }, "react-native-svg": svg,
     "react-native-reanimated": { __esModule: true, default: { View: host("AView"), createAnimatedComponent: c => c }, Easing: { inOut: x => x, cubic: 0 }, interpolate: lerp,
       runOnJS: f => f, useAnimatedProps: fn => fn(), useAnimatedReaction: () => {}, useAnimatedStyle: fn => fn(), useSharedValue: v => React.useRef({ value: v }).current,
-      withDelay: (delay, x) => { log.push(["walk", delay, x]); return x; }, withTiming: (to, _c, done) => { done?.(true); return to; }, withSpring: to => to },
+      cancelAnimation: () => {}, withDelay: (delay, x) => { log.push(["walk", delay, x]); return x; }, withTiming: (to, _c, done) => { done?.(true); return to; }, withSpring: to => to },
     "@expo/vector-icons": { Ionicons: host("Icon") }, "../AppText": { Text: host("Text") }, "../adventurer/ProfilePicture": host("Picture"),
     "../adventurer/ItemArt": { StardustArt: host("Dust") }, "../../hooks/useReducedMotion": { useReducedMotion: () => false }, "../../utils/tapHaptics": { tapHaptic: s => log.push(["haptic", s]) },
   }).default;
   const props = { seconds: 2400, fromSeconds: 1800, findSeconds: 1200, stops: 6, finds: 2, complete: false, nextFindSeconds: 1200, look: LOOK, equipped: {}, level: 4, background: "bg_dusk", frame: null };
   let r; await act(async () => { r = create(React.createElement(Trail, props)); });
   assert.match(words(r), /40 m.*walked today.*2 of 6.*finds today.*20 min.*to next find/);
-  assert.equal(r.root.findAll(n => n.type === "SvgText").length, 0, "the map waits for the screen to settle");
+  assert.equal(r.root.findAll(n => n.type === "SvgText").length, 0, "the map needs its actual layout dimensions");
   const frame = r.root.findByProps({ testID: "today-trail-map" });
-  await act(async () => { frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 420 } } }); settle(); });
+  await act(async () => { frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 420 } } }); });
   assert.deepEqual(log.find(e => e[0] === "walk").slice(2), [2], "you walk on to the second stop, 40 minutes");
   const labels = r.root.findAll(n => n.type === "SvgText").map(n => [].concat(n.props.children).join(""));
   assert.ok(labels.includes("20 min") && labels.includes("Next find · 60 min") && labels.includes("Trail's end · 120 min") && labels.includes("CAMP"), labels.join(", "));

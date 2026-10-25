@@ -7,6 +7,7 @@ import { FireGlow, Fireflies, TrailScene } from "./TrailScenes";
 import { useRewards } from "../../hooks/useRewards";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { trailStops, trailZone } from "../../utils/trail";
+import { RETURN_TO_CAMP_MS } from "../../services/sessionReturn";
 
 type Phase = "setup" | "running" | "paused" | "completed" | "ended";
 /** You walk from camp to your place on the road… */
@@ -28,10 +29,11 @@ const fill = { position: "absolute" as const, left: 0, top: 0, right: 0, bottom:
  */
 type BackdropProps = {
   phase: Phase; progress: number; walking: boolean; intro: boolean; skipToken: number; onIntroEnd: () => void;
+  returning?: boolean; onReturnEnd?: () => void;
 };
 const isMorning = ({ phase, progress }: Pick<BackdropProps, "phase" | "progress">) => phase === "completed" || (phase !== "ended" && progress >= MORNING_AT);
 
-export default memo(function SessionBackdrop({ phase, progress, walking, intro, skipToken, onIntroEnd }: BackdropProps) {
+export default memo(function SessionBackdrop({ phase, progress, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd }: BackdropProps) {
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const rewards = useRewards({ load: false });
@@ -41,12 +43,14 @@ export default memo(function SessionBackdrop({ phase, progress, walking, intro, 
   // Keep only the light on show, plus its neighbour during a crossfade.
   const [nightMounted, setNightMounted] = useState(!morning);
   const [dayMounted, setDayMounted] = useState(morning);
-  const walk = useSharedValue(intro ? 0 : 1), dusk = useSharedValue(intro ? 1 : 0), day = useSharedValue(morning ? 1 : 0);
+  const walk = useSharedValue(intro || phase === "completed" ? 0 : 1), dusk = useSharedValue(intro ? 1 : 0), day = useSharedValue(morning ? 1 : 0);
   const endRef = useRef(onIntroEnd);
   useLayoutEffect(() => { endRef.current = onIntroEnd; }, [onIntroEnd]);
   // One effect runs the setting-off: start it, or (after a skip) finish it quickly.
   const skipAtStart = useRef(skipToken);
   useLayoutEffect(() => {
+    if (returning) return;
+    if (phase === "completed") { walk.value = 0; dusk.value = 0; return; }
     if (reduced) { walk.value = 1; dusk.value = 0; if (intro) endRef.current(); return; }
     if (!intro) { walk.value = 1; dusk.value = 0; skipAtStart.current = skipToken; return; }
     const finish = () => endRef.current();
@@ -59,7 +63,18 @@ export default memo(function SessionBackdrop({ phase, progress, walking, intro, 
     walk.value = 0; dusk.value = 1;
     walk.value = withTiming(1, { duration: WALK_MS, easing: Easing.inOut(Easing.quad) });
     dusk.value = withDelay(WALK_MS, withTiming(0, { duration: NIGHT_FADE_MS, easing: Easing.inOut(Easing.quad) }, ok => { if (ok) runOnJS(finish)(); }));
-  }, [intro, skipToken, reduced, walk, dusk]);
+  }, [intro, skipToken, reduced, walk, dusk, phase, returning]);
+  useLayoutEffect(() => {
+    if (!returning || phase !== "completed") return;
+    let current = true;
+    const finish = () => { if (current) onReturnEnd?.(); };
+    walk.value = 1;
+    if (reduced) { walk.value = 0; finish(); }
+    else walk.value = withTiming(0, { duration: RETURN_TO_CAMP_MS, easing: Easing.inOut(Easing.quad) }, ok => {
+      if (ok) runOnJS(finish)();
+    });
+    return () => { current = false; cancelAnimation(walk); };
+  }, [returning, phase, reduced, walk, onReturnEnd]);
   useEffect(() => () => { cancelAnimation(walk); cancelAnimation(dusk); cancelAnimation(day); }, [walk, dusk, day]);
   useEffect(() => {
     if (reduced) {
@@ -91,12 +106,12 @@ export default memo(function SessionBackdrop({ phase, progress, walking, intro, 
     <FireGlow width={width} height={height} />
     <Fireflies width={width} height={height} active={walking && !morning} />
     <Animated.View style={[s.walker, { left: width / 2 - size / 2, top }, walker]}>
-      <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={walking || intro} />
+      <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={walking || intro || returning} facing={phase === "completed" ? "camp" : "away"} />
     </Animated.View>
   </View>;
 }, (previous, next) => previous.phase === next.phase && isMorning(previous) === isMorning(next)
   && previous.walking === next.walking && previous.intro === next.intro && previous.skipToken === next.skipToken
-  && previous.onIntroEnd === next.onIntroEnd);
+  && previous.onIntroEnd === next.onIntroEnd && previous.returning === next.returning && previous.onReturnEnd === next.onReturnEnd);
 
 /**
  * The words while you set off, above everything (the timer waits, hidden,
@@ -114,7 +129,7 @@ export const SessionIntroWords = memo(function SessionIntroWords({ minutes, area
     <Pressable style={fill} onPress={onSkip} accessibilityRole="button" accessibilityLabel="Skip">
       <View style={s.copy} pointerEvents="none">
         <Text style={s.eyebrow}>SETTING OFF</Text>
-        <Text style={s.title} numberOfLines={2}>{`Off to the ${trailZone(trailStops(rewards.today.seconds, rewards.trail?.findSeconds)).name}`}</Text>
+        <Text style={s.title} numberOfLines={2}>{`Off to the ${trailZone(trailStops(rewards.today.seconds, rewards.trail?.findSeconds), rewards.trail?.stops).name}`}</Text>
         <Text style={s.detail} numberOfLines={1}>{`${minutes} min · ${area}`}</Text>
       </View>
       <Text style={s.skip}>Tap anywhere to skip</Text>

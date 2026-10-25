@@ -22,6 +22,7 @@ async function sceneSetup(initial={}){
     "./TrailScenes":{TrailScene:React.memo(function Scene(props){draws.push(props.light);return React.createElement("Scene",props);}),FireGlow:host("Fire"),Fireflies:host("Flies")},
     "../../hooks/useRewards":{useRewards:()=>({look:LOOK,equipped:{},today:{seconds:0}})},"../../hooks/useReducedMotion":{useReducedMotion:()=>reduced},
     "../../utils/trail":{trailZone:()=>({name:"Meadow"}),trailStops:()=>0},
+    "../../services/sessionReturn":load("src/services/sessionReturn.ts",{}),
   });
   let renderer;await act(async()=>{renderer=create(React.createElement(mod.default,props));});
   return {mod,motions,cancelled,draws,root:()=>renderer.root,lights:()=>renderer.root.findAllByType("Scene").map(n=>n.props.light),
@@ -87,6 +88,40 @@ test("an obsolete native fade callback cannot unmount the new light after End or
       assert.deepEqual(ui.lights(),["night"]);
     }finally{await ui.cleanup();}
   }
+});
+
+test("a fresh completion walks towards camp once, facing forward, without restarting departure",async()=>{
+  let returned=0,introFinished=0;
+  const ui=await sceneSetup({onIntroEnd:()=>introFinished++});
+  try {
+    await ui.update({phase:"completed",progress:1,walking:false,returning:true,onReturnEnd:()=>returned++});
+    const walker=ui.root().findByType("Walker");
+    assert.equal(walker.props.facing,"camp");assert.equal(walker.props.walking,true);
+    const home=ui.motions.filter(m=>m.duration===1800).at(-1);
+    assert.equal(home.to,0,"walk down the same road towards the foreground");
+    const count=ui.motions.length;await ui.update({progress:1});
+    assert.equal(ui.motions.length,count,"ticks and reward state do not restart the walk");
+    await act(async()=>home.done(true));assert.equal(returned,1);assert.equal(introFinished,0);
+    await ui.update({returning:false});
+    assert.equal(ui.root().findByType("Walker").props.walking,false);
+    await act(async()=>home.done(true));assert.equal(returned,1,"an obsolete callback cannot finish another presentation");
+  } finally {await ui.cleanup();}
+});
+
+test("returning to camp cancels on unmount or Reduce Motion and never runs for early End",async()=>{
+  let returned=0;
+  const ui=await sceneSetup();
+  try {
+    await ui.update({phase:"ended",walking:false});
+    assert.equal(ui.motions.filter(m=>m.duration===1800).length,0);
+    await ui.update({phase:"completed",walking:false,returning:true,onReturnEnd:()=>returned++});
+    const home=ui.motions.filter(m=>m.duration===1800).at(-1);
+    await ui.reduce();assert.equal(returned,1,"Reduce Motion completes the presentation immediately");
+    await act(async()=>home.done(true));assert.equal(returned,1);
+  } finally {await ui.cleanup();}
+  const disposed=await sceneSetup({phase:"completed",walking:false,returning:true,onReturnEnd:()=>returned++});
+  const late=disposed.motions.filter(m=>m.duration===1800).at(-1);
+  await disposed.cleanup();await act(async()=>late.done(true));assert.equal(returned,1);
 });
 
 test("the saving portal dims uniformly without elevating a rectangular Android shadow surface",async()=>{

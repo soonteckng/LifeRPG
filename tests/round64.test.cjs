@@ -43,7 +43,8 @@ test("the trail's rules come from the server, and the old rules hold until the R
 test("a session's card holds every find it made, and the trail starts from where today stood before it", () => {
   const hook = read("src/hooks/useRewards.ts");
   assert.match(hook, /const finds = r\.value\.sessions\.flatMap\(x => x\.finds\)/, "all sessions claimed together share one card");
-  assert.match(hook, /fromSeconds: Math\.max\(0, r\.value\.state\.today\.seconds - seconds\)/);
+  assert.match(hook, /const trail = claimedTrail\(r\.value\)/, "the claim freezes its own day and previous trail position");
+  assert.match(hook, /fromSeconds: trail\.fromSeconds, trail/);
   assert.match(hook, /finds\.reduce\(\(n, g\) => n \+ g\.stardust, 0\) \+ trailStardust/, "the trail bonus is in the Stardust total");
 });
 
@@ -55,6 +56,7 @@ test("Home opens today's trail from a map button between your name and Settings;
   assert.match(home, /nameButton: \{ flex: 1, minWidth: 0 \}/);
   assert.match(home, /style=\{styles\.name\} numberOfLines=\{1\} ellipsizeMode="tail"/);
   const Sheet = load("src/components/rewards/TrailSheet.tsx", {
+    "@gorhom/bottom-sheet": { BottomSheetScrollView: host("SheetScroll") },
     "react-native": { View: host("View"), StyleSheet: { create: v => v } }, "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 0 }) },
     "../AppSheet": props => props.visible ? React.createElement("Sheet", props, props.header, props.children) : null, "../SheetHeader": host("Header"),
     "./TodayTrail": host("Trail"), "../../context/UserContext": { useUser: () => ({ profile: { id: "me", level: 7 } }) },
