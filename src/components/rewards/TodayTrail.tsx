@@ -16,6 +16,11 @@ import type { AdventurerLook } from "../../utils/adventurerLook";
 // but never compress the path until its stops overlap.
 const PAD_TOP = 50, PAD_BOTTOM = 34, MAX_STEP = 104, SAMPLES = 20, AVATAR = 40;
 const AnimatedPath = Animated.createAnimatedComponent(Path);
+const measured = new Map<string, { width: number; height: number }>();
+function remember(key: string, size: { width: number; height: number }) {
+  measured.set(key, size);
+  if (measured.size > 16) measured.delete(measured.keys().next().value!);
+}
 
 /** The stops, winding up from camp at the bottom to the trail's end at the top. */
 function points(count: number, width: number, height: number, step: number) {
@@ -58,17 +63,26 @@ function sample(pts: { x: number; y: number }[]) {
  * map draws on its first measured layout, together with the sheet's content.
  */
 export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, stops, finds, pendingFinds, complete, bonus = 0, nextFindSeconds,
-  look, equipped, level, background, frame, fill = false, delay = 450 }: {
+  look, equipped, level, background, frame, fill = false, delay = 450, sizeKey, initialSize }: {
   seconds: number; fromSeconds?: number; findSeconds: number; stops: number; finds: number; pendingFinds?: number; complete: boolean; bonus?: number; nextFindSeconds: number;
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
   /** Grow to fill the space it's given; the whole trail fits inside. */
   fill?: boolean; delay?: number;
+  /**
+   * Where this map is shown (the Home sheet, the return screen). Its measured
+   * size is remembered, so the next time it opens the drawing is there from
+   * the first frame instead of being added while the sheet slides up.
+   */
+  sizeKey?: string;
+  /** A close guess at the size for the very first opening. */
+  initialSize?: { width: number; height: number };
 }) {
-  const { width: screenWidth, fontScale } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const stackedStats = fontScale > 1.3 && screenWidth < 420;
   const statStyle = [s.stat, stackedStats && s.statRow];
   const labelStyle = [s.label, stackedStats && s.labelRow];
-  const [box, setBox] = useState({ width: 0, height: 0 });
+  const memoryKey = sizeKey ? `${sizeKey}:${screenWidth}x${screenHeight}@${fontScale}` : null;
+  const [box, setBox] = useState(() => (memoryKey && measured.get(memoryKey)) || initialSize || { width: 0, height: 0 });
   const count = Math.max(1, stops), minutesPerStop = Math.round(findSeconds / 60);
   const at = (s: number) => Math.min(count, Math.max(0, s / Math.max(1, findSeconds)));
   const to = at(seconds), ended = to >= count, zone = trailZone(Math.floor(to), count);
@@ -92,7 +106,9 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
     </View>
     <View style={[s.map, fill ? s.mapFill : { height: 380 }]} testID="today-trail-map" onLayout={e => {
       const { width, height } = e.nativeEvent.layout;
-      setBox(previous => previous.width === width && previous.height === height ? previous : { width, height });
+      if (memoryKey) remember(memoryKey, { width, height });
+      // Sub-pixel differences from a remembered size would redraw for nothing.
+      setBox(previous => Math.abs(previous.width - width) < 1 && Math.abs(previous.height - height) < 1 ? previous : { width, height });
     }}
       accessible accessibilityLabel={`Today's trail, ${count * minutesPerStop} minutes long, a find every ${minutesPerStop} minutes. You're in ${zone.name}, ${walked(seconds)} walked, ${Math.min(finds, count)} of ${count} finds. ${label}.`}>
       {box.width > 0 && box.height > 0 && <TrailMap width={box.width} height={box.height} count={count} minutesPerStop={minutesPerStop}

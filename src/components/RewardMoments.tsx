@@ -13,6 +13,7 @@ import { useRewards } from "../hooks/useRewards";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { SETS, STREAK_FRAMES, rewardItem, type RewardItem } from "../services/rewardCatalog";
 import { launchIntroState } from "../services/launchIntroState";
+import { sessionRevealHost } from "../services/sessionReturn";
 import { registerSheetActivity, useActiveSheetCount } from "../utils/sheetActivity";
 import { tapHaptic } from "../utils/tapHaptics";
 import { ExpeditionReveal, PackReveal } from "./rewards/RevealScreens";
@@ -43,7 +44,11 @@ export function momentCopy(item: RewardItem): { eyebrow: string; title: string; 
  * then one pop-up for each other thing earned: a pet, a badge, or the next
  * streak frame. It waits for other sheets and never shows during a session.
  */
-export default function RewardMoments({ insideSession, claimKey = null }: { insideSession: boolean; claimKey?: string | null }) {
+export default function RewardMoments({ insideSession, claimKey = null, sessionRoute = false }: {
+  insideSession: boolean; claimKey?: string | null;
+  /** On the session screen, which shows a session's return screen itself (after its result card). */
+  sessionRoute?: boolean;
+}) {
   const { profile } = useUser();
   const rewards = useRewards();
   const router = useRouter();
@@ -118,7 +123,9 @@ export default function RewardMoments({ insideSession, claimKey = null }: { insi
     const giveUp = setTimeout(() => setAway(null), 1500);
     return () => clearTimeout(giveUp);
   }, [away]);
-  const wanted = !!key && (!!reveal || !!item) && !insideSession && introDone && active && otherSheets === 0 && !(away && away.id === key);
+  const hostedBySession = useSyncExternalStore(sessionRevealHost.subscribe, sessionRevealHost.snapshot, sessionRevealHost.snapshot);
+  const heldBySession = reveal?.kind === "expedition" && (sessionRoute || hostedBySession === reveal.id);
+  const wanted = !!key && (!!reveal || !!item) && !insideSession && !heldBySession && introDone && active && otherSheets === 0 && !(away && away.id === key);
   const [readyFor, setReadyFor] = useState<string | null>(null);
   useEffect(() => {
     if (!wanted || readyFor === key) return;

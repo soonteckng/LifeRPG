@@ -161,7 +161,8 @@ test("closing cancels a pending walk; Reduce Motion opens at the final position 
   } finally { await act(async () => instant.unmount()); }
 });
 
-test("Home reuses the existing refresh on opening/reconnection and retains the map through dismissal", async () => {
+test("Home reuses the existing refresh once the sheet is up, on opening/reconnection, and retains the map through dismissal", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
   const refresh = async () => { reads++; }; let reads = 0, online = true;
   const rewards = { ...base, today: { seconds: 60, finds: 0 }, trail: { findSeconds: 1800, stops: 4, complete: false }, online, refresh };
   const Sheet = load("src/components/rewards/TrailSheet.tsx", {
@@ -176,14 +177,22 @@ test("Home reuses the existing refresh on opening/reconnection and retains the m
   try {
     assert.equal(reads, 0);
     await act(async () => ui.update(React.createElement(Sheet, { ...props, visible: true })));
+    assert.equal(reads, 0, "nothing redraws while the sheet slides up");
+    assert.deepEqual(ui.root.findByType("Trail").props.initialSize, { width: 298, height: ui.root.findByType("Trail").props.initialSize.height }, "the map is drawn with the sheet");
+    assert.ok(ui.root.findByType("Trail").props.initialSize.height >= 220);
+    assert.equal(ui.root.findByType("Trail").props.sizeKey, "home-sheet");
+    await act(async () => t.mock.timers.tick(450));
     assert.equal(reads, 1);
     await act(async () => ui.update(React.createElement(Sheet, { ...props, visible: true })));
+    await act(async () => t.mock.timers.tick(1000));
     assert.equal(reads, 1, "ordinary renders do not add requests");
     await act(async () => ui.update(React.createElement(Sheet, props)));
     assert.equal(ui.root.findAllByType("Trail").length, 1, "AppSheet owns physical unmount after its close animation");
     online = false; await act(async () => ui.update(React.createElement(Sheet, { ...props, visible: true })));
+    await act(async () => t.mock.timers.tick(1000));
     assert.equal(reads, 1);
     online = true; await act(async () => ui.update(React.createElement(Sheet, { ...props, visible: true })));
+    await act(async () => t.mock.timers.tick(450));
     assert.equal(reads, 2, "reconnection uses the shared existing read once");
   } finally { await act(async () => ui.unmount()); }
 });
@@ -211,4 +220,21 @@ test("large text stacks trail statistics and never compresses the map below read
     assert.equal(style(map.props.style).flexShrink, 0);
     assert.match(map.props.accessibilityLabel, /Find ready, awaiting confirmation/);
   } finally { await act(async () => ui.unmount()); }
+});
+
+test("Round 67: the Home sheet's map is drawn with the sheet, and its measured size is remembered for the next opening", async () => {
+  const h = harness();
+  const hasMap = ui => ui.root.findAllByType("Svgdefault").length > 0;
+  let ui;
+  await act(async () => { ui = create(React.createElement(h.Trail, { ...base, sizeKey: "home-sheet", initialSize: { width: 300, height: 400 } })); });
+  assert.equal(hasMap(ui), true, "the first opening draws from its guess, before any layout pass");
+  await act(async () => ui.root.findByProps({ testID: "today-trail-map" }).props.onLayout(layout(310, 420)));
+  assert.equal(ui.root.findAllByType("Svgdefault")[0].props.width, 310, "the real size replaces the guess");
+  await act(async () => ui.unmount());
+  await act(async () => { ui = create(React.createElement(h.Trail, { ...base, sizeKey: "home-sheet" })); });
+  assert.equal(ui.root.findAllByType("Svgdefault")[0].props.width, 310, "the next opening is drawn at the remembered size at once");
+  await act(async () => ui.unmount());
+  await act(async () => { ui = create(React.createElement(h.Trail, { ...base })); });
+  assert.equal(hasMap(ui), false, "a map without a remembered place still waits for its layout");
+  await act(async () => ui.unmount());
 });

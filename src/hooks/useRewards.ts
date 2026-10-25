@@ -4,6 +4,7 @@ import { useAuth } from "../context/AuthContext";
 import { claimedTrail, createRewardsClient, LEGACY_TRAIL, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
 import { createRewardsStore } from "../services/rewardsStore";
 import { normalizeLook } from "../utils/adventurerLook";
+import { sessionTrail } from "../services/sessionTrail";
 
 export const rewardsStore = createRewardsStore(AsyncStorage);
 
@@ -50,6 +51,8 @@ export function useRewards({ load = true }: { load?: boolean } = {}) {
     // Coming back from sessions with something to show opens the return screen.
     claimSessions: async () => {
       const r = await act(c => c.claimSessions);
+      // Kept in the private session record (Settings), so a missing return screen can be traced.
+      sessionTrail("rewards claim", r.ok ? { sessions: r.value.sessions.length, finds: r.value.sessions.reduce((n, x) => n + x.finds.length, 0) } : { error: r.message });
       if (r.ok && r.value.sessions.length) {
         // Every session claimed together shows on one card: all their finds at once.
         const finds = r.value.sessions.flatMap(x => x.finds), seconds = r.value.sessions.reduce((n, x) => n + x.seconds, 0);

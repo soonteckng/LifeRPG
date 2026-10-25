@@ -26,7 +26,7 @@ async function setup(options={}) {
   const calls=[], values=new Map(), modules=new Map();
   let timer={hasOpenSession:false,endingSession:false,awaitingStart:false,isCompleted:false,isRestoring:false,actionBusy:false,
     startFreeTimer:async(...args)=>{calls.push(['start',...args]);return options.start?options.start(...args):options.started??true;},...options.timer};
-  const router={replace:route=>calls.push(['route',route])};
+  const router={dismissTo:route=>calls.push(['route',route]),replace:route=>calls.push(['replace',route])};
   let routine;
   const mocks={
     'react-native':{View:host('View'),ActivityIndicator:host('Spinner')},
@@ -106,7 +106,7 @@ test('a routine deleted after the widget was drawn produces a calm error without
     await ui.remove();await act(async()=>proof.resolve({routineId:ui.routine.id}));
     assert.match(text(ui.root()),/no longer available/);assert.equal(ui.calls.filter(c=>c[0]==='start').length,0);
     assert.equal(ui.root().findAllByType('Spinner').length,0);
-    await act(async()=>ui.root().findByType('Button').props.onPress());assert.deepEqual(ui.calls.at(-1),['route','/']);
+    await act(async()=>ui.root().findByType('Button').props.onPress());assert.deepEqual(ui.calls.at(-1),['replace','/'],'Open Home takes this page\'s place');
   }finally{await ui.cleanup();}
 });
 
@@ -157,4 +157,21 @@ test('offline widget start uses the same account-scoped cache and the existing s
   try{assert.deepEqual(ui.calls.filter(c=>c[0]==='start'),[['start',90,7,'Review notes']]);
     assert.deepEqual(ui.calls.filter(c=>c[0]==='route'),[['route','/session']]);}
   finally{await ui.cleanup();}
+});
+
+test('a widget tap with a session already open goes back to that session screen, never a second copy on top', () => {
+  const { StackRouter } = require('expo-router/build/react-navigation/routers/StackRouter');
+  const router = StackRouter({});
+  const options = { routeNames: ['(tabs)', 'session', 'routine-start'], routeParamList: {}, routeGetIdList: { session: () => 'session' } };
+  const open = { stale: false, type: 'stack', key: 'root', index: 2, routeNames: options.routeNames, preloadedRoutes: [],
+    routes: [{ key: 'tabs-1', name: '(tabs)' }, { key: 'session-1', name: 'session' }, { key: 'start-1', name: 'routine-start', params: { widgetNonce: 'n' } }] };
+  const replaced = router.getStateForAction(open, { type: 'REPLACE', payload: { name: 'session' } }, options);
+  assert.equal(replaced.routes.filter(r => r.name === 'session').length, 2, 'replace stacks a second session screen (the old bug)');
+  const popped = router.getStateForAction(open, { type: 'POP_TO', payload: { name: 'session' } }, options);
+  assert.deepEqual(popped.routes.map(r => r.key), ['tabs-1', 'session-1'], 'dismissTo goes back to the one that is open, still running');
+  const fresh = { ...open, index: 1, routes: [{ key: 'tabs-1', name: '(tabs)' }, { key: 'start-1', name: 'routine-start' }] };
+  const opened = router.getStateForAction(fresh, { type: 'POP_TO', payload: { name: 'session' } }, options);
+  assert.deepEqual(opened.routes.map(r => r.name), ['(tabs)', 'session'], 'with none open, it takes this page\'s place');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src/app/routine-start.tsx'), 'utf8');
+  assert.doesNotMatch(source, /router\.replace\("\/session"\)/);
 });

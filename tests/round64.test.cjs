@@ -57,7 +57,7 @@ test("Home opens today's trail from a map button between your name and Settings;
   assert.match(home, /style=\{styles\.name\} numberOfLines=\{1\} ellipsizeMode="tail"/);
   const Sheet = load("src/components/rewards/TrailSheet.tsx", {
     "@gorhom/bottom-sheet": { BottomSheetScrollView: host("SheetScroll") },
-    "react-native": { View: host("View"), StyleSheet: { create: v => v } }, "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 0 }) },
+    "react-native": { View: host("View"), StyleSheet: { create: v => v }, useWindowDimensions: () => ({ width: 360, height: 640, fontScale: 1 }) }, "react-native-safe-area-context": { useSafeAreaInsets: () => ({ bottom: 0 }) },
     "../AppSheet": props => props.visible ? React.createElement("Sheet", props, props.header, props.children) : null, "../SheetHeader": host("Header"),
     "./TodayTrail": host("Trail"), "../../context/UserContext": { useUser: () => ({ profile: { id: "me", level: 7 } }) },
     "../../hooks/useRewards": { useRewards: () => ({ today: { seconds: 2600, finds: 2 }, trail: { findSeconds: 1200, stops: 6, complete: false }, nextFindSeconds: 1000,

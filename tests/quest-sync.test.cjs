@@ -173,7 +173,7 @@ async function pickerSetup(rows,initial={}){
     './CompletionDetails':{CompletionHero:host('Hero'),CompletionRows:host('Rows')},
     '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),
   };
-  for(const child of ['SaveSuggestedQuest','LevelUpModal','ProgressRing','SessionCountdown','FocusLengthControl','FocusDurationSheet','SheetConfirmation','session/SessionBackdrop']) mocks[`./${child}`]=host(child);
+  for(const child of ['SaveSuggestedQuest','LevelUpModal','ProgressRing','SessionCountdown','FocusLengthControl','FocusDurationSheet','SheetConfirmation','session/SessionBackdrop','session/SessionReveal']) mocks[`./${child}`]=host(child);
   const Screen=load('src/components/SessionScreen.tsx',mocks).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Screen));});
   const text=node=>typeof node==='string'?node:(node.children??[]).map(text).join('');

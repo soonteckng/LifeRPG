@@ -91,7 +91,11 @@ export function createRewardsStore(storage: Storage) {
     queue.set(owner, run);
   };
   const keep = (owner: string, state: RewardsState, quiet: string[] = []) => {
-    set(owner, { state, error: null });
+    // An unchanged reply (most refreshes) keeps the same copy, so nothing that
+    // shows rewards redraws for it, such as Home while a sheet opens.
+    const current = snapshots.get(owner);
+    const same = !!current?.state && JSON.stringify(current.state) === JSON.stringify(state);
+    if (!same || current?.error) set(owner, same ? { error: null } : { state, error: null });
     void storage.setItem(rewardsCacheKey(owner), JSON.stringify(state)).catch(() => {});
     return notice(owner, state.earned, quiet);
   };

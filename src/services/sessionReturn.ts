@@ -24,3 +24,20 @@ export const sessionReturn = {
     remember(key); active = null; notify();
   },
 };
+
+/**
+ * The return screen the session screen is showing right now (its id), so the
+ * reward pop-ups never show the same one again on top, such as over Outfits
+ * opened from it.
+ */
+let hosted: string | null = null;
+const hostListeners = new Set<() => void>();
+export const sessionRevealHost = {
+  snapshot: () => hosted,
+  subscribe(listener: () => void) { hostListeners.add(listener); return () => { hostListeners.delete(listener); }; },
+  /** Returns the release. */
+  hold(id: string) {
+    hosted = id; for (const l of [...hostListeners]) l();
+    return () => { if (hosted !== id) return; hosted = null; for (const l of [...hostListeners]) l(); };
+  },
+};

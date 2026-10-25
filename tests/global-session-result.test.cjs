@@ -60,7 +60,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     '@expo/vector-icons':{Ionicons:host('Icon')},
     './ArrivalBanner':require('./helpers/arrival-banner-mock.cjs'),'./MotionPressable':host('Button'),'./AppText':{Text:host('Text')},'./ProgressRing':host('Ring'),
     './AppHeader':host('Header'),'./AppSheet':host('Sheet'),'./SheetConfirmation':host('Confirm'),
-    './SessionCountdown':host('Countdown'),'./session/SessionBackdrop':host('Backdrop'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
+    './SessionCountdown':host('Countdown'),'./session/SessionBackdrop':host('Backdrop'),'./session/SessionReveal':host('SessionReveal'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
     '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),'../hooks/useReducedMotion':{useReducedMotion:()=>reduced},'../utils/afterTransition':{afterTransition:()=>()=>{}},
     '../utils/sessionTransition':{traceSession(){}},
   };

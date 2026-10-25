@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 66)
+# LifeRPG handoff (after Round 67)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 66 patch, based on `9eaada662fff8f3a83effef5231bc16908ae119b` after Round 65. Prepared locally; user applies and publishes. |
+| Latest delivered round | Round 67 patch, based on `3c84586` (Round 66). Prepared locally; user applies and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 66: full suite **1,575 passed**; final focused checks **73 passed**, including 15 isolated SQL tests. Typecheck and full Expo lint clean. See `docs/round66-trail.md` for verification limits. |
+| Code health | Round 67: full suite **1,585 passed**. Round 66: full suite 1,575 passed; final focused checks **73 passed**, including 15 isolated SQL tests. Typecheck and full Expo lint clean. See `docs/round66-trail.md` for verification limits. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| **Pending SQL** | **Round 66, `20261025090001_round66_daily_trail.sql`, proposal only, NOT applied live.** Four finds at 30/60/90/120 minutes, 120-minute trail, existing planned +50 Stardust end bonus. This replaces the pending Round 64 proposal; do not run the old Round 64 SQL afterward. Publish first, then the user reviews/runs Round 66 SQL. Until then the client follows the old live rules. |
-| Waiting on the phone | Round 65 visual fixes and the real session flow (Start → walk-away → session; finds card → trail walk) haven't been checked on his phone yet. He'll send feedback. |
+| **Pending SQL** | **Round 66, `20261025090001_round66_daily_trail.sql`, proposal only, NOT applied live.** Four finds at 30/60/90/120 minutes, 120-minute trail, existing planned +50 Stardust end bonus. This replaces the pending Round 64 proposal; do not run the old Round 64 SQL afterward. Publish first, then the user reviews/runs Round 66 SQL (re-sent in Round 67 as `round-67-daily-trail.sql`, same content, reviewed by Claude). Until then the client follows the old live rules, which is why the map still says 25 min / 150 min. |
+| Waiting on the phone | Round 67: the after-session order (walk back → result card → finds → trail) now on the session screen itself, the widget double-session/freeze fix, the Home map sheet opening. He'll send feedback. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
 does **not** show in `list_migrations`. That's expected; the live functions match the file.
@@ -120,40 +120,40 @@ commands to copy and paste:
 ```bash
 # 1. One commit for the round, on top of feature/next.
 git add -A src tests docs supabase
-git commit -m "Round 66: <short summary>" -m "- <what changed, one line each>"
+git commit -m "Round 67: <short summary>" -m "- <what changed, one line each>"
 
 # 2. The patch, then prove it applies cleanly to the commit before it.
-git format-patch -1 HEAD --stdout > out/round-66.patch
-git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-66.patch \
+git format-patch -1 HEAD --stdout > out/round-67.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-67.patch \
   && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
 
 # 3. The backup bundle.
 EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-npx expo export --platform android --clear --output-dir dist66 --dump-assetmap
-(cd dist66 && zip -qr ../out/dist-round-66.zip .)
+npx expo export --platform android --clear --output-dir dist67 --dump-assetmap
+(cd dist67 && zip -qr ../out/dist-round-67.zip .)
 ```
 
 Then send him the files (he downloads them to `Downloads`). Don't paste a
 patch into the chat.
 
-**The commands you give him (worked example, Round 66):**
+**The commands you give him (worked example, Round 67):**
 
 ```powershell
-git am "$HOME\Downloads\round-66.patch"
+git am "$HOME\Downloads\round-67.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 66: <short summary>"
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 67: <short summary>"
 ```
 
 If Windows crashes during the bundle step:
 
 ```powershell
-Expand-Archive "$HOME\Downloads\dist-round-66.zip" -DestinationPath dist -Force
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 66" --skip-bundler --input-dir dist
+Expand-Archive "$HOME\Downloads\dist-round-67.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 67" --skip-bundler --input-dir dist
 ```
 
 If the round has SQL, it always comes **after** publishing: "Open
-`round-66-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+`round-67-<name>.sql`, paste it into the Supabase SQL Editor and run it."
 Older installed versions may still call what the SQL changes.
 
 If a patch was built on a commit he doesn't have yet, say which patch goes
@@ -212,7 +212,9 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 2. Night until 90% (`MORNING_AT`), then one fade into morning (`MORNING_FADE_MS` 2500). A finished session stays in morning behind its card; ending early stays at night.
 3. The 5-min break asks first ("Take your 5-minute break?" with Start break / Keep focusing).
 4. On a fresh finish witnessed inside the timer, the character walks back to camp for 1.8 seconds before the result card. It is presentation only; Reduce Motion, recovered results and early End skip it. A bounded fallback and route/account/background cleanup release the card if the animation is interrupted.
-5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** while reward reveals are pending or busy (15 s fallback), so the order is: card → what you found → back to the app last.
+5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** and shows the session's return screen **itself** (`components/session/SessionReveal.tsx`: the finds card if anything was found, then today's trail walk). Order: walk back → result card → finds → trail → back to the app. While the claim is still in flight it waits up to 15 s; while the return screen shows there is no time limit (you close it). Back and swipe-down close the return screen first. `RewardMoments` never shows an expedition reveal while on the session route or while the session screen hosts it (`sessionRevealHost` in `services/sessionReturn.ts`, e.g. Outfits opened from the finds card); one that arrives after you left shows on Home as before.
+6. Widget/deep-link launches (`routine-start.tsx`) use `router.dismissTo("/session")`, never `replace`: `REPLACE` ignores `dangerouslySingular` and stacked a second session screen. `SessionScreen` also recovers a close whose pop was lost (`LOST_EXIT_MS`), so a hidden, input-locked screen can't freeze the app.
+7. The reward claim result is written to the private session record (`sessionTrail("rewards claim")`, Settings long-press shares it), plus `result closed`, `reveal shown`, `reveal closed`.
 
 ---
 
@@ -228,7 +230,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First:** Soon Teck will send his test results for Rounds 64 and 65 (screenshots and numbered issues). Fix those as the next round (Round 66), in the format in section 4.2.
+**First:** Soon Teck will send his test results for Round 67 (screenshots and numbered issues). Fix those as the next round (Round 68), in the format in section 4.2.
 
 Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out of it). Use the list below when he asks for another review, or when a fix touches these areas. Report findings ranked by severity, each with a concrete failure scenario, and fix only after he agrees (crash or data-loss bugs: fix with tests).
 
@@ -301,6 +303,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R67 (Claude):** widget launch never stacks a second session (`dismissTo`), lost close recovery (no frozen screen); the session return screen (finds, then trail) shows on the session screen after the result card instead of as a global pop-up; Home map sheet draws the map with the sheet (first-open size guess, then the remembered measured size, `TodayTrail` `sizeKey`/`initialSize`), defers its refresh until after the slide, and identical reward replies no longer redraw subscribers; reward-flow events in the session record. SQL unchanged from R66 (still pending).
 - **R66 (Codex):** map paints on first measured layout; shared refresh on opening/reconnect; preserved cached rules and coalesced busy reward checks; frozen per-reveal day and walk endpoints; restored return-to-camp with interruption guards. Proposed SQL replaces pending R64 with four 30-minute stops and excludes developer gifts from the trail. Large-text statistics use full-width rows, and the containing page can scroll without compressing the map. See `docs/round66-trail.md`. No live SQL or publication performed.
 - **R65 (Claude):** the level is a long pill drawn in SVG (number exactly centred) right below the picture's ring, never over it; pictures with a level are taller than wide (`levelPill(size, level).room`), so wrappers set only their width. Today's trail fits its space with no scrolling (step from the measured height) and draws after the sheet/screen settles (`afterTransition`); the finds card fades into the trail.
 - **R64 (Claude):** today's trail becomes the rewards (SQL `20261025090000_round64_daily_trail.sql`, run AFTER publishing): a find every 20 focused minutes of the day, 6 stops (120 min), +50 Stardust once a day for reaching the end; past it, minutes give Stardust only. The app reads `findSeconds`/`trailSeconds`/`today.trailComplete` from the state and falls back to the old 25-minute rule (`LEGACY_TRAIL`) on an older server. After a session: one card with every find (≈80% of the screen, finds dealt in turn, Stardust counts up), then today's trail where you walk from `fromSeconds` to now; nothing found goes straight to the trail; "See it in Outfits" from the card visits Outfits and comes back to the same card (`RewardMoments` `away`). Home has a map button between the name and Settings opening `TrailSheet`. The level now hangs below the profile picture (the picture draws smaller to make room). Removed the unused `CampScene` and the Round 63 one-line trail.

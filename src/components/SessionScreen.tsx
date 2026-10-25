@@ -45,11 +45,15 @@ import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
 import { rewardsStore } from "../hooks/useRewards";
-import { sessionReturn, sessionReturnKey } from "../services/sessionReturn";
+import SessionReveal from "./session/SessionReveal";
+import { sessionTrail } from "../services/sessionTrail";
+import { sessionReturn, sessionReturnKey, sessionRevealHost } from "../services/sessionReturn";
 
 type Picker = "duration" | "area" | null;
 /** At most this long the night scene waits for a started session to show. */
 const LAUNCH_WAIT_MS = 4000;
+/** How long a requested pop may take before the screen shows itself again. */
+const LOST_EXIT_MS = 900;
 // useTimer merges its live clock into a new object on each render. Comparing
 // that wrapper's identity would schedule another render forever; compare the
 // actual fields so only a real timer change updates the outgoing snapshot.
@@ -147,6 +151,8 @@ export default function SessionScreen() {
   const detailsOffset = useRef(0);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
+  const exitReadyRef = useRef(exitReady);
+  useEffect(() => { exitReadyRef.current = exitReady; }, [exitReady]);
   const [screenMotion] = useState(() => new Animated.Value(0));
   const [surfaceOpacity] = useState(() => new Animated.Value(1));
   useLayoutEffect(() => {
@@ -321,11 +327,20 @@ export default function SessionScreen() {
     }
     else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); console.warn("[Session] Missing anchored back history"); }
   }, [dismissLayer, navigation, reducedMotion, screenMotion, surfaceOpacity]);
+  const recoverFromLostExit = useCallback((reason: string) => {
+    traceSession("exit recovered", { reason });
+    closing.current = false; exitReadyRef.current = false; setExitReady(false);
+    screenMotion.stopAnimation(); surfaceOpacity.stopAnimation();
+    screenMotion.setValue(1); surfaceOpacity.setValue(1);
+  }, [screenMotion, surfaceOpacity]);
+  // The return screen after a session (below) owns swipes and Back while it shows.
+  const revealShownRef = useRef(false);
+  const closeRevealRef = useRef(() => {});
   // PanResponder registers these callbacks; it never invokes them during render.
   // eslint-disable-next-line react-hooks/refs
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_event, gesture) => {
-      return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
+      return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current && !revealShownRef.current
  && (gesture.y0 < timerBounds.current.top || detailsOffset.current <= 0)
         && gesture.dy > 12 && gesture.dy > Math.abs(gesture.dx) * 1.5;
     },
@@ -371,7 +386,15 @@ export default function SessionScreen() {
   });
   // Release the removal guard before dispatching the pop; no timeout or native
   // exit runs alongside the controlled animation.
-  useEffect(() => { if (exitReady) navigation.goBack(); }, [exitReady, navigation]);
+  useEffect(() => {
+    if (!exitReady) return;
+    navigation.goBack();
+    // A pop can be lost (another screen arriving at that moment, like a widget
+    // launch). Never stay behind invisible and locked: if this screen is still
+    // the one in front shortly after, show it again, ready to use.
+    const check = setTimeout(() => { if (navigation.isFocused?.()) recoverFromLostExit("exit-not-applied"); }, LOST_EXIT_MS);
+    return () => clearTimeout(check);
+  }, [exitReady, navigation, recoverFromLostExit]);
   const heldSessionSurface = useRef(liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded);
   const endAcknowledgement = useRef({ ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed });
   const pendingExit = useRef<{ ownerId: typeof ownerId; source: string } | null>(null);
@@ -381,21 +404,38 @@ export default function SessionScreen() {
   const rewardsOwner = ownerId ?? null;
   const rewardsNow = useSyncExternalStore(useCallback(listener => rewardsStore.subscribe(rewardsOwner, listener), [rewardsOwner]),
     () => rewardsStore.snapshot(rewardsOwner), () => rewardsStore.snapshot(rewardsOwner));
-  const rewardsPending = rewardsNow.reveals.length > 0 || rewardsNow.busy;
+  // This session's return screen (finds, then today's trail). It shows here,
+  // on the session screen, after the result card: never as a separate pop-up.
+  const sessionReveal = rewardsNow.reveals.find((r): r is Extract<typeof r, { kind: "expedition" }> => r.kind === "expedition");
+  const rewardsPending = !!sessionReveal || rewardsNow.busy;
   const [holdForRewards, setHoldForRewards] = useState(false);
+  const revealShown = holdForRewards && !!sessionReveal;
+  useEffect(() => { revealShownRef.current = revealShown; }, [revealShown]);
+  const closeReveal = useCallback(() => {
+    if (!sessionReveal) return;
+    sessionTrail("reveal closed", { finds: sessionReveal.finds.length });
+    rewardsStore.dismissReveal(rewardsOwner, sessionReveal.id);
+  }, [sessionReveal, rewardsOwner]);
+  useEffect(() => { closeRevealRef.current = closeReveal; }, [closeReveal]);
+  const hostedReveal = revealShown ? sessionReveal?.id ?? null : null;
+  useLayoutEffect(() => hostedReveal ? sessionRevealHost.hold(hostedReveal) : undefined, [hostedReveal]);
+  useEffect(() => { if (revealShown) sessionTrail("reveal shown", { finds: sessionReveal?.finds.length ?? 0 }); }, [revealShown, sessionReveal]);
   const rewardsPendingRef = useRef(rewardsPending);
   useEffect(() => { rewardsPendingRef.current = rewardsPending; }, [rewardsPending]);
   useEffect(() => globalSessionLifecycle.subscribe(result => {
     if (!ownerId || result.ownerId !== ownerId || result.scope !== presentationScope || result.sessionId !== (resultSessionId ?? null)) return;
+    sessionTrail("result closed", { reveal: !!sessionReveal, claiming: rewardsNow.busy });
     if (!endRequested && rewardsPending) { setHoldForRewards(true); return; }
     minimise(endRequested ? "session-ended" : "completion");
-  }), [ownerId, presentationScope, resultSessionId, endRequested, minimise, rewardsPending]);
+  }), [ownerId, presentationScope, resultSessionId, endRequested, minimise, rewardsPending, sessionReveal, rewardsNow.busy]);
   useEffect(() => {
-    if (!holdForRewards) return;
-    // Leaves once they're closed; never stranded: if they can't show, leave anyway.
-    const limit = setTimeout(() => { setHoldForRewards(false); minimise("completion"); }, rewardsPending ? 15000 : 0);
+    // While the return screen shows, it's yours: it closes when you're done.
+    if (!holdForRewards || sessionReveal) return;
+    // Still checking what the walk found: wait a while for it, never forever.
+    // Once it's closed (or nothing came), leave.
+    const limit = setTimeout(() => { setHoldForRewards(false); minimise("completion"); }, rewardsNow.busy ? 15000 : 0);
     return () => clearTimeout(limit);
-  }, [holdForRewards, rewardsPending, minimise]);
+  }, [holdForRewards, sessionReveal, rewardsNow.busy, minimise]);
   useEffect(() => {
     const previous = endAcknowledgement.current;
     endAcknowledgement.current = { ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed };
@@ -430,13 +470,18 @@ export default function SessionScreen() {
     liveTimer.isRestoring, liveTimer.actionBusy, liveTimer.restoreError, liveTimer.summaryViewed,
     liveTimer.sessionId, ownerId, endRequested, minimise]);
   useFocusEffect(useCallback(() => {
+    // Coming back to this screen after an exit that never finished: it must
+    // be visible and usable again, never a see-through screen that eats taps.
+    if (closing.current || exitReadyRef.current) recoverFromLostExit("refocused");
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       // Back while setting off stays here, ready, without starting.
       if (departingRef.current) { cancelDeparture(); return true; }
+      // Back on the return screen closes it, like its Continue.
+      if (revealShownRef.current) { closeRevealRef.current(); return true; }
       minimise("android-back"); return true;
     });
     return () => subscription.remove();
-  }, [minimise, cancelDeparture]));
+  }, [minimise, cancelDeparture, recoverFromLostExit]));
 
   const applyDuration = (seconds: number) => {
     if (!validSessionSeconds(seconds)) return;
@@ -617,6 +662,7 @@ export default function SessionScreen() {
         cancelLabel="Keep focusing" confirmLabel="Start break" onCancel={() => setConfirmBreak(false)} onConfirm={() => { setConfirmBreak(false); void timer.pauseTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
+    {revealShown && sessionReveal && <SessionReveal reveal={sessionReveal} onClose={closeReveal} />}
     {intro && <SessionIntroWords minutes={Math.round(timer.duration / 60)} onSkip={() => setSkipToken(n => n + 1)}
       area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />}
     </Animated.View>

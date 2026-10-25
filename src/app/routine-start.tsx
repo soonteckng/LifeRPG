@@ -10,7 +10,11 @@ import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { consumeSavedRoutineWidgetLaunch } from "../services/routineWidgetService";
 import { resolveSavedRoutine } from "../services/savedRoutineService";
 
-/** The native widget supplies a one-use launch proof, never a session command. */
+/**
+ * The native widget supplies a one-use launch proof, never a session command.
+ * It always goes to the one session screen: back to it if it's already open
+ * (never a second copy on top), or in place of this page if it isn't.
+ */
 export default function RoutineStart() {
   const { widgetNonce } = useLocalSearchParams<{ widgetNonce?: string }>();
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), router = useRouter();
@@ -30,17 +34,17 @@ export default function RoutineStart() {
       if (!live()) return;
       if (!launch) { setError("This shortcut needs refreshing. Open your routines to choose it again."); return; }
       const current = view.current.timer;
-      if (current.hasOpenSession || current.endingSession || current.awaitingStart || current.isCompleted) { router.replace("/session"); return; }
+      if (current.hasOpenSession || current.endingSession || current.awaitingStart || current.isCompleted) { router.dismissTo("/session"); return; }
       const routine = await resolveSavedRoutine(scope, launch.routineId);
       if (!live()) return;
       if (!routine || routine.deletedAt !== null) { setError("This routine is no longer available. Choose another in Home."); return; }
       const restored = view.current.timer;
-      if (restored.hasOpenSession || restored.endingSession || restored.awaitingStart || restored.isCompleted) { router.replace("/session"); return; }
+      if (restored.hasOpenSession || restored.endingSession || restored.awaitingStart || restored.isCompleted) { router.dismissTo("/session"); return; }
       if (restored.isRestoring || restored.actionBusy || restored.restoreError) { setError("Your saved session needs attention first. Open Home to continue."); return; }
       const pendingStart = view.current.timer.startFreeTimer(routine.durationSeconds, routine.focusAreaId, routine.name);
       // The controller owns the starting/error state. Open its timer while the
       // server reply waits, just like starting from Home.
-      router.replace("/session");
+      router.dismissTo("/session");
       const started = await pendingStart;
       if (!live()) return;
       if (!started) setError("Your saved session needs attention first. Open Home to continue.");

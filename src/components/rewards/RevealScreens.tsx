@@ -179,7 +179,7 @@ function TrailStep({ reveal, player, onClose }: { reveal: Extract<Reveal, { kind
     <ScrollView style={s.flex} contentContainerStyle={s.trailArea}>
       <TodayTrail fill seconds={trail.seconds} fromSeconds={trail.fromSeconds}
         findSeconds={trail.findSeconds} stops={trail.stops} finds={trail.finds} complete={trail.complete} bonus={reveal.trailStardust ?? 0}
-        nextFindSeconds={trail.nextFindSeconds} pendingFinds={trail.pendingFinds} look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
+        nextFindSeconds={trail.nextFindSeconds} pendingFinds={trail.pendingFinds} sizeKey="return" look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
     </ScrollView>
     <View style={s.bottomStatic}>
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>

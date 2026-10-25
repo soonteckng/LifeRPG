@@ -545,7 +545,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     setNotes:value=>calls.push(["notes",value]),resolveQuestTitle:()=>{},clearCompletionModal:()=>{},acknowledgeSummary:()=>calls.push(["summary-viewed"]),
     ...initial,
   };
-  const router = {canGoBack:()=>true,goBack:()=>calls.push(["dismiss"]),getState:()=>({routes:[{},{}]}),addListener:()=>()=>{}};
+  const router = {canGoBack:()=>true,goBack:()=>calls.push(["dismiss"]),isFocused:()=>state.focused !== false,getState:()=>({routes:[{},{}]}),addListener:()=>()=>{}};
   const quests = {tasks:[{id:7,title:"A long quest title worth finishing",target_minutes:30,subject_id:1,is_due_today:true,is_completed_today:false}],
     subjects:[{id:1,title:"General"}],loading:false,error:false,refresh:async()=>{},...questOverrides};
   const studyChoice={value:questOverrides.studyChoice ?? null,listeners:new Set()};
@@ -576,6 +576,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
       p.visible && React.createElement("Button",{accessibilityLabel:"Done ending session",onPress:p.onClose},"Done")),
     "./AppSheet":(p)=>p.visible?React.createElement("Sheet",p,p.header,p.children):null,
     "./SessionCountdown":p=>React.createElement("DurationControl",p,React.createElement("View",{testID:"session-countdown"})),
+    "./session/SessionReveal":{__esModule:true,default:p=>React.createElement("SessionReveal",p)},
     "./session/SessionBackdrop":{__esModule:true,default:p=>React.createElement("Backdrop",p),SessionIntroWords:p=>React.createElement("IntroWords",p)},
     "./FocusDurationSheet":p=>p.visible?React.createElement("DurationSheet",{...p,onConfirm:seconds=>{p.onSave(seconds);p.onClose();}}):null,
     "./SheetConfirmation":(p)=>React.createElement("Confirm",p),
@@ -1182,6 +1183,21 @@ test("Session surface stays opaque while the reduced-motion preference resolves"
   preference.value=true;await ui.update({});
   assert.equal(surface().props.style.opacity.value,1);
   await ui.cleanup();
+});
+
+test("a close that never pops (a widget launch arriving at that moment) leaves the session visible and usable, never frozen", async () => {
+  const ui = await screenSetup({hasOpenSession:true,isRunning:true}, {}, false, {value:false});
+  try {
+    const surface = () => ui.root().findAllByType("AnimatedView").find(n => n.props.testID === "session-surface");
+    await ui.back();
+    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 1, "it asked to close");
+    assert.equal(surface().props.style.opacity.value, 0, "and faded out");
+    await act(async () => { await new Promise(done => setTimeout(done, 950)); });
+    assert.equal(surface().props.style.opacity.value, 1, "still in front after the pop was lost: visible again");
+    await ui.back();
+    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 2, "and closing works again");
+    assert.equal(ui.calls.some(c => c[0] === "reset" || c[0] === "pause"), false, "the session keeps running throughout");
+  } finally { await ui.cleanup(); }
 });
 
 test("Android keeps Session mounted until exit finishes and rejects repeated close",async()=>{
@@ -2071,12 +2087,13 @@ test("the 5-minute break asks first; keeping focus changes nothing", async () =>
 
 test("a finished session shows its rewards before going back to the app", async () => {
   const rewards = require("./helpers/rewards-store-mock.cjs");
-  rewards.set({ reveals: [{ id: "expedition:s1", kind: "expedition" }] });
+  rewards.set({ reveals: [{ id: "expedition:s1", kind: "expedition", seconds: 1800, finds: [], stardust: 6 }] });
   const ui = await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{questTitle:"Read",durationSeconds:1800,xpEarned:30,goldEarned:5}});
   try {
     await ui.update({isCompleted:false,sessionSummary:null,summaryViewed:true});
     await act(async () => { await new Promise(done => setTimeout(done, 20)); });
     assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 0, "Done stays here while the return screen shows");
+    assert.equal(ui.root().findAllByType("SessionReveal").length, 1, "the return screen shows on the session screen itself");
     await act(async () => rewards.set({ reveals: [] }));
     await act(async () => { await new Promise(done => setTimeout(done, 20)); });
     assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 1, "closing it goes back to the app, last");
