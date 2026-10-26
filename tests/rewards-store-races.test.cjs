@@ -36,6 +36,28 @@ test("a late rewards read cannot roll back a newer claim or its offline cache", 
   assert.equal(store.snapshot("owner").loading, false);
 });
 
+test("a refresh finishing during reveal dismissal cannot requeue its already-shown find", async () => {
+  for (const ticks of [2, 3]) {
+    const { store } = setup();
+    await store.load("owner", { load: async () => state(0) });
+    const earned = { ...state(9), owned: ["tote", "pet_owl"], earned: ["tote", "pet_owl"] };
+    await store.act("owner", async () => earned);
+    store.addReveal("owner", { id: "return:long-session", kind: "expedition", seconds: 2700,
+      finds: [{ item: "tote", rarity: "common", new: true, stardust: 0 }], stardust: 9 });
+    const refreshing = store.load("owner", { load: async () => earned });
+    for (let i = 0; i < ticks; i++) await Promise.resolve();
+    store.dismissReveal("owner", "return:long-session");
+    await refreshing;
+    for (let i = 0; i < 12; i++) await Promise.resolve();
+    assert.deepEqual(store.snapshot("owner").moments, ["pet_owl"], "keep the unrelated milestone but never celebrate the tote twice");
+    assert.deepEqual(store.snapshot("owner").state.owned, ["tote", "pet_owl"], "presentation acknowledgement never removes inventory");
+    // Developer reset/re-earn still uses the normal notice path.
+    await store.act("owner", async () => state(0));
+    await store.act("owner", async () => earned);
+    assert.deepEqual(store.snapshot("owner").moments, ["tote", "pet_owl"]);
+  }
+});
+
 test("a stale failed refresh cannot replace successful claim feedback with a connection error", async () => {
   const { store } = setup();
   await store.load("owner", { load: async () => state(10) });

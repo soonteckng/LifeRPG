@@ -36,6 +36,7 @@ function GiftRow({ gift }: { gift: Gift }) {
     <View style={s.flex}>
       <Text style={s.giftName} numberOfLines={1}>{item.name}</Text>
       <Text style={[s.giftRarity, { color }]}>{RARITY_NAME[gift.rarity]}{item.set ? ` · ${SETS[item.set].name} set` : ""}</Text>
+      {!gift.new && <Text style={s.giftRarity}>Already yours</Text>}
     </View>
     {gift.new ? <View style={s.newPill}><Text style={s.newText}>NEW</Text></View>
       : <View style={s.dustPill}><StardustArt size={13} /><Text style={s.dustText}>{`+${gift.stardust}`}</Text></View>}
@@ -158,6 +159,7 @@ function FindTile({ gift, index, art, columns, big, reduced }: { gift: Gift; ind
     </View>
     <Text style={[s.tileName, big && s.tileNameBig]} numberOfLines={2}>{item.name}</Text>
     <Text style={[s.giftRarity, big && s.rarityBig, { color }]} numberOfLines={1}>{RARITY_NAME[gift.rarity]}{big && item.set ? ` · ${SETS[item.set].name} set` : ""}</Text>
+      {!gift.new && <Text style={s.giftRarity}>Already yours</Text>}
     {gift.new ? <View style={[s.newPill, big && s.pillBig]}><Text style={s.newText}>NEW</Text></View>
       : <View style={[s.dustPill, big && s.pillBig]}><StardustArt size={13} /><Text style={s.dustText}>{`+${gift.stardust}`}</Text></View>}
   </Animated.View>;
@@ -292,7 +294,7 @@ const s = StyleSheet.create({
   gift: { flexDirection: "row", alignItems: "center", gap: 12, padding: 10, borderRadius: 18, backgroundColor: "rgba(255,255,255,0.05)" },
   giftArt: { width: 60, height: 60, borderRadius: 16, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   giftName: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  giftRarity: { fontSize: 13, fontWeight: "600" },
+  giftRarity: { color: colors.secondary, fontSize: 13, fontWeight: "600" },
   newPill: { paddingHorizontal: 9, minHeight: 24, borderRadius: 12, justifyContent: "center", backgroundColor: "#2DD4A7" },
   newText: { color: "#052E25", fontSize: 11, fontWeight: "900", letterSpacing: 1 },
   dustPill: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, minHeight: 24, borderRadius: 12, backgroundColor: "rgba(167,139,250,0.18)" },

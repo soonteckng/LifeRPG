@@ -15,6 +15,7 @@ import Svg, { Defs, Ellipse, LinearGradient, Rect, Stop } from "react-native-svg
 import { colors, edge, radius } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useRewards } from "../hooks/useRewards";
+import { useOfflineReconnect } from "../hooks/useOfflineReconnect";
 import { REWARD_ITEMS, SETS, STREAK_FRAMES, rewardItem, setPieces, type RewardItem, type WearSlot } from "../services/rewardCatalog";
 import { HAIR_COLORS, HAIR_STYLES, SKIN_TONES, type AdventurerLook } from "../utils/adventurerLook";
 
@@ -108,6 +109,14 @@ export default function OutfitsScreen() {
   const STAGE_HEIGHT = screenHeight < 760 ? 210 : 240, roomy = STAGE_HEIGHT >= 240;
   const owned = useMemo(() => new Set(rewards.owned), [rewards.owned]);
   const ready = !!rewards.state?.avatar;
+  const inventoryRetry = useOfflineReconnect({
+    scope: rewards.owner ? `outfits:${rewards.owner}` : null,
+    active: rewards.online && (!ready || !!rewards.error),
+    blocked: rewards.loading || rewards.busy,
+    // Reuse the existing owner-verified read, with one in-flight request and
+    // the same five-second retry budget as the app's connection controls.
+    reconnect: rewards.refresh,
+  });
   const savedKey = editableLook(saved);
   const dirty = editableLook(draft) !== savedKey;
   const editConflict = !!edit && (!edit.ready || edit.base !== savedKey);
@@ -165,7 +174,7 @@ export default function OutfitsScreen() {
   const [a, b] = BG[draft.background] ?? BG.bg_dusk;
 
   const footer = <View style={s.footer}>
-    {!ready ? <Text style={p.caption} accessibilityLiveRegion="polite">Loading your saved look…</Text>
+    {!ready ? <Text style={p.caption} accessibilityLiveRegion="polite">{!rewards.online ? "Connect to load your saved items." : rewards.loading || rewards.busy ? "Loading your saved look…" : "Load your saved items before saving."}</Text>
       : editConflict ? <Text style={p.error} accessibilityRole="alert">Your saved look changed. Reset to review it before saving.</Text>
       : tryingOn.length > 0 ? <Text style={s.preview} accessibilityLiveRegion="polite">{`Trying on ${tryingOn.map(i => i.name).join(", ")}. Take ${tryingOn.length > 1 ? "them" : "it"} off or get ${tryingOn.length > 1 ? "them" : "it"} to save.`}</Text>
       : !rewards.online ? <Text style={p.caption}>Needs internet to save or buy.</Text> : null}
@@ -188,6 +197,14 @@ export default function OutfitsScreen() {
   const fromHome = params.from === "home";
   return <PersonalPage title="Outfits" subtitle="" compact back animateTransition expandFromIcon={fromHome} fallback={fromHome ? "/" : "/profile"} footer={footer} pinned={pinned}>
     <View style={s.stack}>
+      {(!ready || !!rewards.error) && <View style={s.card} testID="outfits-collection-status">
+        <Text style={p.rowTitle} accessibilityLiveRegion="polite">{ready ? "Your saved items are shown." : rewards.online ? "Your collection" : "Your collection needs a connection."}</Text>
+        <Text style={p.caption}>{rewards.loading || rewards.busy || inventoryRetry.checking ? "Loading your items…" : rewards.error || (rewards.online ? "Your items haven't loaded yet." : "Reconnect to load your saved items.")}</Text>
+        {rewards.online && <Pressable testID="outfits-retry-items" accessibilityRole="button" accessibilityLabel="Retry loading your items"
+          accessibilityState={{ disabled: inventoryRetry.disabled }} disabled={inventoryRetry.disabled} onPress={() => void inventoryRetry.retry()} style={p.button}>
+          <Text style={p.buttonText}>{inventoryRetry.checking ? "Checking…" : inventoryRetry.disabled ? "Please wait…" : "Retry loading items"}</Text>
+        </Pressable>}
+      </View>}
       {tab === "look" ? <View style={s.card}>
         <Text style={p.rowTitle}>Skin</Text>
         <View style={s.swatches}>{SKIN_TONES.map((tone, i) => {
@@ -204,7 +221,7 @@ export default function OutfitsScreen() {
             style={[s.swatch, { backgroundColor: h.color }, on && s.swatchOn]} />;
         })}</View>
         <View style={s.pills}><Pill label={draft.look.glasses ? "Glasses on" : "Glasses off"} on={draft.look.glasses} onPress={() => setLook({ glasses: !draft.look.glasses })} /></View>
-      </View> : <>
+      </View> : ready ? <>
       {parts && <View style={s.parts} accessibilityRole="radiogroup">{parts.map(part => <Pill key={part.slot} label={part.label} on={slot === part.slot}
         dot={!!draft.equipped[part.slot]} onPress={() => { setSlot(part.slot); setSelected(null); }} />)}</View>}
       {tab === "picture" && <View style={s.parts} accessibilityRole="radiogroup">{PICTURE_PARTS.map(part => <Pill key={part.value} label={part.label} on={picturePart === part.value}
@@ -222,10 +239,10 @@ export default function OutfitsScreen() {
           <Text style={[s.tileText, !mine && { color: colors.muted }]} numberOfLines={2}>{item.name}</Text>
         </Pressable>;
       })}</View>}
-      </>}
+      </> : null}
 
       {/* Only a locked piece needs a word: how to get it. */}
-      {focus && !has(focus) && focus.kind !== "frame" && <View style={s.card} accessibilityLiveRegion="polite">
+      {ready && focus && !has(focus) && focus.kind !== "frame" && <View style={s.card} accessibilityLiveRegion="polite">
         <Text style={p.rowTitle}>{focus.name}</Text>
         <Text style={p.caption}>{RARITY_NAME[focus.rarity]}{focus.set ? ` · ${SETS[focus.set].name} set` : ""}. {focus.hint}.</Text>
         {!!focus.price && rewards.online && <PersonalButton title={`Get it for ${focus.price} Stardust`} secondary onPress={() => setBuying(focus)} />}

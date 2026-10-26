@@ -51,7 +51,11 @@ export function prefetchProgress(owner: string, timeZone: string, now = new Date
   if (!owner || cache.has(id) || prefetching.has(id)) return;
   const request = loadProgress(period, timeZone, key, owner);
   prefetching.set(id, request);
-  request.then(value => remember(id, value), () => {}).finally(() => prefetching.delete(id));
+  request.then(value => {
+    if (prefetching.get(id) === request) remember(id, value);
+  }, () => {}).finally(() => {
+    if (prefetching.get(id) === request) prefetching.delete(id);
+  });
 }
 
 export function useProgressData(
@@ -62,18 +66,29 @@ export function useProgressData(
 ) {
   const key = periodKey(period, timeZone);
   const id = `${owner}|${key}`;
-  const [data, setData] = useState<ProgressData | null>(() => cache.get(id) ?? null);
+  const [loaded, setLoaded] = useState<{ id: string; value: ProgressData } | null>(() => {
+    const cached = cache.get(id);
+    return cached ? { id, value: cached } : null;
+  });
   const [loading, setLoading] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const generation = useRef(0);
   const focused = useRef(false);
   const lastDay = useRef(period.today);
   const lastCompletion = useRef(completion);
+  const completionChecked = useRef(false);
   // The key fixes the queried dates; read the latest period without making
   // every new period object a new request.
   const latestPeriod = useRef(period);
   useLayoutEffect(() => { latestPeriod.current = period; });
-  const stale = useCallback(() => { for (const value of cache.values()) value.at = 0; }, []);
+  const stale = useCallback(() => {
+    const prefix = `${owner}|`;
+    for (const [scope, value] of cache) if (scope.startsWith(prefix)) value.at = 0;
+    // A Home prefetch begun before the save is not a post-completion read.
+    // Detach it without cancelling shared I/O; its identity fences its late
+    // cache write and cleanup if another prefetch starts meanwhile.
+    for (const scope of prefetching.keys()) if (scope.startsWith(prefix)) prefetching.delete(scope);
+  }, [owner]);
   const refresh = useCallback(async (quiet = false) => {
     const request = ++generation.current;
     if (!quiet) setLoading(true);
@@ -81,15 +96,26 @@ export function useProgressData(
       const value = await (prefetching.get(id) ?? loadProgress(latestPeriod.current, timeZone, key, owner));
       if (generation.current === request) {
         remember(id, value);
-        setData(value);
+        setLoaded({ id, value });
         setErrorKey(null);
       }
     } catch {
-      if (generation.current === request) setErrorKey(key);
+      if (generation.current === request) setErrorKey(id);
     } finally {
       if (generation.current === request) setLoading(false);
     }
   }, [id, key, timeZone, owner]);
+  useLayoutEffect(() => {
+    const firstCompletion = !completionChecked.current && !!completion;
+    completionChecked.current = true;
+    if (!firstCompletion && lastCompletion.current === completion) return;
+    lastCompletion.current = completion;
+    // Invalidate before focus work, including the first visit after a save.
+    // That first visit starts one fresh read instead of joining an old prefetch
+    // or starting duplicate focus/completion reads.
+    stale();
+    if (completion && focused.current) void refresh(true);
+  }, [completion, refresh, stale]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;
@@ -113,12 +139,6 @@ export function useProgressData(
     return () => subscription.remove();
   }, [refresh]);
   useEffect(() => {
-    if (lastCompletion.current === completion) return;
-    lastCompletion.current = completion;
-    stale();
-    if (completion && focused.current) void refresh(true);
-  }, [completion, refresh, stale]);
-  useEffect(() => {
     if (lastDay.current !== period.today) {
       lastDay.current = period.today;
       stale();
@@ -132,9 +152,9 @@ export function useProgressData(
     [],
   );
   return {
-    data: data?.key === key ? data : cache.get(id) ?? null,
+    data: loaded?.id === id ? loaded.value : cache.get(id) ?? null,
     loading,
-    error: errorKey === key,
+    error: errorKey === id,
     refresh,
   };
 }

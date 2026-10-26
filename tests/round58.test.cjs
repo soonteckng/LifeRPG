@@ -163,6 +163,7 @@ test("after a session: one card with every find, then today's trail; a session w
   let r; await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal, player, onClose: () => log.push("close"), onOutfits: item => log.push(`outfits:${item}`) })); });
   assert.match(words(r), /FROM YOUR 45-MINUTE WALK.*You found 2 things.*Red beret.*Common.*NEW.*Canvas tote.*\+5.*\+14 Stardust.*Spend Stardust in Outfits/,
     "every find from the session on one card, and what Stardust is for");
+  assert.match(words(r), /Canvas tote.*Already yours.*\+5/, "duplicate conversion is explained visibly, not only to screen readers");
   assert.equal(r.root.findAllByType("Trail").length, 0, "the trail comes next");
   await press(r, "See it in Outfits");
   assert.deepEqual(log.filter(x => x !== "haptic"), ["outfits:beret"], "Outfits opens on the new find");
@@ -187,11 +188,12 @@ test("after a session: one card with every find, then today's trail; a session w
   assert.match(words(r), /\+56 Stardust/);
   assert.deepEqual([r.root.findByType("Trail").props.bonus, r.root.findByType("Trail").props.complete], [50, true]);
   await act(async () => r.unmount());
-  await act(async () => { r = create(React.createElement(PackReveal, { reveal: { id: "p", kind: "pack", tier: 2, daysInARow: 7, items: [{ item: "bg_sunset", rarity: "rare", new: true, stardust: 0 }], stardust: 41 }, player, onClose() {}, onOutfits() {} })); });
+  await act(async () => { r = create(React.createElement(PackReveal, { reveal: { id: "p", kind: "pack", tier: 2, daysInARow: 7, items: [{ item: "bg_sunset", rarity: "rare", new: true, stardust: 0 }, { item: "tote", rarity: "common", new: false, stardust: 5 }], stardust: 41 }, player, onClose() {}, onOutfits() {} })); });
   assert.match(words(r), /TODAY'S SUPPLY PACK.*Brass pack.*7 days in a row/);
   assert.doesNotMatch(words(r), /Sunset/, "closed until you open it");
   await press(r, "Open your Brass pack");
   assert.match(words(r), /INSIDE YOUR PACK.*Sunset.*NEW.*\+41 Stardust.*Crystal pack/);
+  assert.match(words(r), /Canvas tote.*Already yours.*\+5/);
   assert.equal(r.root.findByType("Pack").props.open, true);
   await act(async () => r.unmount());
 });

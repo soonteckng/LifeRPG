@@ -108,7 +108,7 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
   stop();
 });
 
-async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar } = {}) {
+async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar, refresh } = {}) {
   const log = [];
   const frames = new Map(); let frameId = 0;
   const renders = { adventurer: 0, thumbnails: 0, portrait: 0 };
@@ -121,7 +121,8 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
   });
   const rewards = {
     state: ready ? { avatar: {} } : null,
-    online, busy: false, stardust, owned, earned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame, title: null,
+    owner: "outfits-owner", online, busy: false, loading: false, error: null, stardust, owned, earned, look: LOOK, equipped: { top: "cardigan" }, background: "bg_dusk", frame, title: null,
+    refresh: async () => { log.push(["refresh"]); if (refresh) await refresh(); },
     saveAvatar: async draft => { log.push(["save", draft]); return saveAvatar ? saveAvatar(draft) : { ok: true, value: {} }; },
     buy: async id => { log.push(["buy", id]); return { ok: true, value: {} }; },
   };
@@ -153,6 +154,36 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
   return { r, log, renders, press, tab, button, words, nextFrame, finishFrames, pendingFrames: () => frames.size,
     updateRewards, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
 }
+
+test("unavailable inventory is explained instead of presenting a falsely empty locked collection", async t => {
+  t.mock.timers.enable({apis:["setTimeout"]});
+  let finish;
+  const ui=await outfits({ready:false,owned:[],refresh:()=>new Promise(resolve=>{finish=resolve;})});
+  try {
+    await ui.tab("gear");
+    const tiles=()=>ui.r.root.findAllByType("Press").filter(n=>n.props.accessibilityLabel?.startsWith("Canvas tote,"));
+    assert.equal(tiles().length,0,"unknown ownership must not appear as a locked tote");
+    assert.match(ui.words(),/Your items haven't loaded yet/);
+    const retry=()=>ui.r.root.findAllByType("Press").find(n=>n.props.testID==="outfits-retry-items");
+    assert.equal(retry().props.accessibilityRole,"button");
+    assert.equal(retry().props.accessibilityLabel,"Retry loading your items");
+    await ui.updateRewards({loading:true});
+    assert.match(ui.words(),/Loading your items/);assert.equal(retry().props.disabled,true);
+    await ui.updateRewards({loading:false,busy:true});assert.equal(retry().props.disabled,true);
+    await ui.updateRewards({busy:false});
+    assert.equal(retry().props.disabled,false,"a first read skipped by a busy claim still has a reachable retry even without a load error");
+    assert.deepEqual(ui.log,[],"no polling is added when the claim settles");
+    await act(async()=>{retry().props.onPress();retry().props.onPress();});
+    assert.deepEqual(ui.log,[["refresh"]]);assert.match(ui.words(),/Checking/);
+    await act(async()=>finish());
+    assert.equal(retry().props.disabled,true,"the shared five-second tap budget remains in force");
+    await ui.updateRewards({state:{avatar:{}},error:null,owned:["tote"],earned:["tote"]});
+    assert.equal(tiles().length,1);assert.match(tiles()[0].props.accessibilityLabel,/, owned/);
+    assert.equal(retry(),undefined);
+    await ui.updateRewards({error:"Couldn't refresh your rewards."});
+    assert.match(tiles()[0].props.accessibilityLabel,/, owned/,"a refresh failure keeps cached owned items unlocked");
+  } finally {await act(async()=>ui.r.unmount());}
+});
 
 test("See it in Outfits opens on the item's own category, already tried on", async () => {
   const ui = await outfits({ owned: ["cardigan", "beret", "pet_owl"], params: { show: "pet_owl" } });

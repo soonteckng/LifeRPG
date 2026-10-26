@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 69, phone checks in section 7)
+# LifeRPG handoff (after Round 70, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -8,19 +8,19 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 
 ---
 
-## 1. Where things stand (checked 26 Oct 2026)
+## 1. Where things stand (checked 27 Oct 2026)
 
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 69 patch, based on `9bec9b685548386f4180dc0dca734366bc6c4b30` after Round 68. Prepared locally; Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 70 patch, based on Round 69 (`c2bfd40c617f7e9b7004fe3138b32292cb35578c` in the verification checkout). Round 69 must be applied first. Soon Teck was pushing Round 69 but had not tested it when reporting these Round 68 issues. Prepared locally; he applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 69: **1,638 distinct tests verified passing** across the full run and targeted reruns; no unresolved failures or skips. Two local memory-aborted files and four footer mock failures were rerun successfully. Typecheck, full Expo lint and new-file lint clean. Android export succeeds; native fingerprint unchanged. See `docs/round69-session-polish.md` for exact accounting and phone limits. |
+| Code health | Round 70: **1,657 tests passed in the full run**, zero failures and skips, including isolated PGlite with external networking blocked. Typecheck, full Expo lint and new-file lint clean. Native inputs unchanged. See `docs/round70-background-recovery.md` for reproductions, delivery checks and limits. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Nothing pending. The old Round 64 file must never be run. |
-| Waiting on the phone | Round 69: widget then repeated purple-bar entry; result fade into finds/trail; dawn only in the final 10 focus seconds; minimum one-minute duration. No Android device was connected. Map/squad frame pacing from Round 68 remains a phone check. |
+| Waiting on the phone | Round 70: background completion → result/finds without replay, Profile/Progress update without manual refresh, and inventory loading feedback. Exact user inventory is unconfirmed: username and whether Canvas tote was checked in Gear → Bags remain unanswered. Round 69's entry/fade/dawn/minimum checks and Android frame pacing remain unverified on a phone. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -122,40 +122,40 @@ commands to copy and paste:
 ```bash
 # 1. One commit for the round, on top of feature/next.
 git add -A src tests docs supabase
-git commit -m "Round 69: <short summary>" -m "- <what changed, one line each>"
+git commit -m "Round 70: <short summary>" -m "- <what changed, one line each>"
 
 # 2. The patch, then prove it applies cleanly to the commit before it.
-git format-patch -1 HEAD --stdout > out/round-69.patch
-git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-69.patch \
+git format-patch -1 HEAD --stdout > out/round-70.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-70.patch \
   && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
 
 # 3. The backup bundle.
 EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-npx expo export --platform android --clear --output-dir dist69 --dump-assetmap
-(cd dist69 && zip -qr ../out/dist-round-69.zip .)
+npx expo export --platform android --clear --output-dir dist70 --dump-assetmap
+(cd dist70 && zip -qr ../out/dist-round-70.zip .)
 ```
 
 Then send him the files (he downloads them to `Downloads`). Don't paste a
 patch into the chat.
 
-**The commands you give him (worked example, Round 69):**
+**The commands you give him (worked example, Round 70):**
 
 ```powershell
-git am "$HOME\Downloads\round-69.patch"
+git am "$HOME\Downloads\round-70.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 69: <short summary>"
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 70: <short summary>"
 ```
 
 If Windows crashes during the bundle step:
 
 ```powershell
-Expand-Archive "$HOME\Downloads\dist-round-69.zip" -DestinationPath dist -Force
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 69" --skip-bundler --input-dir dist
+Expand-Archive "$HOME\Downloads\dist-round-70.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 70" --skip-bundler --input-dir dist
 ```
 
 If the round has SQL, it always comes **after** publishing: "Open
-`round-69-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+`round-70-<name>.sql`, paste it into the Supabase SQL Editor and run it."
 Older installed versions may still call what the SQL changes.
 
 If a patch was built on a commit he doesn't have yet, say which patch goes
@@ -234,7 +234,36 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify Round 69 on the installed phone, using these latest reports.**
+**First: verify Round 70 after Round 69 on the installed phone, using the latest reports below.**
+
+**Latest: Round 70 addresses additional Round 68 reports.** Soon Teck had not
+tested Round 69 yet. Keep its fixes and apply Round 70 after it. See
+`docs/round70-background-recovery.md`.
+
+- A 45-minute background session walked back, a pop-up flashed/disappeared and
+  another appeared after dismissal. A repeat-find queue race is reproduced and
+  fixed: an already-running refresh could requeue an item after its reveal was
+  acknowledged. This does not prove every native/modal flash has the same cause;
+  phone timing remains unverified.
+- A find and the daily pack may both have shown Canvas tote, but Profile looked
+  locked/empty. **Do not claim inventory loss or recovery is proven.** Tote is
+  Gear → Bags, not a Profile frame/pet/badge, and it does not auto-equip. A common
+  duplicate is 5 Stardust; the UI now visibly says Already yours. The exact
+  account/item were not confirmed. Only read-only function inspection and an
+  aggregate recent-tote check were made; the aggregate had no matching normal
+  account events and establishes nothing about the user's specific inventory.
+- Progress sometimes updated only on manual refresh. Old Home prefetches could
+  be accepted as post-completion reads in Progress and Profile growth. Both are
+  fixed with invalidation and stale-response fencing. Account switches cannot
+  show the previous owner's Progress history or let their jobs interfere with
+  another owner's Profile request. Done cannot revive an invalidated cache.
+- Outfits no longer presents unknown inventory as an empty locked collection.
+  It shows loading/unavailable feedback and an explicit owner-verified retry,
+  reusing the existing five-second request guard. Cached ownership stays visible
+  on a failed refresh. A read skipped by a busy failed claim remains retryable.
+
+No database, auth, native, config or dependency changes were made. Native work,
+especially combining notifications, **still waits until November 2026**.
 
 Round 69 evidence and limits: `docs/round69-session-polish.md`. The user explicitly
 deferred **all native changes to November 2026**. No database/schema, native,
@@ -356,6 +385,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R70 (Codex):** fixed a refresh requeuing an already-dismissed find; Progress and Profile growth now reject pre-completion prefetches and stale owner callbacks, retain completion invalidation after Done, and preserve cached history on errors. Outfits explains unavailable inventory with a bounded retry and keeps cached owned items; duplicates visibly say Already yours. No economics, SQL, auth, native/config/dependency changes or publication. Exact reported missing inventory and native/modal frame pacing remain unconfirmed. See `docs/round70-background-recovery.md`.
 - **R69 (Codex):** retained widget/dock timer entrance with stale-close fencing; themed different-running-session notice; result modal fades before finds/trail start; dawn only during the final 10 focus seconds and held during pause/break; one-minute minimum for new/edited durations, with old short records/recovery preserved. No SQL/native/config/dependency changes or publication. **Native notification merge explicitly deferred to November 2026.** See `docs/round69-session-polish.md`.
 - **R68 (Codex):** visible dev-only Share session log row; production-compiler regression reproduced with real timer provider/controller/backdrop, then fixed by immutable subscribed completion state. Round 67 result/finds/trail design retained. Widget navigation removes stale launcher history and fences superseded intents; a different running routine gets a clear return action. Stationary map skips unused Reanimated registrations and uses an Android hardware layer; squad portraits avoid redraws and extra wallet loads. No SQL/native/config/dependency changes. See `docs/round68-session-flow.md`.
 - **R67 (Claude):** widget launch never stacks a second session (`dismissTo`), lost close recovery (no frozen screen); the session return screen (finds, then trail) shows on the session screen after the result card instead of as a global pop-up; Home map sheet draws the map with the sheet (first-open size guess, then the remembered measured size, `TodayTrail` `sizeKey`/`initialSize`), defers its refresh until after the slide, and identical reward replies no longer redraw subscribers; reward-flow events in the session record. SQL unchanged from R66; he ran it after publishing (live since 26 Oct).

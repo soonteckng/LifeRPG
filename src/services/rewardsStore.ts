@@ -51,6 +51,9 @@ export function createRewardsStore(storage: Storage) {
   // only marked as seen once it's closed, so nothing is lost if the app closes.
   const seen = new Map<string, Promise<Set<string> | null>>();
   const queue = new Map<string, Promise<void>>();
+  // A refresh notice can already be queued when a reveal closes. Acknowledge
+  // its items in memory now, before the queued durable seen write takes a turn.
+  const dismissing = new Map<string, Set<string>>();
   const readSeen = (owner: string) => {
     if (!seen.has(owner)) seen.set(owner, storage.getItem(rewardsSeenKey(owner)).then(raw => {
       const list: unknown = raw ? JSON.parse(raw) : null;
@@ -68,7 +71,7 @@ export function createRewardsStore(storage: Storage) {
       // The first time on this phone, everything already earned counts as seen.
       if (!known) { writeSeen(owner, new Set(earned)); return; }
       const have = new Set(earned);
-      const next = new Set([...known, ...quiet].filter(id => have.has(id)));
+      const next = new Set([...known, ...quiet, ...(dismissing.get(owner) ?? [])].filter(id => have.has(id)));
       const waiting = (snapshots.get(owner)?.moments ?? []).filter(id => have.has(id) && !next.has(id));
       let fresh = earned.filter(id => !next.has(id) && !waiting.includes(id));
       // Several streak frames at once (a long streak on a first check): only the highest one gets a pop-up.
@@ -84,9 +87,13 @@ export function createRewardsStore(storage: Storage) {
   const dismiss = (owner: string | null, id: string | string[]) => {
     if (!owner) return;
     const ids = Array.isArray(id) ? id : [id];
+    const pending = dismissing.get(owner) ?? new Set<string>();
+    ids.forEach(item => pending.add(item)); dismissing.set(owner, pending);
     set(owner, { moments: (snapshots.get(owner)?.moments ?? []).filter(m => !ids.includes(m)) });
     const run = (queue.get(owner) ?? Promise.resolve()).then(async () => {
       writeSeen(owner, new Set([...((await readSeen(owner)) ?? []), ...ids]));
+      ids.forEach(item => pending.delete(item));
+      if (!pending.size) dismissing.delete(owner);
     }).catch(() => {});
     queue.set(owner, run);
   };
