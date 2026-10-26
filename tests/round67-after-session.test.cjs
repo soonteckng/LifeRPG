@@ -102,6 +102,8 @@ test(`after a session: walk back, the result card, then the finds and the trail 
     assert.equal(result.props.visible,true,'the result card shows after the walk');
     assert.equal(ui.modal().props.visible,false,'the reveal waits for the card');
     await act(async()=>result.props.onClose());
+    assert.equal(ui.root().findAllByType('SessionReveal').length,0,'the reveal must not spend its fade behind the outgoing result modal');
+    assert.deepEqual(ui.calls.filter(c=>c==='route-close'),[],'the route stays while its result fades');
     await act(async()=>result.props.onDismiss?.());
     await wait(600+(options.claimDelay??0)*2);
     assert.equal(ui.given(),true,'the session was claimed');

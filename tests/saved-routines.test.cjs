@@ -109,7 +109,7 @@ test('routine limits bound active records and unsynced queue without dropping wo
 });
 test('routine validation rejects invalid timings, names, ids and wrong-owner caches', () => {
   for (const value of [{...draft,name:''},{...draft,name:' spaced '},{...draft,name:'bad\nname'},{...draft,durationSeconds:28801},{...draft,reminder:{enabled:true,hour:24,minute:0}},{...draft,focusAreaId:0}]) assert.equal(domain.validRoutineDraft(value),false);
-  assert.equal(domain.validRoutineDraft({...draft,durationSeconds:1}),true); assert.equal(domain.validRoutineDraft({...draft,durationSeconds:28800}),true);
+  assert.equal(domain.validRoutineDraft({...draft,durationSeconds:1}),false); assert.equal(domain.validRoutineDraft({...draft,durationSeconds:60}),true); assert.equal(domain.validRoutineDraft({...draft,durationSeconds:28800}),true);
   assert.throws(()=>domain.parseRoutineEnvelope(JSON.stringify({...domain.emptyRoutineEnvelope(scope),scope:{...scope,ownerId:id(9)}}),scope));
 });
 test('routine cache commits preserve exact reminder preferences and exclude presentation-only row fields from queued drafts', async () => {

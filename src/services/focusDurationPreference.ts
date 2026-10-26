@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { validSessionSeconds } from "../utils/sessionSetup";
+import { MIN_SESSION_SECONDS, MAX_SESSION_SECONDS, validSessionSeconds } from "../utils/sessionSetup";
 
 export interface FocusDurationPreference {
   version: 1;
@@ -22,8 +22,12 @@ export function parseFocusDurationPreference(raw: string | null): FocusDurationP
   try {
     const value = JSON.parse(raw ?? "null");
     if (value?.version !== 1 || ![1800, 3600].includes(value.presetSeconds) ||
-      !(value.customSeconds === null || validSessionSeconds(value.customSeconds))) return { ...DEFAULT_FOCUS_DURATION };
-    return { version: 1, presetSeconds: value.presetSeconds, customSeconds: value.customSeconds };
+      !(value.customSeconds === null || typeof value.customSeconds === "number" && Number.isInteger(value.customSeconds)
+        && value.customSeconds > 0 && value.customSeconds <= MAX_SESSION_SECONDS)) return { ...DEFAULT_FOCUS_DURATION };
+    // Only the future editor default changes. Existing sessions and saved
+    // routines keep their recorded duration and recovery rules.
+    return { version: 1, presetSeconds: value.presetSeconds,
+      customSeconds: value.customSeconds === null ? null : Math.max(MIN_SESSION_SECONDS, value.customSeconds) };
   } catch { return { ...DEFAULT_FOCUS_DURATION }; }
 }
 

@@ -1,25 +1,29 @@
 import type { RoutineDraft, RoutineEnvelope, RoutineOperation, SavedRoutine } from "../types/savedRoutine";
 import type { JournalScope } from "../types/sessionJournal";
 import { isJournalUuid, validateJournalScope } from "./sessionJournalSchema";
-import { validSessionSeconds } from "./sessionSetup";
+import { MAX_SESSION_SECONDS, validSessionSeconds } from "./sessionSetup";
 
 export const ROUTINE_LIMIT = 32;
 export const ROUTINE_QUEUE_LIMIT = 64;
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
 const integer = (value: unknown, min: number, max: number): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
-export function validRoutineDraft(value: unknown): value is RoutineDraft {
+/** Stored records and already-queued operations keep their original durations. */
+export function validStoredRoutineDraft(value: unknown): value is RoutineDraft {
   if (!object(value) || typeof value.name !== "string" || value.name !== value.name.trim() || !value.name.length || value.name.length > 80 || /[\u0000-\u001f\u007f]/.test(value.name)) return false;
   const reminder = value.reminder;
-  return (value.focusAreaId === null || integer(value.focusAreaId, 1, Number.MAX_SAFE_INTEGER)) && typeof value.durationSeconds === "number" && validSessionSeconds(value.durationSeconds)
+  return (value.focusAreaId === null || integer(value.focusAreaId, 1, Number.MAX_SAFE_INTEGER)) && integer(value.durationSeconds, 1, MAX_SESSION_SECONDS)
     && object(reminder) && typeof reminder.enabled === "boolean" && integer(reminder.hour, 0, 23) && integer(reminder.minute, 0, 59);
 }
+export function validRoutineDraft(value: unknown): value is RoutineDraft {
+  return validStoredRoutineDraft(value) && validSessionSeconds(value.durationSeconds);
+}
 export function validSavedRoutine(value: unknown): value is SavedRoutine {
-  return validRoutineDraft(value) && object(value) && isJournalUuid(value.id) && integer(value.revision, 0, Number.MAX_SAFE_INTEGER)
+  return validStoredRoutineDraft(value) && object(value) && isJournalUuid(value.id) && integer(value.revision, 0, Number.MAX_SAFE_INTEGER)
     && (value.deletedAt === null || integer(value.deletedAt, 0, Number.MAX_SAFE_INTEGER));
 }
 export function validRoutineOperation(value: unknown): value is RoutineOperation {
   return object(value) && isJournalUuid(value.operationId) && isJournalUuid(value.routineId) && integer(value.expectedRevision, 0, Number.MAX_SAFE_INTEGER)
-    && validRoutineDraft(value.draft) && typeof value.deleted === "boolean";
+    && validStoredRoutineDraft(value.draft) && typeof value.deleted === "boolean";
 }
 export function routineStorageKey(scope: JournalScope): string {
   validateJournalScope(scope);

@@ -393,7 +393,7 @@ test("saved summaries clear in the first render of a different owner, backend or
   for (const kind of ["owner", "backend", "admission"]) {
     const ui = await providerSetup();
     try {
-      await ui.run(s => s.startTimer(1, "Read")); await ui.advance(1);
+      await ui.run(s => s.startTimer(60, "Read")); await ui.advance(60);
       assert.ok(ui.state().sessionSummary);
       const before = ui.summarySnapshots.length;
       await ui.changeScope(kind);
@@ -958,8 +958,8 @@ test("restoration retains sub-minute and mixed durations and legacy activity",as
 
 test("bounds and exact duration labels reject zero and 480:59",()=>{
   const {validSessionSeconds,durationLabel,sessionTime}=load("src/utils/sessionSetup.ts",{});
-  for(const value of [0,-1,28801,28859,1.5,NaN]) assert.equal(validSessionSeconds(value),false);
-  for(const value of [30,60,930,28800]) assert.equal(validSessionSeconds(value),true);
+  for(const value of [0,1,30,59,-1,28801,28859,1.5,NaN]) assert.equal(validSessionSeconds(value),false);
+  for(const value of [60,61,930,28800]) assert.equal(validSessionSeconds(value),true);
   assert.equal(durationLabel(930),"15 min 30 sec");
   assert.equal(durationLabel(30),"30 sec");
   assert.equal(sessionTime(60),"01:00");
@@ -1438,7 +1438,7 @@ test("provider start/pause/resume/end and completion replace or clear both real 
     assert.equal(mock.requests.at(-1).trigger.seconds, 899);
     await ui.run(s => s.resetTimer());
     assert.deepEqual(mock.dismissals.slice(-2), ["life-rpg-ongoing-timer", "life-rpg-completion-timer"]);
-    await ui.run(s => s.startTimer(30)); await ui.advance(31);
+    await ui.run(s => s.startTimer(60)); await ui.advance(61);
     assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
     assert.equal(mock.cancellations.at(-1), "life-rpg-completion-timer");
   } finally { await ui.cleanup(); }
@@ -1501,7 +1501,7 @@ test("Done before a completion reply closes pending presentation, then confirms 
 test("saving an End request clears alerts immediately and never completes while cancellation is pending", async () => {
   const mock = notificationMock(), ui = await providerSetup({ cancelActivitySession: async () => { throw Error("Poor signal"); } }, mock.api);
   try {
-    await ui.run(s => s.startTimer(30));
+    await ui.run(s => s.startTimer(60));
     const scheduled = mock.requests.length;
     await ui.run(s => s.resetTimer());
     assert.equal(ui.state().endingSession, true); assert.equal(ui.state().unsyncedSessionCount, 1);
@@ -1532,10 +1532,10 @@ test("native scheduling/channel/cancellation failures never turn successful time
   }
   const ui = await providerSetup({}, mock.api);
   try {
-    await ui.run(s => s.startTimer(30)); assert.equal(ui.state().isRunning, true);
+    await ui.run(s => s.startTimer(60)); assert.equal(ui.state().isRunning, true);
     await ui.run(s => s.pauseTimer()); assert.equal(ui.state().isRunning, false);
     await ui.run(s => s.resumeTimer()); assert.equal(ui.state().isRunning, true);
-    await ui.advance(31);
+    await ui.advance(61);
     assert.equal(ui.state().actionError, null);
     assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
     await ui.run(s => s.resetTimer()); assert.equal(ui.state().hasOpenSession, false);
@@ -1546,23 +1546,23 @@ test("notification listener initialization failure leaves the timer usable", asy
   mock.api.addNotificationResponseReceivedListener = () => { throw Error("Unavailable native listener"); };
   const ui = await providerSetup({}, mock.api);
   try {
-    await ui.run(s => s.startTimer(30));
+    await ui.run(s => s.startTimer(60));
     assert.equal(ui.state().isRunning, true);
-    await ui.advance(31);
+    await ui.advance(61);
     assert.equal(ui.state().actionError, null);
     assert.equal(ui.calls.filter(([name]) => name === "complete").length, 1);
   } finally { await ui.cleanup(); }
 });
 
- test("Home setup after a saved one-second completion releases the old ID and starts once", async () => {
+ test("Home setup after a saved one-minute completion releases the old ID and starts once", async () => {
   let starts = 0;
   const ui = await providerSetup({
     startActivitySession: async () => `session-${++starts}`,
-    completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0, xp_earned: 0, gold_earned: 0 }),
+    completeActivitySession: async () => ({ ...result, duration_seconds: 60, minutes: 1, xp_earned: 0, gold_earned: 0 }),
   });
   try {
-    await ui.run(s => s.startTimer(1));
-    await ui.advance(1);
+    await ui.run(s => s.startTimer(60));
+    await ui.advance(60);
     assert.ok(ui.state().sessionSummary);
     await ui.run(s => s.clearCompletionModal());
     await ui.run(s => { s.setLinkedTaskId(null); s.setDurationInMinutes(30); });
@@ -1578,24 +1578,24 @@ test("duration changes cannot abandon an in-flight or failed completion", async 
   const pending = deferred();
   const ui = await providerSetup({ completeActivitySession: () => pending.promise });
   try {
-    await ui.run(s => s.startTimer(1));
-    await ui.advance(1);
+    await ui.run(s => s.startTimer(60));
+    await ui.advance(60);
     await ui.run(s => s.setDurationInMinutes(30));
     assert.equal(ui.state().isCompleted, true);
-    assert.equal(ui.state().duration, 1);
+    assert.equal(ui.state().duration, 60);
     await ui.run(() => pending.reject(Error("Offline")));
     await ui.run(s => s.setDurationInMinutes(30));
     assert.equal(ui.state().isCompleted, true);
-    assert.equal(ui.state().duration, 1);
+    assert.equal(ui.state().duration, 60);
     assert.match(ui.state().actionError, /Waiting to confirm your progress/);
   } finally { await ui.cleanup(); }
 });
 
 test("completed setup keeps presets and custom durations editable before the next Start", async () => {
-  const ui = await providerSetup({ completeActivitySession: async () => ({ ...result, duration_seconds: 1, minutes: 0 }) });
+  const ui = await providerSetup({ completeActivitySession: async () => ({ ...result, duration_seconds: 60, minutes: 1 }) });
   try {
-    await ui.run(s => s.startTimer(1));
-    await ui.advance(1);
+    await ui.run(s => s.startTimer(60));
+    await ui.advance(60);
     await ui.run(s => s.setDurationInMinutes(60));
     assert.equal(ui.state().duration, 3600);
     await ui.run(s => s.setDurationInSeconds(2700));
@@ -1610,10 +1610,10 @@ test("completed setup keeps presets and custom durations editable before the nex
 
 test("saved completion carries independent XP banks and server goal credit without local awards", async () => {
   let completions = 0;
-  const ui = await providerSetup({ completeActivitySession: async () => { completions++; return ({ ...result, credit_version: 1, duration_seconds: 30, xp_earned: 1, gold_earned: 0, area_xp_earned: 0, character_remainder_seconds: 15, area_remainder_seconds: 30, daily_completed_seconds: 60, goal_reached_now: true, credited_date: "2026-10-04" }); } });
+  const ui = await providerSetup({ completeActivitySession: async () => { completions++; return ({ ...result, credit_version: 1, duration_seconds: 60, xp_earned: 1, gold_earned: 0, area_xp_earned: 0, character_remainder_seconds: 15, area_remainder_seconds: 30, daily_completed_seconds: 60, goal_reached_now: true, credited_date: "2026-10-04" }); } });
   try {
-    await ui.run(s => s.startTimer(30));
-    await ui.advance(30);
+    await ui.run(s => s.startTimer(60));
+    await ui.advance(60);
     const summary = ui.state().sessionSummary;
     assert.equal(summary.xpEarned, 1);
     assert.equal(summary.areaXpEarned, 0);
@@ -1988,7 +1988,7 @@ test("Quick Start atomically replaces stale quest draft, blocks rapid starts, an
 test("Quick Start can begin after saved completion without cancelling or awarding again", async () => {
   let count=0; const ui=await providerSetup({startActivitySession:async()=>`id-${++count}`});
   try {
-    await ui.run(s=>s.startTimer(1)); await ui.advance(1);
+    await ui.run(s=>s.startTimer(60)); await ui.advance(60);
     assert.ok(ui.state().sessionSummary);
     await ui.run(async s=>assert.equal(await s.startFreeTimer(1800,null),true));
     assert.equal(count,2);
@@ -2002,7 +2002,7 @@ test("Quick Start cannot discard failed completion or restoration and rejects in
   const ui=await providerSetup({completeActivitySession:async()=>{throw Error("Offline");}});
   try {
     await ui.run(async s=>assert.equal(await s.startFreeTimer(0,null),false));
-    await ui.run(s=>s.startTimer(1)); await ui.advance(1);
+    await ui.run(s=>s.startTimer(60)); await ui.advance(60);
     assert.equal(ui.state().sessionSummary,null);
     await ui.run(async s=>assert.equal(await s.startFreeTimer(1800,null),false));
     assert.equal(ui.state().isCompleted,true);
@@ -2413,5 +2413,37 @@ test("the setup centres once as the screen opens; later loading only makes room 
     assert.ok(roomy < centred, "more content moves it up to make room");
     await act(async () => scroll().props.onContentSizeChange(390, 300));
     assert.equal(top(), roomy, "content shrinking back never pulls it down again");
+  } finally { await ui.cleanup(); }
+});
+
+
+test("Round 69: every provider start entry refuses a sub-minute setup before any server mutation", async () => {
+  const ui = await providerSetup();
+  const suggestion = load("src/constants/guidedQuests.ts", {}).suggestedFocus("review-topic");
+  try {
+    for (const seconds of [1, 30, 59]) {
+      await ui.run(s => s.startTimer(seconds));
+      await ui.run(async s => assert.equal(await s.startFreeTimer(seconds, null), false));
+      await ui.run(async s => assert.equal(await s.startSuggestedTimer({ ...suggestion, seconds }, 2), false));
+      await ui.run(s => s.setDurationInSeconds(seconds));
+      await ui.run(s => s.setDurationInMinutes(seconds / 60));
+    }
+    assert.equal(ui.calls.filter(call => call[0] === "start").length, 0);
+    assert.equal(ui.state().hasOpenSession, false);
+    assert.equal(ui.state().duration, 1800, "invalid edits cannot replace the applied duration");
+    await ui.run(s => s.setDurationInSeconds(28800)); assert.equal(ui.state().duration, 28800);
+    await ui.run(async s => assert.equal(await s.startFreeTimer(60, null), true));
+    assert.equal(ui.state().duration, 60); assert.equal(ui.calls.filter(call => call[0] === "start").length, 1);
+  } finally { await ui.cleanup(); }
+});
+
+test("Round 69: recovering an older short session keeps its original duration and completion", async () => {
+  const ui = await providerSetup({ getOpenActivitySession: async () => ({ id: "legacy-short", target_duration_seconds: 30,
+    elapsed_seconds: 0, status: "active", task_id: null, subject_id: null, activity_type: "other", notes: "" }) });
+  try {
+    assert.equal(ui.state().duration, 30); assert.equal(ui.state().hasOpenSession, true);
+    await ui.advance(31);
+    assert.equal(ui.state().isCompleted, true); assert.equal(ui.state().sessionSummary.durationSeconds, 30);
+    assert.equal(ui.calls.filter(call => call[0] === "start").length, 0);
   } finally { await ui.cleanup(); }
 });

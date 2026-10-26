@@ -17,6 +17,7 @@ import { useUser } from "../context/UserContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
 import { focusAreaChoices, focusAreaKind, focusAreaTitle } from "../utils/focusAreas";
 import { validRoutineDraft } from "../utils/savedRoutine";
+import { validSessionSeconds } from "../utils/sessionSetup";
 import { readNotificationPermission, enableNotifications, openNotificationSettings, type NotificationPermission } from "../services/notificationPermissionService";
 import type { RoutineDraft, SavedRoutine } from "../types/savedRoutine";
 import type { Subject } from "../services/taskService";
@@ -108,6 +109,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     if (lock.current) return;
     const next = { ...current, name: current.name.trim() };
     if (!next.name) { setError("Give your routine a name first."); return; }
+    if (!validSessionSeconds(next.durationSeconds)) { setError("Choose a time from 1 minute to 8 hours before saving."); return; }
     if (!validRoutineDraft(next) || (next.reminder.enabled && (!/^\d{1,2}$/.test(hour) || !/^\d{1,2}$/.test(minute)))) { setError("Add a name and choose a valid reminder time, from 00:00 to 23:59."); return; }
     if (next.focusAreaId !== null && !subjects.some(item => item.id === next.focusAreaId)) { setError("Choose an available category before saving."); return; }
     lock.current = true; setBusy(true); const epoch = generation.current;

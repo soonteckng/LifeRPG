@@ -25,7 +25,7 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
   const save = () => {
     if (disabled) return;
     const next = parseDurationFields(minutes.trim(), remainder.trim());
-    if (next === null) { setError("Choose a time from 1 second to 8 hours. Seconds must be between 0 and 59."); return; }
+    if (next === null) { setError("Choose a time from 1 minute to 8 hours. Seconds must be between 0 and 59."); return; }
     onSave(next); onClose();
   };
   // Interactive + adjustResize skips the library's keyboard lift on Android.
@@ -45,7 +45,7 @@ export default function FocusDurationSheet({ seconds, visible, disabled, onClose
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Minutes</Text><SheetTextInput accessibilityLabel="Focus minutes" keyboardType="number-pad" value={minutes} onChangeText={value => { setMinutes(value); setError(""); }} maxLength={3} editable={!disabled} style={p.input} /></View>
         <View style={{ flex: 1, gap: 8 }}><Text style={p.rowTitle}>Seconds</Text><SheetTextInput accessibilityLabel="Focus seconds" keyboardType="number-pad" value={remainder} onChangeText={value => { setRemainder(value); setError(""); }} maxLength={2} editable={!disabled} style={p.input} /></View>
       </View>
-      <Text style={p.caption}>Up to 8 hours. Your suggestion and category stay the same.</Text>
+      <Text style={p.caption}>From 1 minute to 8 hours. Your suggestion and category stay the same.</Text>
       {!!error && <Text accessibilityRole="alert" style={p.error}>{error}</Text>}
     </BottomSheetScrollView>
   </AppSheet>;

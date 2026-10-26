@@ -86,7 +86,7 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
     "../../hooks/useReducedMotion": { useReducedMotion: () => reduced },
   });
   const Backdrop = mod.default;
-  const props = (phase, progress = 0.1, intro = false, skipToken = 0) => ({ phase, progress, walking: phase === "running", intro, skipToken, onIntroEnd: () => ended.push("end") });
+  const props = (phase, progress = 0.1, intro = false, skipToken = 0, secondsLeft = Math.round(1800 * (1 - progress))) => ({ phase, progress, secondsLeft, walking: phase === "running", intro, skipToken, onIntroEnd: () => ended.push("end") });
   const lights = r => r.root.findAllByType("Scene").map(n => n.props.light);
   const layer = (r, light) => { let n = r.root.findAllByType("Scene").find(x => x.props.light === light); while (n && n.type !== "AView") n = n.parent; return n; };
   const opacity = node => [].concat(node.props.style).reduce((o, x) => (x && "opacity" in x ? x.opacity : o), undefined);
@@ -103,10 +103,10 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   assert.deepEqual(lights(r), ["night"], "night while you focus, without drawing hidden dusk or morning scenes");
   // Near the end, one slow fade into morning, never a change every second.
   log.length = 0;
-  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.91))));
-  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.95))));
-  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.99))));
-  assert.deepEqual(log.filter(e => e[0] === "timing"), [["timing", 1, mod.MORNING_FADE_MS]], "one fade, started once");
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.91, false, 0, 10))));
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.95, false, 0, 5))));
+  await act(async () => r.update(React.createElement(Backdrop, props("running", 0.99, false, 0, 1))));
+  assert.deepEqual(log.filter(e => e[0] === "timing"), [["timing", 1, mod.DAWN_SECONDS * 1000]], "one fade, started once");
   assert.equal(opacity(layer(r, "morning")), 1);
   // Finished: the same morning stays behind the card.
   await act(async () => r.update(React.createElement(Backdrop, props("completed", 1))));

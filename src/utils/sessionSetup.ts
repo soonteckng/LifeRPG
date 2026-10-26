@@ -10,9 +10,11 @@ export function sessionTime(seconds: number) {
 }
 
 export const MAX_SESSION_SECONDS = 480 * 60;
+/** New sessions and editable durations start at one minute. */
+export const MIN_SESSION_SECONDS = 60;
 
 export function validSessionSeconds(seconds: number): boolean {
-  return Number.isInteger(seconds) && seconds > 0 && seconds <= MAX_SESSION_SECONDS;
+  return Number.isInteger(seconds) && seconds >= MIN_SESSION_SECONDS && seconds <= MAX_SESSION_SECONDS;
 }
 
 export function parseDurationFields(minutes: string, seconds: string): number | null {

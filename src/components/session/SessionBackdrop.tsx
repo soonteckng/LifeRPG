@@ -14,10 +14,10 @@ type Phase = "setup" | "running" | "paused" | "completed" | "ended";
 export const WALK_MS = 2400;
 /** …then dusk fades into night, slowly, in one go. */
 export const NIGHT_FADE_MS = 2000;
-/** Near the end, night fades into morning, also in one go. */
+/** A stopped session gently returns from dawn to its night scene. */
 export const MORNING_FADE_MS = 2500;
-/** How far through a session morning comes. */
-export const MORNING_AT = 0.9;
+/** Dawn belongs to the final ten focus seconds, regardless of session length. */
+export const DAWN_SECONDS = 10;
 const fill = { position: "absolute" as const, left: 0, top: 0, right: 0, bottom: 0 };
 
 /**
@@ -28,22 +28,28 @@ const fill = { position: "absolute" as const, left: 0, top: 0, right: 0, bottom:
  * morning light behind its card. Ending early keeps the night.
  */
 type BackdropProps = {
-  phase: Phase; progress: number; walking: boolean; intro: boolean; skipToken: number; onIntroEnd: () => void;
+  phase: Phase; progress: number; secondsLeft: number; walking: boolean; intro: boolean; skipToken: number; onIntroEnd: () => void;
   returning?: boolean; onReturnEnd?: () => void;
 };
-const isMorning = ({ phase, progress }: Pick<BackdropProps, "phase" | "progress">) => phase === "completed" || (phase !== "ended" && progress >= MORNING_AT);
+const isMorning = ({ phase, secondsLeft, intro }: Pick<BackdropProps, "phase" | "secondsLeft" | "intro">) => phase === "completed"
+  || ((phase === "running" || phase === "paused") && !intro && Number.isFinite(secondsLeft) && secondsLeft <= DAWN_SECONDS);
 
-export default memo(function SessionBackdrop({ phase, progress, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd }: BackdropProps) {
+export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd }: BackdropProps) {
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const rewards = useRewards({ load: false });
   const shown = phase === "running" || phase === "paused" || phase === "completed" || phase === "ended";
-  const morning = isMorning({ phase, progress });
+  const morning = isMorning({ phase, secondsLeft, intro });
+  const lightMode = phase === "completed" ? "morning" : morning ? phase === "running" && walking ? "dawn" : "hold" : "night";
+  const remaining = useRef(secondsLeft); remaining.current = secondsLeft;
+  // A reopened timer joins its current light instead of replaying dawn from
+  // night. Pause and break can then hold exactly that native animated value.
+  const initialDay = morning ? reduced || phase === "completed" ? 1 : Math.max(0, Math.min(1, 1 - secondsLeft / DAWN_SECONDS)) : 0;
   // Invisible full-screen SVGs still incur native mount and drawing work.
   // Keep only the light on show, plus its neighbour during a crossfade.
-  const [nightMounted, setNightMounted] = useState(!morning);
+  const [nightMounted, setNightMounted] = useState(initialDay < 1);
   const [dayMounted, setDayMounted] = useState(morning);
-  const walk = useSharedValue(intro || phase === "completed" ? 0 : 1), dusk = useSharedValue(intro ? 1 : 0), day = useSharedValue(morning ? 1 : 0);
+  const walk = useSharedValue(intro || phase === "completed" ? 0 : 1), dusk = useSharedValue(intro ? 1 : 0), day = useSharedValue(initialDay);
   const endRef = useRef(onIntroEnd);
   useLayoutEffect(() => { endRef.current = onIntroEnd; }, [onIntroEnd]);
   // One effect runs the setting-off: start it, or (after a skip) finish it quickly.
@@ -77,9 +83,15 @@ export default memo(function SessionBackdrop({ phase, progress, walking, intro, 
   }, [returning, phase, reduced, walk, onReturnEnd]);
   useEffect(() => () => { cancelAnimation(walk); cancelAnimation(dusk); cancelAnimation(day); }, [walk, dusk, day]);
   useEffect(() => {
-    if (reduced) {
+    if (reduced || lightMode === "morning") {
       cancelAnimation(day); day.value = morning ? 1 : 0;
       setNightMounted(!morning); setDayMounted(morning);
+      return;
+    }
+    // A pause or protected break freezes light as well as focus time. Reading
+    // the current native value is unnecessary: cancellation retains it.
+    if (lightMode === "hold") {
+      cancelAnimation(day); setNightMounted(true); setDayMounted(true);
       return;
     }
     let current = true;
@@ -88,9 +100,13 @@ export default memo(function SessionBackdrop({ phase, progress, walking, intro, 
     // The native completion can already be queued for JS when End or Reduce
     // Motion changes the target. Never let that old callback remove its light.
     const settle = () => { if (!current) return; if (morning) setNightMounted(false); else setDayMounted(false); };
-    day.value = withTiming(morning ? 1 : 0, { duration: MORNING_FADE_MS, easing: Easing.inOut(Easing.quad) }, ok => { if (ok) runOnJS(settle)(); });
+    // One UI-thread animation runs to this focus deadline. Ordinary clock
+    // ticks neither redraw the SVGs nor restart the fade; only a hold/resume
+    // or crossing the ten-second boundary changes this effect.
+    const duration = lightMode === "dawn" ? Math.max(0, Math.min(DAWN_SECONDS, remaining.current)) * 1000 : MORNING_FADE_MS;
+    day.value = withTiming(morning ? 1 : 0, { duration, easing: Easing.linear }, ok => { if (ok) runOnJS(settle)(); });
     return () => { current = false; cancelAnimation(day); };
-  }, [morning, reduced, day]);
+  }, [lightMode, morning, reduced, day]);
   const size = height < 720 ? 32 : 40;
   // From big in the foreground at camp to small up the road, where you walk while you focus.
   const top = height * 0.62 - size * 1.45, big = 3.4, startTy = height * 0.93 - (top + size * 0.75 + size * 0.75 * big);

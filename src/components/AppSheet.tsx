@@ -31,7 +31,7 @@ import {
   useWindowDimensions,
 } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { Easing, ReduceMotion, runOnJS, useSharedValue } from "react-native-reanimated";
+import Animated, { cancelAnimation, Easing, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { motion } from "../constants/motion";
 import { registerSheetActivity } from "../utils/sheetActivity";
@@ -66,6 +66,8 @@ interface Props {
   // An action that leaves for another screen skips the slide, so the next
   // screen appears at once instead of after the sheet has visibly closed.
   closeInstantly?: boolean;
+  /** Result-to-reward handoffs fade the whole modal instead of sliding it away. */
+  closeMotion?: "slide" | "fade";
   // One rule for every sheet: short sheets (menus, confirmations, quick
   // choices) float as a card inside the screen; editors and tall lists dock to
   // the screen edges so inputs, the keyboard and Save keep the full width.
@@ -82,6 +84,28 @@ const DismissContext = createContext({
   floating: false,
   setDragging: (_dragging: boolean) => {},
 });
+
+function SheetSurface({ fade, hidden, onHidden, children }: { fade: boolean; hidden: boolean; onHidden: () => void; children: React.ReactNode }) {
+  return fade ? <FadingSheetSurface hidden={hidden} onHidden={onHidden}>{children}</FadingSheetSurface> : <>{children}</>;
+}
+
+function FadingSheetSurface({ hidden, onHidden, children }: { hidden: boolean; onHidden: () => void; children: React.ReactNode }) {
+  const opacity = useSharedValue(1);
+  const latestHidden = useRef(onHidden);
+  useLayoutEffect(() => { latestHidden.current = onHidden; }, [onHidden]);
+  useEffect(() => {
+    let current = true;
+    cancelAnimation(opacity);
+    if (!hidden) { opacity.value = 1; return; }
+    const finished = () => { if (current) latestHidden.current(); };
+    opacity.value = withTiming(0, { duration: 220, reduceMotion: ReduceMotion.System }, done => {
+      if (done) runOnJS(finished)();
+    });
+    return () => { current = false; cancelAnimation(opacity); };
+  }, [hidden, opacity]);
+  const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  return <Animated.View testID="sheet-exit-fade" style={[styles.root, style]}>{children}</Animated.View>;
+}
 
 // Keep the handle component's identity stable while typing or saving.
 function SheetHandle() {
@@ -201,6 +225,7 @@ export default function AppSheet({
   label,
   activityId,
   closeInstantly = false,
+  closeMotion = "slide",
   attached = expanded,
   backdropGlow,
 }: Props) {
@@ -291,7 +316,7 @@ export default function AppSheet({
     if (!visible && mounted) {
       Keyboard.dismiss();
       if (closeInstantly) { latestFinishClose.current(); return; }
-      ref.current?.close();
+      if (closeMotion !== "fade") ref.current?.close();
       // Some Android keyboards swallow the sheet's close callback, which would
       // leave an invisible modal over the screen. Finish the close regardless.
       const fallback = setTimeout(() => { if (!visibleRef.current && mountedRef.current) latestFinishClose.current(); }, 900);
@@ -344,6 +369,7 @@ export default function AppSheet({
       }}
     >
       {mounted && (
+        <SheetSurface fade={closeMotion === "fade"} hidden={!visible} onHidden={finishClose}>
         <GestureHandlerRootView
           style={styles.root}
           accessibilityViewIsModal
@@ -399,6 +425,7 @@ export default function AppSheet({
           </DismissContext.Provider>
           {overlay}
         </GestureHandlerRootView>
+        </SheetSurface>
       )}
     </Modal>
   );

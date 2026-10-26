@@ -136,7 +136,7 @@ test('invalid persisted durations never seed an unsafe timer', () => {
     ...[0, -1, 1.5, 28801, '480'].map(customSeconds => JSON.stringify({ version: 1, presetSeconds: 1800, customSeconds }))]) {
     assert.deepEqual(api.parseFocusDurationPreference(raw), api.DEFAULT_FOCUS_DURATION);
   }
-  for (const seconds of [1, 28800]) assert.equal(api.parseFocusDurationPreference(JSON.stringify({ version: 1, presetSeconds: 1800, customSeconds: seconds })).customSeconds, seconds);
+  for (const seconds of [60, 28800]) assert.equal(api.parseFocusDurationPreference(JSON.stringify({ version: 1, presetSeconds: 1800, customSeconds: seconds })).customSeconds, seconds);
 });
 
 test('the real hook exposes the new owner immediately, then restores only its own preference', async () => {

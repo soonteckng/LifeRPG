@@ -7,7 +7,9 @@ function load(file,mocks,cache=new Map()){
   const filename=path.resolve(__dirname,'..',file);
   if(cache.has(filename))return cache.get(filename).exports;
   const module={exports:{}};cache.set(filename,module);
-  const source=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
+  let input=fs.readFileSync(filename,'utf8');
+  if(cache.compileScreen&&filename.endsWith('SessionScreen.tsx')) input=require('@babel/core').transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
+  const source=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',source)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
     if(name.endsWith('/SessionProtectionControl')) return Object.assign(()=>null,{ProtectionSettingsSheet:()=>null});
@@ -20,14 +22,14 @@ function load(file,mocks,cache=new Map()){
 }
 const host=type=>props=>React.createElement(type,props,props.children);
 const summary={sessionId:'confirmed',durationSeconds:90,xpEarned:1,goldEarned:0,recovered:true,questTitle:'Review your notes',creditVersion:1,areaXpEarned:1,completedAtMs:Date.UTC(2026,9,14,4)};
-async function setup(overrides={},mode='online',pathname='/',withScreen=false){
-  const cache=new Map();
+async function setup(overrides={},mode='online',pathname='/',withScreen=false,options={}){
+  const cache=new Map();cache.compileScreen=options.compiled===true;
   const lifecycle=load('src/services/globalSessionLifecycle.ts',{},cache).globalSessionLifecycle;
   let timer={duration:90,timeLeft:0,isCompleted:false,hasOpenSession:false,endingSession:false,sessionEnded:false,
     actionBusy:false,isRestoring:false,actionError:null,syncStatus:'idle',summaryViewed:false,rewardsVisible:false,clientReported:false,
     sessionId:'local',sessionSummary:null,linkedTaskId:null,targetAttributeId:1,notes:'',recoveredSession:false,...overrides};
   let ownerId='owner-a',backendId='test-backend',admissionEpoch=1;const calls=[];
-  const animations=[];let reduced=false;
+  const animations=[],deferredExits=[];let reduced=options.reduced===true,focused=true;
   const appListeners=new Set();
   const app={currentState:'active',addEventListener:(_event,listener)=>{appListeners.add(listener);return{remove:()=>appListeners.delete(listener)};}};
   const dismissals=[];const unsubscribe=lifecycle.subscribe(result=>dismissals.push(result));
@@ -40,7 +42,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     setDurationInSeconds(){},setDurationInMinutes(){},setTargetAttributeId(){},setLinkedTaskId(){},resolveQuestTitle(){},
   };
   const mocks={
-    'expo-router':{usePathname:()=>pathname,Stack:{Screen:host('Options')},useFocusEffect:effect=>React.useEffect(effect,[effect]),
+    'expo-router':{usePathname:()=>pathname,Stack:{Screen:host('Options')},useFocusEffect:effect=>React.useEffect(()=>focused?effect():undefined,[effect,focused]),
       useNavigation:()=>navigation},
     'expo-router/react-navigation':{usePreventRemove(){}},
     './SessionResultSheet':host('Result'), './SaveSuggestedQuest':host('SaveQuest'), './PostSessionCelebration':host('Celebration'), './RewardMoments':host('RewardMoments'),
@@ -54,7 +56,7 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
       Keyboard:{isVisible:()=>false,dismiss(){},addListener:()=>({remove(){}})},BackHandler:{addEventListener:()=>({remove(){}})},
       PanResponder:{create:handlers=>({panHandlers:handlers})},
       Animated:{View:host('Motion'),Value:class{constructor(value){this.value=value;}setValue(value){this.value=value;}stopAnimation(){}interpolate(){return this;}},
-        timing:(value,config)=>({start(callback){animations.push(config);value.setValue(config.toValue);callback?.({finished:true});},stop(){}})}},
+        timing:(value,config)=>({start(callback){animations.push({...config,fromValue:value.value});if(options.deferExits&&config.toValue===-0.12){deferredExits.push(callback);return;}value.setValue(config.toValue);callback?.({finished:true});},stop(){}})}},
     'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({top:24,bottom:20})},
     '@gorhom/bottom-sheet':{BottomSheetScrollView:host('SheetScroll'),TouchableOpacity:host('Button')},
     '@expo/vector-icons':{Ionicons:host('Icon')},
@@ -64,15 +66,18 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false){
     '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),'../hooks/useReducedMotion':{useReducedMotion:()=>reduced},'../utils/afterTransition':{afterTransition:()=>()=>{}},
     '../utils/sessionTransition':{traceSession(){}},
   };
-  const navigation={canGoBack:()=>true,getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),
+  const navigation={isFocused:()=>focused,canGoBack:()=>true,getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),
     addListener:()=>()=>{},goBack:()=>calls.push('route-close')};
   const Presenter=load('src/components/GlobalRewardListener.tsx',mocks,cache).default;
   const Screen=withScreen?load('src/components/SessionScreen.tsx',mocks,cache).default:null;
   const Tree=()=>React.createElement(React.Fragment,null,Screen&&React.createElement(Screen),React.createElement(Presenter));
+  const entry=load('src/services/sessionEntry.ts',mocks,cache).sessionEntry;
+  if(options.entry)entry.request(...options.entry);
   let renderer;await act(async()=>{renderer=create(React.createElement(Tree));});
   const intro=load('src/services/launchIntroState.ts',mocks,cache).launchIntroState;
   const returning=load('src/services/sessionReturn.ts',mocks,cache);
-  return{calls,dismissals,animations,intro,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
+  return{calls,dismissals,animations,deferredExits,intro,entry,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
+    focus:async value=>{focused=value;await act(async()=>renderer.update(React.createElement(Tree)));},
     returning:()=>returning.sessionReturn.snapshot(),
     reduce:async()=>{reduced=true;await act(async()=>renderer.update(React.createElement(Tree)));},
     app:async state=>act(async()=>{app.currentState=state;for(const listener of appListeners)listener(state);}),
@@ -167,6 +172,8 @@ test('the real timer route and global End sheet stay together through delayed ca
     assert.equal(ui.calls.filter(call=>call==='route-close').length,0,'server End confirmation cannot close the route under its modal');
     assert.equal(ui.animations.some(animation=>animation.toValue===-0.12),false);
     await ui.done();assert.equal(result.props.visible,false);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,0,'the timer waits for the outgoing sheet to fade');
+    await ui.dismiss();
     assert.equal(ui.calls.filter(call=>call==='route-close').length,1);
     assert.equal(ui.calls.filter(call=>call==='end').length,1);
     assert.equal(ui.calls.filter(call=>call==='clear').length,1);
@@ -180,7 +187,7 @@ test('a presentation listener failure cannot prevent Done acknowledgement or oth
   const failing=ui.subscribe(()=>{throw new Error('Navigation is unavailable');});
   const succeeding=ui.subscribe(()=>notified++);
   try {
-    await ui.done();assert.equal(notified,1);
+    await ui.done();assert.equal(notified,0);await ui.dismiss();assert.equal(notified,1);
     assert.equal(ui.calls.filter(call=>call==='viewed').length,1);
     assert.equal(ui.calls.filter(call=>call==='clear').length,1);
     assert.equal(ui.result().props.visible,false);
@@ -197,6 +204,7 @@ test('dismissing the shared End sheet while offline releases its timer route wit
     const requestClose=ui.result().props.onClose;
     await act(async()=>requestClose());await ui.update();
     assert.equal(ui.result().props.visible,false);
+    await ui.dismiss();
     assert.equal(ui.calls.filter(call=>call==='route-close').length,1);
     assert.equal(ui.calls.filter(call=>call==='clear').length,1);
     assert.equal(ui.calls.includes('verify'),false);assert.equal(ui.calls.includes('end'),false);
@@ -230,7 +238,7 @@ test('Done freezes the completed identity and Save draft until the timed dismiss
     await ui.done();assert.equal(result.props.visible,false);assert.equal(result.props.durationSeconds,90);
     assert.equal(result.props.sessionId,'confirmed');assert.equal(result.props.saveAction.props.completion.durationSeconds,90);
     assert.equal(result.props.saveAction.props.disabled,true);
-    assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+    assert.equal(ui.calls.filter(c=>c==='clear').length,0,'keep the receipt until the outgoing sheet has faded');
     await ui.dismiss();assert.equal(result.props.visible,false);
     await ui.update();assert.equal(result.props.visible,false);assert.equal(ui.calls.filter(c=>c==='clear').length,1);
   }finally{await ui.cleanup();}
@@ -302,7 +310,7 @@ test('early End and rejected records use the one shared portal without a complet
     try{
       const result=ui.result();assert.equal(result.props.visible,true);assert.equal(result.props.saveAction,undefined);assert.equal(result.props.xpEarned,undefined);
       assert.equal(result.props.ending,!!overrides.sessionEnded);assert.equal(result.props.rejected,overrides.syncStatus==='rejected');
-      await ui.done();assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+      await ui.done();await ui.dismiss();assert.equal(ui.calls.filter(c=>c==='clear').length,1);
       assert.equal(ui.calls.filter(c=>c==='retry-completion'||c==='retry-end').length,0);
     }finally{await ui.cleanup();}
   }
@@ -317,7 +325,7 @@ test('End keeps its Done action after the cancellation reply clears the controll
     assert.equal(ui.result(),result);assert.equal(result.props.visible,true,'receipt cannot dismiss an unacknowledged notice');
     assert.equal(result.props.ending,true);assert.equal(result.props.pending,false);assert.equal(result.props.syncBusy,false);
     assert.equal(result.props.sessionId,'local');assert.equal(result.props.durationSeconds,90);
-    await ui.done();assert.equal(result.props.visible,false);assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+    await ui.done();assert.equal(result.props.visible,false);await ui.dismiss();assert.equal(ui.calls.filter(c=>c==='clear').length,1);
     assert.deepEqual(ui.dismissals,[{ownerId:'owner-a',scope:JSON.stringify(['test-backend','owner-a',1]),sessionId:'local'}]);
     await ui.dismiss();await ui.update();assert.equal(result.props.visible,false);
   }finally{await ui.cleanup();}
@@ -332,7 +340,7 @@ test('a late Done from a previous admission or backend cannot clear the current 
       await act(async()=>oldDone());
       assert.equal(ui.calls.filter(c=>c==='clear').length,0);assert.equal(ui.dismissals.length,0);
       assert.equal(ui.result().props.visible,true);
-      await ui.done();assert.equal(ui.dismissals.length,1);
+      await ui.done();await ui.dismiss();assert.equal(ui.dismissals.length,1);
       assert.equal(ui.dismissals[0].scope,JSON.stringify([scope[0],'owner-a',scope[1]]));
     }finally{await ui.cleanup();}
   }
@@ -363,6 +371,8 @@ test('repeated Done requests in one event only clear the journal presentation on
   try {
     const done=ui.result().props.onClose;
     await act(async()=>{done();done();});
+    assert.equal(ui.calls.filter(c=>c==='clear').length,0);
+    await ui.dismiss();await ui.dismiss();
     assert.equal(ui.calls.filter(c=>c==='clear').length,1);
   }finally{await ui.cleanup();}
 });
@@ -374,5 +384,112 @@ test('a result found while the app is still opening waits for the launch logo, t
     assert.equal(ui.result().props.visible,false,'never slides over the logo');
     await act(async()=>ui.intro.finish());
     assert.equal(ui.result().props.visible,true,'appears once the app has opened');
+  }finally{await ui.cleanup();}
+});
+
+const entrances=ui=>ui.animations.filter(animation=>animation.toValue===1&&animation.duration===240);
+test('compiled retained Session replays its bottom-up entrance on widget and repeated dock entries, not Outfits return',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:80,sessionId:'client-id',protectionSessionId:'client-id'},'online','/session',true,{compiled:true});
+  try {
+    const surface=ui.root().findByProps({testID:'session-surface'});
+    assert.equal(entrances(ui).length,1);
+    for(let count=2;count<=4;count++) {
+      await act(async()=>ui.root().findByType('Header').props.onBack());
+      await ui.focus(false);
+      // Widget return may preserve this exact native route. A later server id
+      // does not change the durable client id used by the entrance request.
+      await ui.update({sessionId:'server-id'});
+      await act(async()=>ui.entry.request('client-id'));
+      assert.equal(entrances(ui).length,count-1,'never animate the hidden route under the widget or Home');
+      await ui.focus(true);
+      assert.equal(ui.root().findByProps({testID:'session-surface'}),surface,'the same route remains mounted');
+      assert.equal(entrances(ui).length,count,'every explicit entry replays once');
+      assert.equal(entrances(ui).at(-1).fromValue,0,'the motion starts below the viewport');
+      assert.equal(surface.props.style.opacity.value,1);
+      assert.equal(ui.entry.take(ui.entry.snapshot(),'client-id'),false,'focus cannot consume the same request twice');
+    }
+    await ui.focus(false);await ui.focus(true);
+    assert.equal(entrances(ui).length,4,'a temporary Outfits visit has no new entrance request');
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,3);
+  } finally {await ui.cleanup();}
+});
+
+test('first mount consumes its entry once and a pending widget start replays a retained route before its id arrives',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:80,sessionId:'client-id',protectionSessionId:'client-id'},'online','/session',true,{compiled:true,entry:['client-id']});
+  try {
+    assert.equal(entrances(ui).length,1);assert.equal(ui.entry.take(ui.entry.snapshot(),'client-id'),false);
+    await ui.focus(false);
+    await ui.update({hasOpenSession:false,isRunning:false,sessionId:null,protectionSessionId:null,actionBusy:true});
+    await act(async()=>ui.entry.request(null,JSON.stringify(['test-backend','owner-a',1])));
+    await ui.focus(true);assert.equal(entrances(ui).length,2);
+    await ui.update({hasOpenSession:true,isRunning:true,actionBusy:false,sessionId:'new-client',protectionSessionId:'new-client'});
+    assert.equal(entrances(ui).length,2,'the later durable id cannot repeat the pending entrance');
+    await ui.focus(false);
+    await act(async()=>ui.entry.request(null,JSON.stringify(['test-backend','owner-a',1])));
+    await ui.update({},'online','/session','owner-a','test-backend',2);
+    await ui.focus(true);assert.equal(entrances(ui).length,2,'another admission cannot consume the old pending entrance');
+  } finally {await ui.cleanup();}
+});
+
+test('Reduce Motion swaps retained Session entries instantly, with no slide or opacity fade',async()=>{
+  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:80,sessionId:'client-id'},'online','/session',true,{compiled:true,reduced:true,entry:['client-id']});
+  try {
+    assert.equal(entrances(ui).length,0);
+    for(let count=0;count<2;count++) {
+      await act(async()=>ui.root().findByType('Header').props.onBack());await ui.focus(false);
+      const before=ui.animations.length;
+      await act(async()=>ui.entry.request('client-id'));await ui.focus(true);
+      assert.equal(ui.animations.length,before,'entrance creates no animation with Reduce Motion');
+      const surface=ui.root().findByProps({testID:'session-surface'});
+      assert.equal(surface.props.style.opacity.value,1);
+      assert.equal(surface.props.style.transform[0].translateY,0);
+      assert.equal(ui.entry.take(ui.entry.snapshot(),'client-id'),false);
+    }
+  } finally {await ui.cleanup();}
+});
+
+test('an already queued old close callback cannot pop or snap a reopened timer',async()=>{
+  for(const finished of [true,false]) {
+    const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:80,sessionId:'client-id'},'online','/session',true,{compiled:true,deferExits:true});
+    try {
+      await act(async()=>ui.root().findByType('Header').props.onBack());
+      assert.equal(ui.deferredExits.length,1);
+      await act(async()=>ui.entry.request('client-id'));
+      assert.equal(entrances(ui).length,2,'the explicit entry starts its own slide');
+      const surface=ui.root().findByProps({testID:'session-surface'});
+      const position=surface.props.style.transform[0].translateY;
+      // A native completion may already be queued for JS when stopAnimation
+      // cancels the old close. Model the new entrance halfway up the screen.
+      position.setValue(0.4);
+      await act(async()=>ui.deferredExits[0]({finished}));
+      assert.equal(ui.calls.filter(call=>call==='route-close').length,0,'the old callback must not pop the reopened route');
+      assert.equal(position.value,0.4,'the cancelled-close branch must not snap the fresh entrance');
+    } finally {await ui.cleanup();}
+  }
+});
+
+
+test('a completed fade from the previous admission cannot hide or acknowledge the new result',async()=>{
+  const ui=await setup({isCompleted:true,sessionSummary:summary},'online','/session',false,{compiled:true});
+  try {
+    await ui.done();const oldDismiss=ui.result().props.onDismiss;
+    assert.equal(ui.result().props.visible,false);assert.equal(ui.calls.filter(c=>c==='clear').length,0);
+    await ui.update({},'online','/session','owner-a','test-backend',2);
+    assert.equal(ui.result().props.visible,true,'new admission starts with an unblocked presentation');
+    await act(async()=>oldDismiss());
+    assert.equal(ui.result().props.visible,true);assert.equal(ui.calls.filter(c=>c==='clear').length,0);
+    assert.equal(ui.dismissals.length,0);
+    await ui.done();await ui.dismiss();assert.equal(ui.calls.filter(c=>c==='clear').length,1);
+  }finally{await ui.cleanup();}
+});
+
+test('a replacement running session cannot be acknowledged by the outgoing result fade',async()=>{
+  const ui=await setup({isCompleted:true,sessionSummary:summary},'online','/session',false,{compiled:true});
+  try {
+    await ui.done();const oldDismiss=ui.result().props.onDismiss;
+    await ui.update({hasOpenSession:true,isRunning:true,isCompleted:false,sessionSummary:null,sessionId:'replacement'});
+    await act(async()=>oldDismiss());
+    assert.equal(ui.calls.filter(c=>c==='clear'||c==='viewed').length,0);
+    assert.equal(ui.result().props.visible,false);
   }finally{await ui.cleanup();}
 });

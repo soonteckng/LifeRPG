@@ -14,7 +14,7 @@ import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useQuests } from "../context/QuestContext";
 import { lifeAreaColor } from "../utils/lifeAreaColor";
-import { globalSessionLifecycle } from "../services/globalSessionLifecycle";
+import { globalSessionLifecycle, type SessionResultDismissal } from "../services/globalSessionLifecycle";
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { sessionTrail } from "../services/sessionTrail";
 import { launchIntroState } from "../services/launchIntroState";
@@ -49,10 +49,13 @@ export default function GlobalRewardListener() {
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
   const currentOwner = useRef(ownerId);
   const currentScope = useRef(presentationScope);
+  const currentTimer = useRef(timer);
   const closeRequested = useRef(false);
+  const pendingDismissal = useRef<SessionResultDismissal | null>(null);
   useLayoutEffect(() => { currentOwner.current = ownerId; }, [ownerId]);
   useLayoutEffect(() => { currentScope.current = presentationScope; }, [presentationScope]);
-  useLayoutEffect(() => { closeRequested.current = false; }, [accountKey]);
+  useLayoutEffect(() => { currentTimer.current = timer; }, [timer]);
+  useLayoutEffect(() => { closeRequested.current = false; pendingDismissal.current = null; }, [presentationScope]);
   const online = auth.accessMode !== "local-only";
   const summary = timer.sessionSummary;
   const reducedMotion = useReducedMotion();
@@ -130,8 +133,8 @@ export default function GlobalRewardListener() {
   } : null;
   const [closing, setClosing] = useState(false);
   const [held, setHeld] = useState<PresentedResult | null>(null);
-  const [heldAccount, setHeldAccount] = useState(accountKey);
-  if (heldAccount !== accountKey) { setHeldAccount(accountKey); setClosing(false); setHeld(null); }
+  const [heldScope, setHeldScope] = useState(presentationScope);
+  if (heldScope !== presentationScope) { setHeldScope(presentationScope); setClosing(false); setHeld(null); }
   const serialized = candidate && !closing ? JSON.stringify(candidate) : null;
   const heldSerialized = held ? JSON.stringify(held) : null;
   if (serialized && serialized !== heldSerialized) setHeld(candidate);
@@ -150,13 +153,14 @@ export default function GlobalRewardListener() {
   const done = () => {
     sessionTrail("result done", { pending: !!displayed?.props.pending, ending: !!displayed?.props.ending, visible });
     if (!closingOwner || closingOwner !== currentOwner.current || presentationScope !== currentScope.current || closeRequested.current) return;
+    const latest = currentTimer.current;
+    const resultId = displayed?.props.sessionId ?? null;
+    if (latest.hasOpenSession || (latest.sessionSummary?.sessionId ?? latest.sessionId ?? resultId) !== resultId) return;
     closeRequested.current = true;
+    pendingDismissal.current = { ownerId: closingOwner, scope: presentationScope, sessionId: displayed?.props.sessionId ?? null };
     setClosing(true);
-    // The selected row can already be gone after a successful End reply.
-    // Dismiss the held presentation by its identity, never by network state.
-    globalSessionLifecycle.dismissResult({ ownerId: closingOwner, scope: presentationScope, sessionId: displayed?.props.sessionId ?? null });
-    timer.acknowledgeSummary();
-    timer.clearCompletionModal();
+    // Keep the receipt until the sheet has actually faded away. Starting the
+    // trail here would consume its entrance animation behind the native modal.
   };
   const retry = () => {
     sessionTrail("result retry", { pending: !!displayed?.props.pending });
@@ -180,6 +184,19 @@ export default function GlobalRewardListener() {
     saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!shown} completion={displayed.saveCompletion} />}
     onClose={done} onDismiss={() => {
       if (closingOwner !== currentOwner.current || presentationScope !== currentScope.current) return;
+      const dismissed = pendingDismissal.current;
+      if (dismissed && (dismissed.scope !== presentationScope || dismissed.sessionId !== (displayed?.props.sessionId ?? null))) return;
+      if (dismissed && dismissed.scope === presentationScope && dismissed.sessionId === (displayed?.props.sessionId ?? null)) {
+        pendingDismissal.current = null;
+        globalSessionLifecycle.dismissResult(dismissed);
+        // A widget can start another session during the fade. Never acknowledge
+        // or clear that replacement using an outgoing result's callback.
+        const latest = currentTimer.current;
+        if (!latest.hasOpenSession && (latest.sessionSummary?.sessionId ?? latest.sessionId ?? displayed?.props.sessionId ?? null) === dismissed.sessionId) {
+          latest.acknowledgeSummary();
+          latest.clearCompletionModal();
+        }
+      }
       closeRequested.current = false; setClosing(false); if (!candidate) setHeld(null);
     }} onRetry={retry} />
     <SessionSavingOverlay visible={savingShown} />

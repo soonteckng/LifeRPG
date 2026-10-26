@@ -9,7 +9,9 @@ function load(relative,mocks,cache=new Map()) {
   const filename=path.resolve(__dirname,'..',relative);
   if(cache.has(filename))return cache.get(filename).exports;
   const module={exports:{}};cache.set(filename,module);
-  const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{fileName:filename,compilerOptions:{module:ts.ModuleKind.CommonJS,
+  let source=fs.readFileSync(filename,'utf8');
+  if(cache.compileWidget&&filename.endsWith('routine-start.tsx')) source=require('@babel/core').transformSync(source,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
+  const code=ts.transpileModule(source,{fileName:filename,compilerOptions:{module:ts.ModuleKind.CommonJS,
     jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',code)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
@@ -22,8 +24,8 @@ const OWNER_A='11111111-1111-4111-8111-111111111111', OWNER_B='22222222-2222-422
 const draft={name:'Review notes',durationSeconds:90,focusAreaId:7,reminder:{enabled:false,hour:18,minute:30}};
 const text=node=>typeof node==='string'?node:(node.children??[]).map(text).join('');
 async function setup(options={}) {
-  let ownerId=OWNER_A, nonce=Object.hasOwn(options,'nonce')?options.nonce:'widget-nonce-a', sequence=0;
-  const calls=[], values=new Map(), modules=new Map();
+  let ownerId=OWNER_A, admissionEpoch=1, nonce=Object.hasOwn(options,'nonce')?options.nonce:'widget-nonce-a', sequence=0;
+  const calls=[], values=new Map(), modules=new Map(); modules.compileWidget=options.compiled===true;
   let timer={hasOpenSession:false,endingSession:false,awaitingStart:false,isCompleted:false,isRestoring:false,actionBusy:false,
     startFreeTimer:async(...args)=>{calls.push(['start',...args]);return options.start?options.start(...args):options.started??true;},...options.timer};
   const stackRouter = require('expo-router/build/react-navigation/routers/StackRouter').StackRouter({});
@@ -33,13 +35,13 @@ async function setup(options={}) {
   const router={dismissTo:route=>{calls.push(['route',route]); if (stack) navigation.dispatch({ type: 'POP_TO', payload: { name: 'session' } });},replace:route=>calls.push(['replace',route])};
   let routine;
   const mocks={
-    'react-native':{View:host('View'),ActivityIndicator:host('Spinner')},
+    'react-native':{View:host('View'),ScrollView:host('Scroll'),StyleSheet:{create:styles=>styles},ActivityIndicator:host('Spinner')},
     'react-native-safe-area-context':{SafeAreaView:host('SafeArea')},
     'expo-router':{useLocalSearchParams:()=>({widgetNonce:nonce}),useRouter:()=>router,useNavigation:()=>navigation},
-    '../components/AppText':{Text:host('Text')},'../components/MotionPressable':host('Pressable'),'../components/ContentReveal':host('Reveal'),
+    '@expo/vector-icons':{Ionicons:host('Icon')},'../components/AppText':{Text:host('Text')},'../components/MotionPressable':host('Pressable'),'../components/ContentReveal':host('Reveal'),
     '../components/PersonalUI':{p:{},PersonalButton:props=>React.createElement('Button',{onPress:props.onPress},props.title)},
     '../context/TimerContext':{useTimer:()=>timer},
-    '../context/AuthContext':{useAuth:()=>({user:options.mode==='local-only'?null:{id:ownerId},localOwner:{id:ownerId,backendId:'widget-fixture'},accessMode:options.mode??'online'})},
+    '../context/AuthContext':{useAuth:()=>({user:options.mode==='local-only'?null:{id:ownerId},localOwner:{id:ownerId,backendId:'widget-fixture'},accessMode:options.mode??'online',admissionEpoch})},
     '@react-native-async-storage/async-storage':{getItem:async key=>values.get(key)??null,setItem:async(key,value)=>values.set(key,value)},
     'expo-modules-core':{uuid:{v4:()=>`bbbbbbbb-bbbb-4bbb-8bbb-${String(++sequence).padStart(12,'0')}`}},
     '../../lib/supabase':{supabase:{rpc:()=>{throw Error('No live backend requests in route tests');}}},
@@ -50,15 +52,22 @@ async function setup(options={}) {
   // Use the real durable store, resolver and useSyncExternalStore hook. Native
   // proof delivery and the existing session callback are the only action mocks.
   const service=load('src/services/savedRoutineService.ts',mocks,modules),scope={ownerId,backendId:'widget-fixture'};
-  assert.equal(await service.savedRoutineStore.save(scope,draft),true);
-  routine=service.savedRoutineStore.snapshot(scope).routines[0];
+  if(options.legacyDuration) {
+    const { routineStorageKey } = load('src/utils/savedRoutine.ts',mocks,modules);
+    routine={...draft,id:'cccccccc-cccc-4ccc-8ccc-000000000001',durationSeconds:options.legacyDuration,revision:1,deletedAt:null};
+    values.set(routineStorageKey(scope),JSON.stringify({version:1,scope,routines:[routine],pending:[],conflicts:[]}));
+    await service.savedRoutineStore.load(scope);
+  } else {
+    assert.equal(await service.savedRoutineStore.save(scope,draft),true);
+    routine=service.savedRoutineStore.snapshot(scope).routines[0];
+  }
   const Component=load('src/app/routine-start.tsx',mocks,modules).default;
   let renderer;const render=()=>React.createElement(Component);
   await act(async()=>{renderer=create(render());});
-  return{calls,routine,root:()=>renderer.root,stack:()=>stack,back:()=>navigation.dispatch({ type: 'GO_BACK' }),
+  return{calls,routine,entry:load('src/services/sessionEntry.ts',mocks,modules).sessionEntry,root:()=>renderer.root,stack:()=>stack,back:()=>navigation.dispatch({ type: 'GO_BACK' }),
     edit:async changes=>act(async()=>{assert.equal(await service.savedRoutineStore.save(scope,{...draft,...changes},routine.id),true);}),
     remove:async()=>act(async()=>{assert.equal(await service.savedRoutineStore.remove(scope,routine.id),true);}),
-    update:async changes=>act(async()=>{if(changes.ownerId)ownerId=changes.ownerId;if(changes.nonce)nonce=changes.nonce;
+    update:async changes=>act(async()=>{if(changes.ownerId)ownerId=changes.ownerId;if(changes.epoch)admissionEpoch=changes.epoch;if(changes.nonce)nonce=changes.nonce;
       if(changes.timer)timer={...timer,...changes.timer};renderer.update(render());}),
     cleanup:()=>act(async()=>renderer.unmount())};
 }
@@ -215,6 +224,7 @@ test('a different running routine is explained before returning, without replaci
     const button = ui.root().findByProps({ testID: 'widget-return-session' });
     assert.equal(button.props.accessibilityRole, 'button');
     assert.equal(button.props.accessibilityLabel, 'Return to current session');
+    assert.equal(ui.root().findByType('Scroll').findAllByProps({testID:'widget-return-session'}).length,0,'the return action stays outside the scrolling message');
     await act(async () => button.props.onPress());
     assert.deepEqual(ui.calls.filter(call => call[0] === 'route'), [['route', '/session']]);
     assert.equal(ui.calls.filter(call => call[0] === 'start').length, 0);
@@ -260,4 +270,81 @@ test('a newer widget intent supersedes an older pending proof on the same launch
     assert.equal(ui.calls.filter(call => call[0] === 'start').length, 1);
     assert.equal(ui.calls.filter(call => call[0] === 'route').length, 1);
   } finally { await ui.cleanup(); }
+});
+
+
+test('a widget return requests a fresh entrance for the retained current session before navigation', async () => {
+  const ui=await setup({timer:{hasOpenSession:true,sessionId:'server-session',protectionSessionId:'current-session'}});
+  try {
+    const before=ui.entry.snapshot();
+    assert.equal(ui.root().findAllByType('View').filter(node=>node.props.testID==='widget-running-notice').length,1);
+    await act(async()=>ui.root().findByProps({testID:'widget-return-session'}).props.onPress());
+    const after=ui.entry.snapshot();
+    assert.equal(after.sessionId,'current-session');assert.equal(after.sequence,before.sequence+1);
+    assert.deepEqual(ui.calls.filter(call=>call[0]==='route'),[['route','/session']]);
+  } finally {await ui.cleanup();}
+});
+
+test('a fresh widget start requests a scoped entrance before the asynchronous start has a client id',async()=>{
+  const pending=deferred();const ui=await setup({compiled:true,start:()=>pending.promise});
+  try {
+    const request=ui.entry.snapshot();
+    assert.equal(request.sequence,1);assert.equal(request.sessionId,null);
+    assert.equal(request.pendingScope,JSON.stringify(['widget-fixture',OWNER_A,1]));
+    assert.deepEqual(ui.calls.filter(call=>call[0]==='route'),[['route','/session']]);
+    assert.equal(ui.entry.take(request,null,JSON.stringify(['widget-fixture',OWNER_A,2])),false);
+    assert.equal(ui.entry.take(request,null,request.pendingScope),true);
+    await act(async()=>pending.resolve(true));assert.equal(ui.entry.snapshot().sequence,1);
+  } finally {await ui.cleanup();}
+});
+
+test('a proof from a previous admission cannot start or request an entrance after signing back in',async()=>{
+  const proof=deferred();const ui=await setup({compiled:true,proof:()=>proof.promise});
+  try {
+    await ui.update({epoch:2});await act(async()=>proof.resolve({routineId:ui.routine.id}));
+    assert.equal(ui.calls.filter(call=>call[0]==='start'||call[0]==='route').length,0);
+    assert.equal(ui.entry.snapshot().sequence,0);
+  } finally {await ui.cleanup();}
+});
+
+test('a stored short routine stays readable but its widget asks for an edit instead of starting it', async () => {
+  for(const seconds of [1,59]) {
+    const ui=await setup({legacyDuration:seconds});
+    try {
+      assert.match(text(ui.root()),/Choose at least 1 minute for this routine/);
+      assert.equal(ui.calls.filter(call=>call[0]==='start'||call[0]==='route').length,0);
+      assert.equal(ui.root().findAllByType('Spinner').length,0);
+      assert.equal(ui.routine.durationSeconds,seconds,'reading old data does not rewrite it');
+    } finally {await ui.cleanup();}
+  }
+});
+
+test('an old short widget cannot interrupt an already-running session', async () => {
+  const ui=await setup({legacyDuration:30,timer:{hasOpenSession:true,sessionId:'existing'}});
+  try {
+    assert.match(text(ui.root()),/A session is already running/);
+    await act(async()=>ui.root().findByProps({testID:'widget-return-session'}).props.onPress());
+    assert.deepEqual(ui.calls.filter(call=>call[0]==='route'),[['route','/session']]);
+    assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
+  } finally {await ui.cleanup();}
+});
+
+
+test('compiled widget notice keeps superseded proof and return handlers fenced while requesting one fresh entrance',async()=>{
+  const first=deferred(),second=deferred();
+  const ui=await setup({compiled:true,timer:{hasOpenSession:true,sessionId:'compiled-live'},proof:(_scope,nonce)=>nonce==='widget-nonce-a'?first.promise:second.promise});
+  try {
+    await ui.update({nonce:'widget-nonce-b'});
+    await act(async()=>first.resolve({routineId:ui.routine.id}));
+    assert.equal(ui.root().findAllByProps({testID:'widget-return-session'}).length,0);
+    await act(async()=>second.resolve({routineId:ui.routine.id}));
+    const old=ui.root().findByProps({testID:'widget-return-session'}).props.onPress;
+    await ui.update({nonce:'widget-nonce-c'});
+    await act(async()=>old());
+    assert.equal(ui.entry.snapshot().sequence,0);
+    await act(async()=>ui.root().findByProps({testID:'widget-return-session'}).props.onPress());
+    assert.equal(ui.entry.snapshot().sessionId,'compiled-live');assert.equal(ui.entry.snapshot().sequence,1);
+    assert.deepEqual(ui.calls.filter(call=>call[0]==='route'),[['route','/session']]);
+    assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
+  } finally {await ui.cleanup();}
 });

@@ -48,6 +48,7 @@ import { rewardsStore } from "../hooks/useRewards";
 import SessionReveal from "./session/SessionReveal";
 import { sessionTrail } from "../services/sessionTrail";
 import { sessionReturn, sessionReturnKey, sessionRevealHost } from "../services/sessionReturn";
+import { sessionEntry } from "../services/sessionEntry";
 
 type Picker = "duration" | "area" | null;
 /** At most this long the night scene waits for a started session to show. */
@@ -155,12 +156,44 @@ export default function SessionScreen() {
   useEffect(() => { exitReadyRef.current = exitReady; }, [exitReady]);
   const [screenMotion] = useState(() => new Animated.Value(0));
   const [surfaceOpacity] = useState(() => new Animated.Value(1));
+  const entryRequest = useSyncExternalStore(sessionEntry.subscribe, sessionEntry.snapshot, sessionEntry.snapshot);
+  const entrySessionId = liveTimer.protectionSessionId ?? liveTimer.sessionId;
+  const entered = useRef(false);
+  const motionGeneration = useRef(0);
+  const entranceAnimation = useRef<Animated.CompositeAnimation | null>(null);
+  const enterScreen = useCallback(() => {
+    // Widget navigation keeps the one Session route mounted. An explicit
+    // widget/dock entry replays its slide; returning from Outfits does not.
+    if (navigation.isFocused?.() === false) return false;
+    const requested = sessionEntry.take(entryRequest, entrySessionId, presentationScope);
+    if (entered.current && !requested) return false;
+    entered.current = true;
+    motionGeneration.current++;
+    closing.current = false; exitReadyRef.current = false; setExitReady(false);
+    entranceAnimation.current?.stop(); screenMotion.stopAnimation(); surfaceOpacity.stopAnimation();
+    surfaceOpacity.setValue(1); screenMotion.setValue(reducedMotion ? 1 : 0);
+    if (!reducedMotion) {
+      const animation = Animated.timing(screenMotion, { toValue: 1, ...navigationTiming(240) });
+      entranceAnimation.current = animation;
+      animation.start();
+    }
+    return true;
+  }, [navigation, entryRequest, entrySessionId, presentationScope, screenMotion, surfaceOpacity, reducedMotion]);
   useLayoutEffect(() => {
-    if (closing.current) return;
-    const animation = Animated.timing(screenMotion, { toValue: 1, ...navigationTiming(reducedMotion ? 0 : 240) });
-    animation.start();
-    return () => animation.stop();
-  }, [screenMotion, reducedMotion]);
+    return () => {
+      // This counter fences callbacks, not a native view ref. Invalidate the
+      // latest generation on unmount, including entries since this effect ran.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      motionGeneration.current++;
+      entered.current = false; entranceAnimation.current?.stop();
+    };
+  }, []);
+  useLayoutEffect(() => {
+    if (enterScreen()) return;
+    if (reducedMotion && !closing.current) {
+      entranceAnimation.current?.stop(); screenMotion.setValue(1); surfaceOpacity.setValue(1);
+    }
+  }, [enterScreen, reducedMotion, screenMotion, surfaceOpacity]);
   const [opacity] = useState(() => new Animated.Value(1));
   const [timerTranslate] = useState(() => new Animated.Value(0));
   const stageY = useRef<number | null>(null);
@@ -314,12 +347,16 @@ export default function SessionScreen() {
     }
     if (closing.current) return;
     closing.current = true;
+    const generation = ++motionGeneration.current;
     // Target this screen’s native stack directly; never replace/unmount it to close.
     traceSession("native stack close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
     if (navigation.canGoBack()) {
       traceSession("controlled exit start", { reducedMotion });
       Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
       Animated.timing(screenMotion, { toValue: -0.12, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
+        // A widget/dock entry may reopen this retained route before a native
+        // close callback reaches JS. It no longer owns the screen's motion.
+        if (generation !== motionGeneration.current) return;
         traceSession("controlled exit end", { finished });
         if (finished) setExitReady(true);
         else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); }
@@ -329,6 +366,7 @@ export default function SessionScreen() {
   }, [dismissLayer, navigation, reducedMotion, screenMotion, surfaceOpacity]);
   const recoverFromLostExit = useCallback((reason: string) => {
     traceSession("exit recovered", { reason });
+    motionGeneration.current++;
     closing.current = false; exitReadyRef.current = false; setExitReady(false);
     screenMotion.stopAnimation(); surfaceOpacity.stopAnimation();
     screenMotion.setValue(1); surfaceOpacity.setValue(1);
@@ -469,19 +507,25 @@ export default function SessionScreen() {
   }, [liveTimer.hasOpenSession, liveTimer.isCompleted, liveTimer.endingSession, liveTimer.sessionEnded,
     liveTimer.isRestoring, liveTimer.actionBusy, liveTimer.restoreError, liveTimer.summaryViewed,
     liveTimer.sessionId, ownerId, endRequested, minimise]);
+  const focusActions = useRef({ enterScreen, recoverFromLostExit, cancelDeparture, minimise });
+  useLayoutEffect(() => { focusActions.current = { enterScreen, recoverFromLostExit, cancelDeparture, minimise }; },
+    [enterScreen, recoverFromLostExit, cancelDeparture, minimise]);
   useFocusEffect(useCallback(() => {
     // Coming back to this screen after an exit that never finished: it must
     // be visible and usable again, never a see-through screen that eats taps.
-    if (closing.current || exitReadyRef.current) recoverFromLostExit("refocused");
+    // Read the latest actions without treating a timer-id or picker change as
+    // another focus event while the outgoing screen is already closing.
+    const actions = focusActions.current;
+    if (!actions.enterScreen() && (closing.current || exitReadyRef.current)) actions.recoverFromLostExit("refocused");
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       // Back while setting off stays here, ready, without starting.
-      if (departingRef.current) { cancelDeparture(); return true; }
+      if (departingRef.current) { focusActions.current.cancelDeparture(); return true; }
       // Back on the return screen closes it, like its Continue.
       if (revealShownRef.current) { closeRevealRef.current(); return true; }
-      minimise("android-back"); return true;
+      focusActions.current.minimise("android-back"); return true;
     });
     return () => subscription.remove();
-  }, [minimise, cancelDeparture, recoverFromLostExit]));
+  }, []));
 
   const applyDuration = (seconds: number) => {
     if (!validSessionSeconds(seconds)) return;
@@ -555,7 +599,7 @@ export default function SessionScreen() {
   return (
     <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
-    <SessionBackdrop phase={scenePhase} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
+    <SessionBackdrop phase={scenePhase} secondsLeft={timer.timeLeft} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
       walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro}
       returning={returning} onReturnEnd={finishReturn} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>

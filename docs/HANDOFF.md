@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 68, phone checks in section 7)
+# LifeRPG handoff (after Round 69, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,14 +13,15 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 68 patch, based on `3633b6303a77db7de5b48464f06a837988b3090e` after Round 67. Prepared locally; Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 69 patch, based on `9bec9b685548386f4180dc0dca734366bc6c4b30` after Round 68. Prepared locally; Soon Teck applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 68: **1,606 tests passed**, zero failures/skips, with isolated PGlite tests and external-network blocking. Typecheck, full Expo lint and new-file lint clean. Native fingerprint unchanged. See `docs/round68-session-flow.md` for evidence and phone limits. |
+| Code health | Round 69: **1,638 distinct tests verified passing** across the full run and targeted reruns; no unresolved failures or skips. Two local memory-aborted files and four footer mock failures were rerun successfully. Typecheck, full Expo lint and new-file lint clean. Android export succeeds; native fingerprint unchanged. See `docs/round69-session-polish.md` for exact accounting and phone limits. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Nothing pending. The old Round 64 file must never be run. |
-| Waiting on the phone | Round 68: automatic result/Done after return, widget for a different routine then dismiss, map/squad opening smoothness. No Android device was connected during implementation. The 120-minute trail remains confirmed working. |
+| Waiting on the phone | Round 69: widget then repeated purple-bar entry; result fade into finds/trail; dawn only in the final 10 focus seconds; minimum one-minute duration. No Android device was connected. Map/squad frame pacing from Round 68 remains a phone check. |
+| Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
 does **not** show in `list_migrations`. That's expected; the live functions match the file.
@@ -52,6 +53,7 @@ No guilt or punishment mechanics; no ads during focus, auth or recovery.
 10. **Must work on any Android phone**, not just Samsung: small screens, large font scale (up to 1.8×), slow phones, Reduce Motion.
 11. **Quality over speed.** "Dont rush, quality work, without bugs, without errors, and genuinely impressive for users."
 12. Keep the app lean: no unnecessary code, no heavy dependencies.
+13. **26 Oct decision: defer all native changes until next month (November 2026), when the Expo build quota resets.** Do not try to combine notifications through JS or silently build a new APK. Keep the pending work in section 10 and mention it when handing off to Claude.
 
 ### Accounts
 
@@ -120,40 +122,40 @@ commands to copy and paste:
 ```bash
 # 1. One commit for the round, on top of feature/next.
 git add -A src tests docs supabase
-git commit -m "Round 68: <short summary>" -m "- <what changed, one line each>"
+git commit -m "Round 69: <short summary>" -m "- <what changed, one line each>"
 
 # 2. The patch, then prove it applies cleanly to the commit before it.
-git format-patch -1 HEAD --stdout > out/round-68.patch
-git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-68.patch \
+git format-patch -1 HEAD --stdout > out/round-69.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-69.patch \
   && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
 
 # 3. The backup bundle.
 EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-npx expo export --platform android --clear --output-dir dist68 --dump-assetmap
-(cd dist68 && zip -qr ../out/dist-round-68.zip .)
+npx expo export --platform android --clear --output-dir dist69 --dump-assetmap
+(cd dist69 && zip -qr ../out/dist-round-69.zip .)
 ```
 
 Then send him the files (he downloads them to `Downloads`). Don't paste a
 patch into the chat.
 
-**The commands you give him (worked example, Round 68):**
+**The commands you give him (worked example, Round 69):**
 
 ```powershell
-git am "$HOME\Downloads\round-68.patch"
+git am "$HOME\Downloads\round-69.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 68: <short summary>"
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 69: <short summary>"
 ```
 
 If Windows crashes during the bundle step:
 
 ```powershell
-Expand-Archive "$HOME\Downloads\dist-round-68.zip" -DestinationPath dist -Force
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 68" --skip-bundler --input-dir dist
+Expand-Archive "$HOME\Downloads\dist-round-69.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 69" --skip-bundler --input-dir dist
 ```
 
 If the round has SQL, it always comes **after** publishing: "Open
-`round-68-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+`round-69-<name>.sql`, paste it into the Supabase SQL Editor and run it."
 Older installed versions may still call what the SQL changes.
 
 If a patch was built on a commit he doesn't have yet, say which patch goes
@@ -209,12 +211,14 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 ### Session flow after Round 59
 
 1. Start runs the walk-away **before** the session starts (Round 62): you walk away from camp at dusk (`WALK_MS` 2400), then the same scene fades to a very dark night (`NIGHT_FADE_MS` 2000), and only then is `startTimer` called, so the walk takes none of the session's time. Tap anywhere skips (the session starts after the quick fade). Back during the walk cancels it and stays on setup. The night stays up until the session shows as started (`launching`, 4 s fallback; a failed start shows setup again). No walk with Reduce Motion, on Retry, or for a session that's already running.
-2. Night until 90% (`MORNING_AT`), then one fade into morning (`MORNING_FADE_MS` 2500). A finished session stays in morning behind its card; ending early stays at night.
+2. Night until the **last 10 focus seconds** (`DAWN_SECONDS`, Round 69), then a linear fade over the remaining focus seconds. Pause or the protected break freezes the light; Resume continues to the focus deadline. A reopened completed session shows morning immediately; early End returns to night. Ordinary timer ticks do not redraw the scene or restart dawn. New sessions and edited routines require 60 seconds to 8 hours; old short sessions, history and pending sync records remain readable and recoverable.
 3. The 5-min break asks first ("Take your 5-minute break?" with Start break / Keep focusing).
 4. On a fresh finish witnessed inside the timer, the character walks back to camp for 1.8 seconds before the result card. It is presentation only; Reduce Motion, recovered results and early End skip it. A bounded fallback and route/account/background cleanup release the card if the animation is interrupted.
 5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** and shows the session's return screen **itself** (`components/session/SessionReveal.tsx`: the finds card if anything was found, then today's trail walk). Order: walk back → result card → finds → trail → back to the app. While the claim is still in flight it waits up to 15 s; while the return screen shows there is no time limit (you close it). Back and swipe-down close the return screen first. `RewardMoments` never shows an expedition reveal while on the session route or while the session screen hosts it (`sessionRevealHost` in `services/sessionReturn.ts`, e.g. Outfits opened from the finds card); one that arrives after you left shows on Home as before.
 6. Widget/deep-link launches (`routine-start.tsx`) use `router.dismissTo("/session")`, never `replace`: `REPLACE` ignores `dangerouslySingular` and stacked a second session screen. `SessionScreen` also recovers a close whose pop was lost (`LOST_EXIT_MS`), so a hidden, input-locked screen can't freeze the app.
 7. The reward claim result is written to the private session record (`sessionTrail("rewards claim")`, share with Settings > Developer > Share session log), plus `result closed`, `reveal shown`, `reveal closed`.
+8. Round 69: Done fades the whole result modal for 220 ms. Only its actual dismissal notifies the session screen and acknowledges the result, so finds/trail never start their entrance behind the outgoing card. Repeated callbacks, an account/admission change and a replacement running session are fenced. Reduce Motion swaps immediately.
+9. Round 69: widget/purple-bar entry explicitly requests one presentation-only slide on the retained session route. Returning from Outfits does not replay it. A motion generation prevents an old close callback from popping or snapping the new entrance. Focus recovery runs on actual route focus, not ordinary timer-id/picker updates.
 
 ---
 
@@ -230,7 +234,20 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify the Round 68 patch on the installed phone using the four reports below.**
+**First: verify Round 69 on the installed phone, using these latest reports.**
+
+Round 69 evidence and limits: `docs/round69-session-polish.md`. The user explicitly
+deferred **all native changes to November 2026**. No database/schema, native,
+config or dependency changes are part of this round. Do not claim the native
+notification duplication has been fixed.
+
+1. **Widget interaction removes the purple-bar slide-up entrance.** Fixed with an explicit entry request for the retained route, stable focus handling and stale-close callback fencing. Check repeated widget → timer → dismiss → purple bar cycles without killing the app. Returning from Outfits should preserve its existing return, without replaying this entrance.
+2. **Two ongoing notifications during protected focus.** **Deferred, NOT fixed.** Countdown and protection are separate Android foreground notification owners. Combining them safely needs coordinated native lifecycles and a new installed build in November. See section 10; include this in the Claude handoff.
+3. **Done → finds/trail transition looks abrupt.** The result now fades out before the session's return screen begins. Check both no-find and real-find sessions, repeated Done, Back, offline and Reduce Motion. The same saved result and reward claim paths remain in use.
+4. **Different widget routine while another session runs looks too plain.** The message uses the app's card, colours, activity detail and pinned Return action. Only that notice was restyled. Small screen and large text were rendered on web; native frame pacing remains unverified.
+5. **Dawn should start only in the final 10 seconds; duration must be at least one minute.** Check 1-minute and longer focus, pause/break in the final 10 seconds, background/reopen and Reduce Motion. Just focus, routine editors/play, widget launches and Study share the minimum. Existing sub-minute saved routines need editing before a new start; their data, queued changes and old session recovery are preserved.
+
+### Previous Round 67 reports and Round 68 diagnosis (history)
 
 Round 68 fixes and reproduction evidence are documented in `docs/round68-session-flow.md`.
 The production-compiled result gate was reproduced failing before its fix. The
@@ -315,6 +332,20 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 
 ## 10. Native build list (one future `eas build`, not OTA)
 
+**User decision, 26 Oct: all native work waits until November 2026, after Expo's
+build quota resets. Round 69 is JS-only. Do not build or publish for him.**
+
+**Add to the next approved native round: combine the two protected-session
+notifications.** `ProtectionService` owns foreground ID `84103` (channel
+`liferpg_protection_preview`), while `CountdownNotifications` owns `81741`
+(activity name, countdown, Break/End actions). JS cannot safely merge these.
+Do not merely give them the same ID: independent updates, cancellation,
+`stopForeground(REMOVE)`, break/expiry/repair and process restart can remove or
+resurrect the other service's notification. Coordinate one owner/lifecycle,
+preserve countdown/name/controls and foreground-service requirements, then test
+break, resume, End, finish, permission loss, background and process recovery on
+an installed Android build. **Still two notifications until that build.**
+
 Calendar sync (top priority) · app block list · ads and billing · notification
 icon · swipe-away notification · 1 s countdown offset · study widget · in-app
 Google sign-in sheet · CAPTCHA · lock-screen focus view (`showWhenLocked`) ·
@@ -325,6 +356,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R69 (Codex):** retained widget/dock timer entrance with stale-close fencing; themed different-running-session notice; result modal fades before finds/trail start; dawn only during the final 10 focus seconds and held during pause/break; one-minute minimum for new/edited durations, with old short records/recovery preserved. No SQL/native/config/dependency changes or publication. **Native notification merge explicitly deferred to November 2026.** See `docs/round69-session-polish.md`.
 - **R68 (Codex):** visible dev-only Share session log row; production-compiler regression reproduced with real timer provider/controller/backdrop, then fixed by immutable subscribed completion state. Round 67 result/finds/trail design retained. Widget navigation removes stale launcher history and fences superseded intents; a different running routine gets a clear return action. Stationary map skips unused Reanimated registrations and uses an Android hardware layer; squad portraits avoid redraws and extra wallet loads. No SQL/native/config/dependency changes. See `docs/round68-session-flow.md`.
 - **R67 (Claude):** widget launch never stacks a second session (`dismissTo`), lost close recovery (no frozen screen); the session return screen (finds, then trail) shows on the session screen after the result card instead of as a global pop-up; Home map sheet draws the map with the sheet (first-open size guess, then the remembered measured size, `TodayTrail` `sizeKey`/`initialSize`), defers its refresh until after the slide, and identical reward replies no longer redraw subscribers; reward-flow events in the session record. SQL unchanged from R66; he ran it after publishing (live since 26 Oct).
 - **R66 (Codex):** map paints on first measured layout; shared refresh on opening/reconnect; preserved cached rules and coalesced busy reward checks; frozen per-reveal day and walk endpoints; restored return-to-camp with interruption guards. Proposed SQL replaces pending R64 with four 30-minute stops and excludes developer gifts from the trail. Large-text statistics use full-width rows, and the containing page can scroll without compressing the map. See `docs/round66-trail.md`. No live SQL or publication performed.

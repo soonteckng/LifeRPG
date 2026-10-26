@@ -245,6 +245,28 @@ test('routine prefill uses accepted completed duration and preserves extra secon
  await ui.cleanup();
 });
 
+test('Round 69: saving a historical short result prepares a one-minute routine without altering that result',async()=>{
+ const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
+ for(const seconds of [1,30,59]){
+  const db=storage(),completion={ownerId:'owner',sessionId:`legacy-${seconds}`,suggestion:focus,durationSeconds:seconds,targetAttributeId:2};
+  const before=JSON.stringify(completion);
+  const Save=load('src/components/SaveSuggestedQuest.tsx',mocks({
+   '@react-native-async-storage/async-storage':db.api,
+   '../context/UserContext':{useUser:()=>({profile:{id:'owner'}})},
+   '../context/TimerContext':{useTimer:()=>({targetAttributeId:null,sessionSummary:null})},
+   './RoutineEditorSheet':host('RoutineEditor'),
+  })).default;
+  const ui=await render(Save,{inSheet:true,completion});
+  try{
+   await ui.press('Save as routine');
+   const editor=ui.tree.root.findByType('RoutineEditor');
+   assert.equal(editor.props.initialSeconds,60);assert.equal(editor.props.initialAreaId,2);
+   assert.equal(JSON.stringify(completion),before,'history is kept exactly as recorded');
+   assert.equal(db.values.size,0,'merely preparing a future routine writes no receipt');
+  }finally{await ui.cleanup();}
+ }
+});
+
 test('a held completion keeps its original routine draft after live timer fields clear during dismissal',async()=>{
  const focus=load('src/constants/guidedQuests.ts').suggestedFocus('review-topic');
  let timer={targetAttributeId:8,sessionSummary:null};
@@ -367,11 +389,12 @@ test('custom focus duration validates bounds and cancel leaves the chosen durati
   assert.equal(scroll.props.keyboardShouldPersistTaps,'handled');
   assert.equal(scroll.props.contentContainerStyle.paddingBottom,16,'the measured footer adds to a numeric bottom reservation');
   assert.equal(input('Focus minutes').props.value,'30');assert.equal(input('Focus seconds').props.value,'59');
-  for(const [m,s] of [['0','0'],['480','1'],['20','60'],['','0'],['x','0']]){
-   await act(async()=>{input('Focus minutes').props.onChangeText(m);input('Focus seconds').props.onChangeText(s);});await ui.press('Use this duration');assert.equal(calls.length,0);assert.match(text(ui.tree.root),/Seconds must be/);
+  for(const [m,s] of [['0','0'],['0','1'],['0','59'],['480','1'],['20','60'],['','0'],['x','0']]){
+   await act(async()=>{input('Focus minutes').props.onChangeText(m);input('Focus seconds').props.onChangeText(s);});await ui.press('Use this duration');assert.equal(calls.length,0);assert.match(text(ui.tree.root),/1 minute to 8 hours/);assert.match(text(ui.tree.root),/Seconds must be/);
   }
   await act(async()=>ui.tree.root.findByType('Sheet').props.onRequestClose());assert.equal(closed,1);assert.equal(calls.length,0);
   await act(async()=>{input('Focus minutes').props.onChangeText('480');input('Focus seconds').props.onChangeText('0');});await ui.press('Use this duration');assert.deepEqual(calls,[28800]);
+  await act(async()=>{input('Focus minutes').props.onChangeText('1');input('Focus seconds').props.onChangeText('0');});await ui.press('Use this duration');assert.deepEqual(calls,[28800,60]);
  }finally{await ui.cleanup();}
 });
 

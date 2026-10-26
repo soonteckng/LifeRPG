@@ -1,6 +1,6 @@
 import type { JournalScope } from "../types/sessionJournal";
 import type { RoutineDraft, RoutineEnvelope, RoutineState, RoutineTransport, SavedRoutine } from "../types/savedRoutine";
-import { parseRoutineEnvelope, ROUTINE_LIMIT, ROUTINE_QUEUE_LIMIT, routineStorageKey, validRoutineDraft, validSavedRoutine, visibleRoutines } from "../utils/savedRoutine";
+import { parseRoutineEnvelope, ROUTINE_LIMIT, ROUTINE_QUEUE_LIMIT, routineStorageKey, validRoutineDraft, validStoredRoutineDraft, validSavedRoutine, visibleRoutines } from "../utils/savedRoutine";
 import { isJournalUuid } from "../utils/sessionJournalSchema";
 
 interface Storage { getItem: (key: string) => Promise<string | null>; setItem: (key: string, value: string) => Promise<void> }
@@ -45,7 +45,7 @@ export function createSavedRoutineStore(storage: Storage, newId: () => string) {
       if (!isJournalUuid(id)) return null; await store.load(scope); return store.snapshot(scope).routines.find(item => item.id === id) ?? null;
     },
     async save(scope: JournalScope, draft: RoutineDraft, id?: string, deleted = false): Promise<boolean> {
-      if (!validRoutineDraft(draft) || id !== undefined && !isJournalUuid(id)) return false;
+      if (!(deleted ? validStoredRoutineDraft(draft) : validRoutineDraft(draft)) || id !== undefined && !isJournalUuid(id)) return false;
       await store.load(scope); const key = scopeKey(scope);
       return serial(key, async () => {
         const before = envelopes.get(key); if (!before) return false;

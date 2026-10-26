@@ -33,6 +33,33 @@ test('a late cache read after account switch cannot prepare a routine or navigat
 test('routine editor preloads exact settings and saves an editable name without creating a quest',async()=>{
  const saved=[],mocks={...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async(...args)=>{saved.push(args);return true;},remove:async()=>true})}};const Component=load('src/components/RoutineEditorSheet.tsx',mocks).default;let ui,closed=0;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine,visible:true,onClose:()=>closed++}));});try{assert.equal(ui.root.findByType('Duration').props.seconds,75);const input=ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Routine name');assert.equal(input.props.value,'Review notes');await act(async()=>input.props.onChangeText('  New name  '));await act(async()=>ui.root.findAllByType('Press').find(x=>typeof x.props.onPress==='function'&&x.props.children?.props?.children==='Save routine').props.onPress());assert.equal(saved[0][0].name,'New name');assert.equal(saved[0][0].durationSeconds,75);assert.equal(saved[0][1],routine.id);assert.equal(closed,1);}finally{await act(async()=>ui.unmount());}
 });
+
+test('Round 69: an older short routine stays editable but must reach one minute before saving',async()=>{
+ const saved=[],Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async(...args)=>{saved.push(args);return true;}})}}).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,durationSeconds:30},visible:true,onClose:()=>{}}));});
+ const save=()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress();
+ try{
+  assert.equal(ui.root.findByType('Duration').props.seconds,30,'opening an existing record does not rewrite it');
+  await act(async()=>save());assert.equal(saved.length,0);
+  assert.equal(ui.root.findAllByType('Text').find(x=>x.props.accessibilityRole==='alert').props.children,'Choose a time from 1 minute to 8 hours before saving.');
+  await act(async()=>ui.root.findByType('Duration').props.onChange(60));await act(async()=>save());
+  assert.equal(saved.length,1);assert.equal(saved[0][0].durationSeconds,60);assert.equal(saved[0][1],routine.id);
+ }finally{await act(async()=>ui.unmount());}
+});
+
+test('Round 69: a legacy short routine cannot partially prepare or start a new session online or offline',async()=>{
+ for(const online of [true,false]){
+  const calls=[],short={...routine,durationSeconds:59},state={ready:true,scope,online,routines:[short],pendingCount:0,conflicts:[]};
+  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>prepTimer(calls,{startFreeTimer:async(...args)=>{calls.push(['start',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>short},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
+  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
+  try{
+   await act(async()=>press(ui.root,'Start routine Review notes'));
+   if(!online)await act(async()=>press(ui.root,'Start Review notes now'));
+   assert.deepEqual(calls,[],'neither draft setup, navigation nor a start may occur');
+   assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Choose at least 1 minute for this routine. Edit it before starting.'));
+  }finally{await act(async()=>ui.unmount());}
+ }
+});
 test('routine editor keeps invalid reminder errors visible and removal requires confirmation',async()=>{
  const saved=[],removed=[];const Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async d=>{saved.push(d);return true;},remove:async id=>{removed.push(id);return true;}})}}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,reminder:{enabled:true,hour:18,minute:0}},visible:true,onClose:()=>{}}));});try{await act(async()=>ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Reminder hour').props.onChangeText('24'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());assert.equal(saved.length,0);assert.ok(ui.root.findAllByType('Text').some(x=>x.props.accessibilityRole==='alert'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Remove routine').props.onPress());assert.equal(removed.length,0);assert.equal(ui.root.findByType('Confirm').props.title,'Remove this routine?');await act(async()=>ui.root.findByType('Confirm').props.onConfirm());assert.deepEqual(removed,[routine.id]);}finally{await act(async()=>ui.unmount());}
 });

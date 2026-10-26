@@ -11,12 +11,12 @@ function load(file,mocks){
 }
 const LOOK={skin:"3",hair:"short",hairColor:"darkbrown",glasses:false};
 async function sceneSetup(initial={}){
-  let reduced=false,props={phase:"running",progress:0.2,walking:true,intro:false,skipToken:0,onIntroEnd:()=>{},...initial};
-  const motions=[],cancelled=[],draws=[];
+  let reduced=false,props={phase:"running",progress:0.2,secondsLeft:1440,walking:true,intro:false,skipToken:0,onIntroEnd:()=>{},...initial};
+  const motions=[],cancelled=[],draws=[],values=[];
   const mod=load("src/components/session/SessionBackdrop.tsx",{
     "react-native":{View:host("View"),Pressable:host("Press"),StyleSheet:{create:v=>v,absoluteFill:{}},useWindowDimensions:()=>({width:390,height:844}),Animated:{View:host("RNView"),Value:class{constructor(value){this.value=value;}},timing:()=>({start(){},stop(){}})}},
     "react-native-reanimated":{__esModule:true,default:{View:host("Motion")},Easing:{inOut:v=>v,quad:0},interpolate:(v,i,o)=>o[0]+(o[1]-o[0])*v,
-      runOnJS:fn=>fn,useAnimatedStyle:fn=>fn(),useSharedValue:value=>React.useRef({value}).current,cancelAnimation:value=>cancelled.push(value),
+      runOnJS:fn=>fn,useAnimatedStyle:fn=>fn(),useSharedValue:value=>{const ref=React.useRef();if(!ref.current){ref.current={value};values.push(ref.current);}return ref.current;},cancelAnimation:value=>cancelled.push(value),
       withDelay:(_delay,value)=>value,withTiming:(to,config,done)=>{motions.push({to,...config,done});return to;}},
     "../AppText":{Text:host("Text")},"../adventurer/AdventurerBack":host("Walker"),
     "./TrailScenes":{TrailScene:React.memo(function Scene(props){draws.push(props.light);return React.createElement("Scene",props);}),FireGlow:host("Fire"),Fireflies:host("Flies")},
@@ -25,12 +25,53 @@ async function sceneSetup(initial={}){
     "../../services/sessionReturn":load("src/services/sessionReturn.ts",{}),
   });
   let renderer;await act(async()=>{renderer=create(React.createElement(mod.default,props));});
-  return {mod,motions,cancelled,draws,root:()=>renderer.root,lights:()=>renderer.root.findAllByType("Scene").map(n=>n.props.light),
+  return {mod,motions,cancelled,draws,day:()=>values[2],root:()=>renderer.root,lights:()=>renderer.root.findAllByType("Scene").map(n=>n.props.light),
     update:async changes=>{props={...props,...changes};await act(async()=>renderer.update(React.createElement(mod.default,props)));},
-    settle:async()=>{const motion=motions.filter(m=>m.duration===mod.MORNING_FADE_MS).at(-1);await act(async()=>motion?.done?.(true));},
+    settle:async()=>{const motion=motions.filter(m=>m.duration===mod.MORNING_FADE_MS||m.duration===mod.DAWN_SECONDS*1000).at(-1);await act(async()=>motion?.done?.(true));},
     reduce:async()=>{reduced=true;await act(async()=>renderer.update(React.createElement(mod.default,{...props,skipToken:props.skipToken+1})));},
     cleanup:async()=>{await act(async()=>renderer.unmount());}};
 }
+
+test("Round 69: dawn begins only in the final ten seconds for one-minute, thirty-minute and eight-hour sessions",async()=>{
+  for(const duration of [60,1800,28800]){
+    const ui=await sceneSetup({secondsLeft:11,progress:1-11/duration});
+    try{
+      assert.deepEqual(ui.lights(),["night"],`${duration}s session stays night with eleven seconds left`);
+      await ui.update({secondsLeft:10,progress:1-10/duration});
+      assert.deepEqual(ui.lights(),["night","morning"],"morning mounts at the ten-second boundary");
+      assert.ok(ui.motions.some(m=>m.to===1&&m.duration===10000),"the fade uses the entire remaining ten focus seconds");
+    }finally{await ui.cleanup();}
+  }
+});
+
+test("Round 69: reopening within dawn uses only the remaining time and ticking never restarts its fade",async()=>{
+  const ui=await sceneSetup({secondsLeft:5,progress:0.999});
+  try{
+    assert.deepEqual(ui.lights(),["night","morning"]);
+    assert.ok(ui.motions.some(m=>m.to===1&&m.duration===5000),"late entry finishes by this session's deadline");
+    const motions=ui.motions.length,draws=ui.draws.length;
+    for(const secondsLeft of [4,3,2,1])await ui.update({secondsLeft,progress:1-secondsLeft/1800});
+    assert.equal(ui.motions.length,motions,"one UI-thread fade runs through ordinary countdown updates");
+    assert.equal(ui.draws.length,draws,"the SVGs do not redraw for ticks");
+  }finally{await ui.cleanup();}
+});
+
+test("Round 69: pause and break hold the native dawn value, then resume for the remaining focus time",async()=>{
+  for(const hold of [{phase:"paused",walking:false},{phase:"running",walking:false}]){
+    const ui=await sceneSetup({secondsLeft:10});
+    try{
+      const oldDawn=ui.motions.findLast(m=>m.to===1&&m.duration===10000);
+      ui.day().value=0.4; // The UI-thread fade has reached this point after four seconds.
+      const count=ui.motions.length;
+      await ui.update({...hold,secondsLeft:6});
+      assert.equal(ui.day().value,0.4,"holding stops the fade without jumping to its target");
+      assert.ok(ui.cancelled.includes(ui.day()));assert.equal(ui.motions.length,count);
+      await act(async()=>oldDawn.done(true));assert.deepEqual(ui.lights(),["night","morning"],"cancelled dawn cannot dispose the held night scene");
+      await ui.update({phase:"running",walking:true,secondsLeft:6});
+      assert.equal(ui.motions.findLast(m=>m.to===1).duration,6000);
+    }finally{await ui.cleanup();}
+  }
+});
 
 test("a reopened timer mounts only its visible scene and ticks do not rebuild the backdrop",async()=>{
   const ui=await sceneSetup();
@@ -48,12 +89,12 @@ test("a reopened timer mounts only its visible scene and ticks do not rebuild th
 test("dawn and early End keep both lights until their fade finishes, then release the hidden SVG",async()=>{
   const ui=await sceneSetup();
   try {
-    await ui.update({progress:0.91});
+    await ui.update({progress:0.91,secondsLeft:10});
     assert.deepEqual(ui.lights(),["night","morning"],"the old scene stays underneath throughout the crossfade");
     await ui.settle();assert.deepEqual(ui.lights(),["morning"]);
-    const dawns=ui.motions.filter(m=>m.to===1&&m.duration===ui.mod.MORNING_FADE_MS).length;
-    await ui.update({progress:0.95});await ui.update({progress:0.99});
-    assert.equal(ui.motions.filter(m=>m.to===1&&m.duration===ui.mod.MORNING_FADE_MS).length,dawns);
+    const dawns=ui.motions.filter(m=>m.to===1&&m.duration===ui.mod.DAWN_SECONDS*1000).length;
+    await ui.update({progress:0.95,secondsLeft:5});await ui.update({progress:0.99,secondsLeft:1});
+    assert.equal(ui.motions.filter(m=>m.to===1&&m.duration===ui.mod.DAWN_SECONDS*1000).length,dawns);
     await ui.update({phase:"ended",walking:false});
     assert.deepEqual(ui.lights(),["night","morning"],"ending near dawn fades back rather than flashing black");
     await ui.settle();assert.deepEqual(ui.lights(),["night"]);
@@ -76,8 +117,8 @@ test("an obsolete native fade callback cannot unmount the new light after End or
   for(const reduce of [false,true]){
     const ui=await sceneSetup();
     try {
-      await ui.update({progress:0.91});
-      const oldDawn=ui.motions.filter(m=>m.to===1&&m.duration===ui.mod.MORNING_FADE_MS).at(-1);
+      await ui.update({progress:0.91,secondsLeft:10});
+      const oldDawn=ui.motions.filter(m=>m.to===1&&m.duration===ui.mod.DAWN_SECONDS*1000).at(-1);
       if(reduce)await ui.reduce();
       await ui.update({phase:"ended",walking:false});
       // Model a native completion which had already queued its JS callback

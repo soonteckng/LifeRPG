@@ -10,6 +10,7 @@ import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-n
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
 import { useTimer } from "../context/TimerContext";
+import { sessionEntry } from "../services/sessionEntry";
 import { sessionDockState } from "../utils/sessionReporting";
 import { PinnedActionHost, usePinnedActionPresent } from "./PinnedAction";
 import OfflineStatus from "./OfflineStatus";
@@ -46,7 +47,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
     {/* Floats just above the dock, over the content, with no bar behind it. */}
     <View pointerEvents="box-none" style={styles.offline}><OfflineStatus /></View>
     {pinned && <PinnedActionHost route={route} />}
-    {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); router.navigate("/session"); }}
+    {bannerVisible && <TouchableOpacity activeOpacity={1} style={styles.banner} onPress={() => { if (tapHapticsEnabled()) tapHaptic(); sessionEntry.request(timer.protectionSessionId ?? timer.sessionId ?? sessionSummary?.sessionId); router.navigate("/session"); }}
       accessibilityRole="button" accessibilityLabel={isCompleted ? "Open session completion" : timer.breakSecondsLeft > 0 ? "Expand session on break" : isRunning ? "Expand running session" : "Expand paused session"}>
       {hasOpenSession && !timer.startCheckVisible && timer.duration > 0 && <View pointerEvents="none" style={styles.progressTrack}>
         <View style={[styles.progressFill, { width: `${timer.finishing ? 100 : Math.max(0, Math.min(1, 1 - timer.timeLeft / timer.duration)) * 100}%` }]} />

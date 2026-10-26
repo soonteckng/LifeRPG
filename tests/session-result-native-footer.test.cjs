@@ -44,11 +44,13 @@ async function setup({height=844,fontScale=1,bottom=34,initialProps={}}={}) {
     useWindowDimensions:()=>({height,width:390,fontScale}),
     Keyboard:{dismiss(){},isVisible:()=>false,addListener:()=>({remove(){}})}};
   const AnimatedView = props => {
-    React.useEffect(()=>()=>{unmountedFooters++;},[]);
-    return React.createElement('NativeFooter',props,props.children);
+    const footer=props.testID!=='sheet-exit-fade';
+    React.useEffect(()=>()=>{if(footer)unmountedFooters++;},[footer]);
+    return React.createElement(footer?'NativeFooter':'Motion',props,props.children);
   };
   const reanimated = {__esModule:true,default:{View:AnimatedView},
     Easing:{out:fn=>fn,cubic:value=>value},ReduceMotion:{System:'system'},
+    useSharedValue:initial=>React.useRef({value:initial}).current,cancelAnimation(){},withTiming:value=>value,
     useDerivedValue:fn=>({get:fn}),useAnimatedStyle:fn=>fn(),runOnJS:fn=>fn,
     useAnimatedReaction:(prepare,react)=>{const value=prepare();React.useLayoutEffect(()=>{react(value,undefined);},[value,react]);}};
   const constants = {INITIAL_LAYOUT_VALUE:-999,KEYBOARD_STATUS:{SHOWN:1}};

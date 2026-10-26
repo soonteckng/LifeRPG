@@ -15,6 +15,7 @@ import { encodeRoutineSession } from "../utils/routineSession";
 import { FOCUS_AREAS, focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
 import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import { routineDuration } from "../utils/savedRoutine";
+import { validSessionSeconds } from "../utils/sessionSetup";
 import { routinePresentation, type RoutineEntry } from "../utils/routinePresentation";
 import type { SavedRoutine } from "../types/savedRoutine";
 import type { Subject, Task } from "../services/taskService";
@@ -107,11 +108,12 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const start = async (routine: SavedRoutine) => {
     if (blocked || locked.current || !routines.scope) return;
     const scope = routines.scope, operation = {}; locked.current = operation; setMessage(""); feedback();
-    setupMode.choose("routine");
     try {
       const latest = await resolveSavedRoutine(scope, routine.id);
       if (!latest || currentSurface.current !== surfaceKey || latestLegacy.current.blocked) return;
+      if (!validSessionSeconds(latest.durationSeconds)) { setMessage("Choose at least 1 minute for this routine. Edit it before starting."); return; }
       if (latest.focusAreaId !== null && !latestLegacy.current.subjects.some(item => item.id === latest.focusAreaId)) { setMessage("Choose an available category in Edit routine before starting."); return; }
+      setupMode.choose("routine");
       if (!routines.online) {
         // Offline, the session runs here in the workspace; there's no setup screen to open.
         const started = await timer.startFreeTimer(latest.durationSeconds, latest.focusAreaId, latest.name);

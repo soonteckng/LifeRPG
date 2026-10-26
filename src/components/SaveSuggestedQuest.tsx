@@ -10,7 +10,7 @@ import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
 import { useQuests } from "../context/QuestContext";
 import { useSavedRoutines } from "../hooks/useSavedRoutines";
-import { validSessionSeconds } from "../utils/sessionSetup";
+import { MIN_SESSION_SECONDS, validSessionSeconds } from "../utils/sessionSetup";
 import type { SuggestedFocus } from "../constants/guidedQuests";
 export interface SuggestedQuestCompletion {
   ownerId: string;
@@ -54,7 +54,10 @@ export default function SaveSuggestedQuest({ inSheet = false, compact = false, c
   const Button = inSheet ? SheetButton : Pressable;
   const openEditor = () => {
     if (disabled || !routines.ready || profile.id !== ownerId || editorLock.current || saved || receipt?.identity !== identity) return;
-    const seconds = sessionSummary?.durationSeconds ?? focus.seconds;
+    const recordedSeconds = sessionSummary?.durationSeconds ?? focus.seconds;
+    // Keep historical short results unchanged; only their new routine draft
+    // starts at the current minimum, ready for the user to review and save.
+    const seconds = Number.isInteger(recordedSeconds) && recordedSeconds > 0 ? Math.max(MIN_SESSION_SECONDS, recordedSeconds) : recordedSeconds;
     if (!validSessionSeconds(seconds)) return;
     editorLock.current = identity;
     setEditor({identity, name: focus.title, seconds, areaId: targetAttributeId, visible: true });
