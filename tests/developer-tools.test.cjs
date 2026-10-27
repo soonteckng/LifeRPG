@@ -102,7 +102,7 @@ async function tools({ developer = true, online = true, session = false, restart
     "../context/AuthContext": { useAuth: authValue },
     "../services/developerAccess": { useIsDeveloper: (owner, isOnline) => developer && owner === "dev" && isOnline,
       restartIntro: async owner => { log.push(`restart:${owner}`); return restart(); } },
-    "expo-router": { useRouter: () => ({ navigate: to => log.push(`go:${to}`) }) },
+    "expo-router": { useRouter: () => ({ navigate: to => log.push(typeof to === "string" ? `go:${to}` : `go:${to.pathname}?collection=${to.params?.collection}`) }) },
     "../hooks/useRewards": { useRewards: options => { loads.push(options.load); currentRewards = actualRewards ? actualRewards.useRewards(options) : rewards; return currentRewards; } },
   }).default;
   let renderer; await act(async () => { renderer = create(React.createElement(Tools)); });
@@ -119,12 +119,21 @@ test("the Developer section is hidden from everyone else and while offline", asy
   }
 });
 
+test("Developer Collection opens the normal read-only inventory without a reward mutation", async () => {
+  const ui = await tools();
+  try {
+    assert.equal(ui.row("Open Collection").props.testID, "dev-open-collection");
+    await ui.press("Open Collection");
+    assert.deepEqual(ui.log, ["go:/outfits?collection=1"]);
+  } finally { await ui.cleanup(); }
+});
+
 test("each preview opens a card marked as a preview, and Done closes it", async () => {
   const ui = await tools();
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
       ["Share session log", "Preview level up", "Preview session complete", "Preview earlier session saved", "Preview saving screen", "Replay the guide", "Restart the intro",
-        "Open Outfits", "Preview level colours", "Come back from a session", "Come back with nothing", "Open today's pack", "Find something now", "Earn the next pet, frame and badge",
+        "Open Outfits", "Open Collection", "Preview level colours", "Come back from a session", "Come back with nothing", "Open today's pack", "Find something now", "Earn the next pet, frame and badge",
         "Take back pets, frames and badges", "Add 500 test Stardust", "Reset my rewards"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Preview level up");

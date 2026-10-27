@@ -197,7 +197,10 @@ function Moment({ item, left, level, look, equipped, background, streak, onClose
     </View>
     <View style={s.actions}>
       <Pressable accessibilityRole="button" accessibilityLabel="Continue" onPress={onClose} style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
-      {copy.outfits && <Pressable accessibilityRole="button" accessibilityLabel="See it in Outfits" onPress={onOutfits} style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
+      {(copy.outfits || item.kind === "decor") && <Pressable testID="reward-view-item" accessibilityRole="button"
+        accessibilityLabel={item.kind === "decor" ? "View in Collection" : "See it in Outfits"} onPress={onOutfits} style={s.secondary}>
+        <Text style={s.secondaryText}>{item.kind === "decor" ? "View in Collection" : "See it in Outfits"}</Text>
+      </Pressable>}
     </View>
   </View>;
 }

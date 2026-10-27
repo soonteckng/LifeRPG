@@ -130,7 +130,8 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
     requestAnimationFrame: callback => { const id = ++frameId; frames.set(id, callback); return id; },
     cancelAnimationFrame: id => frames.delete(id),
     "react-native": { ...native, useWindowDimensions: () => dimensions }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
-    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", { footer, pinned }, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
+    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned, action }) => React.createElement("Page", { footer, pinned }, action, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
+    "../components/rewards/RewardCollectionSheet": host("Collection"),
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
     "../components/adventurer/Adventurer": Adventurer, "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
@@ -242,6 +243,44 @@ test("Outfits wears what you own, previews what you don't, and saves then goes b
     assert.deepEqual(ui.log, [["save", { look: { skin: "7", hair: "braids", hairColor: "darkbrown", glasses: true }, equipped: { head: "beret" }, background: "bg_dusk", title: null }], ["back"]],
       "saved, then back to Profile");
   } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("Collection opens without equipping a decoration or losing an unsaved outfit", async () => {
+  const ui = await outfits({ owned: ["cardigan", "decor_easel"], online: false });
+  try {
+    await ui.press("Skin tone 7");
+    const draft = ui.preview().look;
+    const button = ui.button("Open Collection");
+    assert.equal(button.props.testID, "outfits-open-collection");
+    assert.equal(button.props.accessibilityRole, "button");
+    assert.equal(button.props.style.width, 44);
+    await ui.press("Open Collection");
+    const sheet = () => ui.r.root.findByType("Collection").props;
+    assert.equal(sheet().visible, true);
+    assert.deepEqual(sheet().owned, ["cardigan", "decor_easel"]);
+    assert.equal(sheet().online, false, "cached decorations remain reachable offline");
+    await act(async () => sheet().onClose());
+    assert.equal(sheet().visible, false);
+    assert.deepEqual(ui.preview().look, draft, "the same draft survives opening and closing");
+    assert.deepEqual(ui.log, [], "Collection neither buys, saves, nor requests inventory");
+    await ui.press("Open Collection");
+    await ui.updateRewards({ owner: "another-owner", owned: [], state: null, loading: true });
+    assert.deepEqual(sheet().owned, [], "an account switch follows only the current owner's inventory");
+    assert.equal(sheet().ready, false, "unknown inventory is never a known empty collection");
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("decoration and Developer deep links use the same read-only Collection", async () => {
+  for (const params of [{ show: "decor_easel" }, { collection: "1" }]) {
+    const ui = await outfits({ params, owned: ["cardigan", "decor_easel"] });
+    try {
+      assert.equal(ui.r.root.findByType("Collection").props.visible, true);
+      assert.equal(ui.opening("decor_easel").collection, true);
+      assert.equal(ui.button("Save look").props.disabled, true, "no outfit is changed by the link");
+      assert.deepEqual(ui.preview().equipped, { top: "cardigan" });
+      assert.deepEqual(ui.log, []);
+    } finally { await act(async () => ui.r.unmount()); }
+  }
 });
 
 test("Outfits buys with enough Stardust after asking, and needs internet to save or buy", async () => {
@@ -508,10 +547,10 @@ test("a saved look reply after Outfits unmounts cannot navigate the person's new
 });
 
 test("Reset and Save look stay fixed below the scrolling outfits", async () => {
-  const page = fs.readFileSync(path.join(root, "src/app/outfits.tsx"), "utf8");
-  assert.match(page, /<PersonalPage title="Outfits"[^>]*footer=\{footer\} pinned=\{pinned\}>/);
   const ui = await outfits();
   try {
+    assert.equal(ui.r.root.findByType("Page").props.footer.props.testID, "outfits-actions", "the actions use the page's fixed footer");
+    assert.ok(ui.r.root.findByType("Page").props.pinned, "preview and tabs use the fixed panel");
     assert.ok(ui.r.root.findAll(n => n.type === "View" && n.props.testID === "outfits-preview").length, "the pinned preview keeps its testID and layout");
   } finally { await act(async () => ui.r.unmount()); }
   const personal = fs.readFileSync(path.join(root, "src/components/PersonalUI.tsx"), "utf8");
@@ -717,7 +756,11 @@ test("the reward pop-up: one at a time, never during a session or over another s
     assert.equal(log.filter(x => x === "claim").length, before + 1);
     const { momentCopy } = mod; const { rewardItem } = load("src/services/rewardCatalog.ts");
     assert.match(momentCopy(rewardItem("title_scholar")).body, /every Scholar piece/);
-    assert.equal(momentCopy(rewardItem("decor_bonsai")).outfits, false, "camp pieces don't send you to Outfits");
+    assert.equal(momentCopy(rewardItem("decor_bonsai")).outfits, false, "decorations aren't tried on");
+    moments = ["decor_easel"]; await render(false);
+    assert.match(words(), /Easel/);
+    await press("View in Collection");
+    assert.ok(log.includes("go:/outfits?show=decor_easel"), "a decoration leads to its actual inventory");
     for (const id of ["frame_streak_7", "pet_fox", "bg_night", "title_wanderer"]) assert.doesNotMatch(JSON.stringify(momentCopy(rewardItem(id))), /—/, "no dashes");
   } finally { await act(async () => r.unmount()); }
 });

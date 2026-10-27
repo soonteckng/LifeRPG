@@ -96,6 +96,7 @@ test(`after a session: walk back, the result card, then the finds and the trail 
       sessionSummary:{sessionId:'S1',durationSeconds:60,xpEarned:1,recovered:false,creditVersion:1,areaXpEarned:1,completedAtMs:Date.now()}},{current_xp:6});
     const backdrop=ui.root().findByType('Backdrop');
     assert.equal(backdrop.props.returning,true,'the walk back plays');
+    assert.equal(backdrop.props.active,true,'the visible return walk keeps its normal decoration');
     await act(async()=>backdrop.props.onReturnEnd());
     await wait((options.claimDelay??0)+50);
     const result=ui.root().findByType('Result');
@@ -110,6 +111,7 @@ test(`after a session: walk back, the result card, then the finds and the trail 
     // It shows on the session screen itself, never as a pop-up that something else could hold back.
     const shown=ui.root().findAllByType('SessionReveal');
     assert.equal(shown.length,1,'the finds / trail screen shows after Done');
+    assert.equal(ui.root().findByType('Backdrop').props.active,false,'the covered camp stops its repeating animation behind the finds / trail screen');
     assert.equal(shown[0].props.reveal.finds.length,(options.finds??[]).length);
     assert.equal(shown[0].props.reveal.trail.seconds,60,'the trail walks to the new position');
     assert.equal(ui.modal().props.visible,false,'no second copy as a pop-up');

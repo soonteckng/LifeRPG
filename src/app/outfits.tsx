@@ -7,6 +7,7 @@ import { Text } from "../components/AppText";
 import { PersonalButton, PersonalPage, p } from "../components/PersonalUI";
 import Segmented from "../components/Segmented";
 import SheetConfirmation from "../components/SheetConfirmation";
+import RewardCollectionSheet from "../components/rewards/RewardCollectionSheet";
 import Adventurer from "../components/adventurer/Adventurer";
 import ItemArt, { StardustArt } from "../components/adventurer/ItemArt";
 import ProfilePicture, { levelPill } from "../components/adventurer/ProfilePicture";
@@ -63,6 +64,7 @@ export function outfitsOpening(id: string | undefined) {
   if (item.kind === "background") return { tab: "picture" as const, part: "background" as const, item: item.id, wear: item };
   if (item.kind === "title") return { tab: "picture" as const, part: "badges" as const, item: item.id, wear: item };
   if (item.kind === "frame") return { tab: "picture" as const, part: "frames" as const, item: item.id, frame: item.id };
+  if (item.kind === "decor") return { tab: "look" as const, collection: true };
   return null;
 }
 function wearing(saved: Draft, item: RewardItem): Draft | null {
@@ -84,9 +86,10 @@ export default function OutfitsScreen() {
   const saved: Draft = useMemo(() => ({ look: rewards.look, equipped: rewards.equipped, background: rewards.background, title: rewards.title }),
     [rewards.look, rewards.equipped, rewards.background, rewards.title]);
   // Opened from a reward ("See it in Outfits"): start on its category, wearing it to try.
-  const params = useLocalSearchParams<{ show?: string; from?: string }>();
+  const params = useLocalSearchParams<{ show?: string; from?: string; collection?: string }>();
   const shownLevel = useShownLevel(profile.id, profile.level).level;
   const [opening] = useState(() => outfitsOpening(typeof params.show === "string" ? params.show : undefined));
+  const [collectionOpen, setCollectionOpen] = useState(() => !!opening?.collection || params.collection === "1");
   // A reward preview follows the real saved avatar as its cache loads. Taking
   // a copy of the initial placeholder here could later save default hair and
   // clothes over the person's existing outfit.
@@ -223,7 +226,11 @@ export default function OutfitsScreen() {
       </ScrollView> : <Segmented<Tab> value={tab} onChange={openTab} track={colors.surface} options={TABS} />}
   </>;
   const fromHome = params.from === "home";
-  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition expandFromIcon={fromHome} fallback={fromHome ? "/" : "/profile"} footer={footer} pinned={pinned}>
+  return <PersonalPage title="Outfits" subtitle="" compact back animateTransition expandFromIcon={fromHome} fallback={fromHome ? "/" : "/profile"} footer={footer} pinned={pinned}
+    action={<Pressable testID="outfits-open-collection" accessibilityRole="button" accessibilityLabel="Open Collection"
+      accessibilityHint="See your collected camp decorations" onPress={() => setCollectionOpen(true)} style={s.collectionButton}>
+      <Ionicons name="grid-outline" size={23} color={colors.neutral} />
+    </Pressable>}>
     <View style={s.stack}>
       {scrollingPreview && preview}
       {(!ready || !!rewards.error) && <View style={s.card} testID="outfits-collection-status">
@@ -276,6 +283,9 @@ export default function OutfitsScreen() {
     {buying && <SheetConfirmation elevated title={`Get ${buying.name}?`} message={`It costs ${buying.price} Stardust. You have ${rewards.stardust}.`}
       confirmLabel={rewards.stardust >= (buying.price ?? 0) ? `Buy for ${buying.price}` : "Not enough Stardust"} cancelLabel="Not now"
       onCancel={() => setBuying(null)} onConfirm={() => { if (rewards.stardust >= (buying.price ?? 0)) void buy(); else setBuying(null); }} />}
+    <RewardCollectionSheet visible={collectionOpen} onClose={() => setCollectionOpen(false)} owned={rewards.owned}
+      ready={ready} loading={rewards.loading || rewards.busy} error={rewards.error} online={rewards.online}
+      onRetry={() => void inventoryRetry.retry()} checking={inventoryRetry.checking} retryDisabled={inventoryRetry.disabled} />
   </PersonalPage>;
 }
 
@@ -358,6 +368,7 @@ function Pill({ label, on, onPress, testID }: { label: string; on: boolean; onPr
 }
 
 const s = StyleSheet.create({
+  collectionButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   stack: { gap: 16 },
   stage: { ...edge, borderRadius: radius.card, overflow: "hidden", alignItems: "center", justifyContent: "flex-end", gap: 8, padding: 12, paddingBottom: 4 },
   stageArt: { position: "absolute", left: 0, top: 0 },

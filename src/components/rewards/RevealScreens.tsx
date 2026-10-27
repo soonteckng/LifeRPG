@@ -24,7 +24,10 @@ export interface RevealPlayer {
 /** onOutfits gets the item to show there, so Outfits opens on its category. */
 type Props<R> = { reveal: R; player: RevealPlayer; onClose: () => void; onOutfits: (item: string) => void };
 const wearable = (g: Gift) => { const k = rewardItem(g.item)?.kind; return g.new && (k === "wearable" || k === "background" || k === "pet"); };
-const firstWearable = (gifts: Gift[]) => gifts.find(wearable)?.item;
+// Keep the existing try-on priority. A decoration-only find or pack can now
+// lead to its real inventory too, including an already-owned duplicate.
+const firstCollectible = (gifts: Gift[]) => gifts.find(wearable)?.item ?? gifts.find(g => rewardItem(g.item)?.kind === "decor")?.item;
+const itemDestination = (id: string) => rewardItem(id)?.kind === "decor" ? "View in Collection" : "See it in Outfits";
 
 /** One thing found: its picture, name and rarity, and whether it's new or became Stardust. */
 function GiftRow({ gift }: { gift: Gift }) {
@@ -80,7 +83,7 @@ function FoundCard({ reveal, onContinue, onOutfits }: {
   const insets = useSafeAreaInsets();
   const reduced = useReducedMotion();
   const minutes = reveal.seconds === null ? null : Math.round(reveal.seconds / 60);
-  const found = reveal.finds.length, show = firstWearable(reveal.finds);
+  const found = reveal.finds.length, show = firstCollectible(reveal.finds);
   const best = reveal.finds.reduce((top, g) => Math.max(top, RARITY_ORDER.indexOf(g.rarity)), 0);
   const glowColor = RARITY_COLOR[RARITY_ORDER[best]];
   const dust = useCountUp(reveal.stardust, DEAL_AT + found * DEAL_GAP + 150, reduced);
@@ -110,7 +113,7 @@ function FoundCard({ reveal, onContinue, onOutfits }: {
     </Animated.View>
     <View style={s.bottomStatic}>
       <Pressable onPress={onContinue} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
-      {!!show && <Pressable onPress={() => onOutfits(show)} accessibilityRole="button" accessibilityLabel="See it in Outfits" style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
+      {!!show && <Pressable testID="expedition-view-item" onPress={() => onOutfits(show)} accessibilityRole="button" accessibilityLabel={itemDestination(show)} style={s.secondary}><Text style={s.secondaryText}>{itemDestination(show)}</Text></Pressable>}
     </View>
   </View>;
 }
@@ -212,6 +215,7 @@ export function PackReveal({ reveal, onClose, onOutfits }: Props<Extract<Reveal,
   }, [stage, sway, pop, reduced]);
   const tier = Math.max(0, Math.min(3, reveal.tier)), color = PACK_COLORS[tier], name = PACK_TIERS[tier].name;
   const next = PACK_TIERS[tier + 1];
+  const show = firstCollectible(reveal.items);
   const openIt = () => { if (stage !== "closed") return; tapHaptic("success"); setStage(reduced ? "open" : "shaking"); };
   const packStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${sway.value * 3}deg` }] }));
   const popStyle = useAnimatedStyle(() => ({ opacity: pop.value, transform: [{ scale: 0.6 + pop.value * 0.4 }] }));
@@ -232,7 +236,7 @@ export function PackReveal({ reveal, onClose, onOutfits }: Props<Extract<Reveal,
     <View style={s.bottomStatic}>
       {open ? <>
         <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
-        {!!firstWearable(reveal.items) && <Pressable onPress={() => onOutfits(firstWearable(reveal.items)!)} accessibilityRole="button" accessibilityLabel="See it in Outfits" style={s.secondary}><Text style={s.secondaryText}>See it in Outfits</Text></Pressable>}
+        {!!show && <Pressable testID="pack-view-item" onPress={() => onOutfits(show)} accessibilityRole="button" accessibilityLabel={itemDestination(show)} style={s.secondary}><Text style={s.secondaryText}>{itemDestination(show)}</Text></Pressable>}
       </> : <Pressable onPress={openIt} accessibilityRole="button" accessibilityLabel={`Open your ${name} pack`} style={[s.primary, { backgroundColor: color }]}><Text style={[s.primaryText, { color: "#14111F" }]}>Open it</Text></Pressable>}
     </View>
   </View>;

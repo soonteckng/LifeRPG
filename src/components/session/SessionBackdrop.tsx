@@ -1,5 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Animated as RNAnimated, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Animated as RNAnimated, AppState, Pressable, StyleSheet, View, useWindowDimensions, type AppStateStatus } from "react-native";
+import { useFocusEffect } from "expo-router";
 import Animated, { cancelAnimation, Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { Text } from "../AppText";
 import AdventurerWalking from "../adventurer/AdventurerBack";
@@ -29,15 +30,27 @@ const fill = { position: "absolute" as const, left: 0, top: 0, right: 0, bottom:
  */
 type BackdropProps = {
   phase: Phase; progress: number; secondsLeft: number; walking: boolean; intro: boolean; skipToken: number; onIntroEnd: () => void;
-  returning?: boolean; onReturnEnd?: () => void;
+  returning?: boolean; onReturnEnd?: () => void; active?: boolean;
 };
 const isMorning = ({ phase, secondsLeft, intro }: Pick<BackdropProps, "phase" | "secondsLeft" | "intro">) => phase === "completed"
   || ((phase === "running" || phase === "paused") && !intro && Number.isFinite(secondsLeft) && secondsLeft <= DAWN_SECONDS);
 
-export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd }: BackdropProps) {
+export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd, active = true }: BackdropProps) {
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const rewards = useRewards({ load: false });
+  // The session route stays mounted behind Outfits. Stop only its repeating
+  // decorative motion while covered or backgrounded; deadline/return effects
+  // below remain responsible for their existing completion callbacks.
+  const [visible, setVisible] = useState(false);
+  useFocusEffect(useCallback(() => {
+    let current = true;
+    const update = (state: AppStateStatus) => { if (current) setVisible(state === "active"); };
+    update(AppState.currentState);
+    const subscription = AppState.addEventListener("change", update);
+    return () => { current = false; subscription.remove(); setVisible(false); };
+  }, []));
+  const motionActive = active && visible;
   const shown = phase === "running" || phase === "paused" || phase === "completed" || phase === "ended";
   const morning = isMorning({ phase, secondsLeft, intro });
   const lightMode = phase === "completed" ? "morning" : morning ? phase === "running" && walking ? "dawn" : "hold" : "night";
@@ -119,15 +132,15 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
     {nightMounted && <TrailScene width={width} height={height} light="night" />}
     {dayMounted && <Animated.View style={[fill, dayLayer]}><TrailScene width={width} height={height} light="morning" /></Animated.View>}
     {intro && !reduced && <Animated.View style={[fill, duskLayer]}><TrailScene width={width} height={height} light="dusk" /></Animated.View>}
-    <FireGlow width={width} height={height} />
-    <Fireflies width={width} height={height} active={walking && !morning} />
+    <FireGlow width={width} height={height} active={motionActive} />
+    <Fireflies width={width} height={height} active={motionActive && walking && !morning} />
     <Animated.View style={[s.walker, { left: width / 2 - size / 2, top }, walker]}>
-      <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={walking || intro || returning} facing={phase === "completed" ? "camp" : "away"} />
+      <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={motionActive && (walking || intro || returning)} facing={phase === "completed" ? "camp" : "away"} />
     </Animated.View>
   </View>;
 }, (previous, next) => previous.phase === next.phase && isMorning(previous) === isMorning(next)
   && previous.walking === next.walking && previous.intro === next.intro && previous.skipToken === next.skipToken
-  && previous.onIntroEnd === next.onIntroEnd && previous.returning === next.returning && previous.onReturnEnd === next.onReturnEnd);
+  && previous.onIntroEnd === next.onIntroEnd && previous.returning === next.returning && previous.onReturnEnd === next.onReturnEnd && previous.active === next.active);
 
 /**
  * The words while you set off, above everything (the timer waits, hidden,

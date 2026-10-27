@@ -601,7 +601,7 @@ export default function SessionScreen() {
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={scenePhase} secondsLeft={timer.timeLeft} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
       walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro}
-      returning={returning} onReturnEnd={finishReturn} />
+      returning={returning} onReturnEnd={finishReturn} active={!revealShown} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>

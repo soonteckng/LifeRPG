@@ -170,6 +170,8 @@ export default function DeveloperTools() {
     </SettingsGroup>
     <SettingsGroup title="Developer: rewards" footer={`${rewards.stardust} Stardust. These use the real rewards, the same as everyone's; the rows marked “test” are developer-only.`}>
       <SettingsRow first icon="shirt-outline" tint="#2DD4A7" title="Open Outfits" onPress={() => router.navigate("/outfits")} />
+      <SettingsRow icon="grid-outline" tint="#2DD4A7" title="Open Collection" subtitle="Your collected camp decorations" testID="dev-open-collection"
+        onPress={() => router.navigate({ pathname: "/outfits", params: { collection: "1" } })} />
       <SettingsRow icon="color-palette-outline" tint={shownLevel.previewing ? LEVEL_TIERS.findLast(t => shownLevel.level >= t.level)?.color : "#C1A8FA"} title="Preview level colours"
         subtitle="Test · see each tier's colours on your picture, Home and Profile" value={shownLevel.previewing ? `Level ${shownLevel.level}` : "Off"} testID="dev-level-preview" onPress={() => setTiersOpen(true)} />
       <SettingsRow icon="compass-outline" tint="#60A5FA" title="Come back from a session" subtitle="Your finds, or a test walk if there are none" status={claimNote} testID="dev-reward-claim" busy={claiming} disabled={rewards.busy || claiming} onPress={() => void claim()} />

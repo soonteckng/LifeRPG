@@ -67,14 +67,14 @@ export const TrailScene = memo(function TrailScene({ width, height, light }: { w
 });
 
 /** The campfire's glow, flickering; brighter against the night. */
-export const FireGlow = memo(function FireGlow({ width, height, night }: { width: number; height: number; night?: SharedValue<number> }) {
+export const FireGlow = memo(function FireGlow({ width, height, night, active = true }: { width: number; height: number; night?: SharedValue<number>; active?: boolean }) {
   const reduced = useReducedMotion();
   const flicker = useSharedValue(1);
   useEffect(() => {
-    if (reduced) return;
+    if (reduced || !active) { cancelAnimation(flicker); return; }
     flicker.value = withRepeat(withSequence(withTiming(0.75, { duration: 420 }), withTiming(1, { duration: 520 }), withTiming(0.85, { duration: 380 })), -1);
     return () => cancelAnimation(flicker);
-  }, [reduced, flicker]);
+  }, [reduced, flicker, active]);
   const box = sceneBox(width, height), at = box.at(FIRE.x, FIRE.y), r = 90 * box.s;
   const glow = useAnimatedStyle(() => ({ opacity: flicker.value * (0.75 + (night ? night.value * 0.25 : 0)), transform: [{ scale: 0.94 + flicker.value * 0.06 }] }));
   // A soft glow that fades out at its edge, not a disc.

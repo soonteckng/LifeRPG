@@ -14,7 +14,8 @@ async function sceneSetup(initial={}){
   let reduced=false,props={phase:"running",progress:0.2,secondsLeft:1440,walking:true,intro:false,skipToken:0,onIntroEnd:()=>{},...initial};
   const motions=[],cancelled=[],draws=[],values=[];
   const mod=load("src/components/session/SessionBackdrop.tsx",{
-    "react-native":{View:host("View"),Pressable:host("Press"),StyleSheet:{create:v=>v,absoluteFill:{}},useWindowDimensions:()=>({width:390,height:844}),Animated:{View:host("RNView"),Value:class{constructor(value){this.value=value;}},timing:()=>({start(){},stop(){}})}},
+    "react-native":{AppState:{currentState:"active",addEventListener:()=>({remove(){}})},View:host("View"),Pressable:host("Press"),StyleSheet:{create:v=>v,absoluteFill:{}},useWindowDimensions:()=>({width:390,height:844}),Animated:{View:host("RNView"),Value:class{constructor(value){this.value=value;}},timing:()=>({start(){},stop(){}})}},
+    "expo-router":{useFocusEffect:callback=>React.useEffect(callback,[callback])},
     "react-native-reanimated":{__esModule:true,default:{View:host("Motion")},Easing:{inOut:v=>v,quad:0},interpolate:(v,i,o)=>o[0]+(o[1]-o[0])*v,
       runOnJS:fn=>fn,useAnimatedStyle:fn=>fn(),useSharedValue:value=>{const ref=React.useRef();if(!ref.current){ref.current={value};values.push(ref.current);}return ref.current;},cancelAnimation:value=>cancelled.push(value),
       withDelay:(_delay,value)=>value,withTiming:(to,config,done)=>{motions.push({to,...config,done});return to;}},

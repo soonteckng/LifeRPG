@@ -75,11 +75,12 @@ test("one scene for the whole session: set off at dusk, fade into a very dark ni
   let reduced = false;
   const AView = host("AView");
   const mod = load("src/components/session/SessionBackdrop.tsx", {
-    "react-native": { View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, absoluteFill: {} }, useWindowDimensions: () => ({ width: 390, height: 844 }),
+    "react-native": { AppState: { currentState: "active", addEventListener: () => ({ remove() {} }) }, View: host("View"), Pressable: host("Press"), StyleSheet: { create: v => v, absoluteFill: {} }, useWindowDimensions: () => ({ width: 390, height: 844 }),
       Animated: { View: host("RNView"), Value: class { constructor(v) { this.v = v; } }, timing: (_v, config) => ({ start() { log.push(["words", config.toValue, config.delay]); }, stop() {} }) } },
     "react-native-reanimated": { __esModule: true, default: { View: AView }, Easing: { inOut: x => x, quad: 0 }, interpolate: (v, i, o) => o[0] + (o[1] - o[0]) * v,
       cancelAnimation() {}, runOnJS: f => f, useAnimatedStyle: fn => fn(), useSharedValue: v => React.useRef({ value: v }).current, withDelay: (delay, x) => { log.push(["delay", delay]); return x; },
       withTiming: (to, config, done) => { log.push(["timing", to, config?.duration]); done?.(true); return to; } },
+    "expo-router": { useFocusEffect: callback => React.useEffect(callback, [callback]) },
     "../AppText": { Text: host("Text") }, "../adventurer/AdventurerBack": host("Walker"),
     "./TrailScenes": { TrailScene: props => React.createElement("Scene", props), FireGlow: host("Fire"), Fireflies: host("Flies") },
     "../../hooks/useRewards": { useRewards: () => ({ look: LOOK, equipped: {}, today: { seconds: 3000, finds: 2 } }) },
@@ -196,6 +197,23 @@ test("after a session: one card with every find, then today's trail; a session w
   assert.match(words(r), /Canvas tote.*Already yours.*\+5/);
   assert.equal(r.root.findByType("Pack").props.open, true);
   await act(async () => r.unmount());
+  // A decoration used to have no reachable inventory. Both new and duplicate
+  // keepsakes now use the same real Collection destination, without equipping.
+  for (const fresh of [true, false]) {
+    const gift = { item: "decor_easel", rarity: "common", new: fresh, stardust: fresh ? 0 : 5 };
+    const visit = item => log.push(`collection:${item}`);
+    await act(async () => { r = create(React.createElement(ExpeditionReveal, { reveal: { ...reveal, finds: [gift] }, player, onClose() {}, onOutfits: visit })); });
+    assert.equal(r.root.findByProps({ testID: "expedition-view-item" }).props.accessibilityLabel, "View in Collection");
+    await press(r, "View in Collection");
+    assert.equal(log.at(-1), "collection:decor_easel");
+    await act(async () => r.unmount());
+    await act(async () => { r = create(React.createElement(PackReveal, { reveal: { id: "decor-pack", kind: "pack", tier: 0, daysInARow: 1, items: [gift], stardust: 10 }, player, onClose() {}, onOutfits: visit })); });
+    await press(r, "Open your Canvas pack");
+    assert.equal(r.root.findByProps({ testID: "pack-view-item" }).props.accessibilityLabel, "View in Collection");
+    await press(r, "View in Collection");
+    assert.equal(log.at(-1), "collection:decor_easel");
+    await act(async () => r.unmount());
+  }
 });
 
 test("the pop-up host shows a return or pack screen first, and closing it marks it seen", async () => {
