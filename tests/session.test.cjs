@@ -525,7 +525,7 @@ test("duration parser rejects ambiguous input rather than silently substituting"
   for(const input of ["1","30","480"]) assert.equal(validatedSessionMinutes(input),Number(input));
 });
 
-async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android", freshTimerResult = false) {
+async function screenSetup(initial = {}, questOverrides = {}, deferExit = false, motionPreference = {value:true}, platform = "android", freshTimerResult = false, nativeNodes = null) {
   const calls = [], keyboardListeners = {}, animations = [];
   const cache = new Map();
   const lifecycle = load("src/services/globalSessionLifecycle.ts", {}, cache).globalSessionLifecycle;
@@ -589,7 +589,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     "../hooks/useRewards":require("./helpers/rewards-store-mock.cjs"),
   }, cache).default;
   let renderer;
-  await act(async()=>{renderer=create(React.createElement(Screen));});
+  await act(async()=>{renderer=create(React.createElement(Screen),nativeNodes ? {createNodeMock:nativeNodes} : undefined);});
   const text=(node)=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   // Setup mirrors Home: Length is one row whose sheet holds presets and custom time.
   // Category rows read "Learning. Reading, studying…"; tests address them by their name.
@@ -617,6 +617,32 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
     cleanup:async()=>{await act(async()=>renderer.unmount());},
   };
 }
+
+test("Round 76: walker lane uses ancestor-relative ring/area measurements and rejects stale owner callbacks", async () => {
+  const ringCallbacks=[],areaCallbacks=[],surface={};
+  const nodes=element=>element.props.testID==='session-surface'?surface:element.props.testID==='session-ring-layer'?{
+    measureLayout: (relative,done)=>{assert.equal(relative,surface);ringCallbacks.push(done);}
+  }:element.props.testID==='session-timer-anchor'?{
+    measureLayout:(relative,done)=>{assert.equal(relative,surface);areaCallbacks.push(done);},measureInWindow(){}
+  }:null;
+  const ui=await screenSetup({hasOpenSession:true,isRunning:true}, {},false,{value:true},'android',false,nodes);
+  const measure=()=>ui.root().findAllByType('AnimatedView').find(node=>node.props.testID==='session-ring-layer').props.onLayout();
+  const band=()=>ui.root().findByType('Backdrop').props.focusBand;
+  try{
+    assert.equal(band(),null,'never use an old screen fraction before measuring');
+    await act(async()=>measure()); await act(async()=>ringCallbacks.at(-1)(0,120,240,240));
+    await act(async()=>areaCallbacks.at(-1)(0,80,320,430));
+    assert.equal(band().ringBottom,360);assert.equal(band().areaBottom,510);
+    await act(async()=>measure()); const obsolete=ringCallbacks.at(-1);
+    await act(async()=>measure()); await act(async()=>ringCallbacks.at(-1)(0,140,240,240));
+    await act(async()=>areaCallbacks.at(-1)(0,80,320,400));
+    await act(async()=>obsolete(0,40,240,240)); await act(async()=>areaCallbacks.at(-1)(0,80,320,600));
+    assert.equal(band().ringBottom,380);assert.equal(band().areaBottom,480,'an obsolete read cannot replace the current free lane');
+    await act(async()=>measure()); await act(async()=>ringCallbacks.at(-1)(0,120,240,240)); const oldArea=areaCallbacks.at(-1);
+    await ui.update({ownerId:'owner-b',admissionEpoch:2});assert.equal(band(),null);
+    await act(async()=>oldArea(0,80,320,430));assert.equal(band(),null,'old-account geometry never paints on the new account');
+  }finally{await ui.cleanup();}
+});
 
 test("a fresh ready Android Start persists protection and renders the break control after reconciliation", async () => {
   let readinessChecks = 0;

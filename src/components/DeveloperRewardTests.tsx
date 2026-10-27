@@ -95,7 +95,8 @@ export default function DeveloperRewardTests() {
     const gift = result.value.gifts[0];
     if (!gift) return;
     note(`${rewardItem(item)?.name}: ${gift.new ? "added to test inventory" : `duplicate, +${gift.stardust} test Stardust`}.`);
-    if (gift.new) show({ kind: "moment", gift });
+    const milestone = ["pet", "frame", "title"].includes(rewardItem(item)?.kind ?? "");
+    if (gift.new && milestone) show({ kind: "moment", gift });
     else show({ kind: "reveal", reveal: { id: `dev-duplicate:${++sequence.current}`, kind: "expedition", seconds: rewards.trail.findSeconds,
       finds: [gift], stardust: gift.stardust } });
   };

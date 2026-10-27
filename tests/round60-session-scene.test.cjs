@@ -10,6 +10,25 @@ function load(file,mocks){
   return module.exports;
 }
 const LOOK={skin:"3",hair:"short",hairColor:"darkbrown",glasses:false};
+
+test("Round 76: focus scenery is heavily dimmed while departure/return keep their readable animated scene",async()=>{
+ const ui=await sceneSetup({phase:'running',focusBand:{ringBottom:400,areaBottom:600}});
+ const dim=()=>ui.motions.filter(motion=>motion.duration===500).at(-1).to;
+ try{
+  assert.equal(dim(),0.82);await ui.update({phase:'paused',walking:false});assert.equal(dim(),0.82);
+  await ui.update({phase:'completed',returning:true});assert.equal(dim(),0.35);
+  await ui.update({returning:false});assert.equal(dim(),0.45);
+ }finally{await ui.cleanup();}
+});
+
+test("Round 76: a cramped focus lane stops only the hidden walker, never the departure/return animation",async()=>{
+ const ui=await sceneSetup({phase:'running',focusBand:{ringBottom:400,areaBottom:420}});
+ try{
+  assert.equal(ui.root().findByType('Walker').props.walking,false);
+  await ui.update({intro:true});assert.equal(ui.root().findByType('Walker').props.walking,true);
+  await ui.update({intro:false,phase:'completed',returning:true});assert.equal(ui.root().findByType('Walker').props.walking,true);
+ }finally{await ui.cleanup();}
+});
 async function sceneSetup(initial={}){
   let reduced=false,props={phase:"running",progress:0.2,secondsLeft:1440,walking:true,intro:false,skipToken:0,onIntroEnd:()=>{},...initial};
   const motions=[],cancelled=[],draws=[],values=[];
@@ -24,6 +43,7 @@ async function sceneSetup(initial={}){
     "../../hooks/useRewards":{useRewards:()=>({look:LOOK,equipped:{},today:{seconds:0}})},"../../hooks/useReducedMotion":{useReducedMotion:()=>reduced},
     "../../utils/trail":{trailZone:()=>({name:"Meadow"}),trailStops:()=>0},
     "../../services/sessionReturn":load("src/services/sessionReturn.ts",{}),
+    "../../utils/focusSceneLayout":load("src/utils/focusSceneLayout.ts",{}),
   });
   let renderer;await act(async()=>{renderer=create(React.createElement(mod.default,props));});
   return {mod,motions,cancelled,draws,day:()=>values[2],root:()=>renderer.root,lights:()=>renderer.root.findAllByType("Scene").map(n=>n.props.light),

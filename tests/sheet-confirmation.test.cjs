@@ -31,3 +31,17 @@ test('an elevated confirmation rises once its own layer is on screen, so its fir
   assert.deepEqual(starts,[1],'only once');
  }finally{await act(async()=>ui.unmount());}
 });
+
+test('an informational purchase prompt has one visible Got it action and keeps Back/outside dismissal',async()=>{
+ let closed=0;class Value{constructor(v){this.value=v;}setValue(v){this.value=v;}interpolate(){return 0;}}
+ const Confirm=load('src/components/SheetConfirmation.tsx',{
+  'react-native':{Animated:{View:host('Animated'),Value,timing:()=>({start(){},stop(){}})},Easing:{out:()=>0,cubic:0},Modal:host('Modal'),StyleSheet:{create:s=>s,absoluteFill:{}},View:host('View')},
+  'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'/MotionPressable':host('Press'),'/AppText':{Text:host('Text')},'/useReducedMotion':{useReducedMotion:()=>true},
+ }).default;
+ let ui;await act(async()=>{ui=create(React.createElement(Confirm,{elevated:true,destructive:false,title:'Not enough Stardust',message:'You need 20 more.',confirmLabel:'Got it',testID:'outfits-purchase',onConfirm(){closed++;},onCancel(){closed++;}}));});
+ try{
+  const actions=ui.root.findAllByType('Press').filter(node=>node.props.children);
+  assert.equal(actions.length,1);assert.equal(actions[0].props.accessibilityLabel,'Got it');assert.equal(actions[0].props.testID,'outfits-purchase-confirm');
+  await act(async()=>actions[0].props.onPress());await act(async()=>ui.root.findByType('Modal').props.onRequestClose());assert.equal(closed,2);
+ }finally{await act(async()=>ui.unmount());}
+});

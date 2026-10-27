@@ -54,44 +54,61 @@ function GiftRow({ gift }: { gift: Gift }) {
  */
 export function ExpeditionReveal({ reveal, player, onClose, onOutfits, onReady }: Props<Extract<Reveal, { kind: "expedition" }>>) {
   const reduced = useReducedMotion();
-  const [step, setStep] = useState<"found" | "trail">(reveal.finds.length ? "found" : "trail");
-  // One owner per fade: SessionReveal enters only once this content is ready;
-  // this value handles the later finds-to-trail swap, after the map commits.
-  const shown = useSharedValue(1);
+  const [step, setStep] = useState<"found" | "preparing" | "crossfade" | "trail">(reveal.finds.length ? "found" : "trail");
+  // The map stays opaque underneath the finds. Fading only the cover blends
+  // between the two complete screens without exposing the app behind them.
+  const cover = useSharedValue(1);
   const active = useRef(true), changing = useRef(false);
-  const currentStep = useRef(step), readyFor = useRef<string | null>(null);
+  const currentStep = useRef(step), reportedReady = useRef(false), readyCallback = useRef(onReady);
   useLayoutEffect(() => { currentStep.current = step; }, [step]);
-  useEffect(() => { active.current = true; return () => { active.current = false; cancelAnimation(shown); }; }, [shown]);
-  const enterTrail = useCallback(() => {
-    if (active.current && currentStep.current === "found" && changing.current) setStep("trail");
+  useLayoutEffect(() => { readyCallback.current = onReady; }, [onReady]);
+  useEffect(() => { active.current = true; return () => { active.current = false; cancelAnimation(cover); }; }, [cover]);
+  const finishFade = useCallback(() => {
+    if (!active.current || currentStep.current !== "crossfade") return;
+    currentStep.current = "trail"; setStep("trail");
   }, []);
-  const contentReady = useCallback(() => {
-    if (!active.current || currentStep.current !== step || readyFor.current === step) return;
-    if (step === "found" && changing.current) return;
-    readyFor.current = step;
-    if (step === "trail" && changing.current) {
-      shown.set(reduced ? 1 : withTiming(1, { duration: 520, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }));
+  const reportReady = useCallback(() => {
+    if (!active.current || reportedReady.current) return;
+    reportedReady.current = true; readyCallback.current?.();
+  }, []);
+  const foundReady = useCallback(() => {
+    if (currentStep.current === "found") reportReady();
+  }, [reportReady]);
+  const trailReady = useCallback(() => {
+    if (!active.current) return;
+    if (currentStep.current === "trail") { reportReady(); return; }
+    if (currentStep.current !== "preparing") return;
+    reportReady();
+    if (reduced) {
+      cover.set(0); currentStep.current = "trail"; setStep("trail");
+    } else {
+      currentStep.current = "crossfade"; setStep("crossfade");
+      cover.set(withTiming(0, { duration: 620, easing: Easing.inOut(Easing.quad), reduceMotion: ReduceMotion.System }, done => { if (done) runOnJS(finishFade)(); }));
     }
-    onReady?.();
-  }, [step, reduced, shown, onReady]);
+  }, [reduced, cover, finishFade, reportReady]);
   const toTrail = () => {
-    if (step !== "found" || changing.current) return;
+    if (currentStep.current !== "found" || changing.current) return;
     changing.current = true;
-    if (reduced) { enterTrail(); return; }
-    cancelAnimation(shown);
-    shown.set(withTiming(0, { duration: 320, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }, done => { if (done) runOnJS(enterTrail)(); }));
+    currentStep.current = "preparing"; setStep("preparing");
   };
   useEffect(() => {
-    if (reduced) { cancelAnimation(shown); shown.set(1); void Promise.resolve().then(enterTrail); }
-    // A missing native layout must never trap an invisible return screen.
-    const fallback = setTimeout(contentReady, 1200);
+    if (step === "crossfade" && reduced) { cancelAnimation(cover); cover.set(0); finishFade(); return; }
+    // Lost layout/animation callbacks keep the already visible screen until
+    // this bounded recovery. There is no transparent waiting state.
+    const fallback = setTimeout(step === "found" ? foundReady : step === "crossfade" ? finishFade : trailReady, step === "crossfade" ? 970 : 1200);
     return () => clearTimeout(fallback);
-  }, [step, shown, reduced, contentReady, enterTrail]);
-  const fade = useAnimatedStyle(() => ({ opacity: shown.get() }));
-  return <Animated.View style={[s.page, fade]}>
-    {step === "found" ? <FoundCard reveal={reveal} onContinue={toTrail} onOutfits={onOutfits} onReady={contentReady} />
-      : <TrailStep reveal={reveal} player={player} onClose={onClose} onReady={contentReady} />}
-  </Animated.View>;
+  }, [step, cover, reduced, foundReady, trailReady, finishFade]);
+  const foundFade = useAnimatedStyle(() => ({ opacity: cover.get() }));
+  return <View testID="expedition-transition" style={[s.page, { backgroundColor: "#0B0F1A" }]}>
+    {step !== "found" && <View testID="expedition-map-layer" style={StyleSheet.absoluteFill} pointerEvents={step === "trail" ? "auto" : "none"}
+      accessibilityElementsHidden={step !== "trail"} importantForAccessibility={step === "trail" ? "auto" : "no-hide-descendants"}>
+      <TrailStep reveal={reveal} player={player} onClose={onClose} onReady={trailReady} />
+    </View>}
+    {step !== "trail" && <Animated.View testID="expedition-finds-layer" style={[StyleSheet.absoluteFill, foundFade]} pointerEvents={step === "found" ? "auto" : "none"}
+      accessibilityElementsHidden={step !== "found"} importantForAccessibility={step === "found" ? "auto" : "no-hide-descendants"}>
+      <FoundCard reveal={reveal} onContinue={toTrail} onOutfits={onOutfits} onReady={foundReady} />
+    </Animated.View>}
+  </View>;
 }
 
 // The card plays in order: the card rises, each find is dealt onto it, then

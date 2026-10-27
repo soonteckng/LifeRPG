@@ -11,7 +11,8 @@ export interface SheetConfirmationProps {
   title: string;
   message: string;
   confirmLabel: string;
-  cancelLabel: string;
+  cancelLabel?: string;
+  testID?: string;
   onConfirm: () => void;
   onCancel: () => void;
   /** On a screen with the floating tab bar, rise above it (and its dim covers it) like a sheet does. */
@@ -48,19 +49,19 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
   const card = (
     <View style={styles.overlay} accessibilityViewIsModal onAccessibilityEscape={props.onCancel}>
       <Animated.View style={[StyleSheet.absoluteFill, { opacity: rise }]}>
-        <Pressable style={styles.scrim} onPress={props.onCancel} accessibilityLabel={props.cancelLabel} accessibilityRole="button" />
+        <Pressable style={styles.scrim} onPress={props.onCancel} accessibilityLabel={props.cancelLabel ?? "Close"} accessibilityRole="button" />
       </Animated.View>
       <Animated.View testID="confirmation-card" style={[styles.card, { marginBottom: Math.max(insets.bottom, 8) + 8, opacity: rise,
         transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [48, 0] }) }] }]}>
         <View style={styles.handle} />
         <Text style={styles.title} accessibilityRole="header">{props.title}</Text>
         <Text style={styles.message}>{props.message}</Text>
-        <Pressable style={[styles.confirm, !destructive && styles.confirmCalm]} onPress={props.onConfirm} accessibilityRole="button">
+        <Pressable testID={props.testID ? `${props.testID}-confirm` : undefined} accessibilityLabel={props.confirmLabel} style={[styles.confirm, !destructive && styles.confirmCalm]} onPress={props.onConfirm} accessibilityRole="button">
           <Text style={[styles.confirmText, !destructive && styles.confirmCalmText]}>{props.confirmLabel}</Text>
         </Pressable>
-        <Pressable style={styles.cancel} onPress={props.onCancel} accessibilityRole="button">
+        {!!props.cancelLabel && <Pressable testID={props.testID ? `${props.testID}-cancel` : undefined} accessibilityLabel={props.cancelLabel} style={styles.cancel} onPress={props.onCancel} accessibilityRole="button">
           <Text style={styles.cancelText}>{props.cancelLabel}</Text>
-        </Pressable>
+        </Pressable>}
       </Animated.View>
     </View>
   );

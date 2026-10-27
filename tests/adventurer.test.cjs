@@ -267,7 +267,9 @@ test("Outfits wears what you own, previews what you don't, and saves then goes b
     assert.equal(ui.button("Get it for 120 Stardust").props.accessibilityRole, "button");
     await act(async () => ui.button("Get it for 120 Stardust").props.onPress());
     const confirm = ui.r.root.findByType("Confirm").props;
-    assert.equal(confirm.confirmLabel, "Not enough Stardust");
+    assert.equal(confirm.title, "Not enough Stardust");
+    assert.equal(confirm.confirmLabel, "Got it"); assert.equal(confirm.cancelLabel, undefined);
+    assert.equal(confirm.destructive, false); assert.match(confirm.message, /need 20 more/);
     await act(async () => confirm.onConfirm());
     assert.deepEqual(ui.log, [], "not enough Stardust buys nothing");
     await ui.press("Field jacket, Uncommon, preview, not owned");

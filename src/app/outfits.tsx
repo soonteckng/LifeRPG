@@ -295,8 +295,12 @@ export default function OutfitsScreen() {
       </> : null}
 
     </View>
-    {buying && <SheetConfirmation elevated title={`Get ${buying.name}?`} message={`It costs ${buying.price} Stardust. You have ${rewards.stardust}.`}
-      confirmLabel={rewards.stardust >= (buying.price ?? 0) ? `Buy for ${buying.price}` : "Not enough Stardust"} cancelLabel="Not now"
+    {buying && <SheetConfirmation elevated destructive={false} testID="outfits-purchase"
+      title={rewards.stardust >= (buying.price ?? 0) ? `Get ${buying.name}?` : "Not enough Stardust"}
+      message={rewards.stardust >= (buying.price ?? 0) ? `It costs ${buying.price} Stardust. You have ${rewards.stardust}.`
+        : `${buying.name} costs ${buying.price} Stardust. You have ${rewards.stardust}, so you need ${(buying.price ?? 0) - rewards.stardust} more.`}
+      confirmLabel={rewards.stardust >= (buying.price ?? 0) ? `Buy for ${buying.price}` : "Got it"}
+      cancelLabel={rewards.stardust >= (buying.price ?? 0) ? "Not now" : undefined}
       onCancel={() => setBuying(null)} onConfirm={() => { if (rewards.stardust >= (buying.price ?? 0)) void buy(); else setBuying(null); }} />}
     <RewardCollectionSheet visible={collectionOpen} onClose={() => setCollectionOpen(false)} owned={rewards.owned}
       ready={ready} loading={rewards.loading || rewards.busy} error={rewards.error} online={rewards.online}

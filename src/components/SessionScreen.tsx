@@ -44,6 +44,7 @@ import { studySelection } from "../services/studySelection";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
+import type { FocusSceneBand } from "../utils/focusSceneLayout";
 import { rewardsStore } from "../hooks/useRewards";
 import SessionReveal from "./session/SessionReveal";
 import { sessionTrail } from "../services/sessionTrail";
@@ -151,6 +152,26 @@ export default function SessionScreen() {
   }, [endQueued, liveTimer.actionBusy]);
   const timerBounds = useRef({ top: 0, bottom: 0 });
   const timerView = useRef<View>(null);
+  const surfaceView = useRef<View>(null), ringView = useRef<View>(null);
+  const laneScope = JSON.stringify([presentationScope, width, height, fontScale]);
+  const currentLaneScope = useRef(laneScope), laneRequest = useRef(0);
+  useLayoutEffect(() => { currentLaneScope.current = laneScope; }, [laneScope]);
+  const [focusLane, setFocusLane] = useState<(FocusSceneBand & { scope: string }) | null>(null);
+  const measureFocusLane = () => {
+    const surface = surfaceView.current, ring = ringView.current, area = timerView.current;
+    if (!surface || !ring || !area) return;
+    const request = ++laneRequest.current;
+    // Ancestor-relative layout excludes the surface's slide transform. Screen
+    // coordinates measured during entry would put the walker off screen.
+    ring.measureLayout(surface, (_x, y, _w, h) => {
+      area.measureLayout(surface, (_ax, ay, _aw, ah) => {
+        if (!surfaceView.current || request !== laneRequest.current || currentLaneScope.current !== laneScope || h <= 0 || ah <= 0) return;
+        const ringBottom = Math.round(y + h), areaBottom = Math.round(ay + ah);
+        setFocusLane(previous => previous?.scope === laneScope && previous.ringBottom === ringBottom && previous.areaBottom === areaBottom
+          ? previous : { scope: laneScope, ringBottom, areaBottom });
+      });
+    });
+  };
   const detailsOffset = useRef(0);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
@@ -613,11 +634,11 @@ export default function SessionScreen() {
   const scenePhase = settingOff ? "running" : phase;
   const onTrail = scenePhase === "running" || scenePhase === "paused" || scenePhase === "completed" || scenePhase === "ended";
   return (
-    <Animated.View testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
+    <Animated.View ref={surfaceView} collapsable={false} testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={scenePhase} secondsLeft={timer.timeLeft} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
       walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro}
-      returning={returning} onReturnEnd={finishReturn} active={!revealShown} />
+      returning={returning} onReturnEnd={finishReturn} active={!revealShown} focusBand={focusLane?.scope === laneScope ? focusLane : null} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
@@ -625,15 +646,15 @@ export default function SessionScreen() {
       <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       {!online && <View style={styles.offline}><OfflineStatus /></View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={timerView} onLayout={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}
+        <View ref={timerView} collapsable={false} onLayout={() => { measureFocusLane(); timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; }); }}
           importantForAccessibility={hideCountdown ? "no-hide-descendants" : "auto"}
           testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor,
             compactSetup ? { height: rowHeight + 24 + setupTop, paddingTop: setupTop, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, hideCountdown && {opacity:0}]}>
           {/* While setting up, only the digits row shows; the full stage sits above
             it unseen, so starting glides the same digits into the ring. */}
-          <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => settleTimerStage(event.nativeEvent.layout.y)}
+          <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => { settleTimerStage(event.nativeEvent.layout.y); measureFocusLane(); }}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }, compactSetup && { marginTop: -(labelHeight + rowHeight) }]}>
-          <Animated.View pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop }]}>
+          <Animated.View ref={ringView} testID="session-ring-layer" collapsable={false} onLayout={measureFocusLane} pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop, height: ringSize }]}>
             {/* Keep the timer's geometry, but don't composite a hidden SVG over
               the scene while the completed result is being saved. */}
             {!hideCountdown && (phase !== "setup" || isQuest) && <ProgressRing size={ringSize}

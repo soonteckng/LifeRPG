@@ -9,6 +9,7 @@ import { useRewards } from "../../hooks/useRewards";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { trailStops, trailZone } from "../../utils/trail";
 import { RETURN_TO_CAMP_MS } from "../../services/sessionReturn";
+import { focusWalkerGeometry, type FocusSceneBand } from "../../utils/focusSceneLayout";
 
 type Phase = "setup" | "running" | "paused" | "completed" | "ended";
 /** You walk from camp to your place on the road… */
@@ -31,11 +32,12 @@ const fill = { position: "absolute" as const, left: 0, top: 0, right: 0, bottom:
 type BackdropProps = {
   phase: Phase; progress: number; secondsLeft: number; walking: boolean; intro: boolean; skipToken: number; onIntroEnd: () => void;
   returning?: boolean; onReturnEnd?: () => void; active?: boolean;
+  focusBand?: FocusSceneBand | null;
 };
 const isMorning = ({ phase, secondsLeft, intro }: Pick<BackdropProps, "phase" | "secondsLeft" | "intro">) => phase === "completed"
   || ((phase === "running" || phase === "paused") && !intro && Number.isFinite(secondsLeft) && secondsLeft <= DAWN_SECONDS);
 
-export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd, active = true }: BackdropProps) {
+export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intro, skipToken, onIntroEnd, returning = false, onReturnEnd, active = true, focusBand }: BackdropProps) {
   const { width, height } = useWindowDimensions();
   const reduced = useReducedMotion();
   const rewards = useRewards({ load: false });
@@ -120,11 +122,25 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
     day.value = withTiming(morning ? 1 : 0, { duration, easing: Easing.linear }, ok => { if (ok) runOnJS(settle)(); });
     return () => { current = false; cancelAnimation(day); };
   }, [lightMode, morning, reduced, day]);
-  const size = height < 720 ? 32 : 40;
-  // From big in the foreground at camp to small up the road, where you walk while you focus.
-  const top = height * 0.62 - size * 1.45, big = 3.4, startTy = height * 0.93 - (top + size * 0.75 + size * 0.75 * big);
-  const walker = useAnimatedStyle(() => ({ transform: [{ translateY: interpolate(walk.value, [0, 1], [startTy, 0]) }, { translateX: interpolate(walk.value, [0, 1], [-width * 0.05, 0]) },
-    { scale: interpolate(walk.value, [0, 1], [big, 1]) }] }));
+  const geometry = focusWalkerGeometry(height, focusBand), { size } = geometry;
+  const restY = useSharedValue(geometry.top), focusVisibility = useSharedValue(geometry.visible ? 1 : 0);
+  const wasVisible = useRef(geometry.visible);
+  useLayoutEffect(() => {
+    restY.value = reduced || !wasVisible.current ? geometry.top : withTiming(geometry.top, { duration: 300 });
+    focusVisibility.value = reduced ? geometry.visible ? 1 : 0 : withTiming(geometry.visible ? 1 : 0, { duration: 250 });
+    wasVisible.current = geometry.visible;
+  }, [geometry.top, geometry.visible, reduced, restY, focusVisibility]);
+  const dimTarget = intro || returning ? 0.35 : phase === "completed" ? 0.45 : 0.82;
+  const dim = useSharedValue(dimTarget);
+  useEffect(() => { dim.value = reduced ? dimTarget : withTiming(dimTarget, { duration: 500 }); }, [dim, dimTarget, reduced]);
+  useEffect(() => () => { cancelAnimation(restY); cancelAnimation(focusVisibility); cancelAnimation(dim); }, [restY, focusVisibility, dim]);
+  // Scaling happens around the body's centre; preserve the same camp foot
+  // position while the small focused figure follows its measured free lane.
+  const big = 3.4, campY = height * 0.93 - size * 0.75 * (1 + big);
+  const walker = useAnimatedStyle(() => ({ opacity: intro || returning ? 1 : interpolate(walk.value, [0, 0.85, 1], [1, 1, focusVisibility.value]),
+    transform: [{ translateY: interpolate(walk.value, [0, 1], [campY, restY.value]) }, { translateX: interpolate(walk.value, [0, 1], [-width * 0.05, 0]) },
+    { scale: interpolate(walk.value, [0, 1], [big, geometry.scale]) }] }));
+  const dimLayer = useAnimatedStyle(() => ({ opacity: dim.value }));
   const duskLayer = useAnimatedStyle(() => ({ opacity: dusk.value }));
   const dayLayer = useAnimatedStyle(() => ({ opacity: day.value }));
   if (!shown) return null;
@@ -134,13 +150,15 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
     {intro && !reduced && <Animated.View style={[fill, duskLayer]}><TrailScene width={width} height={height} light="dusk" /></Animated.View>}
     <FireGlow width={width} height={height} active={motionActive} />
     <Fireflies width={width} height={height} active={motionActive && walking && !morning} />
-    <Animated.View style={[s.walker, { left: width / 2 - size / 2, top }, walker]}>
-      <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={motionActive && (walking || intro || returning)} facing={phase === "completed" ? "camp" : "away"} />
+    <Animated.View testID="session-walker" style={[s.walker, { left: width / 2 - size / 2, top: 0 }, walker]}>
+      <AdventurerWalking look={rewards.look} equipped={rewards.equipped} size={size} walking={motionActive && (geometry.visible && walking || intro || returning)} facing={phase === "completed" ? "camp" : "away"} />
     </Animated.View>
+    <Animated.View testID="session-scenery-dim" style={[fill, { backgroundColor: "#000000" }, dimLayer]} />
   </View>;
 }, (previous, next) => previous.phase === next.phase && isMorning(previous) === isMorning(next)
   && previous.walking === next.walking && previous.intro === next.intro && previous.skipToken === next.skipToken
-  && previous.onIntroEnd === next.onIntroEnd && previous.returning === next.returning && previous.onReturnEnd === next.onReturnEnd && previous.active === next.active);
+  && previous.onIntroEnd === next.onIntroEnd && previous.returning === next.returning && previous.onReturnEnd === next.onReturnEnd && previous.active === next.active
+  && (previous.focusBand === undefined) === (next.focusBand === undefined) && previous.focusBand?.ringBottom === next.focusBand?.ringBottom && previous.focusBand?.areaBottom === next.focusBand?.areaBottom);
 
 /**
  * The words while you set off, above everything (the timer waits, hidden,

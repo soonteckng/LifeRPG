@@ -131,6 +131,14 @@ test('purchase-test controls cover all pack tiers, exact balances, every milesto
   await ui.press('dev-test-pack-0');assert.equal(ui.tree.root.findByType('Pack').props.reveal.stardust,15,'the test pack must include duplicate refunds just like the real pack');
   ui.rewards.lab.run=normalRun;
   await ui.press('dev-test-grant');await ui.press('dev-test-item-frame_streak_365');assert.equal(ui.tree.root.findByType('Moment').props.item.id,'frame_streak_365');
+  for(const id of ['tote','bg_forest','decor_easel']){
+   await ui.press('dev-test-grant');await ui.press(`dev-test-item-${id}`);
+   assert.equal(ui.tree.root.findAllByType('Moment').length,0,'ordinary items use the animated finds screen');
+   assert.equal(ui.tree.root.findByType('Expedition').props.reveal.finds[0].item,id);
+  }
+  for(const id of ['pet_owl','title_artist']){
+   await ui.press('dev-test-grant');await ui.press(`dev-test-item-${id}`);assert.equal(ui.tree.root.findByType('Moment').props.item.id,id);
+  }
   await ui.press('dev-test-duplicate');await ui.press('dev-test-item-tote');assert.equal(ui.tree.root.findByType('Expedition').props.reveal.finds[0].new,false);
   await ui.press('dev-test-find');assert.ok(ui.calls.some(call=>call[0]==='find'));
   await ui.press('dev-test-lock-again');assert.ok(ui.calls.some(call=>call[0]==='reset'));

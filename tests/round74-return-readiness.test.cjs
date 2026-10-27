@@ -84,18 +84,25 @@ for(const compiled of [false,true]){
   const stale=[...h.frames.values()];await act(async()=>ui.unmount());
   await act(async()=>stale.forEach(fn=>fn()));assert.deepEqual(h.ready,[]);
  });
- test(`finds fade out once and the measured map owns its subsequent fade-in (${mode})`,async()=>{
+ test(`finds stay visible until the map is ready, then crossfade over an opaque map (${mode})`,async()=>{
   const h=fixture({compiled}),Screen=h.load('src/components/rewards/RevealScreens.tsx').ExpeditionReveal;let ui;
   await act(async()=>{ui=create(React.createElement(Screen,{reveal:{...reveal,finds:[{item:'beret',new:true,rarity:'common',stardust:0}]},player,onClose(){},onOutfits(){}}));});
   try{
    const button=ui.root.findAllByType('Button').find(n=>n.props.accessibilityLabel==='Continue');
    await act(async()=>{button.props.onPress();button.props.onPress();});
-   const fades=h.motions.filter(a=>a.to===0);assert.equal(fades.length,1);assert.ok(fades[0].config.duration>=300);
-   await h.finish(fades[0]);const map=ui.root.findByType('Trail');
-   assert.equal(h.motions.filter(a=>a.to===1&&a.config?.duration>=450).length,0,'do not fade before the actual map is ready');
+   const map=ui.root.findByType('Trail');
+   assert.equal(h.motions.filter(a=>a.to===0).length,0,'the finds never fade while the map is still loading');
+   assert.ok(ui.root.findAll(n=>n.props.testID==='expedition-finds-layer').length);
+   const mapLayer=()=>ui.root.findAll(n=>n.props.testID==='expedition-map-layer')[0];
+   assert.equal(mapLayer().props.pointerEvents,'none');assert.equal(mapLayer().props.importantForAccessibility,'no-hide-descendants');
    await act(async()=>map.props.onReady());
-   assert.equal(h.motions.filter(a=>a.to===1&&a.config?.duration>=450).length,1);
-   await act(async()=>map.props.onReady());assert.equal(h.motions.filter(a=>a.to===1&&a.config?.duration>=450).length,1);
+   const fades=h.motions.filter(a=>a.to===0);assert.equal(fades.length,1);assert.ok(fades[0].config.duration>=500);
+   assert.equal(h.motions.filter(a=>a.to===1&&a.config?.duration>=450).length,0,'the map does not have a second fade from transparent');
+   assert.ok(ui.root.findAll(n=>n.props.testID==='expedition-finds-layer').length,'both scenes remain mounted during the blend');
+   await act(async()=>map.props.onReady());assert.equal(h.motions.filter(a=>a.to===0).length,1);
+   await h.finish(fades[0]);assert.equal(ui.root.findAll(n=>n.props.testID==='expedition-finds-layer').length,0);
+   assert.equal(ui.root.findByType('Trail'),map,'the same measured map survives the transition');
+   assert.equal(mapLayer().props.pointerEvents,'auto');assert.equal(mapLayer().props.importantForAccessibility,'auto');
   }finally{await act(async()=>ui.unmount());}
  });
 }
@@ -136,4 +143,32 @@ test('an earlier completed trail does not pretend to be the current day after mi
   player:{...player,today:{date:'2026-10-27',seconds:0,finds:0}},onClose(){},onOutfits(){}}));});
  try{assert.match(words(ui),/EARLIER TRAIL.*Trail complete.*Your session's progress is saved/);assert.doesNotMatch(words(ui),/FINISHED FOR TODAY|Back tomorrow/);}
  finally{await act(async()=>ui.unmount());}
+});
+
+test('a lost map callback keeps the finds visible until the bounded crossfade fallback',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const h=fixture(),Screen=h.load('src/components/rewards/RevealScreens.tsx').ExpeditionReveal;let ui;
+ await act(async()=>{ui=create(React.createElement(Screen,{reveal:{...reveal,finds:[{item:'beret',new:true,rarity:'common',stardust:0}]},player,onClose(){},onOutfits(){}}));});
+ try{
+  await act(async()=>ui.root.findAllByType('Button').find(n=>n.props.accessibilityLabel==='Continue').props.onPress());
+  await act(async()=>t.mock.timers.tick(1199));assert.equal(h.motions.filter(a=>a.to===0).length,0);
+  await act(async()=>t.mock.timers.tick(1));assert.equal(h.motions.filter(a=>a.to===0).length,1);
+  await act(async()=>t.mock.timers.tick(970));assert.equal(ui.root.findAll(n=>n.props.testID==='expedition-finds-layer').length,0);
+  assert.equal(ui.root.findAll(n=>n.props.testID==='expedition-map-layer')[0].props.pointerEvents,'auto');
+ }finally{await act(async()=>ui.unmount());}
+});
+test('reduced-motion finds swap to the committed map without either opacity animation',async()=>{
+ const h=fixture({reduced:true}),Screen=h.load('src/components/rewards/RevealScreens.tsx').ExpeditionReveal;let ui;
+ await act(async()=>{ui=create(React.createElement(Screen,{reveal:{...reveal,finds:[{item:'beret',new:true,rarity:'common',stardust:0}]},player,onClose(){},onOutfits(){}}));});
+ try{
+  await act(async()=>ui.root.findAllByType('Button').find(n=>n.props.accessibilityLabel==='Continue').props.onPress());
+  await act(async()=>ui.root.findByType('Trail').props.onReady());
+  assert.equal(h.motions.filter(a=>a.config?.duration>=500).length,0);assert.equal(ui.root.findAll(n=>n.props.testID==='expedition-finds-layer').length,0);
+ }finally{await act(async()=>ui.unmount());}
+});
+test('a stale crossfade callback cannot acknowledge or revive a dismissed reward screen',async()=>{
+ const h=fixture(),Screen=h.load('src/components/rewards/RevealScreens.tsx').ExpeditionReveal;let ui,closed=0;
+ await act(async()=>{ui=create(React.createElement(Screen,{reveal:{...reveal,finds:[{item:'beret',new:true,rarity:'common',stardust:0}]},player,onClose(){closed++;},onOutfits(){}}));});
+ await act(async()=>ui.root.findAllByType('Button').find(n=>n.props.accessibilityLabel==='Continue').props.onPress());
+ await act(async()=>ui.root.findByType('Trail').props.onReady());const fade=h.motions.find(a=>a.to===0);
+ await act(async()=>ui.unmount());await act(async()=>fade.done(true));assert.equal(closed,0);
 });
