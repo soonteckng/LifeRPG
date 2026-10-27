@@ -74,16 +74,19 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
     if (phase === "completed") { walk.value = 0; dusk.value = 0; return; }
     if (reduced) { walk.value = 1; dusk.value = 0; if (intro) endRef.current(); return; }
     if (!intro) { walk.value = 1; dusk.value = 0; skipAtStart.current = skipToken; return; }
-    const finish = () => endRef.current();
+    let current = true;
+    const finish = () => { if (current) endRef.current(); };
+    const stop = () => { current = false; cancelAnimation(walk); cancelAnimation(dusk); };
     if (skipToken !== skipAtStart.current) {
       // Skipping finishes the walk at once and fades to night a little quicker.
       walk.value = withTiming(1, { duration: 250 });
       dusk.value = withTiming(0, { duration: 700 }, ok => { if (ok) runOnJS(finish)(); });
-      return;
+      return stop;
     }
     walk.value = 0; dusk.value = 1;
     walk.value = withTiming(1, { duration: WALK_MS, easing: Easing.inOut(Easing.quad) });
     dusk.value = withDelay(WALK_MS, withTiming(0, { duration: NIGHT_FADE_MS, easing: Easing.inOut(Easing.quad) }, ok => { if (ok) runOnJS(finish)(); }));
+    return stop;
   }, [intro, skipToken, reduced, walk, dusk, phase, returning]);
   useLayoutEffect(() => {
     if (!returning || phase !== "completed") return;
@@ -130,7 +133,7 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
     focusVisibility.value = reduced ? geometry.visible ? 1 : 0 : withTiming(geometry.visible ? 1 : 0, { duration: 250 });
     wasVisible.current = geometry.visible;
   }, [geometry.top, geometry.visible, reduced, restY, focusVisibility]);
-  const dimTarget = intro || returning ? 0.35 : phase === "completed" ? 0.45 : 0.82;
+  const dimTarget = returning ? 0.35 : phase === "completed" ? 0.45 : 0.82;
   const dim = useSharedValue(dimTarget);
   useEffect(() => { dim.value = reduced ? dimTarget : withTiming(dimTarget, { duration: 500 }); }, [dim, dimTarget, reduced]);
   useEffect(() => () => { cancelAnimation(restY); cancelAnimation(focusVisibility); cancelAnimation(dim); }, [restY, focusVisibility, dim]);
@@ -140,7 +143,10 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
   const walker = useAnimatedStyle(() => ({ opacity: intro || returning ? 1 : interpolate(walk.value, [0, 0.85, 1], [1, 1, focusVisibility.value]),
     transform: [{ translateY: interpolate(walk.value, [0, 1], [campY, restY.value]) }, { translateX: interpolate(walk.value, [0, 1], [-width * 0.05, 0]) },
     { scale: interpolate(walk.value, [0, 1], [big, geometry.scale]) }] }));
-  const dimLayer = useAnimatedStyle(() => ({ opacity: dim.value }));
+  // Arrive at the final focus darkness in the dusk animation itself. Keeping
+  // a brighter intro veil until its removal started a second lighting pass
+  // exactly when the timer appeared.
+  const dimLayer = useAnimatedStyle(() => ({ opacity: intro ? interpolate(dusk.value, [0, 1], [0.82, 0.35]) : dim.value }));
   const duskLayer = useAnimatedStyle(() => ({ opacity: dusk.value }));
   const dayLayer = useAnimatedStyle(() => ({ opacity: day.value }));
   if (!shown) return null;

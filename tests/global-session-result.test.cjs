@@ -8,7 +8,7 @@ function load(file,mocks,cache=new Map()){
   if(cache.has(filename))return cache.get(filename).exports;
   const module={exports:{}};cache.set(filename,module);
   let input=fs.readFileSync(filename,'utf8');
-  if(cache.compileScreen&&filename.endsWith('SessionScreen.tsx')) input=require('@babel/core').transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
+  if(cache.compileScreen&&filename.endsWith('SessionScreen.tsx')||cache.compilePresenter&&filename.endsWith('GlobalRewardListener.tsx')) input=require('@babel/core').transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
   const source=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',source)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
@@ -23,7 +23,7 @@ function load(file,mocks,cache=new Map()){
 const host=type=>props=>React.createElement(type,props,props.children);
 const summary={sessionId:'confirmed',durationSeconds:90,xpEarned:1,goldEarned:0,recovered:true,questTitle:'Review your notes',creditVersion:1,areaXpEarned:1,completedAtMs:Date.UTC(2026,9,14,4)};
 async function setup(overrides={},mode='online',pathname='/',withScreen=false,options={}){
-  const cache=new Map();cache.compileScreen=options.compiled===true;
+  const cache=new Map();cache.compileScreen=options.compiled===true;cache.compilePresenter=options.compilePresenter===true;
   const lifecycle=load('src/services/globalSessionLifecycle.ts',{},cache).globalSessionLifecycle;
   let timer={duration:90,timeLeft:0,isCompleted:false,hasOpenSession:false,endingSession:false,sessionEnded:false,
     actionBusy:false,isRestoring:false,actionError:null,syncStatus:'idle',summaryViewed:false,rewardsVisible:false,clientReported:false,
@@ -35,7 +35,8 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false,op
   const dismissals=[];const unsubscribe=lifecycle.subscribe(result=>dismissals.push(result));
   const api={
     acknowledgeSummary(){calls.push('viewed');timer={...timer,summaryViewed:true};},
-    clearCompletionModal(){calls.push('clear');timer={...timer,hasOpenSession:false,isCompleted:false,endingSession:false,sessionEnded:false,sessionSummary:null,sessionId:null,duration:1800};},
+    clearCompletionModal(){calls.push('clear');timer={...timer,hasOpenSession:false,isCompleted:false,endingSession:false,sessionEnded:false,sessionSummary:null,sessionId:null,duration:1800,
+      ...(options.recordlessAfterClear?{summaryViewed:false}: {})};},
     retryCompletion:async()=>calls.push('retry-completion'),retryAction:async()=>calls.push('retry-end'),
     resetTimer:async()=>{calls.push('end');timer={...timer,isRunning:false,hasOpenSession:false,
       sessionEnded:true,endingSession:true,actionBusy:true,syncStatus:'waiting'};},
@@ -328,6 +329,27 @@ test('End keeps its Done action after the cancellation reply clears the controll
     await ui.done();assert.equal(result.props.visible,false);await ui.dismiss();assert.equal(ui.calls.filter(c=>c==='clear').length,1);
     assert.deepEqual(ui.dismissals,[{ownerId:'owner-a',scope:JSON.stringify(['test-backend','owner-a',1]),sessionId:'local'}]);
     await ui.dismiss();await ui.update();assert.equal(result.props.visible,false);
+  }finally{await ui.cleanup();}
+});
+
+for(const compiled of [false,true])for(const mode of ['online','local-only'])test(`Round 77: acknowledged End stays dismissed when clearing the journal resets summaryViewed (${mode}, ${compiled?'compiled':'control'})`,async()=>{
+  const ui=await setup({sessionEnded:true,sessionId:'ended',duration:60,timeLeft:57},mode,'/session',false,
+    {compilePresenter:compiled,recordlessAfterClear:true});
+  try{
+    assert.equal(ui.result().props.visible,true);assert.equal(ui.result().props.ending,true);
+    await ui.done();assert.equal(ui.result().props.visible,false);
+    const oldDismiss=ui.result().props.onDismiss;
+    await ui.dismiss();
+    assert.equal(ui.result().props.visible,false,'clearing a cancelled journal record must not revive its held notice');
+    await ui.update({},mode,'/');await ui.update();
+    assert.equal(ui.result().props.visible,false,'Home and refresh cannot reopen the acknowledged End');
+    assert.equal(ui.calls.filter(c=>c==='clear').length,1);assert.equal(ui.dismissals.length,1);
+    await ui.update({sessionEnded:true,sessionId:'next-ended',duration:120});
+    assert.equal(ui.result().props.visible,true,'a different ended session still gets its result');
+    await act(async()=>oldDismiss());assert.equal(ui.result().props.visible,true);
+    assert.equal(ui.calls.filter(c=>c==='clear').length,1,'an old native callback cannot acknowledge the next result');
+    await ui.done();await ui.dismiss();assert.equal(ui.result().props.visible,false);
+    assert.equal(ui.calls.filter(c=>c==='clear').length,2);
   }finally{await ui.cleanup();}
 });
 

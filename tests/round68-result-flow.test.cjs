@@ -33,7 +33,7 @@ function loader(mocks, compiled) {
   return load;
 }
 async function fixture({ compiled = true, delayReceipt = false } = {}) {
-  let now = Date.UTC(2026, 9, 26, 6), tick, timer, renderer, pathname = '/session', counter = 0, serverSetup, startedAt, receipt = null, releaseReceipt;
+  let now = Date.UTC(2026, 9, 26, 6), tick, timer, renderer, pathname = '/session', counter = 0, serverSetup, startedAt, receipt = null, releaseReceipt, cancelled = false;
   let reduced = false; const animations = [], events = [], listeners = new Set(), values = new Map();
   const oldNow = Date.now; Date.now = () => now;
   const scope = { ownerId: '11111111-1111-4111-8111-111111111111', backendId: 'round68-result-fixture' };
@@ -48,14 +48,14 @@ async function fixture({ compiled = true, delayReceipt = false } = {}) {
   const transport = {
     async start(setup) { serverSetup = setup; startedAt = now; return serverId; },
     async readOpenSessions() { return { complete: true, sessions: [] }; },
-    async readSession() { return { scope, serverSessionId: serverId, setup: serverSetup, status: receipt ? 'completed' : 'running',
+    async readSession() { return { scope, serverSessionId: serverId, setup: serverSetup, status: receipt ? 'completed' : cancelled ? 'cancelled' : 'running',
       startedAtMs: startedAt, completedAtMs: receipt ? now : null, receipt,
-      snapshot: receipt ? null : { serverSessionId: serverId, state: 'running', startedAtMs: startedAt, elapsedMs: now - startedAt,
+      snapshot: receipt ? null : { serverSessionId: serverId, state: cancelled ? 'cancelled' : 'running', startedAtMs: startedAt, elapsedMs: now - startedAt,
         observedClock: { wallTimeMs: now, monotonicTimeMs: null, bootId: null } } }; },
     async complete() {
       if (delayReceipt) await new Promise(resolve => { releaseReceipt = resolve; });
       return receipt = { sessionId: serverId, durationSeconds: 60, result: { xp_earned: 1, minutes: 1, duration_seconds: 60, credit_version: 1, area_xp_earned: 1 } };
-    }, pause: noop, resume: noop, cancel: noop,
+    }, pause: noop, resume: noop, cancel: async () => { cancelled = true; },
   };
   const native = { AppState: app, Modal: host('Modal'), View: host('View'), ScrollView: host('Scroll'), KeyboardAvoidingView: host('KeyboardView'), ActivityIndicator: host('Spinner'),
     Platform: { OS: 'android' }, StyleSheet: { create: value => value, hairlineWidth: 1 }, useWindowDimensions: () => ({ width: 390, height: 844, fontScale: 1 }),
@@ -108,6 +108,9 @@ async function fixture({ compiled = true, delayReceipt = false } = {}) {
   const update = () => act(async () => { renderer.update(React.createElement(Tree)); });
   return { timer: () => timer, root: () => renderer.root, events, returns, animations, result: () => renderer.root.findByType('Result'),
     start: () => act(async () => { assert.equal(await timer.startFreeTimer(60, 1), true); await flush(); }),
+    end: () => act(async () => { now += 15000; assert.equal(await timer.resetTimer(), true); await flush(); }),
+    done: () => act(async () => { renderer.root.findByType('Result').props.onClose(); await flush(); }),
+    dismiss: () => act(async () => { renderer.root.findByType('Result').props.onDismiss(); await flush(); renderer.update(React.createElement(Tree)); await flush(); }),
     complete: () => act(async () => { now += 60000; tick(); await flush(); await flush(); }),
     confirm: () => act(async () => { releaseReceipt?.(); await flush(); await flush(); }),
     finishWalk: () => act(async () => { const walk = animations.findLast(animation => animation.config?.duration === 1800 && animation.to === 0); assert.ok(walk, 'real SessionBackdrop scheduled the return walk'); walk.done(true); }),
@@ -117,6 +120,27 @@ async function fixture({ compiled = true, delayReceipt = false } = {}) {
     cleanup: () => act(async () => { renderer.unmount(); await flush(); Date.now = oldNow; }),
   };
 }
+
+for (const compiled of [false, true]) test(`Round 77: real cancelled journal result stays dismissed after its summary identity clears (${compiled ? 'production compiled' : 'uncompiled control'})`, async () => {
+  const f = await fixture({ compiled });
+  try {
+    await f.start(); await f.end();
+    assert.equal(f.timer().sessionEnded, true, 'a confirmed cancellation remains selected until Done');
+    assert.equal(f.timer().endingSession, false, 'the server has confirmed the stop');
+    assert.equal(f.timer().summaryViewed, false);
+    assert.ok(f.timer().sessionId);
+    assert.equal(f.result().props.visible, true); assert.equal(f.result().props.ending, true);
+    await f.done(); assert.equal(f.result().props.visible, false);
+    assert.ok(f.timer().sessionId, 'Done retains the canonical identity until the sheet has faded');
+    await f.dismiss();
+    assert.equal(f.timer().sessionId, null);
+    assert.equal(f.timer().sessionEnded, false);
+    assert.equal(f.timer().summaryViewed, false, 'the real provider has no summary to mark viewed after clearing selection');
+    assert.equal(f.events.filter(event => event === 'route-close').length, 1);
+    assert.equal(f.result().props.visible, false, 'Home must not resurrect the retained cancelled result');
+    await f.leave(); assert.equal(f.result().props.visible, false, 'a later Home render must also stay dismissed');
+  } finally { await f.cleanup(); }
+});
 
 for (const compiled of [false, true]) test(`actual journal completion opens its result after the real backdrop callback (${compiled ? 'production compiled' : 'uncompiled control'})`, async () => {
   const f = await fixture({ compiled });

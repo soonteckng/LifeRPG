@@ -188,6 +188,10 @@ export default function GlobalRewardListener() {
       if (dismissed && (dismissed.scope !== presentationScope || dismissed.sessionId !== (displayed?.props.sessionId ?? null))) return;
       if (dismissed && dismissed.scope === presentationScope && dismissed.sessionId === (displayed?.props.sessionId ?? null)) {
         pendingDismissal.current = null;
+        // Clearing the selected journal record also clears summaryViewed.
+        // Release this acknowledged copy before that neutral snapshot can
+        // mistake it for an End notice still waiting for Done.
+        setHeld(previous => previous?.accountKey === accountKey && (previous.props.sessionId ?? null) === dismissed.sessionId ? null : previous);
         globalSessionLifecycle.dismissResult(dismissed);
         // A widget can start another session during the fade. Never acknowledge
         // or clear that replacement using an outgoing result's callback.
