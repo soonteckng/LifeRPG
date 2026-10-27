@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 73, phone checks in section 7)
+# LifeRPG handoff (after Round 74, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 73 on the pushed R72 tree at `ce329f66719675c75e1dbedcd3ca3afbdc338ef9`. Collection shows already-owned decorations; hidden session decorative repeats stop. Prepared locally; Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 74 on the pushed R73 tree at `bc4a972f4fbc92c0c2de6c5470e4980cf7b179c3`. Done-only receipt, measured map entrance, fade to app and finished-trail copy. Prepared locally; Soon Teck applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 73: **1,723 tests passed**, zero failures/skips, with isolated PGlite and external networking blocked. Typecheck, full Expo lint and diff checks pass. Collection/Outfits geometry checked at small/large sizes and font scale 1.8. Native inputs unchanged. Evidence: `docs/round73-collection.md`. |
+| Code health | Round 74: **1,741 tests passed**, zero failures/skips, with isolated PGlite and external networking blocked. Typecheck, full Expo lint and diff checks pass. Return-screen layout checked in 16 size/font/state cases. Native inputs unchanged. Evidence: `docs/round74-session-return.md`. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Nothing pending. The old Round 64 file must never be run. |
-| Waiting on the phone | R71 is "so far ok". R73: Collection entry/reward return and draft preservation, purple-bar return and background/resume completion. Browser geometry and loop-count tests are not a native frame-rate profile. R72 Camp check remains if untested. Exact account is **st** (saved username **St**); ownership findings remain unchanged. |
+| Waiting on the phone | User says the completed-session card is smooth, but wants Done-only dismissal, a calmer map entrance and a fade to app. R74 implements these. Check the short flow in `docs/round74-session-return.md`. Android frame pacing remains unverified. Exact account is **st** (saved username **St**); ownership and reward economics are unchanged. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -123,40 +123,40 @@ commands to copy and paste:
 ```bash
 # 1. One commit for the round, on top of feature/next.
 git add -A src tests docs supabase
-git commit -m "Round 73: <short summary>" -m "- <what changed, one line each>"
+git commit -m "Round 74: <short summary>" -m "- <what changed, one line each>"
 
 # 2. The patch, then prove it applies cleanly to the commit before it.
-git format-patch -1 HEAD --stdout > out/round-73.patch
-git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-73.patch \
+git format-patch -1 HEAD --stdout > out/round-74.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-74.patch \
   && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
 
 # 3. The backup bundle.
 EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-npx expo export --platform android --clear --output-dir dist73 --dump-assetmap
-(cd dist73 && zip -qr ../out/dist-round-73.zip .)
+npx expo export --platform android --clear --output-dir dist74 --dump-assetmap
+(cd dist74 && zip -qr ../out/dist-round-74.zip .)
 ```
 
 Then send him the files (he downloads them to `Downloads`). Don't paste a
 patch into the chat.
 
-**The commands you give him (worked example, Round 73):**
+**The commands you give him (worked example, Round 74):**
 
 ```powershell
-git am "$HOME\Downloads\round-73.patch"
+git am "$HOME\Downloads\round-74.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 73: <short summary>"
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 74: <short summary>"
 ```
 
 If Windows crashes during the bundle step:
 
 ```powershell
-Expand-Archive "$HOME\Downloads\dist-round-73.zip" -DestinationPath dist -Force
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 73" --skip-bundler --input-dir dist
+Expand-Archive "$HOME\Downloads\dist-round-74.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 74" --skip-bundler --input-dir dist
 ```
 
 If the round has SQL, it always comes **after** publishing: "Open
-`round-73-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+`round-74-<name>.sql`, paste it into the Supabase SQL Editor and run it."
 Older installed versions may still call what the SQL changes.
 
 If a patch was built on a commit he doesn't have yet, say which patch goes
@@ -216,10 +216,10 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 2. Night until the **last 10 focus seconds** (`DAWN_SECONDS`, Round 69), then a linear fade over the remaining focus seconds. Pause or the protected break freezes the light; Resume continues to the focus deadline. A reopened completed session shows morning immediately; early End returns to night. Ordinary timer ticks do not redraw the scene or restart dawn. New sessions and edited routines require 60 seconds to 8 hours; old short sessions, history and pending sync records remain readable and recoverable.
 3. The 5-min break asks first ("Take your 5-minute break?" with Start break / Keep focusing).
 4. On a fresh finish witnessed inside the timer, the character walks back to camp for 1.8 seconds before the result card. It is presentation only; Reduce Motion, recovered results and early End skip it. A bounded fallback and route/account/background cleanup release the card if the animation is interrupted.
-5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** and shows the session's return screen **itself** (`components/session/SessionReveal.tsx`: the finds card if anything was found, then today's trail walk). Order: walk back → result card → finds → trail → back to the app. While the claim is still in flight it waits up to 15 s; while the return screen shows there is no time limit (you close it). Back and swipe-down close the return screen first. `RewardMoments` never shows an expedition reveal while on the session route or while the session screen hosts it (`sessionRevealHost` in `services/sessionReturn.ts`, e.g. Outfits opened from the finds card); one that arrives after you left shows on Home as before.
+5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** and shows the session's return screen **itself** (`components/session/SessionReveal.tsx`: the finds card if anything was found, then today's trail walk). Order: walk back → result card → finds → trail → back to the app. While the claim is still in flight it waits up to 15 s; while the return screen shows there is no time limit (you close it). Continue or Back fades the return into the app; the map stays mounted until the native fade finishes. `RewardMoments` never shows an expedition reveal while on the session route or while the session screen hosts it (`sessionRevealHost` in `services/sessionReturn.ts`, e.g. Outfits opened from the finds card); one that arrives after you left shows on Home as before.
 6. Widget/deep-link launches (`routine-start.tsx`) use `router.dismissTo("/session")`, never `replace`: `REPLACE` ignores `dangerouslySingular` and stacked a second session screen. `SessionScreen` also recovers a close whose pop was lost (`LOST_EXIT_MS`), so a hidden, input-locked screen can't freeze the app.
 7. The reward claim result is written to the private session record (`sessionTrail("rewards claim")`, share with Settings > Developer > Share session log), plus `result closed`, `reveal shown`, `reveal closed`.
-8. Round 69: Done fades the whole result modal for 220 ms. Only its actual dismissal notifies the session screen and acknowledges the result, so finds/trail never start their entrance behind the outgoing card. Repeated callbacks, an account/admission change and a replacement running session are fenced. Reduce Motion swaps immediately.
+8. Round 74: the receipt closes only through Done, fading the whole result modal for 400 ms (ordinary sheet fades still default to 220 ms). Only its actual dismissal notifies the session screen and acknowledges the result. SessionReveal then waits for measured content before a 520 ms entrance. Finds fade out for 320 ms before a measured map fades in for 520 ms. The final 480 ms fade has no downward translation and acknowledges the map only when hidden. Repeated callbacks, an account/admission change and a replacement running session are fenced. Reduce Motion swaps immediately.
 9. Round 69: widget/purple-bar entry explicitly requests one presentation-only slide on the retained session route. Returning from Outfits does not replay it. A motion generation prevents an old close callback from popping or snapping the new entrance. Focus recovery runs on actual route focus, not ordinary timer-id/picker updates.
 
 ---
@@ -236,26 +236,27 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: check Round 73's Collection and the existing session flow once.**
-Outfits' top-right Collection button shows owned camp decorations, including
-Easel. It is a read-only inventory, not a camp editor: nothing is automatically
-placed or equipped. Cached items work offline, unknown inventory is not shown
-as empty, and opening/closing preserves the outfit draft. Decoration reward
-links and Developer > Open Collection use this same screen.
+**First: check Round 74's short completed-session flow.**
+The user reports the completion card itself is smooth. It now closes only
+through Done, fades out for 400 ms, and the return waits for the actual map
+commit before its 520 ms entrance. Finds > map uses 320 ms out / measured map /
+520 ms in. Continue keeps the map mounted during a 480 ms fade into the app,
+then acknowledges it and pops. A running timer still minimises by sliding.
+Reduce Motion is instant. Finished trails say Trail complete / Finished for
+today; later sessions stay at the end. Pending finds and frozen earlier-day
+progress remain truthful. See `docs/round74-session-return.md`.
 
-Eight before-fix regressions reproduced hidden session decorative repeats,
-including production compilation. They now stop on blur/background/covered
-return screen and resume only when visible. Timer deadlines, dawn, walk-back,
-result/reward ordering and styles are unchanged. Check a one-minute purple-bar
-and background/resume flow. Actual Android frame pacing and Collection's direct
-reward entrance still need a phone check. See `docs/round73-collection.md`.
+The new ordering tests reproduce the old failures before the fixes, including
+production compilation. Browser layout covers 16 small/large/font-1.8 cases;
+actual Android frame pacing still needs the phone. Existing Developer receipt
+and real return/empty-return controls exercise the same screens. All R73
+Collection behaviour and hidden-animation cancellation remain intact.
 
-The user approved this bounded round after asking what to do next. Other ideas
-from `docs/round72-camp-label.md` remain discussion only: a shorter result flow,
-onboarding changes, more reward sets or telemetry are not authorised here.
-New reward IDs still need approved server-catalogue SQL. Preserve all R71/R72
-fixes. R71 is "so far ok"; check the Camp label if R72 remains untested.
-No Supabase/Auth call or live change was needed in Round 73.
+Chosen rewards, rest-day tokens and camp placement were discussed next. They
+are not installed or implemented in R74; the transition round is independent
+and new server rules need review/approval. No live Supabase/Auth calls, email
+or native/config/dependency changes are part of this round. The notification
+merge and every other native change still wait until November 2026.
 
 ### Previous Round 71 reports and findings
 

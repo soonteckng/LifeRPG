@@ -48,6 +48,8 @@ interface Props {
   children: React.ReactNode;
   // Editors intercept dismissal before any content is hidden or unmounted.
   guardDismiss?: boolean;
+  /** A receipt with its own Done action cannot be dismissed by gestures or Back. */
+  dismissible?: boolean;
   expanded?: boolean;
   // Content-sized editors must not gain an extra tall snap point.
   compact?: boolean;
@@ -68,6 +70,7 @@ interface Props {
   closeInstantly?: boolean;
   /** Result-to-reward handoffs fade the whole modal instead of sliding it away. */
   closeMotion?: "slide" | "fade";
+  closeFadeDuration?: number;
   // One rule for every sheet: short sheets (menus, confirmations, quick
   // choices) float as a card inside the screen; editors and tall lists dock to
   // the screen edges so inputs, the keyboard and Save keep the full width.
@@ -77,6 +80,7 @@ interface Props {
 
 const DismissContext = createContext({
   guarded: false,
+  dismissible: true,
   requestClose: () => {},
   header: null as React.ReactNode,
   footer: null as React.ReactNode,
@@ -85,11 +89,11 @@ const DismissContext = createContext({
   setDragging: (_dragging: boolean) => {},
 });
 
-function SheetSurface({ fade, hidden, onHidden, children }: { fade: boolean; hidden: boolean; onHidden: () => void; children: React.ReactNode }) {
-  return fade ? <FadingSheetSurface hidden={hidden} onHidden={onHidden}>{children}</FadingSheetSurface> : <>{children}</>;
+function SheetSurface({ fade, hidden, onHidden, duration, children }: { fade: boolean; hidden: boolean; onHidden: () => void; duration: number; children: React.ReactNode }) {
+  return fade ? <FadingSheetSurface hidden={hidden} onHidden={onHidden} duration={duration}>{children}</FadingSheetSurface> : <>{children}</>;
 }
 
-function FadingSheetSurface({ hidden, onHidden, children }: { hidden: boolean; onHidden: () => void; children: React.ReactNode }) {
+function FadingSheetSurface({ hidden, onHidden, duration, children }: { hidden: boolean; onHidden: () => void; duration: number; children: React.ReactNode }) {
   const opacity = useSharedValue(1);
   const latestHidden = useRef(onHidden);
   useLayoutEffect(() => { latestHidden.current = onHidden; }, [onHidden]);
@@ -98,30 +102,30 @@ function FadingSheetSurface({ hidden, onHidden, children }: { hidden: boolean; o
     cancelAnimation(opacity);
     if (!hidden) { opacity.value = 1; return; }
     const finished = () => { if (current) latestHidden.current(); };
-    opacity.value = withTiming(0, { duration: 220, reduceMotion: ReduceMotion.System }, done => {
+    opacity.value = withTiming(0, { duration, reduceMotion: ReduceMotion.System }, done => {
       if (done) runOnJS(finished)();
     });
     return () => { current = false; cancelAnimation(opacity); };
-  }, [hidden, opacity]);
+  }, [hidden, opacity, duration]);
   const style = useAnimatedStyle(() => ({ opacity: opacity.value }));
   return <Animated.View testID="sheet-exit-fade" style={[styles.root, style]}>{children}</Animated.View>;
 }
 
 // Keep the handle component's identity stable while typing or saving.
 function SheetHandle() {
-  const { header, label, requestClose } = useContext(DismissContext);
+  const { header, label, requestClose, dismissible } = useContext(DismissContext);
   return (
     <View>
       <View
         style={styles.handleTarget}
-        accessible
-        accessibilityRole="button"
-        accessibilityLabel={`Dismiss ${label}`}
-        accessibilityHint="Swipe down or activate to dismiss"
-        accessibilityActions={[{ name: "activate", label: "Dismiss" }]}
-        onAccessibilityAction={requestClose}
+        accessible={dismissible}
+        accessibilityRole={dismissible ? "button" : undefined}
+        accessibilityLabel={dismissible ? `Dismiss ${label}` : undefined}
+        accessibilityHint={dismissible ? "Swipe down or activate to dismiss" : undefined}
+        accessibilityActions={dismissible ? [{ name: "activate", label: "Dismiss" }] : undefined}
+        onAccessibilityAction={dismissible ? requestClose : undefined}
       >
-        <View style={styles.handle} />
+        {dismissible && <View style={styles.handle} />}
       </View>
       {header}
     </View>
@@ -213,6 +217,7 @@ export default function AppSheet({
   header,
   children,
   guardDismiss = false,
+  dismissible = true,
   expanded = false,
   compact = false,
   maxHeightRatio = 0.82,
@@ -226,6 +231,7 @@ export default function AppSheet({
   activityId,
   closeInstantly = false,
   closeMotion = "slide",
+  closeFadeDuration = 220,
   attached = expanded,
   backdropGlow,
 }: Props) {
@@ -298,15 +304,18 @@ export default function AppSheet({
       Keyboard.dismiss();
       return;
     }
-    onRequestClose();
-  }, [onRequestClose]);
+    if (dismissible) onRequestClose();
+  }, [dismissible, onRequestClose]);
 
   const finishClose = useCallback(() => {
+    // A native close queued before a locked receipt was shown must not bypass
+    // its Done action. Restore the existing snap point instead.
+    if (visible && !dismissible) { ref.current?.snapToIndex?.(0); return; }
     setMounted(false);
     if (visible) onRequestClose();
     // iOS must finish dismissing its native modal before a new route is presented.
     if (Platform.OS !== "ios") onDismiss?.();
-  }, [visible, onRequestClose, onDismiss]);
+  }, [visible, dismissible, onRequestClose, onDismiss]);
 
   const latestFinishClose = useRef(finishClose);
   useLayoutEffect(() => { latestFinishClose.current = finishClose; });
@@ -339,16 +348,16 @@ export default function AppSheet({
         {backdropGlow}
         {/* 'none' disables the library's tap recognizer. Supply our own target so
           draft confirmation runs before closing rather than bypassing it. */}
-        <Pressable
+        {dismissible && <Pressable
           style={StyleSheet.absoluteFill}
           onPress={onRequestClose}
           accessibilityRole="button"
           accessibilityLabel={`Dismiss ${label}`}
           accessibilityHint="Closes the sheet or returns from the editor"
-        />
+        />}
       </BottomSheetBackdrop>
     ),
-    [onRequestClose, label, backdropGlow],
+    [dismissible, onRequestClose, label, backdropGlow],
   );
 
   return (
@@ -369,7 +378,7 @@ export default function AppSheet({
       }}
     >
       {mounted && (
-        <SheetSurface fade={closeMotion === "fade"} hidden={!visible} onHidden={finishClose}>
+        <SheetSurface fade={closeMotion === "fade"} hidden={!visible} onHidden={finishClose} duration={closeFadeDuration}>
         <GestureHandlerRootView
           style={styles.root}
           accessibilityViewIsModal
@@ -378,6 +387,7 @@ export default function AppSheet({
           <DismissContext.Provider
             value={{
               guarded: guardDismiss,
+              dismissible,
               requestClose: onRequestClose,
               header,
               footer,
@@ -400,10 +410,10 @@ export default function AppSheet({
               detached={floating}
               bottomInset={floatInset}
               style={floating ? styles.floating : undefined}
-              enablePanDownToClose={!guardDismiss}
-              enableHandlePanningGesture
-              enableContentPanningGesture
-              enableOverDrag={guardDismiss}
+              enablePanDownToClose={dismissible && !guardDismiss}
+              enableHandlePanningGesture={dismissible}
+              enableContentPanningGesture={dismissible}
+              enableOverDrag={dismissible && guardDismiss}
               gestureEventsHandlersHook={useDismissGestures}
               keyboardBehavior={
                 keyboardBehavior ?? (!compact && (expanded || guardDismiss)
@@ -416,7 +426,7 @@ export default function AppSheet({
               overrideReduceMotion={ReduceMotion.System}
               backgroundStyle={floating ? styles.floatingSurface : styles.surface}
               backdropComponent={backdrop}
-              onClose={finishClose}
+              onClose={() => latestFinishClose.current()}
               footerComponent={footer ? SheetFooter : undefined}
               handleComponent={SheetHandle}
             >

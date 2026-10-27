@@ -73,6 +73,8 @@ export default function SessionScreen() {
   const ownerId = auth.user?.id ?? auth.localOwner?.id;
   const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
+  const currentPresentationScope = useRef(presentationScope);
+  useLayoutEffect(() => { currentPresentationScope.current = presentationScope; }, [presentationScope]);
   const presentable = liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded;
   const [heldTimer, setHeldTimer] = useState<{ scope: string; timer: typeof liveTimer } | null>(() => presentable ? { scope: presentationScope, timer: liveTimer } : null);
   if (presentable && (!heldTimer || heldTimer.scope !== presentationScope || !sameTimerSnapshot(heldTimer.timer, liveTimer))) setHeldTimer({ scope: presentationScope, timer: liveTimer });
@@ -336,7 +338,7 @@ export default function SessionScreen() {
     if (confirmEnd) { setConfirmEnd(false); return true; }
     return false;
   }, [keyboardVisible, picker, confirmEnd]);
-  const minimise = useCallback((source = "header") => {
+  const minimise = useCallback((source = "header", onHidden?: () => void) => {
     const layerDismissed = source === "completion" || source === "session-ended" ? false : dismissLayer();
     const state = navigation.getState();
     traceSession("close request", { source, layerDismissed, alreadyClosing: closing.current, navigator: state?.key, activeRoute: state?.routes[state.index]?.key, reducedMotion });
@@ -352,18 +354,30 @@ export default function SessionScreen() {
     traceSession("native stack close", { canGoBack: navigation.canGoBack(), routeCount: navigation.getState()?.routes.length });
     if (navigation.canGoBack()) {
       traceSession("controlled exit start", { reducedMotion });
-      Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
-      Animated.timing(screenMotion, { toValue: -0.12, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(({ finished }) => {
+      let exitSettled = false;
+      const finishedExit = ({ finished }: { finished: boolean }) => {
         // A widget/dock entry may reopen this retained route before a native
         // close callback reaches JS. It no longer owns the screen's motion.
-        if (generation !== motionGeneration.current) return;
+        if (generation !== motionGeneration.current || exitSettled) return;
+        exitSettled = true;
         traceSession("controlled exit end", { finished });
-        if (finished) setExitReady(true);
-        else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); }
-      });
+        if (finished && currentPresentationScope.current === presentationScope && navigation.isFocused?.() !== false) {
+          onHidden?.();
+          setExitReady(true);
+        } else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); }
+      };
+      if (source === "completion") {
+        // A finished walk dissolves into the app beneath it. Keep its map
+        // mounted until the native fade finishes; only then acknowledge it.
+        screenMotion.stopAnimation(); screenMotion.setValue(1);
+        Animated.timing(surfaceOpacity, { toValue: 0, duration: reducedMotion ? 0 : 480, useNativeDriver: true }).start(finishedExit);
+      } else {
+        Animated.timing(surfaceOpacity, { toValue: reducedMotion ? 1 : 0, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start();
+        Animated.timing(screenMotion, { toValue: -0.12, duration: reducedMotion ? 0 : 260, useNativeDriver: true }).start(finishedExit);
+      }
     }
     else { closing.current = false; screenMotion.setValue(1); surfaceOpacity.setValue(1); console.warn("[Session] Missing anchored back history"); }
-  }, [dismissLayer, navigation, reducedMotion, screenMotion, surfaceOpacity]);
+  }, [dismissLayer, navigation, reducedMotion, screenMotion, surfaceOpacity, presentationScope]);
   const recoverFromLostExit = useCallback((reason: string) => {
     traceSession("exit recovered", { reason });
     motionGeneration.current++;
@@ -450,10 +464,12 @@ export default function SessionScreen() {
   const revealShown = holdForRewards && !!sessionReveal;
   useEffect(() => { revealShownRef.current = revealShown; }, [revealShown]);
   const closeReveal = useCallback(() => {
-    if (!sessionReveal) return;
-    sessionTrail("reveal closed", { finds: sessionReveal.finds.length });
-    rewardsStore.dismissReveal(rewardsOwner, sessionReveal.id);
-  }, [sessionReveal, rewardsOwner]);
+    if (!sessionReveal || closing.current) return;
+    minimise("completion", () => {
+      sessionTrail("reveal closed", { finds: sessionReveal.finds.length });
+      rewardsStore.dismissReveal(rewardsOwner, sessionReveal.id);
+    });
+  }, [sessionReveal, rewardsOwner, minimise]);
   useEffect(() => { closeRevealRef.current = closeReveal; }, [closeReveal]);
   const hostedReveal = revealShown ? sessionReveal?.id ?? null : null;
   useLayoutEffect(() => hostedReveal ? sessionRevealHost.hold(hostedReveal) : undefined, [hostedReveal]);
@@ -706,7 +722,7 @@ export default function SessionScreen() {
         cancelLabel="Keep focusing" confirmLabel="Start break" onCancel={() => setConfirmBreak(false)} onConfirm={() => { setConfirmBreak(false); void timer.pauseTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
-    {revealShown && sessionReveal && <SessionReveal reveal={sessionReveal} onClose={closeReveal} />}
+    {revealShown && sessionReveal && <SessionReveal key={sessionReveal.id} reveal={sessionReveal} onClose={closeReveal} />}
     {intro && <SessionIntroWords minutes={Math.round(timer.duration / 60)} onSkip={() => setSkipToken(n => n + 1)}
       area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />}
     </Animated.View>

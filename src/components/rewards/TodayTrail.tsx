@@ -63,7 +63,7 @@ function sample(pts: { x: number; y: number }[]) {
  * map draws on its first measured layout, together with the sheet's content.
  */
 export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, stops, finds, pendingFinds, complete, bonus = 0, nextFindSeconds,
-  look, equipped, level, background, frame, fill = false, delay = 450, sizeKey, initialSize }: {
+  look, equipped, level, background, frame, fill = false, delay = 450, sizeKey, initialSize, onReady }: {
   seconds: number; fromSeconds?: number; findSeconds: number; stops: number; finds: number; pendingFinds?: number; complete: boolean; bonus?: number; nextFindSeconds: number;
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
   /** Grow to fill the space it's given; the whole trail fits inside. */
@@ -76,6 +76,8 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
   sizeKey?: string;
   /** A close guess at the size for the very first opening. */
   initialSize?: { width: number; height: number };
+  /** The real measured map has committed, so its host can begin fading in. */
+  onReady?: () => void;
 }) {
   const { width: screenWidth, height: screenHeight, fontScale } = useWindowDimensions();
   const stackedStats = fontScale > 1.3 && screenWidth < 420;
@@ -83,6 +85,20 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
   const labelStyle = [s.label, stackedStats && s.labelRow];
   const memoryKey = sizeKey ? `${sizeKey}:${screenWidth}x${screenHeight}@${fontScale}` : null;
   const [box, setBox] = useState(() => (memoryKey && measured.get(memoryKey)) || initialSize || { width: 0, height: 0 });
+  const [laidOut, setLaidOut] = useState(false);
+  useEffect(() => {
+    if (!onReady || !laidOut || box.width <= 0 || box.height <= 0) return;
+    let current = true;
+    const ready = () => { if (current) onReady(); };
+    // onLayout sets the measured geometry. Wait until that SVG commit has
+    // had a frame, rather than fading the empty container before it exists.
+    if (typeof globalThis.requestAnimationFrame === "function") {
+      const frame = globalThis.requestAnimationFrame(ready);
+      return () => { current = false; globalThis.cancelAnimationFrame(frame); };
+    }
+    void Promise.resolve().then(ready);
+    return () => { current = false; };
+  }, [onReady, laidOut, box.width, box.height]);
   const count = Math.max(1, stops), minutesPerStop = Math.round(findSeconds / 60);
   const at = (s: number) => Math.min(count, Math.max(0, s / Math.max(1, findSeconds)));
   const to = at(seconds), ended = to >= count, zone = trailZone(Math.floor(to), count);
@@ -106,6 +122,7 @@ export default memo(function TodayTrail({ seconds, fromSeconds, findSeconds, sto
     </View>
     <View style={[s.map, fill ? s.mapFill : { height: 380 }]} testID="today-trail-map" onLayout={e => {
       const { width, height } = e.nativeEvent.layout;
+      if (onReady) setLaidOut(width > 0 && height > 0);
       if (memoryKey) remember(memoryKey, { width, height });
       // Sub-pixel differences from a remembered size would redraw for nothing.
       setBox(previous => Math.abs(previous.width - width) < 1 && Math.abs(previous.height - height) < 1 ? previous : { width, height });

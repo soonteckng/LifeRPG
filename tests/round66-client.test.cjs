@@ -237,9 +237,9 @@ test("a cold or warm-cache 51-session backlog catches up the pending stop with o
 });
 
 test("a displayed trail keeps its frozen progress when the live player advances or crosses midnight", async () => {
-  const useStableValue = value => { const ref = React.useRef(null); if (!ref.current) ref.current = { value }; return ref.current; };
+  const useStableValue = value => { const ref = React.useRef(null); if (!ref.current) ref.current = { value, get() { return this.value; }, set(next) { this.value = next; } }; return ref.current; };
   const reanimated = { __esModule: true, default: { View: host("Animated") }, Easing: { out: x => x, quad: x => x },
-    useSharedValue: useStableValue, useAnimatedStyle: () => ({}), withTiming: value => value };
+    cancelAnimation() {}, ReduceMotion: { System: "system" }, useSharedValue: useStableValue, useAnimatedStyle: () => ({}), withTiming: value => value };
   const { ExpeditionReveal } = load("src/components/rewards/RevealScreens.tsx", {
     "react-native": { View: host("View"), ScrollView: host("Scroll"), StyleSheet: { create: v => v }, useWindowDimensions: () => ({ width: 360, height: 640 }) },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }, "react-native-reanimated": reanimated,

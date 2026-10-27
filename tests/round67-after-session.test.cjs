@@ -10,7 +10,7 @@ function load(file,mocks,cache){
   if(cache.has(filename))return cache.get(filename).exports;
   const module={exports:{}};cache.set(filename,module);
   let input=fs.readFileSync(filename,'utf8');
-  if(filename.endsWith('GlobalRewardListener.tsx')) input=babel.transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
+  if(filename.endsWith('GlobalRewardListener.tsx')||cache.compileScreen&&filename.endsWith('SessionScreen.tsx')) input=babel.transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
   const source=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',source)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
@@ -28,12 +28,12 @@ const oldState=seconds=>({stardust:10,nextFindSeconds:1500-seconds%1500,owned:[]
   avatar:{look:{},equipped:{},frame:null,background:'bg_dusk',title:null,revision:1},
   pack:{date:'2026-10-25',goalReached:false,claimed:false,tier:0,daysInARow:0},today:{seconds,finds:0}});
 
-async function setup({claimDelay=0,finds=[]}={}){
-  const cache=new Map();
+async function setup({claimDelay=0,finds=[],deferFinishFade=false,compileScreen=false,reduced=false}={}){
+  const cache=new Map();cache.compileScreen=compileScreen;let focused=true;
   let timer={duration:60,timeLeft:1,isRunning:true,isCompleted:false,hasOpenSession:true,endingSession:false,sessionEnded:false,
     actionBusy:false,isRestoring:false,actionError:null,syncStatus:'idle',summaryViewed:false,rewardsVisible:false,clientReported:false,
     sessionId:'S1',sessionSummary:null,linkedTaskId:null,targetAttributeId:1,notes:'',recoveredSession:false};
-  let profile={id:'owner',level:3,current_xp:5,streak_count:1};let pathname='/session';const calls=[];let claims=0,given=false;
+  let profile={id:'owner',level:3,current_xp:5,streak_count:1};let pathname='/session';const calls=[],animations=[],fades=[];let claims=0,given=false;
   const app={currentState:'active',addEventListener:()=>({remove(){}})};
   const auth={accessMode:'online',user:{id:'owner'},localOwner:null,admissionEpoch:1,verifyCurrentOwner:async()=>({id:'owner'}),retrySessionVerification:async()=>{}};
   const sheets=load('src/utils/sheetActivity.ts',{},cache);
@@ -42,7 +42,7 @@ async function setup({claimDelay=0,finds=[]}={}){
   const api={acknowledgeSummary(){calls.push('viewed');timer={...timer,summaryViewed:true};},
     clearCompletionModal(){calls.push('clear');timer={...timer,hasOpenSession:false,isCompleted:false,sessionSummary:null,sessionId:null,duration:1800};},
     retryCompletion:async()=>{},retryAction:async()=>{},resetTimer:async()=>{},setDurationInSeconds(){},setDurationInMinutes(){},setTargetAttributeId(){},setLinkedTaskId(){},resolveQuestTitle(){}};
-  const navigation={canGoBack:()=>true,isFocused:()=>pathname==='/session',getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),addListener:()=>()=>{},
+  const navigation={canGoBack:()=>true,isFocused:()=>focused&&pathname==='/session',getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),addListener:()=>()=>{},
     goBack:()=>{calls.push('route-close');pathname='/';}};
   const mocks={
     'expo-router':{usePathname:()=>pathname,useRouter:()=>({push(){}}),Stack:{Screen:host('Options')},useFocusEffect:effect=>React.useEffect(effect,[effect]),useNavigation:()=>navigation},
@@ -63,7 +63,7 @@ async function setup({claimDelay=0,finds=[]}={}){
       Keyboard:{isVisible:()=>false,dismiss(){},addListener:()=>({remove(){}})},BackHandler:{addEventListener:()=>({remove(){}})},
       PanResponder:{create:handlers=>({panHandlers:handlers})},
       Animated:{View:host('Motion'),Value:class{constructor(value){this.value=value;}setValue(value){this.value=value;}stopAnimation(){}interpolate(){return this;}},
-        timing:(value,config)=>({start(callback){value.setValue(config.toValue);callback?.({finished:true});},stop(){}})}},
+        timing:(value,config)=>({start(callback){animations.push(config);if(deferFinishFade&&config.toValue===0&&config.duration>=400){fades.push(()=>{value.setValue(0);callback?.({finished:true});});return;}value.setValue(config.toValue);callback?.({finished:true});},stop(){}})}},
     'react-native-safe-area-context':{SafeAreaView:host('SafeArea'),useSafeAreaInsets:()=>({top:24,bottom:20})},
     'react-native-svg':{__esModule:true,default:host('Svg'),G:host('G'),Path:host('Path')},
     '@gorhom/bottom-sheet':{BottomSheetScrollView:host('SheetScroll'),TouchableOpacity:host('Button')},
@@ -73,7 +73,7 @@ async function setup({claimDelay=0,finds=[]}={}){
     './SessionCountdown':host('Countdown'),'./session/SessionBackdrop':host('Backdrop'),'./FocusLengthControl':host('Length'),'./FocusDurationSheet':host('DurationSheet'),
     './adventurer/ItemArt':host('Art'),'./adventurer/ProfilePicture':host('Picture'),
     './rewards/RevealScreens':{ExpeditionReveal:host('Expedition'),PackReveal:host('Pack')},'./session/SessionReveal':host('SessionReveal'),
-    '../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/afterTransition':{afterTransition:()=>()=>{}},
+    '../hooks/useReducedMotion':{useReducedMotion:()=>reduced},'../utils/afterTransition':{afterTransition:()=>()=>{}},
     '../utils/sessionTransition':{traceSession(){}},'../utils/tapHaptics':{tapHaptic(){}},
   };
   const Presenter=load('src/components/GlobalRewardListener.tsx',mocks,cache).default;
@@ -82,7 +82,7 @@ async function setup({claimDelay=0,finds=[]}={}){
   const Tree=()=>React.createElement(React.Fragment,null,pathname==='/session'&&React.createElement(Screen),React.createElement(Presenter));
   let renderer;await act(async()=>{renderer=create(React.createElement(Tree));});
   const update=async(changes={},nextProfile)=>{timer={...timer,...changes};if(nextProfile)profile={...profile,...nextProfile};await act(async()=>renderer.update(React.createElement(Tree)));};
-  return{calls,claims:()=>claims,given:()=>given,store,update,root:()=>renderer.root,path:()=>pathname,
+  return{calls,animations,fades,claims:()=>claims,given:()=>given,store,update,root:()=>renderer.root,path:()=>pathname,focus:value=>{focused=value;},
     modal:()=>renderer.root.findByProps({testID:'reward-moment'}),
     cleanup:async()=>act(async()=>renderer.unmount())};
 }
@@ -128,6 +128,50 @@ test(`after a session: walk back, the result card, then the finds and the trail 
     await wait(600);
     assert.equal(ui.modal().props.visible,false,'and it does not show again on Home');
   }finally{await ui.cleanup();}
+});
+
+test('the map stays mounted and unacknowledged throughout a finished-session fade, with no downward motion',async()=>{
+ const ui=await setup({deferFinishFade:true});try{
+  await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,
+   sessionSummary:{sessionId:'S1',durationSeconds:60,xpEarned:1,recovered:false,completedAtMs:Date.now()}},{current_xp:6});
+  await act(async()=>ui.root().findByType('Backdrop').props.onReturnEnd());await wait(80);
+  const result=ui.root().findByType('Result');
+  await act(async()=>result.props.onClose());await act(async()=>result.props.onDismiss());await wait(30);
+  const reveal=ui.root().findByType('SessionReveal');ui.animations.length=0;
+  await act(async()=>reveal.props.onClose());
+  assert.equal(ui.store.snapshot('owner').reveals.length,1,'keep the real map and its return host alive until opacity reaches zero');
+  assert.equal(ui.root().findAllByType('SessionReveal').length,1);
+  assert.equal(ui.fades.length,1);
+  assert.equal(ui.animations.some(a=>a.toValue===-0.12),false,'finished sessions must never slide down');
+  await act(async()=>reveal.props.onClose());assert.equal(ui.fades.length,1,'repeat Continue cannot queue another exit');
+  await act(async()=>ui.fades[0]());await wait(30);
+  assert.equal(ui.store.snapshot('owner').reveals.length,0);assert.equal(ui.path(),'/');
+ }finally{await ui.cleanup();}
+});
+
+for(const compileScreen of [false,true])test(`a covered map cannot acknowledge rewards or pop the newer route from an old fade (${compileScreen?'production compiler':'uncompiled control'})`,async()=>{
+ const ui=await setup({deferFinishFade:true,compileScreen});try{
+  await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,
+   sessionSummary:{sessionId:'S1',durationSeconds:60,xpEarned:1,recovered:false,completedAtMs:Date.now()}},{current_xp:6});
+  await act(async()=>ui.root().findByType('Backdrop').props.onReturnEnd());await wait(80);
+  const result=ui.root().findByType('Result');await act(async()=>result.props.onClose());await act(async()=>result.props.onDismiss());await wait(30);
+  await act(async()=>ui.root().findByType('SessionReveal').props.onClose());ui.focus(false);
+  await act(async()=>ui.fades[0]());assert.equal(ui.store.snapshot('owner').reveals.length,1);assert.equal(ui.path(),'/session');
+  ui.focus(true);await act(async()=>ui.fades[0]());assert.equal(ui.path(),'/session','the stale callback is settled, even after focus returns');
+  await act(async()=>ui.root().findByType('SessionReveal').props.onClose());assert.equal(ui.fades.length,2);
+  await act(async()=>ui.fades[1]());await wait(30);assert.equal(ui.path(),'/');assert.equal(ui.store.snapshot('owner').reveals.length,0);
+ }finally{await ui.cleanup();}
+});
+
+test('Reduce Motion finishes the map without a slide or a timed exit',async()=>{
+ const ui=await setup({reduced:true});try{
+  await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,
+   sessionSummary:{sessionId:'S1',durationSeconds:60,xpEarned:1,recovered:false,completedAtMs:Date.now()}},{current_xp:6});await wait(80);
+  const result=ui.root().findByType('Result');await act(async()=>result.props.onClose());await act(async()=>result.props.onDismiss());await wait(30);
+  ui.animations.length=0;await act(async()=>ui.root().findByType('SessionReveal').props.onClose());await wait(30);
+  assert.equal(ui.path(),'/');assert.equal(ui.store.snapshot('owner').reveals.length,0);
+  assert.ok(ui.animations.some(a=>a.toValue===0&&a.duration===0));assert.equal(ui.animations.some(a=>a.toValue===-0.12),false);
+ }finally{await ui.cleanup();}
 });
 
 test('reward pop-ups leave a session return screen to the session screen, and show it on Home if it arrives after you left',async()=>{

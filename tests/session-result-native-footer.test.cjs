@@ -112,6 +112,20 @@ async function setup({height=844,fontScale=1,bottom=34,initialProps={}}={}) {
     async cleanup(){await act(async()=>tree.unmount());}};
 }
 
+test('the real completion receipt ignores native dismissal and closes once through its accessible Done action',async()=>{
+  const ui=await setup({initialProps:{ending:false,pending:false,offline:false}});
+  try{
+    const sheet=ui.tree.root.findByType('NativeSheet');
+    assert.equal(sheet.props.enablePanDownToClose,false);
+    assert.equal(sheet.props.enableHandlePanningGesture,false);
+    await act(async()=>ui.tree.root.findByType('Modal').props.onRequestClose());
+    await act(async()=>sheet.props.onClose());assert.equal(ui.closes,0);
+    const done=ui.tree.root.findAllByType('Button').find(item=>text(item)==='Done');
+    assert.equal(done.props.testID,'session-result-done');assert.equal(done.props.accessibilityLabel,'Done');
+    await act(async()=>{done.props.onPress();done.props.onPress();});assert.equal(ui.closes,1);
+  }finally{await ui.cleanup();}
+});
+
 test('real native footer remains on screen when an End receipt removes pending content after layout',async()=>{
   const ui=await setup();
   try{

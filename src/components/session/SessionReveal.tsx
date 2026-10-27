@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Animated, Easing, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { ExpeditionReveal } from "../rewards/RevealScreens";
@@ -18,17 +18,20 @@ export default function SessionReveal({ reveal, onClose }: { reveal: Extract<Rev
   const { profile } = useUser();
   const router = useRouter();
   const reduced = useReducedMotion();
+  const [ready, setReady] = useState(false);
+  const contentReady = useCallback(() => setReady(true), []);
   const [enter] = useState(() => new Animated.Value(reduced ? 1 : 0));
   useEffect(() => {
     if (reduced) { enter.setValue(1); return; }
-    const fade = Animated.timing(enter, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true });
+    if (!ready) return;
+    const fade = Animated.timing(enter, { toValue: 1, duration: 520, easing: Easing.out(Easing.quad), useNativeDriver: true });
     fade.start();
     return () => fade.stop();
-  }, [enter, reduced]);
+  }, [enter, ready, reduced]);
   const player = { look: rewards.look, equipped: rewards.equipped, level: profile?.level ?? 1, background: rewards.background, frame: rewards.frame,
     today: rewards.today, nextFindSeconds: rewards.nextFindSeconds, trail: rewards.trail };
   return <Animated.View testID="session-reveal" style={[StyleSheet.absoluteFill, s.page, { opacity: enter }]} accessibilityViewIsModal>
-    <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={onClose}
+    <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={onClose} onReady={contentReady}
       onOutfits={show => router.push({ pathname: "/outfits", params: { show } })} />
   </Animated.View>;
 }

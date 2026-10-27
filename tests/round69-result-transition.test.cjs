@@ -9,7 +9,7 @@ function load(file,mocks,cache=new Map()){
  const code=ts.transpileModule(fs.readFileSync(filename,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
  new Function('require','module','exports',code)(name=>{if(Object.hasOwn(mocks,name))return mocks[name];if(!name.startsWith('.'))return require(name);const base=path.resolve(path.dirname(filename),name),ext=['.ts','.tsx'].find(ext=>fs.existsSync(base+ext));return load(path.relative(path.resolve(__dirname,'..'),base+ext),mocks,cache);},module,module.exports);return module.exports;
 }
-async function sheet({reduced=false,closeMotion='fade',closeInstantly=false}={}){
+async function sheet({reduced=false,closeMotion='fade',closeInstantly=false,dismissible=true,closeFadeDuration=220}={}){
  const motions=[],cancelled=[],calls=[];
  const shared=initial=>{let value=initial;return{get value(){return value;},set value(next){if(next&&typeof next==='object'&&'to'in next)motions.push(next);else value=next;}};};
  const Panel=React.forwardRef(function Panel(props,ref){React.useImperativeHandle(ref,()=>({close(){calls.push('slide-close');}}));return React.createElement('Panel',props,props.children);});
@@ -23,7 +23,7 @@ async function sheet({reduced=false,closeMotion='fade',closeInstantly=false}={})
   'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:16})},
  }).default;
  let ui,visible=true;
- const render=()=>React.createElement(AppSheet,{visible,onRequestClose:()=>calls.push('request-close'),onDismiss:()=>calls.push('dismiss'),closeMotion,closeInstantly,label:'session completion',header:null},React.createElement('Body'));
+ const render=()=>React.createElement(AppSheet,{visible,onRequestClose:()=>calls.push('request-close'),onDismiss:()=>calls.push('dismiss'),closeMotion,closeInstantly,dismissible,closeFadeDuration,label:'session completion',header:null},React.createElement('Body'));
  await act(async()=>{ui=create(render());});
  return{calls,motions,cancelled,root:()=>ui.root,
   show:async next=>{visible=next;await act(async()=>ui.update(render()));},
@@ -63,4 +63,22 @@ test('Reduce Motion releases the result instantly and a missing callback still h
 test('ordinary sheets retain their existing slide and immediate close remains immediate',async()=>{
  const regular=await sheet({closeMotion:'slide'});try{await regular.show(false);assert.deepEqual(regular.calls,['slide-close']);assert.equal(regular.motions.length,0);await act(async()=>regular.root().findByType('Panel').props.onClose());assert.deepEqual(regular.calls,['slide-close','dismiss']);}finally{await regular.cleanup();}
  const immediate=await sheet({closeInstantly:true});try{await immediate.show(false);assert.equal(immediate.root().findByType('Modal').props.visible,false);assert.deepEqual(immediate.calls,['dismiss']);}finally{await immediate.cleanup();}
+});
+
+test('Done-only sheets refuse native pan, Back and accidental native close until their owner closes them',async()=>{
+ const ui=await sheet({dismissible:false,closeFadeDuration:400});try{
+  const panel=ui.root().findByType('Panel');
+  assert.equal(panel.props.enablePanDownToClose,false);
+  assert.equal(panel.props.enableHandlePanningGesture,false);
+  assert.equal(panel.props.enableContentPanningGesture,false,'the native scroll view still owns scrolling, without moving its sheet');
+  await act(async()=>ui.root().findByType('Modal').props.onRequestClose());
+  await act(async()=>ui.root().findByType('GestureRoot').props.onAccessibilityEscape());
+  await act(async()=>panel.props.onClose());
+  assert.deepEqual(ui.calls,[]);assert.equal(ui.root().findByType('Modal').props.visible,true);
+  const backdrop=panel.props.backdropComponent({});
+  assert.equal(React.Children.toArray(backdrop.props.children).length,0,'the dim has no hidden dismiss button');
+  await ui.show(false);const fade=ui.motions.at(-1);
+  assert.equal(fade.config.duration,400);
+  await ui.finish(fade);assert.deepEqual(ui.calls,['dismiss']);
+ }finally{await ui.cleanup();}
 });

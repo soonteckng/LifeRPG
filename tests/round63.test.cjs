@@ -31,7 +31,7 @@ test("every find lands on one big card in turn with a buzz each, the Stardust co
     "react-native": { View: host("View"), ScrollView: host("Scroll"), StyleSheet: { create: v => v, absoluteFill: {} }, useWindowDimensions: () => ({ width: 390, height: 844 }) },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
     "react-native-reanimated": { __esModule: true, default: { View: host("AView") }, Easing: { inOut: x => x, out: x => x, sin: 0, quad: 0, cubic: 0 },
-      useAnimatedStyle: () => ({}), useSharedValue: v => React.useRef({ value: v }).current,
+      cancelAnimation() {}, ReduceMotion: { System: "system" }, useAnimatedStyle: () => ({}), useSharedValue: v => React.useRef({ value: v, get() { return this.value; }, set(next) { this.value = next; } }).current,
       withDelay: (delay, x) => { log.push(["delay", delay, x]); return x; }, withSpring: to => ({ spring: to }), withTiming: (to, _c, done) => { done?.(true); return to; }, runOnJS: f => f, withRepeat: x => x, withSequence: (...x) => x[0] },
     "react-native-svg": { __esModule: true, default: host("Svg"), Defs: host("Defs"), RadialGradient: host("RG"), Rect: host("Rect"), Stop: host("Stop") },
     "@expo/vector-icons": { Ionicons: host("Icon") }, "../MotionPressable": host("Press"), "../AppText": { Text: host("Text") },

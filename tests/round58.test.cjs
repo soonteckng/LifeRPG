@@ -147,8 +147,8 @@ test("after a session: one card with every find, then today's trail; a session w
   const mods = {
     "react-native": { View: host("View"), ScrollView: host("Scroll"), StyleSheet: { create: v => v }, useWindowDimensions: () => ({ width: 390, height: 844 }) },
     "react-native-safe-area-context": { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
-    "react-native-reanimated": { __esModule: true, default: { View: host("AView") }, Easing: { inOut: x => x, out: x => x, sin: 0, quad: 0 }, useAnimatedStyle: () => ({}), useSharedValue: v => ({ value: v }),
-      withRepeat: x => x, withSequence: x => x, withSpring: x => x, withTiming: x => x, withDelay: (_d, x) => x },
+    "react-native-reanimated": { __esModule: true, default: { View: host("AView") }, Easing: { inOut: x => x, out: x => x, sin: 0, quad: 0 }, useAnimatedStyle: () => ({}), useSharedValue: v => React.useRef({ value: v, get() { return this.value; }, set(next) { this.value = next; } }).current,
+      cancelAnimation() {}, ReduceMotion: { System: "system" }, withRepeat: x => x, withSequence: x => x, withSpring: x => x, withTiming: x => x, withDelay: (_d, x) => x },
     "react-native-svg": { __esModule: true, default: host("Svg"), Defs: host("Defs"), RadialGradient: host("RG"), Rect: host("Rect"), Stop: host("Stop") },
     "@expo/vector-icons": { Ionicons: host("Icon") }, "../MotionPressable": host("Press"), "../AppText": { Text: host("Text") },
     "../adventurer/Adventurer": host("Adventurer"), "../adventurer/ProfilePicture": host("Picture"), "../adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },

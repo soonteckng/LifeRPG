@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import Animated, { cancelAnimation, Easing, ReduceMotion, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withRepeat, withSequence, withSpring, withTiming } from "react-native-reanimated";
 import Svg, { Defs, RadialGradient, Rect, Stop } from "react-native-svg";
 import Pressable from "../MotionPressable";
 import { Text } from "../AppText";
@@ -19,10 +19,10 @@ import { tapHaptic } from "../../utils/tapHaptics";
 
 export interface RevealPlayer {
   look: AdventurerLook; equipped: Partial<Record<string, string>>; level: number; background: string; frame: string | null;
-  today: { seconds: number; finds: number; pendingFinds?: number }; nextFindSeconds: number; trail: { findSeconds: number; stops: number; complete: boolean };
+  today: { seconds: number; finds: number; pendingFinds?: number; date?: string }; nextFindSeconds: number; trail: { findSeconds: number; stops: number; complete: boolean };
 }
 /** onOutfits gets the item to show there, so Outfits opens on its category. */
-type Props<R> = { reveal: R; player: RevealPlayer; onClose: () => void; onOutfits: (item: string) => void };
+type Props<R> = { reveal: R; player: RevealPlayer; onClose: () => void; onOutfits: (item: string) => void; onReady?: () => void };
 const wearable = (g: Gift) => { const k = rewardItem(g.item)?.kind; return g.new && (k === "wearable" || k === "background" || k === "pet"); };
 // Keep the existing try-on priority. A decoration-only find or pack can now
 // lead to its real inventory too, including an already-owned duplicate.
@@ -52,22 +52,45 @@ function GiftRow({ gift }: { gift: Gift }) {
  * walk on from where you were to where you are now. A session with nothing
  * found goes straight to the trail. "See it in Outfits" comes back to the card.
  */
-export function ExpeditionReveal({ reveal, player, onClose, onOutfits }: Props<Extract<Reveal, { kind: "expedition" }>>) {
+export function ExpeditionReveal({ reveal, player, onClose, onOutfits, onReady }: Props<Extract<Reveal, { kind: "expedition" }>>) {
   const reduced = useReducedMotion();
   const [step, setStep] = useState<"found" | "trail">(reveal.finds.length ? "found" : "trail");
-  // The card fades away, then the trail fades in (its map draws once it has settled).
+  // One owner per fade: SessionReveal enters only once this content is ready;
+  // this value handles the later finds-to-trail swap, after the map commits.
   const shown = useSharedValue(1);
+  const active = useRef(true), changing = useRef(false);
+  const currentStep = useRef(step), readyFor = useRef<string | null>(null);
+  useLayoutEffect(() => { currentStep.current = step; }, [step]);
+  useEffect(() => { active.current = true; return () => { active.current = false; cancelAnimation(shown); }; }, [shown]);
+  const enterTrail = useCallback(() => {
+    if (active.current && currentStep.current === "found" && changing.current) setStep("trail");
+  }, []);
+  const contentReady = useCallback(() => {
+    if (!active.current || currentStep.current !== step || readyFor.current === step) return;
+    if (step === "found" && changing.current) return;
+    readyFor.current = step;
+    if (step === "trail" && changing.current) {
+      shown.set(reduced ? 1 : withTiming(1, { duration: 520, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }));
+    }
+    onReady?.();
+  }, [step, reduced, shown, onReady]);
   const toTrail = () => {
-    if (reduced) { setStep("trail"); return; }
-    shown.value = withTiming(0, { duration: 180, easing: Easing.out(Easing.quad) }, done => { if (done) runOnJS(setStep)("trail"); });
+    if (step !== "found" || changing.current) return;
+    changing.current = true;
+    if (reduced) { enterTrail(); return; }
+    cancelAnimation(shown);
+    shown.set(withTiming(0, { duration: 320, easing: Easing.out(Easing.quad), reduceMotion: ReduceMotion.System }, done => { if (done) runOnJS(enterTrail)(); }));
   };
   useEffect(() => {
-    if (step === "trail" && !reduced) shown.value = withTiming(1, { duration: 280, easing: Easing.out(Easing.quad) });
-  }, [step, shown, reduced]);
-  const fade = useAnimatedStyle(() => ({ opacity: shown.value }));
+    if (reduced) { cancelAnimation(shown); shown.set(1); void Promise.resolve().then(enterTrail); }
+    // A missing native layout must never trap an invisible return screen.
+    const fallback = setTimeout(contentReady, 1200);
+    return () => clearTimeout(fallback);
+  }, [step, shown, reduced, contentReady, enterTrail]);
+  const fade = useAnimatedStyle(() => ({ opacity: shown.get() }));
   return <Animated.View style={[s.page, fade]}>
-    {step === "found" ? <FoundCard reveal={reveal} onContinue={toTrail} onOutfits={onOutfits} />
-      : <TrailStep reveal={reveal} player={player} onClose={onClose} />}
+    {step === "found" ? <FoundCard reveal={reveal} onContinue={toTrail} onOutfits={onOutfits} onReady={contentReady} />
+      : <TrailStep reveal={reveal} player={player} onClose={onClose} onReady={contentReady} />}
   </Animated.View>;
 }
 
@@ -76,8 +99,8 @@ export function ExpeditionReveal({ reveal, player, onClose, onOutfits }: Props<E
 const DEAL_AT = 420, DEAL_GAP = 260;
 const RARITY_ORDER = ["common", "uncommon", "rare", "epic", "legendary"];
 
-function FoundCard({ reveal, onContinue, onOutfits }: {
-  reveal: Extract<Reveal, { kind: "expedition" }>; onContinue: () => void; onOutfits: (item: string) => void;
+function FoundCard({ reveal, onContinue, onOutfits, onReady }: {
+  reveal: Extract<Reveal, { kind: "expedition" }>; onContinue: () => void; onOutfits: (item: string) => void; onReady?: () => void;
 }) {
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -95,7 +118,7 @@ function FoundCard({ reveal, onContinue, onOutfits }: {
   const cardIn = useAnimatedStyle(() => ({ opacity: Math.min(1, rise.value * 1.4), transform: [{ translateY: (1 - rise.value) * 60 }, { scale: 0.92 + rise.value * 0.08 }] }));
   // One find fills the card; two sit side by side; more share a grid.
   const columns = found === 1 ? 1 : found <= 4 ? 2 : 3, art = found === 1 ? Math.min(150, width * 0.38) : found <= 2 ? 92 : found <= 4 ? 72 : 56;
-  return <View style={[s.page, s.dark, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }]} testID="reveal-expedition">
+  return <View onLayout={onReady} style={[s.page, s.dark, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }]} testID="reveal-expedition">
     <Svg width={width} height={height * 0.6} style={s.glow} pointerEvents="none">
       <Defs><RadialGradient id="found-glow" cx="50%" cy="40%" r="60%"><Stop offset="0" stopColor={glowColor} stopOpacity={0.3} /><Stop offset="1" stopColor={glowColor} stopOpacity={0} /></RadialGradient></Defs>
       <Rect x={0} y={0} width={width} height={height * 0.6} fill="url(#found-glow)" />
@@ -169,7 +192,7 @@ function FindTile({ gift, index, art, columns, big, reduced }: { gift: Gift; ind
 }
 
 /** Today's trail after a session: you walk on from where you were, and the end of the trail has its own reward. */
-function TrailStep({ reveal, player, onClose }: { reveal: Extract<Reveal, { kind: "expedition" }>; player: RevealPlayer; onClose: () => void }) {
+function TrailStep({ reveal, player, onClose, onReady }: { reveal: Extract<Reveal, { kind: "expedition" }>; player: RevealPlayer; onClose: () => void; onReady?: () => void }) {
   const insets = useSafeAreaInsets();
   const nothing = !reveal.finds.length;
   // A queued reveal belongs to the day and progress of its claim. A later
@@ -178,16 +201,19 @@ function TrailStep({ reveal, player, onClose }: { reveal: Extract<Reveal, { kind
     fromSeconds: reveal.fromSeconds ?? Math.max(0, player.today.seconds - (reveal.seconds ?? 0)) };
   const walked = reveal.trail ? Math.max(0, trail.seconds - trail.fromSeconds) : reveal.seconds;
   const minutes = walked === null ? null : Math.round(walked / 60);
+  const trailFinished = trail.seconds >= trail.findSeconds * trail.stops;
+  const earlierDay = !!trail.date && !!player.today.date && trail.date !== player.today.date;
   return <View style={[s.page, s.dark, { paddingTop: insets.top + 16, paddingBottom: Math.max(insets.bottom, 16) + 8 }]} testID={nothing ? "reveal-expedition" : "reveal-expedition-trail"}>
-    <Text style={s.eyebrow}>{minutes ? `${minutes} ${minutes === 1 ? "MINUTE" : "MINUTES"} FURTHER` : "TODAY'S TRAIL"}</Text>
-    <Text style={s.heading} accessibilityRole="header">{nothing ? reveal.stardust ? `+${reveal.stardust} Stardust` : "On your way" : "Today's trail"}</Text>
+    <Text style={s.eyebrow}>{trailFinished ? earlierDay ? "EARLIER TRAIL" : "FINISHED FOR TODAY" : minutes ? `${minutes} ${minutes === 1 ? "MINUTE" : "MINUTES"} FURTHER` : "TODAY'S TRAIL"}</Text>
+    <Text style={s.heading} accessibilityRole="header">{trailFinished ? "Trail complete" : nothing ? reveal.stardust ? `+${reveal.stardust} Stardust` : "On your way" : "Today's trail"}</Text>
+    {trailFinished && <Text style={s.sub}>{`${nothing && reveal.stardust ? `+${reveal.stardust} Stardust. ` : ""}${earlierDay ? "Your session's progress is saved." : "Back tomorrow for a new trail. Your focus still counts."}`}</Text>}
     <ScrollView style={s.flex} contentContainerStyle={s.trailArea}>
       <TodayTrail fill seconds={trail.seconds} fromSeconds={trail.fromSeconds}
         findSeconds={trail.findSeconds} stops={trail.stops} finds={trail.finds} complete={trail.complete} bonus={reveal.trailStardust ?? 0}
-        nextFindSeconds={trail.nextFindSeconds} pendingFinds={trail.pendingFinds} sizeKey="return" look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} />
+        nextFindSeconds={trail.nextFindSeconds} pendingFinds={trail.pendingFinds} delay={650} sizeKey="return" look={player.look} equipped={player.equipped} level={player.level} background={player.background} frame={player.frame} onReady={onReady} />
     </ScrollView>
     <View style={s.bottomStatic}>
-      <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
+      <Pressable testID="trail-continue" onPress={onClose} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>
     </View>
   </View>;
 }
