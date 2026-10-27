@@ -24,6 +24,7 @@ import SheetHeader from "./SheetHeader";
 import { levelPreview, useShownLevel } from "../services/levelPreview";
 import { tapHaptic } from "../utils/tapHaptics";
 import { readSessionTrail } from "../services/sessionTrail";
+import DeveloperRewardTests from "./DeveloperRewardTests";
 
 type Preview = "level" | "complete" | "recovered";
 const SAVING_PREVIEW_MS = 3000;
@@ -138,15 +139,11 @@ export default function DeveloperTools() {
     if (r.ok) note(`${["Canvas", "Leather", "Brass", "Crystal"][r.value.tier]} pack (${r.value.daysInARow} days in a row): ${names(r.value.items) || "no item"}, +${r.value.stardust} Stardust.`);
     else note(r.message, false);
   };
-  // The next pet, frame and badge, with their pop-ups. With all of them
-  // earned, they're taken back first so the pop-ups can show again.
+  // Grant only unearned real milestones. Replaying now uses the isolated lab,
+  // so a preview can never take a genuinely earned milestone away.
   const milestones = async () => {
     note("One moment…");
     let r = await rewards.developer("next_milestones", 0);
-    if (r.ok && !r.value.gifts.length) {
-      const back = await rewards.developer("reearn", 0);
-      if (back.ok) r = await rewards.developer("next_milestones", 0);
-    }
     if (r.ok) note(r.value.gifts.length ? `Earned ${names(r.value.gifts)}.` : "Nothing to earn right now.");
     else note(r.message, false);
   };
@@ -168,7 +165,8 @@ export default function DeveloperTools() {
       <SettingsRow icon="map-outline" tint="#7C3AED" title="Replay the guide" disabled={hasOpenSession || !tour} onPress={() => { setMessage(""); tour?.start(); }} />
       <SettingsRow icon="refresh-outline" tint="#FF9F0A" title="Restart the intro" disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
     </SettingsGroup>
-    <SettingsGroup title="Developer: rewards" footer={`${rewards.stardust} Stardust. These use the real rewards, the same as everyone's; the rows marked “test” are developer-only.`}>
+    <DeveloperRewardTests />
+    <SettingsGroup title="Developer: real rewards" footer={`${rewards.stardust} real Stardust. These older grant controls change your real collection. Use purchase testing above for repeatable, reversible tests.`}>
       <SettingsRow first icon="shirt-outline" tint="#2DD4A7" title="Open Outfits" onPress={() => router.navigate("/outfits")} />
       <SettingsRow icon="grid-outline" tint="#2DD4A7" title="Open Collection" subtitle="Your collected camp decorations" testID="dev-open-collection"
         onPress={() => router.navigate({ pathname: "/outfits", params: { collection: "1" } })} />
@@ -180,10 +178,9 @@ export default function DeveloperTools() {
       <SettingsRow icon="gift-outline" tint="#FBBF24" title="Open today's pack" subtitle="Any time, as often as you like" disabled={rewards.busy} onPress={() => void pack()} />
       <SettingsRow icon="diamond-outline" tint="#A78BFA" title="Find something now" subtitle="Test · one real find roll" disabled={rewards.busy}
         onPress={() => void dev("find", gifts => gifts.length ? `Found ${names(gifts)}.` : "Nothing came up. Try again.")} />
-      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn the next pet, frame and badge" subtitle="Test · shows their pop-ups, again and again" disabled={rewards.busy}
+      <SettingsRow icon="ribbon-outline" tint="#F472B6" title="Earn the next pet, frame and badge" subtitle="Adds the next unearned milestones to your real collection" disabled={rewards.busy}
         onPress={() => void milestones()} />
-      <SettingsRow icon="arrow-undo-outline" tint="#FF9F0A" title="Take back pets, frames and badges" subtitle="Test · so you can earn them again" disabled={rewards.busy}
-        onPress={() => void dev("reearn", () => "Pets, frames and badges taken back. Earn them again from the row above.")} />
+      <SettingsRow icon="lock-closed-outline" tint="#FF9F0A" title="Take back pets, frames and badges" subtitle="Use test inventory above. Real earned items stay yours." disabled onPress={() => {}} />
       <SettingsRow icon="sparkles-outline" tint="#A78BFA" title="Add 500 test Stardust" subtitle="Test" disabled={rewards.busy}
         onPress={() => void dev("stardust", () => "Added 500 Stardust. It shows on Home beside your picture.")} />
       <SettingsRow icon="lock-closed-outline" tint="#8E8E93" title="Reset my rewards" value="Locked" subtitle="Turned off to keep this account safe" disabled onPress={() => {}} />

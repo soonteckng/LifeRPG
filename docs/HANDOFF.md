@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 74, phone checks in section 7)
+# LifeRPG handoff (after Round 75, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -8,18 +8,18 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 
 ---
 
-## 1. Where things stand (checked 27 Oct 2026)
+## 1. Where things stand (checked 28 Oct 2026)
 
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 74 on the pushed R73 tree at `bc4a972f4fbc92c0c2de6c5470e4980cf7b179c3`. Done-only receipt, measured map entrance, fade to app and finished-trail copy. Prepared locally; Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 75 on pushed R74 at `98086253ffbec3dcda0d350734552bded2f15829`. No-wait developer presentations and reversible test inventory/purchases. Prepared locally; Soon Teck applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 74: **1,741 tests passed**, zero failures/skips, with isolated PGlite and external networking blocked. Typecheck, full Expo lint and diff checks pass. Return-screen layout checked in 16 size/font/state cases. Native inputs unchanged. Evidence: `docs/round74-session-return.md`. |
+| Code health | Round 75: **1,764 tests passed**, zero failures/skips, with isolated PGlite and external networking blocked. Typecheck, full lint, small-screen/font-1.8 layouts and same-environment native fingerprint/source comparison pass. Evidence: `docs/round75-developer-testing.md`. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Nothing pending. The old Round 64 file must never be run. |
+| SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Round 75 adds a pending, review-only developer reward-lab RPC. It is NOT installed. The old Round 64 file must never be run. |
 | Waiting on the phone | User says the completed-session card is smooth, but wants Done-only dismissal, a calmer map entrance and a fade to app. R74 implements these. Check the short flow in `docs/round74-session-return.md`. Android frame pacing remains unverified. Exact account is **st** (saved username **St**); ownership and reward economics are unchanged. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
@@ -61,6 +61,7 @@ No guilt or punishment mechanics; no ads during focus, auth or recovery.
 - **"8k"** is the **normal-user account**. It sees exactly what a normal user sees, with nothing unlocked.
 - **"st"** (saved username **St**) is the normal account used for the latest Round 71 statistics and Outfits reports. Do not confuse it with the dev account.
 - Developer accounts are rows in `liferpg_auth_private.developers`.
+- **Round 75 developer test inventory:** optional, memory-only and scoped to account/admission; only Developer tools and Outfits use it. Start empty, toggle all-owned, buy with test Stardust, reset and restore. Home/Profile/sessions/stats remain real. No real inventory/currency/claim is committed by the proposed lab RPC. It requires explicit approval and SQL Editor installation after JS publication. See `docs/round75-developer-testing.md`.
 
 ### The dev-tools rule (Soon Teck asked for this explicitly)
 
@@ -123,40 +124,40 @@ commands to copy and paste:
 ```bash
 # 1. One commit for the round, on top of feature/next.
 git add -A src tests docs supabase
-git commit -m "Round 74: <short summary>" -m "- <what changed, one line each>"
+git commit -m "Round 75: <short summary>" -m "- <what changed, one line each>"
 
 # 2. The patch, then prove it applies cleanly to the commit before it.
-git format-patch -1 HEAD --stdout > out/round-74.patch
-git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-74.patch \
+git format-patch -1 HEAD --stdout > out/round-75.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-75.patch \
   && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
 
 # 3. The backup bundle.
 EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-npx expo export --platform android --clear --output-dir dist74 --dump-assetmap
-(cd dist74 && zip -qr ../out/dist-round-74.zip .)
+npx expo export --platform android --clear --output-dir dist75 --dump-assetmap
+(cd dist75 && zip -qr ../out/dist-round-75.zip .)
 ```
 
 Then send him the files (he downloads them to `Downloads`). Don't paste a
 patch into the chat.
 
-**The commands you give him (worked example, Round 74):**
+**The commands you give him (worked example, Round 75):**
 
 ```powershell
-git am "$HOME\Downloads\round-74.patch"
+git am "$HOME\Downloads\round-75.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 74: <short summary>"
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 75: <short summary>"
 ```
 
 If Windows crashes during the bundle step:
 
 ```powershell
-Expand-Archive "$HOME\Downloads\dist-round-74.zip" -DestinationPath dist -Force
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 74" --skip-bundler --input-dir dist
+Expand-Archive "$HOME\Downloads\dist-round-75.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 75" --skip-bundler --input-dir dist
 ```
 
 If the round has SQL, it always comes **after** publishing: "Open
-`round-74-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+`round-75-<name>.sql`, paste it into the Supabase SQL Editor and run it."
 Older installed versions may still call what the SQL changes.
 
 If a patch was built on a commit he doesn't have yet, say which patch goes
@@ -198,7 +199,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 | Outfits | `src/app/outfits.tsx` (`outfitsOpening(id)` deep-links to the item's category), `components/adventurer/*` |
 | Collection | `components/rewards/RewardCollectionSheet.tsx`: read-only owned decorations, opened from Outfits' header or `?collection=1` / `?show=decor_easel`; same cached inventory, no new request or camp placement |
 | Home | `src/app/(tabs)/index.tsx`, `SavedRoutinesCard.tsx` (the Start card and its See all sheet) |
-| Developer tools | `src/components/DeveloperTools.tsx`, `services/developerAccess.ts` |
+| Developer tools | `src/components/DeveloperTools.tsx`, `services/developerAccess.ts`, `DeveloperRewardTests.tsx`, `services/developerRewardLab.ts` |
 | SQL | `supabase/migrations/*.sql` |
 | Tests | `tests/*.test.cjs`, `tests/helpers/*` |
 
@@ -236,7 +237,10 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: check Round 74's short completed-session flow.**
+**First: verify Round 75 Developer: no waiting and Developer: purchase testing.**
+Use the short check in `docs/round75-developer-testing.md`. Purchase testing needs the approved developer-only SQL; it has not been installed. No real inventory deletion/reset is needed. Chosen rewards/rest-day tokens remain the next product increment; do not represent them as implemented. Native notification work still waits until November 2026.
+
+**Round 74 transition checks remain relevant:**
 The user reports the completion card itself is smooth. It now closes only
 through Done, fades out for 400 ms, and the return waits for the actual map
 commit before its 520 ms entrance. Finds > map uses 320 ms out / measured map /
@@ -253,7 +257,7 @@ and real return/empty-return controls exercise the same screens. All R73
 Collection behaviour and hidden-animation cancellation remain intact.
 
 Chosen rewards, rest-day tokens and camp placement were discussed next. They
-are not installed or implemented in R74; the transition round is independent
+are not installed or implemented in R75; the developer-testing round is independent
 and new server rules need review/approval. No live Supabase/Auth calls, email
 or native/config/dependency changes are part of this round. The notification
 merge and every other native change still wait until November 2026.
@@ -446,6 +450,8 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R75 (Codex):** developer no-wait achievement/result/trail previews using shipped components; memory-only owner/admission-scoped test inventory in Outfits, all-owned toggle, prices/purchases/saved test looks, all items/duplicates and pack tiers. Review-only developer RPC executes existing reward code in an always-rolled-back subtransaction; no live installation or normal reward-economy change. Real milestone take-back disabled; draft/late-callback scope guards. See `docs/round75-developer-testing.md`. Chosen rewards/rest tokens remain next. Native notifications deferred to November.
+- **R74 (Codex):** Done-only receipt, measured 520 ms map entrance, calmer finds/map fades, 480 ms fade to app and completed-trail copy. 1,741 tests passed; actual Android frame pacing remains a phone check. No SQL/native/config/dependency change. See `docs/round74-session-return.md`.
 - **R73 (Codex):** read-only Collection for existing owned decorations, contextual reward links and the same real Developer entry. Outfit drafts, inventory ownership/unknown-state handling and guarded retry preserved; no new item, purchase or camp editor. Reproduced three hidden decorative animation repeats, now zero when route-covered/backgrounded; timer/dawn/return callbacks unchanged. Actual TSX web geometry checked at small/large phones and font scale 1.8. Native frame pacing remains a phone check. No SQL/Auth/email/native/config/dependency changes or publication. Native notifications still deferred to November. See `docs/round73-collection.md`.
 - **R72 (Codex):** Camp pill/text moved left of the starting portrait, with a width-relative gap. No path, marker, animation, stats, reward, API, SQL, Auth, native/config/dependency change. R71 is "so far ok" on the phone. Recommendations for a simpler, more polished app are discussion only. See `docs/round72-camp-label.md`.
 - **R71 (Codex):** matching day/category drilldowns; Profile legacy-category parity and completed-history safeguards; offline-sync cache refresh and honest goal-loading checks; reproduced celebration fade reversal and redundant arrival-layout commits; reserved Outfits chip row, reachable item actions and explicit ownership/preview labels. Live **st** records reconciled read-only. No SQL/auth/email/native/config/dependency changes or publication. Native animation smoothness still requires a phone check. See `docs/round71-stats-and-outfits.md`.

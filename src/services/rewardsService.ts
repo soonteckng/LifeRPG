@@ -3,6 +3,7 @@
 // squad calls.
 import { supabase } from "../../lib/supabase";
 import { rewardItem, type RewardRarity } from "./rewardCatalog";
+import type { RewardLabAction, RewardLabReply } from "./developerRewardLab";
 import type { AdventurerLook } from "../utils/adventurerLook";
 
 export type AvatarLook = AdventurerLook;
@@ -136,6 +137,16 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
     return data as unknown;
   };
   return {
+    /** Allowlisted developers only. Server executes the real reward RPCs and rolls back their writes. */
+    lab: async (action: RewardLabAction, state: RewardsState, item: string | null = null, amount = 0, avatar: Omit<SavedAvatar, "revision" | "frame"> | null = null): Promise<RewardLabReply> => {
+      const r = await call("dev_reward_lab_v1", { p_action: action, p_snapshot: state, p_item: item, p_amount: amount, p_avatar: avatar });
+      if (!isObj(r)) throw new Error("Unexpected rewards reply");
+      const next = parseRewardsState(r.state);
+      const pack = isObj(r.pack) && count(r.pack.tier) !== null && count(r.pack.daysInARow) !== null && count(r.pack.stardust) !== null
+        ? { tier: r.pack.tier as number, daysInARow: r.pack.daysInARow as number, stardust: r.pack.stardust as number,
+          items: gifts(r.pack.items), milestones: gifts(r.pack.milestones), state: next } : undefined;
+      return { state: next, gifts: gifts(r.gifts), ...(pack ? { pack } : {}) };
+    },
     load: async () => parseRewardsState(await call("get_rewards_v1")),
     claimSessions: async (): Promise<SessionClaim> => {
       const r = await call("claim_session_rewards_v1");

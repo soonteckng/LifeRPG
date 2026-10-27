@@ -1,4 +1,4 @@
-import { memo, startTransition, useEffect, useMemo, useRef, useState } from "react";
+import { memo, startTransition, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -82,7 +82,7 @@ function wearing(saved: Draft, item: RewardItem): Draft | null {
 export default function OutfitsScreen() {
   const { profile } = useUser();
   const router = useRouter();
-  const rewards = useRewards();
+  const rewards = useRewards({ developerLab: true });
   const saved: Draft = useMemo(() => ({ look: rewards.look, equipped: rewards.equipped, background: rewards.background, title: rewards.title }),
     [rewards.look, rewards.equipped, rewards.background, rewards.title]);
   // Opened from a reward ("See it in Outfits"): start on its category, wearing it to try.
@@ -105,6 +105,15 @@ export default function OutfitsScreen() {
   const [selected, setSelected] = useState<string | null>(opening?.item ?? null);
   const [buying, setBuying] = useState<RewardItem | null>(null);
   const [message, setMessage] = useState("");
+  const inventoryScope = JSON.stringify([rewards.owner, rewards.admissionEpoch, rewards.lab?.active, rewards.lab?.generation]);
+  const currentInventoryScope = useRef(inventoryScope);
+  useLayoutEffect(() => { currentInventoryScope.current = inventoryScope; }, [inventoryScope]);
+  const [editInventory, setEditInventory] = useState(inventoryScope);
+  // Reset in render so a test draft can never be submitted during a frame
+  // between returning to the real inventory and a passive effect running.
+  if (editInventory !== inventoryScope) {
+    setEditInventory(inventoryScope); setEdit(null); setOpeningWear(null); setBuying(null); setMessage("");
+  }
   const active = useRef(true);
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
   // A shorter stage on smaller phones, so the choices below keep enough room.
@@ -149,16 +158,16 @@ export default function OutfitsScreen() {
   const save = async () => {
     if (!ready || editConflict || tryingOn.length) return;
     const result = await rewards.saveAvatar(draft);
-    if (!active.current) return;
+    if (!active.current || currentInventoryScope.current !== inventoryScope) return;
     // Saved: back to Profile, which already shows the new look.
-    if (result.ok) { setEdit(null); router.back(); } else setMessage(result.message);
+    if (result.ok) { setEdit(null); if (rewards.lab?.active) setMessage("Test look saved. Your real look is unchanged."); else router.back(); } else setMessage(result.message);
   };
   const buy = async () => {
     const item = buying; setBuying(null);
     if (!item) return;
     const result = await rewards.buy(item.id);
-    if (!active.current) return;
-    setMessage(result.ok ? `${item.name} is yours.` : result.message);
+    if (!active.current || currentInventoryScope.current !== inventoryScope) return;
+    setMessage(result.ok ? rewards.lab?.active ? `${item.name} is in your test inventory.` : `${item.name} is yours.` : result.message);
   };
 
   const worn = (item: RewardItem) => item.kind === "background" ? draft.background === item.id
@@ -232,6 +241,12 @@ export default function OutfitsScreen() {
       <Ionicons name="grid-outline" size={23} color={colors.neutral} />
     </Pressable>}>
     <View style={s.stack}>
+      {rewards.lab?.active && <View style={s.card} testID="outfits-test-inventory">
+        <Text style={p.rowTitle}>Test inventory</Text>
+        <Text style={p.caption}>Purchases and saved looks here use test Stardust. Your real collection stays safe.</Text>
+        <Pressable testID="outfits-restore-real" accessibilityRole="button" accessibilityLabel="Return to my real collection"
+          onPress={() => rewards.lab.end()} style={p.button}><Text style={p.buttonText}>Return to my real collection</Text></Pressable>
+      </View>}
       {scrollingPreview && preview}
       {(!ready || !!rewards.error) && <View style={s.card} testID="outfits-collection-status">
         <Text style={p.rowTitle} accessibilityLiveRegion="polite">{ready ? "Your saved items are shown." : rewards.online ? "Your collection" : "Your collection needs a connection."}</Text>

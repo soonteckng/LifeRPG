@@ -155,7 +155,7 @@ export default function RewardMoments({ insideSession, claimKey = null, sessionR
   </Modal>;
 }
 
-function Moment({ item, left, level, look, equipped, background, streak, onClose, onOutfits }: {
+export function Moment({ item, left, level, look, equipped, background, streak, onClose, onOutfits }: {
   item: RewardItem; left: number; level: number; look: ReturnType<typeof useRewards>["look"]; equipped: Partial<Record<string, string>>; background: string; streak: number;
   onClose: () => void; onOutfits: () => void;
 }) {

@@ -12,6 +12,9 @@ function load(file, mocks = {}, cache = new Map()) {
   const mod = { exports: {} }; cache.set(filename, mod);
   const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   new Function("require", "module", "exports", code)(name => {
+    // The new isolated lab has its own behavioural tests. Keep this harness
+    // focused on the older settings controls and their real-collection path.
+    if (name === "./DeveloperRewardTests") return () => null;
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (!name.startsWith(".")) return require(name);
     const target = path.resolve(path.dirname(filename), name);
@@ -236,7 +239,7 @@ test("the rewards rows use the real rewards actions, each says what happened, an
   const noteText = () => JSON.stringify(note().findAllByType("Text").map(t => t.props.children));
   try {
     assert.ok(ui.loads.includes(true), "a developer's rewards load");
-    assert.match(ui.groups()[1].props.footer, /^40 Stardust/);
+    assert.match(ui.groups()[1].props.footer, /^40 real Stardust/);
     await ui.press("Open Outfits");
     await ui.press("Come back from a session");
     assert.match(noteText(), /✓ Finds: Red beret \(new\), Canvas tote \(\+5 Stardust\).*\+6 Stardust from minutes.*Unlocked: Barn owl \(new\)/);
@@ -245,6 +248,7 @@ test("the rewards rows use the real rewards actions, each says what happened, an
     await ui.press("Find something now");
     assert.match(noteText(), /Found Red beret \(new\)/);
     await ui.press("Earn the next pet, frame and badge");
+    assert.equal(ui.row("Take back pets, frames and badges").props.disabled, true);
     await ui.press("Take back pets, frames and badges");
     await ui.press("Add 500 test Stardust");
     assert.match(noteText(), /Added 500 Stardust/);
@@ -253,7 +257,7 @@ test("the rewards rows use the real rewards actions, each says what happened, an
     await act(async () => reset.props.onPress());
     assert.equal(ui.confirm(), undefined, "nothing to confirm: reset is off");
     assert.deepEqual(ui.log.filter(x => /^(go|claim|pack|dev)/.test(x)), ["go:/outfits", "claim", "pack", "dev:find:0",
-      "dev:next_milestones:0", "dev:reearn:0", "dev:next_milestones:0", "dev:reearn:0", "dev:stardust:500"], "with every milestone earned, they're taken back and earned again");
+      "dev:next_milestones:0", "dev:stardust:500"], "real milestones are never deleted to replay an animation; the isolated lab handles repeats");
   } finally { await ui.cleanup(); }
 });
 

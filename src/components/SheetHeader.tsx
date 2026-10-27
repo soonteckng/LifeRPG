@@ -6,13 +6,13 @@ import Pressable from "./SheetTouchable";
 import { colors } from "../constants/theme";
 
 // One header for every sheet: a title, an optional line beneath, and a round close.
-export default function SheetHeader({ title, subtitle, onClose, closeLabel = "Close" }: { title: string; subtitle?: string; onClose?: () => void; closeLabel?: string }) {
+export default function SheetHeader({ title, subtitle, onClose, closeLabel = "Close", closeTestID }: { title: string; subtitle?: string; onClose?: () => void; closeLabel?: string; closeTestID?: string }) {
   return <View style={s.header}>
     <View style={s.copy}>
       <Text style={s.title} accessibilityRole="header" numberOfLines={2}>{title}</Text>
       {!!subtitle && <Text style={s.subtitle}>{subtitle}</Text>}
     </View>
-    {onClose && <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel={closeLabel} style={s.close}>
+    {onClose && <Pressable testID={closeTestID} onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel={closeLabel} style={s.close}>
       <Ionicons name="close" size={17} color={colors.secondary} />
     </Pressable>}
   </View>;

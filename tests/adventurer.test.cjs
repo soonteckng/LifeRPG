@@ -10,7 +10,12 @@ function load(file, mocks = {}, cache = new Map()) {
   const filename = path.resolve(root, file);
   if (cache.has(filename)) return cache.get(filename).exports;
   const mod = { exports: {} }; cache.set(filename, mod);
-  const code = ts.transpileModule(fs.readFileSync(filename, "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
+  let source = fs.readFileSync(filename, "utf8");
+  if (mocks.__compileOutfits && filename.endsWith("outfits.tsx")) source = require("@babel/core").transformSync(source, {
+    filename, configFile: false, babelrc: false, parserOpts: { plugins: ["typescript", "jsx"] },
+    plugins: [[require.resolve("babel-plugin-react-compiler"), { target: "19" }]],
+  }).code;
+  const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true } }).outputText;
   new Function("require", "module", "exports", "requestAnimationFrame", "cancelAnimationFrame", code)(name => {
     if (Object.hasOwn(mocks, name)) return mocks[name];
     if (!name.startsWith(".")) return require(name);
@@ -108,7 +113,7 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
   stop();
 });
 
-async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar, refresh, dimensions = { width: 390, height: 844, fontScale: 1 } } = {}) {
+async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar, refresh, compiled = false, dimensions = { width: 390, height: 844, fontScale: 1 } } = {}) {
   const log = [];
   const frames = new Map(); let frameId = 0;
   const renders = { adventurer: 0, thumbnails: 0, portrait: 0 };
@@ -126,11 +131,17 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
     saveAvatar: async draft => { log.push(["save", draft]); return saveAvatar ? saveAvatar(draft) : { ok: true, value: {} }; },
     buy: async id => { log.push(["buy", id]); return { ok: true, value: {} }; },
   };
+  const buttonCommits = [];
+  function Button(props) {
+    React.useLayoutEffect(() => { buttonCommits.push({ active: rewards.lab?.active, generation: rewards.lab?.generation, title: props.title, disabled: props.disabled }); });
+    return React.createElement("Button", props);
+  }
   const mod = load("src/app/outfits.tsx", {
+    __compileOutfits: compiled,
     requestAnimationFrame: callback => { const id = ++frameId; frames.set(id, callback); return id; },
     cancelAnimationFrame: id => frames.delete(id),
     "react-native": { ...native, useWindowDimensions: () => dimensions }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
-    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned, action }) => React.createElement("Page", { footer, pinned }, action, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
+    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned, action }) => React.createElement("Page", { footer, pinned }, action, pinned, children, footer), PersonalButton: Button, p: {} },
     "../components/rewards/RewardCollectionSheet": host("Collection"),
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
     "../components/adventurer/Adventurer": Adventurer, "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
@@ -157,9 +168,36 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
     while (frames.size) { assert.ok(count++ < 10, "thumbnail work must be bounded"); await nextFrame(); }
   };
   const updateRewards = async changes => { Object.assign(rewards, changes); await act(async () => r.update(React.createElement(Screen))); };
-  return { r, log, renders, press, tab, button, words, nextFrame, finishFrames, pendingFrames: () => frames.size,
+  return { r, log, renders, buttonCommits, press, tab, button, words, nextFrame, finishFrames, pendingFrames: () => frames.size,
     updateRewards, opening: mod.outfitsOpening, preview: () => r.root.findByType("Adventurer").props };
 }
+
+for (const compiled of [false, true]) test(`Round 75: a test draft is discarded before any real-inventory frame can save it${compiled ? " (compiled)" : ""}`, async () => {
+  const ui = await outfits({ compiled });
+  try {
+    await ui.updateRewards({lab:{active:true,generation:1,end() {}}});
+    await ui.press("Skin tone 7"); assert.equal(ui.button("Save look").props.disabled,false);
+    ui.buttonCommits.length=0;
+    await ui.updateRewards({lab:{active:false,generation:2,end() {}}});
+    const commits=ui.buttonCommits.filter(row=>row.title==="Save look");
+    assert.ok(commits.length); assert.ok(commits.every(row=>row.disabled), "no commit may expose an enabled real Save for the test draft");
+    assert.equal(ui.preview().look.skin,LOOK.skin); assert.deepEqual(ui.log,[]);
+    await ui.updateRewards({lab:{active:true,generation:3,end() {}}}); await ui.press("Skin tone 7");
+    await ui.updateRewards({lab:{active:true,generation:4,end() {}}});assert.equal(ui.button("Save look").props.disabled,true,"resetting the test inventory also discards its old draft");
+  } finally { await act(async()=>ui.r.unmount()); }
+});
+test("Round 75: saved test looks stay in Outfits and a late save cannot navigate after restoration", async () => {
+  let finish; const ui=await outfits({saveAvatar:()=>new Promise(resolve=>{finish=resolve;})});
+  try {
+    await ui.updateRewards({lab:{active:true,generation:1,end() {}}});await ui.press("Skin tone 7");
+    await act(async()=>ui.button("Save look").props.onPress());
+    await ui.updateRewards({lab:{active:false,generation:2,end() {}}});await act(async()=>finish({ok:true,value:{}}));
+    assert.ok(!ui.log.some(row=>row[0]==="back"));assert.doesNotMatch(ui.words(),/Test look saved/);
+    await ui.updateRewards({lab:{active:true,generation:3,end() {}}});await ui.press("Skin tone 7");
+    await act(async()=>ui.button("Save look").props.onPress());await act(async()=>finish({ok:true,value:{}}));
+    assert.ok(!ui.log.some(row=>row[0]==="back"));assert.match(ui.words(),/Test look saved/);
+  } finally { await act(async()=>ui.r.unmount()); }
+});
 
 test("unavailable inventory is explained instead of presenting a falsely empty locked collection", async t => {
   t.mock.timers.enable({apis:["setTimeout"]});
