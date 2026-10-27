@@ -223,6 +223,8 @@ const TrailArtwork = memo(function TrailArtwork({ width, height, count, minutesP
   }).filter(b => b.bottom > b.top + 1);
   const small = step < 60;
   const node = small ? 10 : 13, font = small ? 10 : 11;
+  // Keep Camp beside the portrait, including the first few minutes of a walk.
+  const campLeft = Math.max(14, pts[0].x - AVATAR / 2 - 12 - 48);
   return <View style={StyleSheet.absoluteFill} renderToHardwareTextureAndroid={!animatedLine} testID="today-trail-artwork">
     <Svg width={width} height={height}>
       <Defs>{bands.map(b => <LinearGradient key={b.name} id={`band-${gradientId}-${b.from}`} x1="0" y1="0" x2="0" y2="1">
@@ -254,8 +256,8 @@ const TrailArtwork = memo(function TrailArtwork({ width, height, count, minutesP
             {n === next && !ended ? `Next find · ${mins} min` : `${mins} min`}</SvgText>}
         </G>;
       })}
-      <Rect x={pts[0].x - 24} y={pts[0].y - 10} width={48} height={20} rx={8} fill="#14B8A6" />
-      <SvgText x={pts[0].x} y={pts[0].y + 4} fill="#04211D" fontSize={10} fontWeight="800" textAnchor="middle">CAMP</SvgText>
+      <Rect x={campLeft} y={pts[0].y - 10} width={48} height={20} rx={8} fill="#14B8A6" />
+      <SvgText x={campLeft + 24} y={pts[0].y + 4} fill="#04211D" fontSize={10} fontWeight="800" textAnchor="middle">CAMP</SvgText>
     </Svg>
     {animatedLine ? <Animated.View testID="today-trail-marker" pointerEvents="none" style={[s.you, animatedMarker]}>
       <ProfilePicture look={look} equipped={equipped} level={level} background={background} frame={frame} size={AVATAR} showLevel={false} />
