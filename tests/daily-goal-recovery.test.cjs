@@ -19,7 +19,9 @@ function load(file, mocks={}, cache=new Map()) {
 const host=name=>props=>React.createElement(name,props,props.children);
 const text=node=>typeof node==='string'?node:(node.children??[]).map(text).join('');
 const defer=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return{promise,resolve,reject};};
-const goal={user_id:'owner',local_date:'2026-10-12',next_effective_date:'2026-10-13',timezone:'Asia/Kuala_Lumpur',today_goal_minutes:60,next_goal_minutes:60,pending:false,scheduling_available:true,weekly_limit_available:true,can_change_goal:true,next_change_at:null};
+const localDate=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kuala_Lumpur',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const nextDate=new Date(Date.parse(`${localDate}T12:00:00Z`)+86400000).toISOString().slice(0,10);
+const goal={user_id:'owner',local_date:localDate,next_effective_date:nextDate,timezone:'Asia/Kuala_Lumpur',today_goal_minutes:60,next_goal_minutes:60,pending:false,scheduling_available:true,weekly_limit_available:true,can_change_goal:true,next_change_at:null};
 const pending={...goal,next_goal_minutes:90,pending:true,can_change_goal:false,next_change_at:'2026-10-19T03:00:00Z'};
 const flush=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 async function fakeClock(run) {
@@ -84,7 +86,7 @@ test('an uncertain goal write with a failed status check is dismissible and chec
     await act(async()=>ui.tree.root.findByType('Sheet').props.onRequestClose());assert.equal(ui.closes(),1);
     await act(async()=>ui.button('Save daily goal').props.onPress());assert.equal(writes,1);
     await act(async()=>ui.button('Retry goal check').props.onPress());
-    assert.match(ui.output(),/90 minutes from 2026-10-13/);
+    assert.match(ui.output(),new RegExp(`90 minutes from ${nextDate}`));
     assert.equal(ui.button('Save daily goal').props.disabled,true);assert.equal(writes,1);
   }finally{await ui.cleanup();}
 });
@@ -95,7 +97,7 @@ test('a lost reply followed by a saved pending schedule does not claim failure o
   try{
     await act(async()=>ui.tree.root.findByType('Input').props.onChangeText('90'));
     await act(async()=>ui.button('Save daily goal').props.onPress());
-    assert.match(ui.output(),/90 minutes from 2026-10-13/);assert.match(ui.output(),/latest schedule/);
+    assert.match(ui.output(),new RegExp(`90 minutes from ${nextDate}`));assert.match(ui.output(),/latest schedule/);
     assert.doesNotMatch(ui.output(),/write never happened|Goal saved/);assert.equal(ui.button('Save daily goal').props.disabled,true);
     await act(async()=>ui.button('Retry goal check').props.onPress());assert.equal(writes,1);
   }finally{await ui.cleanup();}
@@ -127,7 +129,7 @@ test('Settings › Daily goal immediately blocks another write while its lost-re
     assert.ok(button('Retry goal check'));
     assert.match(text(tree.root),/delayed change may still arrive/);
     await act(async()=>check.resolve(pending));
-    assert.equal(button('Save daily goal'),undefined);assert.match(text(tree.root),/From 2026-10-1390 min/);
+    assert.equal(button('Save daily goal'),undefined);assert.match(text(tree.root),new RegExp(`From ${nextDate}90 min`));
     assert.equal(writes,1);
   }finally{await act(async()=>tree.unmount());}
 });

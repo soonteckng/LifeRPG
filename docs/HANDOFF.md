@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 70, phone checks in section 7)
+# LifeRPG handoff (after Round 71, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 70 patch, based on Round 69 (`c2bfd40c617f7e9b7004fe3138b32292cb35578c` in the verification checkout). Round 69 must be applied first. Soon Teck was pushing Round 69 but had not tested it when reporting these Round 68 issues. Prepared locally; he applies, pushes and publishes. |
+| Latest delivered round | Round 71 patch on Round 70 (`bc5899f07f1d2f283f4bf38f53ae5b741eafce0d` verification base; same source tree as Soon Teck's `feature/next` at `faacb77`). Soon Teck has now tested Rounds 69 and 70. Apply R71 after R70. Prepared locally; he applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 70: **1,657 tests passed in the full run**, zero failures and skips, including isolated PGlite with external networking blocked. Typecheck, full Expo lint and new-file lint clean. Native inputs unchanged. See `docs/round70-background-recovery.md` for reproductions, delivery checks and limits. |
+| Code health | Round 71: **1,699 tests passed in the full run**, zero failures/skips, including isolated PGlite with external networking blocked. Typecheck, full Expo lint, new-test lint and diff checks clean. Native inputs unchanged. Evidence and limits: `docs/round71-stats-and-outfits.md`. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Nothing pending. The old Round 64 file must never be run. |
-| Waiting on the phone | Round 70: background completion → result/finds without replay, Profile/Progress update without manual refresh, and inventory loading feedback. Exact user inventory is unconfirmed: username and whether Canvas tote was checked in Gear → Bags remain unanswered. Round 69's entry/fade/dawn/minimum checks and Android frame pacing remain unverified on a phone. |
+| Waiting on the phone | Round 71: celebration closing fade, result entrance smoothness, matching day/category details, offline-sync refresh and accessible Outfits controls. Exact account is now **st** (saved username **St**). Read-only checks confirm Field jacket and Easel, not Canvas tote; no data repair is indicated. Android frame pacing is not device-verified. See section 7. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -59,6 +59,7 @@ No guilt or punishment mechanics; no ads during focus, auth or recovery.
 
 - **"Soon Teck"** is the **dev account**. It has hidden Developer tools, has **everything unlocked** (all outfits and so on), and is **protected**: "Reset my rewards" and "Delete account" are refused for it (server-side, in `dev_rewards_v1` and `delete_my_account_v1`, plus the UI lock).
 - **"8k"** is the **normal-user account**. It sees exactly what a normal user sees, with nothing unlocked.
+- **"st"** (saved username **St**) is the normal account used for the latest Round 71 statistics and Outfits reports. Do not confuse it with the dev account.
 - Developer accounts are rows in `liferpg_auth_private.developers`.
 
 ### The dev-tools rule (Soon Teck asked for this explicitly)
@@ -122,40 +123,40 @@ commands to copy and paste:
 ```bash
 # 1. One commit for the round, on top of feature/next.
 git add -A src tests docs supabase
-git commit -m "Round 70: <short summary>" -m "- <what changed, one line each>"
+git commit -m "Round 71: <short summary>" -m "- <what changed, one line each>"
 
 # 2. The patch, then prove it applies cleanly to the commit before it.
-git format-patch -1 HEAD --stdout > out/round-70.patch
-git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-70.patch \
+git format-patch -1 HEAD --stdout > out/round-71.patch
+git branch -f check HEAD~1 && git checkout -q check && git am -q out/round-71.patch \
   && git diff --quiet <your-branch> && echo APPLY_OK; git checkout -q <your-branch> && git branch -D -q check
 
 # 3. The backup bundle.
 EXPO_PUBLIC_SUPABASE_URL=https://msuelivxpsfizkddjjfg.supabase.co \
 EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_SnrSnQ57XXmmqRU5_mZtbA_n7taPkkw \
-npx expo export --platform android --clear --output-dir dist70 --dump-assetmap
-(cd dist70 && zip -qr ../out/dist-round-70.zip .)
+npx expo export --platform android --clear --output-dir dist71 --dump-assetmap
+(cd dist71 && zip -qr ../out/dist-round-71.zip .)
 ```
 
 Then send him the files (he downloads them to `Downloads`). Don't paste a
 patch into the chat.
 
-**The commands you give him (worked example, Round 70):**
+**The commands you give him (worked example, Round 71):**
 
 ```powershell
-git am "$HOME\Downloads\round-70.patch"
+git am "$HOME\Downloads\round-71.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 70: <short summary>"
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 71: <short summary>"
 ```
 
 If Windows crashes during the bundle step:
 
 ```powershell
-Expand-Archive "$HOME\Downloads\dist-round-70.zip" -DestinationPath dist -Force
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 70" --skip-bundler --input-dir dist
+Expand-Archive "$HOME\Downloads\dist-round-71.zip" -DestinationPath dist -Force
+npx eas-cli update --channel preview --environment preview --platform android --message "Round 71" --skip-bundler --input-dir dist
 ```
 
 If the round has SQL, it always comes **after** publishing: "Open
-`round-70-<name>.sql`, paste it into the Supabase SQL Editor and run it."
+`round-71-<name>.sql`, paste it into the Supabase SQL Editor and run it."
 Older installed versions may still call what the SQL changes.
 
 If a patch was built on a commit he doesn't have yet, say which patch goes
@@ -234,9 +235,44 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify Round 70 after Round 69 on the installed phone, using the latest reports below.**
+**First: verify Round 71 after Round 70 on the installed phone.** See
+`docs/round71-stats-and-outfits.md` for reproductions and the short combined check.
 
-**Latest: Round 70 addresses additional Round 68 reports.** Soon Teck had not
+**Latest: Round 71 reports and findings.** Soon Teck tested R69+R70 using **st**:
+
+1. Closing "A good start" glitches. A production-compiled regression proves the
+   completed fade was reset to opaque during native dismissal. It now stays
+   transparent until reopened; Reduce Motion remains immediate.
+2. Progress Today says 6m, category detail 9m 20s. Read-only records reconcile
+   6m today plus 3m 20s yesterday. The detail displayed a period total over a
+   day-filtered list. It now uses exactly the displayed rows and the matching
+   day/range subtitle. Related Profile alias/unassigned-session grouping and
+   cached-refresh paths are audited with tests; no historical data or XP repair.
+3. Occasional result stutter. Duplicate arrival-layout measurements no longer
+   schedule redundant scene commits. React Compiler already caches the SVG;
+   don't claim redraw-per-frame or complete native jank elimination. Device
+   frame pacing still needs checking.
+4. Outfits set chip covers the character. The chips now reserve their own row.
+5. Outfits details/Get action too far down, ownership and green dots unclear.
+   Details now sit with fixed actions; short/large-text layouts scroll only the
+   preview/catalogue while tabs and actions stay reachable. Owned/Wearing and
+   locked Preview/Not owned are explicit. Ambiguous rarity/equipped-slot dots
+   are removed. Save/purchase/inventory-conflict checks are unchanged.
+
+Exact-account follow-up resolved the earlier item uncertainty: **st owns Field
+jacket and Easel**, not Canvas tote. The pack's duplicate Easel gave Stardust.
+Easel is camp decoration and currently has no section in Outfits; no inventory
+loss, manual grant or new camp editor is claimed. Goal schedule is 30 minutes
+from 26 October while profile baseline remains 60, intentionally. The live
+account completed another session during diagnosis, so the 6m/9m20 snapshot in
+the round note is timestamped, not a forever-current total.
+
+No SQL/auth/email/native/config/dependency changes or publication. **Combining
+notifications and all other native work still wait until November 2026.**
+
+### Previous Round 70 reports (history)
+
+**Round 70 addressed additional Round 68 reports.** Soon Teck had not
 tested Round 69 yet. Keep its fixes and apply Round 70 after it. See
 `docs/round70-background-recovery.md`.
 
@@ -385,6 +421,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R71 (Codex):** matching day/category drilldowns; Profile legacy-category parity and completed-history safeguards; offline-sync cache refresh and honest goal-loading checks; reproduced celebration fade reversal and redundant arrival-layout commits; reserved Outfits chip row, reachable item actions and explicit ownership/preview labels. Live **st** records reconciled read-only. No SQL/auth/email/native/config/dependency changes or publication. Native animation smoothness still requires a phone check. See `docs/round71-stats-and-outfits.md`.
 - **R70 (Codex):** fixed a refresh requeuing an already-dismissed find; Progress and Profile growth now reject pre-completion prefetches and stale owner callbacks, retain completion invalidation after Done, and preserve cached history on errors. Outfits explains unavailable inventory with a bounded retry and keeps cached owned items; duplicates visibly say Already yours. No economics, SQL, auth, native/config/dependency changes or publication. Exact reported missing inventory and native/modal frame pacing remain unconfirmed. See `docs/round70-background-recovery.md`.
 - **R69 (Codex):** retained widget/dock timer entrance with stale-close fencing; themed different-running-session notice; result modal fades before finds/trail start; dawn only during the final 10 focus seconds and held during pause/break; one-minute minimum for new/edited durations, with old short records/recovery preserved. No SQL/native/config/dependency changes or publication. **Native notification merge explicitly deferred to November 2026.** See `docs/round69-session-polish.md`.
 - **R68 (Codex):** visible dev-only Share session log row; production-compiler regression reproduced with real timer provider/controller/backdrop, then fixed by immutable subscribed completion state. Round 67 result/finds/trail design retained. Widget navigation removes stale launcher history and fences superseded intents; a different running routine gets a clear return action. Stationary map skips unused Reanimated registrations and uses an Android hardware layer; squad portraits avoid redraws and extra wallet loads. No SQL/native/config/dependency changes. See `docs/round68-session-flow.md`.

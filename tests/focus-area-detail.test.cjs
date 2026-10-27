@@ -87,4 +87,7 @@ test('General and an unassigned session share one Everyday focus row in Progress
  const progress=api.buildProgress(period,sessions,[],timeZone,[{id:1,title:'General',color_code:null}],now);
  const everyday=progress.areas.filter(group=>group.title==='Everyday focus');
  assert.equal(everyday.length,1);assert.equal(everyday[0].seconds,180);assert.equal(everyday[0].sessions.length,2);
+ const detail=focusAreaDetail({id:1,title:'General'},[{id:1,title:'General',color_code:null}],sessions,timeZone,now);
+ assert.equal(detail.weekSeconds,everyday[0].seconds,'Profile and Progress include the same legacy uncategorised effort');
+ assert.equal(detail.seconds,180);assert.equal(detail.sessions,2);
 });

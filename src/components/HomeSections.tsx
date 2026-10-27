@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { Share, StyleSheet, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AppState, Share, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Pressable from "./MotionPressable";
@@ -160,12 +160,23 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
 const DAYS = ["M", "T", "W", "T", "F", "S", "S"];
 /** This week's progress, shared by the week card and Today's card. */
 export function useWeekProgress() {
-  const { profile } = useUser(), { sessionSummary } = useTimer({ live: false });
+  const { profile } = useUser(), { sessionSummary, cloudSaveVersion = 0 } = useTimer({ live: false });
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
-  const [now] = useState(() => new Date());
+  const [now, setNow] = useState(() => new Date());
+  useFocusEffect(useCallback(() => { setNow(new Date()); }, []));
+  useEffect(() => {
+    // This only advances the calendar. The existing data hook decides when a
+    // changed day needs a read; there is no minute-by-minute network polling.
+    const tick = () => setNow(new Date());
+    const clock = setInterval(tick, 60_000);
+    const listener = AppState.addEventListener("change", state => { if (state === "active") tick(); });
+    return () => { clearInterval(clock); listener.remove(); };
+  }, []);
   const period = useMemo(() => periodFor("week", dateKey(now, timeZone), timeZone, now), [now, timeZone]);
-  const { data } = useProgressData(period, timeZone, sessionSummary, profile?.id ?? "");
-  const week = useMemo(() => data ? buildProgress(period, data.sessions, data.goals, timeZone, data.areas, now) : null, [data, period, timeZone, now]);
+  const { data } = useProgressData(period, timeZone, sessionSummary, profile?.id ?? "", cloudSaveVersion);
+  // A response can contain a session completed after this screen mounted.
+  // Validate it against the current clock, never the original mount time.
+  const week = useMemo(() => data ? buildProgress(period, data.sessions, data.goals, timeZone, data.areas, new Date()) : null, [data, period, timeZone]);
   return { week, period };
 }
 /** The bars are neutral (today brightest); only the dot under a day is green. */
@@ -187,32 +198,33 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
   const [open, setOpen] = useState(false);
   const change = week && week.previousSeconds >= 300 ? week.comparisonSeconds - week.previousSeconds : null;
   const top = Math.max(1, ...(week?.areas.map(area => area.seconds) ?? [0]));
-  const changeLine = !week?.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`;
+  const changeLine = !week ? "Checking your week…" : !week.seconds ? "Your first session starts the chart" : change === null ? "Your week so far" : change >= 0 ? `${durationLabel(change)} more than last week` : `${durationLabel(-change)} behind last week`;
   // The Home tile keeps to one short line each: hours and minutes, and the change.
-  const tileChange = !week?.seconds ? "Start your week" : change === null ? "Your week so far" : change >= 0 ? `+${studyTime(change)} on last week` : `${studyTime(-change)} behind last week`;
+  const tileChange = !week ? "Checking your week…" : !week.seconds ? "Start your week" : change === null ? "Your week so far" : change >= 0 ? `+${studyTime(change)} on last week` : `${studyTime(-change)} behind last week`;
+  const weekLabel = week ? `This week, ${durationLabel(week.seconds)}. Show by category` : "This week is loading. Show by category";
   return <View style={tile ? s.tileSection : s.section} testID="home-week">
     {tile ? <View style={[s.card, s.tile]}>
       <View style={s.tileFill} importantForAccessibility="no-hide-descendants">
       <Text style={s.tileLabel}>This week</Text>
-      <Text style={s.tileTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{studyTime(week?.seconds ?? 0)}</Text>
+      <Text style={s.tileTotal} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{week ? studyTime(week.seconds) : "–"}</Text>
       <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>{tileChange}</Text>
       <View style={s.tileFoot}>
-        <Text style={s.caption} numberOfLines={1}>Focus on {week?.activeDays ?? 0} of 7 days</Text>
+        <Text style={s.caption} numberOfLines={1}>{week ? `Focus on ${week.activeDays} of 7 days` : "Checking active days…"}</Text>
         <WeekBars height={30} />
       </View>
       </View>
-      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={s.tileTap} />
+      <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={weekLabel} style={s.tileTap} />
     </View> : <>
-    <SectionHeader title="This Week" subtitle={`${week?.activeDays ?? 0} of 7 days with focus`} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
-    <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={`This week, ${durationLabel(week?.seconds ?? 0)}. Show by category`} style={[s.card, s.week]}>
+    <SectionHeader title="This Week" subtitle={week ? `${week.activeDays} of 7 days with focus` : "Checking your week…"} onPress={() => router.navigate("/progress")} pressLabel="This Week. Open Progress" />
+    <Pressable onPress={() => setOpen(true)} accessibilityRole="button" accessibilityLabel={weekLabel} style={[s.card, s.week]}>
       <View style={s.flex}>
-        <Text style={s.total}>{durationLabel(week?.seconds ?? 0)}</Text>
+        <Text style={s.total}>{week ? durationLabel(week.seconds) : "–"}</Text>
         <Text style={[s.caption, change !== null && change > 0 && { color: colors.success }]} numberOfLines={1}>{changeLine}</Text>
       </View>
       <WeekBars />
     </Pressable></>}
     <AppSheet visible={open} onRequestClose={() => setOpen(false)} attached compact maxHeightRatio={0.86} label="this week" motionMode="timed"
-      header={<SheetHeader title="This Week" subtitle={`${durationLabel(week?.seconds ?? 0)} · ${week?.sessions.length ?? 0} sessions`} onClose={() => setOpen(false)} />}>
+      header={<SheetHeader title="This Week" subtitle={week ? `${durationLabel(week.seconds)} · ${week.sessions.length} sessions` : "Checking your week…"} onClose={() => setOpen(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
         <View style={[s.card, s.sheetCard]}><WeekBars height={72} wide /><Text style={s.caption}>{WEEK_LEGEND}</Text></View>
         <View style={[s.group, s.sheetGroup]}>{week?.areas.length ? week.areas.map((area, index) => <View key={area.key} style={[s.areaRow, index > 0 && s.line]} accessible accessibilityLabel={`${area.title}, ${durationLabel(area.seconds)}`}>
@@ -220,7 +232,7 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
           <Text style={s.areaName} numberOfLines={1}>{area.title}</Text>
           <View style={s.areaTrack}><View style={[s.areaFill, { width: `${Math.max(4, Math.round(100 * area.seconds / top))}%`, backgroundColor: area.color }]} /></View>
           <Text style={s.time}>{durationLabel(area.seconds)}</Text>
-        </View>) : <Text style={[s.caption, s.pad]}>Finish a session and your categories show here.</Text>}</View>
+        </View>) : <Text style={[s.caption, s.pad]}>{week ? "Finish a session and your categories show here." : "Checking your categories…"}</Text>}</View>
         <Pressable onPress={() => { setOpen(false); setTimeout(() => router.navigate("/progress"), 220); }} accessibilityRole="button" accessibilityLabel="Open Progress" style={s.primary}>
           <Text style={s.primaryText}>Open Progress</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
       </BottomSheetScrollView>

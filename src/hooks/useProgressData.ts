@@ -22,14 +22,15 @@ export interface ProgressData {
   streak: number;
   longestStreak: number;
 }
-type Cached = ProgressData & { at: number };
+type Cached = ProgressData & { at: number; cloudSaveVersion: number; completion: unknown };
 // Periods already seen stay ready across tab visits, scoped to the account.
 // Only the few most recent are kept.
 const cache = new Map<string, Cached>();
-const prefetching = new Map<string, Promise<ProgressData>>();
-function remember(id: string, value: ProgressData) {
+type PendingProgress = { request: Promise<ProgressData>; cloudSaveVersion: number; completion: unknown; obsolete: boolean };
+const prefetching = new Map<string, PendingProgress>();
+function remember(id: string, value: ProgressData, cloudSaveVersion = 0, completion: unknown = null) {
   cache.delete(id);
-  cache.set(id, { ...value, at: Date.now() });
+  cache.set(id, { ...value, at: Date.now(), cloudSaveVersion, completion });
   while (cache.size > 6) cache.delete(cache.keys().next().value!);
 }
 async function loadProgress(period: ProgressPeriod, timeZone: string, key: string, owner: string): Promise<ProgressData> {
@@ -44,18 +45,30 @@ async function loadProgress(period: ProgressPeriod, timeZone: string, key: strin
   return { key, sessions, goals, areas, streak, longestStreak };
 }
 const periodKey = (period: ProgressPeriod, timeZone: string) => `${period.start}:${period.mode}:${timeZone}`;
+function readProgress(period: ProgressPeriod, timeZone: string, key: string, owner: string, cloudSaveVersion: number, completion: unknown): PendingProgress {
+  const id = `${owner}|${key}`, existing = prefetching.get(id);
+  if (existing && (!completion || !existing.completion || existing.completion === completion) && existing.cloudSaveVersion === cloudSaveVersion) {
+    if (completion) existing.completion = completion;
+    return existing;
+  }
+  if (existing) existing.obsolete = true;
+  const request = loadProgress(period, timeZone, key, owner);
+  const pending = { request, cloudSaveVersion, completion, obsolete: false };
+  prefetching.set(id, pending);
+  request.then(value => {
+    if (prefetching.get(id) === pending) remember(id, value, cloudSaveVersion, pending.completion);
+  }, () => {}).finally(() => {
+    if (prefetching.get(id) === pending) prefetching.delete(id);
+  });
+  return pending;
+}
 /** Loads this week quietly so the first visit to Progress is already drawn. */
-export function prefetchProgress(owner: string, timeZone: string, now = new Date()) {
+export function prefetchProgress(owner: string, timeZone: string, now = new Date(), cloudSaveVersion = 0) {
   const period = periodFor("week", dateKey(now, timeZone), timeZone, now);
   const key = periodKey(period, timeZone), id = `${owner}|${key}`;
-  if (!owner || cache.has(id) || prefetching.has(id)) return;
-  const request = loadProgress(period, timeZone, key, owner);
-  prefetching.set(id, request);
-  request.then(value => {
-    if (prefetching.get(id) === request) remember(id, value);
-  }, () => {}).finally(() => {
-    if (prefetching.get(id) === request) prefetching.delete(id);
-  });
+  if (!owner || cache.has(id) && (!cloudSaveVersion || cache.get(id)?.cloudSaveVersion === cloudSaveVersion)
+    || prefetching.has(id) && (!cloudSaveVersion || prefetching.get(id)?.cloudSaveVersion === cloudSaveVersion)) return;
+  readProgress(period, timeZone, key, owner, cloudSaveVersion, null);
 }
 
 export function useProgressData(
@@ -63,6 +76,7 @@ export function useProgressData(
   timeZone: string,
   completion: unknown,
   owner = "",
+  cloudSaveVersion = 0,
 ) {
   const key = periodKey(period, timeZone);
   const id = `${owner}|${key}`;
@@ -77,25 +91,30 @@ export function useProgressData(
   const lastDay = useRef(period.today);
   const lastCompletion = useRef(completion);
   const completionChecked = useRef(false);
+  const lastCloud = useRef({ owner, version: cloudSaveVersion });
+  const cloudVersion = useRef(cloudSaveVersion);
+  const summary = useRef(completion);
   // The key fixes the queried dates; read the latest period without making
   // every new period object a new request.
   const latestPeriod = useRef(period);
-  useLayoutEffect(() => { latestPeriod.current = period; });
-  const stale = useCallback(() => {
+  useLayoutEffect(() => { latestPeriod.current = period; cloudVersion.current = cloudSaveVersion; summary.current = completion; });
+  const stale = useCallback((signal?: { completion: unknown; cloud: number }) => {
     const prefix = `${owner}|`;
-    for (const [scope, value] of cache) if (scope.startsWith(prefix)) value.at = 0;
+    const outdated = (value: { completion: unknown; cloudSaveVersion: number }) => !signal
+      || !!signal.completion && value.completion !== signal.completion || !!signal && value.cloudSaveVersion !== signal.cloud;
+    for (const [scope, value] of cache) if (scope.startsWith(prefix) && outdated(value)) value.at = 0;
     // A Home prefetch begun before the save is not a post-completion read.
     // Detach it without cancelling shared I/O; its identity fences its late
     // cache write and cleanup if another prefetch starts meanwhile.
-    for (const scope of prefetching.keys()) if (scope.startsWith(prefix)) prefetching.delete(scope);
+    for (const [scope, value] of prefetching) if (scope.startsWith(prefix) && outdated(value)) { value.obsolete = true; prefetching.delete(scope); }
   }, [owner]);
   const refresh = useCallback(async (quiet = false) => {
     const request = ++generation.current;
     if (!quiet) setLoading(true);
     try {
-      const value = await (prefetching.get(id) ?? loadProgress(latestPeriod.current, timeZone, key, owner));
-      if (generation.current === request) {
-        remember(id, value);
+      const pending = readProgress(latestPeriod.current, timeZone, key, owner, cloudVersion.current, summary.current);
+      const value = await pending.request;
+      if (generation.current === request && !pending.obsolete) {
         setLoaded({ id, value });
         setErrorKey(null);
       }
@@ -107,15 +126,31 @@ export function useProgressData(
   }, [id, key, timeZone, owner]);
   useLayoutEffect(() => {
     const firstCompletion = !completionChecked.current && !!completion;
+    const sameOwner = lastCloud.current.owner === owner;
+    const firstCloud = !completionChecked.current && (cloudSaveVersion > 0 || cache.has(id) || prefetching.has(id))
+      && (cache.get(id)?.cloudSaveVersion ?? prefetching.get(id)?.cloudSaveVersion) !== cloudSaveVersion;
+    // Zero can be a recreated controller after re-admission. It must invalidate
+    // an old numeric counter before a new import increments that number again.
+    const cloudChanged = sameOwner ? lastCloud.current.version !== cloudSaveVersion
+      : cache.has(id) && cache.get(id)?.cloudSaveVersion !== cloudSaveVersion;
+    lastCloud.current = { owner, version: cloudSaveVersion };
     completionChecked.current = true;
-    if (!firstCompletion && lastCompletion.current === completion) return;
+    if (!firstCompletion && !firstCloud && !cloudChanged && lastCompletion.current === completion) return;
     lastCompletion.current = completion;
     // Invalidate before focus work, including the first visit after a save.
     // That first visit starts one fresh read instead of joining an old prefetch
     // or starting duplicate focus/completion reads.
-    stale();
-    if (completion && focused.current) void refresh(true);
-  }, [completion, refresh, stale]);
+    stale({ completion, cloud: cloudSaveVersion });
+    const cached = cache.get(id);
+    if (cached && cached.at > 0 && (!completion || cached.completion === completion) && cached.cloudSaveVersion === cloudSaveVersion) {
+      // Another Home/Profile consumer can already have refreshed this signal.
+      const request = generation.current;
+      void Promise.resolve().then(() => {
+        if (generation.current === request && focused.current && cache.get(id) === cached && cached.at > 0)
+          setLoaded(current => current?.value === cached ? current : { id, value: cached });
+      });
+    } else if ((completion || firstCloud || cloudChanged) && sameOwner && focused.current) void refresh(true);
+  }, [completion, cloudSaveVersion, owner, id, refresh, stale]);
   useFocusEffect(
     useCallback(() => {
       focused.current = true;

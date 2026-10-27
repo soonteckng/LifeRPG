@@ -20,6 +20,7 @@ import { readNotificationPermission, type NotificationPermission } from "../serv
 import { durationLabel } from "../utils/sessionSetup";
 import { afterTransition } from "../utils/afterTransition";
 import { cachedDailyGoal, rememberDailyGoal } from "../utils/dailyGoalCache";
+import { dateKey } from "../utils/progressAnalytics";
 import AppBuildInfo from "../components/AppBuildInfo";
 import DeveloperTools from "../components/DeveloperTools";
 import DeleteAccount from "../components/DeleteAccount";
@@ -34,21 +35,24 @@ export default function SettingsScreen() {
   const { hasOpenSession, isRestoring, restoreError, actionBusy, unsyncedSessionCount } = useTimer({ live: false });
   const preferences = useAppPreferences();
   const duration = useFocusDurationPreference(profile.id);
-  const [goal, setGoal] = useState<{ owner: string; today: number; next: number | null } | null>(() => {
+  const [goal, setGoal] = useState<{ owner: string; day: string; today: number; next: number | null } | null>(() => {
     const known = cachedDailyGoal(profile.id);
-    return known ? { owner: profile.id, today: known.today_goal_minutes, next: known.pending ? known.next_goal_minutes : null } : null;
+    return known ? { owner: profile.id, day: known.local_date, today: known.today_goal_minutes, next: known.pending ? known.next_goal_minutes : null } : null;
   });
   const [permission, setPermission] = useState<NotificationPermission | null>(null);
+  const [goalUnavailableFor, setGoalUnavailableFor] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const lock = useRef(false), generation = useRef(0);
   // Values only; each page loads and edits its own details.
   const load = useCallback(async () => {
     const request = ++generation.current, owner = profile.id;
+    setGoalUnavailableFor(null);
     const [settings, notifications] = await Promise.all([getDailyGoalSettings(owner).catch(() => null), readNotificationPermission().catch(() => null)]);
     if (request !== generation.current) return;
     // Shared with Daily goal, so that page opens already filled in.
     if (settings) rememberDailyGoal(settings);
-    if (settings) setGoal({ owner, today: settings.today_goal_minutes, next: settings.pending ? settings.next_goal_minutes : null });
+    if (settings) setGoal({ owner, day: settings.local_date, today: settings.today_goal_minutes, next: settings.pending ? settings.next_goal_minutes : null });
+    else setGoalUnavailableFor(owner);
     setPermission(notifications);
   }, [profile.id]);
   useEffect(() => {
@@ -65,7 +69,8 @@ export default function SettingsScreen() {
     try { const result = await signOut(); if (result.error) throw result.error; }
     catch { setError("Could not sign out. Check your connection and try again."); lock.current = false; setBusy(false); }
   };
-  const goalValue = goal && goal.owner === profile.id ? `${goal.today} min${goal.next ? ` → ${goal.next}` : ""}` : `${profile.daily_goal_minutes} min`;
+  const goalValue = goal && goal.owner === profile.id && goal.day === dateKey(new Date(), profile.timezone) ? `${goal.today} min${goal.next ? ` → ${goal.next}` : ""}`
+    : goalUnavailableFor === profile.id ? "Unavailable" : "Checking…";
   return (
     <PersonalPage title="Settings" subtitle="" back animateTransition expandFromIcon fallback="/">
       <View style={s.account} accessible accessibilityLabel={`${profile.username}, ${user?.email ?? "signed in"}`}>

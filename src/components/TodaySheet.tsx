@@ -15,16 +15,16 @@ import { durationLabel } from "../utils/progressAnalytics";
  * Today's goal up close: how far along you are, your streak and this week's
  * rhythm. The goal itself is changed from the ••• menu, not by tapping here.
  */
-export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, complete, onChangeGoal, onOpenProgress, canChangeGoal = true }: {
+export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, complete, onChangeGoal, onOpenProgress, canChangeGoal = true, goalKnown = true, todayKnown = true, streakKnown = todayKnown }: {
   visible: boolean; onClose: () => void; completedSeconds: number; goalMinutes: number; streak: number; complete: boolean;
-  onChangeGoal: () => void; onOpenProgress: () => void; canChangeGoal?: boolean;
+  onChangeGoal: () => void; onOpenProgress: () => void; canChangeGoal?: boolean; goalKnown?: boolean; todayKnown?: boolean; streakKnown?: boolean;
 }) {
   const { week } = useWeekProgress(), insets = useSafeAreaInsets();
   const goal = goalMinutes * 60, left = Math.max(0, goal - completedSeconds), share = Math.min(1, completedSeconds / Math.max(1, goal));
   const after = (work: () => void) => { onClose(); setTimeout(work, 240); };
   return <AppSheet visible={visible} onRequestClose={onClose} attached compact maxHeightRatio={0.9} label="today" motionMode="timed"
     header={<View style={s.header}>
-      <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
+      <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{!goalKnown ? "Today’s goal is not available yet" : !todayKnown ? "Checking today’s progress…" : complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
       {visible && <MoreMenu label="Goal options" options={[
         { label: canChangeGoal ? "Change daily goal" : "Change goal · needs internet", icon: "flag-outline", onPress: () => after(onChangeGoal), disabled: !canChangeGoal },
         { label: "Open Progress", icon: "stats-chart-outline", onPress: () => after(onOpenProgress) },
@@ -32,16 +32,16 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={s.close}><Ionicons name="close" size={18} color={colors.secondary} /></Pressable>
     </View>}>
     <BottomSheetScrollView contentContainerStyle={[s.body, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} showsVerticalScrollIndicator={false}>
-      <View style={[s.card, s.hero]} accessible accessibilityLabel={`${Math.floor(completedSeconds / 60)} of ${goalMinutes} minutes today`}>
-        <ProgressRing size={148} stroke={14} progress={share} color={complete ? colors.success : colors.progress} track={colors.accentSoft}>
-          <Text style={s.ringValue}>{Math.floor(completedSeconds / 60)}</Text><Text style={s.caption}>of {goalMinutes} min</Text>
+      <View style={[s.card, s.hero]} accessible accessibilityLabel={goalKnown && todayKnown ? `${Math.floor(completedSeconds / 60)} of ${goalMinutes} minutes today` : "Today’s progress is not available yet"}>
+        <ProgressRing size={148} stroke={14} progress={goalKnown ? share : 0} color={complete ? colors.success : colors.progress} track={colors.accentSoft}>
+          <Text style={s.ringValue}>{todayKnown ? Math.floor(completedSeconds / 60) : "–"}</Text><Text style={s.caption}>{goalKnown ? `of ${goalMinutes} min` : "Goal unavailable"}</Text>
         </ProgressRing>
-        <Text style={s.headline}>{complete ? "Nicely done today" : completedSeconds ? "Keep it going" : "A fresh start"}</Text>
+        <Text style={s.headline}>{!todayKnown ? "Checking today’s progress…" : complete ? "Nicely done today" : completedSeconds ? "Keep it going" : "A fresh start"}</Text>
       </View>
       <View style={s.stats}>
-        <Stat icon="flame" tint={colors.streak} value={`${streak}`} label="day streak" />
-        <Stat icon="time-outline" tint="#64D2FF" value={durationLabel(week?.seconds ?? 0)} label="this week" />
-        <Stat icon="checkmark-circle-outline" tint={colors.success} value={`${week?.goalDays ?? 0}/7`} label="goal days" />
+        <Stat icon="flame" tint={colors.streak} value={streakKnown ? `${streak}` : "–"} label="day streak" />
+        <Stat icon="time-outline" tint="#64D2FF" value={week ? durationLabel(week.seconds) : "–"} label="this week" />
+        <Stat icon="checkmark-circle-outline" tint={colors.success} value={week ? `${week.goalDays}/7` : "–"} label="goal days" />
       </View>
       <View style={s.card}><Text style={s.label}>This week</Text><WeekBars height={64} wide /><Text style={s.caption}>{WEEK_LEGEND}</Text></View>
       <Text style={s.note}>A new goal starts tomorrow, so today’s target and your streak never shift under you.</Text>

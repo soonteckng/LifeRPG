@@ -91,7 +91,7 @@ test("Home wears your tier's colours, shows your level on your picture, and keep
   assert.match(home, /const level = useShownLevel\(profile\?\.id, profile\?\.level\)\.level;/);
   assert.match(home, /color: levelTint\.color/);
   const sections = read("src/components/HomeSections.tsx");
-  assert.match(sections, /<Text style=\{s\.tileTotal\} numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}>\{studyTime\(week\?\.seconds \?\? 0\)\}<\/Text>/, "1h 31m, on one line");
+  assert.match(sections, /<Text style=\{s\.tileTotal\} numberOfLines=\{1\} adjustsFontSizeToFit minimumFontScale=\{0\.7\}>\{week \? studyTime\(week\.seconds\) : "–"\}<\/Text>/, "1h 31m on one line; unknown time stays unknown");
   assert.match(sections, /numberOfLines=\{1\}>\{tileChange\}/);
   assert.match(sections, /% of the squad goal/, "the squad tile says how close the goal is");
   const road = read("src/components/LevelTierSheet.tsx");
@@ -103,6 +103,7 @@ test("Outfits calls the picture tab Profile, and its chips sit in a row above yo
   const outfits = read("src/app/outfits.tsx");
   assert.match(outfits, /\{ value: "picture", label: "Profile" \}/);
   assert.match(outfits, /\{setName && !picture &&/, "the set chip belongs to clothes, not your profile picture");
-  assert.match(outfits, /<View style=\{\[s\.chips, picture && s\.chipsRow\]\}>/);
+  assert.match(outfits, /<View style=\{s\.chips\} testID="outfits-preview-chips">/);
+  assert.match(outfits, /chips: \{ alignSelf: "stretch", flexShrink: 0, flexDirection: "row", flexWrap: "wrap"/, "chips reserve a wrapping row above the character, including outside Profile");
   assert.match(outfits, /size=\{pictureFits\(Math\.min\(roomy \? 164 : 146, height - PICTURE_ROOM\), height - PICTURE_ROOM\)\}/, "the picture and its level pill fit below the chips");
 });

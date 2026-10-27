@@ -180,13 +180,17 @@ export function buildProgress(
   areas: { id: number; title: string; color_code?: string | null }[],
   now = new Date(),
 ) {
-  const valid = sessions.filter(
-    (s) =>
-      s.completed_at &&
+  // History is paginated and a concurrent completion can repeat a boundary
+  // row. Match Profile's accounting: completed saved IDs count once only.
+  const valid = [...new Map(sessions.filter(
+    (s) => {
+      const status = (s as ProgressSession & { status?: string }).status;
+      return (!status || status === "completed") && s.completed_at &&
       Number.isFinite(s.duration_seconds) &&
       s.duration_seconds > 0 &&
-      Date.parse(s.completed_at) <= now.getTime(),
-  );
+      Date.parse(s.completed_at) <= now.getTime();
+    },
+  ).map(session => [session.id, session])).values()];
   const local = valid.map((s) => ({
     session: s,
     key: dateKey(new Date(s.completed_at!), timeZone),

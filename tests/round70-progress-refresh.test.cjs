@@ -25,10 +25,10 @@ function load(file, mocks, cache = new Map()) {
   return module.exports;
 }
 
-async function setup() {
-  const history = [], renders = [];
+async function setup({consumers=1}={}) {
+  const history = [], renders = [], values = [];
   let value, focus, blur, focused = true, renderer;
-  let props = {owner:'owner-a',completion:null};
+  let props = {owner:'owner-a',completion:null,cloud:0};
   const hooks = load('src/hooks/useProgressData.ts', {
     'expo-router':{useFocusEffect:callback => React.useEffect(() => {
       focus = callback;
@@ -47,15 +47,17 @@ async function setup() {
   const now = new Date(), timeZone = 'UTC';
   const period = analytics.periodFor('week', analytics.dateKey(now,timeZone),timeZone,now);
   function Capture(current) {
-    value = hooks.useProgressData(period,timeZone,current.completion,current.owner);
+    value = hooks.useProgressData(period,timeZone,current.completion,current.owner,current.clouds?.[current.index] ?? current.cloud);
+    values[current.index ?? 0] = value;
     renders.push({owner:current.owner,ids:value.data?.sessions.map(session => session.id) ?? null});
     return null;
   }
-  const render = () => renderer.update(React.createElement(Capture,props));
+  const content = () => React.createElement(React.Fragment,null,Array.from({length:consumers},(_,index)=>React.createElement(Capture,{...props,index,key:index})));
+  const render = () => renderer.update(content());
   return {
-    history,renders,get value(){return value;},
+    history,renders,values,get value(){return value;},
     prefetch:owner => hooks.prefetchProgress(owner,timeZone,now),
-    async mount(changes={}) { props={...props,...changes}; await act(async () => { renderer=create(React.createElement(Capture,props)); }); },
+    async mount(changes={}) { props={...props,...changes}; await act(async () => { renderer=create(content()); }); },
     async update(changes) { props={...props,...changes}; await act(async () => render()); },
     async resolve(index,rows) { await act(async () => history[index].resolve(rows)); },
     async focus(next) { focused=next; await act(async () => { if(next) blur=focus(); else { blur?.(); blur=undefined; } render(); }); },
@@ -145,4 +147,92 @@ test('completion invalidation is scoped to its owner and keeps another account c
     assert.equal(ui.history.length,3,'another account completion must not invalidate owner-b history');
     assert.equal(ui.value.data.sessions[0].id,'private-owner-b');
   } finally { await ui.cleanup(); }
+});
+
+test('dismissed offline sync refreshes Progress without a summary or manual refresh',async()=>{
+  const ui=await setup();
+  try {
+    await ui.mount();await ui.resolve(0,[row('before-sync')]);
+    await ui.update({cloud:1});
+    assert.equal(ui.history.length,2,'the existing cloud-save signal invalidates the cached period');
+    await ui.resolve(1,[row('before-sync'),row('imported')]);
+    assert.equal(ui.value.data.sessions.length,2);
+    await ui.focus(false);await ui.focus(true);
+    assert.equal(ui.history.length,2,'ordinary refocus keeps the refreshed cloud version');
+    await ui.update({completion:{sessionId:'online-save'},cloud:2});
+    assert.equal(ui.history.length,3,'one save with both signals starts one existing refresh');
+    await ui.resolve(2,[row('online-save')]);
+    await ui.update({completion:null});
+    assert.equal(ui.history.length,3,'Done starts no extra history read');
+  } finally {await ui.cleanup();}
+});
+
+test('off-tab cloud sync fences old Progress prefetches and keeps other owners private',async()=>{
+  const ui=await setup();
+  try {
+    ui.prefetch('owner-a');await ui.mount();await ui.focus(false);
+    await ui.update({cloud:1});await ui.resolve(0,[row('obsolete-a')]);
+    await ui.focus(true);
+    assert.equal(ui.history.length,2,'an old pre-sync prefetch cannot be treated as post-sync data');
+    await ui.update({owner:'owner-b',cloud:0});
+    assert.equal(ui.history.length,3);assert.equal(ui.value.data,null);
+    await ui.resolve(1,[row('private-import-a')]);
+    assert.equal(ui.value.data,null);
+    await ui.resolve(2,[row('private-b')]);
+    assert.equal(ui.value.data.sessions[0].id,'private-b');
+    assert.ok(ui.renders.filter(render=>render.owner==='owner-b').every(render=>render.ids===null||!render.ids.includes('private-import-a')));
+  } finally {await ui.cleanup();}
+});
+
+test('multiple Home week consumers share a single matching history flight',async()=>{
+  const ui=await setup({consumers:2});
+  try {
+    await ui.mount();
+    assert.equal(ui.history.length,1,'Home week, its bars and Today reuse the same read');
+    await ui.resolve(0,[row('recorded')]);
+    assert.ok(ui.values.every(value=>value.data.sessions[0].id==='recorded'));
+  }finally{await ui.cleanup();}
+});
+
+test('staggered cloud signals share the new Progress flight or adopt its completed cache',async()=>{
+  for(const completedFirst of [false,true]) {
+    const ui=await setup({consumers:2});
+    try {
+      await ui.mount();await ui.resolve(0,[row('before-sync')]);
+      await ui.update({clouds:[1,0]});assert.equal(ui.history.length,2);
+      if(completedFirst)await ui.resolve(1,[row('imported')]);
+      await ui.update({clouds:[1,1]});
+      assert.equal(ui.history.length,2,'a second consumer must not evict fresh matching work');
+      if(!completedFirst)await ui.resolve(1,[row('imported')]);
+      assert.ok(ui.values.every(value=>value.data.sessions[0].id==='imported'));
+    }finally{await ui.cleanup();}
+  }
+});
+
+test('returning to an account resets Progress cloud accounting before a new import reuses its counter',async()=>{
+  const ui=await setup();
+  try {
+    await ui.mount();await ui.resolve(0,[row('a-before-sync')]);
+    await ui.update({cloud:1});await ui.resolve(1,[row('a-old-admission')]);
+    await ui.update({owner:'owner-b',cloud:0});await ui.resolve(2,[row('private-b')]);
+    await ui.update({owner:'owner-a',cloud:0});
+    assert.equal(ui.history.length,4,'the reset controller cannot reuse the old admitted cloud version');
+    await ui.resolve(3,[row('a-new-admission')]);
+    await ui.update({cloud:1});assert.equal(ui.history.length,5);
+    await ui.resolve(4,[row('a-new-import')]);
+    assert.equal(ui.value.data.sessions[0].id,'a-new-import');
+  }finally{await ui.cleanup();}
+});
+
+test('a focused Progress controller reset fences the outgoing cloud read',async()=>{
+  const ui=await setup();
+  try {
+    await ui.mount();await ui.resolve(0,[row('recorded')]);
+    await ui.update({cloud:1});await ui.update({cloud:0});
+    assert.equal(ui.history.length,3);
+    await ui.resolve(1,[row('obsolete-admission')]);
+    assert.equal(ui.value.data.sessions[0].id,'recorded');
+    await ui.resolve(2,[row('current-admission')]);
+    assert.equal(ui.value.data.sessions[0].id,'current-admission');
+  }finally{await ui.cleanup();}
 });

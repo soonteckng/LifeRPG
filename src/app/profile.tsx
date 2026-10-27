@@ -22,7 +22,7 @@ import LevelTierSheet from "../components/LevelTierSheet";
 import { useShownLevel } from "../services/levelPreview";
 import { levelColors } from "../utils/adventurerLook";
 import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
-import { focusAreaDetail } from "../utils/focusAreaDetail";
+import { focusAreaDetail, focusAreaSessions } from "../utils/focusAreaDetail";
 import AppSheet from "../components/AppSheet";
 import SheetConfirmation from "../components/SheetConfirmation";
 import Adventurer from "../components/adventurer/Adventurer";
@@ -87,7 +87,7 @@ export default function ProfileScreen() {
   const selectedKind = focusAreaKind(selectedArea?.title);
   // Learning and Revision show which subjects their time went to, over the last six weeks.
   const recentAreaSessions = selectedArea && data && (selectedKind === "learning" || selectedKind === "revision")
-    ? data.sessions.filter(session => session.subject_id === selectedArea.id && Date.parse(session.completed_at ?? "") > openedAt - 44 * 86_400_000) : [];
+    ? focusAreaSessions(selectedArea, data.areas, data.sessions, profile.timezone).filter(session => Date.parse(session.completed_at ?? "") > openedAt - 44 * 86_400_000) : [];
   const focusArea = () => {
     if (!selectedArea) return;
     // Revision only comes from studying a subject with an exam.

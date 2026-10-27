@@ -18,7 +18,13 @@ export default memo(function ArrivalBanner({ seconds, title, levelUp = false }: 
   // The banner grows with large text, and the scene grows with it.
   const [box, setBox] = useState({ w: 340, h: H });
   const w = box.w, H2 = box.h;
-  return <View style={s.banner} onLayout={e => setBox({ w: e.nativeEvent.layout.width, h: Math.max(H, e.nativeEvent.layout.height) })} testID="session-arrival">
+  return <View style={s.banner} onLayout={e => {
+    const width = e.nativeEvent.layout.width, height = Math.max(H, e.nativeEvent.layout.height);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || box.w === width && box.h === height) return;
+    // The sheet reports the same layout while its footer and body settle.
+    // Keep that native measurement from scheduling another scene commit.
+    setBox(current => current.w === width && current.h === height ? current : {w:width, h:height});
+  }} testID="session-arrival">
     <Svg width={w} height={H2} style={StyleSheet.absoluteFill}>
       <Defs>
         <LinearGradient id="arrival-sky" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor="#5F97CF" /><Stop offset="1" stopColor="#F5D7AE" /></LinearGradient>

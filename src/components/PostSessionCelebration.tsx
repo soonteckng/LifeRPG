@@ -35,7 +35,9 @@ export function DailyAchievementMoment({visible, preparing = false, achievements
     closed.current = false;
     finishClose.current = null;
     animation.current?.stop(); animation.current = null;
-    opacity.setValue(1);
+    // Keep a completed exit transparent while the native modal is removed.
+    // Resetting here on visible=false can expose its last frame again.
+    if (visible) opacity.setValue(1);
     return () => {
       generation.current = token + 1;
       finishClose.current = null;

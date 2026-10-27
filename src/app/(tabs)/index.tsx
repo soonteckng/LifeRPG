@@ -69,7 +69,7 @@ export default function HomeScreen() {
   const [packMessage, setPackMessage] = useState("");
   const openPack = async () => { setPackMessage(""); const r = await rewards.openPack(); if (!r.ok) setPackMessage(r.message); };
   const owner = profile?.id ?? "";
-  const { hasOpenSession, sessionSummary } = timer;
+  const { hasOpenSession, sessionSummary, cloudSaveVersion = 0 } = timer;
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
   const [goalSettings, setGoalSettings] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
@@ -104,7 +104,7 @@ export default function HomeScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [owner, accessMode, timeZone]);
   const [goalCompleted, setGoalCompleted] = useState(false);
-  const [todayGoal, setTodayGoal] = useState<number | null>(null);
+  const [todayGoal, setTodayGoal] = useState<{ owner: string; day: string; minutes: number | null } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [loadError, setLoadError] = useState(false);
   // When today's numbers were last read from the server; shown while offline.
@@ -132,7 +132,7 @@ export default function HomeScreen() {
       serverLoaded.current = true;
       if (streak !== undefined) setFocusStreak(streak);
       const seconds = progress ? creditedDailySeconds(progress) : 0, savedAtMs = Date.now();
-      setTodayGoal(progress?.goal_minutes ?? null);
+      setTodayGoal({ owner, day: progress?.progress_date ?? dateKey(new Date(), timeZone), minutes: progress?.goal_minutes ?? null });
       setCompletedSeconds(seconds);
       setGoalCompleted(progress?.goal_completed ?? false);
       setUpdatedAt(savedAtMs);
@@ -150,7 +150,7 @@ export default function HomeScreen() {
     let live = true;
     void readHomeSnapshot(owner, dateKey(new Date(), timeZone)).then(snapshot => {
       if (!live || !snapshot || serverLoaded.current) return;
-      setCompletedSeconds(snapshot.completedSeconds); setTodayGoal(snapshot.goalMinutes); setGoalCompleted(snapshot.goalCompleted);
+      setCompletedSeconds(snapshot.completedSeconds); setTodayGoal({ owner, day: snapshot.day, minutes: snapshot.goalMinutes }); setGoalCompleted(snapshot.goalCompleted);
       if (snapshot.streak !== null) setFocusStreak(snapshot.streak);
       setUpdatedAt(snapshot.savedAtMs);
     });
@@ -168,11 +168,19 @@ export default function HomeScreen() {
 
   // A successful completion updates the saved session summary before this fires.
   // Refresh goal progress even while Home was covered by Session/rewards.
+  const lastSaved = useRef<{ owner: string; summary: unknown; cloud: number } | null>(null);
   useEffect(() => {
-    if (sessionSummary) void loadData(true);
-  }, [sessionSummary, loadData]);
+    const previous = lastSaved.current;
+    lastSaved.current = { owner, summary: sessionSummary, cloud: cloudSaveVersion };
+    if (sessionSummary && (previous?.owner !== owner || previous.summary !== sessionSummary)
+      || cloudSaveVersion > 0 && (previous?.owner !== owner || previous.cloud !== cloudSaveVersion)) void loadData(true);
+  }, [owner, sessionSummary, cloudSaveVersion, loadData]);
 
-  const dailyGoalMinutes = todayGoal ?? profile?.daily_goal_minutes ?? 60;
+  // The profile keeps the original baseline after a scheduled change. Only
+  // today's ledger or saved daily snapshot can establish the current target.
+  const verifiedGoal = todayGoal?.owner === owner && todayGoal.day === dateKey(new Date(), timeZone) ? todayGoal.minutes : null;
+  const goalKnown = verifiedGoal != null;
+  const dailyGoalMinutes = verifiedGoal ?? 0;
   const safeCompletedSeconds = Math.max(0, completedSeconds);
   const remainingSeconds = Math.max(0, dailyGoalMinutes * 60 - safeCompletedSeconds);
   // Your level as drawn (a developer can preview another tier's colours).
@@ -184,7 +192,7 @@ export default function HomeScreen() {
   const greeting = homeWelcome(hour < 5 ? 18 : hour, displayName).split(",")[0];
   // Until today's numbers arrive (from this phone or the server), show a dash, not a 0.
   const known = updatedAt !== null;
-  const isGoalComplete = known && (goalCompleted || remainingSeconds === 0);
+  const isGoalComplete = known && goalKnown && (goalCompleted || remainingSeconds === 0);
   const streakDays = Math.max(0, focusStreak ?? 0);
   const feedback = () => { if (hapticsEnabled) tapHaptic(); };
 
@@ -287,13 +295,13 @@ export default function HomeScreen() {
               ]} />
             </View>
             <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalBody} accessibilityRole="button"
-              accessibilityLabel={`Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today`}>
-              <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={{ min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) }} style={styles.goalNumbers}>
+              accessibilityLabel={goalKnown ? `Daily effort goal. ${dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes)}${isGoalComplete ? ", goal reached" : ""}. Show today` : `Daily effort goal. ${loadError || known ? "Today’s goal is unavailable" : "Checking today’s goal"}. Show today`}>
+              <View accessible accessibilityRole="progressbar" accessibilityLabel="Today's goal" accessibilityValue={goalKnown ? { min: 0, max: dailyGoalMinutes * 60, now: Math.min(safeCompletedSeconds, dailyGoalMinutes * 60), text: dailyGoalRatio(safeCompletedSeconds, dailyGoalMinutes) } : { text: "Today’s goal is not available yet" }} style={styles.goalNumbers}>
                 <Text style={styles.ringValue} numberOfLines={1}>{known ? Math.floor(safeCompletedSeconds / 60) : "–"}</Text>
-                <Text style={styles.ringUnit} numberOfLines={1}>/ {dailyGoalMinutes} min</Text>
+                <Text style={styles.ringUnit} numberOfLines={1}>/ {goalKnown ? dailyGoalMinutes : "–"} min</Text>
               </View>
-              <Text style={styles.goalHeadline} numberOfLines={2}>{!known ? `${dailyGoalMinutes} min goal` : isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
-              <View style={styles.goalTrack}><View style={[styles.goalFill, { width: `${known ? Math.max(goalShare > 0 ? 3 : 0, Math.round(goalShare * 100)) : 0}%` }, isGoalComplete && { backgroundColor: colors.success }]} /></View>
+              <Text style={styles.goalHeadline} numberOfLines={2}>{!goalKnown ? loadError || known ? "Goal unavailable" : "Checking today’s goal…" : !known ? `${dailyGoalMinutes} min goal` : isGoalComplete ? "Nicely done today" : `${Math.max(1, Math.ceil(remainingSeconds / 60))} min to go`}</Text>
+              <View style={styles.goalTrack}><View style={[styles.goalFill, { width: `${known && goalKnown ? Math.max(goalShare > 0 ? 3 : 0, Math.round(goalShare * 100)) : 0}%` }, isGoalComplete && { backgroundColor: colors.success }]} /></View>
               {/* The floating session bar is the one way back, so the card only says so. */}
               {(hasOpenSession || settling) && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{settling ? "Session finished" : timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
               {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
@@ -324,9 +332,9 @@ export default function HomeScreen() {
       </TourScrollView>
       <TrailSheet visible={trailOpen} onClose={() => setTrailOpen(false)} />
       <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
-      <TodaySheet visible={todayOpen} canChangeGoal={accessMode === "online"} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes}
+      <TodaySheet visible={todayOpen} canChangeGoal={accessMode === "online"} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes} goalKnown={goalKnown} todayKnown={known} streakKnown={focusStreak !== null}
         streak={streakDays} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
-      <DailyGoalSheet todayGoalMinutes={dailyGoalMinutes} visible={accessMode === "online" && goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
+      <DailyGoalSheet todayGoalMinutes={verifiedGoal ?? undefined} visible={accessMode === "online" && goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
     </SafeAreaView>
   );
 }

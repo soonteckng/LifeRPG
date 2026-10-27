@@ -7,6 +7,13 @@ const fs = require("node:fs"),
 const React = require("react"),
   { act, create } = require("react-test-renderer");
 global.IS_REACT_ACT_ENVIRONMENT = true;
+// These server schedule fixtures describe 3 October. Keep their local date
+// deterministic now that the UI correctly rejects yesterday's goal reading.
+const RealDate = Date, fixtureNow = RealDate.parse("2026-10-03T12:00:00Z");
+global.Date = class extends RealDate {
+  constructor(...args) { super(...(args.length ? args : [fixtureNow])); }
+  static now() { return fixtureNow; }
+};
 function load(file, mocks = {}, cache = new Map()) {
   const filename = path.resolve(__dirname, "..", file);
   if (cache.has(filename)) return cache.get(filename).exports;
@@ -166,7 +173,7 @@ async function settings(options = {}, file = "src/app/settings.tsx") {
       openNotificationSettings: async () => { phoneCalls++; },
       enableNotifications: async () => { enableCalls++; return { label: "Allowed on this device", action: "settings", supported: true }; },
     },
-    "../services/dailyProgressService": { getTodayProgress: async () => options.savedGoal ? { goal_minutes: options.savedGoal } : null },
+    "../services/dailyProgressService": { getTodayProgress: async () => options.savedGoal ? { user_id: "account", progress_date: "2026-10-03", goal_minutes: options.savedGoal } : null },
   });
   return { ...ui, calls: () => ({ saveCalls, signOutCalls, enableCalls, reads, phoneCalls, navigate, updates }),
     // A sheet's buttons come after the rows, so the last match is the sheet's.
@@ -456,7 +463,7 @@ test("notification enabling creates the Android channel before prompting and nev
 });
 test("Settings and Daily goal share the last goal reading, so the goal page opens already filled in", async () => {
   let reads = 0;
-  const cache = load("src/utils/dailyGoalCache.ts", { "../services/dailyGoalService": { getDailyGoalSettings: async owner => { reads++; return { user_id: owner, today_goal_minutes: 60, next_goal_minutes: 90, pending: true }; } } });
+  const cache = load("src/utils/dailyGoalCache.ts", { "../services/dailyGoalService": { getDailyGoalSettings: async owner => { reads++; return { user_id: owner, local_date: new Date().toISOString().slice(0,10), timezone: "UTC", today_goal_minutes: 60, next_goal_minutes: 90, pending: true }; } } });
   assert.equal(cache.cachedDailyGoal("account"), null);
   cache.prefetchDailyGoal("account"); await new Promise(resolve => setImmediate(resolve));
   assert.equal(cache.cachedDailyGoal("account").next_goal_minutes, 90);

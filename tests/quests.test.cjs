@@ -679,7 +679,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
       setNotes: () => {}, setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setDurationInSeconds: seconds => sessionCalls.push(["seconds",seconds]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
     "../../services/progressService": { getFocusStreak: async () => 2 },
-    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, ...creditFields }; } },
+    "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, goal_minutes: 60, ...creditFields }; } },
     "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
   }).default;
   let renderer;
@@ -754,7 +754,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.match(output(), new RegExp("Good morning, " + name));
   assert.equal(retry(), undefined);
   assert.match(output(), /"–"/, 'before today’s numbers arrive the ring shows a dash, not a false 0');
-  assert.match(output(), /60 min goal/);
+  assert.match(output(), /Checking today’s goal/,'a target is not invented before the daily ledger replies');
   await act(async () => refresh());
   assert.match(output(), /25 \/ 60 min/);
   assert.doesNotMatch(output(), /60 min goal/);

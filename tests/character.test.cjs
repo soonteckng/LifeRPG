@@ -908,6 +908,28 @@ test("a focus area opens its details and starts a session there once the sheet h
   } finally { await ui.cleanup(); }
 });
 
+test("Profile subject breakdown uses the same completed aliases as its category details", async () => {
+  const rows = [{...area(1,1,0),title:"Knowledge"}, {...area(2,1,0),title:"Learning"}];
+  const stamp = new Date(Date.now() - 3600_000).toISOString();
+  const sessions = [
+    {id:"alias",subject_id:1,activity_type:"study",duration_seconds:60,completed_at:stamp},
+    {id:"canonical",subject_id:2,activity_type:"study",duration_seconds:120,completed_at:stamp},
+    {id:"canonical",subject_id:2,activity_type:"study",duration_seconds:120,completed_at:stamp},
+    {id:"ended",subject_id:2,activity_type:"study",duration_seconds:900,completed_at:stamp,status:"abandoned"},
+    {id:"old",subject_id:1,activity_type:"study",duration_seconds:300,completed_at:new Date(Date.now() - 50 * 86400_000).toISOString()},
+  ];
+  const ui = await profileScreen({"../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions},loading:false,error:false,refresh:async()=>{}})}});
+  try {
+    const tile = ui.renderer.root.findAllByType("Button").find(node => String(node.props.accessibilityLabel).startsWith("Learning, level"));
+    await act(async () => tile.props.onPress());
+    const sheet = ui.renderer.root.findByType("AreaSheet").props;
+    assert.equal(sheet.detail.seconds, 480, "all-time category detail retains the older session");
+    const recent = sheet.extra.props.sessions;
+    assert.deepEqual(recent.map(session => session.id), ["alias", "canonical"], "the six-week subject view keeps both aliases, one saved ID each, and completed rows only");
+    assert.equal(recent.reduce((sum, session) => sum + session.duration_seconds, 0), 180);
+  } finally { await ui.cleanup(); }
+});
+
 test('Profile level opens the shared tier path with the saved XP balance',async()=>{
  const ui=await profileScreen();
  try{

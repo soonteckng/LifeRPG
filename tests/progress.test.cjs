@@ -114,6 +114,61 @@ test("exact seconds accumulate while saved daily-goal recognition stays separate
   assert.equal(result.days.at(-1).future, true);
   assert.equal(result.areas[0].seconds, 1019);
 });
+
+test("Progress and Profile count each completed saved session once and exclude ended rows", () => {
+  const clock = new Date("2026-10-27T12:00:00Z");
+  const kept = session("kept", 60, "2026-10-26T16:00:00Z"); // local midnight on the 27th
+  const rows = [kept, { ...kept },
+    session("previous-local-day", 20, "2026-10-26T15:59:59Z"),
+    { ...session("ended", 900, "2026-10-27T08:00:00Z"), status: "abandoned" },
+    { ...session("paused", 900, "2026-10-27T08:00:00Z"), status: "paused" },
+    session("future", 900, "2026-10-28T08:00:00Z"),
+    session("invalid", 900, "invalid-date"),
+  ];
+  const { earnedMilestones } = load("src/utils/characterGrowth.ts");
+  const profile = earnedMilestones(rows, TZ, clock);
+  for (const mode of ["week", "month"]) {
+    const result = buildProgress(periodFor(mode, "2026-10-27", TZ, clock), rows, [], TZ, areas, clock);
+    assert.equal(result.seconds, profile.seconds, `${mode}: Progress and Profile have the same saved effort`);
+    assert.equal(result.sessions.length, 2);
+    assert.equal(result.days.find(day => day.key === "2026-10-27").seconds, 60);
+    assert.equal(result.days.find(day => day.key === "2026-10-26").seconds, 20);
+    assert.equal(result.areas[0].seconds, 80);
+    assert.equal(result.areas[0].sessions.length, 2);
+  }
+});
+
+test("reported day, week, month and Profile totals reconcile without dropping historical seconds", () => {
+  const clock = new Date("2026-10-27T12:00:00Z");
+  const areaRows = [{ id: 1, title: "General" }, { id: 2, title: "Wellbeing" }];
+  const rows = [
+    ...[60, 120, 120, 60].map((seconds, i) => session(`today-${i}`, seconds, `2026-10-27T0${i + 1}:00:00Z`)),
+    ...[60, 120, 20].map((seconds, i) => session(`yesterday-${i}`, seconds, `2026-10-26T0${i + 1}:00:00Z`)),
+    session("yesterday-wellbeing", 2700, "2026-10-26T08:00:00Z", 2),
+    session("sunday-wellbeing", 2700, "2026-10-25T08:00:00Z", 2),
+  ];
+  const { earnedMilestones } = load("src/utils/characterGrowth.ts");
+  const { focusAreaDetail } = load("src/utils/focusAreaDetail.ts");
+  const { creditedDailySeconds } = load("src/utils/progressionAccounting.ts");
+  const { dailyGoalRatio } = load("src/utils/dailyGoalPresentation.ts");
+  const goals = [{ progress_date: "2026-10-27", goal_minutes: 30, completed_minutes: 6,
+    completed_seconds: 360, credit_version: 1, goal_completed: false }];
+  const week = buildProgress(periodFor("week", "2026-10-27", TZ, clock), rows, goals, TZ, areaRows, clock);
+  const month = buildProgress(periodFor("month", "2026-10-27", TZ, clock), rows, goals, TZ, areaRows, clock);
+  const day = week.days.find(day => day.key === "2026-10-27");
+  assert.equal(day.seconds, 360); assert.equal(day.sessions.length, 4);
+  assert.equal(dailyGoalRatio(creditedDailySeconds(day.goal), day.goal.goal_minutes), "6 / 30 min", "the saved day's target governs its goal credit");
+  assert.equal(week.seconds, 3260); assert.equal(month.seconds, 5960);
+  const profile = earnedMilestones(rows, TZ, clock);
+  assert.equal(profile.seconds, month.seconds); assert.equal(profile.days, 3); assert.equal(profile.bestStreak, 3);
+  assert.equal(profile.sessions, 9);
+  const general = focusAreaDetail(areaRows[0], areaRows, rows, TZ, clock);
+  assert.equal(general.seconds, 560); assert.equal(general.weekSeconds, 560);
+  assert.equal(general.days.find(day => day.day === "2026-10-27").seconds, day.seconds);
+  const wellbeing = focusAreaDetail(areaRows[1], areaRows, rows, TZ, clock);
+  assert.equal(wellbeing.weekSeconds, 2700); assert.equal(wellbeing.seconds, 5400);
+  assert.equal(general.seconds + wellbeing.seconds, profile.seconds);
+});
 test("period-to-date comparison excludes later days of the previous period", () => {
   const period = periodFor("month", "2026-10-03", TZ, now);
   const result = buildProgress(
@@ -947,6 +1002,50 @@ test("a category on the selected day opens that day's sessions; a session opens 
     assert.equal(ui.renderer.root.findAllByType("Button").find(button => button.props.accessibilityLabel === "Categories for selected day").props.accessibilityState.selected, true);
     assert.equal(ui.historyCalls(), 0);
   } finally { await ui.cleanup(); }
+});
+
+test("selected-day category totals match their own rows, rather than the loaded week or month", async () => {
+  const text = node => typeof node === "string" ? node : (node.children ?? []).map(text).join("");
+  for (const mode of ["week", "month"]) {
+    const today = dateKey(new Date(), TZ), current = periodFor(mode, today, TZ);
+    const first = current.previousStart, selected = shiftDay(first, 1);
+    // The reported account shape: today 6m; the earlier day 3m20s.
+    const rows = [
+      ...[60, 120, 20].map((seconds, i) => session(`earlier-${i}`, seconds, `${first}T0${i + 1}:00:00Z`)),
+      ...[60, 120, 120, 60].map((seconds, i) => session(`selected-${i}`, seconds, `${selected}T0${i + 1}:00:00Z`)),
+    ];
+    const ui = await screenHarness({ sessionRows: rows });
+    const close = async () => {
+      await act(async () => ui.renderer.root.findByType("Sheet").props.onRequestClose());
+      await act(async () => ui.renderer.root.findByType("Sheet").props.onDismiss());
+    };
+    const openCard = async () => {
+      const card = ui.renderer.root.findByProps({ testID: "progress-categories" }).findAllByType("Button")
+        .find(button => button.props.accessibilityLabel?.endsWith("View sessions"));
+      await act(async () => card.props.onPress());
+    };
+    const total = () => text(ui.renderer.root.findByType("Sheet").findAllByType("Text")
+      .find(node => node.props.style?.includes?.(ui.styles().detailTotal)));
+    const count = () => ui.renderer.root.findByType("Sheet").findAllByType("Button")
+      .filter(button => button.props.accessibilityLabel?.endsWith("View session")).length;
+    try {
+      if (mode === "month") await ui.press("Month view");
+      await ui.press(`Previous ${mode}`);
+      await openCard();
+      assert.equal(count(), 4);
+      assert.equal(total(), "6m", `${mode}: the category sheet must sum only the selected day's rows`);
+      const subtitle = ui.renderer.root.findByType("Sheet").findAllByType("Text")
+        .find(node => node.props.style?.includes?.(ui.styles().caption));
+      assert.equal(text(subtitle), analytics.calendarLabel(selected, { weekday: "long", month: "short", day: "numeric" }));
+      await close();
+      await ui.press(`Categories for selected ${mode}`);
+      await openCard();
+      assert.equal(count(), 7);
+      assert.equal(total(), "9m 20s", "whole-period history keeps every completed second");
+      await close();
+      assert.equal(ui.historyCalls(), 0, "scope changes do not add network calls");
+    } finally { await ui.cleanup(); }
+  }
 });
 
 test("historical periods show an actual labeled day rather than calling a period total today's effort", () => {

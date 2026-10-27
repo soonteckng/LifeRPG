@@ -238,7 +238,8 @@ test('the shared Subject row picks or creates any subject and moves the session 
 test('Home shows exams within a week: tap edits, hold wiggles into edit mode; and peeks at your squad before its tab', async () => {
   const plan = { exams: [], courses: [course], recent: [] }, squads = { squads: [], online: true }, nav = [], timer = [];
   const sections = load('src/components/HomeSections.tsx', { ...base(),
-    'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
+    'react-native': {...rn, AppState:{addEventListener:()=>({remove(){}})}},
+    'expo-router': { useRouter: () => ({ navigate: to => nav.push(to) }), useFocusEffect: callback => React.useEffect(callback, [callback]) }, '/useStudyPlan': { useStudyPlan: () => plan }, '/useSquads': { useSquads: () => squads },
     '/MoreMenu': props => React.createElement('Menu', props), '/StudyExamSheet': host('ExamSheet'), '/MilestonesRow': host('Milestones'),
     '/SquadsSection': { SquadSummary: host('Summary') }, '/SquadSheets': { SquadFace: host('Face'), SquadJoinSheet: host('JoinSheet') }, '/SheetHeader': host('Header'),
     '/QuestContext': { useQuests: () => ({ subjects: withRevision }) }, '/UserContext': { useUser: () => ({ profile: { id: 'me', timezone: 'UTC' } }) },
@@ -292,7 +293,7 @@ test('Home shows exams within a week: tap edits, hold wiggles into edit mode; an
   await act(async () => section('home-squad-section').findAll(x => x.props.testID === 'home-squad' && x.type === 'Press')[0].props.onPress());
   await act(async () => { section('home-squad-section').findAll(x => x.props.testID === 'home-squad-open' && x.type === 'Press')[0].props.onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.equal(nav.filter(to => to === '/squads').length, 2, 'the squad card in the peek opens it too, so its arrow works');
-  await act(async () => presses(section('home-week'), 'This week, 0m. Show by category')[0].props.onPress());
+  await act(async () => presses(section('home-week'), 'This week is loading. Show by category')[0].props.onPress());
   assert.equal(section('home-week').findAllByType('Sheet').find(x => x.props.label === 'this week').props.visible, true);
   await act(async () => ui.unmount());
 });
@@ -413,6 +414,28 @@ test('Revision and Learning break down by subject; untagged time is Other and si
   const sessions = [{ client_session_id: 'a', duration_seconds: 600 }, { client_session_id: 'b', duration_seconds: 1800 }, { client_session_id: 'c', duration_seconds: 300 }, { client_session_id: null, duration_seconds: 900 }];
   const rows = subjectSeconds(sessions, [{ clientSessionId: 'a', courseId: id(1), name: 'Maths' }, { clientSessionId: 'b', courseId: id(2), name: 'Physics' }, { clientSessionId: 'c', courseId: id(1), name: 'Maths' }]);
   assert.deepEqual(rows.map(row => [row.name, row.seconds]), [['Physics', 1800], ['Maths', 900], ['Other', 900]]);
+});
+
+test('subject breakdown reports a failed lookup and fences a late reply from another account', async () => {
+  const pending = [], calls = [];
+  const Breakdown = load('src/components/SubjectBreakdown.tsx', { ...base(), '/studyPlanService': {
+    listSessionCourses: owner => new Promise((resolve, reject) => { calls.push(owner); pending.push({resolve,reject}); }),
+  } }).default;
+  const sessions = [{id:'saved',client_session_id:'saved',duration_seconds:60,completed_at:'2026-10-27T01:00:00Z'}];
+  let ui;
+  await act(async () => { ui = create(React.createElement(Breakdown, {owner:'a',sessions})); });
+  try {
+    await act(async () => pending[0].reject(new Error('Offline')));
+    assert.ok(texts(ui.root).includes('Couldn’t load subjects. Reconnect and try again.'), 'a current failure must not become a blank card');
+    assert.ok(!texts(ui.root).includes('Loading subjects…'));
+    assert.deepEqual(calls, ['a'], 'a failed read does not poll');
+    await act(async () => ui.update(React.createElement(Breakdown, {owner:'b',sessions})));
+    assert.ok(texts(ui.root).includes('Loading subjects…'), 'a previous account failure never flashes for the next owner');
+    await act(async () => ui.update(React.createElement(Breakdown, {owner:'c',sessions})));
+    await act(async () => pending[2].resolve([{clientSessionId:'saved',courseId:id(1),name:'Maths'}]));
+    await act(async () => pending[1].resolve([{clientSessionId:'saved',courseId:id(2),name:'Private B'}]));
+    assert.ok(texts(ui.root).includes('Maths')); assert.ok(!texts(ui.root).includes('Private B'));
+  } finally { await act(async () => ui.unmount()); }
 });
 
 test('Today’s card shows the goal up close; changing it lives in its ••• menu', async () => {

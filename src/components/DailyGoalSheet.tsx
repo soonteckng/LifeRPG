@@ -14,11 +14,12 @@ import { colors, edge } from "../constants/theme";
 
 import { cachedDailyGoal as cached, forgetDailyGoal, rememberDailyGoal as remember } from "../utils/dailyGoalCache";
 import SheetTextInput from "./SheetTextInput";
+import { dateKey } from "../utils/progressAnalytics";
 
 export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMinutes }: { visible: boolean; onClose: () => void; onSaved: () => void; todayGoalMinutes?: number }) {
   const { profile } = useUser(), insets = useSafeAreaInsets();
   const [loadedData, setData] = useState<DailyGoalSettings | null>(null), [draft, setDraft] = useState(""), [error, setError] = useState(""), [saved, setSaved] = useState(false), [busy, setBusy] = useState(false);
-  const data = loadedData?.user_id === profile.id ? loadedData : null;
+  const data = loadedData?.user_id === profile.id && loadedData.local_date === dateKey(new Date(), profile.timezone) ? loadedData : cached(profile.id);
   const [needsCheck, setNeedsCheck] = useState(false);
   const generation = useRef(0), lock = useRef(false), edited = useRef(false);
   const [unavailable, setUnavailable] = useState(false);
@@ -73,7 +74,7 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
     finally { lock.current = false; setBusy(false); }
   };
   const checking = !data && !error;
-  const todayMinutes = data?.today_goal_minutes ?? todayGoalMinutes ?? profile.daily_goal_minutes;
+  const todayMinutes = data?.today_goal_minutes ?? todayGoalMinutes;
   const editable = canSave || (busy && !!data?.can_change_goal);
   const change = (value: string) => { edited.current = true; setDraft(value); setError(""); };
   const step = (delta: number) => {
@@ -86,14 +87,14 @@ export default function DailyGoalSheet({ visible, onClose, onSaved, todayGoalMin
   const selected = parseDailyGoal(draft);
   // Full width from the bottom edge, like the other editors, above the phone's own bar.
   return <AppSheet visible={visible} onRequestClose={() => { if (!busy) onClose(); }} guardDismiss={busy} attached compact keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed" label="daily goal"
-    header={<SheetHeader title="Daily goal" subtitle={`Today stays at ${todayMinutes} min.`} onClose={() => { if (!busy) onClose(); }} />}>
+    header={<SheetHeader title="Daily goal" subtitle={todayMinutes == null ? checking ? "Checking today’s goal…" : "Today’s goal is unavailable." : `Today stays at ${todayMinutes} min.`} onClose={() => { if (!busy) onClose(); }} />}>
     <BottomSheetScrollView contentContainerStyle={[g.body, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]} keyboardShouldPersistTaps="handled">
       <View style={g.stepperCard}>
         <View style={g.stepper}>
           {editable && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Decrease daily goal by 15 minutes" disabled={busy} onPress={() => step(-15)} style={g.stepButton}><Ionicons name="remove" size={24} color={colors.accent} /></TouchableOpacity>}
           <View style={g.value}>
             {editable ? <SheetTextInput accessibilityLabel="Daily goal in minutes" style={g.input} keyboardType="number-pad" value={draft} onChangeText={change} editable={!busy} maxLength={3} selectTextOnFocus />
-              : <Text style={g.number}>{checking ? "–" : data?.next_goal_minutes ?? todayMinutes}</Text>}
+              : <Text style={g.number}>{checking ? "–" : data?.next_goal_minutes ?? todayMinutes ?? "–"}</Text>}
             <Text style={g.unit}>minutes a day</Text>
           </View>
           {editable && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Increase daily goal by 15 minutes" disabled={busy} onPress={() => step(15)} style={g.stepButton}><Ionicons name="add" size={24} color={colors.accent} /></TouchableOpacity>}

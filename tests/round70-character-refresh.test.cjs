@@ -4,14 +4,15 @@ const React=require('react'),{act,create}=require('react-test-renderer');
 global.IS_REACT_ACT_ENVIRONMENT=true;
 const deferred=()=>{let resolve,reject;const promise=new Promise((yes,no)=>{resolve=yes;reject=no;});return{promise,resolve,reject};};
 
-async function setup({prefetch=false,compiled=false}={}) {
-  let owner='owner-a',summary=null,focused=true,snapshot;
+async function setup({prefetch=false,compiled=false,consumers=1}={}) {
+  let owner='owner-a',summary=null,cloud=0,clouds=[],slot=0,focused=true,snapshot;
+  const snapshots=[];
   const reads=[],listeners=new Set(),seen=[];
   const mocks={
     'expo-router':{useFocusEffect:fn=>{const active=focused;React.useEffect(()=>active?fn():undefined,[fn,active]);}},
     'react-native':{AppState:{addEventListener:(_name,listener)=>{listeners.add(listener);return{remove:()=>listeners.delete(listener)};}}},
     '../context/UserContext':{useUser:()=>({profile:{id:owner}})},
-    '../context/TimerContext':{useTimer:()=>({sessionSummary:summary})},
+    '../context/TimerContext':{useTimer:()=>({sessionSummary:summary,cloudSaveVersion:clouds[slot]??cloud})},
     '../utils/afterTransition':{afterTransition:fn=>{fn();return()=>{};}},
     '../services/progressService':{getProgressSubjects:async userId=>[{id:1,user_id:userId,title:'Learning'}],
       getCompletedSessions:(_since,_until,userId)=>{const pending=deferred();reads.push({owner:userId,...pending});return pending.promise;}},
@@ -22,15 +23,16 @@ async function setup({prefetch=false,compiled=false}={}) {
   const source=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText,module={exports:{}};
   new Function('require','module','exports',source)(name=>Object.hasOwn(mocks,name)?mocks[name]:require(name),module,module.exports);
   const api=module.exports;
-  function Consumer(){snapshot=api.useCharacterData();seen.push({owner,data:snapshot.data});return null;}
+  function Consumer({index}){slot=index;snapshot=api.useCharacterData();snapshots[index]=snapshot;seen.push({owner,data:snapshot.data});return null;}
+  const element=()=>React.createElement(React.Fragment,null,...Array.from({length:consumers},(_,index)=>React.createElement(Consumer,{key:index,index})));
   if(prefetch)api.prefetchCharacterData(owner,summary);
-  let renderer;await act(async()=>{renderer=create(React.createElement(Consumer));});
-  const update=async changes=>{if(Object.hasOwn(changes,'owner'))owner=changes.owner;if(Object.hasOwn(changes,'summary'))summary=changes.summary;if(Object.hasOwn(changes,'focused'))focused=changes.focused;await act(async()=>renderer.update(React.createElement(Consumer)));};
-  return{api,reads,seen,snapshot:()=>snapshot,update,
+  let renderer;await act(async()=>{renderer=create(element());});
+  const update=async changes=>{if(Object.hasOwn(changes,'owner'))owner=changes.owner;if(Object.hasOwn(changes,'summary'))summary=changes.summary;if(Object.hasOwn(changes,'cloud'))cloud=changes.cloud;if(Object.hasOwn(changes,'clouds'))clouds=changes.clouds;if(Object.hasOwn(changes,'focused'))focused=changes.focused;await act(async()=>renderer.update(element()));};
+  return{api,reads,seen,snapshots,snapshot:()=>snapshot,update,
     resolve:async(index,sessions)=>act(async()=>reads[index].resolve(sessions)),
     reject:async(index)=>act(async()=>reads[index].reject(new Error('Unavailable'))),
     foreground:async()=>act(async()=>{for(const listener of listeners)listener('active');}),
-    remount:async()=>{await act(async()=>renderer.unmount());await act(async()=>{renderer=create(React.createElement(Consumer));});},
+    remount:async()=>{await act(async()=>renderer.unmount());await act(async()=>{renderer=create(element());});},
     cleanup:async()=>act(async()=>renderer.unmount())};
 }
 
@@ -193,5 +195,98 @@ test('a previous owner refresh error is hidden immediately while the next owner 
     await ui.update({owner:'owner-b'});
     assert.equal(ui.snapshot().data,null);assert.equal(ui.snapshot().loading,true);assert.equal(ui.snapshot().error,false);
     await ui.resolve(1,[{id:'private-b'}]);assert.equal(ui.snapshot().error,false);
+  }finally{await ui.cleanup();}
+});
+
+test('an offline result synced after Done invalidates Profile even with no summary',async()=>{
+  for(const compiled of [false,true]) {
+    const ui=await setup({compiled});
+    try {
+      await ui.resolve(0,[{id:'before-offline-sync'}]);
+      await ui.update({cloud:1});
+      assert.equal(ui.reads.length,2,'the existing cloud-save signal refreshes dismissed offline effort');
+      await ui.foreground();
+      assert.equal(ui.reads.length,2,'foreground shares the post-sync read');
+      await ui.resolve(1,[{id:'before-offline-sync'},{id:'imported'}]);
+      await ui.remount();
+      assert.equal(ui.reads.length,2,'a fresh cloud version is not refreshed again on remount');
+      assert.equal(ui.snapshot().data.sessions.length,2);
+      await ui.update({summary:{sessionId:'online-completion'},cloud:2});
+      assert.equal(ui.reads.length,3,'summary and cloud signal in one save start only one read');
+      await ui.resolve(2,[{id:'online-completion'}]);
+      await ui.update({summary:null});
+      assert.equal(ui.reads.length,3,'Done does not make the cloud version stale again');
+    } finally {await ui.cleanup();}
+  }
+});
+
+test('an off-tab cloud save fences the old prefetch without mixing owner histories',async()=>{
+  const ui=await setup({prefetch:true,compiled:true});
+  try {
+    await ui.update({focused:false});await ui.update({cloud:1});
+    assert.equal(ui.reads.length,1,'a hidden profile starts no new read');
+    await ui.resolve(0,[{id:'obsolete-a'}]);
+    await ui.update({focused:true});
+    assert.equal(ui.reads.length,2,'the old pre-sync prefetch cannot satisfy the new save');
+    await ui.update({owner:'owner-b',cloud:0});
+    assert.equal(ui.reads.length,3);assert.equal(ui.snapshot().data,null);
+    await ui.resolve(1,[{id:'private-import-a'}]);
+    assert.equal(ui.snapshot().data,null);assert.equal(ui.snapshot().loading,true);
+    await ui.resolve(2,[{id:'private-b'}]);
+    assert.equal(ui.snapshot().data.userId,'owner-b');
+    assert.ok(ui.seen.filter(value=>value.owner==='owner-b').every(value=>value.data===null||value.data.userId==='owner-b'));
+  } finally {await ui.cleanup();}
+});
+
+test('Profile and Milestones keep one matching cloud-save read when their signals arrive separately',async()=>{
+  for(const completedFirst of [false,true]) {
+    const ui=await setup({compiled:true,consumers:2});
+    try {
+      assert.equal(ui.reads.length,1);await ui.resolve(0,[{id:'before-sync'}]);
+      await ui.update({clouds:[1,0]});assert.equal(ui.reads.length,2);
+      if(completedFirst)await ui.resolve(1,[{id:'imported'}]);
+      await ui.update({clouds:[1,1]});
+      assert.equal(ui.reads.length,2,'a late consumer must join the matching new flight or ready copy, not evict it');
+      if(!completedFirst)await ui.resolve(1,[{id:'imported'}]);
+      assert.ok(ui.snapshots.every(snapshot=>snapshot.data.sessions[0].id==='imported'));
+      assert.ok(ui.snapshots.every(snapshot=>!snapshot.loading));
+      await ui.remount();assert.equal(ui.reads.length,2,'both consumers reuse the saved cloud version');
+    }finally{await ui.cleanup();}
+  }
+});
+
+test('a returning account cannot reuse an older admission with the same numeric cloud-save version',async()=>{
+  const ui=await setup({compiled:true});
+  try {
+    await ui.resolve(0,[{id:'old-a'}]);
+    await ui.update({cloud:1});await ui.resolve(1,[{id:'a-first-admission'}]);
+    await ui.update({owner:'owner-b',cloud:0});await ui.resolve(2,[{id:'private-b'}]);
+    await ui.update({owner:'owner-a',cloud:0});
+    assert.equal(ui.snapshot().data.userId,'owner-a');
+    assert.equal(ui.reads.length,4,'the recreated controller counter cannot certify an older admission');
+    await ui.resolve(3,[{id:'a-new-admission'}]);
+    await ui.update({cloud:1});
+    assert.equal(ui.reads.length,5,'a new import reads again even when its counter equals the old admission');
+    await ui.resolve(4,[{id:'a-new-admission'},{id:'a-new-import'}]);
+    assert.equal(ui.snapshot().data.sessions.length,2);
+    await ui.remount();
+    assert.equal(ui.reads.length,5,'ordinary remounts with the same current counter keep their cache');
+  }finally{await ui.cleanup();}
+});
+
+test('a controller counter reset on the focused account refreshes once and fences its older in-flight read',async()=>{
+  const ui=await setup({compiled:true});
+  try {
+    await ui.resolve(0,[{id:'before-sync'}]);
+    await ui.update({cloud:1});
+    assert.equal(ui.reads.length,2);
+    await ui.update({cloud:0});
+    assert.equal(ui.reads.length,3,'a reset is a new controller admission, not another observation of the same save');
+    await ui.resolve(1,[{id:'obsolete-admission'}]);
+    assert.equal(ui.snapshot().loading,true,'the outgoing admission cannot settle the current read');
+    assert.equal(ui.snapshot().data.sessions[0].id,'before-sync');
+    await ui.resolve(2,[{id:'current-admission'}]);
+    assert.equal(ui.snapshot().data.sessions[0].id,'current-admission');
+    await ui.remount();assert.equal(ui.reads.length,3);
   }finally{await ui.cleanup();}
 });

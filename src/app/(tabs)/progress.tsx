@@ -199,6 +199,7 @@ export default function ProgressScreen() {
     timeZone,
     sessionSummary,
     profile?.id ?? "",
+    timer.cloudSaveVersion ?? 0,
   );
   const analytics = useMemo(
     () =>
@@ -256,6 +257,11 @@ export default function ProgressScreen() {
   const detailSessions =
     detail?.kind === "period" ? analytics?.sessions ?? []
       : activeDay?.sessions ?? (activeArea ? detail?.kind === "area" && detail.day ? activeArea.sessions.filter(item => onDay(item, detail.day!)) : activeArea.sessions : []);
+  // The category itself covers the whole period; its day drilldown does not.
+  // Sum the same rows the sheet displays so the total and list cannot diverge.
+  const detailSeconds = detailSessions.reduce((sum, session) => sum + session.duration_seconds, 0);
+  const detailDay = detail?.kind === "day" ? detail.key : detail?.kind === "area" ? detail.day : undefined;
+  const detailRange = detailDay ? calendarLabel(detailDay, { weekday: "long", month: "short", day: "numeric" }) : range;
   const detailTitle = selectedSession
     ? "Session details"
     : detail?.kind === "period" ? `Sessions · ${mode === "week" ? "Week" : "Month"}`
@@ -661,7 +667,7 @@ export default function ProgressScreen() {
             )}
             <Text style={s.sheetTitle}>{detailTitle}</Text>
             {detail?.kind !== "consistency" &&
-              !selectedSession && <Text style={s.caption}>{range}</Text>}
+              !selectedSession && <Text style={s.caption}>{detailRange}</Text>}
           </View>
         }
       >
@@ -754,9 +760,7 @@ export default function ProgressScreen() {
               {detail?.kind !== "period" && (
                 <>
                   <Text style={s.detailTotal}>
-                    {durationLabel(
-                      activeDay?.seconds ?? activeArea?.seconds ?? 0,
-                    )}
+                    {durationLabel(detailSeconds)}
                   </Text>
                   <Text style={s.caption}>
                     {detailSessions.length} completed{" "}

@@ -56,7 +56,7 @@ export default function SubjectBreakdown({ owner, sessions }: { owner: string; s
   const total = Math.max(1, rows.reduce((sum, row) => sum + row.seconds, 0));
   return <View style={s.card} testID="subject-breakdown">
     <Text style={s.label}>By subject</Text>
-    {state.key !== key ? <Text style={s.caption}>{state.failed ? "Couldn’t load subjects. Reconnect and try again." : "Loading subjects…"}</Text>
+    {state.key !== key || !state.links ? <Text style={s.caption}>{state.key === key && state.failed ? "Couldn’t load subjects. Reconnect and try again." : "Loading subjects…"}</Text>
       : rows.map((row, index) => <View key={row.courseId ?? "other"} style={[s.row, index > 0 && s.line]} accessible accessibilityLabel={`${row.name}, ${durationLabel(row.seconds)}`}>
         <View style={[s.dot, { backgroundColor: row.courseId ? courseColor(row.courseId) : colors.tertiary }]} />
         <Text style={s.name} numberOfLines={1}>{row.name}</Text>

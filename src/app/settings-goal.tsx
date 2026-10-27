@@ -15,11 +15,13 @@ import { cachedDailyGoal, forgetDailyGoal, rememberDailyGoal } from "../utils/da
 /** Settings › Daily goal: today's target and a change that starts tomorrow. */
 export default function GoalSettingsScreen() {
   const { profile } = useUser();
+  const localDay = dateKey(new Date(), profile.timezone);
   // A recent reading (Settings reads ahead when it opens) fills the page at once.
   const [loadedGoalData, setGoalData] = useState<DailyGoalSettings | null>(() => cachedDailyGoal(profile.id));
-  const goalData = loadedGoalData?.user_id === profile.id ? loadedGoalData : null;
+  const goalData = loadedGoalData?.user_id === profile.id && loadedGoalData.local_date === localDay ? loadedGoalData : null;
   const [goalError, setGoalError] = useState("");
-  const [savedTodayGoal, setSavedTodayGoal] = useState<number | null>(null);
+  const [savedTodayGoal, setSavedTodayGoal] = useState<{ owner: string; day: string; minutes: number } | null>(null);
+  const [checkedFor, setCheckedFor] = useState<string | null>(null);
   const [draft, setDraft] = useState(() => String(cachedDailyGoal(profile.id)?.next_goal_minutes ?? profile.daily_goal_minutes));
   const [edited, setEdited] = useState(false);
   const [savedGoal, setSavedGoal] = useState("");
@@ -28,6 +30,7 @@ export default function GoalSettingsScreen() {
   useLayoutEffect(() => { goalOwner.current = profile.id; goalGeneration.current++; }, [profile.id]);
   const loadGoal = useCallback(async () => {
     const request = ++goalGeneration.current;
+    setCheckedFor(null);
     // Keep what is on screen while checking, so the page never empties out.
     const known = cachedDailyGoal(profile.id);
     if (known) { setGoalData(known); setGoalError(""); } else { setGoalData(null); setGoalError("Checking your latest goal schedule..."); }
@@ -39,11 +42,14 @@ export default function GoalSettingsScreen() {
       // Stored daily targets remain authoritative even without the editing API.
       const today = await getTodayProgress(profile.timezone).catch(() => null);
       if (request === goalGeneration.current) {
-        setSavedTodayGoal(today?.goal_minutes ?? null);
+        const day = dateKey(new Date(Date.now()), profile.timezone);
+        const minutes = today?.user_id === profile.id && today.progress_date === day ? today.goal_minutes
+          : known?.user_id === profile.id && known.local_date === day ? known.today_goal_minutes : null;
+        setSavedTodayGoal(minutes == null ? null : { owner: profile.id, day, minutes });
         setGoalData(null);
         setGoalError(missingGoalAPI(failure) ? "Goal settings are temporarily unavailable. Please try again later." : "Could not check your goal. Reconnect and try again.");
       }
-    }
+    } finally { if (request === goalGeneration.current) setCheckedFor(profile.id); }
   }, [profile.id, profile.timezone]);
   useEffect(() => {
     let mounted = true;
@@ -79,10 +85,10 @@ export default function GoalSettingsScreen() {
       void loadGoal();
     } finally { lock.current = false; setBusy(false); }
   };
-  const today = goalData?.today_goal_minutes ?? savedTodayGoal ?? profile.daily_goal_minutes;
+  const today = goalData?.today_goal_minutes ?? (savedTodayGoal?.owner === profile.id && savedTodayGoal.day === localDay ? savedTodayGoal.minutes : null);
   return <PersonalPage title="Daily goal" subtitle="" back animateTransition fallback="/settings">
     <SettingsGroup title="Now">
-      <SettingsRow first icon="today-outline" title="Today" value={`${today} min`} />
+      <SettingsRow first icon="today-outline" title="Today" value={today == null ? checkedFor === profile.id ? "Unavailable" : "Checking…" : `${today} min`} />
       {goalData?.pending && <SettingsRow icon="calendar-outline" title={`From ${goalData.next_effective_date}`} value={`${goalData.next_goal_minutes} min`} />}
     </SettingsGroup>
     <SettingsGroup title="Change your goal" footer="Changes start tomorrow, in your time zone. Today’s target, your streak and past achievements stay as they are. You can change it once every seven days.">

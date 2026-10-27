@@ -22,7 +22,7 @@ function load(file, mocks = {}, cache = new Map()) {
 }
 const host = type => function Host(props) { return React.createElement(type, props, props.children); };
 const svg = { __esModule: true, default: host("Svg"), G: host("G"), Path: host("Path"), Circle: host("Circle"), Ellipse: host("Ellipse"), Rect: host("Rect"), Defs: host("Defs"), LinearGradient: host("LinearGradient"), Stop: host("Stop"), Text: host("SvgText") };
-const native = { View: host("View"), StyleSheet: { create: v => v, hairlineWidth: 1 } };
+const native = { View: host("View"), ScrollView: host("ScrollView"), StyleSheet: { create: v => v, hairlineWidth: 1 } };
 const drawing = () => load("src/components/adventurer/AdventurerArt.tsx", { "react-native-svg": svg });
 const LOOK = { skin: "3", hair: "short", hairColor: "darkbrown", glasses: false };
 
@@ -108,7 +108,7 @@ test("the shared rewards copy is kept per account, works offline and runs one ch
   stop();
 });
 
-async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar, refresh } = {}) {
+async function outfits({ online = true, ready = true, owned = ["cardigan", "beret"], earned = owned, frame = null, stardust = 100, params = {}, saveAvatar, refresh, dimensions = { width: 390, height: 844, fontScale: 1 } } = {}) {
   const log = [];
   const frames = new Map(); let frameId = 0;
   const renders = { adventurer: 0, thumbnails: 0, portrait: 0 };
@@ -129,8 +129,8 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
   const mod = load("src/app/outfits.tsx", {
     requestAnimationFrame: callback => { const id = ++frameId; frames.set(id, callback); return id; },
     cancelAnimationFrame: id => frames.delete(id),
-    "react-native": { ...native, useWindowDimensions: () => ({ width: 390, height: 844 }) }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
-    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", null, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
+    "react-native": { ...native, useWindowDimensions: () => dimensions }, "@expo/vector-icons": { Ionicons: host("Icon") }, "../components/MotionPressable": host("Press"), "../components/AppText": { Text: host("Text") },
+    "../components/PersonalUI": { PersonalPage: ({ children, footer, pinned }) => React.createElement("Page", { footer, pinned }, pinned, children, footer), PersonalButton: props => React.createElement("Button", props), p: {} },
     "../components/Segmented": props => React.createElement("Segmented", props), "../components/SheetConfirmation": props => React.createElement("Confirm", props),
     "../components/adventurer/Adventurer": Adventurer, "../components/adventurer/ItemArt": { __esModule: true, default: host("Item"), StardustArt: host("Dust") },
     "../context/UserContext": { useUser: () => ({ profile: { level: 12, streak_count: 33 } }) }, "../hooks/useRewards": { useRewards: () => rewards },
@@ -139,8 +139,13 @@ async function outfits({ online = true, ready = true, owned = ["cardigan", "bere
   }), Screen = mod.default;
   let r; await act(async () => { r = create(React.createElement(Screen)); });
   const press = async label => act(async () => r.root.findAll(n => n.props.accessibilityLabel === label && typeof n.props.onPress === "function")[0].props.onPress());
-  const tab = async value => act(async () => r.root.findByType("Segmented").props.onChange(value));
-  const button = title => r.root.findAllByType("Button").find(b => b.props.title === title);
+  const tab = async value => act(async () => {
+    const segmented = r.root.findAllByType("Segmented")[0];
+    if (segmented) segmented.props.onChange(value);
+    else r.root.findAllByType("Press").find(n => n.props.testID === `outfits-tab-${value}`).props.onPress();
+  });
+  const button = title => r.root.findAllByType("Button").find(b => b.props.title === title)
+    ?? r.root.findAllByType("Press").find(b => b.props.accessibilityLabel === title);
   const words = () => JSON.stringify(r.root.findAllByType("Text").map(t => t.props.children));
   const nextFrame = async () => {
     const callbacks = [...frames.values()]; frames.clear();
@@ -211,25 +216,26 @@ test("Outfits wears what you own, previews what you don't, and saves then goes b
     await ui.press("Red beret, Common, owned");
     assert.deepEqual(ui.preview().equipped, { top: "cardigan", head: "beret" });
     await ui.press("Tops");
-    await ui.press("Oat cardigan, Uncommon, wearing");
+    await ui.press("Oat cardigan, Uncommon, wearing, owned");
     assert.deepEqual(ui.preview().equipped, { head: "beret" }, "tap again to take it off");
     // Locked: you can try it on to see it, but not save it.
     await ui.press("Field jacket, Uncommon, not found yet");
     assert.deepEqual(ui.preview().equipped, { head: "beret", top: "field_jacket" }, "previewed on the character");
     assert.equal(ui.r.root.findAllByType("Confirm").length, 0, "trying on never asks to buy");
     assert.equal(ui.button("Save look").props.disabled, true);
-    assert.match(ui.words(), /Trying on Field jacket/);
-    assert.equal(ui.button("Get it for 120 Stardust").props.secondary, true);
+    assert.match(ui.words(), /Preview · Not owned/);
+    assert.equal(ui.button("Get it for 120 Stardust").props.testID, "outfits-get-item");
+    assert.equal(ui.button("Get it for 120 Stardust").props.accessibilityRole, "button");
     await act(async () => ui.button("Get it for 120 Stardust").props.onPress());
     const confirm = ui.r.root.findByType("Confirm").props;
     assert.equal(confirm.confirmLabel, "Not enough Stardust");
     await act(async () => confirm.onConfirm());
     assert.deepEqual(ui.log, [], "not enough Stardust buys nothing");
-    await ui.press("Field jacket, Uncommon, wearing");
+    await ui.press("Field jacket, Uncommon, preview, not owned");
     await ui.tab("pets"); await ui.press("Barn owl, Epic, not found yet");
     assert.equal(ui.button("Get it for undefined Stardust"), undefined, "pets aren't sold");
     assert.match(ui.words(), /Joins you at 10 hours of focus/);
-    await ui.press("Barn owl, Epic, wearing");
+    await ui.press("Barn owl, Epic, preview, not owned");
     assert.equal(ui.button("Save look").props.disabled, false);
     await act(async () => ui.button("Save look").props.onPress());
     assert.doesNotMatch(ui.words(), /Tap something|Tap again|free for everyone/, "no hint text");
@@ -255,6 +261,83 @@ test("Outfits buys with enough Stardust after asking, and needs internet to save
     await off.tab("gear"); await off.press("In hand"); await off.press("Walking staff, Common, not found yet");
     assert.equal(off.button("Get it for 60 Stardust"), undefined, "no buying offline");
   } finally { await act(async () => off.r.unmount()); }
+});
+
+test("Outfits spells out ownership and keeps a locked preview distinct from wearing an owned item", async () => {
+  const ui = await outfits({ owned: ["cardigan", "field_jacket"] });
+  try {
+    await ui.tab("clothes"); await ui.press("Tops");
+    const tile = id => ui.r.root.findAllByType("Press").find(n => n.props.accessibilityLabel?.startsWith(`${ui.opening(id).wear.name},`));
+    const text = node => node.findAllByType("Text").map(n => n.props.children).join(" ");
+    assert.match(text(tile("field_jacket")), /Field jacket Owned/,
+      "ownership is visible before selection, even when that piece is not worn");
+    assert.match(text(tile("cardigan")), /Wearing/);
+    assert.equal(tile("field_jacket").findAllByType("Icon").some(n => n.props.name === "lock-closed"), false);
+    await ui.press("Field jacket, Uncommon, owned");
+    assert.match(text(tile("field_jacket")), /Wearing/);
+    assert.match(ui.words(), /Wearing · Owned/);
+    await ui.press("Denim overalls, Uncommon, not found yet");
+    assert.match(text(tile("overalls")), /Preview/);
+    assert.equal(tile("overalls").props.accessibilityLabel, "Denim overalls, Uncommon, preview, not owned");
+    assert.deepEqual(tile("overalls").findAllByType("Icon").map(n => n.props.name), ["lock-closed"],
+      "a preview keeps its lock and cannot gain an owned/wearing check");
+    assert.equal(ui.button("Save look").props.disabled, true);
+    assert.match(ui.words(), /Preview · Not owned/);
+    const tops = ui.r.root.findAllByType("Press").find(n => n.props.accessibilityLabel === "Tops");
+    assert.equal(tops.findAllByType("View").length, 0, "the unexplained equipped-slot dot is removed");
+    await ui.press("Denim overalls, Uncommon, preview, not owned");
+    assert.equal(ui.button("Save look").props.disabled, false, "taking off the preview restores normal saving");
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("selected Outfits details and buying stay beside fixed Save without scrolling through the catalogue", async () => {
+  const ui = await outfits({ stardust: 500 });
+  try {
+    await ui.tab("clothes"); await ui.press("Tops");
+    await ui.press("Field jacket, Uncommon, not found yet");
+    const footer = ui.r.root.findByProps({ testID: "outfits-actions" });
+    const details = footer.findByProps({ testID: "outfits-item-details" });
+    assert.match(details.findAllByType("Text").map(n => n.props.children).flat().join(" "), /Wanderer set/);
+    assert.equal(footer.findByProps({ testID: "outfits-get-item" }).props.accessibilityLabel, "Get it for 120 Stardust");
+    assert.ok(footer.findAllByType("Button").some(n => n.props.title === "Save look"));
+    const close = details.findByProps({ testID: "outfits-close-item-details" });
+    assert.equal(close.props.accessibilityRole, "button");
+    assert.equal(close.props.accessibilityLabel, "Close item details");
+    await act(async () => close.props.onPress());
+    assert.equal(ui.r.root.findAllByProps({ testID: "outfits-item-details" }).length, 0);
+    assert.equal(ui.preview().equipped.top, "field_jacket", "closing details never changes a draft");
+    assert.equal(ui.button("Save look").props.disabled, true, "hidden details cannot make a locked preview saveable");
+    await ui.press("Field jacket, Uncommon, preview, not owned");
+    assert.ok(ui.button("Get it for 120 Stardust"), "selecting the piece again restores its reachable details");
+  } finally { await act(async () => ui.r.unmount()); }
+});
+
+test("small phones and large text scroll the preview while tabs and item actions remain fixed", async () => {
+  const ui = await outfits({ dimensions: { width: 360, height: 640, fontScale: 1.8 } });
+  try {
+    const page = ui.r.root.findByType("Page");
+    const pinned = React.Children.toArray(page.props.pinned.props.children);
+    assert.equal(pinned.filter(Boolean).length, 1, "only the tab strip consumes fixed height");
+    assert.equal(pinned[0].props.horizontal, true, "tab labels scroll rather than truncating at large text");
+    for (const [id, name] of [["look", "Look"], ["clothes", "Clothes"], ["gear", "Gear"], ["pets", "Pets"], ["picture", "Profile"]]) {
+      const tab = ui.r.root.findAllByType("Press").find(n => n.props.testID === `outfits-tab-${id}`);
+      assert.equal(tab.props.accessibilityLabel, name);
+      assert.equal(tab.props.accessibilityRole, "radio");
+    }
+    await ui.tab("clothes"); await ui.press("Tops");
+    await ui.press("Field jacket, Uncommon, not found yet");
+    const tile = ui.r.root.findByProps({ testID: "outfits-item-field_jacket" });
+    const styles = Object.assign({}, ...tile.props.style.filter(Boolean));
+    assert.equal(styles.width, "48%", "large text gets two flexible-height columns");
+    assert.equal(styles.aspectRatio, undefined, "a long name and status can grow the tile");
+    assert.equal(tile.findAllByType("Text").find(n => n.props.children === "Field jacket").props.numberOfLines, undefined);
+    const stage = ui.r.root.findByProps({ testID: "outfits-preview" });
+    const chips = stage.findByProps({ testID: "outfits-preview-chips" });
+    assert.equal(chips.props.style.position, undefined, "the set label occupies its own row above the illustration");
+    const character = stage.findByProps({ testID: "outfits-character" });
+    assert.equal(character.parent, chips.parent, "chip row and character are separate flow-layout siblings");
+    assert.ok(ui.r.root.findByProps({ testID: "outfits-actions" }).findByProps({ testID: "outfits-item-details" }));
+  } finally { await act(async () => ui.r.unmount()); }
 });
 
 test("the Profile tab: frames follow your streak and only preview, badges and backgrounds are chosen", async () => {
