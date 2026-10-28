@@ -379,6 +379,7 @@ test("the real reward client: real sessions show their return screen; with none,
     await ui.press("Come back from a session");
     assert.match(ui.row("Come back from a session").props.status, /Red beret \(new\).*6 Stardust from minutes/);
     assert.deepEqual(ui.rewards().reveals.at(-1), { id: "return:session-1", kind: "expedition", seconds: 1800, finds: [{ item: "beret", rarity: "uncommon", new: true, stardust: 0 }], stardust: 6,
+      sessions: [{sessionId:"session-1",seconds:1800,finds:[{item:"beret",rarity:"uncommon",new:true,stardust:0}],minutesStardust:6,daySecondsBefore:null,daySecondsAfter:null,creditedDate:null,trailStardust:0}],
       trailStardust: 0, fromSeconds: 0, trail: { findSeconds: 1500, stops: 6, complete: false, seconds: 0, fromSeconds: 0, finds: 0, nextFindSeconds: 600 } },
       "a real session's return screen, with no test grant");
     assert.deepEqual(calls.map(call => call.name), ["get_rewards_v1", "claim_session_rewards_v1", "dev_rewards_v1", "claim_session_rewards_v1"]);

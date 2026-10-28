@@ -18,6 +18,7 @@ import { registerSheetActivity, useActiveSheetCount } from "../utils/sheetActivi
 import { tapHaptic } from "../utils/tapHaptics";
 import { ExpeditionReveal, PackReveal } from "./rewards/RevealScreens";
 import { RARITY_COLOR as RARITY_COLORS } from "./rewards/rarity";
+import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation";
 
 const RARITY_COLOR = RARITY_COLORS;
 const SETTLE_MS = 450;
@@ -44,13 +45,16 @@ export function momentCopy(item: RewardItem): { eyebrow: string; title: string; 
  * then one pop-up for each other thing earned: a pet, a badge, or the next
  * streak frame. It waits for other sheets and never shows during a session.
  */
-export default function RewardMoments({ insideSession, claimKey = null, sessionRoute = false }: {
+export default function RewardMoments({ insideSession, claimKey = null, sessionRoute = false, claimsPaused = false }: {
   insideSession: boolean; claimKey?: string | null;
+  /** One offline catch-up owns claims until its combined return is closed. */
+  claimsPaused?: boolean;
   /** On the session screen, which shows a session's return screen itself (after its result card). */
   sessionRoute?: boolean;
 }) {
   const { profile } = useUser();
   const rewards = useRewards();
+  const sync = useOfflineSyncPresentation(rewards.owner && rewards.backendId ? { ownerId: rewards.owner, backendId: rewards.backendId } : null);
   const router = useRouter();
   const [activityId] = useState(() => Symbol("reward-moment"));
   const otherSheets = useActiveSheetCount(activityId);
@@ -75,6 +79,7 @@ export default function RewardMoments({ insideSession, claimKey = null, sessionR
     // completion arrives. Leave that trigger pending, then check once the
     // shared mutation lock clears. Do not drop it or retry failed HTTP calls.
     if (!rewards.online) { checked.current = { progress: null, session: null, pending: null }; forcedPending.current = null; return; }
+    if (claimsPaused) return;
     if (!active || !profile.id || rewards.owner && rewards.owner !== profile.id || rewards.busy) return;
     const session = claimKey ? `${account}:${claimKey}` : null;
     const pending = !!pendingFinds && checked.current.pending !== pendingFinds;
@@ -104,9 +109,14 @@ export default function RewardMoments({ insideSession, claimKey = null, sessionR
         checked.current = { progress: null, session: null, pending: null }; retryClaim(attempt => attempt + 1);
       }
     });
-  }, [active, rewards.online, rewards.busy, rewards.owner, profile.id, account, progress, claimKey, claimAttempt, pendingFinds]);
+  }, [active, rewards.online, rewards.busy, rewards.owner, profile.id, account, progress, claimKey, claimAttempt, pendingFinds, claimsPaused]);
 
   const reveal = rewards.reveals[0];
+  const returnMembers = reveal?.kind === "expedition" ? reveal.sessions?.map(session => session.sessionId)
+    ?? (reveal.id.startsWith("return:") ? reveal.id.slice(7).split(",") : []) : [];
+  const alreadyWalked = returnMembers.length > 0 && returnMembers.every(id => sync.acknowledgedReceiptIds.includes(id));
+  const quietReturn = !!reveal && reveal.kind === "expedition" && alreadyWalked && !reveal.finds.length;
+  useEffect(() => { if (quietReturn && reveal) rewards.dismissReveal(reveal.id); }, [quietReturn, reveal, rewards]);
   const id = reveal ? undefined : rewards.moments[0];
   const item = id ? rewardItem(id) : undefined;
   // Wait a moment once everything else has closed, so a celebration that
@@ -125,7 +135,7 @@ export default function RewardMoments({ insideSession, claimKey = null, sessionR
   }, [away]);
   const hostedBySession = useSyncExternalStore(sessionRevealHost.subscribe, sessionRevealHost.snapshot, sessionRevealHost.snapshot);
   const heldBySession = reveal?.kind === "expedition" && (sessionRoute || hostedBySession === reveal.id);
-  const wanted = !!key && (!!reveal || !!item) && !insideSession && !heldBySession && introDone && active && otherSheets === 0 && !(away && away.id === key);
+  const wanted = !!key && (!!reveal || !!item) && !quietReturn && !insideSession && !heldBySession && introDone && active && otherSheets === 0 && !(away && away.id === key);
   const [readyFor, setReadyFor] = useState<string | null>(null);
   useEffect(() => {
     if (!wanted || readyFor === key) return;
@@ -146,7 +156,7 @@ export default function RewardMoments({ insideSession, claimKey = null, sessionR
     onRequestClose={() => { if (reveal) closeReveal(null); else if (id) rewards.dismissMoment(id); }}>
     {visible && reveal && (reveal.kind === "pack"
       ? <PackReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)} onOutfits={closeReveal} />
-      : <ExpeditionReveal key={reveal.id} reveal={reveal} player={player} onClose={() => closeReveal(null)}
+      : <ExpeditionReveal key={reveal.id} reveal={alreadyWalked ? { ...reveal, skipTrail: true } : reveal} player={player} onClose={() => closeReveal(null)}
         onOutfits={show => { setAway({ id: reveal.id, arrived: false }); showInOutfits(show); }} />)}
     {visible && !reveal && item && <Moment key={item.id} item={item} left={rewards.moments.length} level={profile.level} look={rewards.look} equipped={rewards.equipped} background={rewards.background}
       streak={profile.streak_count ?? 0}

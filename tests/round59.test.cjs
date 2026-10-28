@@ -63,9 +63,9 @@ test("today's trail fits in view, draws on its first layout, and you walk from w
   await act(async () => { frame.props.onLayout({ nativeEvent: { layout: { width: 340, height: 420 } } }); });
   assert.deepEqual(log.find(e => e[0] === "walk").slice(2), [2], "you walk on to the second stop, 40 minutes");
   const labels = r.root.findAll(n => n.type === "SvgText").map(n => [].concat(n.props.children).join(""));
-  assert.ok(labels.includes("20 min") && labels.includes("Next find · 60 min") && labels.includes("Trail's end · 120 min") && labels.includes("CAMP"), labels.join(", "));
+  assert.ok(labels.includes("20 min total") && labels.includes("Next find · 60 min total") && labels.includes("Trail's end · 120 min total") && labels.includes("CAMP"), labels.join(", "));
   assert.equal(r.root.findAll(n => n.type === "Scroll").length, 0, "no scrolling: the whole trail is in view");
-  const ys = r.root.findAll(n => n.type === "SvgText" && /min$/.test([].concat(n.props.children).join("")) && n.props.y !== undefined).map(n => n.props.y);
+  const ys = r.root.findAll(n => n.type === "SvgText" && /min total$/.test([].concat(n.props.children).join("")) && n.props.y !== undefined).map(n => n.props.y);
   assert.ok(Math.min(...ys) > 0 && Math.max(...ys) < 420, "every stop fits inside the map");
   assert.equal(r.root.findAllByProps({ testID: "trail-complete" }).length, 0);
   // Past the end you wait at the end; the session that got you there brings the trail's reward.

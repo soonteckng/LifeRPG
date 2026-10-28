@@ -63,7 +63,7 @@ function harness() {
   };
   const create = () => createSessionTimerController({ scope, store, server, offline, clock, uuid: () => id(++sequence), timeoutMs: 100,
     authority: { currentScope: () => owner, currentEpoch: () => epoch, verify: ensure } });
-  return { create, store, storage, values, rows, submissions, receipts, calls, server, get credits() { return credits; },
+  return { create, store, storage, values, rows, submissions, receipts, calls, server, offline, get credits() { return credits; },
     set online(value) { online = value; }, set grant(value) { grant = value; }, set loseReply(value) { loseReply = value; },
     set submitHook(value) { submitHook = value; },
     set snapshotWarning(value) { snapshotWarning = value; },
@@ -258,4 +258,21 @@ test('cold reopening permits local Start before an earlier dismissed upload repl
 test('cold adoption preserves the authoritative snapshot clock warning', async () => {
   const h = harness(); await h.server.start(setup, id(7001)); h.snapshotWarning = true;
   const c = h.create(); await c.initialize(); assert.equal(c.getSnapshot().record.clockWarning, true); await c.dispose();
+});
+
+
+test('Round 79: three dismissed one-minute offline sessions confirm in one batch without individual saved notices', async () => {
+ const {createOfflineSyncPresentationStore}=load('src/services/offlineSyncPresentation.ts');
+ const h=harness(), presentation=createOfflineSyncPresentationStore();await presentation.bind(scope,h.storage);
+ h.offline.observeSync=()=>presentation.begin(scope);h.online=false;
+ const c=h.create();await c.initialize();
+ for(let n=0;n<3;n++){assert.equal(await c.start({...setup,targetSeconds:60}),true);h.advance(60000);await c.tick();c.dismissSummary();await new Promise(r=>setImmediate(r));h.advance(1);}
+ assert.equal(h.credits,0);assert.equal(c.getSnapshot().unsyncedSessionCount,3);
+ h.online=true;await c.refresh(true);
+ const batch=presentation.snapshot(scope).batch;assert.equal(batch.entries.length,3);assert.equal(h.credits,3);
+ assert.equal(batch.entries.reduce((sum,e)=>sum+e.receipt.durationSeconds,0),180);
+ assert.equal(c.getSnapshot().record,null,'no receipt-per-session notice selected');
+ c.dismissSummary();assert.equal(c.getSnapshot().record,null,'no next old receipt after Done');
+ presentation.acknowledge(scope,batch.id,batch.entries.map(e=>e.clientSessionId));
+ await c.refresh(true);assert.equal(h.credits,3);assert.equal(presentation.snapshot(scope).batch,null);await c.dispose();
 });

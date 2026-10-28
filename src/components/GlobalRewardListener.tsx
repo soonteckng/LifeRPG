@@ -1,7 +1,7 @@
 import { requiredCharacterXP } from "../utils/levelTiers";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { usePathname } from "expo-router";
 import { AppState } from "react-native";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
@@ -20,6 +20,9 @@ import { sessionTrail } from "../services/sessionTrail";
 import { launchIntroState } from "../services/launchIntroState";
 import { RETURN_TO_CAMP_MS, sessionReturn, sessionReturnKey } from "../services/sessionReturn";
 import { useReducedMotion } from "../hooks/useReducedMotion";
+import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation";
+
+const OfflineSyncHost = lazy(() => import("./OfflineSyncHost"));
 
 type PresentedResult = {
   ownerId: string;
@@ -47,6 +50,10 @@ export default function GlobalRewardListener() {
   const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const accountKey = JSON.stringify([backendId, ownerId]);
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
+  const syncScope = backendId && ownerId ? { backendId, ownerId } : null;
+  const offlineSync = useOfflineSyncPresentation(syncScope);
+  const syncMember = !!offlineSync.batch?.entries.some(entry => entry.clientSessionId === timer.protectionSessionId
+    || entry.receipt.sessionId === timer.sessionSummary?.sessionId);
   const currentOwner = useRef(ownerId);
   const currentScope = useRef(presentationScope);
   const currentTimer = useRef(timer);
@@ -97,7 +104,8 @@ export default function GlobalRewardListener() {
   }, [pendingKey]);
   const expired = saving.key === pendingKey && saving.phase === "expired";
   const ready = !waiting || expired;
-  const available = !!ownerId && terminal && !timer.hasOpenSession && !timer.summaryViewed && ready;
+  const deferredConfirmation = !!summary && (syncMember || timer.clientReported && offlineSync.busy);
+  const available = !!ownerId && terminal && !timer.hasOpenSession && !timer.summaryViewed && ready && !deferredConfirmation;
   const quest = tasks.find(item => item.id === timer.linkedTaskId);
   const area = subjects.find(item => item.id === timer.targetAttributeId);
   const suggestion = summary?.suggestion ?? (timer.linkedTaskId == null ? readSuggestedFocus(timer.notes) ?? undefined : undefined);
@@ -206,5 +214,10 @@ export default function GlobalRewardListener() {
     <SessionSavingOverlay visible={savingShown} />
     <PostSessionCelebration insideSession={insideSession || !online} />
     {/* Inside a session the reward screens wait until it has finished. Its own return screen shows on the session screen. */}
-    <RewardMoments insideSession={insideSession && (timer.hasOpenSession || timer.endingSession || timer.isRestoring || !!returnKey)} claimKey={summary?.sessionId ?? null} sessionRoute={insideSession} /></>;
+    <RewardMoments insideSession={!!offlineSync.batch || offlineSync.busy || timer.unsyncedSessionCount > 0 || insideSession && (timer.hasOpenSession || timer.endingSession || timer.isRestoring || !!returnKey)}
+      claimsPaused={!offlineSync.ready || offlineSync.busy || !!offlineSync.batch || timer.isRestoring || timer.unsyncedSessionCount > 0}
+      claimKey={summary?.sessionId ?? null} sessionRoute={insideSession} />
+    {offlineSync.batch && syncScope && <Suspense fallback={null}><OfflineSyncHost key={`${presentationScope}:${offlineSync.batch.id}`}
+      scope={syncScope} batch={offlineSync.batch} active={offlineSync.ready && !offlineSync.busy && !timer.hasOpenSession && !timer.isRestoring && !shown && !closing && introDone} />
+    </Suspense>}</>;
 }

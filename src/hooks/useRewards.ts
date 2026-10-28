@@ -7,6 +7,9 @@ import { normalizeLook } from "../utils/adventurerLook";
 import { sessionTrail } from "../services/sessionTrail";
 import { developerRewardLab, emptyTestRewards, type RewardLabAction } from "../services/developerRewardLab";
 import { REWARD_ITEMS } from "../services/rewardCatalog";
+import { offlineSyncPresentation } from "../services/offlineSyncPresentation";
+import { sessionBackendIdentity } from "../utils/sessionBackend";
+import { isJournalUuid } from "../utils/sessionJournalSchema";
 
 export const rewardsStore = createRewardsStore(AsyncStorage);
 
@@ -17,6 +20,7 @@ export const rewardsStore = createRewardsStore(AsyncStorage);
 export function useRewards({ load = true, developerLab = false }: { load?: boolean; developerLab?: boolean } = {}) {
   const auth = useAuth();
   const owner = auth.user?.id ?? auth.localOwner?.id ?? null;
+  const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId ?? null;
   const online = auth.accessMode === "online" && !!auth.user?.id;
   const verifier = useRef(auth.verifyCurrentOwner);
   useLayoutEffect(() => { verifier.current = auth.verifyCurrentOwner; }, [auth.verifyCurrentOwner]);
@@ -61,6 +65,7 @@ export function useRewards({ load = true, developerLab = false }: { load?: boole
       run: runLab,
     },
     owner,
+    backendId,
     admissionEpoch: auth.admissionEpoch,
     online,
     refresh,
@@ -74,7 +79,11 @@ export function useRewards({ load = true, developerLab = false }: { load?: boole
     dismissMoment: (id: string) => rewardsStore.dismissMoment(owner, id),
     stardust: displayState?.stardust ?? 0,
     // Coming back from sessions with something to show opens the return screen.
-    claimSessions: async () => {
+    claimSessions: async (options?: { offlineBatchId?: string }) => {
+      const scope = isJournalUuid(owner) && backendId ? { ownerId: owner, backendId } : null;
+      const syncing = offlineSyncPresentation.snapshot(scope);
+      if (!syncing.ready || syncing.busy || syncing.batch && syncing.batch.id !== options?.offlineBatchId)
+        return { ok: false as const, message: "Your offline sessions are syncing. Try again in a moment." };
       const r = await act(c => c.claimSessions);
       // Kept in the private session record (Settings), so a missing return screen can be traced.
       sessionTrail("rewards claim", r.ok ? { sessions: r.value.sessions.length, finds: r.value.sessions.reduce((n, x) => n + x.finds.length, 0) } : { error: r.message });
@@ -84,8 +93,10 @@ export function useRewards({ load = true, developerLab = false }: { load?: boole
         const trailStardust = r.value.sessions.reduce((n, x) => n + x.trailStardust, 0);
         const todayTrailStardust = r.value.state.today.date ? r.value.sessions.filter(x => x.creditedDate === r.value.state.today.date).reduce((n, x) => n + x.trailStardust, 0) : trailStardust;
         const trail = claimedTrail(r.value);
-        rewardsStore.addReveal(owner, { id: `return:${r.value.sessions.map(x => x.sessionId).join(",")}`, kind: "expedition",
+        const alreadyWalked = !!scope && r.value.sessions.every(session => offlineSyncPresentation.hasAcknowledgedReceipt(scope, session.sessionId));
+        if (!alreadyWalked || finds.length) rewardsStore.addReveal(owner, { id: `return:${r.value.sessions.map(x => x.sessionId).join(",")}`, kind: "expedition",
           seconds, finds, trailStardust: todayTrailStardust, fromSeconds: trail.fromSeconds, trail,
+          sessions: r.value.sessions, ...(alreadyWalked ? { skipTrail: true } : {}),
           stardust: r.value.sessions.reduce((n, x) => n + x.minutesStardust, 0) + finds.reduce((n, g) => n + g.stardust, 0) + trailStardust });
       }
       return r;

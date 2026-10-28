@@ -23,6 +23,7 @@ import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { encodeRoutineSession, readRoutineSession } from "../utils/routineSession";
 import type { JournalClock, JournalScope, JournalSetup } from "../types/sessionJournal";
 import { sessionTrail } from "../services/sessionTrail";
+import { offlineSyncPresentation } from "../services/offlineSyncPresentation";
 import { useAuth } from "./AuthContext";
 import { useUser } from "./UserContext";
 
@@ -166,12 +167,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const store = createAsyncStorageSessionJournalStore(scope);
     const transportOptions = { ensureVerifiedScope: verify, currentScope, currentEpoch, getClock };
     const capability = createOfflineCapabilityCache(scope, { ...transportOptions, storage: AsyncStorage });
+    void offlineSyncPresentation.bind(scope, AsyncStorage);
     const offlineTransport = createOfflineSessionTransport(scope, transportOptions);
     const controller = createSessionTimerController({ scope,
       store,
       server: createJournalSessionTransport(scope, transportOptions),
       offline: { load: capability.load, refresh: capability.refreshIfStale, readFreshGrant: capability.readFreshGrant,
-        isLocalOnly: () => authRef.current.accessMode === "local-only", readSnapshot: offlineTransport.readSnapshot, submit: offlineTransport.submit },
+        isLocalOnly: () => authRef.current.accessMode === "local-only", readSnapshot: offlineTransport.readSnapshot, submit: offlineTransport.submit,
+        observeSync: () => offlineSyncPresentation.begin(scope) },
       authority: { currentScope, currentEpoch, verify, beginOperation: verification.beginOperation, endOperation: verification.endOperation }, clock: getClock, uuid: () => uuid.v4().toLowerCase(),
     });
     controllerRef.current = controller;

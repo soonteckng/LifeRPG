@@ -62,6 +62,8 @@ export interface SessionTimerControllerOptions {
     isLocalOnly(): boolean;
     readSnapshot(serverSessionId: string, clientSessionId: string | null): Promise<SessionSyncSnapshot | null>;
     submit(clientSessionId: string, submission: ClientSessionSubmission): Promise<ClientSessionSubmitResult>;
+    /** Presentation observes a whole pass; it never changes import/credit rules. */
+    observeSync?(): { accepted(record: JournalRecord): void; finish(): void };
   };
 }
 
@@ -401,10 +403,13 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
 
   async function syncClientQueue(force: boolean): Promise<void> {
     if (!journal || !options.offline || options.offline.isLocalOnly() || clientSyncActive) return;
+    const queued = queuedClientCompletions(journal, scope).filter(record => due(record, force));
+    if (!queued.length) return;
     clientSyncActive = true;
+    let observer: ReturnType<NonNullable<NonNullable<SessionTimerControllerOptions["offline"]>["observeSync"]>> | undefined;
+    try { observer = options.offline.observeSync?.(); } catch { /* Presentation cannot prevent a durable import. */ }
     try {
-    for (const record of queuedClientCompletions(journal, scope)) {
-      if (!due(record, force)) continue;
+    for (const record of queued) {
       const command = pending(record);
       try {
         await verify();
@@ -428,7 +433,13 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
         await write({ type: "acknowledge_import", clientSessionId: record.clientSessionId,
           receipt: remoteCompletedBeforeEnd ? null : result.receipt,
           remoteCompletedReceipt: remoteCompletedBeforeEnd ? result.receipt! : undefined, verifiedScope: await verify() });
-        savedAfterDismissal(record.clientSessionId);
+        if (observer && record.state === "completed" && result.receipt) {
+          // Capture the full receipt now: later writes may compact old rows.
+          // One observer owns the confirmation, rather than a notice per row.
+          try { observer.accepted({ ...record, serverSessionId: result.receipt.sessionId,
+            sync: { ...record.sync, state: "synced", receipt: result.receipt } }); }
+          catch { savedAfterDismissal(record.clientSessionId); }
+        } else savedAfterDismissal(record.clientSessionId);
         if (result.receipt && selectedId === record.clientSessionId && record.dismissedAtMs === null
           && !dismissedRewardIds.has(record.clientSessionId) && !recoveredIds.has(record.clientSessionId) && result.outcome === "accepted") rewardId = record.clientSessionId;
         publish({ error: null, restoreError: false, cloudSaveVersion: state.cloudSaveVersion + 1 });
@@ -443,7 +454,10 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
         return;
       }
     }
-    } finally { clientSyncActive = false; }
+    } finally {
+      clientSyncActive = false;
+      try { observer?.finish(); } catch { /* A failed presentation must not fail accepted sessions. */ }
+    }
   }
 
   async function reconcileStart(command: JournalCommand): Promise<void> {

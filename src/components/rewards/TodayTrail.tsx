@@ -268,9 +268,9 @@ const TrailArtwork = memo(function TrailArtwork({ width, height, count, minutesP
             : n === next ? <Circle cx={p.x} cy={p.y} r={node - 2} fill="none" stroke="rgba(255,255,255,0.7)" strokeWidth={2} strokeDasharray="3 3" />
             : <Circle cx={p.x} cy={p.y} r={4} fill="rgba(255,255,255,0.22)" />}
           {last ? <SvgText x={p.x} y={p.y - node - 10} fill={reached ? "#E9E3FF" : "rgba(255,255,255,0.6)"} fontSize={font + 1} fontWeight="800" textAnchor="middle">
-            {`Trail's end · ${mins} min`}</SvgText>
+            {`Trail's end · ${mins} min total`}</SvgText>
             : <SvgText x={left ? p.x + node + 7 : p.x - node - 7} y={p.y + 4} fill={reached ? "#E5E7EB" : "rgba(255,255,255,0.5)"} fontSize={font} fontWeight="600" textAnchor={left ? "start" : "end"}>
-            {n === next && !ended ? `Next find · ${mins} min` : `${mins} min`}</SvgText>}
+            {n === next && !ended ? `Next find · ${mins} min total` : `${mins} min total`}</SvgText>}
         </G>;
       })}
       <Rect x={campLeft} y={pts[0].y - 10} width={48} height={20} rx={8} fill="#14B8A6" />

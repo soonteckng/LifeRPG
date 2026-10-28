@@ -74,12 +74,12 @@ async function mountMap(h, props = {}, size = layout()) {
 test("the complete map paints on its first measured layout, with four stops and every zone in view", async () => {
   const h = harness(), ui = await mountMap(h, {}, layout(300, 260));
   try {
-    assert.deepEqual(labels(ui).filter(label => /min$/.test(label)), ["Next find · 30 min", "60 min", "90 min", "Trail's end · 120 min"]);
+    assert.deepEqual(labels(ui).filter(label => /min total$/.test(label)), ["Next find · 30 min total", "60 min total", "90 min total", "Trail's end · 120 min total"]);
     for (const place of ["MEADOW", "LANTERN LAKE", "RED CANYON", "STARFALL RIDGE", "CAMP"]) assert.ok(labels(ui).includes(place), place);
     assert.equal(ui.root.findAllByType("Svgdefault").length, 1);
     assert.equal(h.pictures(), 1, "one character is needed for the whole map");
     assert.equal(h.animations.length, 0, "Home stands at its current position without replaying a walk");
-    const minuteLabels = ui.root.findAllByType("SvgText").filter(node => /min$/.test([].concat(node.props.children).join("")));
+    const minuteLabels = ui.root.findAllByType("SvgText").filter(node => /min total$/.test([].concat(node.props.children).join("")));
     assert.ok(minuteLabels.every(node => node.props.y > 0 && node.props.y < 260));
     await act(async () => ui.root.findByProps({ testID: "today-trail-map" }).props.onLayout(layout(300, 260)));
     assert.equal(h.pictures(), 1, "identical native layout events do not redraw the SVG and portrait");
@@ -104,8 +104,8 @@ test("legacy awarded finds point to the next eligible stop, and a collected day 
   const h = harness(), ui = await mountMap(h, { seconds: 1500, finds: 1, nextFindSeconds: 2100 });
   try {
     assert.match(words(ui), /25 m.*1 of 4.*35 min/);
-    assert.ok(labels(ui).includes("Next find · 60 min"));
-    assert.ok(!labels(ui).includes("Next find · 30 min"));
+    assert.ok(labels(ui).includes("Next find · 60 min total"));
+    assert.ok(!labels(ui).includes("Next find · 30 min total"));
     await act(async () => ui.update(React.createElement(h.Trail, { ...base, seconds: 6000, finds: 4, nextFindSeconds: 0 })));
     assert.match(words(ui), /100 m|1 h 40 m/);
     assert.match(words(ui), /20 min.*to trail's end/);
@@ -120,14 +120,14 @@ test("a saved stop waiting for its claim says Find ready without pretending a re
   try {
     assert.match(words(ui), /30 m.*0 of 4.*Find ready.*awaiting confirmation/);
     assert.match(ui.root.findByProps({ testID: "today-trail-map" }).props.accessibilityLabel, /Find ready, awaiting confirmation/);
-    assert.ok(labels(ui).includes("Next find · 30 min"));
-    const first = ui.root.findAllByType("SvgG").find(group => group.findAllByType("SvgText").some(child => child.props.children === "Next find · 30 min"));
+    assert.ok(labels(ui).includes("Next find · 30 min total"));
+    const first = ui.root.findAllByType("SvgG").find(group => group.findAllByType("SvgText").some(child => child.props.children === "Next find · 30 min total"));
     assert.ok(first.findAllByType("SvgCircle").some(circle => circle.props.strokeDasharray === "3 3"), "an unclaimed stop stays a pending outline");
     assert.equal(first.findAllByType("SvgPath").length, 0, "no earned-find star appears before confirmation");
     assert.equal(ui.root.findAllByProps({ testID: "trail-complete" }).length, 0);
     await act(async () => ui.update(React.createElement(h.Trail, { ...base, seconds: 1800, finds: 1, pendingFinds: 0, nextFindSeconds: 1800 })));
     assert.match(words(ui), /30 m.*1 of 4.*30 min.*to next find/);
-    assert.ok(labels(ui).includes("Next find · 60 min"));
+    assert.ok(labels(ui).includes("Next find · 60 min total"));
     await act(async () => ui.update(React.createElement(h.Trail, { ...base, seconds: 7200, finds: 0, pendingFinds: 4, nextFindSeconds: 0 })));
     assert.match(words(ui), /0 of 4.*4 finds ready.*awaiting confirmation/);
   } finally { await act(async () => ui.unmount()); }
@@ -247,7 +247,7 @@ test("Round 68: the Home map has its full first frame without creating stationar
     assert.equal(h.worklets(), 0, "Home's static path and marker do not install animated styles, SVG props or reactions");
     assert.equal(h.pictures(), 1, "the complete portrait is present immediately, never delayed");
     assert.equal(ui.root.findAllByType("SvgLinearGradient").length, 4);
-    assert.ok(labels(ui).includes("MEADOW") && labels(ui).includes("STARFALL RIDGE") && labels(ui).some(label => label.startsWith("Trail's end") && label.endsWith("120 min")));
+    assert.ok(labels(ui).includes("MEADOW") && labels(ui).includes("STARFALL RIDGE") && labels(ui).some(label => label.startsWith("Trail's end") && label.endsWith("120 min total")));
     assert.equal(ui.root.findByProps({ testID: "today-trail-artwork" }).props.renderToHardwareTextureAndroid, true);
     const path = ui.root.findAllByType("SvgPath").find(node => node.props.strokeWidth === 5);
     assert.ok(Number.isFinite(path.props.strokeDashoffset));

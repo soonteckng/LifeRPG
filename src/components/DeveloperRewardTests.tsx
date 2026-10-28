@@ -25,7 +25,7 @@ import { colors } from "../constants/theme";
 
 type TestContent =
   | { kind: "achievement"; achievements: DailyAchievementDisplay }
-  | { kind: "walk" | "result"; closing?: boolean; variant?: "ended" | "offline" | "rejected" }
+  | { kind: "walk" | "result"; closing?: boolean; variant?: "ended" | "offline" | "rejected" | "sync" }
   | { kind: "reveal"; reveal: Reveal }
   | { kind: "moment"; gift: Gift };
 type TestScreen = { id: number; scope: string } & TestContent;
@@ -122,6 +122,8 @@ export default function DeveloperRewardTests() {
         onPress={() => show({ kind: reduced ? "result" : "walk" })} />
       <SettingsRow wrap testID="dev-ended-result" icon="stop-circle-outline" title="Session ended early" disabled={hasOpenSession} onPress={() => show({ kind: "result", variant: "ended" })} />
       <SettingsRow wrap testID="dev-offline-result" icon="cloud-offline-outline" title="Saved offline result" disabled={hasOpenSession} onPress={() => show({ kind: "result", variant: "offline" })} />
+      <SettingsRow wrap testID="dev-sync-summary" icon="cloud-done-outline" title="Offline sync summary" subtitle="Three 1-minute sessions, one summary and trail"
+        disabled={hasOpenSession || !rewards.state} onPress={() => show({ kind: "result", variant: "sync" })} />
       <SettingsRow wrap testID="dev-rejected-result" icon="information-circle-outline" title="Session could not be credited" disabled={hasOpenSession} onPress={() => show({ kind: "result", variant: "rejected" })} />
       <SettingsRow wrap testID="dev-trail-complete" icon="map-outline" title="Trail complete" subtitle="120 minutes, all four stops collected" disabled={hasOpenSession || !rewards.state}
         onPress={() => trail(rewards.trail.findSeconds * rewards.trail.stops, rewards.trail.findSeconds * rewards.trail.stops - 60)} />
@@ -160,14 +162,15 @@ export default function DeveloperRewardTests() {
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <SessionBackdrop phase="completed" progress={1} secondsLeft={0} walking={false} intro={false} skipToken={0} onIntroEnd={() => {}}
           returning={visible.kind === "walk"} onReturnEnd={() => { if (current.current === scope) setScreen(previous => previous?.scope === scope && previous.id === visible.id && previous.kind === "walk" ? { ...previous, kind: "result" } : previous); }} />
-        <SessionResultSheet preview visible={visible.kind === "result" && !visible.closing} sessionId={`dev-result:${visible.id}`}
-          xpEarned={1} minutesSpent={1} durationSeconds={60} questTitle="Test session" areaTitle="Everyday focus"
+        <SessionResultSheet preview visible={visible.kind === "result" && !visible.closing} sessionId={`dev-result:${visible.id}`} activityId={activityId}
+          xpEarned={visible.variant === "sync" ? 3 : 1} minutesSpent={visible.variant === "sync" ? 3 : 1} durationSeconds={visible.variant === "sync" ? 180 : 60} questTitle="Test session" areaTitle="Everyday focus"
+          syncSummary={visible.variant === "sync" ? { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: "Everyday focus", color: colors.accent, xp: 3 }] } : undefined}
           ending={visible.variant === "ended"} pending={visible.variant === "offline"} offline={visible.variant === "offline"}
           localSaved={visible.variant === "offline"} rejected={visible.variant === "rejected"}
           currentXP={profile.current_xp} requiredXP={requiredCharacterXP(profile.level)}
           onClose={() => setScreen(previous => previous?.kind === "result" ? { ...previous, closing: true } : previous)}
           onDismiss={() => { if (current.current === scope) setScreen(previous => previous?.scope === scope && previous.id === visible.id && previous.kind === "result" && previous.closing
-            ? visible.variant ? null : { ...trailContent(60, 0), id: previous.id, scope } : previous); }} />
+            ? visible.variant === "sync" ? { ...trailContent(180, 0), id: previous.id, scope } : visible.variant ? null : { ...trailContent(60, 0), id: previous.id, scope } : previous); }} />
       </View>
     </Modal>}
     {visible && (visible.kind === "reveal" || visible.kind === "moment") && <Modal visible transparent animationType={reduced ? "none" : "fade"} statusBarTranslucent onRequestClose={close}>

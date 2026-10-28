@@ -50,6 +50,7 @@ import SessionReveal from "./session/SessionReveal";
 import { sessionTrail } from "../services/sessionTrail";
 import { sessionReturn, sessionReturnKey, sessionRevealHost } from "../services/sessionReturn";
 import { sessionEntry } from "../services/sessionEntry";
+import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation";
 
 type Picker = "duration" | "area" | null;
 /** At most this long the night scene waits for a started session to show. */
@@ -74,6 +75,7 @@ export default function SessionScreen() {
   const ownerId = auth.user?.id ?? auth.localOwner?.id;
   const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
+  const offlineSync = useOfflineSyncPresentation(backendId && ownerId ? { backendId, ownerId } : null);
   const currentPresentationScope = useRef(presentationScope);
   useLayoutEffect(() => { currentPresentationScope.current = presentationScope; }, [presentationScope]);
   const presentable = liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded;
@@ -479,7 +481,11 @@ export default function SessionScreen() {
     () => rewardsStore.snapshot(rewardsOwner), () => rewardsStore.snapshot(rewardsOwner));
   // This session's return screen (finds, then today's trail). It shows here,
   // on the session screen, after the result card: never as a separate pop-up.
-  const sessionReveal = rewardsNow.reveals.find((r): r is Extract<typeof r, { kind: "expedition" }> => r.kind === "expedition");
+  const sessionReveal = rewardsNow.reveals.find((r): r is Extract<typeof r, { kind: "expedition" }> => {
+    if (r.kind !== "expedition" || offlineSync.busy || offlineSync.batch) return false;
+    const members = r.sessions?.map(session => session.sessionId) ?? (r.id.startsWith("return:") ? r.id.slice(7).split(",") : []);
+    return !members.length || !members.every(id => offlineSync.acknowledgedReceiptIds.includes(id));
+  });
   const rewardsPending = !!sessionReveal || rewardsNow.busy;
   const [holdForRewards, setHoldForRewards] = useState(false);
   const revealShown = holdForRewards && !!sessionReveal;

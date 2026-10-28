@@ -20,7 +20,16 @@ import ProgressRing from "./ProgressRing";
 import * as Haptics from "expo-haptics";
 import { dailyAchievementQueue } from "../services/dailyAchievementQueue";
 import type { DailyEffortEvidence } from "../services/dailyEffortCelebrationService";
+import { durationLabel } from "../utils/sessionSetup";
 
+export interface SessionSyncSummary {
+  sessionCount: number;
+  durations: { seconds: number; count: number }[];
+  areas: { title: string; color: string; xp: number }[];
+  pendingCount?: number;
+  /** Done was pressed; the existing trail is being prepared before the receipt fades. */
+  preparing?: boolean;
+}
 
 export interface SessionResultSheetProps {
   sessionId?: string | null;
@@ -60,6 +69,10 @@ export interface SessionResultSheetProps {
   rejected?: boolean;
   /** Supplied only by a verified online caller; never reads quests itself. */
   saveAction?: ReactNode;
+  /** Confirmed offline receipts combined for presentation, never inferred XP or daily totals. */
+  syncSummary?: SessionSyncSummary;
+  /** Lets a host exclude this sheet from its own overlap guard. */
+  activityId?: symbol;
 }
 
 export default function SessionResultSheet({ visible, xpEarned = 0,
@@ -67,7 +80,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
   questTitle, areaTitle, areaColor, isLevelUp = false, newLevel, currentXP, requiredXP, onClose, onDismiss,
   pending = false, syncError, syncBusy = false, onRetry,
   sessionId, completedAtMs, recovered = false, creditedDate, dailyCompletedSeconds, dailyGoalMinutes,
-  localSaved = false, offline = false, ending = false, rejected = false, saveAction, preview = false,
+  localSaved = false, offline = false, ending = false, rejected = false, saveAction, preview = false, syncSummary, activityId,
 }: SessionResultSheetProps) {
   const { hapticsEnabled, profile } = useUser();
   const celebration = useRef<DailyEffortEvidence | null>(null);
@@ -77,9 +90,9 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
   useLayoutEffect(() => { currentOwner.current = profile?.id; }, [profile?.id]);
   useLayoutEffect(() => { if (visible) { doneRequested.current = false; dismissedOnce.current = false; celebration.current = null; } }, [visible, sessionId]);
   const done = () => {
-    if (doneRequested.current) return;
+    if (doneRequested.current || syncSummary?.preparing) return;
     doneRequested.current = true;
-    celebration.current = visible && !preview && !pending && !ending && !rejected ? {visible:true, pending:false, recovered, sessionId,
+    celebration.current = visible && !preview && !syncSummary && !pending && !ending && !rejected ? {visible:true, pending:false, recovered, sessionId,
       ownerId:profile?.id, timeZone:profile?.timezone || DEFAULT_TIMEZONE, creditedDate, dailyCompletedSeconds,
       dailyGoalMinutes, goalReachedNow, durationSeconds:durationSeconds ?? minutesSpent * 60, creditVersion} : null;
     onClose();
@@ -156,19 +169,21 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
     </RadialGradient></Defs>
     <Rect width="100%" height="100%" fill="url(#sessionResultGlow)" />
   </Svg> : null, [glowTint]);
-  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed} backdropGlow={glow} closeMotion="fade" closeFadeDuration={400} dismissible={false}
-    label={ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
-    header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? confirming ? "Session complete" : "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
+  return <AppSheet visible={visible} onRequestClose={onClose} onDismiss={dismissed} backdropGlow={glow} closeMotion="fade" closeFadeDuration={400} dismissible={false} activityId={activityId}
+    label={syncSummary ? "synced sessions" : ending ? "session ended" : "session completion"} expanded heightRatio={resultHeight / windowHeight} maxHeightRatio={0.85} motionMode="timed"
+    header={<View onLayout={event => measure("header", event.nativeEvent.layout.height)} testID="session-result-header"><Text style={s.title} accessibilityRole="header">{syncSummary ? "Sessions synced" : ending ? "Session ended" : rejected ? "Session kept on this phone" : pending ? confirming ? "Session complete" : "Session finished" : recovered ? "Earlier session saved" : isLevelUp ? "Level up!" : "Session complete"}</Text></View>}
     footer={<View onLayout={event => measure("actions", event.nativeEvent.layout.height)} style={s.actions} testID="session-result-actions">
-      {!pending && !ending && !rejected && saveAction}
-      <TouchableOpacity testID="session-result-done" accessibilityRole="button" accessibilityLabel="Done" style={s.done} onPress={done}><Text style={s.doneText}>Done</Text></TouchableOpacity>
+      {!syncSummary && !pending && !ending && !rejected && saveAction}
+      <TouchableOpacity testID="session-result-done" accessibilityRole="button" accessibilityLabel={syncSummary?.preparing ? "Opening your trail" : "Done"}
+        {...(syncSummary?.preparing ? { disabled: true, accessibilityState: { busy: true, disabled: true } } : {})}
+        style={s.done} onPress={done}><Text style={s.doneText}>{syncSummary?.preparing ? "Opening…" : "Done"}</Text></TouchableOpacity>
     </View>}>
     <BottomSheetScrollView ref={scroll} onLayout={resetScroll} style={s.scroll} enableFooterMarginAdjustment showsVerticalScrollIndicator={false}>
       {/* Measure the natural body separately: the scroll container includes
           native footer padding, which must never be counted a second time. */}
       <View style={s.body} testID="session-result-body" onLayout={event => measure("body", event.nativeEvent.layout.height)}>
-      {recovered && !pending && !ending && !rejected && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
-      {!!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
+      {!syncSummary && recovered && !pending && !ending && !rejected && <Text style={s.pendingText}>This is the session recovered from your phone. Its progress is now saved to your account.</Text>}
+      {!syncSummary && !!finishedLabel && <Text style={s.finished}>Finished {finishedLabel}</Text>}
       {ending ? <View style={s.pending}>
         <View style={s.endedIcon}><Ionicons name="stop-circle-outline" size={28} color={colors.accent} /></View>
         {!!questTitle && <Text style={s.sessionTitle}>{questTitle}</Text>}
@@ -185,8 +200,23 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
         <View style={[s.levelBadge, { backgroundColor: tierColor(level) }]}><Ionicons name="sparkles" size={13} color="#131826" /><Text style={s.levelBadgeText}>Level {level}</Text></View>
         <Text style={s.levelLine}>You reached Level {level}</Text>
       </View>}
-      <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={questTitle} levelUp={isLevelUp} compact />
-      {confirming ? <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} compact loading />
+      <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={syncSummary ? `${syncSummary.sessionCount} ${syncSummary.sessionCount === 1 ? "session" : "sessions"} completed offline` : questTitle} levelUp={isLevelUp} compact />
+      {syncSummary ? <>
+        <View style={s.syncDurations} testID="session-sync-durations">
+          {syncSummary.durations.map(group => <Text key={group.seconds} style={s.pendingText} accessible
+            accessibilityLabel={`${group.count} ${group.count === 1 ? "session" : "sessions"} of ${durationLabel(group.seconds)} each`}>{`${group.count} × ${durationLabel(group.seconds)}`}</Text>)}
+        </View>
+        <View style={s.syncRows} testID="session-sync-xp">
+          <View style={s.syncRow} accessible accessibilityLabel={`Character XP, ${xpEarned}`}>
+            <Text style={s.syncLabel}>Character XP</Text><Text style={s.syncXP}>{`+${xpEarned}`}</Text>
+          </View>
+          {syncSummary.areas.map((item, index) => <View key={`${item.title}:${index}`} style={s.syncRow} accessible accessibilityLabel={`${item.title}, ${item.xp} XP`}>
+            <Text style={[s.syncLabel, { color: item.color }]}>{item.title}</Text><Text style={[s.syncValue, { color: item.color }]}>{`+${item.xp} XP`}</Text>
+          </View>)}
+        </View>
+        <Text style={s.pendingText}>Your progress is saved to your account.</Text>
+        {!!syncSummary.pendingCount && <Text style={s.pendingText} accessibilityLiveRegion="polite">{syncSummary.pendingCount === 1 ? "1 more session is saved on this phone, waiting to sync." : `${syncSummary.pendingCount} more sessions are saved on this phone, waiting to sync.`}</Text>}
+      </> : confirming ? <CompletionRows summary={{durationSeconds:durationSeconds ?? minutesSpent * 60, xpEarned, creditVersion, areaXpEarned, goalReachedNow}} areaTitle={areaTitle} areaColor={areaColor} level={level} compact loading />
       : rejected ? <View style={s.pending}><Text style={s.pendingText} accessibilityLiveRegion="polite">Your session record stays on this phone. Your account did not accept this result, so it has not earned progress or completed a quest.</Text></View> : pending ? <View style={s.pending}>
         <Text style={s.pendingText} accessibilityLiveRegion="polite">{localSaved ? offline ? "Saved on this phone. Your progress will sync when you’re online." : "Saved on this phone. We’re confirming your progress." : syncError ? "Your finished session is saved on this phone. Reconnect to confirm your progress." : "Saving your progress…"}</Text>
         {(localSaved || !!syncError) && onRetry && <TouchableOpacity accessibilityRole="button" disabled={syncBusy} onPress={onRetry} style={s.retry}><Text style={s.retryText}>Retry connection</Text></TouchableOpacity>}
@@ -207,6 +237,12 @@ const s = StyleSheet.create({
   pending: {gap:12, paddingVertical:12},
   pendingText: {color:colors.secondary, fontSize: 16, lineHeight: 22, textAlign:"center"},
   sessionTitle: {color:colors.text, fontSize: 17, lineHeight: 22, textAlign:"center"},
+  syncDurations: {gap:4},
+  syncRows: {paddingHorizontal:16, paddingVertical:6, borderRadius:20, backgroundColor:colors.sheetCard},
+  syncRow: {minHeight:40, paddingVertical:8, flexDirection:"row", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:8},
+  syncLabel: {color:colors.secondary, fontSize:14, lineHeight:20, flexShrink:1},
+  syncValue: {color:colors.text, fontSize:16, lineHeight:22, fontWeight:"500"},
+  syncXP: {color:colors.level, fontSize:16, lineHeight:22, fontWeight:"700"},
   endedIcon: {width:48, height:48, borderRadius:16, backgroundColor:colors.accentSoft, alignItems:"center", justifyContent:"center", alignSelf:"center"},
   retry: {minHeight:48, justifyContent:"center", alignItems:"center"},
   retryText: {color:colors.accent, fontSize:17},
