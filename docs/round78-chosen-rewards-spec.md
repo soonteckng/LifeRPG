@@ -1,11 +1,13 @@
 # Round 78: chosen rewards specification
 
 Status: product direction approved with the user's six amendments on 28 Oct
-2026. This is a specification, not an implemented feature or SQL approval.
+2026. On 29 Oct the user approved installation time as the rollout instant,
+launch-day packs and credits from the next local day, with a frozen cutoff.
+Round 80 provides a tested review-only SQL proposal; it is not installed and
+the chosen-reward client is not implemented. See `round80-celebrations-and-reward-proposal.md`.
 Round 78 is now the offline-entry and End-replay bugfix round. This spec keeps
 its historical filename, but chosen rewards follow in a separate later round.
-Do not write or install chosen-reward SQL until this specification's remaining
-cutoff details are settled. The finished SQL needs separate review before any
+The cutoff decision is settled. The finished SQL needs separate review before any
 live installation. Do not send anything to Claude now; the user will decide
 when to request that review.
 
@@ -34,7 +36,7 @@ placement editor, soundscape system or purchasable theme is part of this round.
 
 ## 1. Transition from packs
 
-- Use one recorded server rollout instant, not installation, device update or
+- Use one recorded server rollout instant, not phone installation, device update or
   first-open time. Derive local launch dates through the existing server
   account-timezone rules. The next local calendar date is the first eligible
   credit date; launch day itself awards no chosen-reward credit.
@@ -48,8 +50,8 @@ placement editor, soundscape system or purchasable theme is part of this round.
 - An un-updated app must follow the same server cutoff. Installing an update
   late must not restart the launch-day allowance or backfill earlier dates.
 
-Before SQL, settle the exact rollout timestamp and persist/freeze each owner's
-local eligibility boundary at transition. Audit the existing timezone-change
+The agreed rollout timestamp is the approved installation transaction's `now()`;
+persist/freeze each owner's local eligibility boundary at transition. Audit the existing timezone-change
 rules and document the resulting policy. A timezone edit must not move an
 already-established boundary or reinterpret previously credited dates. Accounts
 created after rollout must not receive a fresh pack/credit overlap window.

@@ -25,8 +25,8 @@ import { colors } from "../constants/theme";
 
 type TestContent =
   | { kind: "achievement"; achievements: DailyAchievementDisplay }
-  | { kind: "walk" | "result"; closing?: boolean; variant?: "ended" | "offline" | "rejected" | "sync" }
-  | { kind: "reveal"; reveal: Reveal }
+  | { kind: "walk" | "result"; closing?: boolean; variant?: "ended" | "offline" | "rejected" | "sync"; afterTrail?: DailyAchievementDisplay }
+  | { kind: "reveal"; reveal: Reveal; afterTrail?: DailyAchievementDisplay }
   | { kind: "moment"; gift: Gift };
 type TestScreen = { id: number; scope: string } & TestContent;
 /** Same shipped screens and backend rules, without inventing focus time or consuming real rewards. */
@@ -61,6 +61,10 @@ export default function DeveloperRewardTests() {
   const note = (text: string) => setFeedback(previous => previous.scope === scope ? { scope, text } : previous);
   const show = (next: TestContent) => setScreen({ ...next, id: ++sequence.current, scope });
   const close = () => setScreen(null);
+  const closeReturn = () => {
+    if (visible?.kind === "reveal" && visible.afterTrail) show({ kind: "achievement", achievements: visible.afterTrail });
+    else close();
+  };
   const blocked = hasOpenSession || rewards.busy || !rewards.online || !rewards.state;
   const player = { look: rewards.look, equipped: rewards.equipped, level: profile.level, background: rewards.background,
     frame: rewards.frame, today: rewards.today, nextFindSeconds: rewards.nextFindSeconds, trail: rewards.trail };
@@ -124,6 +128,8 @@ export default function DeveloperRewardTests() {
       <SettingsRow wrap testID="dev-offline-result" icon="cloud-offline-outline" title="Saved offline result" disabled={hasOpenSession} onPress={() => show({ kind: "result", variant: "offline" })} />
       <SettingsRow wrap testID="dev-sync-summary" icon="cloud-done-outline" title="Offline sync summary" subtitle="Three 1-minute sessions, one summary and trail"
         disabled={hasOpenSession || !rewards.state} onPress={() => show({ kind: "result", variant: "sync" })} />
+      <SettingsRow wrap testID="dev-sync-achievements" icon="checkmark-done-outline" title="Offline sync and celebrations" subtitle="Summary, trail, then first-session and goal messages"
+        disabled={hasOpenSession || !rewards.state} onPress={() => show({ kind: "result", variant: "sync", afterTrail: { firstSession: true, dailyGoal: true } })} />
       <SettingsRow wrap testID="dev-rejected-result" icon="information-circle-outline" title="Session could not be credited" disabled={hasOpenSession} onPress={() => show({ kind: "result", variant: "rejected" })} />
       <SettingsRow wrap testID="dev-trail-complete" icon="map-outline" title="Trail complete" subtitle="120 minutes, all four stops collected" disabled={hasOpenSession || !rewards.state}
         onPress={() => trail(rewards.trail.findSeconds * rewards.trail.stops, rewards.trail.findSeconds * rewards.trail.stops - 60)} />
@@ -170,15 +176,15 @@ export default function DeveloperRewardTests() {
           currentXP={profile.current_xp} requiredXP={requiredCharacterXP(profile.level)}
           onClose={() => setScreen(previous => previous?.kind === "result" ? { ...previous, closing: true } : previous)}
           onDismiss={() => { if (current.current === scope) setScreen(previous => previous?.scope === scope && previous.id === visible.id && previous.kind === "result" && previous.closing
-            ? visible.variant === "sync" ? { ...trailContent(180, 0), id: previous.id, scope } : visible.variant ? null : { ...trailContent(60, 0), id: previous.id, scope } : previous); }} />
+            ? visible.variant === "sync" ? { ...trailContent(180, 0), afterTrail: visible.afterTrail, id: previous.id, scope } : visible.variant ? null : { ...trailContent(60, 0), id: previous.id, scope } : previous); }} />
       </View>
     </Modal>}
-    {visible && (visible.kind === "reveal" || visible.kind === "moment") && <Modal visible transparent animationType={reduced ? "none" : "fade"} statusBarTranslucent onRequestClose={close}>
+    {visible && (visible.kind === "reveal" || visible.kind === "moment") && <Modal visible transparent animationType={reduced ? "none" : "fade"} statusBarTranslucent onRequestClose={closeReturn}>
       {visible.kind === "moment" ? <ScrollView contentContainerStyle={{ flexGrow: 1 }}><Moment item={rewardItem(visible.gift.item)!} left={1}
         level={profile.level} look={rewards.look} equipped={rewards.equipped} background={rewards.background} streak={profile.streak_count ?? 0}
         onClose={close} onOutfits={() => outfits(visible.gift.item)} /></ScrollView>
         : visible.reveal.kind === "pack" ? <PackReveal key={visible.id} reveal={visible.reveal} player={player} onClose={close} onOutfits={item => outfits(item ?? undefined)} />
-          : <ExpeditionReveal key={visible.id} reveal={visible.reveal} player={player} onClose={close} onOutfits={item => outfits(item ?? undefined)} />}
+          : <ExpeditionReveal key={visible.id} reveal={visible.reveal} player={player} onClose={closeReturn} onOutfits={item => outfits(item ?? undefined)} />}
     </Modal>}
     {/* A visible label makes it clear why the same real screens show test data. */}
     {rewards.lab.active && <Text accessibilityLiveRegion="polite" testID="dev-lab-active" style={{ color: colors.secondary, fontSize: 13 }}>Test inventory active in Outfits. Home, sessions and statistics still use your real account.</Text>}

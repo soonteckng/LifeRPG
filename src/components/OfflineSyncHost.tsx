@@ -9,7 +9,9 @@ import { useTimer } from "../context/TimerContext";
 import { useQuests } from "../context/QuestContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
 import { offlineSyncPresentation, type OfflineSyncBatch } from "../services/offlineSyncPresentation";
-import { offlineSyncReturn, summarizeOfflineSync } from "../utils/offlineSyncSummary";
+import { offlineSyncCelebration, offlineSyncReturn, summarizeOfflineSync } from "../utils/offlineSyncSummary";
+import { dailyAchievementQueue } from "../services/dailyAchievementQueue";
+import { DEFAULT_TIMEZONE } from "../utils/progressAnalytics";
 import { registerSheetActivity, useActiveSheetCount } from "../utils/sheetActivity";
 import type { JournalScope } from "../types/sessionJournal";
 
@@ -97,11 +99,13 @@ export default function OfflineSyncHost({ scope, batch, active }: { scope: Journ
       // Only the exact outgoing return is seen. Late finds retain their card,
       // but the acknowledged receipt IDs prevent another map for them.
       for (const id of prepared.consumedIds) rewardsStore.dismissReveal(scope.ownerId, id);
+      const evidence = offlineSyncCelebration(frozen, scope.ownerId, profile?.timezone || DEFAULT_TIMEZONE);
+      if (evidence) dailyAchievementQueue.enqueue(evidence);
       offlineSyncPresentation.acknowledge(scope, frozen.id, frozen.entries.map(entry => entry.clientSessionId));
     };
     if (reduced) { opacity.setValue(0); finish({ finished: true }); }
     else Animated.timing(opacity, { toValue: 0, duration: 480, useNativeDriver: true }).start(finish);
-  }, [frozen, prepared, scope, reduced, opacity]);
+  }, [frozen, prepared, scope, reduced, opacity, profile?.timezone]);
   if (!surfaceActive && phase === "leaving") setPhase("map");
   useEffect(() => {
     if (surfaceActive) return;

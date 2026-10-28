@@ -204,6 +204,15 @@ test('developer sync preview opens the actual summary and one three-minute trail
     assert.equal(reveal.seconds, 180); assert.equal(reveal.trail.seconds, 180); assert.equal(reveal.trail.fromSeconds, 0);
     assert.equal(profile.current_xp, 11); assert.equal(real.today.seconds, 0); assert.equal(real.stardust, 7);
     assert.deepEqual(celebrations, []); assert.deepEqual(routes, []);
+    await act(async () => tree.root.findByType('Expedition').props.onClose());
+    const celebrate=button('dev-sync-achievements');assert.ok(celebrate);assert.equal(celebrate.props.accessibilityRole,'button');
+    await act(async()=>celebrate.props.onPress());
+    await act(async()=>button('session-result-done').props.onPress());
+    const combined=tree.root.findAllByType('Sheet').find(node=>node.props.label==='synced sessions');
+    await act(async()=>combined.props.onDismiss());
+    await act(async()=>tree.root.findByType('Expedition').props.onClose());
+    assert.deepEqual(tree.root.findByType('Achievement').props.achievements,{firstSession:true,dailyGoal:true});
+    assert.deepEqual(celebrations,[],'preview uses the real celebration component without consuming real day ledgers');
     await act(async () => { running = true; tree.update(React.createElement(Component)); });
     assert.equal(tree.root.findAllByType('Expedition').length, 0); assert.equal(button('dev-sync-summary').props.disabled, true);
   } finally { await act(async () => tree.unmount()); }

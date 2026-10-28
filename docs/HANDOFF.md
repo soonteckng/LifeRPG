@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 79, phone checks in section 7)
+# LifeRPG handoff (after Round 80, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -8,19 +8,19 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 
 ---
 
-## 1. Where things stand (checked 28 Oct 2026)
+## 1. Where things stand (checked 29 Oct 2026)
 
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 79 on pushed R78 at `d412bb56f1f8b76458e18df60d896ddf2d549fa1`. Offline receipts and their return are grouped into one summary and one map. JS only; Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 80 on pushed R79 at `11ee00e`. Restores confirmed synced first-session/goal celebrations. Chosen-reward SQL is review only; no chosen UI or activation. Soon Teck applies, pushes and publishes the JS fix. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 79 verification is recorded in `docs/round79-offline-sync.md` and the delivery verification file: full app/PGlite tests, typecheck, app lint, patch proof and native fingerprint. |
+| Code health | Round 80 evidence is in `docs/round80-celebrations-and-reward-proposal.md` and delivery verification: full app/PGlite tests, typecheck, app lint, patch proof and native fingerprint. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Round 75 provided the developer reward-lab RPC proposal; it was absent at the R75 check. Installation was not rechecked in R76 (user now reports testing those controls). R76 has no SQL. The old Round 64 file must never be run. |
-| Waiting on the phone | R78: three offline one-minute sessions produced three confirmed cards and two maps. R79 batches accepted receipts for one count/time/XP summary and one retained map; ordinary offline pending cards remain. Check 3 offline sessions, reconnect, one summary, Done, one three-minute map, Continue. Earlier-day time never advances today. Native frame pacing remains unverified. |
+| SQL | Round 66 is live. Read-only function metadata on 29 Oct confirms Round 75's developer lab matches the branch. R80 chosen-reward SQL is **NOT installed** and must not be run until review and the new client are ready. The old R64 file must never run. |
+| Waiting on the phone | User reports R79 offline sessions succeed, but first-session encouragement was missing. R80 fixes that and the same omission for daily goals, using separate confirmed receipts after the one map. Check first-only, goal-only and combined messages; a no-wait Developer sequence is available. Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -240,11 +240,23 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify Round 79 grouped offline sync.**
+**First: verify Round 80 synced celebrations.**
+Use `docs/round80-celebrations-and-reward-proposal.md`. Confirmed first-session
+and daily-goal receipts survive batching and use the existing independent
+once-per-day ledgers. The celebration follows the single map, never an
+unconfirmed local save. Developer > Offline sync and celebrations previews the
+same screens without consuming real days. R79 grouping is reported successful;
+keep its regression coverage.
 Use `docs/round79-offline-sync.md`. Three offline minutes should produce one synced summary and one map. Keep the prior R78 checks below as regression coverage.
 Use `docs/round78-session-parity.md`: online/offline manual End -> Done -> app, wait and open another routine; offline saved-routine setup -> shared dusk/night -> full minute; pending offline completion -> Done -> reconnect -> one confirmed receipt/map. Actual-sheet/provider regressions reproduce a specific late-confirmed End/new-start replay, not the precise phone timing with no later action. Keep that distinction and request the existing Share session log if it recurs. R77 lighting, R76 finds/map crossfade and developer test inventory remain intact.
 
-**Chosen rewards are approved product direction, not implemented or installed.** `docs/round78-chosen-rewards-spec.md` incorporates all six user amendments and keeps its historical filename. R78 is now the session-parity bugfix round; chosen rewards follow separately. No SQL yet. Preserve the spec for later review; **do not send anything to Claude now**, per the user because his quota is nearly exhausted. Rest days and camp decorations follow confirmed session behavior. Native notifications still wait until November 2026.
+**Chosen rewards are approved direction, not enabled.** The user agreed on 29 Oct
+to installation time, that day's pack and credits from the next local day.
+`20261028185232_round80_chosen_rewards.sql` is a tested **review-only proposal**.
+Do not run it with R80: review first, build/publish the capability-gated chosen
+client next, then ask for separate SQL installation approval. R80 changes no
+live rewards. Keep the historical spec and **do not send anything to Claude**.
+Rest days/camp placement remain later; native notifications wait until November.
 
 **Round 74 transition checks remain relevant:**
 The user reports the completion card itself is smooth. It now closes only
@@ -427,7 +439,7 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 - Level shows on the profile picture; Stardust shows on Home and opens Outfits (it grows from the chip, like Settings and Profile).
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
-- **Approved next, after the R78 bugfix:** five banked non-consecutive goal-days for a chosen existing cosmetic, replacing new daily supply packs from the day after rollout. Launch-day pack only, no backlog; permanent unique owner/local-date credit rows, grants spend five; wallet-first locking; four persistent ordered offers; old-client pack payload remains compatible with additive chosen fields; five pack-only backgrounds intentionally stay chosen/shop-only. Ordinary dev pack bypass never earns real credits, and isolated test credits/inventory exercise the real rules. Exact rollout timestamp/frozen timezone boundary precede SQL review. See the full spec; no SQL written/installed and no Claude message yet. Rest days and decorations are later.
+- **Approved next:** five banked non-consecutive goal-days for a chosen cosmetic. The R80 review-only proposal records installation time and a frozen next-local-day boundary, preserves the launch-day pack, durable credits, wallet-first grants, four stored offers and old-client payloads. No SQL is installed, no chosen client is built and no Claude message sent. See the R80 review note and historical spec. Rest days and decorations are later.
 
 ---
 
@@ -456,6 +468,8 @@ when something new needs native code.
 ---
 
 ## 11. Round log (recent)
+
+- **R80 (Codex):** reproduced missing first/goal celebrations for grouped offline receipts; retain independent confirmed evidence and release it after the single map, with the same durable ledgers and combined message. A no-wait Developer sequence reuses shipped screens. Read-only live reward metadata matches six branch bodies; R75 lab presence confirmed. CLI-created chosen-reward SQL proposal has isolated tests, but is not installed and must wait for review/new client. No live mutation, Auth/email, native/config/dependency change, push, build or publication. Native notifications remain deferred to November. See `docs/round80-celebrations-and-reward-proposal.md`.
 
 - **R79 (Codex):** grouped offline confirmation receipts in a separate backend/owner-scoped presentation cache without changing the journal/schema. One authoritative count/time/XP card, one coordinated rewards catch-up and frozen return; late finds skip an already-seen map. Existing import retry/credit rules and online receipts remain. Map milestones explicitly say total. Developer preview reuses the actual summary and trail. No SQL/Auth/email/native/config/dependency changes, builds, pushes or publication. Native work remains deferred to November. See `docs/round79-offline-sync.md`.
 

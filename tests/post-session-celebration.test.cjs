@@ -110,6 +110,21 @@ test('global host waits for SessionScreen exit, then excludes its own native mod
   } finally {await ui.cleanup();}
 });
 
+test('synced first-session and later goal receipts share one real celebration and both ledgers',async()=>{
+  const ui=await setup({insideSession:true});
+  try {
+    const first=evidence({dailyGoalMinutes:2}),goal=evidence({sessionId:'goal-session',dailyGoalMinutes:2,dailyCompletedSeconds:120});
+    await ui.enqueue({...first,confirmedReceipts:[first,goal]});
+    assert.equal(ui.moment().props.visible,false);assert.equal(ui.saved.writes.length,0);
+    await ui.update({insideSession:false});
+    assert.equal(ui.moment().props.visible,true);assert.equal(ui.flags().firstSession,true);assert.equal(ui.flags().dailyGoal,true);
+    assert.equal(ui.saved.writes.length,2,'each independently verified achievement is claimed once');
+    await ui.continue();assert.equal(ui.queue.snapshot(),null);
+    await ui.enqueue({...first,confirmedReceipts:[first,goal]});assert.equal(ui.moment().props.visible,false);
+    assert.equal(ui.saved.writes.length,2,'reconnecting or re-opening cannot replay either achievement');
+  }finally{await ui.cleanup();}
+});
+
 test('a pending ledger claim reserves the moment without mounting or animating its hidden hero',async()=>{
   const waiting=deferred(), saved=storage();saved.getItem=async key=>{saved.reads.push(key);return waiting.promise;};
   const ui=await setup({saved});

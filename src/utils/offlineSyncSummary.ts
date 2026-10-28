@@ -5,6 +5,7 @@ import type { Subject } from "../services/taskService";
 import { FOCUS_AREAS, FOCUS_AREA_PRESENTATION_ORDER, focusAreaKind, focusAreaTitle } from "./focusAreas";
 import { lifeAreaColor } from "./lifeAreaColor";
 import { isJournalUuid } from "./sessionJournalSchema";
+import { dailyGoalEvidence, firstDailyEffortEvidence, type DailyEffortEvidence } from "../services/dailyEffortCelebrationService";
 
 type Entry = OfflineSyncBatch["entries"][number];
 type Expedition = Extract<Reveal, { kind: "expedition" }> & { sessions?: SessionClaim["sessions"] };
@@ -21,6 +22,19 @@ function entriesOf(batch: OfflineSyncBatch): Entry[] {
     if (clients.has(entry.clientSessionId) || receipts.has(entry.receipt.sessionId)) return false;
     clients.add(entry.clientSessionId); receipts.add(entry.receipt.sessionId); return true;
   });
+}
+
+/** Preserve the actual first credit and goal crossing, even in different sessions. */
+export function offlineSyncCelebration(batch: OfflineSyncBatch, ownerId: string, timeZone: string, nowMs = Date.now()): DailyEffortEvidence | null {
+  const receipts = entriesOf(batch).map(({ receipt }): DailyEffortEvidence => {
+    const r = receipt.result;
+    const optionalCount = (value: unknown) => isCount(value) ? value : undefined;
+    return { visible: true, pending: false, recovered: true, sessionId: receipt.sessionId, ownerId, timeZone,
+      creditedDate: date(r.credited_date), creditVersion: optionalCount(r.credit_version), durationSeconds: receipt.durationSeconds,
+      dailyCompletedSeconds: optionalCount(r.daily_completed_seconds), dailyGoalMinutes: optionalCount(r.daily_goal_minutes), goalReachedNow: r.goal_reached_now === true };
+  });
+  const first = receipts.find(receipt => firstDailyEffortEvidence(receipt, nowMs) || dailyGoalEvidence(receipt, nowMs));
+  return first ? { ...first, confirmedReceipts: receipts.filter(receipt => receipt.creditedDate === first.creditedDate) } : null;
 }
 
 export function summarizeOfflineSync(batch: OfflineSyncBatch, subjects: readonly Pick<Subject, "id" | "title" | "color_code">[]) {

@@ -16,6 +16,8 @@ export interface DailyEffortEvidence {
   durationSeconds?: number;
   dailyGoalMinutes?: number;
   goalReachedNow?: boolean;
+  /** Separate confirmed receipts in one catch-up, never a synthetic daily total. */
+  confirmedReceipts?: readonly Omit<DailyEffortEvidence, "confirmedReceipts">[];
 }
 
 export type DailyAchievement = "first-session" | "daily-goal";
@@ -25,15 +27,27 @@ export interface DailyAchievementDisplay {
 }
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
 
-/** Only a confirmed receipt for the account's current local day can celebrate. */
-function currentDailyReceipt(value: DailyEffortEvidence, nowMs: number): boolean {
+function confirmedDailyReceipt(value: DailyEffortEvidence): boolean {
   if (!value.visible || value.pending || !value.ownerId || !value.sessionId || value.creditVersion !== 1) return false;
   if (!value.creditedDate || !datePattern.test(value.creditedDate) || !value.timeZone) return false;
   if (!Number.isSafeInteger(value.durationSeconds) || (value.durationSeconds ?? 0) <= 0
     || !Number.isSafeInteger(value.dailyCompletedSeconds) || (value.dailyCompletedSeconds ?? 0) < (value.durationSeconds ?? 0)) return false;
+  return true;
+}
+
+/** Only a confirmed receipt for the account's current local day can celebrate. */
+function currentDailyReceipt(value: DailyEffortEvidence, nowMs: number): boolean {
+  if (!confirmedDailyReceipt(value) || !value.timeZone) return false;
   try {
-    const parts = new Intl.DateTimeFormat("en-GB", {timeZone:value.timeZone, year:"numeric", month:"2-digit", day:"2-digit"}).formatToParts(new Date(nowMs));
+    let formatter = dayFormatters.get(value.timeZone);
+    if (!formatter) {
+      formatter = new Intl.DateTimeFormat("en-GB", {timeZone:value.timeZone, year:"numeric", month:"2-digit", day:"2-digit"});
+      if (dayFormatters.size >= 16) dayFormatters.delete(dayFormatters.keys().next().value!);
+      dayFormatters.set(value.timeZone, formatter);
+    }
+    const parts = formatter.formatToParts(new Date(nowMs));
     const part = (type: string) => parts.find(item => item.type === type)?.value;
     return `${part("year")}-${part("month")}-${part("day")}` === value.creditedDate;
   } catch { return false; }
@@ -41,18 +55,25 @@ function currentDailyReceipt(value: DailyEffortEvidence, nowMs: number): boolean
 
 /** The receipt's exact daily snapshot proves this was the day's first credit. */
 export function firstDailyEffortEvidence(value: DailyEffortEvidence, nowMs = Date.now()): boolean {
-  return currentDailyReceipt(value, nowMs) && value.dailyCompletedSeconds === value.durationSeconds;
+  return dailyReceipts(value, nowMs).some(receipt => receipt.dailyCompletedSeconds === receipt.durationSeconds);
+}
+
+function dailyReceipts(value: DailyEffortEvidence, nowMs: number): DailyEffortEvidence[] {
+  if (!currentDailyReceipt(value, nowMs)) return [];
+  return [value, ...(value.confirmedReceipts ?? []).filter(receipt => receipt.ownerId === value.ownerId
+    && receipt.creditedDate === value.creditedDate && receipt.timeZone === value.timeZone && confirmedDailyReceipt(receipt))];
 }
 
 /** Stored receipt totals, unlike the live profile, preserve the actual crossing. */
 export function dailyGoalEvidence(value: DailyEffortEvidence, nowMs = Date.now()): boolean {
-  if (!currentDailyReceipt(value, nowMs)) return false;
-  if (Number.isSafeInteger(value.dailyGoalMinutes) && (value.dailyGoalMinutes ?? 0) > 0 && (value.dailyGoalMinutes ?? 0) <= 480) {
-    const target = (value.dailyGoalMinutes ?? 0) * 60;
-    const after = value.dailyCompletedSeconds ?? 0;
-    return after >= target && after - (value.durationSeconds ?? 0) < target;
-  }
-  return value.goalReachedNow === true;
+  return dailyReceipts(value, nowMs).some(receipt => {
+    if (Number.isSafeInteger(receipt.dailyGoalMinutes) && (receipt.dailyGoalMinutes ?? 0) > 0 && (receipt.dailyGoalMinutes ?? 0) <= 480) {
+      const target = (receipt.dailyGoalMinutes ?? 0) * 60;
+      const after = receipt.dailyCompletedSeconds ?? 0;
+      return after >= target && after - (receipt.durationSeconds ?? 0) < target;
+    }
+    return receipt.goalReachedNow === true;
+  });
 }
 
 // Both completion surfaces share the same process queue. Storage remains the
