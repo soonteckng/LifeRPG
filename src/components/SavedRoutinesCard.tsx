@@ -114,13 +114,6 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       if (!validSessionSeconds(latest.durationSeconds)) { setMessage("Choose at least 1 minute for this routine. Edit it before starting."); return; }
       if (latest.focusAreaId !== null && !latestLegacy.current.subjects.some(item => item.id === latest.focusAreaId)) { setMessage("Choose an available category in Edit routine before starting."); return; }
       setupMode.choose("routine");
-      if (!routines.online) {
-        // Offline, the session runs here in the workspace; there's no setup screen to open.
-        const started = await timer.startFreeTimer(latest.durationSeconds, latest.focusAreaId, latest.name);
-        if (currentSurface.current === surfaceKey && !started) setMessage(timer.actionError ?? "Couldn't start this routine. Your saved settings are still here.");
-        if (currentSurface.current === surfaceKey && started) setMenu(null);
-        return;
-      }
       const notes = encodeRoutineSession(latest.name);
       if (notes === null) return;
       // Every start goes through the same setup screen, filled in with this routine.
@@ -202,9 +195,6 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   // Play opens the session setup with this routine filled in; Start is pressed there.
   const ask = (entry: RoutineEntry) => {
     if (blocked) return; setMessage("");
-    // Without the cloud (offline, or still connecting just after launch) there
-    // is no setup screen, so ▶ asks first instead of starting straight away.
-    if (entry.kind === "saved" && !routines.online && !manage && !menu) { feedback(); setConfirm(entry); return; }
     if (entry.kind === "saved") void start(entry.routine); else void startLegacy(entry.task);
   };
   const areaOf = (id: number | null | undefined) => subjects.find(area => area.id === id);

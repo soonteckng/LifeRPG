@@ -354,7 +354,8 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
   const locked = () => startInFlight.current || open || runtime.ending || runtime.busy || runtime.restoring || runtime.restoreError
     || (isCompleted && !record?.sync.receipt);
   const prepareDraft = () => {
-    if (record?.state === "completed" && record.sync.receipt) {
+    if (record?.state === "completed" && record.sync.receipt
+      || record?.state === "cancelled" && summaryId !== null && viewedSummaryId === summaryId) {
       setHiddenSavedId(record.clientSessionId); controllerRef.current?.dismissSummary();
     }
   };
@@ -374,7 +375,10 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const controller = controllerRef.current;
     const next = explicit ? { seconds, activityType: "other", taskId: null, subjectId: explicit.subjectId,
       notes: explicit.suggestion ? encodeSuggestedFocus(explicit.suggestion) : explicit.routineNotes ?? "" } : { ...draft, seconds };
-    setDraft(next); setHiddenSavedId(record?.state === "completed" ? record.clientSessionId : null); setViewedSummaryId(null);
+    // Done belongs to its exact client record and pending/confirmed receipt.
+    // Keep it through preflight, including a failed or delayed next Start.
+    // The next record has a new UUID, so it cannot inherit this acknowledgement.
+    setDraft(next); setHiddenSavedId(record?.state === "completed" ? record.clientSessionId : null);
     const startSetup: JournalSetup = { targetSeconds: seconds, activityType: next.activityType,
       taskId: next.taskId, subjectId: next.subjectId, notes: next.notes, title: title ?? readSuggestedFocus(next.notes)?.title ?? null };
     // A Study start counts toward the picked subject when its area matches;

@@ -2,8 +2,9 @@
 
 Status: product direction approved with the user's six amendments on 28 Oct
 2026. This is a specification, not an implemented feature or SQL approval.
-Round 77 ships the session blink and repeated ended-card fixes independently.
-Do not write or install the Round 78 SQL until this specification's remaining
+Round 78 is now the offline-entry and End-replay bugfix round. This spec keeps
+its historical filename, but chosen rewards follow in a separate later round.
+Do not write or install chosen-reward SQL until this specification's remaining
 cutoff details are settled. The finished SQL needs separate review before any
 live installation. Do not send anything to Claude now; the user will decide
 when to request that review.

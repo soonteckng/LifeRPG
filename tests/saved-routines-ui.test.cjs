@@ -12,16 +12,10 @@ const scope={backendId:'fixture',ownerId:'11111111-1111-4111-8111-111111111111'}
 const subjects=[{id:1,title:'General',color_code:null},{id:2,title:'Learning',color_code:null}];
 const rn={View:host('View'),ScrollView:host('HScroll'),StyleSheet:{create:value=>value,hairlineWidth:1},Platform:{OS:'android'},Keyboard:{dismiss:()=>{}},Switch:host('Switch'),AppState:{addEventListener:()=>({remove(){}})}};
 function base(){return{'react-native':rn,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),BottomSheetTextInput:host('Input'),TouchableOpacity:host('Press')},'react-native-gesture-handler/ReanimatedSwipeable':{__esModule:true,default:props=>props.children},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:0})},'./AppText':{Text:host('Text')},'./EditMode':{Wiggle:props=>React.createElement('View',{style:props.style,testID:props.active?'wiggling':undefined},props.children),EditBadges:props=>React.createElement('View',{testID:'edit-badges'},props.onEdit&&React.createElement('Press',{accessibilityLabel:`Edit ${props.name}`,onPress:props.onEdit}),props.onRemove&&React.createElement('Press',{accessibilityLabel:`Remove ${props.name}`,onPress:props.onRemove}))},'./AppSheet':props=>React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay),'./MotionPressable':host('Press'),'./FocusLengthControl':host('Duration'),'./SheetConfirmation':host('Confirm'),'./QuestSheet':host('LegacyEditor'),'../services/notificationPermissionService':{readNotificationPermission:async()=>({label:'Not allowed',action:'enable',supported:true,granted:false}),enableNotifications:async()=>({label:'Allowed',action:'settings',supported:true,granted:true}),openNotificationSettings:async()=>{}}};}
-test('play opens setup with the routine’s exact name, area and seconds; offline asks first, then starts in its workspace',async()=>{
- for(const online of [true,false]){const calls=[],state={ready:true,scope,online,routines:[routine],pendingCount:0,conflicts:[]};const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>calls.push('haptic')},'expo-router':{useRouter:()=>({push:path=>calls.push(['route',path])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:true})},'../context/TimerContext':{useTimer:()=>prepTimer(calls,{startFreeTimer:async(...args)=>{calls.push(['start',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});try{await act(async()=>press(ui.root,'Start routine Review notes'));const steps=calls.filter(Array.isArray);
-  if(online)assert.deepEqual(steps,[['task',null],['area',2],['notes',encoded('Review notes')],['seconds',75],['route','/session']],'nothing starts until Start on the setup screen');
-  else {
-   assert.deepEqual(steps,[],'offline (or still connecting) never starts on the first tap');
-   assert.equal(confirmSheet(ui.root).props.visible,true,'it asks first');
-   await act(async()=>press(ui.root,'Start Review notes now'));
-   assert.deepEqual(calls.filter(Array.isArray),[['start',75,2,'Review notes']],'Start session then starts it here');
-   assert.equal(confirmSheet(ui.root).props.visible,false,'and the question closes');
-  }
+test('play opens the same setup online and offline with exact routine settings, without starting in the background',async()=>{
+ for(const online of [true,false])for(const layout of ['list','grid','start']){const calls=[],state={ready:true,scope,online,routines:[routine],pendingCount:0,conflicts:[]};const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>calls.push('haptic')},'expo-router':{useRouter:()=>({push:path=>calls.push(['route',path])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:true})},'../context/TimerContext':{useTimer:()=>prepTimer(calls,{startFreeTimer:async(...args)=>{calls.push(['start',...args]);return true;}})},'../services/savedRoutineService':{resolveSavedRoutine:async()=>routine},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,layout}));});try{await act(async()=>press(ui.root,layout==='start'?'Start routine Review notes, 1 min 15 sec':'Start routine Review notes'));const steps=calls.filter(Array.isArray);
+  assert.deepEqual(steps,[['task',null],['area',2],['notes',encoded('Review notes')],['seconds',75],['route','/session']],'nothing starts until Start on the shared setup screen');
+  assert.equal(confirmSheet(ui.root).props.visible,false,'no old offline-only question');
   assert.ok(calls.includes('haptic'));}finally{await act(async()=>ui.unmount());}}
 });
 test('routine card closes retained editor and management portals when its surface becomes inactive',async()=>{
@@ -54,7 +48,6 @@ test('Round 69: a legacy short routine cannot partially prepare or start a new s
   let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});
   try{
    await act(async()=>press(ui.root,'Start routine Review notes'));
-   if(!online)await act(async()=>press(ui.root,'Start Review notes now'));
    assert.deepEqual(calls,[],'neither draft setup, navigation nor a start may occur');
    assert.ok(ui.root.findAllByType('Text').some(x=>x.props.children==='Choose at least 1 minute for this routine. Edit it before starting.'));
   }finally{await act(async()=>ui.unmount());}
@@ -63,8 +56,8 @@ test('Round 69: a legacy short routine cannot partially prepare or start a new s
 test('routine editor keeps invalid reminder errors visible and removal requires confirmation',async()=>{
  const saved=[],removed=[];const Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async d=>{saved.push(d);return true;},remove:async id=>{removed.push(id);return true;}})}}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,reminder:{enabled:true,hour:18,minute:0}},visible:true,onClose:()=>{}}));});try{await act(async()=>ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Reminder hour').props.onChangeText('24'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());assert.equal(saved.length,0);assert.ok(ui.root.findAllByType('Text').some(x=>x.props.accessibilityRole==='alert'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Remove routine').props.onPress());assert.equal(removed.length,0);assert.equal(ui.root.findByType('Confirm').props.title,'Remove this routine?');await act(async()=>ui.root.findByType('Confirm').props.onConfirm());assert.deepEqual(removed,[routine.id]);}finally{await act(async()=>ui.unmount());}
 });
-async function heldStartCard(extra={}) {
- const calls=[];let release;const read=new Promise(resolve=>{release=resolve;});let state={ready:true,scope,online:true,routines:[routine],pendingCount:0,conflicts:[]};
+async function heldStartCard(extra={},online=true) {
+ const calls=[];let release;const read=new Promise(resolve=>{release=resolve;});let state={ready:true,scope,online,routines:[routine],pendingCount:0,conflicts:[]};
  const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'./SheetHeader':host('Header'),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:target=>calls.push(['route',target])})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>prepTimer(calls)},'../services/savedRoutineService':{resolveSavedRoutine:()=>read},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;
  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,...extra}));});
  return { ui,calls,release:async()=>act(async()=>{release(routine);await read;}), updateScope:async next=>{state={...state,scope:next};await act(async()=>ui.update(React.createElement(Component,{subjects})));},cleanup:async()=>act(async()=>ui.unmount()) };
@@ -84,6 +77,18 @@ test('a deferred Start from the See all sheet is dropped when the account or bac
   const sheet=manageSheet(h.ui.root),start=sheet.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Start routine Review notes');
   await act(async()=>{start.props.onPress();});await h.release();const lateDismiss=manageSheet(h.ui.root).props.onDismiss;assert.equal(h.calls.filter(x=>x[0]==='route').length,0,'it opens only once the sheet has slid away');
   await h.updateScope({...scope,backendId:'different-backend'});await act(async()=>lateDismiss());assert.equal(h.calls.filter(x=>x[0]==='route').length,0);}finally{await h.cleanup();}
+});
+
+test('offline Home See all prepares the shared session and navigates once after its sheet dismisses',async()=>{
+ const h=await heldStartCard({layout:'start',onSeeAll:()=>{}},false);try{
+  await act(async()=>press(h.ui.root,'See everything you can start'));
+  await act(async()=>press(manageSheet(h.ui.root),'Start routine Review notes'));await h.release();
+  assert.deepEqual(h.calls,[['task',null],['area',2],['notes',encoded('Review notes')],['seconds',75]]);
+  assert.equal(manageSheet(h.ui.root).props.visible,false,'the outgoing sheet closes first');
+  await act(async()=>manageSheet(h.ui.root).props.onDismiss());
+  await act(async()=>manageSheet(h.ui.root).props.onDismiss());
+  assert.deepEqual(h.calls.filter(x=>x[0]==='route'),[['route','/session']],'duplicate native callbacks cannot navigate twice');
+ }finally{await h.cleanup();}
 });
 
 async function mergedRoutineCard() {

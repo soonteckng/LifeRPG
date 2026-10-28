@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 77, phone checks in section 7)
+# LifeRPG handoff (after Round 78, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 77 on pushed R76 at `458e1e442343262f393d2527bcdabd83af643f36`. Continuous night handoff and one acknowledged End notice. Round 78 rewards specification recorded separately; no reward implementation or SQL. Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 78 on pushed R77 at `2d2809f975b2b29faf3dda8ab67c8cea48515c1e`. Shared offline routine setup/departure and acknowledged late-End replay fix. The chosen-rewards spec keeps its historical R78 filename but implementation follows in a separate later round. Soon Teck applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 77: **1,785 tests passed**, zero failures/skips, with isolated PGlite and external networking blocked. Typecheck, full Expo lint and same-environment native fingerprint/source comparison pass. Real-provider and production-compiled regressions: `docs/round77-session-handoff.md`. |
+| Code health | Round 78: **1,804 tests passed**, zero failures/skips, with isolated PGlite and external networking blocked. Typecheck, full Expo lint and same-environment native fingerprint/source comparison pass. Real-provider, actual-sheet and production-compiled regressions: `docs/round78-session-parity.md`. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | **Round 66 daily trail SQL is applied live** (confirmed 26 Oct: `trail_rules()` = 30-minute finds, 4 stops, +50 bonus; `trail_day()` exists). Round 75 provided the developer reward-lab RPC proposal; it was absent at the R75 check. Installation was not rechecked in R76 (user now reports testing those controls). R76 has no SQL. The old Round 64 file must never be run. |
-| Waiting on the phone | R76 reports: blink at the night/timer handoff, and manual End -> Done -> Home reopens the ended card. R77 reproduces and fixes the lighting handoff and real-provider held-result race. Check `docs/round77-session-handoff.md`; Android frame pacing remains unverified. Normal account **st** (saved username **St**); no real stats or rewards changed. |
+| Waiting on the phone | R77's End fix was insufficient on the phone. R78 reproduces a late-confirmed End replay when another routine is prepared or protection preflight starts; offline saved routines now use the shared setup/departure. The precise no-further-action native replay and frame pacing remain phone checks. Preserve the reported working offline receipt -> reconnect -> confirmed receipt/map. See `docs/round78-session-parity.md`. Normal account **st** (saved username **St**); no real stats or rewards changed. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -224,6 +224,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 9. Round 76: the focus walker stays inside an ancestor-relative measured lane below the ring and above activity details. Cramped/missing geometry hides the small decorative walker; departure/return remain. Focus scenery has an 82% black veil; departure/return 35%, settled morning 45%. Foreground timer/controls stay clear. No physical brightness setting change.
 10. Round 77: the intro veil follows dusk from 35% to the final 82% before revealing the timer; removing intro keeps the same night subtree and starts no second dim. Cancelled/unmounted intro callbacks cannot finish a new departure. A matching Done dismissal clears its held result by exact outgoing identity before the journal selection clears; neutral summaryViewed=false cannot resurrect that End notice.
 11. Round 69: widget/purple-bar entry explicitly requests one presentation-only slide on the retained session route. Returning from Outfits does not replay it. A motion generation prevents an old close callback from popping or snapping the new entrance. Focus recovery runs on actual route focus, not ordinary timer-id/picker updates.
+12. Round 78: offline saved routines use the same exact draft and `/session` setup as online, then the shared departure before timing starts. Keep an acknowledged End through next-start protection preflight, and do not reopen it during routine setup. Pending completion and confirmed receipt retain separate acknowledgement identities. No protection, transport or recovery-workspace behavior change.
 
 ---
 
@@ -239,10 +240,10 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify Round 77 night handoff and End dismissal.**
-Use `docs/round77-session-handoff.md`: normal/Skip dusk into timer, manual End -> Done -> Home (also offline), and one real short completion/return. The real-provider duplicate-result regressions and controlled native-shared-value lighting tests are green; device frame pacing still needs a phone. R76 finds/map crossfade and developer test inventory remain intact.
+**First: verify Round 78 offline entry and End dismissal.**
+Use `docs/round78-session-parity.md`: online/offline manual End -> Done -> app, wait and open another routine; offline saved-routine setup -> shared dusk/night -> full minute; pending offline completion -> Done -> reconnect -> one confirmed receipt/map. Actual-sheet/provider regressions reproduce a specific late-confirmed End/new-start replay, not the precise phone timing with no later action. Keep that distinction and request the existing Share session log if it recurs. R77 lighting, R76 finds/map crossfade and developer test inventory remain intact.
 
-**Round 78 is approved product direction, not implemented or installed.** `docs/round78-chosen-rewards-spec.md` incorporates all six user amendments. No SQL yet. Preserve it for later review; **do not send anything to Claude now**, per the user because his quota is nearly exhausted. Fix/ship R77 separately. Rest days and camp decorations follow confirmed session behavior. Native notifications still wait until November 2026.
+**Chosen rewards are approved product direction, not implemented or installed.** `docs/round78-chosen-rewards-spec.md` incorporates all six user amendments and keeps its historical filename. R78 is now the session-parity bugfix round; chosen rewards follow separately. No SQL yet. Preserve the spec for later review; **do not send anything to Claude now**, per the user because his quota is nearly exhausted. Rest days and camp decorations follow confirmed session behavior. Native notifications still wait until November 2026.
 
 **Round 74 transition checks remain relevant:**
 The user reports the completion card itself is smooth. It now closes only
@@ -425,7 +426,7 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 - Level shows on the profile picture; Stardust shows on Home and opens Outfits (it grows from the chip, like Settings and Profile).
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
-- **Approved next, R78:** five banked non-consecutive goal-days for a chosen existing cosmetic, replacing new daily supply packs from the day after rollout. Launch-day pack only, no backlog; permanent unique owner/local-date credit rows, grants spend five; wallet-first locking; four persistent ordered offers; old-client pack payload remains compatible with additive chosen fields; five pack-only backgrounds intentionally stay chosen/shop-only. Ordinary dev pack bypass never earns real credits, and isolated test credits/inventory exercise the real rules. Exact rollout timestamp/frozen timezone boundary precede SQL review. See the full spec; no SQL written/installed and no Claude message yet. Rest days and decorations are later.
+- **Approved next, after the R78 bugfix:** five banked non-consecutive goal-days for a chosen existing cosmetic, replacing new daily supply packs from the day after rollout. Launch-day pack only, no backlog; permanent unique owner/local-date credit rows, grants spend five; wallet-first locking; four persistent ordered offers; old-client pack payload remains compatible with additive chosen fields; five pack-only backgrounds intentionally stay chosen/shop-only. Ordinary dev pack bypass never earns real credits, and isolated test credits/inventory exercise the real rules. Exact rollout timestamp/frozen timezone boundary precede SQL review. See the full spec; no SQL written/installed and no Claude message yet. Rest days and decorations are later.
 
 ---
 
@@ -455,6 +456,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R78 (Codex):** removed old offline saved-routine confirmation/direct-start shortcuts; Home/list/grid now prepare the exact shared session setup and departure. Real-provider/actual-sheet tests reproduce a late-confirmed End reappearing when routine setup or protection preflight clears Done. Acknowledgement now survives these steps; settled acknowledged cancellations release on new draft. Pending offline completion -> one confirmed receipt remains covered. 1,804 tests pass, native inputs unchanged. Precise no-further-action phone replay/frame pacing remain unverified. No SQL/Auth/email/native/config/dependency change or publication. Chosen rewards spec remains for a separate round; notifications deferred to November. See `docs/round78-session-parity.md`.
 - **R77 (Codex):** dusk reaches the running scene's darkness before timer reveal, with retained night subtree and cancelled callback fencing. Reproduced the End -> Done -> Home duplicate using the real provider/controller and production compiler; release only the exact acknowledged held result. 1,785 tests pass, native fingerprint unchanged. No SQL/Auth/email/native/config/reward-rule change or publication. R78 specification plus six approved amendments recorded for later SQL review; no Claude message. See `docs/round77-session-handoff.md` and `docs/round78-chosen-rewards-spec.md`. Native notifications remain deferred to November.
 - **R76 (Codex):** insufficient funds explains the shortfall with one Got it action; ordinary developer gifts use the animated finds screen while milestones remain; finds stay opaque until map readiness, then one 620 ms cover crossfade reveals the retained map (normal and developer flows). Measured walker lane below the ring; much dimmer scenery, clear foreground controls, cramped-layout fallback. 1,773 tests pass; native phone smoothness remains unverified. No SQL/Auth/email/native/config/dependency/economy change. See `docs/round76-reward-polish.md`. Chosen rewards/rest tokens remain next; notifications deferred to November.
 - **R75 (Codex):** developer no-wait achievement/result/trail previews using shipped components; memory-only owner/admission-scoped test inventory in Outfits, all-owned toggle, prices/purchases/saved test looks, all items/duplicates and pack tiers. Review-only developer RPC executes existing reward code in an always-rolled-back subtransaction; no live installation or normal reward-economy change. Real milestone take-back disabled; draft/late-callback scope guards. See `docs/round75-developer-testing.md`. Chosen rewards/rest tokens remain next. Native notifications deferred to November.
