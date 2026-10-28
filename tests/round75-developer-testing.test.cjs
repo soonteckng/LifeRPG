@@ -113,7 +113,8 @@ for(const compiled of [false,true]) {
    await ui.press('dev-trail-after-end');trail=ui.tree.root.findByType('Expedition').props.reveal.trail;assert.equal(trail.fromSeconds,7200);assert.equal(trail.complete,true);
    for(const [id,prop] of [['dev-ended-result','ending'],['dev-offline-result','offline'],['dev-rejected-result','rejected']]){await ui.press(id);assert.equal(ui.tree.root.findByType('Result').props[prop],true);}
    await ui.running(true);assert.equal(ui.tree.root.findAllByType('Result').length,0);assert.ok(ui.tree.root.findAllByType('Button').find(n=>n.props.testID==='dev-first-session').props.disabled);
-   await ui.running(false);assert.equal(ui.tree.root.findAllByType('Result').length,0);await ui.reduce();await ui.press('dev-walk-result');assert.equal(ui.tree.root.findByType('Result').props.visible,true);
+   await ui.running(false);assert.equal(ui.tree.root.findAllByType('Result').length,0);await ui.reduce();await ui.press('dev-walk-result');assert.equal(ui.tree.root.findByType('Result').props.visible,false,'the card waits for the scenery window');
+   await act(async()=>ui.tree.root.findAllByType('Modal').find(n=>n.props.onShow).props.onShow());assert.equal(ui.tree.root.findByType('Result').props.visible,true);
    await ui.background();assert.equal(ui.tree.root.findAllByType('Result').length,0);assert.ok(ui.taps>=10);assert.deepEqual(ui.calls,[],'presentations never award real activity or rewards');
   }finally{await ui.cleanup();}
  });

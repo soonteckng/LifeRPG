@@ -29,6 +29,8 @@ type TestContent =
   | { kind: "reveal"; reveal: Reveal; afterTrail?: DailyAchievementDisplay }
   | { kind: "moment"; gift: Gift };
 type TestScreen = { id: number; scope: string } & TestContent;
+/** If Android never reports the scenery window as shown, open the card anyway. */
+const SCENERY_FALLBACK_MS = 400;
 /** Same shipped screens and backend rules, without inventing focus time or consuming real rewards. */
 export default function DeveloperRewardTests() {
   const { profile } = useUser();
@@ -51,6 +53,16 @@ export default function DeveloperRewardTests() {
     return () => subscription.remove();
   }, []);
   const visible = screen?.scope === scope && !hasOpenSession ? screen : null;
+  // Android opens a Modal's window as soon as it is created, children first.
+  // The card (its own Modal) waits until the scenery's window is open, so it
+  // opens above it, never underneath. A short fallback covers a missed onShow.
+  const [sceneryShown, setSceneryShown] = useState<number | null>(null);
+  const sceneryId = visible && (visible.kind === "walk" || visible.kind === "result") ? visible.id : null;
+  useEffect(() => {
+    if (sceneryId === null || sceneryShown === sceneryId) return;
+    const fallback = setTimeout(() => setSceneryShown(sceneryId), SCENERY_FALLBACK_MS);
+    return () => clearTimeout(fallback);
+  }, [sceneryId, sceneryShown]);
   const walkId = visible?.kind === "walk" ? visible.id : null;
   useEffect(() => {
     if (walkId === null) return;
@@ -164,11 +176,12 @@ export default function DeveloperRewardTests() {
       </BottomSheetScrollView>
     </AppSheet>
     {visible?.kind === "achievement" && <DailyAchievementMoment visible achievements={visible.achievements} presentationId={visible.id} activityId={activityId} onClose={close} />}
-    {visible && (visible.kind === "walk" || visible.kind === "result") && <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={close}>
+    {visible && (visible.kind === "walk" || visible.kind === "result") && <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={close}
+      onShow={() => setSceneryShown(visible.id)}>
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <SessionBackdrop phase="completed" progress={1} secondsLeft={0} walking={false} intro={false} skipToken={0} onIntroEnd={() => {}}
           returning={visible.kind === "walk"} onReturnEnd={() => { if (current.current === scope) setScreen(previous => previous?.scope === scope && previous.id === visible.id && previous.kind === "walk" ? { ...previous, kind: "result" } : previous); }} />
-        <SessionResultSheet preview visible={visible.kind === "result" && !visible.closing} sessionId={`dev-result:${visible.id}`} activityId={activityId}
+        <SessionResultSheet preview visible={visible.kind === "result" && !visible.closing && sceneryShown === visible.id} sessionId={`dev-result:${visible.id}`} activityId={activityId}
           xpEarned={visible.variant === "sync" ? 3 : 1} minutesSpent={visible.variant === "sync" ? 3 : 1} durationSeconds={visible.variant === "sync" ? 180 : 60} questTitle="Test session" areaTitle="Everyday focus"
           syncSummary={visible.variant === "sync" ? { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: "Everyday focus", color: colors.accent, xp: 3 }] } : undefined}
           ending={visible.variant === "ended"} pending={visible.variant === "offline"} offline={visible.variant === "offline"}

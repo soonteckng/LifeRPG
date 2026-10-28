@@ -155,6 +155,38 @@ test('chosen reward proposal: isolated real SQL rules and compatibility',async t
   for(const name of ['chosen_pick','chosen_refresh']){const body=await call("pg_get_functiondef(('liferpg_reward_private.'||$1)::regproc)",[name]);assert.ok(body.indexOf('wallet_for')<body.indexOf('chosen_boundary'));}
   const insecure=await call("(select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='liferpg_reward_private' and c.relname in ('chosen_accounts','chosen_grants','goal_day_credits','chosen_offers','chosen_requests') and not c.relrowsecurity)");assert.equal(insecure,0);
  });
+ await check('Round 81: a failing capture never blocks saving a daily goal or creating an account, and is filled in later',async()=>{
+  await activate();await rootRole();
+  await db.exec("alter function liferpg_reward_private.capture_goal_day(uuid,date) rename to capture_goal_day_real");
+  await db.exec("create function liferpg_reward_private.capture_goal_day(p_user uuid,p_day date) returns void language plpgsql as $$ begin raise exception 'simulated failure'; end $$");
+  await db.query('insert into public.daily_progress(user_id,progress_date,goal_minutes,goal_completed) values($1,current_date-1,30,true)',[a]);
+  assert.equal(await call('(select count(*) from public.daily_progress where user_id=$1 and goal_completed)',[a]),1,'the daily goal was saved');
+  assert.equal(await call('(select count(*) from liferpg_reward_private.goal_day_credits where user_id=$1)',[a]),0);
+  await db.exec("drop function liferpg_reward_private.capture_goal_day(uuid,date)");
+  await db.exec("alter function liferpg_reward_private.capture_goal_day_real(uuid,date) rename to capture_goal_day");
+  assert.equal((await state()).chosen.balance,1,'the next rewards read credits the missed day');
+  await rootRole();await db.exec("alter function liferpg_reward_private.chosen_boundary(uuid) rename to chosen_boundary_real");
+  await db.exec("create function liferpg_reward_private.chosen_boundary(p_user uuid) returns liferpg_reward_private.chosen_accounts language plpgsql as $$ begin raise exception 'simulated failure'; end $$");
+  const fresh=uid(98);await db.query('insert into auth.users(id) values($1)',[fresh]);
+  await db.query("insert into public.profiles(id,username,timezone,level) values($1,'Another fixture','UTC',1)",[fresh]);
+  assert.equal(await call('(select count(*) from public.profiles where id=$1)',[fresh]),1,'the account was created');
+  await db.exec("drop function liferpg_reward_private.chosen_boundary(uuid)");
+  await db.exec("alter function liferpg_reward_private.chosen_boundary_real(uuid) rename to chosen_boundary");
+  assert.equal(typeof (await state(fresh)).chosen.balance,'number','its boundary is created on first use');
+ });
+ await check('Round 81: a chosen item has its own source, so re-earning developer milestones never removes it',async()=>{
+  await activate();await days(5);const s=await state(),target=s.chosen.offers[0].item;await pick(s,target);await rootRole();
+  assert.equal(await call("(select source from liferpg_reward_private.inventory where user_id=$1 and item_id=$2)",[a,target]),'chosen');
+  assert.equal(await call("(select count(*) from liferpg_reward_private.events where user_id=$1 and item_id=$2 and kind='chosen')",[a,target]),1);
+  await db.exec("delete from liferpg_reward_private.inventory where source in ('milestone','streak','set')");
+  assert.ok((await state()).owned.includes(target));
+ });
+ await check('Round 81: the first four offers take turns between wearables, backgrounds and decorations',async()=>{
+  await activate();const s=await state();await rootRole();
+  const kinds=[];for(const o of s.chosen.offers)kinds.push(await call('(select kind from liferpg_reward_private.items where id=$1)',[o.item]));
+  assert.deepEqual(kinds,['wearable','background','decor','wearable'],JSON.stringify(s.chosen.offers));
+  assert.deepEqual(s.chosen.offers.map(o=>o.item),['beret','bg_forest','decor_bonsai','book_bag']);
+ });
  }finally{await db.close();}
 });
 }

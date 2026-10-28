@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 80, phone checks in section 7)
+# LifeRPG handoff (after Round 81, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,13 +13,13 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 80 on pushed R79 at `11ee00e`. Restores confirmed synced first-session/goal celebrations. Chosen-reward SQL is review only; no chosen UI or activation. Soon Teck applies, pushes and publishes the JS fix. |
+| Latest delivered round | Round 81 (Claude) on pushed R80 at `1560048`: developer previews whose card opened under the scenery window, plus review fixes to the chosen-reward SQL proposal (still not installed). Soon Teck applies, pushes and publishes. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 80 evidence is in `docs/round80-celebrations-and-reward-proposal.md` and delivery verification: full app/PGlite tests, typecheck, app lint, patch proof and native fingerprint. |
+| Code health | Round 81: see `docs/round81-preview-windows-and-reward-review.md`. Full suite 1,894 passed (none skipped), typecheck, lint, fingerprint unchanged. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| SQL | Round 66 is live. Read-only function metadata on 29 Oct confirms Round 75's developer lab matches the branch. R80 chosen-reward SQL is **NOT installed** and must not be run until review and the new client are ready. The old R64 file must never run. |
+| SQL | Round 66 is live. Read-only function metadata on 29 Oct confirms Round 75's developer lab matches the branch. R80 chosen-reward SQL (revised in R81 after Claude's review) is **NOT installed** and must not be run until the new client is published and installation is separately approved. The old R64 file must never run. |
 | Waiting on the phone | User reports R79 offline sessions succeed, but first-session encouragement was missing. R80 fixes that and the same omission for daily goals, using separate confirmed receipts after the one map. Check first-only, goal-only and combined messages; a no-wait Developer sequence is available. Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
@@ -240,7 +240,18 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify Round 80 synced celebrations.**
+**First: verify Round 81 developer previews, then build the chosen-reward client.**
+Round 81: the five instant result previews (Offline sync summary, Offline sync
+and celebrations, Session ended early, Saved offline result, Session could not
+be credited) opened their card *under* the scenery window on Android (nested
+Modal created children first). The card now waits for the scenery's `onShow`.
+Never mount a Modal (including `AppSheet`) visible inside another Modal in the
+same commit. See `docs/round81-preview-windows-and-reward-review.md`, which also
+has the chosen-reward SQL review: triggers can't block completion/sign-up, a
+distinct `chosen` source, offers alternate kinds. Next: the capability-gated
+chosen client and developer controls, publish, then ask for SQL approval.
+
+**Round 80 synced celebrations (still to verify on the phone).**
 Use `docs/round80-celebrations-and-reward-proposal.md`. Confirmed first-session
 and daily-goal receipts survive batching and use the existing independent
 once-per-day ledgers. The celebration follows the single map, never an
@@ -469,6 +480,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R81 (Claude):** nested-Modal fix for the five instant developer result previews (card waits for the scenery window); chosen-reward SQL review fixes (exception-safe triggers, `chosen` source, alternating offers) with failing-first PGlite tests. SQL still not installed; client not built.
 - **R80 (Codex):** reproduced missing first/goal celebrations for grouped offline receipts; retain independent confirmed evidence and release it after the single map, with the same durable ledgers and combined message. A no-wait Developer sequence reuses shipped screens. Read-only live reward metadata matches six branch bodies; R75 lab presence confirmed. CLI-created chosen-reward SQL proposal has isolated tests, but is not installed and must wait for review/new client. No live mutation, Auth/email, native/config/dependency change, push, build or publication. Native notifications remain deferred to November. See `docs/round80-celebrations-and-reward-proposal.md`.
 
 - **R79 (Codex):** grouped offline confirmation receipts in a separate backend/owner-scoped presentation cache without changing the journal/schema. One authoritative count/time/XP card, one coordinated rewards catch-up and frozen return; late finds skip an already-seen map. Existing import retry/credit rules and online receipts remain. Map milestones explicitly say total. Developer preview reuses the actual summary and trail. No SQL/Auth/email/native/config/dependency changes, builds, pushes or publication. Native work remains deferred to November. See `docs/round79-offline-sync.md`.

@@ -4,6 +4,16 @@
 -- credits start at the next midnight in each frozen launch timezone.
 begin;
 
+-- Chosen items get their own inventory source and event kind (additive: every
+-- existing row still passes). Developer "re-earn milestones" deletes inventory
+-- with source 'milestone'; a chosen item must never be caught by that.
+alter table liferpg_reward_private.inventory drop constraint if exists inventory_source_check;
+alter table liferpg_reward_private.inventory add constraint inventory_source_check
+  check (source in ('find', 'pack', 'milestone', 'streak', 'set', 'trader', 'chosen'));
+alter table liferpg_reward_private.events drop constraint if exists events_kind_check;
+alter table liferpg_reward_private.events add constraint events_kind_check
+  check (kind in ('find', 'duplicate', 'minutes', 'milestone', 'streak', 'set', 'pack', 'purchase', 'trail', 'chosen'));
+
 create table liferpg_reward_private.chosen_rollout (
   singleton boolean primary key default true check (singleton),
   launched_at timestamptz not null default now()
@@ -73,7 +83,12 @@ end $$;
 select liferpg_reward_private.chosen_boundary(id) from public.profiles order by id;
 create function liferpg_reward_private.chosen_profile_created() returns trigger
 language plpgsql security definer set search_path = '' as $$
-begin perform liferpg_reward_private.chosen_boundary(new.id); return new; end $$;
+begin
+  -- Never block creating an account: the boundary is created on first use too.
+  begin perform liferpg_reward_private.chosen_boundary(new.id);
+  exception when others then raise warning 'chosen rewards: boundary for % deferred: %', new.id, sqlerrm; end;
+  return new;
+end $$;
 create trigger chosen_profile_created after insert on public.profiles
 for each row execute function liferpg_reward_private.chosen_profile_created();
 
@@ -91,7 +106,12 @@ end $$;
 create function liferpg_reward_private.chosen_goal_confirmed() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  if new.goal_completed then perform liferpg_reward_private.capture_goal_day(new.user_id, new.progress_date); end if;
+  -- Never block saving a session's daily progress. A capture that fails here
+  -- is filled in by the next rewards read, claim or choice (chosen_refresh).
+  if new.goal_completed then
+    begin perform liferpg_reward_private.capture_goal_day(new.user_id, new.progress_date);
+    exception when others then raise warning 'chosen rewards: goal day % for % deferred: %', new.progress_date, new.user_id, sqlerrm; end;
+  end if;
   return new;
 end $$;
 -- Captures the first qualification permanently, before a later goal edit can
@@ -132,9 +152,8 @@ begin
     a.target := null; changed := true;
   end if;
   if a.target is not null and (p_test or now() >= a.starts_at) and liferpg_reward_private.chosen_balance(p_user) >= 5 then
-    -- Existing source/event constraints remain intact. It is an effort milestone,
-    -- recorded separately below as a chosen grant, never a trail find or a pack.
-    perform liferpg_reward_private.give(p_user,a.target,'milestone',null,null);
+    -- Its own source and event kind: never a trail find, a pack or a milestone.
+    perform liferpg_reward_private.give(p_user,a.target,'chosen',null,null);
     insert into liferpg_reward_private.chosen_grants(user_id,item_id) values(p_user,a.target);
     update liferpg_reward_private.chosen_accounts set target = null where user_id = p_user;
     changed := true;
@@ -145,10 +164,13 @@ begin
   get diagnostics n = row_count; changed := changed or n > 0;
   for s in 1..4 loop
     if exists(select 1 from liferpg_reward_private.chosen_offers where user_id=p_user and slot=s) then continue; end if;
-    select id into item from liferpg_reward_private.items i where not i.is_free and i.kind in ('wearable','background','decor')
-      and not liferpg_reward_private.chosen_owns(p_user,i.id,p_test)
-      and not exists(select 1 from liferpg_reward_private.chosen_offers o where o.user_id=p_user and o.item_id=i.id)
-      order by i.id limit 1;
+    -- A fixed order that takes turns between kinds: the first wearable, the
+    -- first background, the first decoration, the second wearable, and so on.
+    select x.id into item from (select i.id, i.kind, row_number() over (partition by i.kind order by i.id) as turn
+      from liferpg_reward_private.items i where not i.is_free and i.kind in ('wearable','background','decor')
+        and not liferpg_reward_private.chosen_owns(p_user,i.id,p_test)) x
+      where not exists(select 1 from liferpg_reward_private.chosen_offers o where o.user_id=p_user and o.item_id=x.id)
+      order by x.turn, array_position(array['wearable','background','decor'], x.kind), x.id limit 1;
     if item is not null then
       insert into liferpg_reward_private.chosen_offers(user_id,slot,item_id) values(p_user,s,item);
       changed := true;
