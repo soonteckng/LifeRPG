@@ -1,5 +1,6 @@
--- REVIEW ONLY. Do not install until the chosen-reward client is delivered,
--- published and this SQL has been separately reviewed and approved.
+-- Chosen rewards. Run in the SQL Editor only AFTER publishing Round 82 (the
+-- app that shows them), and only with Soon Teck's approval. Reviewed by
+-- Claude in Round 81 (exception-safe triggers, 'chosen' source, mixed offers).
 -- Enabling records this transaction's time once. Launch-day packs survive;
 -- credits start at the next midnight in each frozen launch timezone.
 begin;

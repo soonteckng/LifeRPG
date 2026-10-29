@@ -200,7 +200,7 @@ export default function SessionResultSheet({ visible, xpEarned = 0,
         <View style={[s.levelBadge, { backgroundColor: tierColor(level) }]}><Ionicons name="sparkles" size={13} color="#131826" /><Text style={s.levelBadgeText}>Level {level}</Text></View>
         <Text style={s.levelLine}>You reached Level {level}</Text>
       </View>}
-      <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={syncSummary ? `${syncSummary.sessionCount} ${syncSummary.sessionCount === 1 ? "session" : "sessions"} completed offline` : questTitle} levelUp={isLevelUp} compact />
+      <CompletionHero seconds={durationSeconds ?? minutesSpent * 60} title={syncSummary ? `${syncSummary.sessionCount} offline ${syncSummary.sessionCount === 1 ? "session" : "sessions"}` : questTitle} levelUp={isLevelUp} compact />
       {syncSummary ? <>
         <View style={s.syncDurations} testID="session-sync-durations">
           {syncSummary.durations.map(group => <Text key={group.seconds} style={s.pendingText} accessible

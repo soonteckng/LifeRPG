@@ -84,7 +84,7 @@ const startingPointHints: Record<string, string> = {
   "work-plan-week": "Put the important things on your calendar.",
   "work-inbox": "Reply, file or archive, oldest first.",
   "creative-first-draft": "Messy is fine. Just get it down.",
-  "creative-practice": "Scales, sketches, drills — whatever you practise.",
+  "creative-practice": "Scales, sketches, drills: whatever you practise.",
   "creative-learn-technique": "Follow a tutorial, then try it yourself.",
   "creative-finish-piece": "Wrap up something that’s nearly done.",
   "life-small-task": "A form, a booking or a reply you’ve put off.",

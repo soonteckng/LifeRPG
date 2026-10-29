@@ -142,16 +142,18 @@ function FoundCard({ reveal, onContinue, onOutfits, onReady }: {
       <Defs><RadialGradient id="found-glow" cx="50%" cy="40%" r="60%"><Stop offset="0" stopColor={glowColor} stopOpacity={0.3} /><Stop offset="1" stopColor={glowColor} stopOpacity={0} /></RadialGradient></Defs>
       <Rect x={0} y={0} width={width} height={height * 0.6} fill="url(#found-glow)" />
     </Svg>
-    <Text style={s.eyebrow}>{minutes ? `FROM YOUR ${minutes}-MINUTE WALK` : "FROM THE TRAIL"}</Text>
-    <Text style={s.heading} accessibilityRole="header">{found === 1 ? "You found something" : `You found ${found} things`}</Text>
+    <Text style={s.eyebrow}>{reveal.chosen ? `${reveal.chosen.days} GOAL DAYS` : minutes ? `FROM YOUR ${minutes}-MINUTE WALK` : "FROM THE TRAIL"}</Text>
+    <Text style={s.heading} accessibilityRole="header">{reveal.chosen ? "You earned it" : found === 1 ? "You found something" : `You found ${found} things`}</Text>
     <Animated.View style={[s.bigCard, { borderColor: glowColor + "66" }, cardIn]} testID="reveal-expedition-found">
       <ScrollView style={s.flex} contentContainerStyle={[s.finds, found === 1 && s.findsOne]} showsVerticalScrollIndicator={false} scrollEnabled={found > 4}>
         {reveal.finds.map((g, i) => <FindTile key={`${g.item}-${i}`} gift={g} index={i} art={art} columns={columns} big={found === 1} reduced={reduced} />)}
       </ScrollView>
-      <View style={s.cardFoot} accessible accessibilityLabel={`${reveal.stardust} Stardust. Spend it in Outfits.`}>
+      {reveal.chosen ? <View style={s.cardFoot} testID="reveal-chosen-foot">
+        <Text style={s.note}>{`The reward you chose, for reaching your daily goal on ${reveal.chosen.days} days. Pick your next one from Home.`}</Text>
+      </View> : <View style={s.cardFoot} accessible accessibilityLabel={`${reveal.stardust} Stardust. Spend it in Outfits.`}>
         <View style={s.dustRow}><StardustArt size={22} /><Text style={s.dustBig}>{`+${dust} Stardust`}</Text></View>
         <Text style={s.note}>{"Spend Stardust in Outfits on things you haven't found yet."}</Text>
-      </View>
+      </View>}
     </Animated.View>
     <View style={s.bottomStatic}>
       <Pressable onPress={onContinue} accessibilityRole="button" accessibilityLabel="Continue" style={s.primary}><Text style={s.primaryText}>Continue</Text></Pressable>

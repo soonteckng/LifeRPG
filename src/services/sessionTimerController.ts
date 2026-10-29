@@ -336,7 +336,11 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
     // send the idle offline page into its saved-session recovery branch.
     const localReadFailure = error instanceof JournalStorageError
       && ["read_failed", "recovery_required", "quarantine_failed"].includes(error.code);
-    publish({ error: message, restoreError: localReadFailure });
+    // An earlier finished session that is put away and waiting to upload is
+    // shown by the sync count. Its failed upload is not an error with the
+    // session on screen (or the empty setup for a new one).
+    const onScreen = !command || error instanceof JournalStorageError || command.clientSessionId === selected()?.clientSessionId;
+    publish({ error: onScreen ? message : null, restoreError: localReadFailure });
   }
 
   async function reconcileRemote(record: JournalRecord, remote: SessionTimerRemoteSession): Promise<void> {
@@ -729,7 +733,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
       if (offlineAvailable()) { try { await rememberCheckpoint(selected()!); } catch { /* refresh preserves confirmed timer */ } }
       await expireLocal();
       if (pending()?.kind === "complete") { await syncCompletion(force); return; }
-      publish({ error: pending() ? "Waiting to confirm your saved session state." : null, restoreError: false });
+      publish({ error: pending(selected()) ? "Waiting to confirm your saved session state." : null, restoreError: false });
       return;
     }
     if (record?.serverSessionId) { publish({ error: null, restoreError: false }); return; }
@@ -765,7 +769,7 @@ export function createSessionTimerController(options: SessionTimerControllerOpti
         if (pending()?.kind === "complete") await syncCompletion(force);
       }
     }
-    command = pending();
+    command = pending(selected());
     publish({ error: command ? "Waiting to confirm your saved session state." : null, restoreError: false });
   }
 

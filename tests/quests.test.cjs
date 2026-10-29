@@ -43,6 +43,7 @@ function load(relativePath, mocks, cache = new Map()) {
     if (name.endsWith("/useFocusDurationPreference") && !Object.hasOwn(mocks, name)) return {useFocusDurationPreference:()=>({ready:true,selectedSeconds:1800,value:{customSeconds:null},choose:async()=>{}})};
     if (name.endsWith("/LevelTierSheet")) return props=>React.createElement("TierSheet",props);
     if (name.endsWith("/TrailSheet")) return props=>React.createElement("TrailSheet",props);
+    if (name.endsWith("/rewards/ChosenReward")) return {ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)};
     if (name.endsWith("/CharacterMark")) return props => React.createElement("CharacterMark", props);
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>React.createElement("TourAnchor",props,props.children), TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);
@@ -673,12 +674,12 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
     "../../hooks/useRewards": { useRewards: () => ({ stardust: 0, pack: null, online: false, busy: false, openPack: async () => ({ ok: true }) }) },
     "../../components/rewards/PackArt": { __esModule: true, default: host("PackArt"), PACK_COLORS: ["#D9C9A3", "#C98A55", "#E2B44C", "#A78BFA"] },
     "../../components/adventurer/ItemArt": { __esModule: true, default: host("ItemArt"), StardustArt: host("StardustArt") },
-    "../../components/CharacterMark": host("CharacterMark"), "../../components/LevelTierSheet": host("LevelTierSheet"), "../../components/rewards/TrailSheet": host("TrailSheet"),
+    "../../components/CharacterMark": host("CharacterMark"), "../../components/LevelTierSheet": host("LevelTierSheet"), "../../components/rewards/TrailSheet": host("TrailSheet"), "../../components/rewards/ChosenReward": {ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)},
     "../../context/QuestContext": { useQuests: () => ({ tasks: homeTasks, subjects, error: false, refresh: refreshQuests }) },
     "../../context/TimerContext": { useTimer: () => ({ hasOpenSession: openSession, sessionSummary: summary, ...homeFlags,
       setNotes: () => {}, setLinkedTaskId: id => sessionCalls.push(["task",id]), setDurationInMinutes: minutes => sessionCalls.push(["duration",minutes]), setDurationInSeconds: seconds => sessionCalls.push(["seconds",seconds]), setTargetAttributeId: id => sessionCalls.push(["area",id]), startTimer: () => sessionCalls.push(["start"]) }) },
     "../../context/UserContext": { useUser: () => ({ profile: { username: name, level: 2, current_xp: 20 }, reloadProfile, hapticsEnabled: false }) },
-    "../../services/progressService": { getFocusStreak: async () => 2 },
+    "../../services/progressService": { getFocusStreak: async () => 2, getFocusStreakDetail:async()=>({current:2,longest:2,restDays:0,rested:[]}) },
     "../../services/dailyProgressService": { getTodayProgress: async () => { if (failed) throw Error("Offline"); return { completed_minutes: progressMinutes, goal_minutes: 60, ...creditFields }; } },
     "../../hooks/useHomeLifecycle": { useHomeLifecycle: (callback) => { refresh = callback; return 5; } },
   }).default;
@@ -1114,7 +1115,7 @@ async function quickHomeSetup(history = null, start = async () => true, duration
     "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects,loading:false,refresh:async()=>{}})},
     "../../context/UserContext":{useUser:()=>({profile:{id:owner,username:"Soon Teck",daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
     "../../context/TimerContext":{useTimer:()=>({...setters,...timerFlags,startFreeTimer:async(seconds,area)=>{calls.push(["start",seconds,area]);return start();}})},
-    "../../services/progressService":{getFocusStreak:async()=>0,getLastFreeSession:async id=>{calls.push(["history",id]);return historyValue;}},
+    "../../services/progressService":{getFocusStreak:async()=>0,getFocusStreakDetail:async()=>({current:0,longest:0,restDays:0,rested:[]}),getLastFreeSession:async id=>{calls.push(["history",id]);return historyValue;}},
     "../../services/dailyProgressService":{getTodayProgress:async()=>null},
     "../../hooks/useHomeLifecycle":{useHomeLifecycle:()=>12}, ...extra,
   };

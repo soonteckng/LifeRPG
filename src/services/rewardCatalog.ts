@@ -22,7 +22,8 @@ export interface RewardItem {
 
 const find = "Find it on an expedition";
 const trader = (price: number) => `${find}, or ${price} Stardust at the trader`;
-const pack = (price: number) => `Found in daily supply packs, or ${price} Stardust at the trader`;
+// A daily-goal reward: from the supply pack before chosen rewards, chosen on Home after.
+const pack = (price: number) => `A daily goal reward, or ${price} Stardust at the trader`;
 
 export const REWARD_ITEMS: readonly RewardItem[] = [
   { id: "glasses", name: "Round glasses", kind: "wearable", slot: "face", rarity: "common", free: true, hint: "Free for everyone" },

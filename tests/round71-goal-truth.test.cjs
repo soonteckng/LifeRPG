@@ -40,7 +40,7 @@ async function setup(kind,{cached=null,fallback=null}={}){
     '../../context/FloatingDockContext':{floatingDockKey:()=>'',useFloatingDockHeight:()=>120},
     '../../hooks/useStudyPlan':{useStudyPlan:()=>({courses:[],exams:[],recent:[],ready:true})},'../../hooks/useStudyLauncher':{useStudyLauncher:()=>({})},'../../hooks/useJustFocus':{useJustFocus:()=>({})},
     '../../hooks/useHomeLifecycle':{useHomeLifecycle:load=>{React.useEffect(()=>{void load();},[load]);return 12;}},
-    '../../services/progressService':{getFocusStreak:async()=>0},'../../services/dailyProgressService':{getTodayProgress:()=>{const index=requests.length;requests.push('today');reads[index]??=deferred();return reads[index].promise;}},
+    '../../services/progressService':{getFocusStreak:async()=>0,getFocusStreakDetail:async()=>({current:0,longest:0,restDays:0,rested:[]})},'../../services/dailyProgressService':{getTodayProgress:()=>{const index=requests.length;requests.push('today');reads[index]??=deferred();return reads[index].promise;}},
     '../../services/homeSnapshot':{readHomeSnapshot:async()=>null,saveHomeSnapshot:noop},
     '../../hooks/useCharacterData':{prefetchCharacterData(){}},'../../hooks/useProgressData':{prefetchProgress(){}},
     '../../hooks/useRewards':{useRewards:()=>({stardust:0,pack:null,online:true})},'../../services/levelPreview':{useShownLevel:()=>({level:1})},
@@ -49,6 +49,7 @@ async function setup(kind,{cached=null,fallback=null}={}){
     '../../components/SectionHeader':{CircleButton:host('Button')},'../../components/adventurer/ItemArt':{StardustArt:()=>null},'../../components/rewards/PackArt':{__esModule:true,default:()=>null,PACK_COLORS:[]},
   };
   for(const name of ['LevelTierSheet','rewards/TrailSheet','DailyGoalSheet','CharacterMark','SavedRoutinesCard','TodaySheet','MoreMenu'])mocks[`../../components/${name}`]=host(name);
+  mocks['../../components/rewards/ChosenReward']={ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)};
   mocks['../../components/ContentReveal']=props=>props.children;mocks['../../components/MotionPressable']=host('Button');
   const files={sheet:'src/components/DailyGoalSheet.tsx',settings:'src/app/settings.tsx',goal:'src/app/settings-goal.tsx',home:'src/app/(tabs)/index.tsx'};
   const Component=loader(mocks)(files[kind]).default;

@@ -148,6 +148,7 @@ test('chosen reward proposal: isolated real SQL rules and compatibility',async t
  await check('old-client reply shape, wallet lock order, eligible pool and private RLS are preserved',async()=>{
   await activate();const s=await state();for(const [key,type]of Object.entries({date:'string',goalReached:'boolean',claimed:'boolean',tier:'number',daysInARow:'number'}))assert.equal(typeof s.pack[key],type);
   assert.deepEqual(oldService.parseRewardsState(s).pack,s.pack,'the actual existing parser accepts the additive state');
+  const phone=oldService.parseRewardsState(s).chosen;assert.deepEqual([phone.enabled,phone.balance,phone.revision,phone.offers.length,phone.requiredDays],[s.chosen.enabled,s.chosen.balance,s.chosen.revision,s.chosen.offers.length,5],'the Round 82 app reads the real reply');
   let refusal;try{await call('public.open_daily_pack_v1($1)',[a]);}catch(error){refusal=error;}
   const friendly=oldMessages.rewardsErrorMessage(refusal);assert.match(friendly,/chosen rewards/);assert.doesNotMatch(friendly,/Couldn't reach/);
   await rootRole();const eligible=await call("(select count(*) from liferpg_reward_private.items where not is_free and kind in ('wearable','background','decor'))");assert.equal(eligible,24);

@@ -39,7 +39,7 @@ async function sceneSetup(initial={}){
       runOnJS:fn=>fn,useAnimatedStyle:fn=>fn(),useSharedValue:value=>{const ref=React.useRef();if(!ref.current){ref.current={value};values.push(ref.current);}return ref.current;},cancelAnimation:value=>cancelled.push(value),
       withDelay:(_delay,value)=>value,withTiming:(to,config,done)=>{motions.push({to,...config,done});return to;}},
     "../AppText":{Text:host("Text")},"../adventurer/AdventurerBack":host("Walker"),
-    "./TrailScenes":{TrailScene:React.memo(function Scene(props){draws.push(props.light);return React.createElement("Scene",props);}),FireGlow:host("Fire"),Fireflies:host("Flies")},
+    "./CampDecorations": { __esModule: true, default: () => null, campDecorations: () => [] }, "./TrailScenes":{TrailScene:React.memo(function Scene(props){draws.push(props.light);return React.createElement("Scene",props);}),FireGlow:host("Fire"),Fireflies:host("Flies")},
     "../../hooks/useRewards":{useRewards:()=>({look:LOOK,equipped:{},today:{seconds:0}})},"../../hooks/useReducedMotion":{useReducedMotion:()=>reduced},
     "../../utils/trail":{trailZone:()=>({name:"Meadow"}),trailStops:()=>0},
     "../../services/sessionReturn":load("src/services/sessionReturn.ts",{}),

@@ -65,7 +65,8 @@ interface TimerContextType {
   linkedTaskId: number | null; notes: string; sessionSummary: SessionSummary | null; summaryViewed: boolean;
   acknowledgeSummary: () => void; reviewSummary: () => void; setActivityType: (type: string) => void; setNotes: (text: string) => void;
   setTargetAttributeId: (id: number | null) => void; setLinkedTaskId: (id: number | null) => void;
-  startTimer: (totalSeconds: number, questTitle?: string) => Promise<void>;
+  /** Resolves false when the session could not start (nothing was saved). */
+  startTimer: (totalSeconds: number, questTitle?: string) => Promise<boolean>;
   startFreeTimer: (totalSeconds: number, subjectId: number | null, title?: string) => Promise<boolean>;
   startSuggestedTimer: (focus: SuggestedFocus, subjectId: number | null) => Promise<boolean>;
   pauseTimer: () => Promise<void>; resumeTimer: () => Promise<void>; resetTimer: () => Promise<boolean>;
@@ -433,7 +434,9 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     finishing: open && !runtime.ending && !!runtime.finishing,
     isRestoring: runtime.restoring, restoreError: runtime.restoreError, retryRestore: () => setRestoreAttempt(value => value + 1),
     actionBusy: runtime.busy, actionError: protectionFailure?.scope === controllerScopeKey ? protectionFailure.message : runtime.error, rewardsVisible: runtime.rewardsVisible && !!record,
-    syncStatus: runtime.syncStatus, awaitingStart, startCheckVisible, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
+    // A finished session that is put away (Done, or a new Start) and waiting to
+    // sync is shown by the sync count, not as the state of the screen you're on.
+    syncStatus: record || !runtime.record ? runtime.syncStatus : "idle", awaitingStart, startCheckVisible, endingSession: runtime.ending, sessionEnded, unsyncedSessionCount: runtime.unsyncedSessionCount, interactionKind,
     retryCompletion: retry, retryAction: retry,
     resolveQuestTitle: (id, title) => { if (id === linkedTaskId) setQuestTitle(current => current?.id === id && current.title === title ? current : { id, title }); },
     activityType, targetAttributeId, linkedTaskId, notes,
@@ -442,7 +445,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     setTargetAttributeId: value => { if (!locked()) { prepareDraft(); setDraft(current => ({ ...current, subjectId: value })); } },
     setLinkedTaskId: value => { if (!locked()) { prepareDraft(); setDraft(current => ({ ...current, taskId: value })); } },
     setDurationInMinutes: minutes => { if (Number.isInteger(minutes)) setDurationInSeconds(minutes * 60); }, setDurationInSeconds,
-    startTimer: async (seconds, title) => { await start(seconds, title); },
+    startTimer: (seconds, title) => start(seconds, title),
     startFreeTimer: (seconds, subjectId, title) => {
       const routineNotes = title === undefined ? undefined : encodeRoutineSession(title);
       return routineNotes === null ? Promise.resolve(false) : start(seconds, title, { subjectId, routineNotes });

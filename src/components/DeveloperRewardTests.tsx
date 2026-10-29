@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { AppState, Modal, ScrollView, View } from "react-native";
+import { AppState, Modal, ScrollView, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { SettingsGroup, SettingsRow } from "./SettingsList";
 import { Text } from "./AppText";
@@ -10,10 +10,11 @@ import { DailyAchievementMoment } from "./PostSessionCelebration";
 import SessionResultSheet from "./SessionResultSheet";
 import SessionBackdrop from "./session/SessionBackdrop";
 import { Moment } from "./RewardMoments";
+import { ChosenRewardSheet } from "./rewards/ChosenReward";
 import { ExpeditionReveal, PackReveal } from "./rewards/RevealScreens";
 import type { Reveal } from "../services/rewardsStore";
 import type { DailyAchievementDisplay } from "../services/dailyEffortCelebrationService";
-import type { Gift } from "../services/rewardsService";
+import type { Gift, RewardsState } from "../services/rewardsService";
 import { REWARD_ITEMS, rewardItem } from "../services/rewardCatalog";
 import { useRewards } from "../hooks/useRewards";
 import { useUser } from "../context/UserContext";
@@ -25,7 +26,9 @@ import { colors } from "../constants/theme";
 
 type TestContent =
   | { kind: "achievement"; achievements: DailyAchievementDisplay }
-  | { kind: "walk" | "result"; closing?: boolean; variant?: "ended" | "offline" | "rejected" | "sync"; afterTrail?: DailyAchievementDisplay }
+  | { kind: "walk" | "result"; variant?: "ended" | "offline" | "rejected" | "sync"; afterTrail?: DailyAchievementDisplay;
+      /** After Done: the map is prepared underneath (preparing), then the card fades away over it (closing), then only the map is left (dismissed). */
+      preparing?: boolean; closing?: boolean; dismissed?: boolean }
   | { kind: "reveal"; reveal: Reveal; afterTrail?: DailyAchievementDisplay }
   | { kind: "moment"; gift: Gift };
 type TestScreen = { id: number; scope: string } & TestContent;
@@ -45,9 +48,16 @@ export default function DeveloperRewardTests() {
   const [screen, setScreen] = useState<TestScreen | null>(null);
   const [picker, setPicker] = useState<"give" | "duplicate" | "balance" | null>(null);
   const [feedback, setFeedback] = useState({ scope, text: "" });
+  // Chosen rewards on test days and test items: the server runs the real rules
+  // and rolls everything back, so this phone keeps the test state.
+  const [chosenTest, setChosenTest] = useState<{ scope: string; state: RewardsState | null; open: boolean; busy: boolean; message: string }>({ scope, state: null, open: false, busy: false, message: "" });
+  const chosenLive = chosenTest.scope === scope ? chosenTest : null;
+  // Plain values (no non-null assertions in closures): the production compiler
+  // reads a closure's property paths eagerly as dependencies.
+  const chosenState = chosenLive?.state?.chosen ?? null, chosenTarget = chosenState?.target ?? null;
   const viewScope = JSON.stringify([scope, hasOpenSession]);
   const [lastViewScope, setLastViewScope] = useState(viewScope);
-  if (lastViewScope !== viewScope) { setLastViewScope(viewScope); setScreen(null); setPicker(null); setFeedback({ scope, text: "" }); }
+  if (lastViewScope !== viewScope) { setLastViewScope(viewScope); setScreen(null); setPicker(null); setFeedback({ scope, text: "" }); setChosenTest({ scope, state: null, open: false, busy: false, message: "" }); }
   useEffect(() => {
     const subscription = AppState.addEventListener("change", state => { if (state !== "active") { setScreen(null); setPicker(null); } });
     return () => subscription.remove();
@@ -90,6 +100,9 @@ export default function DeveloperRewardTests() {
         ...(rewards.today.date ? { date: rewards.today.date } : {}) } } };
   };
   const trail = (seconds: number, fromSeconds: number) => show(trailContent(seconds, fromSeconds));
+  // The map a result preview goes on to (like a real finished session), if any.
+  const resultTrail = visible?.kind === "result" && (visible.variant === "sync" || !visible.variant)
+    ? trailContent(visible.variant === "sync" ? 180 : 60, 0) as Extract<TestContent, { kind: "reveal" }> : null;
   const startLab = async () => {
     note("Opening test inventory…");
     const result = await rewards.lab.start();
@@ -128,6 +141,25 @@ export default function DeveloperRewardTests() {
     const result = await rewards.lab.run("stardust", null, amount);
     note(result.ok ? `Test balance: ${amount} Stardust.` : result.message);
   };
+  const chosenRun = async (action: "load" | "day" | "select", item: string | null = null, earnedExtra: string[] = [], fresh = false) => {
+    const previous = fresh ? null : chosenLive?.state ?? null;
+    setChosenTest(current => ({ ...current, scope, busy: true, message: "" }));
+    const chosen = previous?.chosen;
+    const result = await rewards.chosenLab(action, { earned: [...(previous?.earned ?? []), ...earnedExtra],
+      ...(chosen ? { chosen: { balance: chosen.balance, revision: chosen.revision, target: chosen.target, offers: chosen.offers } } : {}) }, item);
+    if (current.current !== scope) return;
+    if (!result.ok) { setChosenTest(currentTest => ({ ...currentTest, busy: false, message: result.message })); return; }
+    const grant = result.value.chosen?.grants[0];
+    setChosenTest(currentTest => ({ ...currentTest, state: result.value, busy: false, open: grant ? false : currentTest.open,
+      message: action === "day" ? "Added a test goal day." : action === "load" && earnedExtra.length ? "Got your choice another way: saved days kept." : "" }));
+    // The real reward screen for the earned choice, from the same component.
+    if (grant) show({ kind: "reveal", reveal: { id: `dev-chosen:${grant.id}`, kind: "expedition", seconds: null, finds: [{ item: grant.item, rarity: grant.rarity, new: true, stardust: 0 }],
+      stardust: 0, skipTrail: true, chosen: { grantId: grant.id, days: result.value.chosen?.requiredDays ?? 5 } } });
+  };
+  const openChosen = async () => {
+    setChosenTest(currentTest => ({ ...currentTest, scope, open: true }));
+    if (!chosenLive?.state) await chosenRun("load", null, [], true);
+  };
   const outfits = (item?: string) => { close(); router.navigate(item ? { pathname: "/outfits", params: { show: item } } : "/outfits"); };
   return <>
     <SettingsGroup title="Developer: no waiting" footer="These are the real presentation components. Previews do not add minutes, XP, streak days or squad credit. Finish your running session first.">
@@ -148,6 +180,15 @@ export default function DeveloperRewardTests() {
       <SettingsRow wrap testID="dev-trail-after-end" icon="flag" title="After the trail is finished" subtitle="A later session on an already completed trail" disabled={hasOpenSession || !rewards.state}
         onPress={() => trail(rewards.trail.findSeconds * rewards.trail.stops + 60, rewards.trail.findSeconds * rewards.trail.stops)} />
     </SettingsGroup>
+    <SettingsGroup title="Developer: chosen rewards" footer={chosenLive?.message || "Test goal days and test items. The real choice screen and rules, nothing real changes. Requires the Round 82 SQL."}>
+      <SettingsRow wrap first testID="dev-chosen-open" icon="gift-outline" title="Choose a reward (test)" subtitle={chosenState
+        ? `${chosenState.balance} test goal days saved${chosenTarget ? ` · working toward ${rewardItem(chosenTarget)?.name ?? "a reward"}` : ""}` : "Starts with no items and no saved days"}
+        disabled={blocked || !!chosenLive?.busy} onPress={() => void openChosen()} />
+      <SettingsRow wrap testID="dev-chosen-day" icon="calendar-outline" title="Add a test goal day" disabled={blocked || !chosenLive?.state || !!chosenLive?.busy} onPress={() => void chosenRun("day")} />
+      <SettingsRow wrap testID="dev-chosen-early" icon="sparkles-outline" title="Get my choice another way" subtitle="Like a find or a purchase first: saved days stay"
+        disabled={blocked || !chosenTarget || !!chosenLive?.busy} onPress={() => { if (chosenTarget) void chosenRun("load", null, [chosenTarget]); }} />
+      <SettingsRow wrap testID="dev-chosen-reset" icon="refresh-outline" title="Start chosen rewards over" disabled={blocked || !!chosenLive?.busy} onPress={() => void chosenRun("load", null, [], true)} />
+    </SettingsGroup>
     <SettingsGroup title="Developer: purchase testing" footer={feedback.scope === scope && feedback.text || "Test inventory lives on this phone until you close the app. Your real items, balance, look and history stay safe. Requires the approved Round 75 SQL."}>
       <SettingsRow wrap first testID="dev-test-inventory" icon="bag-outline" title={rewards.lab.active ? "Open test Outfits" : "Start with locked items"}
         subtitle={rewards.lab.active ? `${rewards.stardust} test Stardust` : "An empty test collection and 500 test Stardust"} disabled={blocked}
@@ -165,6 +206,9 @@ export default function DeveloperRewardTests() {
       <SettingsRow wrap testID="dev-test-restore" icon="arrow-undo-outline" title="Return to my real collection" disabled={!rewards.lab.active}
         onPress={() => { rewards.lab.end(); note("Your real collection and balance are shown again."); }} />
     </SettingsGroup>
+    <ChosenRewardSheet visible={!!chosenLive?.open && !hasOpenSession && !visible} chosen={chosenState ?? undefined} busy={!!chosenLive?.busy} message={chosenLive?.message}
+      onChoose={item => void chosenRun("select", item)} onClose={() => setChosenTest(currentTest => ({ ...currentTest, open: false }))}
+      extra={<SettingsRow wrap testID="dev-chosen-sheet-day" icon="calendar-outline" title="Add a test goal day" disabled={!chosenLive?.state || !!chosenLive?.busy} onPress={() => void chosenRun("day")} />} />
     <AppSheet visible={picker !== null && !hasOpenSession} onRequestClose={() => setPicker(null)} attached compact maxHeightRatio={0.86} label="developer reward test"
       header={<SheetHeader title={picker === "balance" ? "Test Stardust" : picker === "duplicate" ? "Choose a duplicate" : "Choose a reward"} subtitle="Test inventory only"
         closeLabel="Close developer reward test" closeTestID="dev-test-picker-close" onClose={() => setPicker(null)} />}>
@@ -181,15 +225,23 @@ export default function DeveloperRewardTests() {
       <View style={{ flex: 1, backgroundColor: colors.background }}>
         <SessionBackdrop phase="completed" progress={1} secondsLeft={0} walking={false} intro={false} skipToken={0} onIntroEnd={() => {}}
           returning={visible.kind === "walk"} onReturnEnd={() => { if (current.current === scope) setScreen(previous => previous?.scope === scope && previous.id === visible.id && previous.kind === "walk" ? { ...previous, kind: "result" } : previous); }} />
-        <SessionResultSheet preview visible={visible.kind === "result" && !visible.closing && sceneryShown === visible.id} sessionId={`dev-result:${visible.id}`} activityId={activityId}
+        {resultTrail && (visible.preparing || visible.closing || visible.dismissed) && <View style={StyleSheet.absoluteFill}>
+          {/* Like a real finished session: the map is ready underneath before the card fades straight into it. */}
+          <ExpeditionReveal key={visible.id} reveal={resultTrail.reveal as Extract<Reveal, { kind: "expedition" }>} player={player} onOutfits={item => outfits(item ?? undefined)}
+            walkDelay={visible.dismissed ? 650 : 60_000} onReady={() => setScreen(previous => previous?.id === visible.id && previous.kind === "result" && previous.preparing
+              ? { ...previous, preparing: false, closing: true } : previous)}
+            onClose={() => { if (visible.afterTrail) show({ kind: "achievement", achievements: visible.afterTrail }); else close(); }} />
+        </View>}
+        <SessionResultSheet preview visible={visible.kind === "result" && !visible.closing && !visible.dismissed && sceneryShown === visible.id} sessionId={`dev-result:${visible.id}`} activityId={activityId}
           xpEarned={visible.variant === "sync" ? 3 : 1} minutesSpent={visible.variant === "sync" ? 3 : 1} durationSeconds={visible.variant === "sync" ? 180 : 60} questTitle="Test session" areaTitle="Everyday focus"
-          syncSummary={visible.variant === "sync" ? { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: "Everyday focus", color: colors.accent, xp: 3 }] } : undefined}
+          syncSummary={visible.variant === "sync" ? { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: "Everyday focus", color: colors.accent, xp: 3 }], preparing: !!visible.preparing } : undefined}
           ending={visible.variant === "ended"} pending={visible.variant === "offline"} offline={visible.variant === "offline"}
           localSaved={visible.variant === "offline"} rejected={visible.variant === "rejected"}
           currentXP={profile.current_xp} requiredXP={requiredCharacterXP(profile.level)}
-          onClose={() => setScreen(previous => previous?.kind === "result" ? { ...previous, closing: true } : previous)}
+          onClose={() => setScreen(previous => previous?.kind === "result" && !previous.preparing && !previous.closing
+            ? resultTrail ? { ...previous, preparing: true } : { ...previous, closing: true } : previous)}
           onDismiss={() => { if (current.current === scope) setScreen(previous => previous?.scope === scope && previous.id === visible.id && previous.kind === "result" && previous.closing
-            ? visible.variant === "sync" ? { ...trailContent(180, 0), afterTrail: visible.afterTrail, id: previous.id, scope } : visible.variant ? null : { ...trailContent(60, 0), id: previous.id, scope } : previous); }} />
+            ? resultTrail ? { ...previous, closing: false, dismissed: true } : null : previous); }} />
       </View>
     </Modal>}
     {visible && (visible.kind === "reveal" || visible.kind === "moment") && <Modal visible transparent animationType={reduced ? "none" : "fade"} statusBarTranslucent onRequestClose={closeReturn}>

@@ -64,7 +64,7 @@ test('synced offline sessions have one honest total and the exact duration group
     assert.equal(text(header), 'Sessions synced');
     assert.equal(header.findByType('Text').props.accessibilityRole, 'header');
     const hero = f.root().findByType('Hero');
-    assert.equal(hero.props.seconds, 180); assert.equal(hero.props.title, '3 sessions completed offline');
+    assert.equal(hero.props.seconds, 180); assert.equal(hero.props.title, '3 offline sessions');
     const groups = f.root().findByProps({ testID: 'session-sync-durations' });
     assert.equal(text(groups), '3 × 1 min');
     assert.equal(groups.findByType('Text').props.accessibilityLabel, '3 sessions of 1 min each');
@@ -175,7 +175,7 @@ test('developer sync preview opens the actual summary and one three-minute trail
     './CompletionDetails': { CompletionHero: host('Hero'), CompletionRows: host('Rows') },
     './AppSheet': props => React.createElement('Sheet', props, props.header, props.children, props.footer), './SheetHeader': host('Header'),
     './PostSessionCelebration': { DailyAchievementMoment: host('Achievement') }, './RewardMoments': { Moment: host('Moment') },
-    './rewards/RevealScreens': { ExpeditionReveal: host('Expedition'), PackReveal: host('Pack') }, './session/SessionBackdrop': host('Backdrop'),
+    './rewards/ChosenReward': {ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)}, './rewards/RevealScreens': { ExpeditionReveal: host('Expedition'), PackReveal: host('Pack') }, './session/SessionBackdrop': host('Backdrop'),
     '@expo/vector-icons': { Ionicons: host('Icon') }, './CharacterMark': host('Character'), './ProgressRing': host('Ring'),
     '@gorhom/bottom-sheet': { BottomSheetScrollView: React.forwardRef(function Scroll(props, ref) {
       React.useImperativeHandle(ref, () => ({ scrollTo() {} })); return React.createElement('Scroll', props, props.children);
@@ -191,23 +191,31 @@ test('developer sync preview opens the actual summary and one three-minute trail
     const launch = button('dev-sync-summary'); assert.ok(launch);
     assert.equal(launch.props.accessibilityRole, 'button'); assert.equal(launch.props.accessibilityLabel, 'Offline sync summary');
     await act(async () => launch.props.onPress());
+    await act(async () => tree.root.findAllByType('Modal').find(node => node.props.onShow).props.onShow());
     assert.ok(presses.includes('dev-sync-summary'), 'the existing haptic SettingsRow press path is used');
     assert.equal(text(tree.root.findByProps({ testID: 'session-result-header' })), 'Sessions synced');
     assert.equal(tree.root.findByType('Hero').props.seconds, 180);
     assert.equal(text(tree.root.findByProps({ testID: 'session-sync-durations' })), '3 × 1 min');
     assert.equal(text(tree.root.findByProps({ testID: 'session-sync-xp' })), 'Character XP+3Everyday focus+3 XP');
     await act(async () => button('session-result-done').props.onPress());
-    assert.equal(tree.root.findAllByType('Expedition').length, 0, 'the preview also waits for the summary fade');
-    const result = tree.root.findAllByType('Sheet').find(node => node.props.label === 'synced sessions');
-    await act(async () => result.props.onDismiss());
-    const reveal = tree.root.findByType('Expedition').props.reveal;
+    // Like the real catch-up: the map is prepared underneath, its walk held, while the card still shows.
+    let map = tree.root.findByType('Expedition'); assert.equal(map.props.walkDelay, 60000);
+    const result = () => tree.root.findAllByType('Sheet').find(node => node.props.label === 'synced sessions');
+    assert.equal(result().props.visible, true, 'the card stays until the map is ready');
+    await act(async () => map.props.onReady());
+    assert.equal(result().props.visible, false, 'then the card fades straight into the map');
+    await act(async () => result().props.onDismiss());
+    map = tree.root.findByType('Expedition'); assert.equal(map.props.walkDelay, 650, 'the walk starts once the card is gone');
+    const reveal = map.props.reveal;
     assert.equal(reveal.seconds, 180); assert.equal(reveal.trail.seconds, 180); assert.equal(reveal.trail.fromSeconds, 0);
     assert.equal(profile.current_xp, 11); assert.equal(real.today.seconds, 0); assert.equal(real.stardust, 7);
     assert.deepEqual(celebrations, []); assert.deepEqual(routes, []);
     await act(async () => tree.root.findByType('Expedition').props.onClose());
     const celebrate=button('dev-sync-achievements');assert.ok(celebrate);assert.equal(celebrate.props.accessibilityRole,'button');
     await act(async()=>celebrate.props.onPress());
+    await act(async()=>tree.root.findAllByType('Modal').find(node=>node.props.onShow).props.onShow());
     await act(async()=>button('session-result-done').props.onPress());
+    await act(async()=>tree.root.findByType('Expedition').props.onReady());
     const combined=tree.root.findAllByType('Sheet').find(node=>node.props.label==='synced sessions');
     await act(async()=>combined.props.onDismiss());
     await act(async()=>tree.root.findByType('Expedition').props.onClose());

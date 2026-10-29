@@ -42,7 +42,7 @@ function sourceLoader(mocks, compiled) {
 }
 
 async function fixture({ compiled = true, reduced = false, usage = true } = {}) {
-  let now = Date.UTC(2026, 9, 28, 6), timer, protection, renderer, tick, sequence = 0;
+  let now = Date.UTC(2026, 9, 28, 6), timer, protection, renderer, tick, sequence = 0, screenKey = 0;
   const oldNow = Date.now; Date.now = () => now;
   const scope = { backendId: 'round78-offline-start-fixture', ownerId: '11111111-1111-4111-8111-111111111111' };
   const animations = [], commands = [], cloud = [], values = new Map(), listeners = new Set();
@@ -117,7 +117,7 @@ async function fixture({ compiled = true, reduced = false, usage = true } = {}) 
     './OfflineStatus': host('OfflineStatus'), './session/SessionReveal': host('SessionReveal'),
     '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('SheetScroll') },
     'react-native-safe-area-context': { SafeAreaView: host('SafeArea'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
-    '../adventurer/AdventurerBack': host('Walker'), './TrailScenes': { FireGlow: host('Glow'), Fireflies: host('Fireflies'), TrailScene: host('Scene') },
+    '../adventurer/AdventurerBack': host('Walker'), './CampDecorations': { __esModule: true, default: () => null, campDecorations: () => [] }, './TrailScenes': { FireGlow: host('Glow'), Fireflies: host('Fireflies'), TrailScene: host('Scene') },
     '../../hooks/useRewards': { useRewards: () => ({ look: {}, equipped: {}, today: { seconds: 0 }, trail: { findSeconds: 1800, stops: 4 } }) },
     '../hooks/useRewards': require('./helpers/rewards-store-mock.cjs'),
     '../utils/afterTransition': { afterTransition: () => () => {} }, '../utils/sessionTransition': { traceSession() {} },
@@ -133,7 +133,7 @@ async function fixture({ compiled = true, reduced = false, usage = true } = {}) 
   const { setupMode } = load('src/services/setupMode.ts');
   function Capture() { timer = timerApi.useTimer(); protection = protectionApi.useSessionProtection(); return null; }
   function Tree() { return React.createElement(timerApi.TimerProvider, null,
-    React.createElement(protectionApi.SessionProtectionProvider, null, React.createElement(Capture), React.createElement(Screen))); }
+    React.createElement(protectionApi.SessionProtectionProvider, null, React.createElement(Capture), React.createElement(Screen, { key: screenKey }))); }
   try {
     await act(async () => { renderer = create(React.createElement(Tree)); await flush(); await flush(); });
     await act(async () => { timer.setTargetAttributeId(1); timer.setDurationInSeconds(60);
@@ -152,6 +152,8 @@ async function fixture({ compiled = true, reduced = false, usage = true } = {}) 
     advance: milliseconds => act(async () => { now += milliseconds; tick?.(); await flush(); await flush(); }),
     finish: animation => act(async () => { assert.equal(typeof animation?.done, 'function'); animation.done(true); await flush(); await flush(); }),
     cleanup: () => act(async () => { renderer.unmount(); await flush(); Date.now = oldNow; }),
+    // The session screen closed after Done, then opened again (a fresh screen).
+    reopen: () => act(async () => { screenKey++; renderer.update(React.createElement(Tree)); await flush(); await flush(); }),
   };
 }
 
@@ -233,5 +235,26 @@ test('offline departure cannot bypass the existing protection permission gate', 
     await f.finish(night);
     assert.equal(f.timer().hasOpenSession, false); assert.equal(f.timer().protectionSetupRequired, true);
     assert.deepEqual(f.records(), []); assert.deepEqual(f.commands, []); assert.deepEqual(f.cloud, []);
+  } finally { await f.cleanup(); }
+});
+
+test('Round 82: after a finished offline session and Done, the next offline session starts, with no stray waiting message', async () => {
+  const f = await fixture();
+  try {
+    await f.press('Start');
+    await f.finish(f.animations.findLast(animation => animation.config?.duration === 2000 && animation.done));
+    await f.advance(60000);
+    assert.equal(f.timer().isCompleted, true); assert.equal(f.timer().syncStatus, 'waiting');
+    // Done on the saved-on-this-phone card.
+    await act(async () => { f.timer().acknowledgeSummary(); f.timer().clearCompletionModal(); await flush(); await flush(); });
+    await f.reopen();
+    const words = () => f.root().findAllByType('Text').map(node => [].concat(node.props.children).join('')).join(' | ');
+    assert.doesNotMatch(words(), /Waiting to confirm your saved session state/, 'a finished session waiting to sync is not a problem with the next one');
+    assert.equal(f.root().findAllByProps({ testID: 'session-recovery-actions' }).length, 0, 'no Retry for it either');
+    await f.press('Start');
+    await f.finish(f.animations.findLast(animation => animation.config?.duration === 2000 && animation.done));
+    assert.equal(f.timer().hasOpenSession, true, 'the second offline session starts');
+    assert.equal(f.timer().isRunning, true);
+    assert.equal(f.records().length, 2); assert.deepEqual(f.cloud, []);
   } finally { await f.cleanup(); }
 });

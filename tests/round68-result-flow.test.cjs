@@ -93,7 +93,7 @@ async function fixture({ compiled = true, delayReceipt = false } = {}) {
     './FocusLengthControl': host('Length'), './FocusDurationSheet': host('Duration'), './ProgressRing': host('Ring'), './session/SessionReveal': host('SessionReveal'),
     '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('SheetScroll'), TouchableOpacity: host('Button') },
     'react-native-safe-area-context': { SafeAreaView: host('SafeArea'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
-    '../adventurer/AdventurerBack': host('Walker'), './TrailScenes': { FireGlow: host('Glow'), Fireflies: host('Fireflies'), TrailScene: host('Scene') },
+    '../adventurer/AdventurerBack': host('Walker'), './CampDecorations': { __esModule: true, default: () => null, campDecorations: () => [] }, './TrailScenes': { FireGlow: host('Glow'), Fireflies: host('Fireflies'), TrailScene: host('Scene') },
     '../../hooks/useRewards': { useRewards: () => ({ look: {}, equipped: {}, today: { seconds: 0 }, trail: { findSeconds: 1800, stops: 4 } }) },
     '../hooks/useRewards': require('./helpers/rewards-store-mock.cjs'),
     '../utils/afterTransition': { afterTransition: () => () => {} }, '../utils/sessionTransition': { traceSession() {} }, '../utils/tapHaptics': { tapHaptic() {} },

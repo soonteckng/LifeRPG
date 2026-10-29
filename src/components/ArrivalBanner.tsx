@@ -43,7 +43,7 @@ export default memo(function ArrivalBanner({ seconds, title, levelUp = false }: 
       {levelUp ? <View style={s.chip}><Ionicons name="sparkles" size={12} color="#2B2200" /><Text style={s.chipText}>Level up</Text></View>
         : <Text style={s.caption}>Time recorded</Text>}
       <Text style={s.time}>{durationLabel(seconds)}</Text>
-      {!!title && <Text style={s.title} numberOfLines={1}>{title}</Text>}
+      {!!title && <Text style={s.title} numberOfLines={2}>{title}</Text>}
     </View>
   </View>;
 });

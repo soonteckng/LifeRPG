@@ -180,7 +180,7 @@ export default function ProfileScreen() {
             ["flame", "Best streak", `${milestones.totals.bestStreak} ${milestones.totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint]) =>
             <View key={label} style={s.statTile} accessible accessibilityLabel={`${label}, ${milestones.ready ? value : "loading"}`}>
               <View style={[s.statIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={icon as never} size={16} color={tint} /></View>
-              <Text style={[s.statValue, label === "Best streak" && { color: colors.streak }]} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "—"}</Text>
+              <Text style={[s.statValue, label === "Best streak" && { color: colors.streak }]} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "–"}</Text>
               <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
             </View>)}
         </View>

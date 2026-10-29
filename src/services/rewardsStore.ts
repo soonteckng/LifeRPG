@@ -18,12 +18,16 @@ export type Reveal =
       /** Per-session evidence lets offline catch-up merge claim chunks once. */
       sessions?: SessionClaim["sessions"];
       /** Late finds can be shown without repeating an already-seen sync map. */
-      skipTrail?: boolean }
+      skipTrail?: boolean;
+      /** A chosen reward earned with saved goal days (shown once, then acknowledged). */
+      chosen?: { grantId: string; days: number } }
   | { id: string; kind: "pack"; tier: number; daysInARow: number; items: Gift[]; stardust: number };
 /** The items a reveal shows; their single pop-ups wait for it and then count as seen. */
 export const revealItems = (reveal: Reveal) => (reveal.kind === "pack" ? reveal.items : reveal.finds).filter(g => g.new).map(g => g.item);
 /** moments: things just earned, waiting for their pop-up, oldest first. reveals show before them. */
-export interface RewardsSnapshot { state: RewardsState | null; loading: boolean; busy: boolean; error: string | null; moments: string[]; reveals: Reveal[] }
+export interface RewardsSnapshot { state: RewardsState | null; loading: boolean; busy: boolean; error: string | null; moments: string[]; reveals: Reveal[];
+  /** Chosen rewards shown on this phone whose acknowledgement hasn't reached the server yet. */
+  toAcknowledge?: string[] }
 interface Storage { getItem(key: string): Promise<string | null>; setItem(key: string, value: string): Promise<void> }
 
 const EMPTY: RewardsSnapshot = { state: null, loading: false, busy: false, error: null, moments: [], reveals: [] };
@@ -101,12 +105,24 @@ export function createRewardsStore(storage: Storage) {
     }).catch(() => {});
     queue.set(owner, run);
   };
+  // Chosen rewards already shown on this phone (their acknowledgement may still be on its way).
+  const shownGrants = new Map<string, Set<string>>();
+  const queueChosen = (owner: string, state: RewardsState) => {
+    const shown = shownGrants.get(owner) ?? new Set<string>();
+    const reveals = snapshots.get(owner)?.reveals ?? [];
+    const fresh = (state.chosen?.grants ?? []).filter(g => !shown.has(g.id) && !reveals.some(r => r.kind === "expedition" && r.chosen?.grantId === g.id));
+    if (!fresh.length) return;
+    // After any session return already waiting, so the trail comes first.
+    set(owner, { reveals: [...reveals, ...fresh.map(({ id, ...gift }) => ({ id: `chosen:${id}`, kind: "expedition" as const, seconds: null,
+      finds: [gift], stardust: 0, skipTrail: true, chosen: { grantId: id, days: state.chosen?.requiredDays ?? 5 } }))] });
+  };
   const keep = (owner: string, state: RewardsState, quiet: string[] = []) => {
     // An unchanged reply (most refreshes) keeps the same copy, so nothing that
     // shows rewards redraws for it, such as Home while a sheet opens.
     const current = snapshots.get(owner);
     const same = !!current?.state && JSON.stringify(current.state) === JSON.stringify(state);
     if (!same || current?.error) set(owner, same ? { error: null } : { state, error: null });
+    queueChosen(owner, state);
     void storage.setItem(rewardsCacheKey(owner), JSON.stringify(state)).catch(() => {});
     return notice(owner, state.earned, quiet);
   };
@@ -146,14 +162,30 @@ export function createRewardsStore(storage: Storage) {
     addReveal(owner: string | null, reveal: Reveal) {
       if (!owner) return;
       const reveals = snapshots.get(owner)?.reveals ?? [];
-      if (!reveals.some(r => r.id === reveal.id)) set(owner, { reveals: [...reveals, reveal] });
+      if (reveals.some(r => r.id === reveal.id)) return;
+      // A session's return goes before chosen rewards already waiting: walk the trail, then the reward.
+      const isChosen = (r: Reveal) => r.kind === "expedition" && !!r.chosen;
+      const at = isChosen(reveal) ? reveals.length : reveals.findIndex(isChosen);
+      set(owner, { reveals: at < 0 ? [...reveals, reveal] : [...reveals.slice(0, at), reveal, ...reveals.slice(at)] });
     },
     /** Closes a return or pack screen; what it showed counts as seen. */
     dismissReveal(owner: string | null, id: string) {
       if (!owner) return;
       const reveal = (snapshots.get(owner)?.reveals ?? []).find(r => r.id === id);
-      set(owner, { reveals: (snapshots.get(owner)?.reveals ?? []).filter(r => r.id !== id) });
+      const grant = reveal?.kind === "expedition" && reveal.chosen ? reveal.chosen.grantId : null;
+      if (grant) {
+        if (!shownGrants.has(owner)) shownGrants.set(owner, new Set());
+        shownGrants.get(owner)!.add(grant);
+      }
+      const waiting = snapshots.get(owner)?.toAcknowledge ?? [];
+      set(owner, { reveals: (snapshots.get(owner)?.reveals ?? []).filter(r => r.id !== id),
+        ...(grant && !waiting.includes(grant) ? { toAcknowledge: [...waiting, grant] } : {}) });
       if (reveal) dismiss(owner, revealItems(reveal));
+    },
+    /** The server has the acknowledgement for these chosen rewards. */
+    acknowledged(owner: string | null, ids: string[]) {
+      if (!owner) return;
+      set(owner, { toAcknowledge: (snapshots.get(owner)?.toAcknowledge ?? []).filter(id => !ids.includes(id)) });
     },
     /** Runs one change at a time per account; returns an error message or the result. Items in quiet (a purchase) get no pop-up. */
     async act<T extends { state: RewardsState } | RewardsState>(owner: string | null, work: (() => Promise<T>) | null, quiet: string[] = []): Promise<{ ok: true; value: T } | { ok: false; message: string }> {

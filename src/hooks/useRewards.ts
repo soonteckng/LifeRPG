@@ -1,7 +1,7 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useAuth } from "../context/AuthContext";
-import { claimedTrail, createRewardsClient, LEGACY_TRAIL, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
+import { claimedTrail, createRewardsClient, LEGACY_TRAIL, type ChosenRewards, type DevRewardAction, type SavedAvatar } from "../services/rewardsService";
 import { createRewardsStore } from "../services/rewardsStore";
 import { normalizeLook } from "../utils/adventurerLook";
 import { sessionTrail } from "../services/sessionTrail";
@@ -12,6 +12,7 @@ import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { isJournalUuid } from "../utils/sessionJournalSchema";
 
 export const rewardsStore = createRewardsStore(AsyncStorage);
+export type ChosenLabSnapshot = Pick<ChosenRewards, "balance" | "revision" | "target" | "offers">;
 
 /**
  * The signed-in person's rewards and saved look. Every screen shares one copy;
@@ -47,6 +48,7 @@ export function useRewards({ load = true, developerLab = false }: { load?: boole
     return rewardsStore.act(owner, c ? pick(c) as never : null, quiet) as Promise<{ ok: true; value: T } | { ok: false; message: string }>;
   };
   const displayState = labActive ? labState.state : snap.state;
+
   const avatar = displayState?.avatar;
   // Stable objects, so screens that follow the saved look don't redraw for nothing.
   const look = useMemo(() => normalizeLook(avatar?.look), [avatar?.look]);
@@ -122,6 +124,32 @@ export function useRewards({ load = true, developerLab = false }: { load?: boole
     // nothing yet. It's the real screen with nothing given.
     showEmptyReturn: (seconds: number) => rewardsStore.addReveal(owner, { id: `empty:${Date.now()}`, kind: "expedition", seconds, finds: [], stardust: 0 }),
     dismissReveal: (id: string) => rewardsStore.dismissReveal(owner, id),
+    /** Tells the server these chosen rewards have been shown, so they are celebrated once. */
+    acknowledgeChosen: async (ids: string[]) => {
+      const r = await act(c => () => c.acknowledgeChosen(ids));
+      if (r.ok) rewardsStore.acknowledged(owner, ids);
+      return r;
+    },
+    /** Developers only: the real chosen-reward rules on test days and items. Nothing real changes. */
+    chosenLab: async (action: "load" | "day" | "select", snapshot: { earned: string[]; chosen?: ChosenLabSnapshot }, item: string | null = null) => {
+      const c = client();
+      if (!c) return { ok: false as const, message: "Connect to test chosen rewards." };
+      try { return { ok: true as const, value: await c.chosenLab(action, snapshot, item) }; }
+      catch (cause) {
+        const message = cause instanceof Error ? cause.message : (cause as { message?: string })?.message ?? "";
+        return { ok: false as const, message: /dev_chosen_reward_lab_v1|schema cache|PGRST202/.test(message)
+          ? "Chosen rewards need the Round 82 database update. Nothing real changed."
+          : /available rewards|another device|Only developer|already used/.test(message) ? message : "Couldn't run the test. Check your connection and try again." };
+      }
+    },
+    /** Chosen rewards (saved goal days toward a reward you pick); undefined until the server supports them. */
+    chosen: snap.state?.chosen,
+    /** Work toward this reward (null stops). If enough days are saved, it's earned at once. */
+    chooseReward: async (item: string | null) => {
+      // A new request id per choice: a retry of the same tap can't choose twice.
+      const { uuid } = await import("expo-modules-core");
+      return act(c => () => c.chooseReward(item, snap.state?.chosen?.revision ?? 1, uuid.v4().toLowerCase()));
+    },
     today: snap.state?.today ?? { seconds: 0, finds: 0 },
     nextFindSeconds: snap.state?.nextFindSeconds ?? LEGACY_TRAIL.findSeconds,
     trail: snap.state?.trail ?? { ...LEGACY_TRAIL, complete: false },

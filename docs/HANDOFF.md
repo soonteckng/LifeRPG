@@ -1,4 +1,4 @@
-# LifeRPG handoff (after Round 81, phone checks in section 7)
+# LifeRPG handoff (after Round 82, phone checks in section 7)
 
 Read this whole file before doing anything. It is the working agreement for this
 repo. Follow it exactly; when something here conflicts with your own habits,
@@ -13,13 +13,13 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 81 (Claude) on pushed R80 at `1560048`: developer previews whose card opened under the scenery window, plus review fixes to the chosen-reward SQL proposal (still not installed). Soon Teck applies, pushes and publishes. |
+| Latest delivered round | Round 82 (Claude) on Round 81: four phone fixes, chosen rewards (client), camp decorations, rest days, launch-readiness sweep. See `docs/round82-big-round.md`. Soon Teck applies, pushes and publishes, then runs the two Round 82 SQL files. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 81: see `docs/round81-preview-windows-and-reward-review.md`. Full suite 1,894 passed (none skipped), typecheck, lint, fingerprint unchanged. |
+| Code health | Round 82: full suite 1,910 passed (none skipped), typecheck, lint, fingerprint unchanged. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| SQL | Round 66 is live. Read-only function metadata on 29 Oct confirms Round 75's developer lab matches the branch. R80 chosen-reward SQL (revised in R81 after Claude's review) is **NOT installed** and must not be run until the new client is published and installation is separately approved. The old R64 file must never run. |
+| SQL | Round 66 is live. Read-only function metadata on 29 Oct confirms Round 75's developer lab matches the branch. Chosen rewards (`20261028185232_round80_chosen_rewards.sql`) and rest days (`20261029120000_round82_rest_days.sql`) are delivered with Round 82 for Soon Teck to run after publishing. Check `to_regprocedure('public.choose_reward_v1(uuid,text,bigint,uuid)')` to see whether chosen rewards are live. The old R64 file must never run. |
 | Waiting on the phone | User reports R79 offline sessions succeed, but first-session encouragement was missing. R80 fixes that and the same omission for daily goals, using separate confirmed receipts after the one map. Check first-only, goal-only and combined messages; a no-wait Developer sequence is available. Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
@@ -207,6 +207,9 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 - **Stardust:** 1 per 5 focused minutes; spent in Outfits on items you haven't found. A **find** at each stop of today's trail: every 30 eligible focused minutes of the day, up to 4 (120 minutes), then +50 Stardust for the trail's end (Round 66 SQL, live since 26 Oct).
 - **Daily supply pack:** opens once you reach your **daily goal** (default 30 min). Tiers climb with days in a row. The dev account can open it any time from Developer › Rewards (the same `open_daily_pack_v1`, with a dev bypass on the server).
+- **Chosen rewards (Round 82, after its SQL):** from the day after installation, the daily goal no longer opens a pack; it saves a goal day (one permanent credit per local date). Five saved days earn the reward chosen on Home from four stable offers (wearables, backgrounds, decorations not owned). Switching or getting it another way keeps the days. Grants show as a "You earned it" reveal and are acknowledged once seen.
+- **Rest days (Round 82, after its SQL for squads):** every 7 focus days in a streak earn one (hold 2); a missed day uses one automatically. Same rule in `utils/focusDays.ts` and SQL `focus_streak`.
+- **Camp decorations:** the newest four owned decorations stand in fixed spots in the session camp.
 - Pets, streak frames and badges are milestones. Frames upgrade on their own (no choosing).
 - Server side, everything is in the private schema `liferpg_reward_private`, reached through `SECURITY DEFINER` RPCs in `public`. Each RPC takes `p_expected_owner` and checks it with `liferpg_reward_private.signed_in()`; `EXECUTE` is revoked from `anon`.
 - The client store keeps per-owner snapshots with `moments` (small pop-ups) and `reveals` (full screens: expedition or pack). Seen state is kept in AsyncStorage. The pop-up host waits for other sheets (`sheetActivity`) plus `SETTLE_MS = 450` and shows reveals before moments.
@@ -240,7 +243,12 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 
 ## 7. Your first task, and the review checklist
 
-**First: verify Round 81 developer previews, then build the chosen-reward client.**
+**First: Soon Teck's Round 82 phone results.** See `docs/round82-big-round.md` (what to check) and
+`docs/launch-readiness.md` (what is left before release). Never mount a Modal (including `AppSheet`)
+visible inside another Modal in the same commit, and avoid non-null-asserted property paths inside
+closures (`a!.b!.c`): the production React Compiler reads them eagerly as dependencies.
+
+**Round 81 (history): verify developer previews.**
 Round 81: the five instant result previews (Offline sync summary, Offline sync
 and celebrations, Session ended early, Saved offline result, Session could not
 be credited) opened their card *under* the scenery window on Android (nested
@@ -450,7 +458,7 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 - Level shows on the profile picture; Stardust shows on Home and opens Outfits (it grows from the chip, like Settings and Profile).
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
-- **Approved next:** five banked non-consecutive goal-days for a chosen cosmetic. The R80 review-only proposal records installation time and a frozen next-local-day boundary, preserves the launch-day pack, durable credits, wallet-first grants, four stored offers and old-client payloads. No SQL is installed, no chosen client is built and no Claude message sent. See the R80 review note and historical spec. Rest days and decorations are later.
+- **Built in Round 82:** chosen rewards (client + reviewed SQL), camp decorations (fixed spots, newest four), rest days (every 7 streak days, hold 2, used automatically; goal streak and frames unchanged). Earlier note: five banked non-consecutive goal-days for a chosen cosmetic. The R80 review-only proposal records installation time and a frozen next-local-day boundary, preserves the launch-day pack, durable credits, wallet-first grants, four stored offers and old-client payloads. No SQL is installed, no chosen client is built and no Claude message sent. See the R80 review note and historical spec. Rest days and decorations are later.
 
 ---
 
@@ -480,6 +488,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R82 (Claude):** phone fixes (wrapped offline title, preview card fades into a prepared map, next-frame session entrance, waiting error scoped to the selected record, refused start shows setup at once); chosen rewards client (Home card replaces the pack once enabled, four-offer sheet, "You earned it" reveal, acknowledgement, developer lab controls); camp decorations; rest days (one rule in `utils/focusDays.ts` and SQL `focus_streak`, PGlite equivalence test); guide and launch-readiness list. Two SQL files to run after publishing.
 - **R81 (Claude):** nested-Modal fix for the five instant developer result previews (card waits for the scenery window); chosen-reward SQL review fixes (exception-safe triggers, `chosen` source, alternating offers) with failing-first PGlite tests. SQL still not installed; client not built.
 - **R80 (Codex):** reproduced missing first/goal celebrations for grouped offline receipts; retain independent confirmed evidence and release it after the single map, with the same durable ledgers and combined message. A no-wait Developer sequence reuses shipped screens. Read-only live reward metadata matches six branch bodies; R75 lab presence confirmed. CLI-created chosen-reward SQL proposal has isolated tests, but is not installed and must wait for review/new client. No live mutation, Auth/email, native/config/dependency change, push, build or publication. Native notifications remain deferred to November. See `docs/round80-celebrations-and-reward-proposal.md`.
 

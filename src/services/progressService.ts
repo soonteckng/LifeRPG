@@ -1,7 +1,7 @@
 import { supabase } from "../../lib/supabase";
-import { dateKey, shiftDay } from "../utils/progressAnalytics";
+import { dateKey, daysBetween } from "../utils/progressAnalytics";
 import { getSubjects, type Subject } from "./taskService";
-import { focusDay, bestFocusStreak } from "../utils/focusDays";
+import { focusDay, bestFocusStreak, focusStreakWithRest, REST_MAX, type FocusStreak } from "../utils/focusDays";
 
 export interface ProgressSession {
   id: string;
@@ -98,15 +98,18 @@ export async function getSessionHistory(
 }
 
 // Count completed-session days, separately from the backend's daily-goal streak.
-// Yesterday keeps the streak alive until the user has had a chance to focus today.
-export async function getFocusStreak(
+// Yesterday keeps the streak alive until the user has had a chance to focus today,
+// and saved rest days bridge missed days (see focusStreakWithRest).
+export async function getFocusStreakDetail(
   timeZone: string,
   now = new Date(),
   owner?: string,
-): Promise<number> {
+): Promise<FocusStreak> {
   const today = dateKey(now, timeZone);
-  let expected = today,
-    streak = 0;
+  const days: string[] = [];
+  // Read back only as far as the current streak can reach: a gap longer than
+  // the most rest days you can hold always ends a streak.
+  const reachable = (older: string, newer: string) => daysBetween(older, newer) - 1 <= REST_MAX;
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await forOwner(supabase
       .from("activity_sessions")
@@ -120,15 +123,16 @@ export async function getFocusStreak(
     if (error) throw error;
     for (const row of data ?? []) {
       const key = focusDay(row, timeZone, now);
-      if (!key) continue;
-      if (streak === 0 && key === shiftDay(today, -1)) expected = key;
-      if (key === expected) {
-        streak++;
-        expected = shiftDay(expected, -1);
-      } else if (key < expected) return streak;
+      if (!key || key === days[days.length - 1]) continue;
+      const newest = days[days.length - 1] ?? today;
+      if (!reachable(key, newest)) return focusStreakWithRest(days, today);
+      days.push(key);
     }
-    if (!data || data.length < PAGE_SIZE) return streak;
+    if (!data || data.length < PAGE_SIZE) return focusStreakWithRest(days, today);
   }
+}
+export async function getFocusStreak(timeZone: string, now = new Date(), owner?: string): Promise<number> {
+  return (await getFocusStreakDetail(timeZone, now, owner)).current;
 }
 
 // A bounded, owner-filtered lookup, separate from Progress's paginated history.

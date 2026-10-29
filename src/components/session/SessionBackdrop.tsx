@@ -1,10 +1,11 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated as RNAnimated, AppState, Pressable, StyleSheet, View, useWindowDimensions, type AppStateStatus } from "react-native";
 import { useFocusEffect } from "expo-router";
 import Animated, { cancelAnimation, Easing, interpolate, runOnJS, useAnimatedStyle, useSharedValue, withDelay, withTiming } from "react-native-reanimated";
 import { Text } from "../AppText";
 import AdventurerWalking from "../adventurer/AdventurerBack";
 import { FireGlow, Fireflies, TrailScene } from "./TrailScenes";
+import CampDecorations, { campDecorations } from "./CampDecorations";
 import { useRewards } from "../../hooks/useRewards";
 import { useReducedMotion } from "../../hooks/useReducedMotion";
 import { trailStops, trailZone } from "../../utils/trail";
@@ -55,6 +56,10 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
   const motionActive = active && visible;
   const shown = phase === "running" || phase === "paused" || phase === "completed" || phase === "ended";
   const morning = isMorning({ phase, secondsLeft, intro });
+  // The decorations you've collected, in the camp. Keyed by content so the
+  // memoized layer redraws only when what you own changes.
+  const campKey = campDecorations(rewards.earned ?? [], rewards.owned ?? []).join(",");
+  const campItems = useMemo(() => campKey ? campKey.split(",") : [], [campKey]);
   const lightMode = phase === "completed" ? "morning" : morning ? phase === "running" && walking ? "dawn" : "hold" : "night";
   const remaining = useRef(secondsLeft); remaining.current = secondsLeft;
   // A reopened timer joins its current light instead of replaying dawn from
@@ -154,6 +159,7 @@ export default memo(function SessionBackdrop({ phase, secondsLeft, walking, intr
     {nightMounted && <TrailScene width={width} height={height} light="night" />}
     {dayMounted && <Animated.View style={[fill, dayLayer]}><TrailScene width={width} height={height} light="morning" /></Animated.View>}
     {intro && !reduced && <Animated.View style={[fill, duskLayer]}><TrailScene width={width} height={height} light="dusk" /></Animated.View>}
+    <CampDecorations width={width} height={height} items={campItems} night={!morning && !intro} />
     <FireGlow width={width} height={height} active={motionActive} />
     <Fireflies width={width} height={height} active={motionActive && walking && !morning} />
     <Animated.View testID="session-walker" style={[s.walker, { left: width / 2 - size / 2, top: 0 }, walker]}>

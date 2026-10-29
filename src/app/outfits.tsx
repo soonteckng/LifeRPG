@@ -204,7 +204,7 @@ export default function OutfitsScreen() {
         </Pressable>
       </View>
       <Text style={s.itemMeta}>{RARITY_NAME[focus.rarity]}{focus.set ? ` · ${SETS[focus.set].name} set` : ""}
-        {!has(focus) ? ` · ${focus.price ? focus.kind === "background" ? "Find in daily supply packs" : "Find on today's trail" : focus.hint}` : ""}</Text>
+        {!has(focus) ? ` · ${focus.price ? focus.kind === "background" ? "Earn it by reaching your daily goal" : "Find on today's trail" : focus.hint}` : ""}</Text>
       {!has(focus) && !!focus.price && rewards.online && <Pressable testID="outfits-get-item" accessibilityRole="button"
         accessibilityLabel={`Get it for ${focus.price} Stardust`} accessibilityState={{ disabled: rewards.busy }} disabled={rewards.busy}
         onPress={() => setBuying(focus)} style={[p.button, p.secondaryButton, rewards.busy && { opacity: 0.45 }]}>

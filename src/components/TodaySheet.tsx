@@ -15,8 +15,10 @@ import { durationLabel } from "../utils/progressAnalytics";
  * Today's goal up close: how far along you are, your streak and this week's
  * rhythm. The goal itself is changed from the ••• menu, not by tapping here.
  */
-export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, complete, onChangeGoal, onOpenProgress, canChangeGoal = true, goalKnown = true, todayKnown = true, streakKnown = todayKnown }: {
+export default function TodaySheet({ visible, onClose, completedSeconds, goalMinutes, streak, restDays = 0, restedYesterday = false, complete, onChangeGoal, onOpenProgress, canChangeGoal = true, goalKnown = true, todayKnown = true, streakKnown = todayKnown }: {
   visible: boolean; onClose: () => void; completedSeconds: number; goalMinutes: number; streak: number; complete: boolean;
+  /** Rest days ready to cover a missed day, and whether one covered yesterday. */
+  restDays?: number; restedYesterday?: boolean;
   onChangeGoal: () => void; onOpenProgress: () => void; canChangeGoal?: boolean; goalKnown?: boolean; todayKnown?: boolean; streakKnown?: boolean;
 }) {
   const { week } = useWeekProgress(), insets = useSafeAreaInsets();
@@ -43,6 +45,14 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
         <Stat icon="time-outline" tint="#64D2FF" value={week ? durationLabel(week.seconds) : "–"} label="this week" />
         <Stat icon="checkmark-circle-outline" tint={colors.success} value={week ? `${week.goalDays}/7` : "–"} label="goal days" />
       </View>
+      {streakKnown && <View style={[s.card, s.rest]} testID="today-rest-days" accessible
+        accessibilityLabel={`${restDays} rest ${restDays === 1 ? "day" : "days"} ready. ${restedYesterday ? "Yesterday was a rest day. " : ""}Every 7 days in your streak earns one, and you can keep 2. Miss a day and one is used for you, so your streak carries on.`}>
+        <Ionicons name="moon-outline" size={20} color="#A5B4FC" />
+        <View style={s.flex}>
+          <Text style={s.restTitle}>{restDays === 0 ? "No rest days yet" : restDays === 1 ? "1 rest day ready" : `${restDays} rest days ready`}{restedYesterday ? " · yesterday was a rest day" : ""}</Text>
+          <Text style={s.caption}>{"Every 7 days in your streak earns one (keep up to 2). Miss a day and one is used for you, so your streak carries on."}</Text>
+        </View>
+      </View>}
       <View style={s.card}><Text style={s.label}>This week</Text><WeekBars height={64} wide /><Text style={s.caption}>{WEEK_LEGEND}</Text></View>
       <Text style={s.note}>A new goal starts tomorrow, so today’s target and your streak never shift under you.</Text>
     </BottomSheetScrollView>
@@ -54,6 +64,8 @@ function Stat({ icon, tint, value, label }: { icon: React.ComponentProps<typeof 
   </View>;
 }
 const s = StyleSheet.create({
+  rest: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  restTitle: { color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   header: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20, paddingBottom: 12 },
   flex: { flex: 1, minWidth: 0, gap: 2 },
   title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 },

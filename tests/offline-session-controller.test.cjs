@@ -276,3 +276,17 @@ test('Round 79: three dismissed one-minute offline sessions confirm in one batch
  presentation.acknowledge(scope,batch.id,batch.entries.map(e=>e.clientSessionId));
  await c.refresh(true);assert.equal(h.credits,3);assert.equal(presentation.snapshot(scope).batch,null);await c.dispose();
 });
+test('Round 82: a finished offline session waiting to upload never blocks or blames the next session on a flaky connection', async () => {
+  const h = harness(); h.online = false; const c = h.create(); await c.initialize(); await c.start(setup); h.advance(3000); await c.tick();
+  c.dismissSummary(); await new Promise(resolve => setImmediate(resolve));
+  // The phone thinks it is online, but requests fail (weak signal). A refresh
+  // on returning to the app tries to upload the finished session and fails.
+  h.offline.isLocalOnly = () => false;
+  await c.refresh(true);
+  assert.equal(c.getSnapshot().record, null);
+  assert.equal(c.getSnapshot().error, null, 'the failed upload of an earlier session is not this screen\'s error');
+  assert.equal(c.getSnapshot().unsyncedSessionCount, 1, 'it still counts as waiting to sync');
+  h.advance(1); assert.equal(await c.start(setup), true, 'the next session starts on this phone');
+  assert.equal(c.getSnapshot().record.state, 'running');
+  await c.dispose();
+});

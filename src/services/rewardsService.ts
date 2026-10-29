@@ -30,6 +30,21 @@ export interface RewardsState {
    * of them; reaching the end (`complete`) gives a bonus once a day.
    */
   trail: { findSeconds: number; stops: number; complete: boolean };
+  /**
+   * Chosen rewards: reaching the daily goal saves a goal day; five saved days
+   * earn the reward you chose. Missing from servers without the Round 82 SQL.
+   */
+  chosen?: ChosenRewards;
+}
+export interface ChosenGrant extends Gift { id: string }
+export interface ChosenRewards {
+  /** False on the launch day, when that day's pack still applies. */
+  enabled: boolean; startsOn: string | null; requiredDays: number;
+  /** Goal days saved and not yet spent. */
+  balance: number; target: string | null; revision: number;
+  offers: { slot: number; item: string }[];
+  /** Earned and not yet shown on this account (acknowledged once seen). */
+  grants: ChosenGrant[];
 }
 export type DevRewardAction = "stardust" | "reopen_pack" | "find" | "next_milestones" | "reearn";
 export interface Gift { item: string; rarity: RewardRarity; new: boolean; stardust: number; reason?: "hours" | "streak" | "set" }
@@ -60,6 +75,19 @@ const RARITIES = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const count = (v: unknown) => (typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null);
 const day = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+
+/** Reads the chosen-reward part of a reply. Anything unexpected hides the feature rather than breaking rewards. */
+export function parseChosen(value: unknown): ChosenRewards | undefined {
+  if (!isObj(value) || typeof value.enabled !== "boolean" || count(value.balance) === null || count(value.revision) === null
+    || count(value.requiredDays) === null || !Array.isArray(value.offers) || !Array.isArray(value.grants)) return undefined;
+  const offers = value.offers.flatMap(o => isObj(o) && count(o.slot) !== null && typeof o.item === "string" && rewardItem(o.item)
+    ? [{ slot: o.slot as number, item: o.item }] : []);
+  const grants = value.grants.flatMap(g => isObj(g) && typeof g.id === "string" && typeof g.item === "string" && rewardItem(g.item) && RARITIES.has(String(g.rarity))
+    ? [{ id: g.id, item: g.item, rarity: g.rarity as RewardRarity, new: true, stardust: 0 }] : []);
+  return { enabled: value.enabled, startsOn: day(value.startsOn), requiredDays: Math.max(1, value.requiredDays as number),
+    balance: value.balance as number, target: typeof value.target === "string" && rewardItem(value.target) ? value.target : null,
+    revision: value.revision as number, offers, grants };
+}
 
 function gifts(value: unknown): Gift[] {
   if (!Array.isArray(value)) throw new Error("Unexpected rewards reply");
@@ -121,6 +149,7 @@ export function parseRewardsState(value: unknown): RewardsState {
       findSeconds, stops,
       complete: (wireRulesValid || savedRulesValid) && (isObj(value.today) && typeof value.today.trailComplete === "boolean" ? value.today.trailComplete : savedTrail?.complete === true),
     },
+    ...(() => { const chosen = parseChosen(value.chosen); return chosen ? { chosen } : {}; })(),
   };
 }
 
@@ -173,6 +202,15 @@ export function createRewardsClient(ownerId: string, verifyOwner: () => Promise<
       if (!isObj(r)) throw new Error("Unexpected rewards reply");
       return { milestones: gifts(r.milestones), state: parseRewardsState(r.state) };
     },
+    /** Choose (or, with null, stop choosing) the reward to work toward. Granted at once if enough days are saved. */
+    chooseReward: async (item: string | null, expectedRevision: number, requestId: string) =>
+      parseRewardsState(await call("choose_reward_v1", { p_item: item, p_expected_revision: expectedRevision, p_request_id: requestId })),
+    /** Marks earned chosen rewards as shown, so they are celebrated once. */
+    acknowledgeChosen: async (grantIds: string[]) =>
+      parseRewardsState(await call("acknowledge_chosen_rewards_v1", { p_grants: grantIds })),
+    /** Developers only: the real chosen-reward rules on test days and test items, rolled back on the server. */
+    chosenLab: async (action: "load" | "day" | "select", snapshot: { earned: string[]; chosen?: Omit<ChosenRewards, "grants" | "enabled" | "startsOn" | "requiredDays"> }, item: string | null = null) =>
+      parseRewardsState(await call("dev_chosen_reward_lab_v1", { p_action: action, p_snapshot: snapshot, p_item: item })),
     /** The frame isn't saved: it follows the highest streak frame earned. */
     saveAvatar: async (avatar: Omit<SavedAvatar, "revision" | "frame">, expectedRevision: number) =>
       parseRewardsState(await call("save_avatar_v1", { p_avatar: { look: avatar.look, equipped: avatar.equipped, background: avatar.background, title: avatar.title }, p_expected_revision: expectedRevision })),

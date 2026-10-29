@@ -25,7 +25,7 @@ async function fixture({compiled=false,reduced=false}={}){
    useSharedValue:initial=>React.useState(()=>shared(initial))[0],useAnimatedStyle:fn=>({read:fn}),cancelAnimation(){},runOnJS:fn=>fn,
    withTiming:(to,config,done)=>({kind:'timing',to,config,done}),withDelay:(delay,motion)=>({...motion,delay})},
   '../AppText':{Text:host('Text')},'../adventurer/AdventurerBack':host('Walker'),
-  './TrailScenes':{TrailScene:host('Scene'),FireGlow:host('Fire'),Fireflies:host('Flies')},
+  './CampDecorations': { __esModule: true, default: () => null, campDecorations: () => [] }, './TrailScenes':{TrailScene:host('Scene'),FireGlow:host('Fire'),Fireflies:host('Flies')},
   '../../hooks/useRewards':{useRewards:()=>({look:{skin:'3',hair:'short',hairColor:'darkbrown',glasses:false},equipped:{},today:{seconds:0}})},
   '../../hooks/useReducedMotion':{useReducedMotion:()=>reduce},
   '../../utils/trail':{trailZone:()=>({name:'Meadow'}),trailStops:()=>0},

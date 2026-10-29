@@ -65,7 +65,7 @@ async function setup(variantButton, options) {
       return mounted ? React.createElement(w.Modal, { visible: true, testID: `sheet:${props.label}` }, React.createElement('Sheet', props, props.header, props.children)) : null;
     },
     './SheetHeader': host('Header'), './PostSessionCelebration': { DailyAchievementMoment: host('Achievement') }, './RewardMoments': { Moment: host('Moment') },
-    './rewards/RevealScreens': { ExpeditionReveal: host('Expedition'), PackReveal: host('Pack') }, './session/SessionBackdrop': host('Backdrop'),
+    './rewards/ChosenReward': {ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)}, './rewards/RevealScreens': { ExpeditionReveal: host('Expedition'), PackReveal: host('Pack') }, './session/SessionBackdrop': host('Backdrop'),
     '@expo/vector-icons': { Ionicons: host('Icon') }, './CharacterMark': host('Character'), './ProgressRing': host('Ring'),
     '@gorhom/bottom-sheet': { BottomSheetScrollView: React.forwardRef(function Scroll(props, ref) { React.useImperativeHandle(ref, () => ({ scrollTo() {} })); return React.createElement('Scroll', props, props.children); }) },
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 24, bottom: 16 }) },

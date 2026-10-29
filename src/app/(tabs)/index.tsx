@@ -2,6 +2,7 @@ import { tapHaptic } from "../../utils/tapHaptics";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
 import LevelTierSheet from "../../components/LevelTierSheet";
 import TrailSheet from "../../components/rewards/TrailSheet";
+import { ChosenRewardCard, ChosenRewardSheet } from "../../components/rewards/ChosenReward";
 import DailyGoalSheet from "../../components/DailyGoalSheet";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
@@ -39,8 +40,8 @@ import { useWindowDimensions, StyleSheet, View } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
-import { getFocusStreak } from "../../services/progressService";
-import { DEFAULT_TIMEZONE, dateKey } from "../../utils/progressAnalytics";
+import { getFocusStreakDetail } from "../../services/progressService";
+import { DEFAULT_TIMEZONE, dateKey, shiftDay } from "../../utils/progressAnalytics";
 import { readHomeSnapshot, saveHomeSnapshot } from "../../services/homeSnapshot";
 import { getTodayProgress } from "../../services/dailyProgressService";
 import { prefetchCharacterData } from "../../hooks/useCharacterData";
@@ -68,6 +69,16 @@ export default function HomeScreen() {
   const rewards = useRewards({ load: false });
   const [packMessage, setPackMessage] = useState("");
   const openPack = async () => { setPackMessage(""); const r = await rewards.openPack(); if (!r.ok) setPackMessage(r.message); };
+  // Chosen rewards replace the daily pack from the day after they're switched on.
+  const [chosenOpen, setChosenOpen] = useState(false), [chosenMessage, setChosenMessage] = useState("");
+  const chosenLive = !!rewards.chosen?.enabled;
+  const choose = async (item: string | null) => {
+    setChosenMessage("");
+    const r = await rewards.chooseReward(item);
+    if (!r.ok) { setChosenMessage(r.message); return; }
+    // Earned at once (enough days saved): close, so its reward screen shows.
+    if ((r.value.chosen?.grants.length ?? 0) > 0) setChosenOpen(false);
+  };
   const owner = profile?.id ?? "";
   const { hasOpenSession, sessionSummary, cloudSaveVersion = 0 } = timer;
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
@@ -93,6 +104,8 @@ export default function HomeScreen() {
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
+  // Rest days ready, and whether one kept the streak going yesterday.
+  const [rest, setRest] = useState({ days: 0, yesterday: false });
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   // Once Home has settled, ready Profile and Progress quietly so their first
   // visit is already drawn. Each loads at most once until it goes stale.
@@ -127,10 +140,10 @@ export default function HomeScreen() {
     const expectedScope = dataScope;
     setRefreshing(true);
     try {
-      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreak(timeZone, undefined, owner || undefined).catch(() => undefined)]);
+      const [progress, profileOK, , streak] = await Promise.all([getTodayProgress(timeZone), reloadProfile(), refreshQuests(), getFocusStreakDetail(timeZone, undefined, owner || undefined).catch(() => undefined)]);
       if (currentDataScope.current !== expectedScope) return;
       serverLoaded.current = true;
-      if (streak !== undefined) setFocusStreak(streak);
+      if (streak !== undefined) { setFocusStreak(streak.current); setRest({ days: streak.restDays, yesterday: streak.rested.includes(shiftDay(dateKey(new Date(), timeZone), -1)) }); }
       const seconds = progress ? creditedDailySeconds(progress) : 0, savedAtMs = Date.now();
       setTodayGoal({ owner, day: progress?.progress_date ?? dateKey(new Date(), timeZone), minutes: progress?.goal_minutes ?? null });
       setCompletedSeconds(seconds);
@@ -138,7 +151,7 @@ export default function HomeScreen() {
       setUpdatedAt(savedAtMs);
       setLoadError(profileOK === false || streak === undefined);
       if (owner) void saveHomeSnapshot(owner, { day: dateKey(new Date(), timeZone), completedSeconds: seconds, goalMinutes: progress?.goal_minutes ?? null,
-        goalCompleted: progress?.goal_completed ?? false, streak: streak ?? null, savedAtMs });
+        goalCompleted: progress?.goal_completed ?? false, streak: streak?.current ?? null, savedAtMs });
     } catch {
       if (currentDataScope.current === expectedScope) setLoadError(true);
     } finally { if (currentDataScope.current === expectedScope) setRefreshing(false); }
@@ -288,7 +301,7 @@ export default function HomeScreen() {
           <TourAnchor id="home-focus"><View style={[styles.today, isGoalComplete && styles.todayDone]} testID="home-today">
             <View style={styles.todayHead}>
               <View style={[styles.statusPill, isGoalComplete && styles.statusPillDone]}><Text style={[styles.statusText, isGoalComplete && styles.statusTextDone]}>{isGoalComplete ? "Goal reached" : "Today"}</Text></View>
-              <View style={styles.streakRow}><Ionicons name="flame" size={16} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={[styles.streakText, streakDays > 0 && styles.streakOn]} numberOfLines={1}>{streakDays > 0 ? `${streakDays}-day streak` : known ? "A fresh start" : "Checking your streak"}</Text></View>
+              <View style={styles.streakRow}><Ionicons name="flame" size={16} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={[styles.streakText, streakDays > 0 && styles.streakOn]} numberOfLines={1}>{streakDays > 0 ? `${streakDays}-day streak${rest.days ? ` · ${rest.days} rest` : ""}` : known ? "A fresh start" : "Checking your streak"}</Text></View>
               <MoreMenu label="Today options" testID="home-today-menu" options={[
                 { label: accessMode === "online" ? "Change daily goal" : "Change goal · needs internet", icon: "flag-outline", onPress: openGoal, disabled: accessMode !== "online" },
                 { label: "Open Progress", icon: "stats-chart-outline", onPress: openProgress },
@@ -307,7 +320,8 @@ export default function HomeScreen() {
               {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
             </TouchableOpacity>
             {/* Today's supply pack: earned by reaching the goal, bigger for days in a row. */}
-            {rewards.pack && rewards.online && <HomePack tier={rewards.pack.tier} ready={rewards.pack.goalReached && !rewards.pack.claimed} opened={rewards.pack.claimed}
+            {chosenLive && rewards.chosen && <ChosenRewardCard chosen={rewards.chosen} onOpen={() => { setChosenMessage(""); setChosenOpen(true); }} />}
+            {!chosenLive && rewards.pack && rewards.online && <HomePack tier={rewards.pack.tier} ready={rewards.pack.goalReached && !rewards.pack.claimed} opened={rewards.pack.claimed}
               busy={rewards.busy} message={packMessage} onOpen={() => void openPack()} />}
             {needsReview && <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Review saved session</Text>
@@ -331,9 +345,12 @@ export default function HomeScreen() {
         </ContentReveal>
       </TourScrollView>
       <TrailSheet visible={trailOpen} onClose={() => setTrailOpen(false)} />
+      <ChosenRewardSheet visible={chosenOpen && chosenLive} chosen={rewards.chosen} busy={rewards.busy || !rewards.online}
+        message={chosenMessage || (!rewards.online ? "Connect to choose a reward. Your saved days are safe." : undefined)}
+        onChoose={item => void choose(item)} onClose={() => setChosenOpen(false)} />
       <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
       <TodaySheet visible={todayOpen} canChangeGoal={accessMode === "online"} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes} goalKnown={goalKnown} todayKnown={known} streakKnown={focusStreak !== null}
-        streak={streakDays} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
+        streak={streakDays} restDays={rest.days} restedYesterday={rest.yesterday} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
       <DailyGoalSheet todayGoalMinutes={verifiedGoal ?? undefined} visible={accessMode === "online" && goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
     </SafeAreaView>
   );

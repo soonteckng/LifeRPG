@@ -22,6 +22,7 @@ import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation"
 
 const RARITY_COLOR = RARITY_COLORS;
 const SETTLE_MS = 450;
+const ACK_RETRY_MS = 5000;
 const RARITY_NAME: Record<string, string> = { common: "Common", uncommon: "Uncommon", rare: "Rare", epic: "Epic", legendary: "Legendary" };
 function pendingTrailKey(account: string, today: { seconds: number; pendingFinds?: number; date?: string } | undefined, packDay?: string) {
   return (today?.pendingFinds ?? 0) > 0 ? `${account}:${today?.date ?? packDay ?? ""}:${today!.seconds}:${today!.pendingFinds}` : null;
@@ -110,6 +111,22 @@ export default function RewardMoments({ insideSession, claimKey = null, sessionR
       }
     });
   }, [active, rewards.online, rewards.busy, rewards.owner, profile.id, account, progress, claimKey, claimAttempt, pendingFinds, claimsPaused]);
+
+  // A chosen reward that has been shown (here, on the session screen or after
+  // an offline sync) is acknowledged once, so it isn't celebrated again. The
+  // server keeps it until then: at worst it is shown once more, never lost.
+  const toAcknowledge = (rewards.toAcknowledge ?? []).join(",");
+  const acknowledge = useRef(rewards.acknowledgeChosen);
+  useLayoutEffect(() => { acknowledge.current = rewards.acknowledgeChosen; });
+  // At most one try every few seconds while it keeps failing (offline, busy).
+  const lastAck = useRef<{ key: string; at: number } | null>(null);
+  useEffect(() => {
+    if (!toAcknowledge || !rewards.online || rewards.busy || !active) return;
+    const last = lastAck.current;
+    const wait = last?.key === toAcknowledge ? Math.max(0, last.at + ACK_RETRY_MS - Date.now()) : 0;
+    const later = setTimeout(() => { lastAck.current = { key: toAcknowledge, at: Date.now() }; void acknowledge.current(toAcknowledge.split(",")); }, wait);
+    return () => clearTimeout(later);
+  }, [toAcknowledge, rewards.online, rewards.busy, active]);
 
   const reveal = rewards.reveals[0];
   const returnMembers = reveal?.kind === "expedition" ? reveal.sessions?.map(session => session.sessionId)

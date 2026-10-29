@@ -26,7 +26,7 @@ const rows = n => Array.from({ length: n }, (_, i) => ({ id: String(i), complete
 
 test('every page of completed sessions is filtered to the expected account', async () => {
   const fake = fakeSupabase(q => q.from === 0 ? rows(500) : rows(3));
-  const api = load('src/services/progressService.ts', { '../../lib/supabase': fake, './taskService': { getSubjects: async () => [] }, '../utils/progressAnalytics': { dateKey: () => '2026-10-20', shiftDay: d => d }, '../utils/focusDays': { focusDay: () => null, bestFocusStreak: () => 0 } });
+  const api = load('src/services/progressService.ts', { '../../lib/supabase': fake, './taskService': { getSubjects: async () => [] }, '../utils/progressAnalytics': { dateKey: () => '2026-10-20', shiftDay: d => d, daysBetween: () => 0 }, '../utils/focusDays': { focusDay: () => null, bestFocusStreak: () => 0, focusStreakWithRest: () => ({ current: 0, longest: 0, restDays: 0, rested: [] }), REST_MAX: 2 } });
   const result = await api.getCompletedSessions('1970-01-01T00:00:00Z', '2026-10-21T00:00:00Z', 'owner-a');
   assert.equal(result.length, 503);
   assert.equal(fake.queries.length, 2, 'two pages');
@@ -35,7 +35,7 @@ test('every page of completed sessions is filtered to the expected account', asy
 
 test('goals and both streak reads name the account too', async () => {
   const fake = fakeSupabase(() => []);
-  const api = load('src/services/progressService.ts', { '../../lib/supabase': fake, './taskService': { getSubjects: async owner => { fake.subjectsOwner = owner; return []; } }, '../utils/progressAnalytics': { dateKey: () => '2026-10-20', shiftDay: d => d }, '../utils/focusDays': { focusDay: () => null, bestFocusStreak: () => 0 } });
+  const api = load('src/services/progressService.ts', { '../../lib/supabase': fake, './taskService': { getSubjects: async owner => { fake.subjectsOwner = owner; return []; } }, '../utils/progressAnalytics': { dateKey: () => '2026-10-20', shiftDay: d => d, daysBetween: () => 0 }, '../utils/focusDays': { focusDay: () => null, bestFocusStreak: () => 0, focusStreakWithRest: () => ({ current: 0, longest: 0, restDays: 0, rested: [] }), REST_MAX: 2 } });
   await api.getProgressGoals('2026-10-14', '2026-10-20', 'owner-a');
   await api.getFocusStreak('Asia/Kuala_Lumpur', new Date('2026-10-20T12:00:00Z'), 'owner-a');
   await api.getLongestFocusStreak('Asia/Kuala_Lumpur', new Date('2026-10-20T12:00:00Z'), 'owner-a');

@@ -23,6 +23,7 @@ function load(file, mocks = {}, cache = new Map()) {
     if(name.endsWith('/AuthContext'))return {useAuth:()=>({accessMode:'online'})};
     if(name.endsWith("/LevelTierSheet"))return props=>React.createElement("TierSheet",props);
     if(name.endsWith("/TrailSheet"))return props=>React.createElement("TrailSheet",props);
+    if(name.endsWith("/rewards/ChosenReward"))return {ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)};
       if (name.endsWith('/SessionProtectionControl')) return { ProtectionSettingsSheet: props => React.createElement('ProtectionSheet', props), default: () => null };
       if (name.endsWith("/FeatureTour")) return {FeatureTourProvider: props=>props.children, TourAnchor: props=>props.children, TourScrollView: mocks["react-native"]?.ScrollView || (props=>React.createElement("ScrollView",props,props.children)), useFeatureTour:()=>({start(){}}), prepareFeatureTour:async()=>{}};
       if (name.endsWith("/DailyGoalSheet")) return props=>React.createElement("GoalSheet",props);

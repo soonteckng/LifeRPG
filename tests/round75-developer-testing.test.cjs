@@ -88,7 +88,7 @@ async function uiHarness(compiled=false){
   './MotionPressable':function Press(props){return React.createElement('Button',{...props,onPress:()=>{if(!props.disabled){taps++;props.onPress?.();}}},props.children);},
   './AppText':{Text:host('Text')},'./AppSheet':host('Sheet'),'./SheetHeader':host('Header'),
   './PostSessionCelebration':{DailyAchievementMoment:host('Achievement')},'./SessionResultSheet':host('Result'),'./session/SessionBackdrop':host('Backdrop'),
-  './RewardMoments':{Moment:host('Moment')},'./rewards/RevealScreens':{ExpeditionReveal:host('Expedition'),PackReveal:host('Pack')},
+  './RewardMoments':{Moment:host('Moment')},'./rewards/ChosenReward': {ChosenRewardCard:props=>React.createElement("ChosenCard",props),ChosenRewardSheet:props=>React.createElement("ChosenSheet",props)}, './rewards/RevealScreens':{ExpeditionReveal:host('Expedition'),PackReveal:host('Pack')},
   '../hooks/useRewards':{useRewards:()=>({...rewards,owner,admissionEpoch:epoch})},'../hooks/useReducedMotion':{useReducedMotion:()=>reduced},
   '../context/UserContext':{useUser:()=>({profile:{id:owner,level:3,current_xp:10,streak_count:3}})},'../context/TimerContext':{useTimer:()=>({hasOpenSession:session})}};
  const Component=loader(mocks,compiled)('src/components/DeveloperRewardTests.tsx').default;
@@ -107,7 +107,9 @@ for(const compiled of [false,true]) {
    }
    await ui.press('dev-walk-result');assert.equal(ui.tree.root.findByType('Backdrop').props.returning,true);
    await act(async()=>ui.tree.root.findByType('Backdrop').props.onReturnEnd());assert.equal(ui.tree.root.findByType('Result').props.preview,true);
-   await act(async()=>ui.tree.root.findByType('Result').props.onClose());assert.equal(ui.tree.root.findAllByType('Expedition').length,0,'result must finish closing first');
+   await act(async()=>ui.tree.root.findAllByType('Modal').find(n=>n.props.onShow).props.onShow());
+   await act(async()=>ui.tree.root.findByType('Result').props.onClose());assert.equal(ui.tree.root.findByType('Result').props.visible,true,'the card stays while the map is prepared underneath');
+   await act(async()=>ui.tree.root.findByType('Expedition').props.onReady());assert.equal(ui.tree.root.findByType('Result').props.visible,false);
    await act(async()=>ui.tree.root.findByType('Result').props.onDismiss());assert.equal(ui.tree.root.findByType('Expedition').props.reveal.trail.seconds,60);
    await ui.press('dev-trail-complete');let trail=ui.tree.root.findByType('Expedition').props.reveal.trail;assert.equal(trail.complete,true);assert.equal(trail.finds,4);assert.equal(trail.seconds,7200);assert.equal(trail.nextFindSeconds,0);
    await ui.press('dev-trail-after-end');trail=ui.tree.root.findByType('Expedition').props.reveal.trail;assert.equal(trail.fromSeconds,7200);assert.equal(trail.complete,true);

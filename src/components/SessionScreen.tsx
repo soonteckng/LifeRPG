@@ -198,9 +198,17 @@ export default function SessionScreen() {
     entranceAnimation.current?.stop(); screenMotion.stopAnimation(); surfaceOpacity.stopAnimation();
     surfaceOpacity.setValue(1); screenMotion.setValue(reducedMotion ? 1 : 0);
     if (!reducedMotion) {
-      const animation = Animated.timing(screenMotion, { toValue: 1, ...navigationTiming(240) });
-      entranceAnimation.current = animation;
-      animation.start();
+      // Start on the next frame: a native-driven slide begun while a freshly
+      // mounted screen's view is still being attached can jump straight to its
+      // end on Android. The screen waits below the edge for that one frame.
+      const generation = motionGeneration.current;
+      const start = () => {
+        if (generation !== motionGeneration.current) return;
+        const animation = Animated.timing(screenMotion, { toValue: 1, ...navigationTiming(240) });
+        entranceAnimation.current = animation;
+        animation.start();
+      };
+      if (typeof globalThis.requestAnimationFrame === "function") globalThis.requestAnimationFrame(start); else start();
     }
     return true;
   }, [navigation, entryRequest, entrySessionId, presentationScope, screenMotion, surfaceOpacity, reducedMotion]);
@@ -273,6 +281,8 @@ export default function SessionScreen() {
   // Between the walk ending and the session showing as started, the night
   // scene stays (never a flash of setup); a failed start shows setup again.
   const [launching, setLaunching] = useState(false);
+  const [startRefused, setStartRefused] = useState(false);
+  if (startRefused && timer.hasOpenSession) setStartRefused(false);
   if (launching && (phase !== "setup" || timer.actionError || timer.restoreError)) setLaunching(false);
   useEffect(() => {
     if (!launching) return;
@@ -292,7 +302,12 @@ export default function SessionScreen() {
     // Never start for another account, or over a session that began meanwhile.
     if (!leaving || leaving.scope !== scopeRef.current || openRef.current) return;
     setLaunching(true);
-    void startNow.current(leaving.seconds, leaving.title);
+    setStartRefused(false);
+    void Promise.resolve(startNow.current(leaving.seconds, leaving.title)).then(started => {
+      // A start that was refused (nothing saved) shows setup again at once,
+      // with a short reason, instead of staying dark until the fallback.
+      if (started === false && departingRef.current === null && !openRef.current) { setLaunching(false); setStartRefused(true); }
+    }, () => { setLaunching(false); setStartRefused(true); });
   }, []);
   const cancelDeparture = useCallback(() => { departingRef.current = null; setDeparting(null); }, []);
   if (departing && (departing.scope !== presentationScope || timer.hasOpenSession || timer.isCompleted || timer.isRestoring)) setDeparting(null);
@@ -586,7 +601,8 @@ export default function SessionScreen() {
     Keyboard.dismiss();
     const title = task?.title ?? routineName ?? undefined;
     // A retry after a failed start doesn't walk out again.
-    if (reducedMotion || again) { void timer.startTimer(timer.duration, title); return; }
+    setStartRefused(false);
+    if (reducedMotion || again) { void Promise.resolve(timer.startTimer(timer.duration, title)).then(started => { if (started === false) setStartRefused(true); }, () => setStartRefused(true)); return; }
     setDeparting({ scope: presentationScope, seconds: timer.duration, title });
   };
   // Back to any activity: the category stays, the routine's link and name go.
@@ -717,6 +733,8 @@ export default function SessionScreen() {
         </ScrollView>
         <Animated.View testID="session-actions-motion" style={[styles.actions, {opacity}, phase === "ended" && activeLayout.actions !== undefined && { height: activeLayout.actions }]}
           onLayout={event => { if (phase === "running" || phase === "paused") { const height = Math.round(event.nativeEvent.layout.height); setActiveLayout(layout => layout.actions === height ? layout : { ...layout, actions: height }); } }}>
+          {startRefused && !needsRecovery && !timer.protectionSetupRequired && phase === "setup" && <Text testID="session-start-refused" style={styles.status} accessibilityLiveRegion="polite">
+            {"This session couldn’t start just yet. Your saved sessions are safe. Try again in a moment."}</Text>}
           {needsRecovery && <View testID="session-recovery-actions">
             <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
             <Action label="Retry" disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
