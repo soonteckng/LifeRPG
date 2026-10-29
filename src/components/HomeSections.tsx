@@ -11,7 +11,6 @@ import SheetHeader from "./SheetHeader";
 import ExamRow from "./ExamRow";
 import ExamsCard from "./ExamsCard";
 import SectionHeader, { DoneButton, SeeAll } from "./SectionHeader";
-import MilestonesRow from "./MilestonesRow";
 import StudyExamSheet from "./StudyExamSheet";
 import { SquadFace, SquadJoinSheet } from "./SquadSheets";
 import { SquadSummary, daysLeftInWeek, yourPlace } from "./SquadsSection";
@@ -237,15 +236,6 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
           <Text style={s.primaryText}>Open Progress</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
       </BottomSheetScrollView>
     </AppSheet>
-  </View>;
-}
-
-/** Your nearest milestone; the whole collection opens as a card. */
-export function HomeMilestones() {
-  const [open, setOpen] = useState(false);
-  return <View style={s.section} testID="home-milestones">
-    <SectionHeader title="My Milestones" right={<SeeAll onPress={() => setOpen(true)} accessibilityLabel="My Milestones. See all milestones" />} />
-    <MilestonesRow open={open} onOpenChange={setOpen} />
   </View>;
 }
 

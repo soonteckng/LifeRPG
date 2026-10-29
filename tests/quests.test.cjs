@@ -1211,42 +1211,7 @@ test("Home explicitly reopens an acknowledged pending End before navigating to i
   }finally{await ui.cleanup();}
 });
 
-test('Home level button opens and dismisses the tier path without changing its timer',async()=>{
- const ui=await quickHomeSetup();
- try{
-  const level=ui.renderer.root.findAllByType('Pressable').find(node=>node.props.testID==='home-level');
-  assert.ok(level);await act(async()=>level.props.onPress());
-  const popup=()=>ui.renderer.root.findByType('TierSheet');assert.equal(popup().props.visible,true);
-  await act(async()=>popup().props.onClose());assert.equal(popup().props.visible,false);
-  assert.equal(ui.calls.filter(call=>call[0]==='start').length,0);
- }finally{await ui.cleanup();}
-});
 
-test('Home keeps full tier text and lets its header badges wrap on a small phone with large text',async()=>{
- const ui=await quickHomeSetup(null,undefined,null,'src/app/(tabs)/index.tsx',{
-  'react-native':{...native,ScrollView:host('ScrollView'),useWindowDimensions:()=>({width:360,height:640,fontScale:1.8})},
-  '../../context/UserContext':{useUser:()=>({profile:{id:'owner-a',username:'A very long student name',level:1,current_xp:0,daily_goal_minutes:60},reloadProfile:async()=>true,hapticsEnabled:false})},
-  '../../hooks/useRewards':{useRewards:()=>({stardust:123456789,pack:{tier:1,goalReached:false,claimed:false},online:true,busy:false,openPack:async()=>({ok:true})})},
- });
- try{
-  const level=ui.button('home-level'),dust=ui.button('home-stardust');
-  const title=level.findAllByType('Text').find(node=>node.props.children==='First steps');
-  assert.ok(title,'the full tier name is still present');
-  assert.equal(title.props.numberOfLines,undefined,'a tier can wrap instead of being cut off');
-  assert.equal(title.props.adjustsFontSizeToFit,undefined,'large system text is respected');
-  assert.equal(level.parent.parent.props.style.flexWrap,'wrap','Stardust moves to a new row rather than squeezing the tier');
-  const levelStyle=Object.assign({},...[].concat(level.props.style));
-  assert.equal(levelStyle.maxWidth,'100%','the level badge stays within the identity column');
-  assert.equal(levelStyle.backgroundColor,'#AAB3FF29','the badge wears its tier colour, as on the level road');
-  assert.equal(level.findAllByType('Text').some(text=>text.props.children===1),false,'the level number sits on your picture now, not twice');
-  const flat=node=>Object.assign({},...[].concat(node?.props?.style??[]));
-  let slot=dust;while(slot&&flat(slot).marginLeft===undefined)slot=slot.parent;
-  assert.equal(flat(slot).marginLeft,'auto','Stardust sits on the right, under Settings');
-  assert.match(dust.props.accessibilityLabel,/123456789 Stardust/);
-  await act(async()=>level.props.onPress());
-  assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,true);
- }finally{await ui.cleanup();}
-});
 
 test('Home: the goal ring opens Today, its ••• changes the goal, and Settings sits by the avatar',async()=>{
  const ui=await quickHomeSetup();

@@ -45,12 +45,8 @@ import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
 import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
 import type { FocusSceneBand } from "../utils/focusSceneLayout";
-import { rewardsStore } from "../hooks/useRewards";
-import SessionReveal from "./session/SessionReveal";
 import { sessionTrail } from "../services/sessionTrail";
-import { sessionReturn, sessionReturnKey, sessionRevealHost } from "../services/sessionReturn";
 import { sessionEntry } from "../services/sessionEntry";
-import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation";
 
 type Picker = "duration" | "area" | null;
 /** At most this long the night scene waits for a started session to show. */
@@ -75,7 +71,6 @@ export default function SessionScreen() {
   const ownerId = auth.user?.id ?? auth.localOwner?.id;
   const backendId = auth.localOwner?.backendId ?? sessionBackendIdentity(process.env.EXPO_PUBLIC_SUPABASE_URL)?.backendId;
   const presentationScope = JSON.stringify([backendId, ownerId, auth.admissionEpoch]);
-  const offlineSync = useOfflineSyncPresentation(backendId && ownerId ? { backendId, ownerId } : null);
   const currentPresentationScope = useRef(presentationScope);
   useLayoutEffect(() => { currentPresentationScope.current = presentationScope; }, [presentationScope]);
   const presentable = liveTimer.hasOpenSession || liveTimer.isCompleted || liveTimer.endingSession || liveTimer.sessionEnded;
@@ -103,10 +98,6 @@ export default function SessionScreen() {
   const timer = useMemo(() => endingPresentation && endSnapshot ? { ...visibleTimer, ...endSnapshot, hasOpenSession: true } : visibleTimer, [endingPresentation, endSnapshot, visibleTimer]);
   const insets = useSafeAreaInsets();
   const { sessionSummary, rewardsVisible } = timer;
-  const returningKey = useSyncExternalStore(sessionReturn.subscribe, sessionReturn.snapshot, sessionReturn.snapshot);
-  const ownReturnKey = sessionReturnKey(presentationScope, timer.sessionId);
-  const returning = !!ownReturnKey && returningKey === ownReturnKey;
-  const finishReturn = useCallback(() => { if (ownReturnKey) sessionReturn.finish(ownReturnKey); }, [ownReturnKey]);
   const { tasks, subjects, loading, error: choicesError, refresh } = useQuests();
   const study = useStudyPlan();
   const navigation = useNavigation();
@@ -188,7 +179,7 @@ export default function SessionScreen() {
   const entranceAnimation = useRef<Animated.CompositeAnimation | null>(null);
   const enterScreen = useCallback(() => {
     // Widget navigation keeps the one Session route mounted. An explicit
-    // widget/dock entry replays its slide; returning from Outfits does not.
+    // widget/dock entry replays its slide.
     if (navigation.isFocused?.() === false) return false;
     const requested = sessionEntry.take(entryRequest, entrySessionId, presentationScope);
     if (entered.current && !requested) return false;
@@ -423,14 +414,11 @@ export default function SessionScreen() {
     screenMotion.stopAnimation(); surfaceOpacity.stopAnimation();
     screenMotion.setValue(1); surfaceOpacity.setValue(1);
   }, [screenMotion, surfaceOpacity]);
-  // The return screen after a session (below) owns swipes and Back while it shows.
-  const revealShownRef = useRef(false);
-  const closeRevealRef = useRef(() => {});
   // PanResponder registers these callbacks; it never invokes them during render.
   // eslint-disable-next-line react-hooks/refs
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_event, gesture) => {
-      return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current && !revealShownRef.current
+      return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
  && (gesture.y0 < timerBounds.current.top || detailsOffset.current <= 0)
         && gesture.dy > 12 && gesture.dy > Math.abs(gesture.dx) * 1.5;
     },
@@ -489,49 +477,12 @@ export default function SessionScreen() {
   const endAcknowledgement = useRef({ ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed });
   const pendingExit = useRef<{ ownerId: typeof ownerId; source: string } | null>(null);
   const resultSessionId = endSnapshot?.sessionId ?? visibleTimer.sessionSummary?.sessionId ?? visibleTimer.sessionId;
-  // A finished session shows what the walk brought (back at camp, finds, the
-  // trail) before you leave: Done waits here until those screens are closed.
-  const rewardsOwner = ownerId ?? null;
-  const rewardsNow = useSyncExternalStore(useCallback(listener => rewardsStore.subscribe(rewardsOwner, listener), [rewardsOwner]),
-    () => rewardsStore.snapshot(rewardsOwner), () => rewardsStore.snapshot(rewardsOwner));
-  // This session's return screen (finds, then today's trail). It shows here,
-  // on the session screen, after the result card: never as a separate pop-up.
-  const sessionReveal = rewardsNow.reveals.find((r): r is Extract<typeof r, { kind: "expedition" }> => {
-    if (r.kind !== "expedition" || offlineSync.busy || offlineSync.batch) return false;
-    const members = r.sessions?.map(session => session.sessionId) ?? (r.id.startsWith("return:") ? r.id.slice(7).split(",") : []);
-    return !members.length || !members.every(id => offlineSync.acknowledgedReceiptIds.includes(id));
-  });
-  const rewardsPending = !!sessionReveal || rewardsNow.busy;
-  const [holdForRewards, setHoldForRewards] = useState(false);
-  const revealShown = holdForRewards && !!sessionReveal;
-  useEffect(() => { revealShownRef.current = revealShown; }, [revealShown]);
-  const closeReveal = useCallback(() => {
-    if (!sessionReveal || closing.current) return;
-    minimise("completion", () => {
-      sessionTrail("reveal closed", { finds: sessionReveal.finds.length });
-      rewardsStore.dismissReveal(rewardsOwner, sessionReveal.id);
-    });
-  }, [sessionReveal, rewardsOwner, minimise]);
-  useEffect(() => { closeRevealRef.current = closeReveal; }, [closeReveal]);
-  const hostedReveal = revealShown ? sessionReveal?.id ?? null : null;
-  useLayoutEffect(() => hostedReveal ? sessionRevealHost.hold(hostedReveal) : undefined, [hostedReveal]);
-  useEffect(() => { if (revealShown) sessionTrail("reveal shown", { finds: sessionReveal?.finds.length ?? 0 }); }, [revealShown, sessionReveal]);
-  const rewardsPendingRef = useRef(rewardsPending);
-  useEffect(() => { rewardsPendingRef.current = rewardsPending; }, [rewardsPending]);
+  // Done on the result card leaves the session screen straight away.
   useEffect(() => globalSessionLifecycle.subscribe(result => {
     if (!ownerId || result.ownerId !== ownerId || result.scope !== presentationScope || result.sessionId !== (resultSessionId ?? null)) return;
-    sessionTrail("result closed", { reveal: !!sessionReveal, claiming: rewardsNow.busy });
-    if (!endRequested && rewardsPending) { setHoldForRewards(true); return; }
+    sessionTrail("result closed");
     minimise(endRequested ? "session-ended" : "completion");
-  }), [ownerId, presentationScope, resultSessionId, endRequested, minimise, rewardsPending, sessionReveal, rewardsNow.busy]);
-  useEffect(() => {
-    // While the return screen shows, it's yours: it closes when you're done.
-    if (!holdForRewards || sessionReveal) return;
-    // Still checking what the walk found: wait a while for it, never forever.
-    // Once it's closed (or nothing came), leave.
-    const limit = setTimeout(() => { setHoldForRewards(false); minimise("completion"); }, rewardsNow.busy ? 15000 : 0);
-    return () => clearTimeout(limit);
-  }, [holdForRewards, sessionReveal, rewardsNow.busy, minimise]);
+  }), [ownerId, presentationScope, resultSessionId, endRequested, minimise]);
   useEffect(() => {
     const previous = endAcknowledgement.current;
     endAcknowledgement.current = { ownerId, sessionId:liveTimer.sessionId, viewed:liveTimer.summaryViewed };
@@ -552,8 +503,6 @@ export default function SessionScreen() {
       const requested = pendingExit.current;
       if (cancelled || !requested || requested.ownerId !== ownerId) return;
       pendingExit.current = null;
-      // A finished session waits for its rewards screens before leaving.
-      if (requested.source === "settled-session" && rewardsPendingRef.current) { setHoldForRewards(true); return; }
       minimise(requested.source);
     };
     if (typeof globalThis.requestAnimationFrame === "function") {
@@ -578,8 +527,6 @@ export default function SessionScreen() {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       // Back while setting off stays here, ready, without starting.
       if (departingRef.current) { focusActions.current.cancelDeparture(); return true; }
-      // Back on the return screen closes it, like its Continue.
-      if (revealShownRef.current) { closeRevealRef.current(); return true; }
       focusActions.current.minimise("android-back"); return true;
     });
     return () => subscription.remove();
@@ -660,7 +607,7 @@ export default function SessionScreen() {
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
     <SessionBackdrop phase={scenePhase} secondsLeft={timer.timeLeft} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
       walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro}
-      returning={returning} onReturnEnd={finishReturn} active={!revealShown} focusBand={focusLane?.scope === laneScope ? focusLane : null} />
+      focusBand={focusLane?.scope === laneScope ? focusLane : null} />
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
@@ -761,13 +708,12 @@ export default function SessionScreen() {
         </BottomSheetScrollView>
       </AppSheet>
       <FocusDurationSheet visible={onlineSurfaces && !sessionSummary && picker === "duration"} seconds={timer.duration} disabled={locked} onClose={() => setPicker(null)} onSave={applyDuration} />
-      {onlineSurfaces && confirmEnd && !sessionSummary && <SheetConfirmation elevated title="End this session?" message="This cancels the current session instead of completing it. Completion rewards will not be awarded." cancelLabel="Keep session" confirmLabel="End session"
+      {onlineSurfaces && confirmEnd && !sessionSummary && <SheetConfirmation elevated title="End this session?" message="This cancels the current session instead of completing it. Its time won't be recorded." cancelLabel="Keep session" confirmLabel="End session"
         onCancel={() => setConfirmEnd(false)} onConfirm={() => { setConfirmEnd(false); if (liveTimer.actionBusy) setEndQueued(true); else endNow(); }} />}
       {onlineSurfaces && confirmBreak && <SheetConfirmation elevated title="Take your 5-minute break?" message="You get one break each session. Your apps unlock and the timer waits for up to 5 minutes; break time isn’t recorded."
         cancelLabel="Keep focusing" confirmLabel="Start break" onCancel={() => setConfirmBreak(false)} onConfirm={() => { setConfirmBreak(false); void timer.pauseTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
-    {revealShown && sessionReveal && <SessionReveal key={sessionReveal.id} reveal={sessionReveal} onClose={closeReveal} />}
     {intro && <SessionIntroWords minutes={Math.round(timer.duration / 60)} onSkip={() => setSkipToken(n => n + 1)}
       area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />}
     </Animated.View>

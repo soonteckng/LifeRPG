@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { ActivityIndicator, Keyboard, View } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
 import { useAuth } from "../context/AuthContext";
 import { useAuthSettings } from "../services/authSettings";
 import { signInMessage } from "../utils/authCallback";
 import { validEmail } from "../utils/passwordRecovery";
-import CharacterPortrait from "./CharacterPortrait";
 import AuthFormFrame from "./AuthFormFrame";
 import { AuthDivider, AuthLink, AuthPasswordField, AuthTextField, GoogleButton } from "./AuthFields";
 import { PersonalButton, p } from "./PersonalUI";
@@ -78,7 +78,7 @@ export default function SignInScreen({ identifier, password, onIdentifier, onPas
     if (result.error) setError(signInMessage({ code: "google_failed" }));
   };
   return <AuthFormFrame transitionKey="sign-in" title="Welcome back" description="Sign in to pick up where you left off."
-    hero={<CharacterPortrait avatar="🌱" size={124} interactive={false} />}>
+    hero={<View style={s.mark} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden><Ionicons name="timer-outline" size={52} color={colors.progress} /></View>}>
     {({ active, focus, blur, layout }) => <>
       <AuthTextField label="Email or username" active={active === "identifier"} onFieldLayout={event => layout("identifier", event)}
         value={identifier} onChangeText={value => {
@@ -105,3 +105,8 @@ export default function SignInScreen({ identifier, password, onIdentifier, onPas
     </>}
   </AuthFormFrame>;
 }
+
+// A calm mark above the form: the timer the whole app is about.
+const s = {
+  mark: { width: 112, height: 112, borderRadius: 56, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+} as const;

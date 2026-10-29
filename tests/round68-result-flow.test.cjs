@@ -14,10 +14,10 @@ function loader(mocks, compiled) {
     const filename = path.resolve(root, file); if (cache.has(filename)) return cache.get(filename).exports;
     const module = { exports: {} }; cache.set(filename, module);
     let source = fs.readFileSync(filename, 'utf8');
-    if (compiled && /(?:GlobalRewardListener|SessionScreen|SessionBackdrop)\.tsx$/.test(filename)) {
+    if (compiled && /(?:SessionResultHost|SessionScreen|SessionBackdrop)\.tsx$/.test(filename)) {
       source = babel.transformSync(source, { filename, configFile: false, babelrc: false,
         parserOpts: { plugins: ['typescript', 'jsx'] }, plugins: [[require.resolve('babel-plugin-react-compiler'), { target: '19' }]] }).code;
-      if (filename.endsWith('GlobalRewardListener.tsx')) assert.match(source, /react\/compiler-runtime/, 'the production compiler is enabled in the regression');
+      if (filename.endsWith('SessionResultHost.tsx')) assert.match(source, /react\/compiler-runtime/, 'the production compiler is enabled in the regression');
     }
     const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText;
     new Function('require', 'module', 'exports', js)(name => {
@@ -87,33 +87,29 @@ async function fixture({ compiled = true, delayReceipt = false } = {}) {
     '../context/QuestContext': { useQuests: () => ({ tasks: [], subjects: [{ id: 1, title: 'Learning' }] }) },
     '../hooks/useSavedRoutines': { useSavedRoutines: () => ({ ready: true, routines: [], scope }) },
     '../hooks/useReducedMotion': { useReducedMotion: () => reduced }, '../../hooks/useReducedMotion': { useReducedMotion: () => reduced },
-    './SessionResultSheet': host('Result'), './SessionSavingOverlay': host('Saving'), './SaveSuggestedQuest': host('SaveQuest'), './PostSessionCelebration': host('Celebration'), './RewardMoments': host('Rewards'),
+    './SessionResultSheet': host('Result'), './SessionSavingOverlay': host('Saving'), './SaveSuggestedQuest': host('SaveQuest'),
     './SessionCountdown': host('Countdown'), './SessionIntroWords': host('Intro'), './AppHeader': host('Header'), './AppSheet': host('Sheet'), './SheetConfirmation': host('Confirm'),
     './ArrivalBanner': require('./helpers/arrival-banner-mock.cjs'), './MotionPressable': host('Button'), './AppText': { Text: host('Text') }, '../AppText': { Text: host('Text') },
-    './FocusLengthControl': host('Length'), './FocusDurationSheet': host('Duration'), './ProgressRing': host('Ring'), './session/SessionReveal': host('SessionReveal'),
+    './FocusLengthControl': host('Length'), './FocusDurationSheet': host('Duration'), './ProgressRing': host('Ring'),
     '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('SheetScroll'), TouchableOpacity: host('Button') },
     'react-native-safe-area-context': { SafeAreaView: host('SafeArea'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
     '../adventurer/AdventurerBack': host('Walker'), './CampDecorations': { __esModule: true, default: () => null, campDecorations: () => [] }, './TrailScenes': { FireGlow: host('Glow'), Fireflies: host('Fireflies'), TrailScene: host('Scene') },
-    '../../hooks/useRewards': { useRewards: () => ({ look: {}, equipped: {}, today: { seconds: 0 }, trail: { findSeconds: 1800, stops: 4 } }) },
-    '../hooks/useRewards': require('./helpers/rewards-store-mock.cjs'),
     '../utils/afterTransition': { afterTransition: () => () => {} }, '../utils/sessionTransition': { traceSession() {} }, '../utils/tapHaptics': { tapHaptic() {} },
   };
   const load = loader(mocks, compiled), api = load('src/context/JournalTimerProvider.tsx');
   mocks['../context/TimerContext'] = api;
-  const Presenter = load('src/components/GlobalRewardListener.tsx').default, Screen = load('src/components/SessionScreen.tsx').default;
-  const returns = load('src/services/sessionReturn.ts').sessionReturn;
+  const Presenter = load('src/components/SessionResultHost.tsx').default, Screen = load('src/components/SessionScreen.tsx').default;
   function Capture() { timer = api.useTimer(); return null; }
   function Tree() { return React.createElement(api.TimerProvider, null, React.createElement(Capture), pathname === '/session' && React.createElement(Screen), React.createElement(Presenter)); }
   try { await act(async () => { renderer = create(React.createElement(Tree)); await flush(); }); } catch(error) { await act(async () => renderer?.unmount()); Date.now = oldNow; throw error; }
   const update = () => act(async () => { renderer.update(React.createElement(Tree)); });
-  return { timer: () => timer, root: () => renderer.root, events, returns, animations, result: () => renderer.root.findByType('Result'),
+  return { timer: () => timer, root: () => renderer.root, events, animations, result: () => renderer.root.findByType('Result'),
     start: () => act(async () => { assert.equal(await timer.startFreeTimer(60, 1), true); await flush(); }),
     end: () => act(async () => { now += 15000; assert.equal(await timer.resetTimer(), true); await flush(); }),
     done: () => act(async () => { renderer.root.findByType('Result').props.onClose(); await flush(); }),
     dismiss: () => act(async () => { renderer.root.findByType('Result').props.onDismiss(); await flush(); renderer.update(React.createElement(Tree)); await flush(); }),
     complete: () => act(async () => { now += 60000; tick(); await flush(); await flush(); }),
     confirm: () => act(async () => { releaseReceipt?.(); await flush(); await flush(); }),
-    finishWalk: () => act(async () => { const walk = animations.findLast(animation => animation.config?.duration === 1800 && animation.to === 0); assert.ok(walk, 'real SessionBackdrop scheduled the return walk'); walk.done(true); }),
     leave: async () => { pathname = '/'; await update(); },
     reduce: async () => { reduced = true; await update(); },
     background: () => act(async () => { app.currentState = 'background'; for (const listener of listeners) listener('background'); await flush(); }),
@@ -142,66 +138,29 @@ for (const compiled of [false, true]) test(`Round 77: real cancelled journal res
   } finally { await f.cleanup(); }
 });
 
-for (const compiled of [false, true]) test(`actual journal completion opens its result after the real backdrop callback (${compiled ? 'production compiled' : 'uncompiled control'})`, async () => {
+for (const compiled of [false, true]) test(`actual journal completion opens its result straight away, with no walk back (${compiled ? 'production compiled' : 'uncompiled control'})`, async () => {
   const f = await fixture({ compiled });
   try {
     await f.start(); await f.complete();
     assert.equal(f.timer().isCompleted, true); assert.equal(f.timer().hasOpenSession, false);
-    assert.equal(f.timer().sessionSummary.durationSeconds, 60); assert.equal(f.timer().rewardsVisible, true);
-    const id = f.timer().sessionId; assert.ok(f.returns.snapshot()); assert.equal(f.result().props.visible, false);
-    await f.finishWalk();
-    assert.equal(f.returns.snapshot(), null, 'the real backdrop finished the presentation');
+    assert.equal(f.timer().sessionSummary.durationSeconds, 60);
+    const id = f.timer().sessionId;
+    assert.equal(f.result().props.visible, true, 'Done appears without leaving the timer or waiting for an animation');
+    assert.equal(f.animations.filter(animation => animation.config?.duration === 1800).length, 0, 'no return walk since Round 83');
     assert.equal(f.timer().sessionId, id, 'the confirmed journal identity did not change');
-    assert.equal(f.result().props.visible, true, 'Done must appear without leaving the timer');
+    await f.done(); await f.dismiss();
+    assert.equal(f.events.filter(event => event === 'route-close').length, 1, 'Done closes the session screen once');
   } finally { await f.cleanup(); }
 });
 
-test('compiled completion also opens its result when the native callback is lost', async t => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const f = await fixture();
-  try {
-    await f.start(); await f.complete();
-    assert.equal(f.result().props.visible, false);
-    await act(async () => t.mock.timers.tick(2150));
-    assert.equal(f.returns.snapshot(), null);
-    assert.equal(f.result().props.visible, true, 'the bounded fallback releases the compiled result');
-  } finally { await f.cleanup(); }
-});
-
-
-test('compiled return keeps its completed gate open when the receipt arrives later', async () => {
+test('compiled completion opens its result when the receipt arrives later, without a walk', async () => {
   const f = await fixture({ delayReceipt: true });
   try {
     await f.start(); await f.complete();
     assert.equal(f.timer().isCompleted, true); assert.equal(f.timer().sessionSummary, null);
-    await f.finishWalk(); assert.equal(f.returns.snapshot(), null);
     await f.confirm();
     assert.equal(f.timer().sessionSummary.durationSeconds, 60);
     assert.equal(f.result().props.visible, true);
-    assert.equal(f.animations.filter(animation => animation.config?.duration === 1800).length, 1, 'confirmation never replays the walk');
+    assert.equal(f.animations.filter(animation => animation.config?.duration === 1800).length, 0, 'confirmation never starts a walk');
   } finally { await f.cleanup(); }
-});
-
-for (const interruption of ['background', 'reduce']) test(`compiled return releases the result after ${interruption}`, async () => {
-  const f = await fixture();
-  try {
-    await f.start(); await f.complete(); assert.ok(f.returns.snapshot());
-    await f[interruption]();
-    assert.equal(f.returns.snapshot(), null);
-    assert.equal(f.result().props.visible, true);
-  } finally { await f.cleanup(); }
-});
-
-test('return snapshots stay immutable and an old callback cannot complete the next walk', () => {
-  const store = loader({}, false)('src/services/sessionReturn.ts').sessionReturn;
-  const before = store.stateSnapshot(); assert.equal(store.stateSnapshot(), before);
-  store.begin('first'); const running = store.stateSnapshot();
-  store.finish('first'); const done = store.stateSnapshot();
-  assert.equal(before.active, null); assert.deepEqual(before.completed, []);
-  assert.equal(running.active, 'first'); assert.deepEqual(running.completed, []);
-  assert.equal(done.active, null); assert.deepEqual(done.completed, ['first']);
-  assert.equal(store.begin('first'), false);
-  store.begin('next'); store.finish('first'); assert.equal(store.snapshot(), 'next');
-  for (let i = 0; i < 70; i++) store.begin(`bounded-${i}`);
-  assert.equal(store.stateSnapshot().completed.length, 64);
 });

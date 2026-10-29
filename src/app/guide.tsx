@@ -2,19 +2,15 @@ import { View } from "react-native";
 import { PersonalPage, p } from "../components/PersonalUI";
 import { Text } from "../components/AppText";
 const RULES = [
-  ["Starting a session", "Home’s Start card has your routines, ready in one tap, and a way to focus on anything else. On Routines, Just focus does the same, and every routine and subject has its own ▶. Finish the session to keep your time and XP. If you end early, it isn’t saved."],
+  ["Starting a session", "Home’s Start card has your routines, ready in one tap, and a way to focus on anything else. On Routines, Just focus does the same, and every routine and subject has its own ▶. Finish the session to keep its time. If you end early, it isn’t saved."],
   ["Routines", "Save the things you keep coming back to, with a length, a category and a daily reminder if you want one. Not sure where to start? Grab one of the ideas. If your phone supports it, turn on Add widget when you make a routine to put it on your home screen. You can also add one later from the routine."],
   ["Study and exams", "Add the subjects you’re taking and tap ▶ to study one. Add your exams too, and they’ll count down on Study and Home, with reminders if you like. Studying a subject with an exam coming up counts as Revision. The rest counts as Learning."],
   ["Changing things", "Hold a routine, subject or exam and the list starts to wiggle. Tap ✎ to edit or − to remove. We’ll always check before removing anything. Tap Done when you’re finished."],
   ["Protection, if you want it", "A protected session covers the apps you set aside until it ends, with one 5-minute break. It needs Usage Access, Display over other apps and notifications, and we explain each one before you allow it. Calls, Settings and End session are always within reach."],
-  ["Growing your companion", "Every full minute you finish earns 1 XP for your companion and for that session’s category, and spare seconds carry over. Levels show the effort you put in, not how talented you are. Tap your level on Home to see what’s ahead."],
   ["Daily goal and streak", "Finished time counts toward your daily goal. Any day with a finished session is a Focus day, and Focus days in a row grow your streak. Every 7 days in your streak earns a rest day (you can keep 2). Miss a day and one is used for you, so your streak carries on. You can change your goal once a week, and it kicks in the next day."],
-  ["Today's trail and finds", "While you focus, you walk today's trail. Every 30 focused minutes in a day reaches a stop with a find, up to 4 a day, and the end of the trail adds Stardust. Each 5 focused minutes also earns 1 Stardust. Spend it in Outfits on things you haven't found yet."],
-  ["Choosing a reward", "Reaching your daily goal saves a goal day. Pick what to work toward on Home, and 5 saved goal days earn it. They don't need to be in a row, and changing your choice keeps them."],
-  ["Your camp", "Decorations you collect show up around your camp, where you set off and where you come back to after each session."],
   ["Squads", "Make a squad or join a friend’s with its code, and cheer each other on through the week. In one squad? The Squads tab opens straight to it. Squads are optional and never touch your own progress."],
   ["Progress", "See your time for each day, week or month, sorted by category. Tap a day, switch between that day and the whole week or month, then tap a category to see its sessions, day by day."],
-  ["Profile and milestones", "Tap your companion on Home to open Profile. Pick a look, watch your categories grow and collect milestones. They unlock on their own as you go."],
+  ["Profile", "Tap your initials on Home to open Profile. Change your name and see your all-time time, focus days, best streak and categories."],
   ["Offline", "No connection? No problem. Sessions save on your phone and sync when you’re back online. Things that need the internet, like joining a squad, wait until then."],
 ];
 export default function GuideScreen() {

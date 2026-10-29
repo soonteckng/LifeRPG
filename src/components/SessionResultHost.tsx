@@ -1,13 +1,8 @@
-import { requiredCharacterXP } from "../utils/levelTiers";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { usePathname } from "expo-router";
-import { AppState } from "react-native";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
 import SaveSuggestedQuest, { type SuggestedQuestCompletion } from "./SaveSuggestedQuest";
-import PostSessionCelebration from "./PostSessionCelebration";
-import RewardMoments from "./RewardMoments";
 import SessionSavingOverlay from "./SessionSavingOverlay";
 import { useTimer } from "../context/TimerContext";
 import { useUser } from "../context/UserContext";
@@ -18,8 +13,6 @@ import { globalSessionLifecycle, type SessionResultDismissal } from "../services
 import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { sessionTrail } from "../services/sessionTrail";
 import { launchIntroState } from "../services/launchIntroState";
-import { RETURN_TO_CAMP_MS, sessionReturn, sessionReturnKey } from "../services/sessionReturn";
-import { useReducedMotion } from "../hooks/useReducedMotion";
 import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation";
 
 const OfflineSyncHost = lazy(() => import("./OfflineSyncHost"));
@@ -39,9 +32,7 @@ type PresentedResult = {
 const SAVING_DELAY_MS = 250;
 const SAVING_LIMIT_MS = 10_000;
 
-export default function GlobalRewardListener() {
-  const pathname = usePathname();
-  const insideSession = pathname === "/session" || pathname === "/timer";
+export default function SessionResultHost() {
   const auth = useAuth();
   const timer = useTimer({ live: false });
   const { profile, reloadProfile } = useUser();
@@ -65,28 +56,6 @@ export default function GlobalRewardListener() {
   useLayoutEffect(() => { closeRequested.current = false; pendingDismissal.current = null; }, [presentationScope]);
   const online = auth.accessMode !== "local-only";
   const summary = timer.sessionSummary;
-  const reducedMotion = useReducedMotion();
-  const openReturnKey = sessionReturnKey(presentationScope, timer.sessionId);
-  const [witnessedOpen, setWitnessedOpen] = useState<string | null>(null);
-  const nextWitness = !insideSession || !ownerId || timer.endingSession || timer.sessionEnded || timer.summaryViewed
-    ? null : timer.hasOpenSession ? openReturnKey : witnessedOpen;
-  if (nextWitness !== witnessedOpen) setWitnessedOpen(nextWitness);
-  const returnState = useSyncExternalStore(sessionReturn.subscribe, sessionReturn.stateSnapshot, sessionReturn.stateSnapshot);
-  // Only a session we saw running on this route walks back. Reopened results,
-  // recovery and early End go straight to their existing result presentation.
-  const returnKey = insideSession && ownerId && !reducedMotion && timer.isCompleted && !timer.hasOpenSession && !timer.recoveredSession
-    && !timer.summaryViewed && timer.syncStatus !== "rejected" && !timer.endingSession && !timer.sessionEnded
-    && openReturnKey && witnessedOpen === openReturnKey && !returnState.completed.includes(openReturnKey) ? openReturnKey : null;
-  useLayoutEffect(() => {
-    if (!returnKey || !sessionReturn.begin(returnKey)) return;
-    const finish = () => sessionReturn.finish(returnKey);
-    // Native callbacks may be interrupted by navigation or the app sleeping.
-    // The result can never be stranded behind a cosmetic animation.
-    const limit = setTimeout(finish, RETURN_TO_CAMP_MS + 350);
-    const app = AppState?.addEventListener("change", state => { if (state !== "active") finish(); });
-    if (AppState?.currentState && AppState.currentState !== "active") finish();
-    return () => { clearTimeout(limit); app?.remove(); finish(); };
-  }, [returnKey]);
   const ending = timer.endingSession || timer.sessionEnded;
   const terminal = timer.isCompleted || ending || !!summary;
   const rejected = terminal && timer.syncStatus === "rejected";
@@ -111,7 +80,6 @@ export default function GlobalRewardListener() {
   const suggestion = summary?.suggestion ?? (timer.linkedTaskId == null ? readSuggestedFocus(timer.notes) ?? undefined : undefined);
   const title = summary?.questTitle && summary.questTitle !== "Quest session" ? summary.questTitle
     : timer.linkedTaskId != null ? quest?.title ?? "Routine" : suggestion?.title ?? readRoutineSession(timer.notes) ?? "Free session";
-  const level = timer.completedLevelUp?.newLevel ?? profile?.level ?? 1;
   const candidate: PresentedResult | null = available && ownerId ? {
     ownerId,
     accountKey,
@@ -121,10 +89,6 @@ export default function GlobalRewardListener() {
       recovered: summary?.recovered ?? timer.recoveredSession,
       pending, ending, rejected, localSaved: pending, offline: !online,
       syncError: timer.actionError, syncBusy: timer.actionBusy || timer.isRestoring,
-      xpEarned: summary?.xpEarned,
-      creditVersion: summary?.creditVersion, areaXpEarned: summary?.areaXpEarned,
-      characterRemainderSeconds: summary?.characterRemainderSeconds,
-      areaRemainderSeconds: summary?.areaRemainderSeconds,
       goalReachedNow: summary?.goalReachedNow,
       durationSeconds: summary?.durationSeconds ?? timer.duration,
       creditedDate: summary?.creditedDate,
@@ -132,8 +96,6 @@ export default function GlobalRewardListener() {
       dailyGoalMinutes: summary?.dailyGoalMinutes,
       questTitle: title, areaTitle: area?.title,
       areaColor: lifeAreaColor(timer.targetAttributeId, area?.color_code),
-      isLevelUp: !!timer.completedLevelUp?.leveledUp, newLevel: level,
-      currentXP: profile?.current_xp ?? 0, requiredXP: requiredCharacterXP(level),
     },
     saveCompletion: online && summary?.sessionId && summary.suggestion && !ending && !rejected && timer.linkedTaskId == null
       ? { ownerId, sessionId: summary.sessionId, suggestion: summary.suggestion,
@@ -167,8 +129,7 @@ export default function GlobalRewardListener() {
     closeRequested.current = true;
     pendingDismissal.current = { ownerId: closingOwner, scope: presentationScope, sessionId: displayed?.props.sessionId ?? null };
     setClosing(true);
-    // Keep the receipt until the sheet has actually faded away. Starting the
-    // trail here would consume its entrance animation behind the native modal.
+    // Keep the receipt until the sheet has actually faded away.
   };
   const retry = () => {
     sessionTrail("result retry", { pending: !!displayed?.props.pending });
@@ -185,9 +146,9 @@ export default function GlobalRewardListener() {
   }, [online, summary, reloadProfile]);
   // Never over the launch logo: the card appears once the app has opened.
   const introDone = useSyncExternalStore(launchIntroState.subscribe, launchIntroState.isDone, launchIntroState.isDone);
-  const shown = visible && introDone && !returnKey;
+  const shown = visible && introDone;
   const savingShown = waiting && !expired && saving.key === pendingKey && saving.phase === "saving" && !!ownerId && terminal
-    && !timer.hasOpenSession && !timer.summaryViewed && introDone && !returnKey;
+    && !timer.hasOpenSession && !timer.summaryViewed && introDone;
   return <><SessionResultSheet {...displayed?.props} visible={shown}
     saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!shown} completion={displayed.saveCompletion} />}
     onClose={done} onDismiss={() => {
@@ -212,11 +173,6 @@ export default function GlobalRewardListener() {
       closeRequested.current = false; setClosing(false); if (!candidate) setHeld(null);
     }} onRetry={retry} />
     <SessionSavingOverlay visible={savingShown} />
-    <PostSessionCelebration insideSession={insideSession || !online} />
-    {/* Inside a session the reward screens wait until it has finished. Its own return screen shows on the session screen. */}
-    <RewardMoments insideSession={!!offlineSync.batch || offlineSync.busy || timer.unsyncedSessionCount > 0 || insideSession && (timer.hasOpenSession || timer.endingSession || timer.isRestoring || !!returnKey)}
-      claimsPaused={!offlineSync.ready || offlineSync.busy || !!offlineSync.batch || timer.isRestoring || timer.unsyncedSessionCount > 0}
-      claimKey={summary?.sessionId ?? null} sessionRoute={insideSession} />
     {offlineSync.batch && syncScope && <Suspense fallback={null}><OfflineSyncHost key={`${presentationScope}:${offlineSync.batch.id}`}
       scope={syncScope} batch={offlineSync.batch} active={offlineSync.ready && !offlineSync.busy && !timer.hasOpenSession && !timer.isRestoring && !shown && !closing && introDone} />
     </Suspense>}</>;

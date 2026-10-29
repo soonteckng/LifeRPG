@@ -433,7 +433,7 @@ test("root gate renders recovery before mounting account or onboarding providers
       "../components/AuthScreen": host("Login"),
       "../components/RecoveryScreen": host("Recovery"),
       "../components/LaunchIntro": props => props.children,
-      "../components/GlobalRewardListener": host("Reward"),
+      "../components/SessionResultHost": host("Reward"),
       "../components/SessionConnectionContent": props => props.children,
       "../context/ProtectionPreviewContext": { ProtectionPreviewProvider: props => props.children },
       "../context/AuthContext": {
@@ -495,7 +495,7 @@ async function rootAdmissionScreen(initial) {
     "../components/OfflineSessionRecovery": host("OfflineRecovery"),
     "../components/SessionConnectionContent": SessionConnectionContent,
     "../context/ProtectionPreviewContext": { ProtectionPreviewProvider: props => props.children },
-    "../components/LaunchIntro": function Intro({ children }) { return children; }, "../components/GlobalRewardListener": host("Reward"),
+    "../components/LaunchIntro": function Intro({ children }) { return children; }, "../components/SessionResultHost": host("Reward"),
     "../context/AuthContext": { AuthProvider: function Auth({ children }) { return children; }, useAuth: () => auth },
     "../context/UserContext": { UserProvider, useUser: () => ({ profile: { id: auth.user?.id ?? auth.localOwner?.id ?? "", onboarding_completed: true }, profileLoading: false, profileError: false, reloadProfile: async () => true }) },
     "../context/TimerContext": { TimerProvider }, "../context/QuestContext": { QuestProvider },

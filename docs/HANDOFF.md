@@ -8,19 +8,19 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 
 ---
 
-## 1. Where things stand (checked 29 Oct 2026)
+## 1. Where things stand (checked 30 Oct 2026)
 
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 82 (Claude) on Round 81: four phone fixes, chosen rewards (client), camp decorations, rest days, launch-readiness sweep. See `docs/round82-big-round.md`. Soon Teck applies, pushes and publishes, then runs the two Round 82 SQL files. |
+| Latest delivered round | Round 83 (Claude) on Round 82: the reward layer, character and XP/levels are removed from the app (the new direction, "awhile"). See `docs/round83-remove-rewards.md`. No SQL. Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 82: full suite 1,910 passed (none skipped), typecheck, lint, fingerprint unchanged. |
+| Code health | Round 83: 1,616 tests pass (1,910 at Round 82; the tests of deleted features went with them, listed in `docs/round83-remove-rewards.md`). Typecheck and lint clean; fingerprint unchanged. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
-| SQL | Round 66 is live. Read-only function metadata on 29 Oct confirms Round 75's developer lab matches the branch. Chosen rewards (`20261028185232_round80_chosen_rewards.sql`) and rest days (`20261029120000_round82_rest_days.sql`) are delivered with Round 82 for Soon Teck to run after publishing. Check `to_regprocedure('public.choose_reward_v1(uuid,text,bigint,uuid)')` to see whether chosen rewards are live. The old R64 file must never run. |
-| Waiting on the phone | User reports R79 offline sessions succeed, but first-session encouragement was missing. R80 fixes that and the same omission for daily goals, using separate confirmed receipts after the one map. Check first-only, goal-only and combined messages; a no-wait Developer sequence is available. Native frame pacing remains unverified. |
+| SQL | Round 66 is live. Rest days (`20261029120000_round82_rest_days.sql`) came with Round 82 for Soon Teck to run after publishing. Chosen rewards will **never** run: Round 83 moved its migration out of `supabase/migrations` to `docs/archive/never-run-round80_chosen_rewards.sql`, so a migration push can't pick it up. The server's reward tables and RPCs are untouched and unused; dropping them is a later SQL step that needs approval. The old R64 file must never run. |
+| Waiting on the phone | Round 83: check a timed and a protected session end to end (camp scene with nobody in it, the result card opens straight away, Done closes the session), an End early, and an offline catch-up (one summary card, Done acknowledges it). Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -30,12 +30,20 @@ does **not** show in `list_migrations`. That's expected; the live functions matc
 
 ## 2. The product in one paragraph
 
-LifeRPG (name not final) is an Android-first Expo app for students (16–24): you
-run focus sessions (routines or study subjects), your focused time grows a
-character, and you earn rewards. Two equal halves: **Routines** and **Study**.
-Tabs: Home · Routines · Study · Squads · Progress. Profile, Settings and Outfits
-open from Home. Theme "Mint": true black, mint accent, warm Apple-like polish.
-No guilt or punishment mechanics; no ads during focus, auth or recovery.
+**New direction (30 Oct 2026):** LifeRPG is becoming **awhile** (working name):
+a calm focus app, **not a game**. "Plan it, start it, stay with it." The focus
+session is the product; everything else helps you start, shows you showed up,
+or keeps you company. For anyone (study, workouts, reading), students first.
+The full brief is the "awhile: direction and handover" doc and
+`awhile-handover.md` (given to Soon Teck as a file), with nine mockups.
+
+Today (after Round 83): Android-first Expo app. You run focus sessions
+(routines or study subjects); Progress shows your time, focus days and streak.
+**No currencies, rewards, character, outfits, XP or levels** in the app any
+more (Round 83 removed them; the server keeps its old tables untouched).
+Tabs: Home · Routines · Study · Squads · Progress, until the redesign rounds
+replace them with Today as home. No guilt or punishment mechanics; no ads during
+focus, auth or recovery.
 
 ---
 
@@ -190,39 +198,37 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 | Routes | `src/app/_layout.tsx` (stack and modal options), `src/app/(tabs)/*` (Home is `index.tsx`), `src/app/session.tsx`, `outfits.tsx`, `profile.tsx`, `settings*.tsx` |
 | Session timer | `src/context/TimerContext.tsx`, `src/services/sessionTimerController.ts`, `sessionService.ts`, `offlineSessionService.ts`, `globalSessionLifecycle.ts`, `src/components/SessionScreen.tsx` |
 | Session scene | `src/components/session/SessionBackdrop.tsx` (one scene: dusk → night → morning), `TrailScenes.tsx` (the drawing, palettes, FireGlow, Fireflies) |
-| Session result | `SessionResultSheet.tsx`, `LevelUpModal.tsx`, `CompletionDetails.tsx`, `ArrivalBanner.tsx` |
+| Session result | `SessionResultHost.tsx` (the one result portal, was `GlobalRewardListener`), `SessionResultSheet.tsx`, `CompletionDetails.tsx`, `ArrivalBanner.tsx`, `OfflineSyncHost.tsx` (one card for an offline catch-up) |
 | Protected sessions | `SessionProtectionContext.tsx`, `nativeFocusProtection.ts`, `protectedSessionStart.ts`, `SessionProtectionControl.tsx` (one 5-min break per session) |
-| Rewards client | `src/hooks/useRewards.ts` (exports `useRewards` and `rewardsStore`), `src/services/rewardsService.ts`, `rewardsStore.ts`, `rewardCatalog.ts` |
-| Rewards UI | `RewardMoments.tsx` (pop-up host; "See it in Outfits" visits and returns), `GlobalRewardListener.tsx`, `rewards/RevealScreens.tsx` (finds card, then the trail; pack screen), `rewards/TodayTrail.tsx` (the map, draws on first layout; accessible host scrolls if large text needs space), `rewards/TrailSheet.tsx` (the map from Home), `rewards/PackArt.tsx` |
-| Profile picture | `adventurer/ProfilePicture.tsx` (pet top right, streak top left, level in a drawn pill below the ring: `levelPill(size, level)` gives its size and the extra height), `CharacterMark.tsx` (you, everywhere) |
-| Level colours | `utils/adventurerLook.ts` `tierColor` / `levelColors` (= the level-road tier colours), `services/levelPreview.ts` (developer-only preview of another tier) |
-| Outfits | `src/app/outfits.tsx` (`outfitsOpening(id)` deep-links to the item's category), `components/adventurer/*` |
-| Collection | `components/rewards/RewardCollectionSheet.tsx`: read-only owned decorations, opened from Outfits' header or `?collection=1` / `?show=decor_easel`; same cached inventory, no new request or camp placement |
 | Home | `src/app/(tabs)/index.tsx`, `SavedRoutinesCard.tsx` (the Start card and its See all sheet) |
-| Developer tools | `src/components/DeveloperTools.tsx`, `services/developerAccess.ts`, `DeveloperRewardTests.tsx`, `services/developerRewardLab.ts` |
+| People | `InitialsAvatar.tsx`: you and squad members as initials on a stable tint (no characters) |
+| Developer tools | `src/components/DeveloperTools.tsx` (session log, guide, intro, every result card), `services/developerAccess.ts` |
 | SQL | `supabase/migrations/*.sql` |
 | Tests | `tests/*.test.cjs`, `tests/helpers/*` |
 
-### Rewards rules (current)
+### Rewards (removed in Round 83)
 
-- **Stardust:** 1 per 5 focused minutes; spent in Outfits on items you haven't found. A **find** at each stop of today's trail: every 30 eligible focused minutes of the day, up to 4 (120 minutes), then +50 Stardust for the trail's end (Round 66 SQL, live since 26 Oct).
-- **Daily supply pack:** opens once you reach your **daily goal** (default 30 min). Tiers climb with days in a row. The dev account can open it any time from Developer › Rewards (the same `open_daily_pack_v1`, with a dev bypass on the server).
-- **Chosen rewards (Round 82, after its SQL):** from the day after installation, the daily goal no longer opens a pack; it saves a goal day (one permanent credit per local date). Five saved days earn the reward chosen on Home from four stable offers (wearables, backgrounds, decorations not owned). Switching or getting it another way keeps the days. Grants show as a "You earned it" reveal and are acknowledged once seen.
-- **Rest days (Round 82, after its SQL for squads):** every 7 focus days in a streak earn one (hold 2); a missed day uses one automatically. Same rule in `utils/focusDays.ts` and SQL `focus_streak`.
-- **Camp decorations:** the newest four owned decorations stand in fixed spots in the session camp.
-- Pets, streak frames and badges are milestones. Frames upgrade on their own (no choosing).
-- Server side, everything is in the private schema `liferpg_reward_private`, reached through `SECURITY DEFINER` RPCs in `public`. Each RPC takes `p_expected_owner` and checks it with `liferpg_reward_private.signed_in()`; `EXECUTE` is revoked from `anon`.
-- The client store keeps per-owner snapshots with `moments` (small pop-ups) and `reveals` (full screens: expedition or pack). Seen state is kept in AsyncStorage. The pop-up host waits for other sheets (`sheetActivity`) plus `SETTLE_MS = 450` and shows reveals before moments.
+- The app no longer shows or claims Stardust, finds, today's trail, packs,
+  chosen rewards, milestones (pets, frames, badges), camp decorations, the
+  character, outfits, XP or levels. The code is deleted, not hidden.
+- The server is **untouched**: `liferpg_reward_private` tables and the reward
+  RPCs still exist, and session completion may still record XP server-side.
+  Nothing in the app reads or calls them. Dropping them is a later SQL step that
+  needs Soon Teck's approval.
+- **Never run `round-82-chosen-rewards.sql`.** `round-82-rest-days.sql` is fine.
+- Still in the app: the focus streak with rest days (`utils/focusDays.ts`, SQL
+  `focus_streak`), the daily goal, Progress, Profile's all-time totals and the
+  category levels in Profile/Progress (these go in the "Your rhythm" round).
 
 ### Session flow after Round 59
 
-1. Start runs the walk-away **before** the session starts (Round 62): you walk away from camp at dusk (`WALK_MS` 2400), then the same scene fades to a very dark night (`NIGHT_FADE_MS` 2000), and only then is `startTimer` called, so the walk takes none of the session's time. Tap anywhere skips (the session starts after the quick fade). Back during the walk cancels it and stays on setup. The night stays up until the session shows as started (`launching`, 4 s fallback; a failed start shows setup again). No walk with Reduce Motion, on Retry, or for a session that's already running.
+1. Start runs the setting-off **before** the session starts (Round 62; since Round 83 nobody walks: the camp shows at dusk with "Settling in" and the activity name): the scene holds at dusk (`WALK_MS` 2400), then the same scene fades to a very dark night (`NIGHT_FADE_MS` 2000), and only then is `startTimer` called, so the walk takes none of the session's time. Tap anywhere skips (the session starts after the quick fade). Back during the walk cancels it and stays on setup. The night stays up until the session shows as started (`launching`, 4 s fallback; a failed start shows setup again). No walk with Reduce Motion, on Retry, or for a session that's already running.
 2. Night until the **last 10 focus seconds** (`DAWN_SECONDS`, Round 69), then a linear fade over the remaining focus seconds. Pause or the protected break freezes the light; Resume continues to the focus deadline. A reopened completed session shows morning immediately; early End returns to night. Ordinary timer ticks do not redraw the scene or restart dawn. New sessions and edited routines require 60 seconds to 8 hours; old short sessions, history and pending sync records remain readable and recoverable.
 3. The 5-min break asks first ("Take your 5-minute break?" with Start break / Keep focusing).
-4. On a fresh finish witnessed inside the timer, the character walks back to camp for 1.8 seconds before the result card. It is presentation only; Reduce Motion, recovered results and early End skip it. A bounded fallback and route/account/background cleanup release the card if the animation is interrupted.
-5. On finish, the reward claim starts as soon as the summary arrives (`claimKey`). After Done, `SessionScreen` **holds the exit** and shows the session's return screen **itself** (`components/session/SessionReveal.tsx`: the finds card if anything was found, then today's trail walk). Order: walk back → result card → finds → trail → back to the app. While the claim is still in flight it waits up to 15 s; while the return screen shows there is no time limit (you close it). Continue or Back fades the return into the app; the map stays mounted until the native fade finishes. `RewardMoments` never shows an expedition reveal while on the session route or while the session screen hosts it (`sessionRevealHost` in `services/sessionReturn.ts`, e.g. Outfits opened from the finds card); one that arrives after you left shows on Home as before.
+4. **Round 83:** no walk back. The result card opens as soon as the result is ready.
+5. **Round 83:** no reward claim and no return screen. Done on the card closes the session screen (`globalSessionLifecycle` → `minimise`). Historical (Round 67 to 82): after Done, `SessionScreen` held the exit and shows the session's return screen **itself** (`components/session/SessionReveal.tsx`: the finds card if anything was found, then today's trail walk). Order: walk back → result card → finds → trail → back to the app. While the claim is still in flight it waits up to 15 s; while the return screen shows there is no time limit (you close it). Continue or Back fades the return into the app; the map stays mounted until the native fade finishes. `RewardMoments` never shows an expedition reveal while on the session route or while the session screen hosts it (`sessionRevealHost` in `services/sessionReturn.ts`, e.g. Outfits opened from the finds card); one that arrives after you left shows on Home as before.
 6. Widget/deep-link launches (`routine-start.tsx`) use `router.dismissTo("/session")`, never `replace`: `REPLACE` ignores `dangerouslySingular` and stacked a second session screen. `SessionScreen` also recovers a close whose pop was lost (`LOST_EXIT_MS`), so a hidden, input-locked screen can't freeze the app.
-7. The reward claim result is written to the private session record (`sessionTrail("rewards claim")`, share with Settings > Developer > Share session log), plus `result closed`, `reveal shown`, `reveal closed`.
+7. The session log (Settings > Developer > Share session log) records `result done` and `result closed` among the timer events.
 8. Round 74: the receipt closes only through Done, fading the whole result modal for 400 ms (ordinary sheet fades still default to 220 ms). Only its actual dismissal notifies the session screen and acknowledges the result. SessionReveal then waits for measured content before a 520 ms entrance. Round 76 replaces the serial finds/map fades: the measured map mounts beneath the opaque finds, then a single 620 ms cover fade reveals that same map, without a second entrance. The final 480 ms fade has no downward translation and acknowledges the map only when hidden. Repeated callbacks, an account/admission change and a replacement running session are fenced. Reduce Motion swaps immediately.
 9. Round 76: the focus walker stays inside an ancestor-relative measured lane below the ring and above activity details. Cramped/missing geometry hides the small decorative walker; departure/return remain. Focus scenery has an 82% black veil; departure/return 35%, settled morning 45%. Foreground timer/controls stay clear. No physical brightness setting change.
 10. Round 77: the intro veil follows dusk from 35% to the final 82% before revealing the timer; removing intro keeps the same night subtree and starts no second dim. Cancelled/unmounted intro callbacks cannot finish a new departure. A matching Done dismissal clears its held result by exact outgoing identity before the journal selection clears; neutral summaryViewed=false cannot resurrect that End notice.
@@ -234,7 +240,7 @@ react-native-svg 15, @gorhom/bottom-sheet 5, supabase-js 2. The repo's
 ## 6. Testing conventions
 
 - Tests are plain `node:test` files (`tests/*.test.cjs`). Each loads a TS/TSX source with `ts.transpileModule` and a **per-file mock map** keyed by the exact import specifier (for example `'./AppText'`). If you add an import to a component, the tests that load it need that mock, or they fail with "Stripping types is currently unsupported for files under node_modules" or "Unexpected token 'typeof'".
-- Shared mocks: `tests/helpers/arrival-banner-mock.cjs` (the result card's banner) and `tests/helpers/rewards-store-mock.cjs` (`set()` and `reset()` to drive pending reveals).
+- Shared mocks: `tests/helpers/arrival-banner-mock.cjs` (the result card's banner). `tests/helpers/rewards-store-mock.cjs` is now only an inert stand-in that a few older fixtures still pass for a module that no longer exists; don't build new tests on it.
 - `tests/helpers/no-external-network.cjs` blocks real network calls in tests. Keep it that way.
 - Add tests for every behaviour you add or fix. Prefer behaviour tests (render, press, assert) over source-regex tests.
 - Visual check: if you can, render changed screens (react-native-web + Playwright works) and look at them before handing back. Check night really is dark, nothing clips at fontScale 1.8, and nothing overlaps on a 360×640 screen.
@@ -453,9 +459,9 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 ## 9. Product decisions already made (don't reopen)
 
 - Squads: no join approval (the code is enough); stats are public inside a squad (no share setting); free tier leads 1 squad and joins up to 3.
-- Gold is gone. Stardust is the currency.
+- **Round 83 (30 Oct):** no currencies, rewards, character, outfits, XP or levels. The app has no real users yet, so they are deleted, not hidden. People show as initials.
+- **Next (agreed, not built):** the awhile redesign: Today as home with no bottom tab bar; Routines and Study merge into activities (reminder only, timed, protected); Circle replaces squad rankings; a one-streak rule to settle. See the handover doc.
 - Monetisation later: everyone gets the same features; a few ads (never during focus), or a small one-off ad-free purchase.
-- Level shows on the profile picture; Stardust shows on Home and opens Outfits (it grows from the chip, like Settings and Profile).
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
 - **Built in Round 82:** chosen rewards (client + reviewed SQL), camp decorations (fixed spots, newest four), rest days (every 7 streak days, hold 2, used automatically; goal streak and frames unchanged). Earlier note: five banked non-consecutive goal-days for a chosen cosmetic. The R80 review-only proposal records installation time and a frozen next-local-day boundary, preserves the launch-day pack, durable credits, wallet-first grants, four stored offers and old-client payloads. No SQL is installed, no chosen client is built and no Claude message sent. See the R80 review note and historical spec. Rest days and decorations are later.
@@ -488,6 +494,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R83 (Claude):** the reward layer comes out for the new direction ("awhile", a calm focus app): Stardust, Outfits, trail and finds, packs and chosen rewards, milestones, XP and levels, celebrations, the character and the walk back are deleted. People are initials (`InitialsAvatar`); the session camp stays with nobody in it; the result card opens straight away; `GlobalRewardListener` is now `SessionResultHost`; the offline catch-up is one summary card. Chosen-rewards migration archived. No SQL. 1,616 tests pass.
 - **R82 (Claude):** phone fixes (wrapped offline title, preview card fades into a prepared map, next-frame session entrance, waiting error scoped to the selected record, refused start shows setup at once); chosen rewards client (Home card replaces the pack once enabled, four-offer sheet, "You earned it" reveal, acknowledgement, developer lab controls); camp decorations; rest days (one rule in `utils/focusDays.ts` and SQL `focus_streak`, PGlite equivalence test); guide and launch-readiness list. Two SQL files to run after publishing.
 - **R81 (Claude):** nested-Modal fix for the five instant developer result previews (card waits for the scenery window); chosen-reward SQL review fixes (exception-safe triggers, `chosen` source, alternating offers) with failing-first PGlite tests. SQL still not installed; client not built.
 - **R80 (Codex):** reproduced missing first/goal celebrations for grouped offline receipts; retain independent confirmed evidence and release it after the single map, with the same durable ledgers and combined message. A no-wait Developer sequence reuses shipped screens. Read-only live reward metadata matches six branch bodies; R75 lab presence confirmed. CLI-created chosen-reward SQL proposal has isolated tests, but is not installed and must wait for review/new client. No live mutation, Auth/email, native/config/dependency change, push, build or publication. Native notifications remain deferred to November. See `docs/round80-celebrations-and-reward-proposal.md`.

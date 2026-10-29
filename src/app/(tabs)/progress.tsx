@@ -24,7 +24,6 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import AppSheet from "../../components/AppSheet";
-import MilestonesRow from "../../components/MilestonesRow";
 import { colors, radius, edge } from "../../constants/theme";
 import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
@@ -634,8 +633,6 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
-              <Section title="My Milestones" />
-              <MilestonesRow />
             </ContentReveal>
           )
         )}
@@ -703,13 +700,6 @@ export default function ProgressScreen() {
                     dateStyle: "medium",
                     timeStyle: "short",
                   }).format(new Date(selectedSession.completed_at!))}
-                </Text>
-              </View>
-              <View style={s.detailRow}>
-                <Text style={s.caption}>Rewards earned</Text>
-                <Text style={s.rowTitle}>
-                  +{selectedSession.xp_earned ?? 0} character XP
-                  {selectedSession.credit_version === 1 && selectedSession.credit_result?.area_xp_earned != null ? ` · +${selectedSession.credit_result.area_xp_earned} Focus area XP` : ""}
                 </Text>
               </View>
               </View>

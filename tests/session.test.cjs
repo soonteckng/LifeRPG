@@ -1701,15 +1701,16 @@ test("every Life area is reachable from one focus area sheet",async()=>{
   await extra.cleanup();
 });
 
-test("completion message shows saved exact duration and awards; Done only closes the message", async () => {
+test("completion message shows saved exact duration; Done only closes the message", async () => {
   const calls=[];
+  const saveAction=React.createElement('GuidedBoundary',{compact:true});
   const scrollResets=[];
   let fontScale=1;
   const CompletionScroll=React.forwardRef((props,ref)=>{
     React.useImperativeHandle(ref,()=>({scrollTo:position=>scrollResets.push(position)}),[]);
     return React.createElement('Scroll',props,props.children);
   });
-  const Modal=load("src/components/LevelUpModal.tsx",{
+  const Modal=load("src/components/SessionResultSheet.tsx",{
     "react-native-svg":{__esModule:true,default:host("Svg"),Defs:host("Defs"),RadialGradient:host("RadialGradient"),Rect:host("Rect"),Stop:host("Stop")},
     "react-native":{View:host("View"),Text:host("Text"),Modal:host("Modal"),ScrollView:host("Scroll"),TouchableOpacity:host("Button"),StyleSheet:{create:s=>s,hairlineWidth:1},useWindowDimensions:()=>({fontScale})},
     "react-native-safe-area-context":{SafeAreaView:host("SafeArea"),useSafeAreaInsets:()=>({bottom:34,top:24})},
@@ -1717,13 +1718,13 @@ test("completion message shows saved exact duration and awards; Done only closes
     "./AppSheet":p=>React.createElement("PopupSheet",p,p.header,p.children,p.footer),
     "./ArrivalBanner":require("./helpers/arrival-banner-mock.cjs"),
     "@expo/vector-icons":{Ionicons:host("Icon")},
-    "./ProgressRing":host("Ring"),"./CharacterMark":host("Companion"),
+    "./ProgressRing":host("Ring"),
     "../context/UserContext":{useUser:()=>({hapticsEnabled:false})},
     "../hooks/useReducedMotion":{useReducedMotion:()=>true},
     "expo-haptics":{},
   }).default;
   let renderer;
-  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,sessionId:'result-a',durationSeconds:90,xpEarned:1,areaXpEarned:1,creditVersion:1,goalReachedNow:false,onClose:()=>calls.push("close")}));});
+  await act(async()=>{renderer=create(React.createElement(Modal,{visible:true,sessionId:'result-a',durationSeconds:90,saveAction,goalReachedNow:false,onClose:()=>calls.push("close")}));});
   const text=node=>typeof node==="string"?node:(node.children??[]).map(text).join("");
   try {
     const sheet=renderer.root.findByType("PopupSheet");
@@ -1745,23 +1746,23 @@ test("completion message shows saved exact duration and awards; Done only closes
     assert.equal(renderer.root.findAllByProps({testID:'session-arrival'}).length,1,'the card opens on the arrival banner');
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
     assert.match(text(renderer.root),/1 min 30 sec/);
-    assert.match(text(renderer.root),/Character XP\+1/);
+    assert.match(text(renderer.root),/Focus day recorded/);assert.doesNotMatch(text(renderer.root),/XP|Level/);
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
-    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',pending:true,recovered:true,durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',pending:true,recovered:true,durationSeconds:90,saveAction,onClose:()=>calls.push('close')})));
     // Online and still confirming: laid out as finished, numbers filling in, never claimed as recorded yet.
-    assert.match(text(renderer.root),/Session complete.*Character XP…/);
-    assert.doesNotMatch(text(renderer.root),/\+1|Progress saved|Recorded ✓|recorded ✓/);
+    assert.match(text(renderer.root),/Session complete.*…/);
+    assert.doesNotMatch(text(renderer.root),/Focus day recorded|Progress saved|Recorded ✓|recorded ✓/);
     assert.doesNotMatch(text(renderer.root),/now saved to your account/);
     assert.ok(sheet.props.heightRatio <= 0.85, 'pending results keep actions within the capped sheet');
-    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',recovered:true,completedAtMs:Date.UTC(2026,9,11,1,23),durationSeconds:90,xpEarned:1,onClose:()=>calls.push('close')})));
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',recovered:true,completedAtMs:Date.UTC(2026,9,11,1,23),durationSeconds:90,saveAction,onClose:()=>calls.push('close')})));
     assert.match(text(renderer.root),/Earlier session saved.*Finished 11 Oct 2026/);
     assert.match(text(renderer.root),/now saved to your account/);
     assert.equal(scrollResets.length,1, 'receipt arrival must preserve scroll rather than jump to the top');
     await act(async()=>renderer.root.findByType('Scroll').props.onLayout()); assert.equal(scrollResets.length,1);
-    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,saveAction,onClose:()=>calls.push('close')})));
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     fontScale=1.6;
-    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,xpEarned:1,onClose:()=>calls.push('close')})));
+    await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,saveAction,onClose:()=>calls.push('close')})));
     assert.equal(renderer.root.findAllByProps({testID:'session-arrival'}).length,1,'large text keeps the arrival banner, which grows with its words, and the actions');
     assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
     assert.equal(scrollResets.length,2);
@@ -2111,19 +2112,14 @@ test("the 5-minute break asks first; keeping focus changes nothing", async () =>
   } finally { await ui.cleanup(); }
 });
 
-test("a finished session shows its rewards before going back to the app", async () => {
-  const rewards = require("./helpers/rewards-store-mock.cjs");
-  rewards.set({ reveals: [{ id: "expedition:s1", kind: "expedition", seconds: 1800, finds: [], stardust: 6 }] });
+test("a finished session goes back to the app as soon as Done closes the result", async () => {
   const ui = await screenSetup({isCompleted:true,timeLeft:0,sessionSummary:{questTitle:"Read",durationSeconds:1800,xpEarned:30,goldEarned:5}});
   try {
     await ui.update({isCompleted:false,sessionSummary:null,summaryViewed:true});
     await act(async () => { await new Promise(done => setTimeout(done, 20)); });
-    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 0, "Done stays here while the return screen shows");
-    assert.equal(ui.root().findAllByType("SessionReveal").length, 1, "the return screen shows on the session screen itself");
-    await act(async () => rewards.set({ reveals: [] }));
-    await act(async () => { await new Promise(done => setTimeout(done, 20)); });
-    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 1, "closing it goes back to the app, last");
-  } finally { rewards.reset(); await ui.cleanup(); }
+    assert.equal(ui.root().findAllByType("SessionReveal").length, 0, "no return screen since Round 83");
+    assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 1, "Done goes back to the app once, straight away");
+  } finally { await ui.cleanup(); }
 });
 
 test("a pending protected control keeps its label and shows busy feedback after the first tap", async () => {

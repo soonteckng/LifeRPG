@@ -137,7 +137,7 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   ];
   const subtitles = [
     "Choose what matters to you right now. We’ll have ideas waiting once you’ve settled in.",
-    "This is the name your companion will know you by. You can dress them up in Profile later.",
+    "This is the name your squads will see. You can change it in Profile later.",
     "Start small, short sessions count too. You don’t have to do it all at once.",
     "LifeRPG can cover distracting apps while you focus. Optional, and you can change it in Settings.",
   ];

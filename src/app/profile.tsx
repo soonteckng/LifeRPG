@@ -12,21 +12,15 @@ import {
 } from "@gorhom/bottom-sheet";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Keyboard, ScrollView, StyleSheet, View } from "react-native";
+import { Keyboard, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { levelTierProgress, requiredCharacterXP } from "../utils/levelTiers";
-import MilestonesSheet, { useMilestones } from "../components/MilestonesSheet";
 import SubjectBreakdown from "../components/SubjectBreakdown";
 import SectionHeader from "../components/SectionHeader";
-import LevelTierSheet from "../components/LevelTierSheet";
-import { useShownLevel } from "../services/levelPreview";
-import { levelColors } from "../utils/adventurerLook";
 import FocusAreaDetailSheet from "../components/FocusAreaDetailSheet";
 import { focusAreaDetail, focusAreaSessions } from "../utils/focusAreaDetail";
 import AppSheet from "../components/AppSheet";
 import SheetConfirmation from "../components/SheetConfirmation";
-import Adventurer from "../components/adventurer/Adventurer";
-import { useRewards } from "../hooks/useRewards";
+import InitialsAvatar from "../components/InitialsAvatar";
 import {
   Meter,
   PersonalButton,
@@ -37,7 +31,7 @@ import { colors, radius, edge } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useCharacterData } from "../hooks/useCharacterData";
-import { profileFocusAreaGrowth } from "../utils/characterGrowth";
+import { earnedMilestones, profileFocusAreaGrowth } from "../utils/characterGrowth";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { setupMode } from "../services/setupMode";
 import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
@@ -45,9 +39,7 @@ import { countdownLabel, courseColor, daysUntil, studyTime, upcomingExams } from
 import SheetTextInput from "../components/SheetTextInput";
 export default function ProfileScreen() {
   const router = useRouter();
-  const milestones = useMilestones();
   const [openedAt] = useState(() => Date.now());
-  const [badgesOpen, setBadgesOpen] = useState(false);
   const insets = useSafeAreaInsets();
   const timer = useTimer({ live: false });
   const { profile, updateProfile, reloadProfile } = useUser();
@@ -64,13 +56,11 @@ export default function ProfileScreen() {
   const nameScroll = useRef<BottomSheetScrollViewMethods>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [name, setName] = useState("");
-  const rewards = useRewards();
   const [saving, setSaving] = useState(false);
   const lock = useRef(false);
   const sheetClosing = useRef(false);
   const [saveError, setSaveError] = useState("");
   const [discard, setDiscard] = useState(false);
-  const [tiersOpen, setTiersOpen] = useState(false);
   const [areaId, setAreaId] = useState<number | null>(null);
   const [areaOpen, setAreaOpen] = useState(false);
   const [leavingArea, setLeavingArea] = useState(false);
@@ -81,7 +71,9 @@ export default function ProfileScreen() {
     }, [reloadProfile]),
   );
   const areas = profileFocusAreaGrowth(data?.areas ?? []);
-  const required = requiredCharacterXP(profile.level ?? 1);
+  // Your all-time numbers, from your own session history.
+  const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
+  const totalsReady = !!data;
   const selectedArea = areas.find(area => area.id === areaId) ?? null;
   const areaDetail = selectedArea && data ? focusAreaDetail(selectedArea, data.areas, data.sessions, profile.timezone) : null;
   const selectedKind = focusAreaKind(selectedArea?.title);
@@ -142,60 +134,29 @@ export default function ProfileScreen() {
       setSaving(false);
     }
   };
-  // Your level as drawn, in your tier's colour (a developer can preview another tier).
-  const { level } = useShownLevel(profile.id, profile.level), tint = levelColors(level);
-  const tier = levelTierProgress(level, profile.current_xp).current;
   return (
     <PersonalPage title="Profile" subtitle="" compact back animateTransition expandFromIcon fallback="/">
       <ContentReveal><View style={s.stack}>
-        {/* Your character sheet: the companion leads, then your name, level and XP. */}
-        <View style={s.hero} testID="profile-companion-card">
-          <Pressable onPress={() => router.navigate("/outfits")} accessibilityRole="button" accessibilityLabel="Your character. Open Outfits" style={s.portrait} testID="profile-character">
-            <View style={s.halo} pointerEvents="none" />
-            <Adventurer look={rewards.look} equipped={rewards.equipped} size={100} lanternLevel={level} animate={!sheetOpen && !tiersOpen && !areaOpen && !badgesOpen} />
-          </Pressable>
-          <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel={`Level ${level}, ${tier.title}. ${profile.current_xp} of ${required} XP. View level tiers`} style={[s.levelBadge, { backgroundColor: tint.color }]} hitSlop={8}>
-            <Text style={[s.levelBadgeText, { color: tint.ink }]}>Level {level}</Text>
-          </Pressable>
+        {/* You: your initials and your name. */}
+        <View style={s.hero} testID="profile-card">
+          <InitialsAvatar name={profile.username} id={profile.id} size={88} />
           <View style={s.identity}>
             <View style={s.nameRow}>
               <Text style={s.username} numberOfLines={2}>{profile.username}</Text>
               <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="Edit name" hitSlop={10} style={s.editName}><Ionicons name="pencil" size={15} color={colors.secondary} /></Pressable>
             </View>
-            <Text style={[s.tier, { color: tint.color }]} numberOfLines={1}>{tier.title}</Text>
-          </View>
-          <View style={s.xp}>
-            <View style={s.xpHead}><Text style={[s.xpValue, { color: tint.color }]}>{profile.current_xp} / {required} XP</Text><Text style={p.caption} numberOfLines={1}>{required - profile.current_xp} to level {level + 1}</Text></View>
-            <Meter value={profile.current_xp / required} height={6} color={tint.color} />
-          </View>
-          <View style={s.heroActions}>
-            <Pressable onPress={() => router.navigate("/outfits")} accessibilityRole="button" accessibilityLabel="Outfits" style={s.heroButton}><Ionicons name="shirt-outline" size={17} color={colors.accent} /><Text style={s.heroButtonText}>Outfits</Text></Pressable>
-            <Pressable onPress={() => setTiersOpen(true)} accessibilityRole="button" accessibilityLabel="Level journey" style={[s.heroButton, s.heroPrimary]}><Ionicons name="sparkles-outline" size={17} color={colors.primaryText} /><Text style={[s.heroButtonText, s.heroPrimaryText]}>Level journey</Text></Pressable>
           </View>
         </View>
         {/* Three numbers side by side, read at a glance. */}
         <View style={s.statsRow} testID="profile-stats">
-          {[["time-outline", "Time focused", studyTime(milestones.totals.seconds), "#64D2FF"],
-            ["calendar-outline", "Focus days", String(milestones.totals.days), colors.accent],
-            ["flame", "Best streak", `${milestones.totals.bestStreak} ${milestones.totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint]) =>
-            <View key={label} style={s.statTile} accessible accessibilityLabel={`${label}, ${milestones.ready ? value : "loading"}`}>
+          {[["time-outline", "Time focused", studyTime(totals.seconds), "#64D2FF"],
+            ["calendar-outline", "Focus days", String(totals.days), colors.accent],
+            ["flame", "Best streak", `${totals.bestStreak} ${totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint]) =>
+            <View key={label} style={s.statTile} accessible accessibilityLabel={`${label}, ${totalsReady ? value : "loading"}`}>
               <View style={[s.statIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={icon as never} size={16} color={tint} /></View>
-              <Text style={[s.statValue, label === "Best streak" && { color: colors.streak }]} numberOfLines={1} adjustsFontSizeToFit>{milestones.ready ? value : "–"}</Text>
+              <Text style={[s.statValue, label === "Best streak" && { color: colors.streak }]} numberOfLines={1} adjustsFontSizeToFit>{totalsReady ? value : "–"}</Text>
               <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
             </View>)}
-        </View>
-        <View style={s.section} testID="profile-badges">
-          <SectionHeader title="My Badges" subtitle={milestones.ready ? `${milestones.earned.length} of ${milestones.totals.milestones.length} earned` : "Getting your badges…"}
-            onPress={() => setBadgesOpen(true)} pressLabel="My Badges. See all milestones" />
-          {milestones.earned.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.badges}>
-            {milestones.earned.map(badge => <Pressable key={badge.id} onPress={() => setBadgesOpen(true)} accessibilityRole="button" accessibilityLabel={`${badge.title}, earned`} style={s.badge}>
-              <View style={s.badgeIcon}><Ionicons name={badge.icon as never} size={22} color={colors.level} /></View>
-              <Text style={s.badgeText} numberOfLines={2}>{badge.title}</Text>
-            </Pressable>)}
-          </ScrollView> : <Pressable onPress={() => setBadgesOpen(true)} accessibilityRole="button" accessibilityLabel="See all milestones" style={s.emptyBadges}>
-            <View style={s.badgeIcon}><Ionicons name="ribbon-outline" size={22} color={colors.level} /></View>
-            <View style={s.detail}><Text style={p.rowTitle}>Your first badge is one session away</Text><Text style={p.caption}>{milestones.next ? milestones.next.description : "Every completed session counts."}</Text></View>
-          </Pressable>}
         </View>
         {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
         <View style={s.areasCard}>
@@ -228,8 +189,6 @@ export default function ProfileScreen() {
         focusLabel={selectedKind === "revision" ? "Open Study" : undefined}
         extra={recentAreaSessions.length ? <SubjectBreakdown owner={profile.id} sessions={recentAreaSessions} /> : null}
         onDismiss={() => { const next = afterArea.current; afterArea.current = null; setLeavingArea(false); next?.(); }} />
-      <MilestonesSheet visible={badgesOpen} onClose={() => setBadgesOpen(false)} />
-      <LevelTierSheet visible={tiersOpen} level={level} currentXP={profile.current_xp} onClose={() => setTiersOpen(false)} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         compact motionMode="timed" keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" label="Edit name"
         header={<View style={p.sheetHeader}><Text style={p.title}>Your name</Text><Text style={p.body}>Shown to your squads and on the leaderboard.</Text></View>}
@@ -250,30 +209,11 @@ export default function ProfileScreen() {
 const s = StyleSheet.create({
   stack: { gap: 24 }, section: { gap: 10 },
   hero: { ...edge, alignItems: "center", gap: 14, paddingHorizontal: 18, paddingTop: 24, paddingBottom: 18, borderRadius: radius.card, backgroundColor: colors.surface },
-  portrait: { alignItems: "center", justifyContent: "center" },
-  // A soft warm halo behind the ring, so the level frame looks earned.
-  // A warm glow on the ground, so the character stands rather than floats.
-  halo: { position: "absolute", top: 126, width: 150, height: 30, borderRadius: 75, backgroundColor: "rgba(251,191,36,0.10)" },
-  levelBadge: { marginTop: -10, paddingHorizontal: 12, minHeight: 28, borderRadius: 14, justifyContent: "center", backgroundColor: colors.level, borderWidth: 3, borderColor: colors.surface },
-  levelBadgeText: { color: "#2B2200", fontSize: 14, fontWeight: "800" },
-  tier: { color: colors.level, fontSize: 15, lineHeight: 20, fontWeight: "600", textAlign: "center" },
-  xp: { alignSelf: "stretch", gap: 8, padding: 12, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },
-  xpHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 8 },
-  xpValue: { color: colors.level, fontSize: 15, lineHeight: 20, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  heroActions: { alignSelf: "stretch", flexDirection: "row", gap: 10 },
-  heroButton: { ...edge, flex: 1, minHeight: 48, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, borderRadius: 24, backgroundColor: colors.surfaceRaised },
-  heroButtonText: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  heroPrimary: { backgroundColor: colors.primary, borderColor: colors.primary }, heroPrimaryText: { color: colors.primaryText },
   statsRow: { flexDirection: "row", gap: 10 },
   statTile: { ...edge, flex: 1, minHeight: 108, alignItems: "center", justifyContent: "center", gap: 6, paddingHorizontal: 8, paddingVertical: 14, borderRadius: radius.tile, backgroundColor: colors.surface },
   statIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
   statLabel: { color: colors.secondary, fontSize: 13, lineHeight: 17, textAlign: "center" },
   statValue: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: "700", fontVariant: ["tabular-nums"], textAlign: "center" },
-  badges: { gap: 10, paddingRight: 8 },
-  badge: { ...edge, width: 112, minHeight: 108, padding: 12, gap: 8, borderRadius: radius.tile, backgroundColor: colors.surface },
-  badgeIcon: { width: 40, height: 40, borderRadius: 13, alignItems: "center", justifyContent: "center", backgroundColor: colors.levelSoft },
-  badgeText: { color: colors.text, fontSize: 13, lineHeight: 17, fontWeight: "600" },
-  emptyBadges: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.card, backgroundColor: colors.surface },
   identity: { alignItems: "center", gap: 4 },
   nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, maxWidth: "100%" },
   editName: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised },

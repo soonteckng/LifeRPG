@@ -1,20 +1,16 @@
 import { memo, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Svg, { Circle, Defs, LinearGradient, Path, Rect, Stop } from "react-native-svg";
-import { Ionicons } from "@expo/vector-icons";
 import { Text } from "./AppText";
-import AdventurerArt from "./adventurer/AdventurerArt";
-import { useRewards } from "../hooks/useRewards";
 import { durationLabel } from "../utils/sessionSetup";
 
 const H = 132;
 
 /**
- * The top of the session card: you, back at camp in the morning light, with
- * the time you recorded. The same place and light as the session itself.
+ * The top of the session card: the camp in the morning light, with the time
+ * you recorded. The same place and light as the session itself.
  */
-export default memo(function ArrivalBanner({ seconds, title, levelUp = false }: { seconds: number; title?: string; levelUp?: boolean }) {
-  const rewards = useRewards({ load: false });
+export default memo(function ArrivalBanner({ seconds, title }: { seconds: number; title?: string }) {
   // The banner grows with large text, and the scene grows with it.
   const [box, setBox] = useState({ w: 340, h: H });
   const w = box.w, H2 = box.h;
@@ -38,10 +34,8 @@ export default memo(function ArrivalBanner({ seconds, title, levelUp = false }: 
       <Path d={`M${w * 0.5} ${H2 * 0.9} L${w * 0.54} ${H2 * 0.72} L${w * 0.58} ${H2 * 0.9} Z`} fill="#22C3A3" />
       <Rect x={0} y={0} width={w} height={H2} fill="url(#arrival-shade)" />
     </Svg>
-    <View style={s.person} pointerEvents="none"><AdventurerArt look={rewards.look} equipped={rewards.equipped} size={58} /></View>
     <View style={s.copy}>
-      {levelUp ? <View style={s.chip}><Ionicons name="sparkles" size={12} color="#2B2200" /><Text style={s.chipText}>Level up</Text></View>
-        : <Text style={s.caption}>Time recorded</Text>}
+      <Text style={s.caption}>Time recorded</Text>
       <Text style={s.time}>{durationLabel(seconds)}</Text>
       {!!title && <Text style={s.title} numberOfLines={2}>{title}</Text>}
     </View>
@@ -50,11 +44,8 @@ export default memo(function ArrivalBanner({ seconds, title, levelUp = false }: 
 
 const s = StyleSheet.create({
   banner: { minHeight: H, paddingVertical: 14, borderRadius: 22, overflow: "hidden", backgroundColor: "#5F97CF", justifyContent: "center" },
-  person: { position: "absolute", right: "17%", bottom: -4 },
   copy: { paddingHorizontal: 18, gap: 2, maxWidth: "64%" },
   caption: { color: "rgba(255,255,255,0.82)", fontSize: 13, fontWeight: "600" },
-  chip: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, minHeight: 22, borderRadius: 11, backgroundColor: "#FBBF24" },
-  chipText: { color: "#2B2200", fontSize: 12, fontWeight: "800" },
   time: { color: "#FFFFFF", fontSize: 32, lineHeight: 38, fontWeight: "800", letterSpacing: -0.6 },
   title: { color: "rgba(255,255,255,0.86)", fontSize: 15, fontWeight: "600" },
 });

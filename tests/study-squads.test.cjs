@@ -102,7 +102,7 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-leaderboard').length > 0, 'one table, however many members');
   await act(async () => pressLabel(ui.root, 'Invite friends').props.onPress());
   assert.match(rn.shared.message, /K7Q4PX/);
-  const first = pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now');
+  const first = pressLabel(ui.root, '1. User 2, 30m this week, focusing now');
   assert.equal(first.props.onLongPress, undefined, 'no hidden hold-to-remove');
   await act(async () => first.props.onPress());
   const sheet = () => ui.root.findAllByType('Sheet').find(x => x.props.label === 'player card');
@@ -112,7 +112,7 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
   assert.deepEqual(calls, [['remove', member(2).id]]);
   // Removing and changing the code, for a code that reached the wrong person.
-  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now').props.onPress());
+  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, focusing now').props.onPress());
   await act(async () => pressLabel(ui.root, 'Remove User 2 and get a new code').props.onPress());
   assert.match(ui.root.findByType('Confirm').props.message, /old code stops working/);
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
@@ -127,7 +127,7 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   current = [{ ...squad(), ownerIsYou: false }];
   await act(async () => ui.update(React.createElement(Tab)));
   assert.deepEqual(menu(ui.root).map(option => option.label), ['Share invite', 'Join or start a squad', 'Leave squad'], 'members only share, join another or leave');
-  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, level 2, focusing now').props.onPress());
+  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, focusing now').props.onPress());
   assert.equal(pressLabel(ui.root, 'Remove User 2'), undefined, 'members cannot remove anyone');
   assert.match(utils.leaveOutcome(squad(1, [member(1, 0)])), /squad closes and its invite code stops working/, 'the last member is told the squad ends');
   await act(async () => ui.unmount());
@@ -302,48 +302,43 @@ test('Create follows the account limits from the server: one led squad by defaul
   } finally { await act(async () => ui.unmount()); }
 });
 
-// Round 57: everyone's own picture, and a player card that respects "Share my stats".
-test('squad faces are everyone\'s real picture, and the player card has the same layout before and after it loads', async () => {
+// Round 83: everyone appears as initials, and the player card keeps its layout while it loads.
+test('squad faces are everyone\'s initials, and the player card has the same layout before and after it loads', async () => {
   const svgMock = { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') };
   let reply = { card: null, loading: true, failed: false };
   const ui = load('src/components/SquadSheets.tsx', {
     'react-native': rn, '@expo/vector-icons': { Ionicons: host('Icon') }, '@gorhom/bottom-sheet': { BottomSheetScrollView: host('Scroll'), BottomSheetTextInput: host('Input'), TouchableOpacity: host('Press') },
     '/AppText': { Text: host('Text') }, '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
-    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/CharacterMark': host('Mark'), '/UserContext': { useUser: () => ({ profile: { id: 'me', level: 2, streak_count: 1 } }) }, '/levelPreview': { useShownLevel: () => ({ level: 2 }) }, '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) },
+    '/SheetHeader': host('Header'), '/SheetConfirmation': host('Confirm'), '/Segmented': host('Segmented'), '/UserContext': { useUser: () => ({ profile: { id: 'me', username: 'Soon Teck' } }) }, '/levelPreview': { useShownLevel: () => ({ level: 2 }) }, '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) },
     'react-native-svg': svgMock, '/ItemArt': host('ItemArt'),
     '/usePlayer': { usePlayerCard: id => ({ ...reply, asked: id }) },
   });
-  const look = { look: { skin: '6', hair: 'bun', hairColor: 'black', glasses: true }, equipped: { top: 'cardigan' }, background: 'bg_night', frame: 'frame_streak_30', title: 'title_artist' };
-  const friend = { ...member(2, 9300), look, streak: 31, focusingNow: true };
+  const friend = { ...member(2, 9300), streak: 31, focusingNow: true };
   let r; await act(async () => { r = create(React.createElement(ui.SquadFace, { member: friend, size: 36 })); });
-  const pic = r.root.findByType('Picture').props;
-  assert.deepEqual([pic.look.skin, pic.equipped.top, pic.background, pic.frame, pic.level, pic.streak], ['6', 'cardigan', 'bg_night', 'frame_streak_30', 2, 31]);
-  await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(3), look: null }, size: 36 })));
-  assert.equal(r.root.findByType('Picture').props.look.skin, '3', 'no saved look yet: the starting character');
+  const initials = () => r.root.findAllByType('Text').map(t => [].concat(t.props.children).join('')).join('|');
+  assert.equal(initials(), 'U2', 'their initials');
+  assert.equal(r.root.findAllByType('Svg').length, 0, 'no character drawing');
   await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(1), isYou: true }, size: 36 })));
-  assert.deepEqual([r.root.findByType('Picture').props.look.skin, r.root.findByType('Picture').props.equipped.pet, r.root.findByType('Picture').props.level, r.root.findByType('Picture').props.streak], ['2', 'pet_owl', 2, 1], 'you, from the same shared saved look, previewed level and current streak');
+  assert.equal(initials(), 'ST', 'you, from your current profile name');
   const card = props => React.createElement(ui.SquadMemberSheet, { member: friend, place: 2, leader: false, busy: false, onClose() {}, onRemove() {}, ...props });
   const words2 = () => r.root.findAllByType('Text').map(t => [].concat(t.props.children).join('')).join(' | ');
   await act(async () => r.update(card()));
   assert.ok(r.root.findAll(n => n.props.testID === 'player-card').length > 0);
-  const whole = r.root.findByType('Character').props;
-  assert.deepEqual([whole.look.skin, whole.equipped.top, whole.lanternLevel], ['6', 'cardigan', 2], 'the card shows their whole character, as they dressed it');
-  assert.equal(r.root.findAllByType('Picture').length, 0, 'the whole character, not the round picture');
-  assert.match(words2(), /The Artist/); assert.match(words2(), /Level 2 · First steps/); assert.match(words2(), /Focusing now/);
+  assert.equal(r.root.findAllByType('Character').length, 0, 'no character on the card');
+  assert.match(words2(), /Focusing now/); assert.doesNotMatch(words2(), /Level|finds|The Artist/);
   assert.match(words2(), /#2 \| on the board/); assert.match(words2(), /2h 35m \| focused/);
-  reply = { card: { id: friend.id, isYou: false, name: 'User 2', level: 12, look, statsShared: true, stats: { streak: 31, totalSeconds: 36000, sessions: 1, collected: 7, since: '2026-09-02T10:00:00Z',
-    longestSeconds: 5400, daysFocused: 9, last7: [0, 0, 3600, 0, 0, 1800, 2400], pets: ['pet_owl'], badges: ['title_artist'] } }, loading: false, failed: false };
+  reply = { card: { id: friend.id, isYou: false, name: 'User 2', statsShared: true, stats: { streak: 31, totalSeconds: 36000, sessions: 1, since: '2026-09-02T10:00:00Z',
+    longestSeconds: 5400, daysFocused: 9, last7: [0, 0, 3600, 0, 0, 1800, 2400] } }, loading: false, failed: false };
   await act(async () => r.update(card()));
   assert.match(words2(), /All time/); assert.match(words2(), /10h 00m \| focused/); assert.match(words2(), /1 \| session/); assert.match(words2(), /1h 30m \| longest session/);
-  assert.match(words2(), /9 \| days focused/); assert.match(words2(), /7 finds/); assert.match(words2(), /Focusing since/);
-  assert.equal(r.root.findAllByType('ItemArt')[0].props.id, 'pet_owl');
-  assert.match(words2(), /Level 12 · Rhythm/, 'the freshest level from the card');
+  assert.match(words2(), /9 \| days focused/); assert.match(words2(), /Focusing since/);
   // The sheet keeps the same blocks before and after loading, so it never jumps or stutters.
-  const blocks = tree => tree.root.findAll(n => n.type === 'View' && n.props.style && [].concat(n.props.style).some(st => st && (st.minHeight === 86 || st.minHeight === 104))).length;
-  assert.equal(blocks(r), 8, 'three this-week tiles, four all-time tiles and the collection');
+  const blocks = tree => tree.root.findAll(n => n.type === 'View' && n.props.style && [].concat(n.props.style).some(st => st && st.minHeight === 86)).length;
+  const loaded = blocks(r);
+  assert.equal(loaded, 7, 'three this-week tiles and four all-time tiles');
   reply = { card: null, loading: true, failed: false };
   await act(async () => r.update(card({ member: { ...friend, id: 'eeeeeeee-eeee-4eee-8eee-000000000099' } })));
-  assert.equal(blocks(r), 8, 'the same blocks while loading');
+  assert.equal(blocks(r), loaded, 'the same blocks while loading');
   await act(async () => r.unmount());
   const settings = fs.readFileSync(require('path').join(__dirname, '..', 'src/app/settings.tsx'), 'utf8');
   assert.doesNotMatch(settings, /Share my stats|useStatsVisibility/, 'no stats setting: stats are part of being in a squad');

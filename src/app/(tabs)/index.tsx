@@ -1,19 +1,13 @@
 import { tapHaptic } from "../../utils/tapHaptics";
 import { TourAnchor, TourScrollView } from "../../components/FeatureTour";
-import LevelTierSheet from "../../components/LevelTierSheet";
-import TrailSheet from "../../components/rewards/TrailSheet";
-import { ChosenRewardCard, ChosenRewardSheet } from "../../components/rewards/ChosenReward";
 import DailyGoalSheet from "../../components/DailyGoalSheet";
 import type { Task } from "../../services/taskService";
 import { floatingDockKey, useFloatingDockHeight } from "../../context/FloatingDockContext";
 import TouchableOpacity from "../../components/MotionPressable";
 import { floatingTabInset } from "../../utils/floatingTabInset";
 import { Text } from "../../components/AppText";
-import CharacterMark from "../../components/CharacterMark";
+import InitialsAvatar from "../../components/InitialsAvatar";
 import ContentReveal from "../../components/ContentReveal";
-import { useShownLevel } from "../../services/levelPreview";
-import { levelColors } from "../../utils/adventurerLook";
-import { levelTierProgress, requiredCharacterXP } from "../../utils/levelTiers";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { Ionicons } from "@expo/vector-icons";
@@ -23,7 +17,7 @@ import { homeWelcome } from "../../utils/homeWelcome";
 import { singleFlight } from "../../utils/singleFlight";
 import { useHomeLifecycle } from "../../hooks/useHomeLifecycle";
 import SavedRoutinesCard from "../../components/SavedRoutinesCard";
-import { HomeExams, HomeMilestones, HomeSquad, HomeWeek } from "../../components/HomeSections";
+import { HomeExams, HomeSquad, HomeWeek } from "../../components/HomeSections";
 import TodaySheet from "../../components/TodaySheet";
 import MoreMenu from "../../components/MoreMenu";
 import { CircleButton } from "../../components/SectionHeader";
@@ -46,10 +40,6 @@ import { readHomeSnapshot, saveHomeSnapshot } from "../../services/homeSnapshot"
 import { getTodayProgress } from "../../services/dailyProgressService";
 import { prefetchCharacterData } from "../../hooks/useCharacterData";
 import { prefetchProgress } from "../../hooks/useProgressData";
-import { useRewards } from "../../hooks/useRewards";
-import { StardustArt } from "../../components/adventurer/ItemArt";
-import PackArt, { PACK_COLORS } from "../../components/rewards/PackArt";
-import { PACK_TIERS } from "../../services/rewardCatalog";
 
 /**
  * Home is a dashboard: today's goal, what's coming up and how the week is
@@ -65,32 +55,17 @@ export default function HomeScreen() {
   const bannerVisible = !!(timer.hasOpenSession || (timer.sessionSummary && !timer.summaryViewed));
   const dockHeight = useFloatingDockHeight(floatingDockKey(bannerVisible, insets.bottom, width, fontScale), dockEstimate);
   const { profile, reloadProfile, hapticsEnabled } = useUser();
-  // Your Stardust and today's supply pack. Opening it shows the pack screen.
-  const rewards = useRewards({ load: false });
-  const [packMessage, setPackMessage] = useState("");
-  const openPack = async () => { setPackMessage(""); const r = await rewards.openPack(); if (!r.ok) setPackMessage(r.message); };
-  // Chosen rewards replace the daily pack from the day after they're switched on.
-  const [chosenOpen, setChosenOpen] = useState(false), [chosenMessage, setChosenMessage] = useState("");
-  const chosenLive = !!rewards.chosen?.enabled;
-  const choose = async (item: string | null) => {
-    setChosenMessage("");
-    const r = await rewards.chooseReward(item);
-    if (!r.ok) { setChosenMessage(r.message); return; }
-    // Earned at once (enough days saved): close, so its reward screen shows.
-    if ((r.value.chosen?.grants.length ?? 0) > 0) setChosenOpen(false);
-  };
   const owner = profile?.id ?? "";
   const { hasOpenSession, sessionSummary, cloudSaveVersion = 0 } = timer;
   const { tasks, subjects = [], error: questsError, refresh: refreshQuests } = useQuests();
   const [goalSettings, setGoalSettings] = useState(false);
   const [todayOpen, setTodayOpen] = useState(false);
-  const [tiersOpen, setTiersOpen] = useState(false), [trailOpen, setTrailOpen] = useState(false);
   const plan = useStudyPlan(), launcher = useStudyLauncher(plan.exams), justFocus = useJustFocus();
-  const avatar = useRef<View>(null), settingsIcon = useRef<View>(null), stardustIcon = useRef<View>(null);
-  // Profile, Settings and Outfits (from Stardust) grow out of their button, then shrink back into it.
-  const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings" | "/outfits") => {
+  const avatar = useRef<View>(null), settingsIcon = useRef<View>(null);
+  // Profile and Settings grow out of their button, then shrink back into it.
+  const openFrom = (source: RefObject<View | null>, path: "/profile" | "/settings") => {
     let opened = false;
-    const open = () => { if (!opened) { opened = true; if (path === "/outfits") router.navigate({ pathname: path, params: { from: "home" } }); else router.navigate(path); } };
+    const open = () => { if (!opened) { opened = true; router.navigate(path); } };
     const fallback = setTimeout(open, 100);
     source.current?.measureInWindow((x, y, width, height) => { if (opened) return; clearTimeout(fallback); rememberSettingsOrigin({ x, y, width, height }); open(); });
   };
@@ -196,18 +171,12 @@ export default function HomeScreen() {
   const dailyGoalMinutes = verifiedGoal ?? 0;
   const safeCompletedSeconds = Math.max(0, completedSeconds);
   const remainingSeconds = Math.max(0, dailyGoalMinutes * 60 - safeCompletedSeconds);
-  // Your level as drawn (a developer can preview another tier's colours).
-  const level = useShownLevel(profile?.id, profile?.level).level;
-  const levelTint = levelColors(level);
-  const levelShare = Math.max(0, Math.min(99, Math.floor(((profile?.current_xp ?? 0) / requiredCharacterXP(level)) * 100)));
-  const tier = levelTierProgress(level, profile?.current_xp ?? 0).current;
   const displayName = profile?.username?.trim() || "Hero";
   const greeting = homeWelcome(hour < 5 ? 18 : hour, displayName).split(",")[0];
   // Until today's numbers arrive (from this phone or the server), show a dash, not a 0.
   const known = updatedAt !== null;
   const isGoalComplete = known && goalKnown && (goalCompleted || remainingSeconds === 0);
   const streakDays = Math.max(0, focusStreak ?? 0);
-  const feedback = () => { if (hapticsEnabled) tapHaptic(); };
 
   const openSession = () => {
     timer.reviewSummary?.();
@@ -254,15 +223,13 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
         <ContentReveal>
         <View testID="home-layout" style={styles.layout}>
-          {/* You: your companion and level on the left, Settings on the right. */}
+          {/* You: your initials and name on the left, Settings on the right. */}
           <TourAnchor id="home-identity"><View style={styles.identityRow}>
             <View ref={avatar} collapsable={false}>
-              <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint={`Level ${level}. Your companion, badges and categories`}>
-                {/* Your picture, with your level on it, like everywhere else. */}
-                <CharacterMark size={70} />
+              <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="Your name, categories and account">
+                <InitialsAvatar name={displayName} id={profile?.id} size={52} />
               </TouchableOpacity>
             </View>
-            {/* Two lines beside you: your name with Settings, then your tier on the left and Stardust on the right, under Settings. */}
             <View style={styles.identity}>
               <View style={styles.nameRow}>
                 {/* Your greeting and name open Profile too, like your picture. */}
@@ -270,25 +237,7 @@ export default function HomeScreen() {
                   <Text style={styles.greeting} numberOfLines={1}>{greeting},</Text>
                   <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
                 </TouchableOpacity>
-                {/* Today's trail, between your name and Settings: your name keeps the room it needs and shortens first. */}
-                <CircleButton icon="map-outline" size={44} label="Open today's trail" onPress={() => { feedback(); setTrailOpen(true); }} testID="home-trail" />
                 <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
-              </View>
-              <View style={styles.chipRow}>
-                {/* The level reads as a badge you can open, not a line of small print. */}
-                <TouchableOpacity testID="home-level" style={[styles.levelChip, { backgroundColor: levelTint.soft }]} hitSlop={8} onPress={() => { feedback(); setTiersOpen(true); }} accessibilityRole="button"
-                  accessibilityLabel={`Level ${level}, ${tier.title}, ${levelShare}% of the way to level ${level + 1}. See your level journey`} haptic={false}>
-                  <Text style={[styles.levelTitle, { color: levelTint.color }]}>{tier.title}</Text>
-                  <View style={[styles.levelTrack, { backgroundColor: levelTint.track }]}><View style={[styles.levelFill, { backgroundColor: levelTint.color, width: `${Math.max(4, levelShare)}%` }]} /></View>
-                  <Ionicons name="chevron-forward" size={13} color={levelTint.color} />
-                </TouchableOpacity>
-                {/* Stardust: what finds, packs and minutes have earned, spent in Outfits, which grows out of it. */}
-                <View ref={stardustIcon} collapsable={false} style={styles.stardustSlot}>
-                  <TouchableOpacity testID="home-stardust" onPress={() => openFrom(stardustIcon, "/outfits")} style={styles.stardust} hitSlop={6}
-                    accessibilityRole="button" accessibilityLabel={`${rewards.stardust} Stardust. Open Outfits`}>
-                    <StardustArt size={15} /><Text style={styles.stardustText} numberOfLines={1}>{rewards.stardust.toLocaleString()}</Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </View>
           </View></TourAnchor>
@@ -319,10 +268,6 @@ export default function HomeScreen() {
               {(hasOpenSession || settling) && !needsReview && <Text style={styles.offlineNote} numberOfLines={1} testID="home-session-note">{settling ? "Session finished" : timer.isRunning ? "Session in progress" : "Session paused"}</Text>}
               {accessMode !== "online" && <Text style={styles.offlineNote} numberOfLines={1} testID="home-offline-note">{updatedAt ? `Updated ${clockTime(updatedAt)}` : "Updates when you're online"}</Text>}
             </TouchableOpacity>
-            {/* Today's supply pack: earned by reaching the goal, bigger for days in a row. */}
-            {chosenLive && rewards.chosen && <ChosenRewardCard chosen={rewards.chosen} onOpen={() => { setChosenMessage(""); setChosenOpen(true); }} />}
-            {!chosenLive && rewards.pack && rewards.online && <HomePack tier={rewards.pack.tier} ready={rewards.pack.goalReached && !rewards.pack.claimed} opened={rewards.pack.claimed}
-              busy={rewards.busy} message={packMessage} onOpen={() => void openPack()} />}
             {needsReview && <TouchableOpacity onPress={openSession} accessibilityRole="button" accessibilityLabel="Review saved session" style={styles.primaryButton}>
               <Text style={styles.primaryButtonText}>Review saved session</Text>
             </TouchableOpacity>}
@@ -337,67 +282,30 @@ export default function HomeScreen() {
               <View style={styles.goalCopy}><Text style={styles.reviseTitle} numberOfLines={1}>Revise {nextCourse.name}</Text><Text style={styles.reviseDetail} numberOfLines={1}>{examDays === 0 ? "Exam today" : examDays === 1 ? "Exam tomorrow" : `Exam in ${examDays} days`}</Text></View>
             </TouchableOpacity> : undefined} /></TourAnchor>
 
-          {/* The rest of the week, quieter: two tiles side by side, then exams and milestones. */}
+          {/* The rest of the week, quieter: two tiles side by side, then exams. */}
           <View style={styles.pair}><HomeWeek tile /><HomeSquad tile /></View>
           <HomeExams />
-          <HomeMilestones />
         </View>
         </ContentReveal>
       </TourScrollView>
-      <TrailSheet visible={trailOpen} onClose={() => setTrailOpen(false)} />
-      <ChosenRewardSheet visible={chosenOpen && chosenLive} chosen={rewards.chosen} busy={rewards.busy || !rewards.online}
-        message={chosenMessage || (!rewards.online ? "Connect to choose a reward. Your saved days are safe." : undefined)}
-        onChoose={item => void choose(item)} onClose={() => setChosenOpen(false)} />
-      <LevelTierSheet level={level} currentXP={profile?.current_xp ?? 0} visible={tiersOpen} onClose={() => setTiersOpen(false)} />
       <TodaySheet visible={todayOpen} canChangeGoal={accessMode === "online"} onClose={() => setTodayOpen(false)} completedSeconds={safeCompletedSeconds} goalMinutes={dailyGoalMinutes} goalKnown={goalKnown} todayKnown={known} streakKnown={focusStreak !== null}
         streak={streakDays} restDays={rest.days} restedYesterday={rest.yesterday} complete={isGoalComplete} onChangeGoal={openGoal} onOpenProgress={openProgress} />
       <DailyGoalSheet todayGoalMinutes={verifiedGoal ?? undefined} visible={accessMode === "online" && goalSettings} onClose={() => setGoalSettings(false)} onSaved={() => void loadData()} />
     </SafeAreaView>
   );
 }
-function HomePack({ tier, ready, opened, busy, message, onOpen }: { tier: number; ready: boolean; opened: boolean; busy: boolean; message: string; onOpen: () => void }) {
-  const t = Math.max(0, Math.min(3, tier)), name = PACK_TIERS[t].name;
-  if (ready) return <TouchableOpacity testID="home-pack" onPress={onOpen} disabled={busy} accessibilityRole="button" accessibilityLabel={`Open today's ${name} pack`}
-    style={[styles.pack, { borderColor: PACK_COLORS[t] + "88", backgroundColor: PACK_COLORS[t] + "18" }]}>
-    <PackArt tier={t} size={44} />
-    <View style={styles.packCopy}><Text style={styles.packTitle} numberOfLines={1}>{`Your ${name} pack is ready`}</Text>
-      <Text style={styles.packDetail} numberOfLines={1}>{message || "Tap to open it"}</Text></View>
-    <Ionicons name="chevron-forward" size={18} color={PACK_COLORS[t]} />
-  </TouchableOpacity>;
-  return <View testID="home-pack" style={styles.packQuiet} accessible accessibilityLabel={opened ? "Today's pack is open. Another one tomorrow." : `Reach today's goal to open a ${name} pack.`}>
-    <PackArt tier={t} size={28} open={opened} />
-    <Text style={styles.packHint} numberOfLines={1}>{opened ? "Today's pack is open · another tomorrow" : `Reach your goal to open a ${name} pack`}</Text>
-  </View>;
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 16 },
   identityRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 },
-  stardust: { flexDirection: "row", alignItems: "center", gap: 5, minHeight: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: "rgba(167,139,250,0.14)", borderWidth: 1, borderColor: "rgba(167,139,250,0.35)" },
-  stardustSlot: { maxWidth: "100%", marginLeft: "auto" },
-  stardustText: { flexShrink: 1, color: "#DDD6FE", fontSize: 14, fontWeight: "800", fontVariant: ["tabular-nums"] },
-  pack: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: 60, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 18, borderWidth: 1 },
-  packCopy: { flex: 1, minWidth: 0, gap: 1 },
-  packTitle: { color: colors.text, fontSize: 16, fontWeight: "700" },
-  packDetail: { color: colors.secondary, fontSize: 13 },
-  packQuiet: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 2 },
-  packHint: { flex: 1, color: colors.secondary, fontSize: 13 },
   identity: { flex: 1, minWidth: 0, gap: 8 },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
   nameButton: { flex: 1, minWidth: 0 },
-  // Your tier on the left, Stardust on the right under Settings. If they
-  // don't both fit (large text), Stardust moves below and stays on the right.
-  chipRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8 },
   greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6 },
-  levelChip: { flexShrink: 1, minWidth: 0, maxWidth: "100%", minHeight: 30, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 12, paddingRight: 10, paddingVertical: 4, borderRadius: 15, backgroundColor: colors.levelSoft },
-  levelTitle: { flexShrink: 1, color: colors.level, fontSize: 14, lineHeight: 18, fontWeight: "700" },
-  levelTrack: { flexShrink: 0, width: 36, height: 5, borderRadius: 3, backgroundColor: "rgba(251,191,36,0.22)", overflow: "hidden" },
-  levelFill: { height: 5, borderRadius: 3, backgroundColor: colors.level },
-  avatarFrame: { width: 70, alignItems: "center" },
+  avatarFrame: { width: 52, alignItems: "center" },
   today: { ...edge, padding: 18, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
   todayDone: { borderColor: "rgba(52,211,153,0.28)" },
   todayHead: { flexDirection: "row", alignItems: "center", gap: 10 },

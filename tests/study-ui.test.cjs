@@ -383,23 +383,6 @@ test('the exam name follows the subject until it is edited, and a typed subject 
   await act(async () => ui.unmount());
 });
 
-test('My Milestones shows the nearest one and opens the whole collection as a sheet', async () => {
-  let state = { ready: false, totals: { milestones: Array(18) }, earned: [], next: null };
-  const Row = load('src/components/MilestonesRow.tsx', { ...base(),
-    '/MilestonesSheet': { __esModule: true, default: host('Collection'), useMilestones: () => state, milestoneProgressLabel: m => `${m.value} of ${m.target}` } }).default;
-  let ui; await act(async () => { ui = create(React.createElement(Row)); });
-  const row = () => ui.root.findAll(x => x.props.testID === 'milestones-entry' && x.type === 'Press')[0];
-  assert.equal(row().props.accessibilityLabel, 'My Milestones', 'still loading never shows a wrong count');
-  state = { ready: true, totals: { milestones: Array(18) }, earned: [{ id: 'first' }], next: { title: 'An hour invested', icon: 'time-outline', value: 30, target: 60, progress: 0.5 } };
-  await act(async () => ui.update(React.createElement(Row)));
-  assert.equal(row().props.accessibilityLabel, 'My Milestones, 1 of 18 earned. Next: An hour invested');
-  assert.ok(texts(ui.root).includes('1/18')); assert.ok(texts(ui.root).includes('30 of 60'));
-  await act(async () => row().props.onPress());
-  assert.equal(ui.root.findByType('Collection').props.visible, true, 'a sheet, not a separate page');
-  await act(async () => ui.root.findByType('Collection').props.onClose());
-  assert.equal(ui.root.findByType('Collection').props.visible, false);
-  await act(async () => ui.unmount());
-});
 test('every category explains where its time goes, Everyday focus first, in one shared list', () => {
   const areasApi = load('src/utils/focusAreas.ts', {});
   const subjects = [{ id: 1, title: 'General' }, { id: 2, title: 'Learning' }, { id: 3, title: 'Fitness & Health' }, { id: 4, title: 'Work' }];
@@ -525,10 +508,10 @@ test('one sheet rule: short sheets float, editors and tall lists dock to the scr
   const sheet = read('src/components/AppSheet.tsx');
   assert.match(sheet, /attached = expanded,/, 'full-height sheets are attached by default');
   assert.match(sheet, /const floating = !attached;/);
-  for (const [file, label] of [['src/components/StudyExamSheet.tsx', 'exam editor'], ['src/components/StudySubjectSheet.tsx', 'subject'], ['src/components/MilestonesSheet.tsx', 'milestones']])
+  for (const [file, label] of [['src/components/StudyExamSheet.tsx', 'exam editor'], ['src/components/StudySubjectSheet.tsx', 'subject']])
     assert.match(read(file), new RegExp(`<AppSheet[^\\n]*attached [^\\n]*label="${label}"`), `${label} docks to the screen edges`);
   // Details and lists can run long: they dock and size to their content, so there is no blank pull-up.
-  for (const [file, label] of [['src/components/FocusAreaDetailSheet.tsx', '${title} focus area'], ['src/app/(tabs)/study.tsx', 'add subject'], ['src/components/SubjectSetupRow.tsx', 'subject choices'], ['src/components/HomeSections.tsx', 'all exams'], ['src/components/SavedRoutinesCard.tsx', 'routines'], ['src/components/MilestonesSheet.tsx', 'milestones'], ['src/components/HomeSections.tsx', 'squad peek'], ['src/components/HomeSections.tsx', 'this week'], ['src/components/TodaySheet.tsx', 'today'], ['src/components/QuestSheet.tsx', 'quests']]) {
+  for (const [file, label] of [['src/components/FocusAreaDetailSheet.tsx', '${title} focus area'], ['src/app/(tabs)/study.tsx', 'add subject'], ['src/components/SubjectSetupRow.tsx', 'subject choices'], ['src/components/HomeSections.tsx', 'all exams'], ['src/components/SavedRoutinesCard.tsx', 'routines'], ['src/components/HomeSections.tsx', 'squad peek'], ['src/components/HomeSections.tsx', 'this week'], ['src/components/TodaySheet.tsx', 'today'], ['src/components/QuestSheet.tsx', 'quests']]) {
     const tag = read(file).split('<AppSheet').find(part => part.includes(`label="${label}"`) || part.includes(`label={\`${label}\`}`));
     assert.ok(tag && /\battached\b/.test(tag) && /\bcompact\b/.test(tag), `${label} is attached and content-sized`);
   }

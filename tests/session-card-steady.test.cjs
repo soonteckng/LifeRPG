@@ -21,17 +21,17 @@ function sheet(){
  }).default;
  return {Sheet,props:()=>props};
 }
-const base={visible:true,onClose(){},questTitle:'Test',durationSeconds:60,areaTitle:'Learning',newLevel:2,currentXP:40,requiredXP:288};
+const base={visible:true,onClose(){},questTitle:'Test',durationSeconds:60,areaTitle:'Learning'};
 
 test('while the result is confirmed online, the card already looks finished and only the numbers fill in',async()=>{
  const {Sheet,props}=sheet();let ui;
  await act(async()=>{ui=create(React.createElement(Sheet,{...base,pending:true,localSaved:true,sessionId:'s1'}));});
  const shown=text(ui.toJSON());
  assert.match(shown,/Session complete/,'no "Session finished" title swap');
- assert.match(shown,/Character XP/);assert.match(shown,/Level 2/);assert.match(shown,/…/);
+ assert.match(shown,/Learning/);assert.match(shown,/…/);assert.doesNotMatch(shown,/XP|Level/,'no XP or level rows since Round 83');
  assert.doesNotMatch(shown,/Saved on this phone/,'no long saving message online');
- await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s1',xpEarned:1,creditVersion:1,areaXpEarned:1})));
- const done=text(ui.toJSON());assert.match(done,/\+1/);assert.match(done,/Focus day recorded/);assert.doesNotMatch(done,/…/);
+ await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s1'})));
+ const done=text(ui.toJSON());assert.match(done,/Time added/);assert.match(done,/Focus day recorded/);assert.doesNotMatch(done,/…/);
  await act(async()=>ui.unmount());
 });
 
@@ -50,20 +50,19 @@ test('measured sizes survive the result arriving, so the card never grows a gap 
  const measured=props().heightRatio*800;
  assert.equal(Math.round(measured),28+36+260+74);
  // The session id and the confirmed result arrive; the header and Done do not change size, so they report nothing new.
- await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s1',xpEarned:1,creditVersion:1,areaXpEarned:1})));
+ await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s1'})));
  assert.equal(Math.round(props().heightRatio*800),28+36+260+74,'kept the real sizes instead of falling back to taller guesses');
  await act(async()=>layout('session-result-body',250));
  assert.equal(Math.round(props().heightRatio*800),28+36+250+74,'and still follows a real change');
  await act(async()=>ui.unmount());
 });
 
-test('a level up leads with the companion and the new level; a normal finish has neither',async()=>{
+test('a finished session shows the time and the focus day, with no level, XP or companion',async()=>{
  const {Sheet}=sheet();let ui;
- await act(async()=>{ui=create(React.createElement(Sheet,{...base,pending:false,sessionId:'s2',xpEarned:1,creditVersion:1,areaXpEarned:1,isLevelUp:true,newLevel:3}));});
- const hero=ui.root.findAll(n=>n.props.testID==='session-level-up'&&typeof n.type==='string');
- assert.equal(hero.length,1);assert.match(text(ui.toJSON()),/Level up!/);assert.match(text(ui.toJSON()),/You reached Level 3/);
- assert.equal(ui.root.findAllByType('Companion').length,1,'your own companion, not a stock image');
- await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s3',xpEarned:1,creditVersion:1,areaXpEarned:1})));
- assert.equal(ui.root.findAll(n=>n.props.testID==='session-level-up').length,0);assert.doesNotMatch(text(ui.toJSON()),/You reached Level/);
+ await act(async()=>{ui=create(React.createElement(Sheet,{...base,pending:false,sessionId:'s2'}));});
+ const shown=text(ui.toJSON());
+ assert.match(shown,/Session complete/);assert.match(shown,/Focus day recorded/);
+ assert.equal(ui.root.findAll(n=>n.props.testID==='session-level-up').length,0);
+ assert.equal(ui.root.findAllByType('Companion').length,0);assert.doesNotMatch(shown,/Level|XP/);
  await act(async()=>ui.unmount());
 });

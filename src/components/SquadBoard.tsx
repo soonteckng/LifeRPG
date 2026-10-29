@@ -31,7 +31,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
   const [open, setOpen] = useState<string | null>(null), [shown, setShown] = useState<string | null>(null);
   if (open && open !== shown) setShown(open);
   const picked = table.find(item => item.member.id === shown) ?? null;
-  const label = (member: SquadMember, place: number | null) => `${place ? `${place}.` : "Not ranked yet."} ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)} this week, level ${member.level}${member.focusingNow ? ", focusing now" : ""}`;
+  const label = (member: SquadMember, place: number | null) => `${place ? `${place}.` : "Not ranked yet."} ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)} this week${member.focusingNow ? ", focusing now" : ""}`;
   return <View style={s.board} testID="squad-board">
     <View style={s.hero}>
       <View style={s.faces}>{squad.members.slice(0, 5).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={member} size={54} ring={colors.background} /></View>)}</View>

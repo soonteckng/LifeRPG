@@ -130,7 +130,8 @@ async function screen(file, mocks) {
   };
 }
 const goals = load("src/utils/dailyGoal.ts");
-const badges = load("src/constants/characterBadges.ts").CHARACTER_BADGES;
+// The legacy avatar field is still saved untouched for older app versions.
+const legacyAvatar = "🦊";
 const goalData = { user_id: "account", local_date: "2026-10-03", next_effective_date: "2026-10-04",
   today_goal_minutes: 60, next_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur", pending: false, scheduling_available: true,
   weekly_limit_available: true, can_change_goal: true, next_change_at: null };
@@ -150,11 +151,11 @@ async function settings(options = {}, file = "src/app/settings.tsx") {
     "../hooks/useAppPreferences": { useAppPreferences: () => ({ reduceMotion: false, examReminders: true, hints: [] }) },
     "../services/appPreferences": { appPreferences: { update: async patch => { updates.push(patch); return true; } } },
     "../hooks/useFocusDurationPreference": { useFocusDurationPreference: () => ({ ready: true, selectedSeconds: 1800, value: { customSeconds: null }, choose: async () => {} }) },
-    "../components/CharacterMark": host("Mark"),
+    "../components/InitialsAvatar": host("Initials"),
     "react-native": { ...Native, AppState: { addEventListener: (_, fn) => { foreground = fn; return { remove() {} }; } },
       Linking: { openSettings: async () => { phoneCalls++; } } },
     "expo-router": { useRouter: () => ({ navigate: path => navigate.push(path) }) },
-    "../context/UserContext": { useUser: () => ({ profile: { id: "account", username: "Hero", avatar: badges[9], daily_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur" },
+    "../context/UserContext": { useUser: () => ({ profile: { id: "account", username: "Hero", avatar: legacyAvatar, daily_goal_minutes: 60, timezone: "Asia/Kuala_Lumpur" },
       soundEnabled: true, hapticsEnabled: true, setSoundEnabled() {}, setHapticsEnabled() {} }) },
     "../context/AuthContext": { useAuth: () => ({ user: { email: "test@example.com" }, signOut: async () => {
       signOutCalls++; return { error: options.logoutError ?? null };
@@ -374,7 +375,7 @@ test("fully saved sessions keep the ordinary signout confirmation without a pend
     isCompleted: true, syncStatus: "saved", unsyncedSessionCount: 0 } });
   try {
     await ui.press("Sign out");
-    assert.match(ui.text(), /Your character, routines and saved sessions remain with your account\. Sign in again to continue\./);
+    assert.match(ui.text(), /Your routines and saved sessions remain with your account\. Sign in again to continue\./);
     assert.doesNotMatch(ui.text(), /not confirmed yet|Unconfirmed sessions|sign back into this account first/);
     await ui.pressTitle("Keep me signed in");
     assert.equal(ui.calls().signOutCalls, 0);
@@ -394,13 +395,11 @@ test("goal service validates before requesting a server-computed effective date"
   assert.equal(result.next_effective_date, "2026-10-04");
   assert.deepEqual(calls, [["schedule_daily_goal", { p_goal_minutes: 90 }]]);
 });
-test("optional onboarding preserves a saved character badge and keeps the twelve-look catalogue", async () => {
-  assert.equal(badges.length, 12);
-  assert.equal(new Set(badges).size, 12);
+test("optional onboarding preserves the saved legacy avatar for older app versions", async () => {
   let saved;
   const ui = await screen("src/app/onboarding.tsx", {
     "expo-router": { useRouter: () => ({ replace() {} }) },
-    "../context/UserContext": { useUser: () => ({ profile: { id: "onboarding-badge", username: "Soon", avatar: badges[9], daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
+    "../context/UserContext": { useUser: () => ({ profile: { id: "onboarding-badge", username: "Soon", avatar: legacyAvatar, daily_goal_minutes: 60 }, reloadProfile: async () => true }) },
     "../services/onboardingService": { usernameAvailable: async () => true, saveOnboardingProfile: async (...args) => { saved=args; throw Error("Offline"); } },
   });
   try {
@@ -410,7 +409,7 @@ test("optional onboarding preserves a saved character badge and keeps the twelve
     await ui.press("Continue");
     await ui.press("Continue");
     await ui.press("Start my journey");
-    assert.equal(saved[1],badges[9]);
+    assert.equal(saved[1],legacyAvatar);
     assert.match(ui.text(), /Couldn’t save/);
   } finally { await ui.cleanup(); }
 });

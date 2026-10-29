@@ -126,7 +126,7 @@ export default function SessionConnectionContent({ children }: { children: React
       </Animated.View>}
     </ConnectionSurface>
     {showEnd && <SheetConfirmation elevated title="End this session?"
-      message="Ending early stops this session without recorded time or XP."
+      message="Ending early stops this session without recording its time."
       cancelLabel="Keep session" confirmLabel="End session" onCancel={() => setRequestedEnd(null)}
       onConfirm={() => {
         const view = notificationView.current;

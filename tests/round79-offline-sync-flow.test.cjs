@@ -25,45 +25,43 @@ function load(file, mocks, cache = new Map()) {
 
 const scope={backendId:'host-fixture',ownerId:'11111111-1111-4111-8111-111111111111'};
 const id=n=>'33333333-3333-4333-8333-'+String(n).padStart(12,'0');
-async function flow({celebrate=false}={}){
- const frames=[],seen=[],claims=[],cache=new Map(),storage=new Map();let ui;
- const baseMocks={};const api=load('src/services/offlineSyncPresentation.ts',baseMocks,cache).offlineSyncPresentation;
+// Round 83: the catch-up shows one summary card and Done acknowledges it; there is no map or celebration after it.
+async function flow(){
+ const seen=[],cache=new Map(),storage=new Map();let ui;
+ const api=load('src/services/offlineSyncPresentation.ts',{},cache).offlineSyncPresentation;
  await api.bind(scope,{getItem:async k=>storage.get(k)??null,setItem:async(k,v)=>storage.set(k,v)});
  const observer=api.begin(scope);
- for(let n=1;n<=3;n++)observer.accepted({clientSessionId:id(n),serverSessionId:id(n+10),state:'completed',completedAtMs:100000+n*60000,setup:{targetSeconds:60,activityType:'other',taskId:null,subjectId:1,notes:null,title:'Revision'},sync:{state:'synced',receipt:{sessionId:id(n+10),durationSeconds:60,result:{xp_earned:1,area_xp_earned:1,credited_date:'2026-10-28',daily_completed_seconds:n*60,...(celebrate?{credit_version:1,daily_goal_minutes:2}:{})}}}});
+ for(let n=1;n<=3;n++)observer.accepted({clientSessionId:id(n),serverSessionId:id(n+10),state:'completed',completedAtMs:100000+n*60000,setup:{targetSeconds:60,activityType:'other',taskId:null,subjectId:1,notes:null,title:'Revision'},sync:{state:'synced',receipt:{sessionId:id(n+10),durationSeconds:60,result:{xp_earned:1,area_xp_earned:1,credited_date:'2026-10-28',daily_completed_seconds:n*60}}}});
  observer.finish();const batch=api.snapshot(scope).batch;
- const state={today:{date:'2026-10-28',seconds:180,finds:0},trail:{findSeconds:1800,stops:4,complete:false},nextFindSeconds:1620,pack:{date:'2026-10-28'}};
- const rewardState={reveals:[],state,busy:false,online:true,look:{},equipped:{},today:state.today,trail:state.trail,nextFindSeconds:1620};
- rewardState.claimSessions=async()=>{claims.push(1);return{ok:true,value:{sessions:[],state}};};
- const mocks={'react-native':{AppState:{currentState:'active',addEventListener:()=>({remove(){}})},BackHandler:{addEventListener:()=>({remove(){}})},StyleSheet:{create:v=>v,absoluteFill:{}},Animated:{View:host('Layer'),Value:class{setValue(){}stopAnimation(){}},timing:(_v,c)=>({start:done=>frames.push({c,done}),stop(){}})}},'expo-router':{usePathname:()=>'/','useRouter':()=>({push(){}})},'./SessionResultSheet':host('Receipt'),'./rewards/RevealScreens':{ExpeditionReveal:host('Map')},'../hooks/useRewards':{useRewards:()=>rewardState,rewardsStore:{snapshot:()=>rewardState,dismissReveal:(_owner,key)=>seen.push(key)}},'../context/UserContext':{useUser:()=>({profile:{level:1}})},'../context/TimerContext':{useTimer:()=>({unsyncedSessionCount:0,hasOpenSession:false,protectionSessionId:id(3),acknowledgeSummary(){},clearCompletionModal(){seen.push("timer-clear");}})},'../context/QuestContext':{useQuests:()=>({subjects:[{id:1,title:'Learning',color_code:null}]})},'../hooks/useReducedMotion':{useReducedMotion:()=>false},'../utils/sheetActivity':{useActiveSheetCount:()=>0,registerSheetActivity:()=>()=>{}}};
+ const mocks={'react-native':{AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},'./SessionResultSheet':host('Receipt'),
+  '../context/TimerContext':{useTimer:()=>({unsyncedSessionCount:0,hasOpenSession:false,protectionSessionId:id(3),acknowledgeSummary(){seen.push('timer-ack');},clearCompletionModal(){seen.push('timer-clear');}})},
+  '../context/QuestContext':{useQuests:()=>({subjects:[{id:1,title:'Learning',color_code:null}]})},'../utils/sheetActivity':{useActiveSheetCount:()=>0}};
  const Component=load('src/components/OfflineSyncHost.tsx',mocks,cache).default;
- await act(async()=>{ui=create(React.createElement(Component,{scope,batch,active:true}));await new Promise(r=>setImmediate(r));});
- const queue=load('src/services/dailyAchievementQueue.ts',mocks,cache).dailyAchievementQueue;
- return{ui,api,batch,claims,frames,seen,queue,cleanup:()=>act(async()=>ui.unmount())};
+ const render=b=>React.createElement(Component,{scope,batch:b,active:true});
+ await act(async()=>{ui=create(render(batch));await new Promise(r=>setImmediate(r));});
+ return{ui,api,batch,seen,render,cleanup:()=>act(async()=>ui.unmount())};
 }
-test('one actual catch-up host fades one aggregate receipt into one retained three-minute map',async()=>{
+
+test('one catch-up card sums the sessions, and Done acknowledges every one of them exactly once',async()=>{
  const f=await flow();try{
- assert.equal(f.claims.length,1);let receipt=f.ui.root.findByType('Receipt');assert.equal(receipt.props.visible,true);assert.equal(receipt.props.durationSeconds,180);assert.equal(receipt.props.xpEarned,3);assert.equal(receipt.props.syncSummary.sessionCount,3);
- await act(async()=>{receipt.props.onClose();receipt.props.onClose();});
- let map=f.ui.root.findByType('Map');assert.equal(map.props.reveal.trail.seconds,180);assert.equal(map.props.reveal.trail.fromSeconds,0);assert.equal(map.props.walkDelay,60000);
- await act(async()=>map.props.onReady());receipt=f.ui.root.findByType('Receipt');assert.equal(receipt.props.visible,false);
- await act(async()=>receipt.props.onDismiss());map=f.ui.root.findByType('Map');assert.equal(map.props.walkDelay,650);assert.deepEqual(f.seen,["timer-clear"],"underlying completed timer exits behind the opaque map");
- await act(async()=>{map.props.onClose();map.props.onClose();});assert.equal(f.frames.filter(a=>a.c.duration===480).length,1);assert.ok(f.api.snapshot(scope).batch,'not acknowledged before final fade');
- await act(async()=>f.frames.find(a=>a.c.duration===480).done({finished:true}));assert.equal(f.api.snapshot(scope).batch,null);assert.equal(f.api.snapshot(scope).acknowledgedReceiptIds.length,3);
+  let receipt=f.ui.root.findByType('Receipt');
+  assert.equal(receipt.props.visible,true);assert.equal(receipt.props.durationSeconds,180);assert.equal(receipt.props.recovered,true);
+  assert.equal(receipt.props.syncSummary.sessionCount,3);assert.deepEqual(receipt.props.syncSummary.areas.map(a=>a.title),['Learning']);
+  assert.equal(receipt.props.xpEarned,undefined,'no XP on the card since Round 83');
+  await act(async()=>{receipt.props.onClose();receipt.props.onClose();});
+  receipt=f.ui.root.findByType('Receipt');assert.equal(receipt.props.visible,false);
+  assert.ok(f.api.snapshot(scope).batch,'not acknowledged until the card has faded');
+  await act(async()=>receipt.props.onDismiss());
+  assert.equal(f.api.snapshot(scope).batch,null);assert.equal(f.api.snapshot(scope).acknowledgedReceiptIds.length,3);
+  assert.deepEqual(f.seen,['timer-ack','timer-clear'],'the underlying completed timer of this catch-up is released, so its own card never opens behind');
+  await act(async()=>receipt.props.onDismiss());assert.deepEqual(f.seen,['timer-ack','timer-clear'],'a late dismissal does nothing twice');
  }finally{await f.cleanup();}
 });
 
-test('the real catch-up host releases both proven achievements only after the single map fade completes',async()=>{
- const original=Date.now;Date.now=()=>Date.UTC(2026,9,28,2);let f;
- try{
-  f=await flow({celebrate:true});assert.equal(f.queue.snapshot(),null);
-  await act(async()=>f.ui.root.findByType('Receipt').props.onClose());
-  await act(async()=>f.ui.root.findByType('Map').props.onReady());
-  await act(async()=>f.ui.root.findByType('Receipt').props.onDismiss());assert.equal(f.queue.snapshot(),null,'the summary never overlaps a celebration');
-  await act(async()=>f.ui.root.findByType('Map').props.onClose());assert.equal(f.queue.snapshot(),null,'keep the map until its final fade finishes');
-  const animation=f.frames.find(a=>a.c.duration===480);await act(async()=>animation.done({finished:true}));
-  const request=f.queue.snapshot(),service=load('src/services/dailyEffortCelebrationService.ts',{});
-  assert.ok(request);assert.equal(service.firstDailyEffortEvidence(request.evidence),true);assert.equal(service.dailyGoalEvidence(request.evidence),true);
-  await act(async()=>animation.done({finished:true}));assert.equal(f.queue.snapshot(),request,'late native callbacks do not requeue');
- }finally{if(f)await f.cleanup();Date.now=original;}
+test('a dismissal without Done, or for a batch that is no longer current, acknowledges nothing',async()=>{
+ const f=await flow();try{
+  const receipt=f.ui.root.findByType('Receipt');
+  await act(async()=>receipt.props.onDismiss());
+  assert.ok(f.api.snapshot(scope).batch,'closing animation alone never acknowledges');assert.deepEqual(f.seen,[]);
+ }finally{await f.cleanup();}
 });

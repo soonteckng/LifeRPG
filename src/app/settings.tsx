@@ -7,7 +7,7 @@ import AppSheet from "../components/AppSheet";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { PersonalButton, PersonalPage, p } from "../components/PersonalUI";
 import { SettingsGroup, SettingsRow } from "../components/SettingsList";
-import CharacterMark from "../components/CharacterMark";
+import InitialsAvatar from "../components/InitialsAvatar";
 import { colors, edge, radius } from "../constants/theme";
 import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
@@ -74,7 +74,7 @@ export default function SettingsScreen() {
   return (
     <PersonalPage title="Settings" subtitle="" back animateTransition expandFromIcon fallback="/">
       <View style={s.account} accessible accessibilityLabel={`${profile.username}, ${user?.email ?? "signed in"}`}>
-        <View style={s.avatar}><CharacterMark size={34} avatar={profile.avatar ?? "🌱"} /></View>
+        <View style={s.avatar}><InitialsAvatar name={profile.username} id={profile.id} size={34} /></View>
         <View style={p.flex}><Text style={s.name} numberOfLines={1}>{profile.username}</Text><Text style={p.caption} numberOfLines={1}>{user?.email ?? "Signed in"}</Text></View>
       </View>
 
@@ -113,7 +113,7 @@ export default function SettingsScreen() {
         <BottomSheetScrollView contentContainerStyle={p.sheetBody}>
           <Text style={p.body}>{sessionBlocksLogout
             ? "Finish or end your current session before signing out. If restoration failed, return to Session and retry first."
-            : "Your character, routines and saved sessions remain with your account. Sign in again to continue."}</Text>
+            : "Your routines and saved sessions remain with your account. Sign in again to continue."}</Text>
           {unsyncedSessionCount > 0 && <Text style={p.body} accessibilityRole="alert">
             {unsyncedSessionCount === 1 ? "1 session is not confirmed yet." : `${unsyncedSessionCount} sessions are not confirmed yet.`} Unconfirmed sessions stay on this phone for this account. To confirm them, reconnect while signed in to this same account. If you sign out, sign back into this account first.
           </Text>}

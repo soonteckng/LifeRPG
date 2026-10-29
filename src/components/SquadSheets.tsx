@@ -4,75 +4,33 @@ import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import AppSheet from "./AppSheet";
 import SheetHeader from "./SheetHeader";
 import Segmented from "./Segmented";
-import ProfilePicture from "./adventurer/ProfilePicture";
-import Adventurer from "./adventurer/Adventurer";
-import { useRewards } from "../hooks/useRewards";
+import InitialsAvatar from "./InitialsAvatar";
 import { useUser } from "../context/UserContext";
-import { useShownLevel } from "../services/levelPreview";
 import Pressable from "./SheetTouchable";
 import { Text } from "./AppText";
 import { colors, edge } from "../constants/theme";
 import { studyTime } from "../utils/studyPlan";
 import { cleanSquadCode, SQUAD_CODE_LENGTH, SQUAD_GOALS, SQUAD_LIMITS, validSquadName } from "../utils/squads";
-import { normalizeLook, pictureColors } from "../utils/adventurerLook";
-import { levelTierProgress } from "../utils/levelTiers";
-import { rewardItem } from "../services/rewardCatalog";
 import { usePlayerCard } from "../hooks/usePlayer";
 import { Ionicons } from "@expo/vector-icons";
-import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
-import ItemArt from "./adventurer/ItemArt";
-import type { PlayerLook, Squad, SquadMember } from "../types/squads";
+import type { Squad, SquadMember } from "../types/squads";
 import SheetTextInput from "./SheetTextInput";
 
-// Everyone appears with their own profile picture: you from your own saved
-// look (the same as Home), others from the look their app last saved.
-type Face = Pick<SquadMember, "focusingNow"> & { isYou?: boolean; level?: number; streak?: number; look?: PlayerLook | null };
+// Everyone appears as their initials; a small dot shows who's focusing now.
+type Face = Pick<SquadMember, "id" | "name" | "focusingNow"> & { isYou?: boolean };
 export const SquadFace = memo(function SquadFace({ member, size = 48, ring = colors.surface }: { member: Face; size?: number; ring?: string }) {
-  // The level pill sits below the picture, so the face is taller than wide.
   return <View style={{ width: size }} importantForAccessibility="no-hide-descendants">
-    {member.isYou ? <YourSquadPicture size={size} /> : <PlayerPicture member={member} size={size} />}
+    {member.isYou ? <YourInitials fallback={member.name} id={member.id} size={size} /> : <InitialsAvatar name={member.name} id={member.id} size={size} />}
     {member.focusingNow && <View style={[s.live, { top: size - 11, borderColor: ring }]} />}
   </View>;
 }, (previous, next) => previous.size === next.size && previous.ring === next.ring
-  && previous.member.isYou === next.member.isYou && previous.member.level === next.member.level
-  && previous.member.streak === next.member.streak && previous.member.look === next.member.look
-  && previous.member.focusingNow === next.member.focusingNow);
+  && previous.member.isYou === next.member.isYou && previous.member.id === next.member.id
+  && previous.member.name === next.member.name && previous.member.focusingNow === next.member.focusingNow);
 
-// The surrounding Home/squad screen already loads rewards. Extra copies of
-// your picture follow that shared saved look without refreshing the wallet
-// while the leaderboard is mounting and its sheet is starting to slide.
-function YourSquadPicture({ size }: { size: number }) {
+// Only your own face follows your profile, so a rename doesn't redraw everyone else.
+function YourInitials({ fallback, id, size }: { fallback: string; id: string; size: number }) {
   const { profile } = useUser();
-  const rewards = useRewards({ load: false });
-  const { level } = useShownLevel(profile.id, profile.level);
-  return <View style={{ width: size }} importantForAccessibility="no-hide-descendants">
-    <ProfilePicture look={rewards.look} equipped={rewards.equipped} level={level} background={rewards.background}
-      frame={rewards.frame} streak={profile.streak_count ?? 0} size={size} />
-  </View>;
-}
-function PlayerPicture({ member, size }: { member: Face; size: number }) {
-  const look = member.look;
-  return <ProfilePicture look={normalizeLook(look?.look as Parameters<typeof normalizeLook>[0])} equipped={look?.equipped ?? {}} level={member.level ?? 1} background={look?.background ?? "bg_dusk"}
-    frame={look?.frame ?? null} streak={member.streak ?? 0} size={size} />;
-}
-
-/**
- * The whole character on a player card, standing on their own picture
- * background, in the clothes, gear and pet they chose. You: as you look now.
- */
-function CardCharacter({ isYou, look, level }: { isYou: boolean; look: PlayerLook | null; level: number }) {
-  const mine = useRewards({ load: false });
-  const shown = isYou ? { look: mine.look, equipped: mine.equipped, background: mine.background }
-    : { look: normalizeLook(look?.look as Parameters<typeof normalizeLook>[0]), equipped: look?.equipped ?? {}, background: look?.background ?? "bg_dusk" };
-  const [top, bottom] = pictureColors(shown.background);
-  return <View style={s.stage} testID="player-character" accessible accessibilityLabel="Their character">
-    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100">
-      <Defs><LinearGradient id="card-stage" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={top} /><Stop offset="1" stopColor={bottom} /></LinearGradient></Defs>
-      <Rect x={0} y={0} width={100} height={100} fill="url(#card-stage)" />
-    </Svg>
-    <View style={s.stageShadow} />
-    <Adventurer look={shown.look} equipped={shown.equipped} size={122} lanternLevel={level} />
-  </View>;
+  return <InitialsAvatar name={profile.username || fallback} id={profile.id ?? id} size={size} />;
 }
 
 /** Rename a squad and set its weekly goal. Only the leader sees this. */
@@ -170,9 +128,9 @@ function Stat({ icon, tint, value, label }: { icon: React.ComponentProps<typeof 
 }
 
 /**
- * A player card: tap anyone on the leaderboard. Their picture, badge, level
- * and tier; this week; the last seven days as bars; all-time focus; and the
- * pets and badges they've earned. Squad mates see each other's stats. The
+ * A player card: tap anyone on the leaderboard. Their initials; this week;
+ * the last seven days as bars; and all-time focus. Squad mates see each
+ * other's stats. The
  * leader can remove someone here, deliberately, with two clear choices: a
  * plain remove (they can rejoin with the code), or remove and change the
  * code, for when the code reached the wrong person.
@@ -183,8 +141,7 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
 }) {
   const canRemove = leader && !!member && !member.isYou;
   const { card, failed } = usePlayerCard(member?.id ?? null);
-  const look = card?.look ?? member?.look ?? null, title = look?.title ? rewardItem(look.title)?.name : undefined;
-  const level = card?.level ?? member?.level ?? 1, tier = levelTierProgress(level, 0).current;
+  const { profile } = useUser();
   const stats = card?.stats ?? null, since = stats?.since ? new Date(stats.since) : null;
   const top = Math.max(1, ...(stats?.last7 ?? [0]));
   const today = new Date().getDay();
@@ -192,16 +149,8 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
   return <AppSheet visible={!!member} onRequestClose={onClose} onDismiss={onDismiss} compact label="player card" motionMode="timed"
     header={member ? <SheetHeader title={member.isYou ? `${member.name} (you)` : member.name} subtitle={member.isOwner ? "Squad leader" : "Squad member"} onClose={onClose} /> : undefined}>
     {member && <BottomSheetScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
-      <View style={[s.hero, { borderColor: tier.color + "55" }]} testID="player-card">
-        <Svg width="100%" height="100%" style={StyleSheet.absoluteFill} preserveAspectRatio="none" viewBox="0 0 100 100">
-          <Defs><LinearGradient id="card-glow" x1="0" y1="0" x2="0" y2="1"><Stop offset="0" stopColor={tier.color} stopOpacity={0.32} /><Stop offset="1" stopColor={tier.color} stopOpacity={0.02} /></LinearGradient></Defs>
-          <Rect x={0} y={0} width={100} height={100} fill="url(#card-glow)" />
-        </Svg>
-        <CardCharacter isYou={!!member.isYou} look={look} level={level} />
-        {!!title && <View style={s.badge}><Ionicons name="ribbon" size={12} color="#C4B5FD" /><Text style={s.badgeText} numberOfLines={1}>{title}</Text></View>}
-        <View style={[s.tierPill, { backgroundColor: tier.color + "26" }]}>
-          <Ionicons name={tier.icon} size={14} color={tier.color} /><Text style={[s.tier, { color: tier.color }]}>{`Level ${level} · ${tier.title}`}</Text>
-        </View>
+      <View style={s.hero} testID="player-card">
+        <InitialsAvatar name={member.isYou ? profile.username || member.name : member.name} id={member.isYou ? profile.id ?? member.id : member.id} size={88} />
         {member.focusingNow && <View style={s.focusing}><View style={s.focusDot} /><Text style={s.focusText}>Focusing now</Text></View>}
       </View>
 
@@ -217,7 +166,7 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
         <View style={s.bars}>{(stats?.last7 ?? [0, 0, 0, 0, 0, 0, 0]).map((v, i) => {
           const isToday = i === 6;
           return <View key={i} style={s.barCol}>
-            <View style={s.barTrack}><View style={[s.bar, { height: `${v > 0 ? Math.max(8, Math.round(100 * v / top)) : 0}%`, backgroundColor: isToday ? tier.color : colors.accent + "AA" }]} /></View>
+            <View style={s.barTrack}><View style={[s.bar, { height: `${v > 0 ? Math.max(8, Math.round(100 * v / top)) : 0}%`, backgroundColor: isToday ? colors.progress : colors.accent + "AA" }]} /></View>
             <Text style={[s.day, isToday && { color: colors.text, fontWeight: "800" }]}>{DAY[(today + i + 1) % 7]}</Text>
           </View>;
         })}</View>
@@ -233,15 +182,7 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
         <Stat icon="calendar" tint="#F472B6" value={stats ? String(stats.daysFocused) : dash} label={stats?.daysFocused === 1 ? "day focused" : "days focused"} />
       </View>
 
-      <View style={s.collection}>
-        <View style={s.collectionHead}><Text style={s.chartTitle}>Collection</Text><Text style={s.collected}>{stats ? `${stats.collected} ${stats.collected === 1 ? "find" : "finds"}` : dash}</Text></View>
-        <View style={s.shelf}>
-          {(stats?.pets ?? []).map(id => <View key={id} style={s.petTile}><ItemArt id={id} size={34} /></View>)}
-          {(stats?.badges ?? []).map(id => <View key={id} style={s.badgeTile}><Text style={s.badgeText} numberOfLines={1}>{rewardItem(id)?.name}</Text></View>)}
-          {!!stats && !stats.pets.length && !stats.badges.length && <Text style={s.hint}>No pets or badges yet.</Text>}
-          {!stats && <Text style={s.hint}>{failed ? "Couldn’t load their stats right now." : " "}</Text>}
-        </View>
-      </View>
+      {!stats && failed && <Text style={s.hint}>Couldn’t load their stats right now.</Text>}
       <Text style={s.since}>{since ? `Focusing since ${since.toLocaleDateString(undefined, { month: "long", year: "numeric" })}` : " "}</Text>
 
       {canRemove && <>
@@ -258,12 +199,6 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
 const s = StyleSheet.create({
   body: { paddingHorizontal: 16, paddingBottom: 16, gap: 14 },
   hero: { ...edge, alignItems: "center", gap: 8, paddingTop: 18, paddingBottom: 16, borderRadius: 24, overflow: "hidden", backgroundColor: colors.sheetCard },
-  stage: { alignSelf: "stretch", height: 188, marginHorizontal: 14, marginBottom: 4, borderRadius: 20, overflow: "hidden", alignItems: "center", justifyContent: "flex-end", paddingBottom: 6 },
-  stageShadow: { position: "absolute", bottom: 8, width: 96, height: 14, borderRadius: 48, backgroundColor: "rgba(0,0,0,0.22)" },
-  badge: { flexDirection: "row", alignItems: "center", gap: 5, paddingHorizontal: 11, minHeight: 26, borderRadius: 13, backgroundColor: "rgba(167,139,250,0.16)" },
-  badgeText: { color: "#C4B5FD", fontSize: 13, fontWeight: "700" },
-  tierPill: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 12, minHeight: 28, borderRadius: 14 },
-  tier: { fontSize: 14, fontWeight: "800" },
   focusing: { flexDirection: "row", alignItems: "center", gap: 6 }, focusDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.success },
   focusText: { color: colors.success, fontSize: 13, fontWeight: "700" },
   stat: { ...edge, flex: 1, minHeight: 86, padding: 11, gap: 3, borderRadius: 16, backgroundColor: colors.sheetCard },
@@ -278,12 +213,6 @@ const s = StyleSheet.create({
   barTrack: { flex: 1, width: "100%", maxWidth: 22, justifyContent: "flex-end", borderRadius: 6, backgroundColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
   bar: { width: "100%", borderRadius: 6 },
   day: { color: colors.secondary, fontSize: 12, fontWeight: "600" },
-  collection: { ...edge, gap: 10, padding: 14, borderRadius: 18, backgroundColor: colors.sheetCard, minHeight: 104 },
-  collectionHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  collected: { color: colors.level, fontSize: 14, fontWeight: "800" },
-  shelf: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 8, minHeight: 44 },
-  petTile: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(167,139,250,0.12)" },
-  badgeTile: { paddingHorizontal: 11, minHeight: 30, borderRadius: 15, justifyContent: "center", backgroundColor: "rgba(167,139,250,0.16)" },
   since: { color: colors.secondary, fontSize: 13, lineHeight: 18, textAlign: "center", minHeight: 18 },
   facts: { flexDirection: "row", gap: 8 },
   fact: { ...edge, flex: 1, minHeight: 76, padding: 12, gap: 2, borderRadius: 16, backgroundColor: colors.sheetCard, justifyContent: "center" },

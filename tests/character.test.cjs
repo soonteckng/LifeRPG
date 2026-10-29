@@ -295,7 +295,9 @@ test("failed sign-in explains itself, keeps what was typed and allows retry", as
     await ui.input("Password", "password");
     const surface = ui.renderer.root.findByType("Scroll");
     await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 450 } } }));
-    assert.equal(ui.renderer.root.findAllByType("Portrait").length, 0);
+    // The calm timer mark above the form makes room for the keyboard on short screens.
+    const marks = () => ui.renderer.root.findAll(n => typeof n.type === "string" && n.props.style && n.props.style.width === 112 && n.props.style.borderRadius === 56).length;
+    assert.equal(marks(), 0);
     assert.match(ui.text(), /Welcome back/);
     assert.equal(ui.renderer.root.findAllByType("Scroll").length, 1);
     await ui.press("Sign in");
@@ -304,7 +306,7 @@ test("failed sign-in explains itself, keeps what was typed and allows retry", as
     await ui.press("Sign in");
     assert.equal(calls, 2);
     await act(async () => surface.props.onLayout({ nativeEvent: { layout: { height: 800 } } }));
-    assert.equal(ui.renderer.root.findAllByType("Portrait").length, 1);
+    assert.ok(marks() > 0);
   } finally {
     await ui.cleanup();
   }
@@ -567,36 +569,6 @@ async function rewardsHarness(options = {}) {
     press: async label => act(async () => renderer.root.findAllByType("Button").find(n => n.props.accessibilityLabel === label || text(n) === label).props.onPress()),
     cleanup: async () => act(async () => renderer.unmount()) };
 }
-test("milestones unlock automatically without personal reward creation, prices or claims", async () => {
-  const ui = await rewardsHarness();
-  try {
-    assert.match(ui.text(), /My Milestones/);
-    assert.match(ui.text(), /First step/);
-    assert.match(ui.text(), /Earned/);
-    assert.doesNotMatch(ui.text(), /Add a personal reward|Personal rewards|Gold|Claim daily bonus|Redeem/);
-    assert.equal(ui.calls.length, 0);
-  } finally { await ui.cleanup(); }
-});
-test("a sub-minute completed session earns a milestone, and a path milestone opens in place", async () => {
-  const ui = await rewardsHarness();
-  try {
-    const first = ui.renderer.root.findAll(n => n.props.accessibilityLabel === "First step, earned");
-    assert.ok(first.length > 0);
-    const next = ui.renderer.root.findAllByType("Button").find(n => n.props.accessibilityState?.expanded === false && /of/.test(n.props.accessibilityLabel ?? ""));
-    await act(async () => next.props.onPress());
-    assert.match(ui.text(), /earned automatically when you get there/);
-    assert.equal(ui.renderer.root.findAllByType("Sheet").length, 1, "details open in place, not in a second sheet");
-  } finally { await ui.cleanup(); }
-});
-test("milestone refresh failure preserves the already-loaded collection with Retry", async () => {
-  const ui = await rewardsHarness({ growth: { error: true } });
-  try {
-    assert.match(ui.text(), /Couldn’t refresh milestones/);
-    assert.match(ui.text(), /First step/);
-    await ui.press("Couldn’t refresh milestones. Tap to try again.");
-    assert.deepEqual(ui.calls, ["milestones-refresh"]);
-  } finally { await ui.cleanup(); }
-});
 test("Settings prevents logout while a session is running, paused or unresolved", async () => {
   for (const timer of [
     { hasOpenSession: true },
@@ -768,14 +740,9 @@ async function profileScreen(overrides = {}) {
     },
     "../../components/PersonalUI": UI,
     "../../components/MoreMenu": (props) => React.createElement("Menu", props),
-    "../../components/CharacterPortrait": host("Portrait"),
-    // The new character draws from the shared rewards copy; its drawing has its own tests.
-    "../../components/adventurer/Adventurer": host("Adventurer"),
-    "../../hooks/useRewards": { useRewards: () => ({ look: { skin: "3", hair: "short", hairColor: "darkbrown", glasses: false }, equipped: { top: "cardigan" } }) },
+    "../../components/InitialsAvatar": host("Initials"),
     "../../components/SheetConfirmation": host("Confirm"),
-    // Badges and subject breakdowns have their own tests.
-    "../../components/MilestonesSheet": { __esModule: true, default: host("MilestonesSheet"), useMilestones: () => ({ ready: true, error: false, retry: async () => {},
-      totals: { seconds: 5400, days: 3, bestStreak: 2, sessions: 4, milestones: [{ id: "first" }, { id: "ten" }] }, earned: [{ id: "first", title: "First step", icon: "footsteps-outline" }], next: null }) },
+    // Subject breakdowns have their own tests.
     "../../components/SubjectBreakdown": { __esModule: true, default: host("SubjectBreakdown") },
     "../../components/ProgressRing": ({ children }) => React.createElement("Ring", null, children),
     "../../components/AppSheet": (props) =>
@@ -930,32 +897,7 @@ test("Profile subject breakdown uses the same completed aliases as its category 
   } finally { await ui.cleanup(); }
 });
 
-test('Profile level opens the shared tier path with the saved XP balance',async()=>{
- const ui=await profileScreen();
- try{
-  const button=ui.renderer.root.findAllByType('Button').find(node=>node.props.accessibilityLabel?.includes('View level tiers'));
-  assert.ok(button);await act(async()=>button.props.onPress());
-  const popup=ui.renderer.root.findByType('TierSheet');assert.equal(popup.props.visible,true);assert.equal(popup.props.level,3);assert.equal(popup.props.currentXP,20);
-  await act(async()=>popup.props.onClose());assert.equal(ui.renderer.root.findByType('TierSheet').props.visible,false);
- }finally{await ui.cleanup();}
-});
 
-test("Profile's character pauses its idle motion behind profile sheets", async () => {
-  const ui = await profileScreen();
-  try {
-    const hero = () => ui.renderer.root.findByType("Adventurer");
-    assert.equal(hero().props.animate, true);
-    await ui.press("Edit name");
-    assert.equal(hero().props.animate, false);
-    await ui.press("Save changes");
-    assert.equal(hero().props.animate, true);
-    const levels = ui.renderer.root.findAllByType("Button").find(node => node.props.accessibilityLabel?.includes("View level tiers"));
-    await act(async () => levels.props.onPress());
-    assert.equal(hero().props.animate, false);
-    await act(async () => ui.renderer.root.findByType("TierSheet").props.onClose());
-    assert.equal(hero().props.animate, true);
-  } finally { await ui.cleanup(); }
-});
 test("Profile protects edited drafts and preserves the editor through discard dismissal", async () => {
   const ui = await profileScreen();
   try {
@@ -1061,63 +1003,8 @@ test("Android secondary page retains its contents until animated back finishes a
   }
 });
 
-test("character greeting is cosmetic while automatic motion needs no tap",async()=>{
- let greetings=0;
- const Portrait=load("src/components/CharacterPortrait.tsx",{
-  "react-native":Native,
-  "../hooks/useCharacterMotion":{useCharacterMotion:()=>({bodyStyle:{transform:[{translateY:-2}]},eyeStyle:{transform:[{scaleY:1}]},armStyle:{},greet:()=>greetings++})},
- }).default;
- let renderer;await act(async()=>{renderer=create(React.createElement(Portrait,{avatar:"⭐",level:3,developed:2}));});
- try{
-  assert.equal(greetings,0);assert.match(renderer.root.findByType("Button").props.accessibilityHint,/breathes and blinks/);
-  await act(async()=>renderer.root.findByType("Button").props.onPress());assert.equal(greetings,1);
-  assert.match(renderer.root.findByType("Button").props.accessibilityLabel,/Level 3/);
- }finally{await act(async()=>renderer.unmount());}
-});
 
-test("every saved badge selects a full look and Home shares the same drawing",async()=>{
- const catalogue=load("src/constants/characterLooks.ts"),appearance=load("src/utils/characterAppearance.ts");
- assert.deepEqual(catalogue.CHARACTER_LOOKS.map(look=>look.id),load("src/constants/characterBadges.ts").CHARACTER_BADGES);
- assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.body)).size,12);
- assert.equal(new Set(catalogue.CHARACTER_LOOKS.map(look=>look.accessory)).size,12);
- assert.equal(appearance.characterLook("🧙").id,"🧙‍♂️");assert.ok(appearance.characterLook("legacy badge"));
- // Home, Settings and the session result show your profile picture from the shared rewards copy.
- const shared={look:{skin:"6",hair:"braids",hairColor:"black",glasses:true},equipped:{top:"overalls",pet:"pet_cat"},background:"bg_night",frame:"frame_streak_7"};
- const Mark=load("src/components/CharacterMark.tsx",{"react-native":Native,"./adventurer/ProfilePicture":host("Picture"),
-  "../context/UserContext":{useUser:()=>({profile:{level:23,streak_count:9}})},"../hooks/useRewards":{useRewards:()=>shared}}).default;
- let renderer;await act(async()=>{renderer=create(React.createElement(Mark,{avatar:"⭐",size:58}));});
- try{
-  const pic=renderer.root.findByType("Picture").props;
-  assert.deepEqual([pic.look,pic.equipped,pic.level,pic.background,pic.frame,pic.streak,pic.size],[shared.look,shared.equipped,23,"bg_night","frame_streak_7",9,58]);
- }finally{await act(async()=>renderer.unmount());}
- const Picker=load("src/components/CharacterLookPicker.tsx",{"react-native":Native,"@gorhom/bottom-sheet":{TouchableOpacity:host("Button")},"@expo/vector-icons":{Ionicons:host("Icon")}}).default;
- await act(async()=>{renderer=create(React.createElement(Picker,{value:"🦊",disabled:false,onChange(){}}));});
- try{assert.equal(renderer.root.findAllByType("Button").filter(node=>node.props.accessibilityState.checked).length,1);assert.equal(renderer.root.findAllByType("Button").find(node=>node.props.accessibilityState.checked).props.accessibilityLabel,"Choose Ember");}
- finally{await act(async()=>renderer.unmount());}
-});
 
-test("idle motion cancels directly on frozen-tab blur, background and Reduce Motion",async()=>{
- let appState,reduced=false,focused=true,enabled=true,motion;const listeners={};
- const native={AppState:{currentState:'active',addEventListener:(_event,listener)=>{appState=state=>{native.AppState.currentState=state;listener(state);};return{remove(){}};}}};
- const navigation={isFocused:()=>focused,addListener:(event,listener)=>{listeners[event]=listener;return()=>{delete listeners[event];};}};
- const context=React.createContext(undefined),fake=require('./character-motion-mocks.cjs').motionApi(React,host);
- const hook=load('src/hooks/useCharacterMotion.ts',{'react-native':native,'expo-router/react-navigation':{NavigationContext:context},'react-native-reanimated':fake.api,'./useReducedMotion':{useReducedMotion:()=>reduced}}).useCharacterMotion;
- function Consumer(){motion=hook(enabled);return null;}
- const element=()=>React.createElement(context.Provider,{value:navigation},React.createElement(Consumer));
- let renderer;await act(async()=>{renderer=create(element());});
- try{
-  const repeats=()=>fake.events.filter(event=>event.kind==='repeat');assert.equal(repeats().length,3);assert.equal(repeats()[0].count,-1);assert.equal(repeats()[1].animation.items[0].delay,4300);
-  focused=false;listeners.blur();assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
-  let count=repeats().length;appState('background');appState('active');assert.equal(repeats().length,count,'backgrounded or unfocused screens cannot restart motion');
-  focused=true;listeners.focus();assert.equal(repeats().length,count+3);
-  reduced=true;count=repeats().length;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);assert.equal(fake.values[0].get(),0);assert.equal(fake.values[1].get(),1);
-  reduced=false;enabled=false;await act(async()=>renderer.update(element()));assert.equal(repeats().length,count);
- }finally{await act(async()=>renderer.unmount());}
- // Auth renders before the app navigator: no navigation context is required.
- const before=fake.events.filter(event=>event.kind==='repeat').length;
- enabled=true;await act(async()=>{renderer=create(React.createElement(Consumer));});
- assert.equal(fake.events.filter(event=>event.kind==='repeat').length,before+3);await act(async()=>renderer.unmount());
-});
 
 test("shared typography uses iOS System, keeps text readable and preserves exact timer line height", async () => {
   const AppText=load("src/components/AppText.tsx",{"react-native":{...Native,Platform:{OS:"ios"}}}).Text;
@@ -1159,16 +1046,16 @@ test("onboarding profile validation rejects too-long names before the RPC and pr
  await api.saveOnboardingProfile('  Soon Teck  ','⭐',60);assert.equal(queries[0][0],'complete_onboarding');assert.equal(queries[0][1].p_class_title,null,'the old class title is no longer sent');assert.equal(queries[0][1].p_username,'Soon Teck');
 });
 
-test("Profile shows its stats and badges, opens every milestone as a card, and keeps My Categories",async()=>{
- const routes=[],ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])}});
+test("Profile shows your initials and all-time totals from your own history, with no level, badges or outfits",async()=>{
+ const routes=[];
+ const session=(id,day,seconds)=>({id,completed_at:`2026-10-${day}T03:00:00Z`,duration_seconds:seconds,subject_id:1,status:'completed'});
+ const ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])},
+  '../../hooks/useCharacterData':{useCharacterData:()=>({data:{areas:[{id:1,title:'Knowledge',level:2,current_xp:12}],sessions:[session('a','01',1800),session('b','02',1800),session('c','04',1800)]},loading:false,error:false,refresh:async()=>{}})}});
  try{
   assert.match(ui.text(),/1h 30mTime focused/);assert.match(ui.text(),/3Focus days/);assert.match(ui.text(),/2 daysBest streak/);
-  assert.match(ui.text(),/My Badges/);assert.match(ui.text(),/1 of 2 earned/);assert.match(ui.text(),/First step/);
-  const sheet=()=>ui.renderer.root.findByType('MilestonesSheet');assert.equal(sheet().props.visible,false);
-  // The section title (My Badges ›) opens the whole collection.
-  const badges=ui.renderer.root.findAll(node=>node.props.accessibilityLabel==='My Badges. See all milestones'&&typeof node.props.onPress==='function')[0];
-  await act(async()=>badges.props.onPress());assert.equal(sheet().props.visible,true);assert.deepEqual(routes,[],'milestones open as a card, not a page');
-  assert.match(ui.text(),/My Categories/);assert.doesNotMatch(ui.text(),/Your categories/);
+  assert.equal(ui.renderer.root.findByType('Initials').props.name,'Soon');
+  assert.doesNotMatch(ui.text(),/Badges|Level \d|XP|Outfits|Level journey/);
+  assert.match(ui.text(),/My Categories/);assert.deepEqual(routes,[]);
  }finally{await ui.cleanup();}
 });
 
@@ -1193,24 +1080,15 @@ test('an open profile draft stays editable offline, labels Save as needing inter
  }finally{await ui.cleanup();}
 });
 
-test("the name sheet only edits the name; your look lives in Outfits, and the old companion stays saved for older versions",async()=>{
+test("the name sheet only edits the name, and the old companion field stays saved for older versions",async()=>{
  let fail=true;const saves=[],routes=[];
  const ui=await profileScreen({'expo-router':{useRouter:()=>({navigate:r=>routes.push(r)}),useFocusEffect:fn=>React.useEffect(fn,[fn])},
   '../../context/UserContext':{useUser:()=>({profile:{id:'u',username:'Soon Teck',avatar:'⭐',class_title:'Scholar',level:3,current_xp:20,timezone:'UTC'},reloadProfile:async()=>{},updateProfile:async(...args)=>{saves.push(args);if(fail)throw Error('Offline');}})}});
  try{
-  const hero=ui.renderer.root.findByType('Adventurer').props;
-  assert.deepEqual(hero.look,{skin:"3",hair:"short",hairColor:"darkbrown",glasses:false});assert.deepEqual(hero.equipped,{top:"cardigan"});assert.equal(hero.lanternLevel,3);
-  await ui.press('Your character. Open Outfits');await ui.press('Outfits');assert.deepEqual(routes,['/outfits','/outfits']);
-  await ui.press('Edit name');assert.equal(ui.renderer.root.findAllByType('Portrait').length,0,'no old look picker');
+  assert.equal(ui.renderer.root.findByType('Initials').props.name,'Soon Teck');
+  await ui.press('Edit name');assert.deepEqual(routes,[]);
   await ui.input('Profile name','Soon');await ui.press('Save changes');assert.match(ui.text(),/Couldn’t save/);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,true);
   fail=false;await ui.press('Save changes');assert.deepEqual(saves.at(-1),['Soon','⭐']);assert.equal(ui.renderer.root.findByType('Sheet').props.visible,false);
  }finally{await ui.cleanup();}
 });
 
-test("two new looks fill four complete rows and have distinct drawn accessories",async()=>{
- const catalogue=load("src/constants/characterLooks.ts").CHARACTER_LOOKS;
- assert.equal(catalogue.length%3,0);assert.equal(new Set(catalogue.map(look=>look.id)).size,12);
- const Art=load("src/components/CharacterArt.tsx",{"react-native":Native}).default;
- let renderer;await act(async()=>{renderer=create(React.createElement(Art,{avatar:"📖",size:176}));});
- try{assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-glasses").length,1);await act(async()=>renderer.update(React.createElement(Art,{avatar:"☁️",size:176})));assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-beanie").length,1);assert.equal(renderer.root.findAllByType("View").filter(node=>node.props.testID==="character-glasses").length,0);}finally{await act(async()=>renderer.unmount());}
-});

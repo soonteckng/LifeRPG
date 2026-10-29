@@ -14,10 +14,10 @@ function loader(mocks, compiled) {
     const filename = path.resolve(root, file); if (cache.has(filename)) return cache.get(filename).exports;
     const module = { exports: {} }; cache.set(filename, module);
     let source = fs.readFileSync(filename, 'utf8');
-    if (compiled && /(?:JournalTimerProvider|GlobalRewardListener|SessionScreen|SessionBackdrop|SessionResultSheet|AppSheet)\.tsx$/.test(filename)) {
+    if (compiled && /(?:JournalTimerProvider|SessionResultHost|SessionScreen|SessionBackdrop|SessionResultSheet|AppSheet)\.tsx$/.test(filename)) {
       source = babel.transformSync(source, { filename, configFile: false, babelrc: false,
         parserOpts: { plugins: ['typescript', 'jsx'] }, plugins: [[require.resolve('babel-plugin-react-compiler'), { target: '19' }]] }).code;
-      if (filename.endsWith('GlobalRewardListener.tsx')) assert.match(source, /react\/compiler-runtime/, 'the production compiler is enabled in the regression');
+      if (filename.endsWith('SessionResultHost.tsx')) assert.match(source, /react\/compiler-runtime/, 'the production compiler is enabled in the regression');
     }
     const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true, target: ts.ScriptTarget.ES2022 } }).outputText;
     new Function('require', 'module', 'exports', js)(name => {
@@ -116,15 +116,14 @@ async function fixture({ compiled = true, delayReceipt = false, delayCancel = fa
   };
   const load = loader(mocks, compiled), api = load('src/context/JournalTimerProvider.tsx');
   mocks['../context/TimerContext'] = api;
-  const Presenter = load('src/components/GlobalRewardListener.tsx').default, Screen = load('src/components/SessionScreen.tsx').default;
-  const returns = load('src/services/sessionReturn.ts').sessionReturn;
+  const Presenter = load('src/components/SessionResultHost.tsx').default, Screen = load('src/components/SessionScreen.tsx').default;
   const removeDismissalProbe = flushInDismissal ? load('src/services/globalSessionLifecycle.ts').globalSessionLifecycle.subscribe(() => { renderer.unstable_flushSync(() => renderer.update(React.createElement(Tree))); }) : () => {};
   const Result = load('src/components/SessionResultSheet.tsx').default;
   function Capture() { timer = api.useTimer(); return null; }
   function Tree() { return React.createElement(api.TimerProvider, null, React.createElement(Capture), pathname === '/session' && React.createElement(Screen), React.createElement(Presenter)); }
   try { await act(async () => { renderer = create(React.createElement(Tree)); await flush(); }); } catch(error) { await act(async () => renderer?.unmount()); Date.now = oldNow; throw error; }
   const update = () => act(async () => { renderer.update(React.createElement(Tree)); });
-  return { timer: () => timer, root: () => renderer.root, events, returns, animations, result: () => renderer.root.findByType(Result), visible: () => renderer.root.findByType(Result).props.visible,
+  return { timer: () => timer, root: () => renderer.root, events, animations, result: () => renderer.root.findByType(Result), visible: () => renderer.root.findByType(Result).props.visible,
     start: () => act(async () => { assert.equal(await timer.startFreeTimer(60, 1), true); await flush(); }),
     startPending: () => act(async () => { nextStart = timer.startFreeTimer(60, 1); await flush(); }),
     failProtection: () => act(async () => { rejectProtection(Error('Protection permission is unavailable.')); assert.equal(await nextStart, false); await flush(); }),
@@ -190,7 +189,7 @@ test('Round 78: pending completion Done still permits one real confirmed receipt
     await f.reconnect(); await f.confirm();
     assert.equal(f.visible(), true, 'the genuine server receipt is a new result, not the old End');
     assert.equal(f.result().props.pending, false); assert.equal(f.result().props.ending, false);
-    assert.equal(f.result().props.xpEarned, 1); assert.equal(f.result().props.durationSeconds, 60);
+    assert.equal(f.result().props.xpEarned, undefined, 'no XP on the card'); assert.equal(f.result().props.durationSeconds, 60);
     await f.done(); await f.dismiss(); await f.leave(); await f.confirm();
     assert.equal(f.visible(), false, 'the confirmed receipt cannot repeat after its Done');
   } finally { await f.cleanup(); }

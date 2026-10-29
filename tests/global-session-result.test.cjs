@@ -8,7 +8,7 @@ function load(file,mocks,cache=new Map()){
   if(cache.has(filename))return cache.get(filename).exports;
   const module={exports:{}};cache.set(filename,module);
   let input=fs.readFileSync(filename,'utf8');
-  if(cache.compileScreen&&filename.endsWith('SessionScreen.tsx')||cache.compilePresenter&&filename.endsWith('GlobalRewardListener.tsx')) input=require('@babel/core').transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
+  if(cache.compileScreen&&filename.endsWith('SessionScreen.tsx')||cache.compilePresenter&&filename.endsWith('SessionResultHost.tsx')) input=require('@babel/core').transformSync(input,{filename,configFile:false,babelrc:false,parserOpts:{plugins:['typescript','jsx']},plugins:[[require.resolve('babel-plugin-react-compiler'),{target:'19'}]]}).code;
   const source=ts.transpileModule(input,{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,esModuleInterop:true}}).outputText;
   new Function('require','module','exports',source)(name=>{
     if(Object.hasOwn(mocks,name))return mocks[name];
@@ -69,17 +69,15 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false,op
   };
   const navigation={isFocused:()=>focused,canGoBack:()=>true,getState:()=>({routes:[{key:'home'},{key:'session'}],index:1}),
     addListener:()=>()=>{},goBack:()=>calls.push('route-close')};
-  const Presenter=load('src/components/GlobalRewardListener.tsx',mocks,cache).default;
+  const Presenter=load('src/components/SessionResultHost.tsx',mocks,cache).default;
   const Screen=withScreen?load('src/components/SessionScreen.tsx',mocks,cache).default:null;
   const Tree=()=>React.createElement(React.Fragment,null,Screen&&React.createElement(Screen),React.createElement(Presenter));
   const entry=load('src/services/sessionEntry.ts',mocks,cache).sessionEntry;
   if(options.entry)entry.request(...options.entry);
   let renderer;await act(async()=>{renderer=create(React.createElement(Tree));});
   const intro=load('src/services/launchIntroState.ts',mocks,cache).launchIntroState;
-  const returning=load('src/services/sessionReturn.ts',mocks,cache);
   return{calls,dismissals,animations,deferredExits,intro,entry,subscribe:lifecycle.subscribe,root:()=>renderer.root,result:()=>renderer.root.findByType('Result'),
     focus:async value=>{focused=value;await act(async()=>renderer.update(React.createElement(Tree)));},
-    returning:()=>returning.sessionReturn.snapshot(),
     reduce:async()=>{reduced=true;await act(async()=>renderer.update(React.createElement(Tree)));},
     app:async state=>act(async()=>{app.currentState=state;for(const listener of appListeners)listener(state);}),
     update:async(changes={},nextMode=mode,nextPath=pathname,nextOwner=ownerId,nextBackend=backendId,nextEpoch=admissionEpoch)=>{timer={...timer,...changes};mode=nextMode;pathname=nextPath;ownerId=nextOwner;backendId=nextBackend;admissionEpoch=nextEpoch;await act(async()=>renderer.update(React.createElement(Tree)));},
@@ -88,77 +86,24 @@ async function setup(overrides={},mode='online',pathname='/',withScreen=false,op
     cleanup:async()=>{unsubscribe();await act(async()=>renderer.unmount());}};
 }
 
-test('a fresh timer completion returns to camp before its result, then never repeats for the same session',async()=>{
+test('a fresh timer completion opens its result straight away, with no walk back and no reward screens',async()=>{
   const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
   try {
     await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,sessionSummary:{...summary,recovered:false}});
-    assert.equal(ui.result().props.visible,false,'the result does not cover the return walk');
-    const backdrop=ui.root().findByType('Backdrop');assert.equal(backdrop.props.returning,true);
-    assert.ok(ui.returning());
-    assert.equal(ui.root().findByType('RewardMoments').props.insideSession,true,'reward screens also wait for the walk');
-    await act(async()=>backdrop.props.onReturnEnd());
-    assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,true);
-    await ui.update({sessionSummary:{...summary,recovered:false,xpEarned:2}});
-    assert.equal(ui.root().findByType('Backdrop').props.returning,false);
-    assert.equal(ui.result().props.visible,true,'a later receipt refresh cannot replay the arrival');
+    assert.equal(ui.result().props.visible,true,'the card opens as soon as the result is ready');
+    const backdrop=ui.root().findByType('Backdrop');
+    assert.equal(backdrop.props.returning,undefined);assert.equal(backdrop.props.onReturnEnd,undefined);
+    assert.equal(ui.root().findAllByType('RewardMoments').length,0);assert.equal(ui.root().findAllByType('Celebration').length,0);
+    for(const removed of ['xpEarned','isLevelUp','newLevel','currentXP','requiredXP'])assert.equal(ui.result().props[removed],undefined,`${removed} is gone`);
+    await ui.update({sessionSummary:{...summary,recovered:false,dailyCompletedSeconds:120}});
+    assert.equal(ui.result().props.visible,true,'a later receipt refresh keeps the same card open');
+    assert.equal(ui.root().findAllByType('Result').length,1);
   } finally {await ui.cleanup();}
 });
 
-test('return animation has a bounded fallback and does not wait for a native callback forever',async t=>{
-  t.mock.timers.enable({apis:['setTimeout']});
-  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session');
-  try {
-    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
-    assert.equal(ui.result().props.visible,false);
-    await act(async()=>t.mock.timers.tick(2149));assert.equal(ui.result().props.visible,false);
-    await act(async()=>t.mock.timers.tick(1));assert.equal(ui.result().props.visible,true);
-    assert.equal(ui.returning(),null);
-  } finally {await ui.cleanup();}
-});
 
-test('Reduce Motion, background and leaving the timer release an interrupted return without replay',async()=>{
-  for(const interruption of ['reduce','background','navigate']){
-    const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
-    try {
-      await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
-      assert.ok(ui.returning());const old=ui.root().findByType('Backdrop').props.onReturnEnd;
-      if(interruption==='reduce')await ui.reduce();
-      else if(interruption==='background')await ui.app('background');
-      else await ui.update({},'online','/');
-      assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,true);
-      await act(async()=>old());assert.equal(ui.result().props.visible,true);
-      if(interruption==='background')await ui.app('active');
-      await ui.update({},'online','/session');assert.equal(ui.returning(),null);
-    } finally {await ui.cleanup();}
-  }
-});
 
-test('a delayed return callback cannot cover a different account and recovered results skip the walk',async()=>{
-  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
-  try {
-    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
-    const old=ui.root().findByType('Backdrop').props.onReturnEnd;
-    await ui.update({sessionId:'incoming',isCompleted:false,isRestoring:true,sessionSummary:null},'online','/session','owner-b');
-    assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,false);
-    await act(async()=>old());assert.equal(ui.result().props.visible,false);
-    await ui.update({isRestoring:false,isCompleted:true,recoveredSession:true,sessionSummary:{...summary,sessionId:'incoming'}});
-    assert.equal(ui.returning(),null);assert.equal(ui.result().props.visible,true);
-  } finally {await ui.cleanup();}
-});
 
-test('an old account arrival callback cannot finish a newer account return walk',async()=>{
-  const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:1},'online','/session',true);
-  try {
-    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,sessionSummary:summary});
-    const old=ui.root().findByType('Backdrop').props.onReturnEnd;
-    await ui.update({sessionId:'new-running',hasOpenSession:true,isRunning:true,isCompleted:false,sessionSummary:null,timeLeft:10},'online','/session','owner-b');
-    await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,sessionSummary:{...summary,sessionId:'new-running',recovered:false}});
-    const active=ui.returning();assert.ok(active);assert.equal(ui.result().props.visible,false);
-    await act(async()=>old());assert.equal(ui.returning(),active);assert.equal(ui.result().props.visible,false);
-    await act(async()=>ui.root().findByType('Backdrop').props.onReturnEnd());
-    assert.equal(ui.result().props.visible,true);
-  } finally {await ui.cleanup();}
-});
 
 test('the real timer route and global End sheet stay together through delayed cancellation, then Done closes both once',async()=>{
   const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:31},'online','/session',true);
@@ -225,7 +170,7 @@ test('the same recovered result portal survives session, offline and Home transi
     assert.equal(result.props.visible,true);assert.equal(result.props.sessionId,'confirmed','same-owner restore keeps the existing result visible');
     await ui.update({isRestoring:false,isCompleted:true,sessionSummary:summary});
     await ui.update({},'online','/');assert.equal(ui.result(),result);assert.equal(result.props.visible,true);
-    assert.equal(ui.root().findAllByType('Result').length,1);assert.equal(result.props.areaXpEarned,1);
+    assert.equal(ui.root().findAllByType('Result').length,1);assert.equal(result.props.areaXpEarned,undefined,'no XP reaches the card');
     assert.equal(result.props.saveAction,undefined);
   }finally{await ui.cleanup();}
 });
@@ -410,7 +355,7 @@ test('a result found while the app is still opening waits for the launch logo, t
 });
 
 const entrances=ui=>ui.animations.filter(animation=>animation.toValue===1&&animation.duration===240);
-test('compiled retained Session replays its bottom-up entrance on widget and repeated dock entries, not Outfits return',async()=>{
+test('compiled retained Session replays its bottom-up entrance on widget and repeated dock entries, not a temporary visit away',async()=>{
   const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:80,sessionId:'client-id',protectionSessionId:'client-id'},'online','/session',true,{compiled:true});
   try {
     const surface=ui.root().findByProps({testID:'session-surface'});
@@ -431,7 +376,7 @@ test('compiled retained Session replays its bottom-up entrance on widget and rep
       assert.equal(ui.entry.take(ui.entry.snapshot(),'client-id'),false,'focus cannot consume the same request twice');
     }
     await ui.focus(false);await ui.focus(true);
-    assert.equal(entrances(ui).length,4,'a temporary Outfits visit has no new entrance request');
+    assert.equal(entrances(ui).length,4,'a temporary visit away has no new entrance request');
     assert.equal(ui.calls.filter(call=>call==='route-close').length,3);
   } finally {await ui.cleanup();}
 });

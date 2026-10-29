@@ -822,10 +822,10 @@ test("Quick Start history is bounded, owner filtered and excludes quests, tiny s
   await assert.rejects(serviceHarness(() => ({error:Error("Offline")})).service.getLastFreeSession("owner-a",now), /Offline/);
 });
 
-test("Progress holds My Milestones once, below the analytics, and no squads",async()=>{
+test("Progress shows the analytics with no milestones and no squads",async()=>{
  const ui=await screenHarness();try{
-  const text=ui.text();assert.equal(text.split('My Milestones').length-1,1);assert.doesNotMatch(text,/My Squad|Keep growing at your pace/);
-  assert.ok(text.indexOf('My Milestones')>text.indexOf('Consistency'));
+  const text=ui.text();assert.doesNotMatch(text,/My Milestones|My Squad|Keep growing at your pace/);
+  assert.match(text,/Consistency/);
  }finally{await ui.cleanup();}
 });
 

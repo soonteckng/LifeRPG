@@ -61,7 +61,7 @@ export default function DeleteAccount() {
   };
   const footer = protectedAccount ? "This developer account is protected, so it can’t be deleted from the app." : error || (blocked ? "Finish or end your session before deleting your account." : !online ? "Deleting your account needs internet." : "Deletes your account and everything in it. This can’t be undone.");
   const message = [
-    "Your level, sessions, routines, subjects, exams and streak are deleted for good, on every device.",
+    "Your sessions, routines, subjects, exams and streak are deleted for good, on every device.",
     "Squads you lead pass to the next member, so your friends keep them.",
     unsynced ? `${unsynced} ${unsynced === 1 ? "session" : "sessions"} on this phone haven’t synced yet and will be lost too.` : "",
   ].filter(Boolean).join(" ");

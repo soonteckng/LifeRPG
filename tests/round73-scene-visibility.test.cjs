@@ -40,7 +40,6 @@ async function fixture({ compiled = true, focused = true, appState = 'active', r
       cancelAnimation: shared => { if (loops.delete(shared)) events.push('cancel'); } },
     'react-native-svg': svg,
     '../AppText': { Text: host('Text') },
-    '../../hooks/useRewards': { useRewards: () => ({ look: { skin: '3', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: {} }) },
     '../../hooks/useReducedMotion': { useReducedMotion: () => React.useSyncExternalStore(listener => {
       reduceListeners.add(listener); return () => reduceListeners.delete(listener);
     }, () => reduce, () => reduce) },
@@ -80,10 +79,10 @@ for (const compiled of [false, true]) {
   test(`hidden session cancels decorative loops and resumes them once on route focus (${mode})`, async () => {
     const h = await fixture({ compiled });
     try {
-      assert.equal(h.loops(), 3, 'fire, fireflies and walking each run one repeat while visible');
+      assert.equal(h.loops(), 2, 'fire and fireflies each run one repeat while visible (no walker since Round 83)');
       await h.focus(false); assert.equal(h.loops(), 0, 'Outfits or another covering route must stop all decorative repeats');
       await h.app('background'); await h.app('active'); assert.equal(h.loops(), 0, 'AppState cannot restart a blurred scene');
-      await h.focus(true); assert.equal(h.loops(), 3);
+      await h.focus(true); assert.equal(h.loops(), 2);
       const starts = h.events.filter(event => event === 'start').length;
       for (const secondsLeft of [1619, 1618, 1617]) await h.update({ secondsLeft });
       assert.equal(h.events.filter(event => event === 'start').length, starts, 'ticks keep existing visible loops instead of registering more');
@@ -96,7 +95,7 @@ for (const compiled of [false, true]) {
     try {
       await h.app('inactive'); assert.equal(h.loops(), 0);
       await h.app('background'); assert.equal(h.loops(), 0);
-      await h.app('active'); assert.equal(h.loops(), 3);
+      await h.app('active'); assert.equal(h.loops(), 2);
       await h.update({ phase: 'paused', walking: false }); assert.equal(h.loops(), 1, 'visible paused camp retains its normal fire glow');
       await h.app('background'); assert.equal(h.loops(), 0);
       await h.app('active'); assert.equal(h.loops(), 1, 'resume visibility must not resume a paused walk');

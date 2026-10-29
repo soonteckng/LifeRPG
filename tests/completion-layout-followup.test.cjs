@@ -33,7 +33,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     React.useImperativeHandle(ref, () => ({scrollTo(){}}));
     return React.createElement('Scroll',values,values.children);
   });
-  const Modal = load('src/components/LevelUpModal.tsx', {
+  const Modal = load('src/components/SessionResultSheet.tsx', {
     'react-native-svg':{__esModule:true,default:host('Svg'),Defs:host('Defs'),RadialGradient:host('RadialGradient'),Rect:host('Rect'),Stop:host('Stop')},
     'react-native':{View:host('View'),Text:host('Text'),Platform:{OS:'android'},StyleSheet:{create:s=>s,hairlineWidth:1},useWindowDimensions:()=>({height,width:390,fontScale})},
     'react-native-safe-area-context':{useSafeAreaInsets:()=>({top:24,bottom:34})},
@@ -47,7 +47,9 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
     'expo-haptics':{},
     '@react-native-async-storage/async-storage':{getItem:async()=>null,setItem:async()=>{}},
   }).default;
-  const initial = {visible:true,sessionId:'one',durationSeconds:60,xpEarned:1,onClose(){},...props};
+  // The result host passes its save action in, as the app does.
+  const Save = () => saveVisible ? React.createElement('Button',{},'Save as quest') : null;
+  const initial = {visible:true,sessionId:'one',durationSeconds:60,saveAction:React.createElement(Save),onClose(){},...props};
   let tree;
   await act(async()=>{tree=create(React.createElement(Modal,initial));});
   return {
@@ -60,7 +62,7 @@ async function resultScreen({height = 844, fontScale = 1, showSave = true, props
       tree.root.findByProps({testID:'session-result-body'}).props.onLayout({nativeEvent:{layout:{height:body}}});
       tree.root.findByProps({testID:'session-result-actions'}).props.onLayout({nativeEvent:{layout:{height:actions}}});
     }),
-    update:async(next)=>act(async()=>tree.update(React.createElement(Modal,{...initial,...next}))),
+    update:async(next)=>act(async()=>tree.update(React.createElement(Modal,{...initial,saveAction:React.createElement(Save),...next}))),
     removeSave:()=>{saveVisible=false;},
     cleanup:async()=>act(async()=>tree.unmount()),
   };
@@ -123,11 +125,12 @@ test('offline pending Done stays reachable during sync and the same result becom
     assert.equal(closes,1,'Done does not wait for a cloud reply');
     await ui.update({visible:false});
     await act(async()=>ui.sheet().props.onDismiss());
-    await ui.update({visible:true,pending:false,localSaved:false,syncBusy:false,recovered:true,xpEarned:1,areaXpEarned:null,creditVersion:1,completedAtMs:Date.UTC(2026,9,13,4)});
+    await ui.update({visible:true,pending:false,localSaved:false,syncBusy:false,recovered:true,completedAtMs:Date.UTC(2026,9,13,4)});
     assert.match(text(ui.tree.root),/Earlier session saved/);
     assert.match(text(ui.tree.root),/Finished.*13 Oct 2026/);
     assert.equal(ui.tree.root.findAllByProps({testID:'session-arrival'}).length,1,'online and offline use the same arrival banner');
-    assert.match(text(ui.tree.root),/Character XP\+1/);
+    assert.match(text(ui.tree.root),/Focus day recorded ✓/);
+    assert.doesNotMatch(text(ui.tree.root),/XP|Level/);
   } finally {await ui.cleanup();}
 });
 

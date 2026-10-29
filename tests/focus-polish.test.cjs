@@ -23,23 +23,7 @@ const content=node=>typeof node==='string'?node:(node.children??[]).map(content)
 const native={View:host('View'),StyleSheet:{create:value=>value,hairlineWidth:0.5},ActivityIndicator:host('Spinner')};
 const sheet=props=>props.visible?React.createElement('Sheet',props,props.header,props.children,props.footer,props.overlay):null;
 
-test('character tiers use the saved XP curve, have exact boundaries and keep growing beyond the last tier',()=>{
- const api=load('src/utils/levelTiers.ts');assert.equal(api.LEVEL_TIERS.length,12);
- assert.equal(api.requiredCharacterXP(1),100);assert.equal(api.requiredCharacterXP(2),282);assert.equal(api.requiredCharacterXP(3),519);
- for(const tier of api.LEVEL_TIERS){let expected=0;for(let level=1;level<tier.level;level++)expected+=api.requiredCharacterXP(level);assert.equal(tier.totalXP,expected);assert.equal(api.levelTierProgress(tier.level,0).current.title,tier.title);if(tier.level>1){const prior=api.levelTierProgress(tier.level-1,api.requiredCharacterXP(tier.level-1)-1);assert.equal(prior.remainingXP,1);assert.ok(prior.fraction<1);}}
- assert.equal(api.levelTierProgress(1,40).remainingXP,342);assert.equal(api.levelTierProgress(1,40).fraction,40/382);
- const gaps=api.LEVEL_TIERS.slice(1).map((tier,i)=>tier.level-api.LEVEL_TIERS[i].level);assert.ok(gaps.every((gap,i)=>i===0||gap>gaps[i-1]));assert.equal(api.LEVEL_TIERS.at(-1).level,100);
- for(let level=2;level<=100;level++)assert.ok(api.requiredCharacterXP(level)>api.requiredCharacterXP(level-1));
- assert.equal(api.levelTierProgress(1000000,700).next,null);assert.equal(api.levelTierProgress(NaN,-1).current.level,1);
-});
 
-test('tier path renders all stages with one current tier and a clear next target',async()=>{
- const api=load('src/components/LevelTierSheet.tsx',{'react-native':native,'@expo/vector-icons':{Ionicons:host('Icon')},'@gorhom/bottom-sheet':{BottomSheetScrollView:host('Scroll'),TouchableOpacity:host('Press')},'react-native-safe-area-context':{useSafeAreaInsets:()=>({bottom:16})},'./AppSheet':sheet,
-   'react-native-svg':{__esModule:true,default:host('Svg'),Path:host('Path')},'./adventurer/ProfilePicture':host('Picture'),
-   '../hooks/useRewards':{useRewards:()=>({look:{skin:'3',hair:'short',hairColor:'darkbrown',glasses:false},equipped:{},background:'bg_dusk',frame:null})}});
- let tree;await act(async()=>{tree=create(React.createElement(api.default,{visible:true,onClose(){},level:3,currentXP:100}));});
- try{assert.match(content(tree.root),/Spark/);assert.match(content(tree.root),/Next tier: Momentum at level 6/);assert.doesNotMatch(content(tree.root),/total XP|more XP|XP to level/);const stages=tree.root.findAllByType('View').filter(node=>node.props.accessibilityLabel?.includes(', Level'));assert.equal(stages.length,12);assert.equal(stages.filter(node=>node.props.accessibilityLabel.includes('current tier')).length,1);assert.equal(tree.root.findByType('Sheet').props.expanded,true);assert.equal((content(tree.root).match(/You’re here/g)||[]).length,1);assert.match(content(tree.root),/Level 3/);const src=require('node:fs').readFileSync(require('node:path').resolve(__dirname,'../src/components/LevelTierSheet.tsx'),'utf8');assert.match(src,/backgroundColor: colors\.level \}/,'the bar and badge use the app\'s level colour');}finally{await act(async()=>tree.unmount());}
-});
 
 test('30/60 presets and Custom respect disabled state and the haptic preference while retaining short custom timers',async()=>{
  let enabled=true,haptics=0;const changes=[];
