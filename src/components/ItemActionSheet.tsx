@@ -42,7 +42,7 @@ const s = StyleSheet.create({
   row: { minHeight: 52, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowText: { color: colors.text, fontSize: 16, lineHeight: 22 }, danger: { color: colors.danger }, disabled: { opacity: 0.5 },
-  remove: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
+  remove: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   keep: { minHeight: 50, alignItems: "center", justifyContent: "center" }, keepText: { color: colors.text, fontSize: 16, fontWeight: "500" },
 });

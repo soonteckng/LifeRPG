@@ -161,10 +161,10 @@ export function studyTime(seconds: number): string {
   return h ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
 }
 
-const COURSE_COLORS = ["#64D2FF", "#30D158", "#FF9F0A", "#BF5AF2", "#FF6482", "#5E5CE6", "#FFD60A", "#63E6BE"];
+const COURSE_COLORS = ["#2E6A9E", "#3F7A5A", "#B4651E", "#7A4C9C", "#A84569", "#5A4FA0", "#8A6A12", "#2F7D74"];
 /** A steady colour per subject, so the same subject looks the same everywhere. */
 export function courseColor(id: string | null | undefined): string {
-  if (!id) return "#8E8E93";
+  if (!id) return "#7A6F78";
   let hash = 0; for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) | 0;
   return COURSE_COLORS[Math.abs(hash) % COURSE_COLORS.length];
 }

@@ -793,7 +793,8 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   const ui = await profileScreen();
   try {
     assert.match(ui.text(), /My Categories/);
-    assert.match(ui.text(), /Lv 2Learning/);
+    assert.match(ui.text(), /0mLearning/, "each category shows its time, not a level");
+    assert.doesNotMatch(ui.text(), /Lv \d|XP|leaderboard/);
     assert.doesNotMatch(
       ui.text(),
       /Connect areas|No Life areas connected|Explore your progress/,
@@ -826,7 +827,7 @@ test("Profile displays saved Life areas directly and keeps Save outside the scro
   }
 });
 
-test("Profile renders one Wellbeing row in the shared direction order with its combined XP meter", async () => {
+test("Profile renders one Wellbeing row in the shared direction order with its combined time", async () => {
   const rows = [
     {...area(1,1,0),title:"General"}, {...area(2,3,20),title:"Fitness & Health"},
     {...area(3,1,0),title:"Life Admin"}, {...area(4,1,0),title:"Creativity"},
@@ -835,12 +836,12 @@ test("Profile renders one Wellbeing row in the shared direction order with its c
   ];
   const ui = await profileScreen({"../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions:[]},loading:false,error:false,refresh:async()=>{}})}});
   try {
-    const displayed = ui.renderer.root.findAllByType("Button").filter(node => typeof node.props.accessibilityLabel === "string" && node.props.accessibilityLabel.includes(", level "));
-    assert.deepEqual(displayed.map(node => node.props.accessibilityLabel.split(", level ")[0]),
+    const displayed = ui.renderer.root.findAllByType("Button").filter(node => typeof node.props.accessibilityLabel === "string" && node.props.accessibilityLabel.endsWith(" in total. View details"));
+    assert.deepEqual(displayed.map(node => node.props.accessibilityLabel.split(", ")[0]),
       ["Learning","Work & projects","Creativity","Everyday life","Wellbeing","Everyday focus"]);
     const wellbeing = displayed[4];
-    assert.equal(wellbeing.props.accessibilityLabel,"Wellbeing, level 3, 125 of 150 XP to the next level. View details");
-    assert.equal(wellbeing.findByType("Meter").props.value,125/150);
+    assert.equal(wellbeing.props.accessibilityLabel,"Wellbeing, 0m in total. View details", "time, never a level or XP");
+    assert.equal(wellbeing.findByType("Meter").props.value,0);
   } finally {await ui.cleanup();}
 });
 
@@ -861,7 +862,7 @@ test("a focus area opens its details and starts a session there once the sheet h
   try {
     const sheet = () => ui.renderer.root.findByType("AreaSheet").props;
     assert.equal(sheet().visible, false);
-    const tile = ui.renderer.root.findAllByType("Button").find(node => String(node.props.accessibilityLabel).startsWith("Wellbeing, level"));
+    const tile = ui.renderer.root.findAllByType("Button").find(node => String(node.props.accessibilityLabel).startsWith("Wellbeing, "));
     await act(async () => tile.props.onPress());
     assert.equal(sheet().visible, true);
     assert.equal(sheet().area.title, "Wellbeing");
@@ -887,7 +888,7 @@ test("Profile subject breakdown uses the same completed aliases as its category 
   ];
   const ui = await profileScreen({"../../hooks/useCharacterData":{useCharacterData:()=>({data:{areas:rows,sessions},loading:false,error:false,refresh:async()=>{}})}});
   try {
-    const tile = ui.renderer.root.findAllByType("Button").find(node => String(node.props.accessibilityLabel).startsWith("Learning, level"));
+    const tile = ui.renderer.root.findAllByType("Button").find(node => String(node.props.accessibilityLabel).startsWith("Learning, "));
     await act(async () => tile.props.onPress());
     const sheet = ui.renderer.root.findByType("AreaSheet").props;
     assert.equal(sheet.detail.seconds, 480, "all-time category detail retains the older session");

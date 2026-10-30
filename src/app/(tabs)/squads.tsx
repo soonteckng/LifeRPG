@@ -21,7 +21,7 @@ import { studyTime } from "../../utils/studyPlan";
 
 /**
  * Squads. In one squad (most people's case), the tab is that squad in full:
- * your week together, the leaderboard and the invite. In two or more, one big
+ * your week together, its members and the invite. In two or more, one big
  * card for each; tap one and the whole squad rises from the bottom.
  */
 export default function SquadsScreen() {
@@ -43,7 +43,7 @@ function SquadsTab() {
   const detail = useSquadDetail(only, squads);
   if (only) return <View style={s.screen}>
     {/* Joining or starting another squad sits up top, beside the squad's options. */}
-    <PersonalPage title="Squads" subtitle="" compact bottomContentInset={bottomInset}
+    <PersonalPage title="Squads" subtitle="" compact today bottomContentInset={bottomInset}
       action={squads.online ? <View style={s.actions}>
         <CircleButton size={36} label="Join or start another squad" onPress={detail.join} />
         <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" />
@@ -53,7 +53,7 @@ function SquadsTab() {
     {detail.sheets}
   </View>;
   return <View style={s.screen}>
-    <PersonalPage title="Squads" subtitle="" compact bottomContentInset={bottomInset}
+    <PersonalPage title="Squads" subtitle="" compact today bottomContentInset={bottomInset}
       action={squads.online && <CircleButton size={36} label="Join or start a squad" onPress={() => setJoining(true)} />}>
       <ContentReveal><View style={s.stack}>
         {!squads.online && <Text style={s.offline} testID="squads-offline">{squads.squads.length ? "Offline · showing your squads as last saved. Changes need internet." : "Offline · squads need internet."}</Text>}

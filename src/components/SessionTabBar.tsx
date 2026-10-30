@@ -4,8 +4,7 @@ import { useFeatureTour } from "./FeatureTour";
 import { Text } from "./AppText";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { BottomTabBar, type BottomTabBarProps } from "expo-router/js-tabs";
-import { useEffect, useRef } from "react";
+import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { StyleSheet, TouchableOpacity, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "../constants/theme";
@@ -15,8 +14,10 @@ import { sessionDockState } from "../utils/sessionReporting";
 import { PinnedActionHost, usePinnedActionPresent } from "./PinnedAction";
 import OfflineStatus from "./OfflineStatus";
 
-// Float only the pill and session banner over tab content, beneath the root modal.
-// It cannot draw over Session while Session is entering or leaving.
+// There is no tab bar: Today is home and every page opens from it. What floats
+// at the bottom is only what you need wherever you are: the way back into an
+// open session, the offline notice and a page's pinned action. It sits beneath
+// the root modal, so it never draws over Session while Session moves.
 export default function SessionTabBar(props: BottomTabBarProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -31,17 +32,7 @@ export default function SessionTabBar(props: BottomTabBarProps) {
   const route = props.state?.routes?.[props.state.index]?.name ?? "index";
   const pinned = usePinnedActionPresent(route);
   const layoutKey = floatingDockKey(bannerVisible, insets.bottom, width, fontScale, pinned);
-  // The guide can point at a single tab: the pill is five equal slots.
-  const bar = useRef<View>(null), register = tour?.register;
-  useEffect(() => {
-    if (!register) return;
-    const offs = GUIDE_TABS.map((name, index) => register(`tab-${name}`, {
-      measure: done => bar.current?.measureInWindow((x, y, w, h) => done({ x: x + (w * index) / GUIDE_TABS.length, y, width: w / GUIDE_TABS.length, height: h })),
-      reveal: () => false,
-    }));
-    return () => offs.forEach(off => off());
-  }, [register]);
-  return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+  return <View pointerEvents="box-none" onLayout={event => { measure?.(layoutKey, event.nativeEvent.layout.height); tour?.reportDock?.(event.nativeEvent.layout.height); }} style={[styles.dock, { paddingBottom: bannerVisible || pinned ? Math.max(insets.bottom, 12) : insets.bottom }]}>
     {/* A floating dock: nothing paints behind the bars, so the page stays
       visible around them and only the bars themselves sit on top. */}
     {/* Floats just above the dock, over the content, with no bar behind it. */}
@@ -58,10 +49,8 @@ export default function SessionTabBar(props: BottomTabBarProps) {
       </View>
       <View style={styles.bannerCircle}><Ionicons name="chevron-up" size={20} color={colors.primary} /></View>
     </TouchableOpacity>}
-    <View ref={bar} collapsable={false}><BottomTabBar {...props} /></View>
   </View>;
 }
-const GUIDE_TABS = ["index", "routines", "study", "squads", "progress"] as const;
 const styles = StyleSheet.create({
   dock: { position: "absolute", bottom: 0, left: 0, right: 0, backgroundColor: "transparent", paddingHorizontal: 20, paddingTop: 10, gap: 10 },
   offline: { position: "absolute", top: -42, left: 20, right: 20 },
@@ -71,6 +60,6 @@ const styles = StyleSheet.create({
   bannerCopy: { flex: 1, minWidth: 0, gap: 1 },
   bannerLabel: { flexDirection: "row", alignItems: "center", gap: 6 },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(255,255,255,0.22)" },
-  progressFill: { height: 4, backgroundColor: "rgba(255,255,255,0.9)" },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(246,242,236,0.28)" },
+  progressFill: { height: 4, backgroundColor: "rgba(246,242,236,0.92)" },
 });

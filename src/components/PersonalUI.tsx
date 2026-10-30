@@ -42,7 +42,10 @@ export function PersonalPage({
   fallback = "/profile",
   footer,
   pinned,
+  today = false,
 }: {
+  /** A page that opens from Today, with a "Today" link back. */
+  today?: boolean;
   title: string;
   subtitle: string;
   children: ReactNode;
@@ -151,7 +154,7 @@ export function PersonalPage({
       onLayout={() => { if (expandFromIcon) surface.current?.measureInWindow((x, y, measuredWidth, measuredHeight) => { if (measuredWidth > 0 && measuredHeight > 0) { setFrame(previous => previous.x === x && previous.y === y && previous.width === measuredWidth && previous.height === measuredHeight ? previous : { x, y, width: measuredWidth, height: measuredHeight }); setFrameReady(true); } }); }}
       style={{ flex: 1 }}
     >{expandFromIcon && <Animated.View pointerEvents="none" testID="personal-page-dim"
-      style={[StyleSheet.absoluteFill, { backgroundColor: "#000000", opacity: position.interpolate({ inputRange: [0, 1], outputRange: [0.5, 0], extrapolate: "clamp" }) }]} />}
+      style={[StyleSheet.absoluteFill, { backgroundColor: "#2A2028", opacity: position.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0], extrapolate: "clamp" }) }]} />}
       {/* Home dims softly behind a page growing out of its button. */}
       <ParallaxLayer above={above} width={width}><SwipeBack enabled={slides && !exitReady} onBack={swiped} offset={offset}><Animated.View
       renderToHardwareTextureAndroid={controlled}
@@ -176,7 +179,7 @@ export function PersonalPage({
           />
         )}
         {floatingAction && <View style={{ minHeight: 44, paddingHorizontal: 20, flexDirection:"row", justifyContent:"flex-end", alignItems:"center" }}>{action}</View>}
-        {!back && !floatingAction && <AppHeader title={title} action={action} />}
+        {!back && !floatingAction && <AppHeader title={title} action={action} onToday={today ? () => router.navigate("/") : undefined} />}
         {pinned && <View style={{ paddingHorizontal: 20, paddingTop: 4, paddingBottom: 10, gap: 12 }}>{pinned}</View>}
         <TourScrollView
           tourBottomInset={bottomContentInset}
@@ -311,9 +314,10 @@ export const p = StyleSheet.create({
   },
   pageTitle: {
     color: colors.text,
-    fontSize: 32,
-    fontWeight: "500",
-    letterSpacing: -1,
+    fontSize: 34,
+    fontFamily: "display",
+    fontWeight: "400",
+    letterSpacing: -0.8,
   },
   content: { padding: 20, paddingTop: 8, paddingBottom: 48 },
   flex: { flex: 1, minWidth: 0 },
@@ -332,9 +336,10 @@ export const p = StyleSheet.create({
   },
   title: {
     color: colors.text,
-    fontSize: 20,
+    fontSize: 22,
+    fontFamily: "display",
     fontWeight: "500",
-    letterSpacing: -0.4,
+    letterSpacing: -0.3,
   },
   sectionLabel: { ...type.section },
   body: { ...type.body, color: colors.secondary },
@@ -400,8 +405,9 @@ export const p = StyleSheet.create({
   },
   value: {
     color: colors.text,
-    fontSize: 28,
-    fontWeight: "500",
+    fontSize: 30,
+    fontFamily: "display",
+    fontWeight: "400",
     fontVariant: ["tabular-nums"],
   },
 });

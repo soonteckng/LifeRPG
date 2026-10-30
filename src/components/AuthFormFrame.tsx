@@ -182,7 +182,7 @@ export default function AuthFormFrame({ title, description, transitionKey, hero,
                   <View style={{ position: "absolute", top: 17, right: 14, width: 9, height: 9, borderRadius: 5, backgroundColor: colors.success }} />
                 </View>}
                 <Text style={{ color: colors.accent, fontSize: 13, lineHeight: 18, letterSpacing: 2.4, fontWeight: "600" }}>LIFERPG</Text>
-                <Text style={[p.pageTitle, { fontSize: compact ? 28 : 34, lineHeight: compact ? 35 : 42, letterSpacing: -0.8, textAlign: "center" }]}
+                <Text style={[p.pageTitle, { fontSize: compact ? 30 : 38, lineHeight: compact ? 36 : 44, fontFamily: "display", fontWeight: "400", letterSpacing: -0.8, textAlign: "center" }]}
                   accessibilityRole="header">{title}</Text>
                 {!compact && description && <Text style={{ color: colors.secondary, fontSize: 16, lineHeight: 22, textAlign: "center", maxWidth: 310 }}>{description}</Text>}
               </View>

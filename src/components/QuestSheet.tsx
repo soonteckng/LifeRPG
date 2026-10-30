@@ -421,7 +421,7 @@ const styles = StyleSheet.create({
   form: { gap: 14, paddingTop: 12 },
   field: { gap: 8 },
   label: { color: colors.text, fontSize: 14, fontWeight: "500" },
-  input: { color: colors.text, backgroundColor: "rgba(255,255,255,0.04)", ...edge, borderRadius: 12, minHeight: 50, padding: 14, fontSize: 16, textAlignVertical: "top" },
+  input: { color: colors.text, backgroundColor: colors.inputFill, ...edge, borderRadius: 12, minHeight: 50, padding: 14, fontSize: 16, textAlignVertical: "top" },
   daysRow: { flexDirection: "row", gap: 4 },
   dayContainer: { flex: 1, minWidth: 0 },
   day: { minHeight: 44, borderRadius: 10, ...edge, alignItems: "center", justifyContent: "center" },

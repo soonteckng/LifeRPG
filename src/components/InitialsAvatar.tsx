@@ -4,7 +4,7 @@ import { Text } from "./AppText";
 import { colors } from "../constants/theme";
 
 /** Quiet, readable tints; text stays light on every one of them. */
-const TINTS = ["#3B4A7A", "#5A3D6E", "#2F5E4B", "#6A4A3B", "#2E5470", "#6B3F52", "#4A5A2F", "#4B4570"] as const;
+const TINTS = ["#3B2737", "#6E4F7A", "#3F6F5A", "#7A4E35", "#2E5A7A", "#8A3F5E", "#55602F", "#4F4A85"] as const;
 
 /** Up to two letters from a name: "Soon Teck" → "ST", "aina" → "A". */
 export function initialsOf(name: string | null | undefined): string {
@@ -36,5 +36,5 @@ export default memo(function InitialsAvatar({ name, id, size = 44, focusing = fa
 
 const s = StyleSheet.create({
   circle: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  text: { color: "#F5F7FF", fontWeight: "700" },
+  text: { color: "#F6F2EC", fontWeight: "600" },
 });

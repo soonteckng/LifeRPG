@@ -80,22 +80,22 @@ export default function SettingsScreen() {
 
       <SettingsGroup title="Focus">
         <SettingsRow first icon="flag-outline" title="Daily goal" value={goalValue} onPress={() => router.navigate("/settings-goal")} />
-        <SettingsRow icon="time-outline" tint="#64D2FF" title="Sessions" value={duration.ready ? durationLabel(duration.selectedSeconds) : ""} onPress={() => router.navigate("/settings-sessions")} />
-        {Platform.OS === "android" && <SettingsRow icon="shield-checkmark-outline" tint="#30D158" title="Session protection" onPress={() => router.navigate("/protection")} />}
+        <SettingsRow icon="time-outline" title="Sessions" value={duration.ready ? durationLabel(duration.selectedSeconds) : ""} onPress={() => router.navigate("/settings-sessions")} />
+        {Platform.OS === "android" && <SettingsRow icon="shield-checkmark-outline" title="Session protection" onPress={() => router.navigate("/protection")} />}
       </SettingsGroup>
 
       <SettingsGroup title="Feel" footer={preferenceError ?? undefined}>
-        <SettingsRow first icon="phone-portrait-outline" tint="#FF9F0A" title="Haptic feedback"
+        <SettingsRow first icon="phone-portrait-outline" title="Haptic feedback"
           toggle={{ value: hapticsEnabled, onChange: value => { setHapticsEnabled(value); setTapHapticsEnabled(value); if (value) tapHaptic(); } }} />
       </SettingsGroup>
 
       <SettingsGroup title="Notifications">
-        <SettingsRow first icon="notifications-outline" tint="#FF6961" title="Notifications" value={permission ? !permission.supported ? "Unavailable" : permission.granted ? "On" : "Off" : ""} onPress={() => router.navigate("/settings-notifications")} />
-        <SettingsRow icon="calendar-outline" tint="#FF6961" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
+        <SettingsRow first icon="notifications-outline" title="Notifications" value={permission ? !permission.supported ? "Unavailable" : permission.granted ? "On" : "Off" : ""} onPress={() => router.navigate("/settings-notifications")} />
+        <SettingsRow icon="calendar-outline" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
       </SettingsGroup>
 
       <SettingsGroup title="Help">
-        <SettingsRow first icon="information-circle-outline" tint="#64D2FF" title="How LifeRPG works" onPress={() => router.navigate("/guide")} />
+        <SettingsRow first icon="information-circle-outline" title="How LifeRPG works" onPress={() => router.navigate("/guide")} />
       </SettingsGroup>
 
       <DeveloperTools />

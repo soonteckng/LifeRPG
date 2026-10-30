@@ -34,7 +34,7 @@ export function EditBadges({ name, onEdit, onRemove, placement = "inline" }: {
     {onEdit && <Pressable onPress={onEdit} accessibilityRole="button" accessibilityLabel={`Edit ${name}`} hitSlop={6} style={[s.badge, placement === "corner" ? s.ring : s.large, s.edit]}>
       <Ionicons name="pencil" size={13} color={colors.text} /></Pressable>}
     {onRemove && <Pressable onPress={onRemove} accessibilityRole="button" accessibilityLabel={`Remove ${name}`} hitSlop={6} style={[s.badge, placement === "corner" ? s.ring : s.large, s.remove]}>
-      <Ionicons name="remove" size={16} color="#FFFFFF" /></Pressable>}
+      <Ionicons name="remove" size={16} color={colors.primaryText} /></Pressable>}
   </View>;
 }
 

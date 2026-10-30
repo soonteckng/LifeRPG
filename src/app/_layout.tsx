@@ -2,7 +2,7 @@ import { colors } from "../constants/theme";
 import { Text } from "../components/AppText";
 import { Stack, usePathname, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BackHandler, Platform, ActivityIndicator, View } from "react-native";
+import { BackHandler, Platform, ActivityIndicator, StatusBar, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import Constants from "expo-constants";
 
@@ -246,7 +246,7 @@ function ProfileGate() {
         style={[p.page, { justifyContent: "center", padding: 28, gap: 18 }]}
       >
         {profileLoading ? (
-          <ActivityIndicator />
+          <ActivityIndicator color={colors.accent} />
         ) : (
           <>
             <Text style={p.error}>
@@ -310,7 +310,7 @@ function AuthGate() {
   if (loading) {
     return (
       <View style={[p.page, { justifyContent: "center" }]}>
-        <ActivityIndicator />
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
@@ -333,7 +333,9 @@ function AuthGate() {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* Dark icons on the paper background; the session scene turns them light. */}
+      <StatusBar barStyle="dark-content" />
       <LaunchIntro><AuthProvider>
         <AuthGate />
       </AuthProvider></LaunchIntro>

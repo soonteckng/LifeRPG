@@ -127,7 +127,7 @@ const s = StyleSheet.create({
   status: { flexDirection: "row", alignItems: "center", gap: 8 },
   statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.protection },
   statusText: { color: colors.secondary, fontSize: 11, lineHeight: 16, fontWeight: "700", letterSpacing: 1.2, flexShrink: 1 },
-  icon: { width: 60, height: 60, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(45,212,167,0.12)" },
+  icon: { width: 60, height: 60, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(63,111,90,0.12)" },
   title: { color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: "700", letterSpacing: -0.4 },
   copy: { color: colors.secondary, fontSize: 15, lineHeight: 22 },
   current: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: radius.row, backgroundColor: colors.surfaceRaised },

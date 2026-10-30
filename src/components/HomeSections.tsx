@@ -13,7 +13,7 @@ import ExamsCard from "./ExamsCard";
 import SectionHeader, { DoneButton, SeeAll } from "./SectionHeader";
 import StudyExamSheet from "./StudyExamSheet";
 import { SquadFace, SquadJoinSheet } from "./SquadSheets";
-import { SquadSummary, daysLeftInWeek, yourPlace } from "./SquadsSection";
+import { SquadSummary, daysLeftInWeek } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { useSquads } from "../hooks/useSquads";
@@ -24,7 +24,7 @@ import { useTimer } from "../context/TimerContext";
 import { squadSelection } from "../services/squadSelection";
 import { suggestedArea } from "../utils/focusAreas";
 import { daysUntil, studyTime, upcomingExams } from "../utils/studyPlan";
-import { goalProgress, squadTotal, standings } from "../utils/squads";
+import { circleOrder, goalProgress, squadTotal } from "../utils/squads";
 import { buildProgress, dateKey, DEFAULT_TIMEZONE, durationLabel, periodFor } from "../utils/progressAnalytics";
 import type { StudyExam } from "../types/studyPlan";
 
@@ -78,7 +78,7 @@ export function HomeExams() {
   </View>;
 }
 
-/** Your squad's week. Tapping it peeks at the leaderboard; the Squads tab has the whole squad. */
+/** Your squad's week. Tapping it peeks at who's in it; the Squads tab has the whole squad. */
 export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   const router = useRouter(), squads = useSquads(), insets = useSafeAreaInsets();
   const chosen = squadSelection.get();
@@ -93,10 +93,10 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   // opening a second copy of it.
   const openSquad = () => { setPeek(false); setTimeout(() => { if (squad) { squadSelection.choose(squad.id); router.navigate(squads.squads.length === 1 ? "/squads" : "/squad"); } }, 220); };
   const share = () => { if (squad) void Share.share({ message: `Join my squad "${squad.name}" with the code ${squad.code}.` }).catch(() => {}); };
-  const top = squad ? standings(squad).slice(0, 3) : [];
+  const top = squad ? circleOrder(squad).slice(0, 4) : [];
   // On Home the squad sits beside This week as a small tile.
   const progress = squad ? goalProgress(squad) : null, left = tile ? daysLeftInWeek() : 0;
-  const live = squad ? squad.members.filter(member => member.focusingNow).length : 0, place = tile && squad ? yourPlace(squad) : null;
+  const live = squad ? squad.members.filter(member => member.focusingNow).length : 0;
   // The whole tile is one tap target: its contents never take the touch.
   const tileCard = squad ? <View style={[s.card, s.tile]}>
     <View style={s.tileFill} importantForAccessibility="no-hide-descendants">
@@ -105,7 +105,7 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
     {/* Who's in it, so the tile feels like your people rather than a number. */}
     <View style={s.tileFaces}>
       {squad.members.slice(0, 4).map((member, index) => <View key={member.id} style={[s.tileFace, index > 0 && { marginLeft: -8 }]}><SquadFace member={member} size={30} ring={colors.surface} /></View>)}
-      <Text style={[s.caption, s.flex]} numberOfLines={1}>{live ? `${live} focusing now` : place ? place[0].toUpperCase() + place.slice(1) : `${squad.members.length} ${squad.members.length === 1 ? "member" : "members"}`}</Text>
+      <Text style={[s.caption, s.flex]} numberOfLines={1}>{live ? `${live} focusing now` : `${squad.members.length} ${squad.members.length === 1 ? "member" : "members"}`}</Text>
     </View>
     <View style={s.tileFoot}>
       <Text style={s.caption} numberOfLines={1}><Text style={s.tileStrong}>{studyTime(squadTotal(squad))}</Text>{squad.goalMinutes ? ` / ${squad.goalMinutes / 60}h` : " together"}</Text>
@@ -115,7 +115,7 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
     </View>
     {/* One clear layer over the whole card takes every tap, wherever it lands. */}
     <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad" style={s.tileTap}
-      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} />
+      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show who's in it`} />
   </View> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
     accessibilityLabel={squads.online ? "Focus with friends. Join or start a squad" : "Focus with friends. Needs internet"} testID="home-squad-empty" style={[s.card, s.tile]}>
     <View style={s.tileHead}><Text style={s.tileLabel}>Squad</Text>{squads.online && <Ionicons name="add-circle" size={22} color={colors.accent} />}</View>
@@ -126,7 +126,7 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
     {tile ? tileCard : <><SectionHeader title="My Squad" subtitle={!squads.online ? squad ? "Offline · last saved" : undefined : squad && squads.squads.length > 1 ? `${squads.squads.length} squads · showing ${squad.name}` : undefined}
       onPress={squad ? openSquads : undefined} pressLabel="My Squad. Open Squads" />
     {squad ? <Pressable onPress={() => setPeek(true)} accessibilityRole="button" testID="home-squad"
-      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show leaderboard`} style={s.card}>
+      accessibilityLabel={`${squad.name}, ${studyTime(squadTotal(squad))} together this week${squad.goalMinutes ? ` of ${squad.goalMinutes / 60} hours` : ""}. Show who's in it`} style={s.card}>
       <SquadSummary squad={squad} />
     </Pressable> : <Pressable disabled={!squads.online} onPress={() => setJoining(true)} accessibilityRole="button" accessibilityState={{ disabled: !squads.online }}
       accessibilityLabel={squads.online ? "Focus with friends. Join or start a squad" : "Focus with friends. Needs internet"} testID="home-squad-empty" style={[s.card, s.row]}>
@@ -135,15 +135,14 @@ export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
       {squads.online && <Ionicons name="add-circle" size={24} color={colors.accent} />}
     </Pressable>}</>}
     {squad && <AppSheet visible={peek} onRequestClose={() => setPeek(false)} attached compact maxHeightRatio={0.86} label="squad peek" motionMode="timed"
-      header={<SheetHeader title={squad.name} subtitle="This week’s leaderboard" onClose={() => setPeek(false)} />}>
+      header={<SheetHeader title={squad.name} subtitle="Your circle this week" onClose={() => setPeek(false)} />}>
       <BottomSheetScrollView contentContainerStyle={[s.sheetBody, { paddingBottom: Math.max(insets.bottom, 16) + 8 }]}>
         <Pressable onPress={openSquad} accessibilityRole="button" accessibilityLabel={`${squad.name}. Open squad`} testID="home-squad-open" style={[s.card, s.sheetCard]}><SquadSummary squad={squad} /></Pressable>
-        <View style={[s.group, s.sheetGroup]}>{top.map(({ member, place }, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
-          accessibilityLabel={`${place ? `${place}.` : "Not ranked yet."} ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)}`}>
-          <Text style={[s.rank, place === 1 && { color: colors.level }]}>{place ?? "–"}</Text>
+        <View style={[s.group, s.sheetGroup]}>{top.map((member, index) => <View key={member.id} style={[s.rankRow, index > 0 && s.line]} accessible
+          accessibilityLabel={`${member.name}${member.isYou ? ", you" : ""}, ${member.focusingNow ? "focusing now" : member.weekSeconds > 0 ? `${studyTime(member.weekSeconds)} this week` : "not started this week"}`}>
           <SquadFace member={member} size={32} ring={colors.sheetCard} />
           <Text style={[s.name, s.flex]} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
-          <Text style={s.time}>{place ? studyTime(member.weekSeconds) : "–"}</Text>
+          <Text style={[s.time, member.focusingNow && { color: colors.success }]}>{member.focusingNow ? "Focusing" : member.weekSeconds > 0 ? studyTime(member.weekSeconds) : "–"}</Text>
         </View>)}</View>
         <Pressable onPress={openSquad} accessibilityRole="button" accessibilityLabel="See the whole squad" style={s.primary}>
           <Text style={s.primaryText}>See the whole squad</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
@@ -232,8 +231,8 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
           <View style={s.areaTrack}><View style={[s.areaFill, { width: `${Math.max(4, Math.round(100 * area.seconds / top))}%`, backgroundColor: area.color }]} /></View>
           <Text style={s.time}>{durationLabel(area.seconds)}</Text>
         </View>) : <Text style={[s.caption, s.pad]}>{week ? "Finish a session and your categories show here." : "Checking your categories…"}</Text>}</View>
-        <Pressable onPress={() => { setOpen(false); setTimeout(() => router.navigate("/progress"), 220); }} accessibilityRole="button" accessibilityLabel="Open Progress" style={s.primary}>
-          <Text style={s.primaryText}>Open Progress</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
+        <Pressable onPress={() => { setOpen(false); setTimeout(() => router.navigate("/progress"), 220); }} accessibilityRole="button" accessibilityLabel="Open your rhythm" style={s.primary}>
+          <Text style={s.primaryText}>Open your rhythm</Text><Ionicons name="arrow-forward" size={17} color={colors.primaryText} /></Pressable>
       </BottomSheetScrollView>
     </AppSheet>
   </View>;
@@ -264,20 +263,19 @@ const s = StyleSheet.create({
   sheetBody: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
   row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14 },
   icon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  examIcon: { backgroundColor: "rgba(255,105,97,0.14)" },
+  examIcon: { backgroundColor: colors.dangerSoft },
   name: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
   caption: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, pad: { padding: 14 },
   week: { flexDirection: "row", alignItems: "center", gap: 16 },
   total: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", fontVariant: ["tabular-nums"], letterSpacing: -0.5 },
   bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" }, barsWide: { justifyContent: "space-between", gap: 0 },
   barColumn: { width: 12, alignItems: "center", gap: 4 }, barColumnWide: { width: 28 },
-  barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: "rgba(255,255,255,0.05)" }, barTrackWide: { width: 22, borderRadius: 6 },
-  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(45,212,167,0.45)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.progress },
+  barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: colors.track }, barTrackWide: { width: 22, borderRadius: 6 },
+  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(110,79,122,0.42)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.progress },
   day: { color: colors.tertiary, fontSize: 10, fontWeight: "600" }, dayToday: { color: colors.text },
   goalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "transparent" }, goalDotOn: { backgroundColor: colors.success },
   rankRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  rank: { width: 16, textAlign: "center", color: colors.secondary, fontSize: 15, fontWeight: "700" },
   time: { color: colors.secondary, fontSize: 14, fontWeight: "600", fontVariant: ["tabular-nums"], minWidth: 52, textAlign: "right" },
   areaRow: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 14 },
   dot: { width: 9, height: 9, borderRadius: 5 },

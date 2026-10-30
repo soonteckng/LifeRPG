@@ -150,10 +150,10 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
       <Text style={s.label}>Details</Text>
       <View style={s.group}>
       <FocusLengthControl compact flat showLabel={false} seconds={draft.durationSeconds} disabled={busy} onChange={durationSeconds => setDraft(previous => ({ ...previous, durationSeconds }))} />
-      <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="notifications-outline" size={17} color={colors.secondary} /></View><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ true: colors.accentFill }} /></View>
+      <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="notifications-outline" size={17} color={colors.secondary} /></View><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ false: colors.track, true: colors.accentFill }} thumbColor={colors.surfaceRaised} /></View>
       {!routine && widgetOnSave && <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="grid-outline" size={17} color={colors.secondary} /></View>
         <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Put it on your home screen once it’s saved.</Text></View>
-        <Switch accessibilityLabel="Add a home screen widget after saving" value={addWidget} disabled={busy} onValueChange={value => { feedback(); setAddWidget(value); }} trackColor={{ true: colors.accentFill }} /></View>}
+        <Switch accessibilityLabel="Add a home screen widget after saving" value={addWidget} disabled={busy} onValueChange={value => { feedback(); setAddWidget(value); }} trackColor={{ false: colors.track, true: colors.accentFill }} thumbColor={colors.surfaceRaised} /></View>}
       {routine && onAddWidget && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Add widget to your home screen" onPress={onAddWidget} style={[s.groupRow, s.divider]}>
         <View style={s.groupIcon}><Ionicons name="grid-outline" size={17} color={colors.secondary} /></View>
         <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Start this routine from your phone’s home screen.</Text></View>
@@ -177,11 +177,11 @@ const s = StyleSheet.create({
   group: { ...edge, borderRadius: 16, backgroundColor: colors.sheetCard, overflow: "hidden" },
   groupRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   divider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  groupIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.08)" },
+  groupIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   lockedArea: { ...edge, minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.sheetCard },
   lockedDot: { width: 10, height: 10, borderRadius: 5 },
   time: { flexDirection: "row", gap: 12 }, reminder: { ...edge, flexDirection: "row", alignItems: "center", gap: 12, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard }, footerArea: { paddingHorizontal: 16, paddingTop: 12, gap: 10, backgroundColor: colors.surfaceRaised }, footer: { flexDirection: "row", gap: 10 }, saveCell: { flex: 1 }, footerError: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 }, inputError: { borderWidth: 1, borderColor: colors.danger },
   permission: { ...edge, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard, gap: 8 }, permissionAction: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.selection }, permissionActionText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 }, primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
-  remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
+  remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
 });

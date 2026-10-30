@@ -75,17 +75,17 @@ export default function DeveloperTools() {
     <SettingsGroup title="Developer" footer={message || busySession || "Only your developer account sees this. Previews never save anything."}>
       <SettingsRow first icon="share-outline" title="Share session log" subtitle="Share this phone's recent timer events" testID="dev-share-session-log"
         busy={sharingLog} disabled={sharingLog} onPress={() => void shareLog()} />
-      <SettingsRow icon="map-outline" tint="#7C3AED" title="Replay the guide" disabled={hasOpenSession || !tour} onPress={() => { setMessage(""); tour?.start(); }} />
-      <SettingsRow icon="refresh-outline" tint="#FF9F0A" title="Restart the intro" disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
+      <SettingsRow icon="map-outline" title="Replay the guide" disabled={hasOpenSession || !tour} onPress={() => { setMessage(""); tour?.start(); }} />
+      <SettingsRow icon="refresh-outline" title="Restart the intro" disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
     </SettingsGroup>
     <SettingsGroup title="Developer: session cards" footer="The real cards with sample numbers. They don't add time, streak days or squad time.">
-      <SettingsRow wrap first icon="checkmark-circle-outline" tint="#2DD4A7" title="Session complete" testID="dev-preview-complete" disabled={hasOpenSession} onPress={() => open("complete")} />
-      <SettingsRow wrap icon="cloud-done-outline" tint="#64D2FF" title="Earlier session saved" testID="dev-preview-recovered" disabled={hasOpenSession} onPress={() => open("recovered")} />
-      <SettingsRow wrap icon="stop-circle-outline" tint="#A3ABC2" title="Session ended early" testID="dev-ended-result" disabled={hasOpenSession} onPress={() => open("ended")} />
-      <SettingsRow wrap icon="cloud-offline-outline" tint="#A3ABC2" title="Saved offline result" testID="dev-offline-result" disabled={hasOpenSession} onPress={() => open("offline")} />
-      <SettingsRow wrap icon="cloud-done-outline" tint="#64D2FF" title="Offline sync summary" subtitle="Three 1-minute sessions, one summary" testID="dev-sync-summary" disabled={hasOpenSession} onPress={() => open("sync")} />
-      <SettingsRow wrap icon="information-circle-outline" tint="#FF9F0A" title="Session could not be credited" testID="dev-rejected-result" disabled={hasOpenSession} onPress={() => open("rejected")} />
-      <SettingsRow wrap icon="hourglass-outline" tint="#A3ABC2" title="Saving screen" testID="dev-saving-preview" onPress={() => setSaving(true)} />
+      <SettingsRow wrap first icon="checkmark-circle-outline" title="Session complete" testID="dev-preview-complete" disabled={hasOpenSession} onPress={() => open("complete")} />
+      <SettingsRow wrap icon="cloud-done-outline" title="Earlier session saved" testID="dev-preview-recovered" disabled={hasOpenSession} onPress={() => open("recovered")} />
+      <SettingsRow wrap icon="stop-circle-outline" title="Session ended early" testID="dev-ended-result" disabled={hasOpenSession} onPress={() => open("ended")} />
+      <SettingsRow wrap icon="cloud-offline-outline" title="Saved offline result" testID="dev-offline-result" disabled={hasOpenSession} onPress={() => open("offline")} />
+      <SettingsRow wrap icon="cloud-done-outline" title="Offline sync summary" subtitle="Three 1-minute sessions, one summary" testID="dev-sync-summary" disabled={hasOpenSession} onPress={() => open("sync")} />
+      <SettingsRow wrap icon="information-circle-outline" title="Session could not be credited" testID="dev-rejected-result" disabled={hasOpenSession} onPress={() => open("rejected")} />
+      <SettingsRow wrap icon="hourglass-outline" title="Saving screen" testID="dev-saving-preview" onPress={() => setSaving(true)} />
     </SettingsGroup>
     {preview && <SessionResultSheet visible={shown} sessionId={`preview-${preview.id}`}
       minutesSpent={kind === "sync" ? 3 : 25} durationSeconds={kind === "sync" ? 180 : 1500} recovered={kind === "recovered" || kind === "sync"}

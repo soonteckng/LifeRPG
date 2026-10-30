@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 83 (Claude) on Round 82: the reward layer, character and XP/levels are removed from the app (the new direction, "awhile"). See `docs/round83-remove-rewards.md`. No SQL. Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
+| Latest delivered round | Round 84 (Claude) on Round 83: the awhile look (lilac and aubergine on warm paper, Newsreader and Inter), Today as home with no tab bar, squads as a circle (no ranking), Progress renamed Your rhythm with quiet markers, Profile categories by time. See `docs/round84-new-look.md`. No SQL. Round 83 removed the reward layer (`docs/round83-remove-rewards.md`). Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 83: 1,616 tests pass (1,910 at Round 82; the tests of deleted features went with them, listed in `docs/round83-remove-rewards.md`). Typecheck and lint clean; fingerprint unchanged. |
+| Code health | Round 84: 1,626 tests pass (1,616 at Round 83). Typecheck and lint clean; fingerprint unchanged. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | Round 66 is live. Rest days (`20261029120000_round82_rest_days.sql`) came with Round 82 for Soon Teck to run after publishing. Chosen rewards will **never** run: Round 83 moved its migration out of `supabase/migrations` to `docs/archive/never-run-round80_chosen_rewards.sql`, so a migration push can't pick it up. The server's reward tables and RPCs are untouched and unused; dropping them is a later SQL step that needs approval. The old R64 file must never run. |
-| Waiting on the phone | Round 83: check a timed and a protected session end to end (camp scene with nobody in it, the result card opens straight away, Done closes the session), an End early, and an offline catch-up (one summary card, Done acknowledges it). Native frame pacing remains unverified. |
+| Waiting on the phone | Round 84: the whole app in the paper look; check Today, each page's Today link and Android Back, a running session (light text over the dark scene, light status bar icons), the result card, Squads, Your rhythm, Profile, switches and the launch logo (fonts load behind it). Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -37,13 +37,15 @@ or keeps you company. For anyone (study, workouts, reading), students first.
 The full brief is the "awhile: direction and handover" doc and
 `awhile-handover.md` (given to Soon Teck as a file), with nine mockups.
 
-Today (after Round 83): Android-first Expo app. You run focus sessions
-(routines or study subjects); Progress shows your time, focus days and streak.
-**No currencies, rewards, character, outfits, XP or levels** in the app any
-more (Round 83 removed them; the server keeps its old tables untouched).
-Tabs: Home · Routines · Study · Squads · Progress, until the redesign rounds
-replace them with Today as home. No guilt or punishment mechanics; no ads during
-focus, auth or recovery.
+Today (after Round 84): Android-first Expo app in the awhile look (lilac and
+aubergine on warm paper; Newsreader titles, Inter text; light only until the
+November build can follow the phone's dark setting). You run focus sessions
+(routines or study subjects). **No currencies, rewards, character, outfits, XP
+or levels** (Round 83 removed them; the server keeps its old tables untouched).
+**Today is home and there is no tab bar**: Routines, Study, Squads and Your
+rhythm open from Today's list and come back with a "Today" link. Squads are a
+circle, never ranked. Your rhythm shows time, focus days, the streak and quiet
+markers. No guilt or punishment mechanics; no ads during focus, auth or recovery.
 
 ---
 
@@ -460,7 +462,7 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 
 - Squads: no join approval (the code is enough); stats are public inside a squad (no share setting); free tier leads 1 squad and joins up to 3.
 - **Round 83 (30 Oct):** no currencies, rewards, character, outfits, XP or levels. The app has no real users yet, so they are deleted, not hidden. People show as initials.
-- **Next (agreed, not built):** the awhile redesign: Today as home with no bottom tab bar; Routines and Study merge into activities (reminder only, timed, protected); Circle replaces squad rankings; a one-streak rule to settle. See the handover doc.
+- **Next (agreed, not built):** Routines and Study merge into activities (reminder only, timed, protected; needs a small database change, approval first); the session redesign (arch timer, break, finish); Circle's Join and "hide my sessions"; the streak rule to settle. Done in Round 84: the look, Today as home with no tab bar, no squad rankings. **November build:** `userInterfaceStyle` to `"automatic"` for dark mode (dark palette planned: deeper aubergine, lifted cards with a faint lilac edge) and the notification accent colour.
 - Monetisation later: everyone gets the same features; a few ads (never during focus), or a small one-off ad-free purchase.
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
@@ -472,6 +474,15 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 
 **User decision, 26 Oct: all native work waits until November 2026, after Expo's
 build quota resets. Round 69 is JS-only. Do not build or publish for him.**
+
+**Add to the next approved native round (Round 84): dark mode and the paper
+look's native colours.** Change `userInterfaceStyle` in `app.json` from `"dark"`
+to `"automatic"`, then give `constants/theme.ts` a dark palette chosen with
+`useColorScheme` (deeper aubergine background, lifted cards with a faint lilac
+edge; the scene ink already exists). Also set the `expo-notifications` plugin
+colour from `#AAB3FF` to aubergine `#3B2737`, and check the splash and adaptive
+icon backgrounds (`#080809`) against the new look. All of these change the
+fingerprint, so they belong in the build.
 
 **Add to the next approved native round: combine the two protected-session
 notifications.** `ProtectionService` owns foreground ID `84103` (channel
@@ -494,6 +505,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R84 (Claude):** the awhile look across the app (paper palette, Newsreader and Inter bundled and loaded behind the logo, status bar per screen, light ink over the night scene, app-coloured switches and spinners); Today as home with no tab bar and Today links on each page; a five-tip guide on Today; squads as a circle (`circleOrder`), no ranking anywhere; Progress renamed Your rhythm with "Along the way" quiet markers; Profile categories by time. Dark mode and the notification colour wait for the November build. No SQL.
 - **R83 (Claude):** the reward layer comes out for the new direction ("awhile", a calm focus app): Stardust, Outfits, trail and finds, packs and chosen rewards, milestones, XP and levels, celebrations, the character and the walk back are deleted. People are initials (`InitialsAvatar`); the session camp stays with nobody in it; the result card opens straight away; `GlobalRewardListener` is now `SessionResultHost`; the offline catch-up is one summary card. Chosen-rewards migration archived. No SQL. 1,616 tests pass.
 - **R82 (Claude):** phone fixes (wrapped offline title, preview card fades into a prepared map, next-frame session entrance, waiting error scoped to the selected record, refused start shows setup at once); chosen rewards client (Home card replaces the pack once enabled, four-offer sheet, "You earned it" reveal, acknowledgement, developer lab controls); camp decorations; rest days (one rule in `utils/focusDays.ts` and SQL `focus_streak`, PGlite equivalence test); guide and launch-readiness list. Two SQL files to run after publishing.
 - **R81 (Claude):** nested-Modal fix for the five instant developer result previews (card waits for the scenery window); chosen-reward SQL review fixes (exception-safe triggers, `chosen` source, alternating offers) with failing-first PGlite tests. SQL still not installed; client not built.

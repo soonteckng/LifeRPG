@@ -56,7 +56,7 @@ const s = StyleSheet.create({
   head: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, paddingLeft: 4 },
   copy: { flex: 1, minWidth: 0, gap: 1 },
   titleRow: { flexDirection: "row", alignItems: "center", gap: 2, minWidth: 0 }, chevron: { marginTop: 2 },
-  title: { flexShrink: 1, color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  title: { flexShrink: 1, color: colors.text, fontSize: 23, lineHeight: 28, fontFamily: "display", fontWeight: "500", letterSpacing: -0.3 },
   subtitle: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   circle: { ...edge, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   disabled: { opacity: 0.4 },

@@ -36,7 +36,7 @@ export default function SessionSavingOverlay({ visible }: { visible: boolean }) 
 const styles = StyleSheet.create({
   // The portal is already above the stack. Elevating its full-screen, fading
   // scrim creates a rectangular Android shadow surface behind the panel.
-  scrim: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, backgroundColor: "rgba(0,0,0,0.62)", alignItems: "center", justifyContent: "center", padding: 32 },
+  scrim: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, zIndex: 50, backgroundColor: colors.scrim, alignItems: "center", justifyContent: "center", padding: 32 },
   panel: { minWidth: 220, alignItems: "center", gap: 10, paddingVertical: 28, paddingHorizontal: 32, borderRadius: 24, backgroundColor: colors.sheetCard },
   title: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", marginTop: 6, textAlign: "center" },
   detail: { color: colors.secondary, fontSize: 14, lineHeight: 20, textAlign: "center" },

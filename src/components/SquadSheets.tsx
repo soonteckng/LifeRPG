@@ -117,7 +117,6 @@ export function SquadJoinSheet({ visible, online, leading = null, leadCount, mem
 }
 
 const DAY = ["S", "M", "T", "W", "T", "F", "S"];
-const MEDAL = ["#FFD60A", "#C7CBD1", "#D9A066"];
 /** One number on the card. The layout is the same before and after loading, so the sheet never jumps. */
 function Stat({ icon, tint, value, label }: { icon: React.ComponentProps<typeof Ionicons>["name"]; tint: string; value: string; label: string }) {
   return <View style={s.stat} accessible accessibilityLabel={`${value} ${label}`}>
@@ -128,15 +127,15 @@ function Stat({ icon, tint, value, label }: { icon: React.ComponentProps<typeof 
 }
 
 /**
- * A player card: tap anyone on the leaderboard. Their initials; this week;
+ * A player card: tap anyone in the squad. Their initials; this week;
  * the last seven days as bars; and all-time focus. Squad mates see each
  * other's stats. The
  * leader can remove someone here, deliberately, with two clear choices: a
  * plain remove (they can rejoin with the code), or remove and change the
  * code, for when the code reached the wrong person.
  */
-export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismiss, onRemove }: {
-  member: SquadMember | null; place: number | null; leader: boolean; busy: boolean;
+export function SquadMemberSheet({ member, leader, busy, onClose, onDismiss, onRemove }: {
+  member: SquadMember | null; leader: boolean; busy: boolean;
   onClose: () => void; onDismiss?: () => void; onRemove: (member: SquadMember, newCode: boolean) => void;
 }) {
   const canRemove = leader && !!member && !member.isYou;
@@ -156,8 +155,7 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
 
       <Text style={s.label}>This week</Text>
       <View style={s.facts}>
-        <Stat icon="trophy" tint={place && place <= 3 ? MEDAL[place - 1] : colors.secondary} value={place ? `#${place}` : dash} label={place ? "on the board" : "not ranked yet"} />
-        <Stat icon="time" tint="#60A5FA" value={studyTime(member.weekSeconds)} label="focused" />
+        <Stat icon="time" tint={colors.progress} value={studyTime(member.weekSeconds)} label="focused" />
         <Stat icon="flame" tint={colors.streak} value={String(stats?.streak ?? member.streak)} label="day streak" />
       </View>
 
@@ -174,12 +172,12 @@ export function SquadMemberSheet({ member, place, leader, busy, onClose, onDismi
 
       <Text style={s.label}>All time</Text>
       <View style={s.grid}>
-        <Stat icon="hourglass" tint="#2DD4A7" value={stats ? studyTime(stats.totalSeconds) : dash} label="focused" />
-        <Stat icon="checkmark-done" tint="#A78BFA" value={stats ? String(stats.sessions) : dash} label={stats?.sessions === 1 ? "session" : "sessions"} />
+        <Stat icon="hourglass" tint={colors.progress} value={stats ? studyTime(stats.totalSeconds) : dash} label="focused" />
+        <Stat icon="checkmark-done" tint={colors.progress} value={stats ? String(stats.sessions) : dash} label={stats?.sessions === 1 ? "session" : "sessions"} />
       </View>
       <View style={s.grid}>
-        <Stat icon="stopwatch" tint="#FB923C" value={stats ? studyTime(stats.longestSeconds) : dash} label="longest session" />
-        <Stat icon="calendar" tint="#F472B6" value={stats ? String(stats.daysFocused) : dash} label={stats?.daysFocused === 1 ? "day focused" : "days focused"} />
+        <Stat icon="stopwatch" tint={colors.progress} value={stats ? studyTime(stats.longestSeconds) : dash} label="longest session" />
+        <Stat icon="calendar" tint={colors.progress} value={stats ? String(stats.daysFocused) : dash} label={stats?.daysFocused === 1 ? "day focused" : "days focused"} />
       </View>
 
       {!stats && failed && <Text style={s.hint}>Couldn’t load their stats right now.</Text>}
@@ -210,7 +208,7 @@ const s = StyleSheet.create({
   chartTitle: { color: colors.text, fontSize: 15, fontWeight: "700" },
   bars: { flexDirection: "row", gap: 8, height: 92 },
   barCol: { flex: 1, alignItems: "center", gap: 6 },
-  barTrack: { flex: 1, width: "100%", maxWidth: 22, justifyContent: "flex-end", borderRadius: 6, backgroundColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  barTrack: { flex: 1, width: "100%", maxWidth: 22, justifyContent: "flex-end", borderRadius: 6, backgroundColor: colors.track, overflow: "hidden" },
   bar: { width: "100%", borderRadius: 6 },
   day: { color: colors.secondary, fontSize: 12, fontWeight: "600" },
   since: { color: colors.secondary, fontSize: 13, lineHeight: 18, textAlign: "center", minHeight: 18 },
@@ -218,7 +216,7 @@ const s = StyleSheet.create({
   fact: { ...edge, flex: 1, minHeight: 76, padding: 12, gap: 2, borderRadius: 16, backgroundColor: colors.sheetCard, justifyContent: "center" },
   factValue: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", fontVariant: ["tabular-nums"] },
   factLabel: { color: colors.secondary, fontSize: 13, lineHeight: 17 },
-  remove: { minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
+  remove: { minHeight: 52, borderRadius: 26, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
   removeText: { color: colors.danger, fontSize: 16, fontWeight: "600" },
   live: { position: "absolute", right: -1, width: 12, height: 12, borderRadius: 6, borderWidth: 2, backgroundColor: colors.success },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

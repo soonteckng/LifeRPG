@@ -1222,7 +1222,7 @@ test('Home: the goal ring opens Today, its ••• changes the goal, and Setti
   assert.equal(find('TodaySheet')[0].props.visible,true,'tapping the ring shows today up close');
   assert.equal(find('GoalSheet')[0].props.visible,false,'it never jumps straight to editing the goal');
   await act(async()=>find('TodaySheet')[0].props.onClose());
-  assert.deepEqual(menu('home-today-menu').props.options.map(option=>option.label),['Change daily goal','Open Progress']);
+  assert.deepEqual(menu('home-today-menu').props.options.map(option=>option.label),['Change daily goal','Open your rhythm']);
   await act(async()=>menu('home-today-menu').props.options[0].onPress());
   assert.equal(find('GoalSheet')[0].props.visible,true);
   await act(async()=>ui.button('home-settings').props.onPress());

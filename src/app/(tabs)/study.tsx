@@ -124,7 +124,7 @@ export default function StudyScreen() {
       </View></TourAnchor>
 
   </>;
-  return <View style={s.screen}><PersonalPage title="Study" subtitle="" compact bottomContentInset={bottomInset}
+  return <View style={s.screen}><PersonalPage title="Study" subtitle="" compact today bottomContentInset={bottomInset}
     action={<CircleButton icon="help" size={36} label="How Study works" onPress={() => show({ kind: "how" })} />}>
     <ContentReveal><View style={s.stack}>
       {!!plan.error && <Text style={s.notice} accessibilityLiveRegion="polite">{plan.error}</Text>}
@@ -166,7 +166,7 @@ const HOW_IT_WORKS = [
   ["Add your subjects", "Hold a subject to edit or remove it. Its minutes stay saved and come back if you add it again."],
   ["Add your exams", "Each one counts down here and on Home, with reminders if you like."],
   ["Study a subject", "Tap ▶ on a subject. With an exam coming up it counts as Revision, otherwise it’s Learning."],
-  ["See where your time went", "Progress shows your Revision and Learning time for each subject."],
+  ["See where your time went", "Your rhythm shows your Revision and Learning time for each subject."],
 ] as const;
 
 const s = StyleSheet.create({
@@ -181,7 +181,7 @@ const s = StyleSheet.create({
   sheetBody: { paddingHorizontal: 16, paddingBottom: 20, gap: 12 },
   group: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   emptyRow: { flexDirection: "row", alignItems: "center", gap: 12, padding: 14 },
-  emptyIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
+  emptyIcon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
   added: { ...edge, flexDirection: "row", alignItems: "center", gap: 10, minHeight: 50, paddingLeft: 14, paddingRight: 6, borderRadius: 25, backgroundColor: colors.surface },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 8 },

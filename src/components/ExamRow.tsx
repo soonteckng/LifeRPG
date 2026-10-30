@@ -50,7 +50,7 @@ const s = StyleSheet.create({
   days: { width: 64, height: 64, borderRadius: 18, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   daysInSheet: { backgroundColor: colors.selection },
   number: { color: colors.text, fontSize: 26, lineHeight: 30, fontWeight: "700", fontVariant: ["tabular-nums"] },
-  unit: { color: colors.secondary, fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 0.4 }, hot: { color: "#FFB4AE" },
+  unit: { color: colors.secondary, fontSize: 12, lineHeight: 14, fontWeight: "700", letterSpacing: 0.4 }, hot: { color: colors.danger },
   left: { flexShrink: 0, color: colors.text, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   copy: { flex: 1, minWidth: 0, gap: 6 },
   title: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: "600" },

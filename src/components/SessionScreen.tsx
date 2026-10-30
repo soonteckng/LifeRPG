@@ -10,14 +10,14 @@ import SheetButton from "./SheetTouchable";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StatusBar, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import ProgressRing from "./ProgressRing";
 import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
-import { colors, radius, edge } from "../constants/theme";
+import { colors, sceneInk, radius, edge } from "../constants/theme";
 import SessionCountdown from "./SessionCountdown";
 import FocusLengthControl from "./FocusLengthControl";
 import FocusAreaPicker from "./FocusAreaPicker";
@@ -517,6 +517,12 @@ export default function SessionScreen() {
   const focusActions = useRef({ enterScreen, recoverFromLostExit, cancelDeparture, minimise });
   useLayoutEffect(() => { focusActions.current = { enterScreen, recoverFromLostExit, cancelDeparture, minimise }; },
     [enterScreen, recoverFromLostExit, cancelDeparture, minimise]);
+  // The camp scene is dark, so the status bar's icons turn light here and go
+  // back to dark on the paper screens.
+  useFocusEffect(useCallback(() => {
+    const entry = StatusBar?.pushStackEntry?.({ barStyle: "light-content" });
+    return () => { if (entry) StatusBar.popStackEntry(entry); };
+  }, []));
   useFocusEffect(useCallback(() => {
     // Coming back to this screen after an exit that never finished: it must
     // be visible and usable again, never a see-through screen that eats taps.
@@ -612,7 +618,7 @@ export default function SessionScreen() {
     <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered light={onTrail} title={phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       {!online && <View style={styles.offline}><OfflineStatus /></View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <View ref={timerView} collapsable={false} onLayout={() => { measureFocusLane(); timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; }); }}
@@ -628,13 +634,14 @@ export default function SessionScreen() {
               the scene while the completed result is being saved. */}
             {!hideCountdown && (phase !== "setup" || isQuest) && <ProgressRing size={ringSize}
               progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              color={breakActive ? colors.streak : phase === "completed" ? colors.progress : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : phase === "setup" ? colors.accent : colors.progress} />}
+              track={onTrail ? sceneInk.track : undefined}
+              color={breakActive ? onTrail ? sceneInk.paused : colors.streak : phase === "completed" ? onTrail ? sceneInk.progress : colors.progress : phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : phase === "setup" ? colors.accent : onTrail ? sceneInk.progress : colors.progress} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }]}>
-            <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds}
+            <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds} onScene={onTrail}
               compact caption={breakActive ? "break left · time is not recorded" : phase === "setup" ? isQuest ? "Planned focus" : undefined : timer.finishing ? "Finishing up…" : `of ${sessionTime(timer.duration)}`} />
           </View>
-          <Text style={[styles.status, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
+          <Text style={[styles.status, onTrail && ink.secondary, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
           </Animated.View>
@@ -643,8 +650,8 @@ export default function SessionScreen() {
           onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); if (phase === "running" || phase === "paused") setActiveLayout(layout => layout.details === view ? layout : { ...layout, details: view }); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
           onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
-          {phase !== "setup" && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.startCheckVisible ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
-            {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
+          {phase !== "setup" && !timer.isCompleted && <Text style={[styles.activeTitle, onTrail && ink.text]} accessibilityRole="header">{phase === "ended" ? `${title} · Ended` : timer.startCheckVisible ? `${title} · Checking start` : timer.isRunning ? isRoutine || suggestion ? title : `${focusAreaTitle(area?.title)} · Free session` : `${title} · Paused`}</Text>}
+            {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }, onTrail && ink.secondary]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setupStack}>
               {/* Floats, so a background refresh never pushes the setup around. */}
               {(loading || timer.isRestoring) && <ActivityIndicator size="small" style={styles.setupSpinner} color={colors.accent} />}
@@ -683,8 +690,8 @@ export default function SessionScreen() {
           {startRefused && !needsRecovery && !timer.protectionSetupRequired && phase === "setup" && <Text testID="session-start-refused" style={styles.status} accessibilityLiveRegion="polite">
             {"This session couldn’t start just yet. Your saved sessions are safe. Try again in a moment."}</Text>}
           {needsRecovery && <View testID="session-recovery-actions">
-            <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
-            <Action label="Retry" disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
+            <Text style={[timer.syncStatus === "waiting" ? styles.secondary : styles.error, onTrail && (timer.syncStatus === "waiting" ? ink.secondary : ink.error)]} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
+            <Action label="Retry" light={onTrail} disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
           {!timer.isCompleted && <>
             <View style={styles.actionRow}>
@@ -695,7 +702,7 @@ export default function SessionScreen() {
             </TouchableOpacity>
             {timer.hasOpenSession && (phase === "ended" ? <View style={[styles.endControl, styles.endedControl]} importantForAccessibility="no-hide-descendants" /> : <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[styles.endControl, endQueued && styles.disabled]}>{endQueued ? <ActivityIndicator color={colors.text} /> : <Ionicons name="close" size={23} color={colors.text} />}</TouchableOpacity>)}
             </View>
-            {timer.hasOpenSession && <Text style={[styles.cancelHint, phase === "ended" && styles.endedControl]} accessibilityElementsHidden={phase === "ended"} importantForAccessibility={phase === "ended" ? "no-hide-descendants" : "auto"}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
+            {timer.hasOpenSession && <Text style={[styles.cancelHint, onTrail && ink.secondary, phase === "ended" && styles.endedControl]} accessibilityElementsHidden={phase === "ended"} importantForAccessibility={phase === "ended" ? "no-hide-descendants" : "auto"}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -720,9 +727,11 @@ export default function SessionScreen() {
   );
 }
 
-function Action({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
-  return <TouchableOpacity style={styles.smallAction} disabled={disabled} onPress={onPress} accessibilityRole="button"><Text style={styles.link}>{label}</Text></TouchableOpacity>;
+function Action({ label, onPress, disabled = false, light = false }: { label: string; onPress: () => void; disabled?: boolean; light?: boolean }) {
+  return <TouchableOpacity style={styles.smallAction} disabled={disabled} onPress={onPress} accessibilityRole="button"><Text style={[styles.link, light && { color: sceneInk.link }]}>{label}</Text></TouchableOpacity>;
 }
+// Text over the night scene stays light, whatever the app's own colours.
+const ink = { text: { color: sceneInk.text }, secondary: { color: sceneInk.secondary }, error: { color: sceneInk.error } } as const;
 function SheetChoice({ label, detail, onPress }: { label: string; detail?: string; onPress: () => void }) {
   return <SheetButton style={styles.pickerRow} onPress={onPress} accessibilityRole="button"><Text style={styles.label}>{label}</Text>{detail && <Text style={styles.secondary}>{detail}</Text>}</SheetButton>;
 }

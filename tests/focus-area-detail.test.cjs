@@ -62,7 +62,7 @@ test('the sheet shows the week, recent sessions and a start button that defers t
  const props={visible:true,area,detail,timeZone:'Asia/Kuala_Lumpur',sessionOpen:false,onFocus(){},onClose(){},onDismiss(){}};
  let tree;await act(async()=>{tree=create(React.createElement(Sheet,props));});
  const text=()=>tree.root.findAllByType('Text').map(node=>[].concat(node.props.children).join(''));
- assert.ok(text().includes('60 XP to level 3'));assert.ok(text().includes('This point last week: 10m'));
+ assert.ok(text().includes('35m in total'),'the header shows all-time time, never a level');assert.ok(!text().some(line=>/XP|level/i.test(line)));assert.ok(text().includes('This point last week: 10m'));
  assert.equal(tree.root.findByType('Button').props.accessibilityLabel,'Start a session in Piano');
  assert.ok(text().includes('Focus session'));
  await act(async()=>tree.update(React.createElement(Sheet,{...props,sessionOpen:true})));

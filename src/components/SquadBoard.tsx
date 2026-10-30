@@ -7,31 +7,28 @@ import { SquadFace, SquadMemberSheet } from "./SquadSheets";
 import { PinnedAction } from "./PinnedAction";
 import { daysLeftInWeek } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
-import { focusingCount, goalProgress, squadTotal, standings } from "../utils/squads";
+import { circleOrder, focusingCount, goalProgress, squadTotal } from "../utils/squads";
 import { studyTime } from "../utils/studyPlan";
 import type { Squad, SquadMember } from "../types/squads";
 
 const SQUAD_SIZE = 8;
-const MEDALS = ["#FFD60A", "#C7CBD1", "#D9A066"] as const;
 
 /**
- * A whole squad on one page: who's in it, the week together, and the
- * leaderboard as one tidy table that reads the same with 2 or 8 people.
- * Only time focused this week earns a place; equal time shares it, and
- * anyone yet to start shows "–". Tap someone to see their week; the leader
- * removes people from there, never with a stray hold.
+ * A whole squad on one page: who's in it and the week together. Members are
+ * a circle, never a ranking: whoever is focusing now comes first, then
+ * everyone by name. Tap someone to see their week; the leader removes people
+ * from there, never with a stray hold.
  */
 export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite }: {
   squad: Squad; busy: boolean; onSetGoal: () => void; onRemove: (member: SquadMember, newCode: boolean) => void; onInvite: () => void;
 }) {
   const total = squadTotal(squad), progress = goalProgress(squad), goal = squad.goalMinutes ? squad.goalMinutes * 60 : 0, live = focusingCount(squad);
-  const table = standings(squad), left = daysLeftInWeek();
-  const top = Math.max(1, table[0]?.member.weekSeconds ?? 0);
+  const members = circleOrder(squad), left = daysLeftInWeek();
   const seats = Math.max(0, Math.min(SQUAD_SIZE - squad.members.length, 4 - squad.members.length));
   const [open, setOpen] = useState<string | null>(null), [shown, setShown] = useState<string | null>(null);
   if (open && open !== shown) setShown(open);
-  const picked = table.find(item => item.member.id === shown) ?? null;
-  const label = (member: SquadMember, place: number | null) => `${place ? `${place}.` : "Not ranked yet."} ${member.name}${member.isYou ? ", you" : ""}, ${studyTime(member.weekSeconds)} this week${member.focusingNow ? ", focusing now" : ""}`;
+  const picked = members.find(member => member.id === shown) ?? null;
+  const label = (member: SquadMember) => `${member.name}${member.isYou ? ", you" : ""}, ${member.weekSeconds > 0 ? `${studyTime(member.weekSeconds)} this week` : "not started this week"}${member.focusingNow ? ", focusing now" : ""}`;
   return <View style={s.board} testID="squad-board">
     <View style={s.hero}>
       <View style={s.faces}>{squad.members.slice(0, 5).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={member} size={54} ring={colors.background} /></View>)}</View>
@@ -48,25 +45,18 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
     </View>
 
     <View style={s.section}>
-      <View style={s.sectionHead}><Text style={s.sectionTitle} accessibilityRole="header">Leaderboard</Text><Text style={s.caption}>This week · focus to get ranked · resets Monday</Text></View>
-      <View style={s.table} testID="squad-leaderboard">{table.map(({ member, place }, index) => <Pressable key={member.id} onPress={() => setOpen(member.id)}
-        accessibilityRole="button" accessibilityLabel={label(member, place)} accessibilityHint="Shows their week" style={[s.row, index > 0 && s.line, member.isYou && s.rowYou]}>
-        <View style={[s.place, place && place <= 3 ? { backgroundColor: MEDALS[place - 1] } : null]}>
-          <Text style={[s.placeText, place && place <= 3 ? s.placeMedal : null]}>{place ?? "–"}</Text>
-        </View>
+      <View style={s.sectionHead}><Text style={s.sectionTitle} accessibilityRole="header">Your circle</Text><Text style={s.caption}>This week · resets Monday</Text></View>
+      <View style={s.table} testID="squad-members">{members.map((member, index) => <Pressable key={member.id} onPress={() => setOpen(member.id)}
+        accessibilityRole="button" accessibilityLabel={label(member)} accessibilityHint="Shows their week" style={[s.row, index > 0 && s.line, member.isYou && s.rowYou]}>
         <SquadFace member={member} ring={member.isYou ? colors.sheetCard : colors.surface} />
         <View style={s.flex}>
-          <View style={s.nameRow}>
-            <Text style={s.rowName} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
-            <Text style={[s.time, !place && s.timeIdle]}>{place ? studyTime(member.weekSeconds) : "–"}</Text>
-          </View>
-          {place ? <View style={s.nameRow}><View style={s.thin}><View style={[s.thinFill, { width: `${Math.round(100 * member.weekSeconds / top)}%` }]} /></View><Text style={s.meta}>Lv {member.level}</Text></View>
-            : <View style={s.nameRow}><Text style={s.idle} numberOfLines={1}>{member.focusingNow ? "Focusing now" : "Not started this week"}</Text><Text style={s.meta}>Lv {member.level}</Text></View>}
+          <Text style={s.rowName} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
+          <Text style={[s.idle, member.focusingNow && s.live]} numberOfLines={1}>{member.focusingNow ? "Focusing now" : member.weekSeconds > 0 ? `${studyTime(member.weekSeconds)} this week` : "Not started this week"}</Text>
         </View>
+        <Ionicons name="chevron-forward" size={16} color={colors.tertiary} />
       </Pressable>)}</View>
       {/* A small squad shows its empty seats, each one an invite. */}
       {Array.from({ length: seats }, (_, index) => <Pressable key={`seat-${index}`} onPress={onInvite} accessibilityRole="button" accessibilityLabel="Open seat. Invite a friend" testID="squad-open-seat" style={[s.row, s.seat]}>
-        <View style={s.place} />
         <View style={s.seatFace}><Ionicons name="add" size={18} color={colors.tertiary} /></View>
         <Text style={[s.flex, s.seatText]}>Open seat</Text>
         <Text style={s.seatInvite}>Invite</Text>
@@ -77,7 +67,7 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
       <View style={s.code} accessible accessibilityLabel={`Invite code ${squad.code.split("").join(" ")}`}><Text style={s.codeLabel}>Invite code</Text><Text style={s.codeText}>{squad.code}</Text></View>
       <Pressable onPress={onInvite} accessibilityRole="button" accessibilityLabel="Invite friends" style={s.primary}><Ionicons name="share-outline" size={17} color={colors.primaryText} /><Text style={s.primaryText}>Invite friends</Text></Pressable>
     </View></PinnedAction>
-    <SquadMemberSheet member={open ? picked?.member ?? null : null} place={picked?.place ?? null} leader={squad.ownerIsYou} busy={busy}
+    <SquadMemberSheet member={open ? picked : null} leader={squad.ownerIsYou} busy={busy}
       onClose={() => setOpen(null)} onDismiss={() => setShown(null)}
       onRemove={(member, newCode) => { setOpen(null); onRemove(member, newCode); }} />
   </View>;
@@ -86,31 +76,25 @@ const s = StyleSheet.create({
   board: { gap: 16 }, flex: { flex: 1, minWidth: 0 },
   hero: { gap: 8, paddingHorizontal: 4 },
   faces: { flexDirection: "row", alignItems: "flex-start", marginBottom: 2 }, faceSlot: {},
-  name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "800", letterSpacing: -0.6 },
+  name: { color: colors.text, fontSize: 30, lineHeight: 36, fontFamily: "display", letterSpacing: -0.6 },
   card: { ...edge, gap: 8, borderRadius: radius.card, backgroundColor: colors.surface, padding: 16 },
   label: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.8, textTransform: "uppercase" },
   bigRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
-  big: { color: colors.text, fontSize: 30, lineHeight: 36, fontWeight: "800", fontVariant: ["tabular-nums"] }, of: { color: colors.secondary, fontSize: 15 },
+  big: { color: colors.text, fontSize: 34, lineHeight: 40, fontFamily: "display", fontVariant: ["tabular-nums"] }, of: { color: colors.secondary, fontSize: 15 },
   track: { height: 8, borderRadius: 4, backgroundColor: colors.selection, overflow: "hidden", marginTop: 2 }, fill: { height: 8, borderRadius: 4, backgroundColor: colors.progress },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, link: { color: colors.accent, fontSize: 15, fontWeight: "600", marginTop: 2 },
   section: { gap: 10, marginTop: 6 },
   sectionHead: { gap: 1, paddingHorizontal: 4 },
-  sectionTitle: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700", letterSpacing: -0.3 },
+  sectionTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontFamily: "display", fontWeight: "500", letterSpacing: -0.3 },
   table: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
   rowYou: { backgroundColor: colors.sheetCard },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  place: { width: 26, height: 26, borderRadius: 13, alignItems: "center", justifyContent: "center" },
-  placeText: { color: colors.secondary, fontSize: 14, fontWeight: "700", fontVariant: ["tabular-nums"] }, placeMedal: { color: "#1C1C1E", fontSize: 13, fontWeight: "800" },
-  seat: { ...edge, borderRadius: 18, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.16)", backgroundColor: "transparent" },
-  seatFace: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderStyle: "dashed", borderColor: "rgba(255,255,255,0.22)", alignItems: "center", justifyContent: "center" },
+  seat: { ...edge, borderRadius: 18, borderStyle: "dashed", borderColor: colors.border, backgroundColor: "transparent" },
+  seatFace: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   seatText: { color: colors.secondary, fontSize: 15 }, seatInvite: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   rowName: { flex: 1, color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
-  time: { color: colors.text, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] }, timeIdle: { color: colors.tertiary },
-  thin: { flex: 1, height: 5, borderRadius: 3, backgroundColor: colors.selection, overflow: "hidden" }, thinFill: { height: 5, borderRadius: 3, backgroundColor: colors.accent },
-  idle: { flex: 1, color: colors.secondary, fontSize: 13, lineHeight: 18 },
-  meta: { color: colors.secondary, fontSize: 13, minWidth: 40, textAlign: "right" },
+  idle: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, live: { color: colors.success, fontWeight: "600" },
   invite: { flexDirection: "row", gap: 10 },
   code: { ...edge, flex: 1, minHeight: 54, borderRadius: 27, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   codeLabel: { color: colors.secondary, fontSize: 12, lineHeight: 15 }, codeText: { color: colors.text, fontSize: 17, lineHeight: 21, fontWeight: "700", letterSpacing: 2 },

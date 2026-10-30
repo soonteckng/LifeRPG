@@ -29,7 +29,7 @@ export function SettingsRow({ icon, tint = colors.accent, title, value, subtitle
     </View>
     {!!value && <Text style={[s.value, wrap && s.wrappedValue]} numberOfLines={1} ellipsizeMode="tail">{value}</Text>}
     {toggle ? <Switch accessibilityLabel={title} value={toggle.value} disabled={disabled} onValueChange={toggle.onChange}
-      trackColor={{ false: colors.selection, true: colors.accentFill }} />
+      trackColor={{ false: colors.track, true: colors.accentFill }} thumbColor={colors.surfaceRaised} />
       : onPress ? <Ionicons name="chevron-forward" size={16} color={colors.tertiary} /> : null}
   </>;
   return onPress && !toggle ? <Pressable testID={testID} onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={value ? `${title}, ${value}` : title} accessibilityState={{ disabled, ...(busy === undefined ? {} : { busy }) }}

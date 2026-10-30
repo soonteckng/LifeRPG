@@ -40,11 +40,11 @@ export default function RoutinesScreen() {
     }
     timer.reviewSummary?.(); router.navigate("/session");
   };
-  return <PersonalPage title="Routines" subtitle="" compact bottomContentInset={bottomInset}
+  return <PersonalPage title="Routines" subtitle="" compact today bottomContentInset={bottomInset}
     action={<CircleButton icon="help" size={36} label="How Routines work" onPress={() => setHow(true)} />}>
     <ContentReveal><View style={s.stack}>
       <Pressable onPress={justFocus} accessibilityRole="button" accessibilityLabel={open ? "Return to your session" : "Just focus. Any activity, your time"} testID="routines-just-focus" style={s.card}>
-        <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={22} color="#AAB3FF" /></View>
+        <View style={s.icon}><Ionicons name={open ? "timer-outline" : "sparkles"} size={22} color={colors.accent} /></View>
         <View style={s.copy}><Text style={s.title}>{open ? "Your session" : "Just focus"}</Text>
           <Text style={s.caption}>{open ? timer.isRunning ? "In progress. Tap to return" : "Paused. Tap to return" : "Any activity, your time"}</Text></View>
         <View style={s.play}><Ionicons name={open ? "chevron-up" : "play"} size={20} color={colors.primaryText} /></View>
@@ -68,7 +68,7 @@ const s = StyleSheet.create({
   mine: { gap: 10 },
   // Just focus is the main way in, so it gets the biggest card on the page.
   card: { ...edge, minHeight: 92, flexDirection: "row", alignItems: "center", gap: 14, paddingLeft: 16, paddingRight: 14, borderRadius: 22, backgroundColor: colors.surface },
-  icon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(170,179,255,0.16)" },
+  icon: { width: 48, height: 48, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   copy: { flex: 1, minWidth: 0, gap: 1 },
   title: { color: colors.text, fontSize: 19, lineHeight: 24, fontWeight: "700", letterSpacing: -0.3 },
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 19 },

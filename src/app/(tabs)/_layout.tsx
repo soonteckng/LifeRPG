@@ -77,7 +77,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="progress"
         options={{
-          title: "Progress",
+          title: "Your rhythm",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon focused={focused} name="stats-chart-outline" size={21} color={color} />
           ),
@@ -109,11 +109,11 @@ const styles = StyleSheet.create({
     backgroundColor: "transparent",
     borderTopWidth: 0,
     borderWidth: 0,
-    borderColor: "rgba(255,255,255,0.07)",
+    borderColor: colors.line,
     paddingTop: 7,
     paddingBottom: Platform.OS === "ios" ? 8 : 7,
     elevation: 0,
-    shadowColor: "#000000",
+    shadowColor: colors.text,
     shadowOpacity: 0.18,
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 6 },

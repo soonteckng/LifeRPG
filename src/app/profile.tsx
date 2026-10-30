@@ -74,6 +74,12 @@ export default function ProfileScreen() {
   // Your all-time numbers, from your own session history.
   const totals = useMemo(() => earnedMilestones(data?.sessions ?? [], profile.timezone), [data, profile.timezone]);
   const totalsReady = !!data;
+  // Each category's all-time time, from your own sessions: no levels, no XP.
+  const areaSeconds = useMemo(() => new Map(data ? areas.map(area => [area.id, focusAreaSessions(area, data.areas, data.sessions, profile.timezone).reduce((sum, session) => sum + session.duration_seconds, 0)]) : []),
+    // areas is derived from data.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [data, profile.timezone]);
+  const topArea = Math.max(1, ...areaSeconds.values());
   const selectedArea = areas.find(area => area.id === areaId) ?? null;
   const areaDetail = selectedArea && data ? focusAreaDetail(selectedArea, data.areas, data.sessions, profile.timezone) : null;
   const selectedKind = focusAreaKind(selectedArea?.title);
@@ -149,7 +155,7 @@ export default function ProfileScreen() {
         </View>
         {/* Three numbers side by side, read at a glance. */}
         <View style={s.statsRow} testID="profile-stats">
-          {[["time-outline", "Time focused", studyTime(totals.seconds), "#64D2FF"],
+          {[["time-outline", "Time focused", studyTime(totals.seconds), colors.progress],
             ["calendar-outline", "Focus days", String(totals.days), colors.accent],
             ["flame", "Best streak", `${totals.bestStreak} ${totals.bestStreak === 1 ? "day" : "days"}`, colors.streak]].map(([icon, label, value, tint]) =>
             <View key={label} style={s.statTile} accessible accessibilityLabel={`${label}, ${totalsReady ? value : "loading"}`}>
@@ -158,17 +164,17 @@ export default function ProfileScreen() {
               <Text style={s.statLabel} numberOfLines={1}>{label}</Text>
             </View>)}
         </View>
-        {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your growth. {data ? "Your last loaded progress is still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
+        {error && <View style={p.card}><Text style={p.error}>Couldn’t refresh your history. {data ? "Your last loaded totals are still here." : "Check your connection and try again."}</Text><PersonalButton title="Retry" secondary onPress={() => void refresh()} /></View>}
         <View style={s.areasCard}>
           <SectionHeader title="My Categories" />
-          {loading && !data && <Text style={p.body}>Loading your growth…</Text>}
+          {loading && !data && <Text style={p.body}>Loading your categories…</Text>}
           {/* Two small tiles a row: short to scroll, every category at a glance. */}
-          {!!areas.length && <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={focusAreaTitle(area.title) + ", level " + area.level + ", " + area.current + " of " + area.required + " XP to the next level. View details"} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaTile}>
-            <View style={s.areaHead}><View style={[s.tileIcon, { backgroundColor: areaTint(lifeAreaColor(area.id, area.color_code)) }]}><Ionicons name={focusAreaIcon(area.title)} size={16} color={lifeAreaColor(area.id, area.color_code)} /></View><Text style={s.tileLevel}>Lv {area.level}</Text></View>
+          {!!areas.length && <View style={s.areaGrid}>{areas.map(area => <Pressable key={area.id} accessibilityRole="button" accessibilityLabel={`${focusAreaTitle(area.title)}, ${studyTime(areaSeconds.get(area.id) ?? 0)} in total. View details`} onPress={() => { setAreaId(area.id); setAreaOpen(true); }} style={s.areaTile}>
+            <View style={s.areaHead}><View style={[s.tileIcon, { backgroundColor: areaTint(lifeAreaColor(area.id, area.color_code)) }]}><Ionicons name={focusAreaIcon(area.title)} size={16} color={lifeAreaColor(area.id, area.color_code)} /></View><Text style={s.tileLevel}>{studyTime(areaSeconds.get(area.id) ?? 0)}</Text></View>
             <Text style={p.rowTitle} numberOfLines={1}>{focusAreaTitle(area.title)}</Text>
-            <Meter value={area.current / area.required} color={lifeAreaColor(area.id, area.color_code)} height={5} />
+            <Meter value={(areaSeconds.get(area.id) ?? 0) / topArea} color={lifeAreaColor(area.id, area.color_code)} height={5} />
           </Pressable>)}</View>}
-          {data && !areas.length && <Text style={p.body}>Your overall level still grows. Categories will appear here when available.</Text>}
+          {data && !areas.length && <Text style={p.body}>Your categories will appear here after your first sessions.</Text>}
         </View>
         {study.courses.length > 0 && <View style={s.areasCard} testID="profile-subjects">
           <SectionHeader title="My Subjects" subtitle="All the time you’ve given each one." />
@@ -191,7 +197,7 @@ export default function ProfileScreen() {
         onDismiss={() => { const next = afterArea.current; afterArea.current = null; setLeavingArea(false); next?.(); }} />
       <AppSheet visible={sheetOpen} onRequestClose={close} onDismiss={() => { sheetClosing.current = false; }} guardDismiss={dirty || saving || discard}
         compact motionMode="timed" keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" label="Edit name"
-        header={<View style={p.sheetHeader}><Text style={p.title}>Your name</Text><Text style={p.body}>Shown to your squads and on the leaderboard.</Text></View>}
+        header={<View style={p.sheetHeader}><Text style={p.title}>Your name</Text><Text style={p.body}>Shown to your squads.</Text></View>}
         footer={<View style={{ paddingHorizontal: 20, paddingTop: 12, paddingBottom: Math.max(16, insets.bottom), backgroundColor: colors.surfaceRaised }}>{!online && <Text testID="profile-save-needs-internet" accessibilityLiveRegion="polite" style={p.caption}>Needs internet</Text>}<PersonalButton title={saving ? "Saving…" : "Save changes"} disabled={saving || !online} accessibilityLabel={online ? "Save changes" : "Save changes. Needs internet"} onPress={() => void save()} /></View>}
         overlay={discard ? <SheetConfirmation title="Discard changes?" message="Your changes haven’t been saved." confirmLabel="Discard changes" cancelLabel="Keep editing"
           onCancel={() => setDiscard(false)} onConfirm={() => { setDiscard(false); Keyboard.dismiss(); sheetClosing.current = true; setSheetOpen(false); }} /> : undefined}>
@@ -225,7 +231,7 @@ const s = StyleSheet.create({
   areaTile: { ...edge, flexBasis: "48%", flexGrow: 1, padding: 12, gap: 8, borderRadius: 18, backgroundColor: colors.surface },
   areaHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
   tileLevel: { color: colors.secondary, fontSize: 14, lineHeight: 20, fontVariant: ["tabular-nums"] },
-  tileIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,0.06)" },
+  tileIcon: { width: 34, height: 34, borderRadius: 11, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
   subjects: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
   subjectRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 16, paddingVertical: 10 },
   subjectLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },

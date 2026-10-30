@@ -42,8 +42,9 @@ import { prefetchCharacterData } from "../../hooks/useCharacterData";
 import { prefetchProgress } from "../../hooks/useProgressData";
 
 /**
- * Home is a dashboard: today's goal, what's coming up and how the week is
- * going. Sessions are set up in Routines and Study; Home links to both.
+ * Today is home and there is no tab bar: today's goal, one-tap starts, the
+ * week, and a short list that opens Routines, Study, Squads and Your rhythm.
+ * Each of those comes back here.
  */
 export default function HomeScreen() {
   const { accessMode, admissionEpoch } = useAuth();
@@ -171,7 +172,7 @@ export default function HomeScreen() {
   const dailyGoalMinutes = verifiedGoal ?? 0;
   const safeCompletedSeconds = Math.max(0, completedSeconds);
   const remainingSeconds = Math.max(0, dailyGoalMinutes * 60 - safeCompletedSeconds);
-  const displayName = profile?.username?.trim() || "Hero";
+  const displayName = profile?.username?.trim() || "You";
   const greeting = homeWelcome(hour < 5 ? 18 : hour, displayName).split(",")[0];
   // Until today's numbers arrive (from this phone or the server), show a dash, not a 0.
   const known = updatedAt !== null;
@@ -223,22 +224,17 @@ export default function HomeScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }]}>
         <ContentReveal>
         <View testID="home-layout" style={styles.layout}>
-          {/* You: your initials and name on the left, Settings on the right. */}
+          {/* The day and a greeting on the left; you and Settings on the right. */}
           <TourAnchor id="home-identity"><View style={styles.identityRow}>
+            <TouchableOpacity testID="home-name" style={styles.nameButton} onPress={openProfile} accessibilityRole="button" accessibilityLabel={`${homeWelcome(hour < 5 ? 18 : hour, profile?.username)}. Open Profile`}>
+              <Text style={styles.dateLabel} numberOfLines={1}>{todayLabel(timeZone)}</Text>
+              <Text style={styles.greeting} numberOfLines={2}>{greeting}.</Text>
+            </TouchableOpacity>
+            <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
             <View ref={avatar} collapsable={false}>
               <TouchableOpacity testID="home-avatar" style={styles.avatarFrame} onPress={openProfile} accessibilityRole="button" accessibilityLabel="Open Profile" accessibilityHint="Your name, categories and account">
-                <InitialsAvatar name={displayName} id={profile?.id} size={52} />
+                <InitialsAvatar name={displayName} id={profile?.id} size={44} />
               </TouchableOpacity>
-            </View>
-            <View style={styles.identity}>
-              <View style={styles.nameRow}>
-                {/* Your greeting and name open Profile too, like your picture. */}
-                <TouchableOpacity testID="home-name" style={styles.nameButton} onPress={openProfile} accessibilityRole="button" accessibilityLabel={`${homeWelcome(hour < 5 ? 18 : hour, profile?.username)}. Open Profile`}>
-                  <Text style={styles.greeting} numberOfLines={1}>{greeting},</Text>
-                  <Text style={styles.name} numberOfLines={1} ellipsizeMode="tail">{displayName}</Text>
-                </TouchableOpacity>
-                <View ref={settingsIcon} collapsable={false}><CircleButton icon="settings-outline" size={44} label="Open Settings" onPress={() => openFrom(settingsIcon, "/settings")} testID="home-settings" /></View>
-              </View>
             </View>
           </View></TourAnchor>
           {(loadError || questsError) && <TouchableOpacity onPress={() => void loadData()} disabled={refreshing}
@@ -253,7 +249,7 @@ export default function HomeScreen() {
               <View style={styles.streakRow}><Ionicons name="flame" size={16} color={streakDays > 0 ? colors.streak : colors.tertiary} /><Text style={[styles.streakText, streakDays > 0 && styles.streakOn]} numberOfLines={1}>{streakDays > 0 ? `${streakDays}-day streak${rest.days ? ` · ${rest.days} rest` : ""}` : known ? "A fresh start" : "Checking your streak"}</Text></View>
               <MoreMenu label="Today options" testID="home-today-menu" options={[
                 { label: accessMode === "online" ? "Change daily goal" : "Change goal · needs internet", icon: "flag-outline", onPress: openGoal, disabled: accessMode !== "online" },
-                { label: "Open Progress", icon: "stats-chart-outline", onPress: openProgress },
+                { label: "Open your rhythm", icon: "stats-chart-outline", onPress: openProgress },
               ]} />
             </View>
             <TouchableOpacity testID="home-compact-goal" onPress={() => setTodayOpen(true)} style={styles.goalBody} accessibilityRole="button"
@@ -285,6 +281,16 @@ export default function HomeScreen() {
           {/* The rest of the week, quieter: two tiles side by side, then exams. */}
           <View style={styles.pair}><HomeWeek tile /><HomeSquad tile /></View>
           <HomeExams />
+
+          {/* Everything else opens from here and comes back to Today. */}
+          <TourAnchor id="home-places"><View style={styles.places} testID="home-places">
+            {PLACES.map((place, index) => <TouchableOpacity key={place.path} testID={`home-open-${place.key}`} onPress={() => router.navigate(place.path)}
+              accessibilityRole="button" accessibilityLabel={`${place.title}. ${place.caption}`} style={[styles.place, index > 0 && styles.placeLine]}>
+              <View style={styles.placeIcon}><Ionicons name={place.icon} size={20} color={colors.accent} /></View>
+              <View style={styles.goalCopy}><Text style={styles.placeTitle} numberOfLines={1}>{place.title}</Text><Text style={styles.placeCaption} numberOfLines={1}>{place.caption}</Text></View>
+              <Ionicons name="chevron-forward" size={18} color={colors.tertiary} />
+            </TouchableOpacity>)}
+          </View></TourAnchor>
         </View>
         </ContentReveal>
       </TourScrollView>
@@ -299,18 +305,22 @@ const styles = StyleSheet.create({
   viewport: { flex: 1 },
   content: { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
   layout: { gap: 16 },
-  identityRow: { flexDirection: "row", alignItems: "center", gap: 14, marginBottom: 4 },
-  identity: { flex: 1, minWidth: 0, gap: 8 },
-  nameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  nameButton: { flex: 1, minWidth: 0 },
-  greeting: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
-  name: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: "700", letterSpacing: -0.6 },
-  avatarFrame: { width: 52, alignItems: "center" },
+  identityRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4, paddingTop: 8 },
+  nameButton: { flex: 1, minWidth: 0, gap: 4 },
+  dateLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1 },
+  greeting: { color: colors.text, fontSize: 36, lineHeight: 42, fontFamily: "display", letterSpacing: -0.8 },
+  avatarFrame: { width: 44, alignItems: "center" },
+  places: { marginTop: 4 },
+  place: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 14 },
+  placeLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  placeIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
+  placeTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  placeCaption: { color: colors.secondary, fontSize: 13, lineHeight: 18 },
   today: { ...edge, padding: 18, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
-  todayDone: { borderColor: "rgba(52,211,153,0.28)" },
+  todayDone: { borderColor: "rgba(54,105,77,0.30)" },
   todayHead: { flexDirection: "row", alignItems: "center", gap: 10 },
   statusPill: { minHeight: 28, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center", backgroundColor: colors.accentSoft },
-  statusPillDone: { backgroundColor: "rgba(52,211,153,0.16)" },
+  statusPillDone: { backgroundColor: "rgba(54,105,77,0.12)" },
   statusText: { color: colors.neutral, fontSize: 14, lineHeight: 18, fontWeight: "600" },
   statusTextDone: { color: colors.success },
   goalBody: { gap: 8 },
@@ -323,7 +333,7 @@ const styles = StyleSheet.create({
   streakText: { flexShrink: 1, color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   streakOn: { color: colors.streak },
   offlineNote: { color: colors.muted, fontSize: 13, lineHeight: 18 },
-  ringValue: { color: colors.text, fontSize: 44, lineHeight: 50, fontWeight: "800", letterSpacing: -1.2, fontVariant: ["tabular-nums"] },
+  ringValue: { color: colors.text, fontSize: 46, lineHeight: 52, fontFamily: "display", letterSpacing: -1, fontVariant: ["tabular-nums"] },
   ringUnit: { color: colors.secondary, fontSize: 17, lineHeight: 22, fontWeight: "500" },
   reviseChip: { flexBasis: "100%", flexGrow: 1, minHeight: 56, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 10, paddingLeft: 10, paddingRight: 14, borderRadius: radius.row, backgroundColor: colors.primary },
   revisePlay: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
@@ -337,4 +347,17 @@ const styles = StyleSheet.create({
   retryText: { color: colors.danger, fontSize: 13 },
 });
 
+const PLACES = [
+  { key: "routines", path: "/routines", title: "Routines", caption: "What you do often, ready to start", icon: "repeat-outline" },
+  { key: "study", path: "/study", title: "Study", caption: "Subjects and exams", icon: "school-outline" },
+  { key: "squads", path: "/squads", title: "Squads", caption: "Friends focusing with you", icon: "people-outline" },
+  { key: "rhythm", path: "/progress", title: "Your rhythm", caption: "Your time, your days, your streak", icon: "stats-chart-outline" },
+] as const;
+const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const MONTHS = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
+/** "FRIDAY, 30 OCTOBER" for today in your time zone, without relying on the phone's date formats. */
+function todayLabel(timeZone: string) {
+  const [year, month, day] = dateKey(new Date(), timeZone).split("-").map(Number);
+  return `${WEEKDAYS[new Date(Date.UTC(year, month - 1, day)).getUTCDay()]}, ${day} ${MONTHS[month - 1]}`;
+}
 const clockTime = (ms: number) => new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });

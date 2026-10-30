@@ -27,7 +27,7 @@ export default function GlassSurface({radius = 24}: {radius?: number}) {
   }, [opaque]);
   return <View pointerEvents="none" accessible={false} importantForAccessibility="no-hide-descendants"
     testID="glass-surface" style={[StyleSheet.absoluteFill, {borderRadius:radius, overflow:"hidden", backgroundColor:opaque ? colors.surfaceRaised : NativeGlass ? "transparent" : colors.glass, borderWidth:StyleSheet.hairlineWidth, borderColor:colors.border}]}>
-    {NativeGlass && <NativeGlass style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={colors.glassTint} colorScheme="dark" />}
+    {NativeGlass && <NativeGlass style={StyleSheet.absoluteFill} glassEffectStyle="regular" tintColor={colors.glassTint} colorScheme="light" />}
     {!opaque && <Svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
       <Defs><LinearGradient id="surfaceSheen" x1="0" y1="0" x2="0.7" y2="1"><Stop offset="0" stopColor="#FFFFFF" stopOpacity={0.10} /><Stop offset="0.45" stopColor={colors.primary} stopOpacity={0.025} /><Stop offset="1" stopColor="#FFFFFF" stopOpacity={0} /></LinearGradient></Defs>
       <Rect width="100" height="100" fill="url(#surfaceSheen)" />

@@ -9,7 +9,7 @@ import { useSquads } from "../hooks/useSquads";
 import { squadSelection } from "../services/squadSelection";
 
 /**
- * One squad, in full: its week together, the leaderboard and the invite. It
+ * One squad, in full: its week together, its members and the invite. It
  * rises from the bottom over Squads or Home, and slides down to close.
  */
 export default function SquadScreen() {

@@ -97,7 +97,7 @@ export default function SlideUpPage({ title, action, footer, fallback, gone = fa
 }
 const s = StyleSheet.create({
   root: { flex: 1 }, flex: { flex: 1 },
-  scrim: { backgroundColor: "rgba(0,0,0,0.5)" },
+  scrim: { backgroundColor: colors.scrim },
   page: { flex: 1, backgroundColor: colors.background },
   content: { paddingHorizontal: 20, paddingTop: 4 },
   footer: { paddingHorizontal: 20, paddingTop: 10, backgroundColor: colors.background },

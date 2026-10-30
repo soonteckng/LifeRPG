@@ -6,7 +6,6 @@ import TouchableOpacity from "./SheetTouchable";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import { Text } from "./AppText";
-import { Meter } from "./PersonalUI";
 import { colors, edge } from "../constants/theme";
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
@@ -32,7 +31,7 @@ export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, 
   return <AppSheet visible={visible && !!area} onRequestClose={onClose} onDismiss={onDismiss} closeInstantly={leaving} compact attached label={`${title} focus area`}
     header={area && <View style={s.header}>
       <View style={[s.icon, { backgroundColor: `${area.color}22` }]}><Ionicons name={focusAreaIcon(area.title)} size={24} color={area.color} /></View>
-      <View style={s.headerText}><Text style={s.title} numberOfLines={1}>{title}</Text><Text style={s.caption}>Level {area.level}</Text></View>
+      <View style={s.headerText}><Text style={s.title} numberOfLines={1}>{title}</Text><Text style={s.caption}>{detail ? `${durationLabel(detail.seconds)} in total` : " "}</Text></View>
     </View>}
     footer={area && <View style={[s.footer, { paddingBottom: Math.max(insets.bottom, 12) + 12 }]}>
       <TouchableOpacity accessibilityRole="button" accessibilityLabel={sessionOpen ? "Return to your session" : focusLabel ?? `Start a session in ${title}`} onPress={onFocus} style={s.start}>
@@ -41,11 +40,6 @@ export default function FocusAreaDetailSheet({ visible, area, detail, timeZone, 
       </TouchableOpacity>
     </View>}>
     {area && detail && <BottomSheetScrollView enableFooterMarginAdjustment showsVerticalScrollIndicator={false} contentContainerStyle={s.body}>
-      <View style={s.card} accessible accessibilityLabel={`${area.current} of ${area.required} XP. ${area.required - area.current} XP to level ${area.level + 1}`}>
-        <View style={s.between}><Text style={s.label}>Next level</Text><Text style={s.caption}>{area.current} / {area.required} XP</Text></View>
-        <Meter value={area.current / area.required} color={area.color} height={8} />
-        <Text style={s.caption}>{area.required - area.current} XP to level {area.level + 1}</Text>
-      </View>
       <View style={s.stats}>
         {[["This week", durationLabel(detail.weekSeconds)], ["All time", durationLabel(detail.seconds)], ["Sessions", String(detail.sessions)]].map(([label, value]) =>
           <View key={label} style={s.stat} accessible accessibilityLabel={`${label}, ${value}`}><Text style={s.statValue}>{value}</Text><Text style={s.caption}>{label}</Text></View>)}
@@ -92,7 +86,7 @@ const s = StyleSheet.create({
   statValue: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
   bars: { flexDirection: "row", gap: 8, height: 92 },
   barColumn: { flex: 1, alignItems: "center", gap: 6 },
-  barTrack: { flex: 1, width: "100%", maxWidth: 22, justifyContent: "flex-end", borderRadius: 6, backgroundColor: "rgba(255,255,255,0.05)", overflow: "hidden" },
+  barTrack: { flex: 1, width: "100%", maxWidth: 22, justifyContent: "flex-end", borderRadius: 6, backgroundColor: colors.track, overflow: "hidden" },
   bar: { width: "100%", borderRadius: 6 },
   weekday: { color: colors.muted, fontSize: 12, lineHeight: 16 },
   today: { color: colors.text, fontWeight: "600" },

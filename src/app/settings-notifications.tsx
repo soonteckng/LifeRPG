@@ -47,10 +47,10 @@ export default function NotificationSettingsScreen() {
       {!permission?.supported && permission && <SettingsRow icon="open-outline" title="Phone notification settings" onPress={() => { void openNotificationSettings().catch(() => setError("Couldn’t open phone settings.")); }} />}
     </SettingsGroup>
     <SettingsGroup title="Reminders" footer="A week before, the evening before and the morning of each exam. You can also turn them off for a single exam.">
-      <SettingsRow first icon="calendar-outline" tint="#FF6961" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
+      <SettingsRow first icon="calendar-outline" title="Exam reminders" toggle={{ value: preferences.examReminders, onChange: value => void appPreferences.update({ examReminders: value }) }} />
     </SettingsGroup>
     {Platform.OS === "android" && Number(Platform.Version) >= 31 && <SettingsGroup title="Timing" footer={alarmAccess === "allowed" ? "Precise timer alerts are allowed on this phone." : "Precise alerts are off. Your timer still works; finish alerts may arrive a little later."}>
-      <SettingsRow first icon="alarm-outline" tint="#FF9F0A" title="Alarms & reminders" value={alarmAccess === "allowed" ? "Allowed" : alarmAccess ? "Off" : ""}
+      <SettingsRow first icon="alarm-outline" title="Alarms & reminders" value={alarmAccess === "allowed" ? "Allowed" : alarmAccess ? "Off" : ""}
         onPress={() => { void openAlarmSettings().catch(() => setError("Couldn’t open Alarms & reminders. Open your phone’s app settings to check it.")); }} />
     </SettingsGroup>}
     {!!error && <Text style={p.error} accessibilityRole="alert">{error}</Text>}

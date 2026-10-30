@@ -131,7 +131,7 @@ const s = StyleSheet.create({
   row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 9 },
   rowLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   rowTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
-  countdown: { color: colors.secondary, fontSize: 15, fontWeight: "600" }, countdownSoon: { color: "#FFB4AE" },
+  countdown: { color: colors.secondary, fontSize: 15, fontWeight: "600" }, countdownSoon: { color: colors.danger },
   tile: { width: 44, height: 46, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   tileMonth: { fontSize: 10, lineHeight: 12, fontWeight: "700", letterSpacing: 0.6 },
   tileDay: { color: colors.text, fontSize: 20, lineHeight: 23, fontWeight: "800", fontVariant: ["tabular-nums"] },
@@ -141,5 +141,5 @@ const s = StyleSheet.create({
   secondary: { ...edge, minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard, borderRadius: 27 },
   secondaryText: { color: colors.text, fontSize: 16, fontWeight: "600" },
   disabled: { opacity: 0.5 },
-  remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.14)" },
+  remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
 });

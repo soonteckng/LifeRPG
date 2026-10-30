@@ -89,7 +89,7 @@ const menu = root => root.findAllByType('Menu')[0]?.props.options ?? [];
 const choose = (root, label) => act(async () => menu(root).find(option => option.label === label).onPress());
 const words = root => root.findAllByType('Text').map(t => [].concat(t.props.children).filter(x => typeof x === 'string' || typeof x === 'number').join(''));
 
-test('the squad page shows the whole squad: it ranks members, shares the code and asks before leaving or removing', async () => {
+test('the squad page shows the whole squad as a circle, never ranked: it shares the code and asks before leaving or removing', async () => {
   const calls = []; let current = [squad()];
   const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, update: async () => null, join: async () => null, create: async () => null,
     leave: async id => { calls.push(['leave', id]); return null; }, remove: async (id, m) => { calls.push(['remove', m]); return null; } });
@@ -99,10 +99,12 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   assert.equal(ui.root.findByType('Page').props.title, 'My Squad');
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-board').length > 0, 'the squad itself, not a shortcut to it');
   assert.ok(words(ui.root).includes('Calc crew')); assert.ok(words(ui.root).includes('2 members · you lead this squad · 1 focusing now'));
-  assert.ok(ui.root.findAll(n => n.props.testID === 'squad-leaderboard').length > 0, 'one table, however many members');
+  assert.ok(ui.root.findAll(n => n.props.testID === 'squad-members').length > 0, 'one list, however many members');
+  assert.equal(ui.root.findAll(n => n.props.testID === 'squad-leaderboard').length, 0, 'no leaderboard');
+  assert.doesNotMatch(words(ui.root).join(' | '), /Leaderboard|#1|1st/);
   await act(async () => pressLabel(ui.root, 'Invite friends').props.onPress());
   assert.match(rn.shared.message, /K7Q4PX/);
-  const first = pressLabel(ui.root, '1. User 2, 30m this week, focusing now');
+  const first = pressLabel(ui.root, 'User 2, 30m this week, focusing now');
   assert.equal(first.props.onLongPress, undefined, 'no hidden hold-to-remove');
   await act(async () => first.props.onPress());
   const sheet = () => ui.root.findAllByType('Sheet').find(x => x.props.label === 'player card');
@@ -112,7 +114,7 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
   assert.deepEqual(calls, [['remove', member(2).id]]);
   // Removing and changing the code, for a code that reached the wrong person.
-  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, focusing now').props.onPress());
+  await act(async () => pressLabel(ui.root, 'User 2, 30m this week, focusing now').props.onPress());
   await act(async () => pressLabel(ui.root, 'Remove User 2 and get a new code').props.onPress());
   assert.match(ui.root.findByType('Confirm').props.message, /old code stops working/);
   await act(async () => ui.root.findByType('Confirm').props.onConfirm());
@@ -127,7 +129,7 @@ test('the squad page shows the whole squad: it ranks members, shares the code an
   current = [{ ...squad(), ownerIsYou: false }];
   await act(async () => ui.update(React.createElement(Tab)));
   assert.deepEqual(menu(ui.root).map(option => option.label), ['Share invite', 'Join or start a squad', 'Leave squad'], 'members only share, join another or leave');
-  await act(async () => pressLabel(ui.root, '1. User 2, 30m this week, focusing now').props.onPress());
+  await act(async () => pressLabel(ui.root, 'User 2, 30m this week, focusing now').props.onPress());
   assert.equal(pressLabel(ui.root, 'Remove User 2'), undefined, 'members cannot remove anyone');
   assert.match(utils.leaveOutcome(squad(1, [member(1, 0)])), /squad closes and its invite code stops working/, 'the last member is told the squad ends');
   await act(async () => ui.unmount());
@@ -320,13 +322,13 @@ test('squad faces are everyone\'s initials, and the player card has the same lay
   assert.equal(r.root.findAllByType('Svg').length, 0, 'no character drawing');
   await act(async () => r.update(React.createElement(ui.SquadFace, { member: { ...member(1), isYou: true }, size: 36 })));
   assert.equal(initials(), 'ST', 'you, from your current profile name');
-  const card = props => React.createElement(ui.SquadMemberSheet, { member: friend, place: 2, leader: false, busy: false, onClose() {}, onRemove() {}, ...props });
+  const card = props => React.createElement(ui.SquadMemberSheet, { member: friend, leader: false, busy: false, onClose() {}, onRemove() {}, ...props });
   const words2 = () => r.root.findAllByType('Text').map(t => [].concat(t.props.children).join('')).join(' | ');
   await act(async () => r.update(card()));
   assert.ok(r.root.findAll(n => n.props.testID === 'player-card').length > 0);
   assert.equal(r.root.findAllByType('Character').length, 0, 'no character on the card');
   assert.match(words2(), /Focusing now/); assert.doesNotMatch(words2(), /Level|finds|The Artist/);
-  assert.match(words2(), /#2 \| on the board/); assert.match(words2(), /2h 35m \| focused/);
+  assert.doesNotMatch(words2(), /on the board|not ranked/, 'no place on a board'); assert.match(words2(), /2h 35m \| focused/); assert.match(words2(), /31 \| day streak/);
   reply = { card: { id: friend.id, isYou: false, name: 'User 2', statsShared: true, stats: { streak: 31, totalSeconds: 36000, sessions: 1, since: '2026-09-02T10:00:00Z',
     longestSeconds: 5400, daysFocused: 9, last7: [0, 0, 3600, 0, 0, 1800, 2400] } }, loading: false, failed: false };
   await act(async () => r.update(card()));
@@ -335,7 +337,7 @@ test('squad faces are everyone\'s initials, and the player card has the same lay
   // The sheet keeps the same blocks before and after loading, so it never jumps or stutters.
   const blocks = tree => tree.root.findAll(n => n.type === 'View' && n.props.style && [].concat(n.props.style).some(st => st && st.minHeight === 86)).length;
   const loaded = blocks(r);
-  assert.equal(loaded, 7, 'three this-week tiles and four all-time tiles');
+  assert.equal(loaded, 6, 'two this-week tiles (time and streak) and four all-time tiles');
   reply = { card: null, loading: true, failed: false };
   await act(async () => r.update(card({ member: { ...friend, id: 'eeeeeeee-eeee-4eee-8eee-000000000099' } })));
   assert.equal(blocks(r), loaded, 'the same blocks while loading');

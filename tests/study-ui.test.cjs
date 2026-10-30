@@ -430,7 +430,7 @@ test('Today’s card shows the goal up close; changing it lives in its •••
   for (const value of ['25', '4', '1h 30m', '2/7']) assert.ok(texts(ui.root).includes(value), value);
   assert.ok(texts(ui.root).includes('35 min to your goal'));
   const options = ui.root.findByType('Menu').props.options;
-  assert.deepEqual(options.map(option => option.label), ['Change daily goal', 'Open Progress']);
+  assert.deepEqual(options.map(option => option.label), ['Change daily goal', 'Open your rhythm']);
   await act(async () => { options[0].onPress(); await new Promise(resolve => setTimeout(resolve, 260)); });
   assert.deepEqual(calls, ['close', 'goal'], 'the card closes before the goal editor opens');
   await act(async () => ui.update(React.createElement(Sheet, { visible: false, onClose() {}, completedSeconds: 1500, goalMinutes: 60, streak: 4, complete: false,

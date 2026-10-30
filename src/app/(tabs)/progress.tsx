@@ -14,6 +14,7 @@ import AppHeader from "../../components/AppHeader";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import SheetButton from "../../components/SheetTouchable";
@@ -29,6 +30,8 @@ import { useTimer } from "../../context/TimerContext";
 import { useUser } from "../../context/UserContext";
 import { useAuth } from "../../context/AuthContext";
 import { useProgressData } from "../../hooks/useProgressData";
+import { useCharacterData } from "../../hooks/useCharacterData";
+import { quietMarkers } from "../../utils/quietMarkers";
 import SubjectBreakdown from "../../components/SubjectBreakdown";
 import OneTimeHint from "../../components/OneTimeHint";
 import { appPreferences } from "../../services/appPreferences";
@@ -183,6 +186,10 @@ export default function ProgressScreen() {
   const timeZone = profile?.timezone || DEFAULT_TIMEZONE;
   const insets = useSafeAreaInsets();
   const tabBarHeight = floatingTabInset(useBottomTabBarHeight(), insets.bottom, timer);
+  const router = useRouter();
+  // All-time history (shared with Profile) for the quiet markers.
+  const history = useCharacterData().data;
+  const markers = useMemo(() => history ? quietMarkers(history.sessions, timeZone) : [], [history, timeZone]);
 
   const [clock, setClock] = useState(() => new Date());
   const today = dateKey(clock, timeZone);
@@ -301,7 +308,7 @@ export default function ProgressScreen() {
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
-      <AppHeader title="Progress" />
+      <AppHeader title="Your rhythm" onToday={() => router.navigate("/")} />
       <TourScrollView
         contentContainerStyle={[s.page, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={
@@ -309,6 +316,8 @@ export default function ProgressScreen() {
             refreshing={loading && !!data}
             onRefresh={() => void refresh()}
             tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.surfaceRaised}
           />
         }
       >
@@ -396,10 +405,10 @@ export default function ProgressScreen() {
               color={colors.secondary}
             />
             <View style={s.flex}>
-              <Text style={s.rowTitle}>{offline ? "Offline" : "Couldn’t refresh Progress"}</Text>
+              <Text style={s.rowTitle}>{offline ? "Offline" : "Couldn’t refresh your rhythm"}</Text>
               <Text style={s.caption}>
                 {offline
-                  ? data ? "Showing your progress as last loaded. New sessions count once you’re online." : "Progress loads when you’re online. Your sessions are saved."
+                  ? data ? "Showing your progress as last loaded. New sessions count once you’re online." : "Your rhythm loads when you’re online. Your sessions are saved."
                   : data ? "Showing your last loaded data." : "Your progress is safe. Try again."}
               </Text>
             </View>
@@ -407,7 +416,7 @@ export default function ProgressScreen() {
               onPress={() => void refresh()}
               disabled={loading}
               accessibilityRole="button"
-              accessibilityLabel="Retry Progress"
+              accessibilityLabel="Retry your rhythm"
               style={s.retry}
             >
               <Text style={s.link}>{loading ? "Retrying…" : "Retry"}</Text>
@@ -633,6 +642,15 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
+              {markers.length > 0 && <>
+                <Section title="Along the way" />
+                <View style={s.markers} testID="quiet-markers">
+                  {markers.map((marker, index) => <View key={marker.id} style={[s.marker, index > 0 && s.markerLine]} accessible accessibilityLabel={marker.text}>
+                    <Ionicons name={marker.icon} size={18} color={colors.accent} />
+                    <Text style={s.markerText}>{marker.text}</Text>
+                  </View>)}
+                </View>
+              </>}
             </ContentReveal>
           )
         )}
@@ -872,9 +890,10 @@ const s = StyleSheet.create({
   sectionTitle: {
     ...type.section,
     color: colors.text,
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: "600",
+    fontSize: 23,
+    lineHeight: 28,
+    fontFamily: "display",
+    fontWeight: "500",
     letterSpacing: -0.3,
     marginBottom: 0,
   },
@@ -920,7 +939,7 @@ const s = StyleSheet.create({
   legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
   story: { paddingTop: 8, paddingBottom: 4, gap: 2 },
   storyLabel: { ...type.label },
-  storyValue: { color: colors.text, fontSize: 40, lineHeight: 46, fontWeight: "700", letterSpacing: -1, fontVariant: ["tabular-nums"] },
+  storyValue: { color: colors.text, fontSize: 44, lineHeight: 50, fontFamily: "display", letterSpacing: -1, fontVariant: ["tabular-nums"] },
   storyTitle: { color: colors.text, fontSize: 28, lineHeight: 34, fontWeight: "700", letterSpacing: -0.6, marginTop: 2 },
   storyLine: { color: colors.text, fontSize: 15, lineHeight: 20 },
   storyAside: { color: colors.secondary },
@@ -928,6 +947,10 @@ const s = StyleSheet.create({
   dayDetailHeading: { flexDirection: "row", justifyContent: "space-between", alignItems: "baseline", gap: 8 },
   dayDetailTitle: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", flexShrink: 1 },
   dayDetailValue: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600", fontVariant: ["tabular-nums"] },
+  markers: { ...edge, borderRadius: 20, backgroundColor: colors.surface, paddingHorizontal: 16 },
+  marker: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12 },
+  markerLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  markerText: { flex: 1, color: colors.text, fontSize: 15, lineHeight: 21 },
   consistency: {
     flexDirection: "row",
     alignItems: "center",
@@ -1015,7 +1038,7 @@ const s = StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 11,
-    backgroundColor: "rgba(48,209,88,0.12)",
+    backgroundColor: "rgba(54,105,77,0.12)",
     alignItems: "center",
     justifyContent: "center",
   },

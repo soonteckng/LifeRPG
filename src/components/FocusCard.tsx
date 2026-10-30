@@ -110,7 +110,7 @@ const s = StyleSheet.create({
   areaButton: { minHeight: 52, paddingVertical: 11, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   meta: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, duration: { gap: 2, marginTop: 4 },
   durationRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
-  presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: "rgba(255,255,255,0.05)" },
+  presets: { flexDirection: "row", flexWrap: "wrap", gap: 6, borderRadius: 14, padding: 3, backgroundColor: colors.track },
   option: { flex: 1, minWidth: 60, minHeight: 44, paddingHorizontal: 6, paddingVertical: 10, alignItems: "center", justifyContent: "center", borderRadius: 11 },
   selected: { backgroundColor: colors.selection }, optionText: { color: colors.secondary, fontSize: 15, lineHeight: 20, fontWeight: "500", textAlign: "center" }, selectedText: { color: colors.text },
   remaining: { color: colors.text, fontSize: 40, lineHeight: 48, fontWeight: "600", letterSpacing: -1, fontVariant: ["tabular-nums"] },
@@ -136,6 +136,6 @@ const s = StyleSheet.create({
   barTitle: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   barTime: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 20, fontWeight: "500", fontVariant: ["tabular-nums"] },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(255,255,255,0.22)" },
-  progressFill: { height: 4, backgroundColor: "rgba(255,255,255,0.9)" },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(246,242,236,0.28)" },
+  progressFill: { height: 4, backgroundColor: "rgba(246,242,236,0.92)" },
 });

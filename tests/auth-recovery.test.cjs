@@ -243,7 +243,7 @@ const host = name => function Host(props) { return React.createElement(name, pro
 const native = {
   View: host("View"), Text: host("Text"), TextInput: host("Input"),
   Pressable: host("Button"), ScrollView: host("Scroll"), KeyboardAvoidingView: host("Keyboard"),
-  ActivityIndicator: host("Spinner"), Platform: { OS: "android" },
+  ActivityIndicator: host("Spinner"), StatusBar: host("StatusBar"), Platform: { OS: "android" },
   Keyboard: { dismiss() {}, metrics: () => undefined, addListener: () => ({ remove() {} }) },
   BackHandler: { addEventListener: () => ({ remove() {} }) },
   Animated: { Value: class { setValue() {} }, View: host("Animated"), timing: () => ({ start() {}, stop() {} }) },
@@ -592,6 +592,7 @@ test("LifeRPG intro covers signed-out and signed-in content and releases it afte
         } },
       "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => { hides++; } },
       "../services/launchUpdate": { prepareLaunchUpdate: async () => false, loadLaunchUpdate: async () => {} },
+      "../services/appFonts": { loadAppFonts: async () => true },
     }).default;
     let renderer;
     await act(async () => { renderer = create(React.createElement(Component, null, React.createElement(destination))); });
@@ -617,6 +618,7 @@ test("reduced-motion launch skips animation and shows the app after a brief bran
       Animated: { Value: class { setValue() {} }, View: host("Animated"), sequence: () => { animations++; } } },
     "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => {} },
     "../services/launchUpdate": { prepareLaunchUpdate: async () => false, loadLaunchUpdate: async () => {} },
+    "../services/appFonts": { loadAppFonts: async () => true },
   }).default;
   let renderer;
   await act(async () => { renderer = create(React.createElement(Component, null, React.createElement("Home"))); });
@@ -639,6 +641,7 @@ test("a newer update found during the intro loads at once, and a slow check neve
         } },
       "expo-splash-screen": { preventAutoHideAsync: async () => {}, hideAsync: async () => {} },
       "../services/launchUpdate": { prepareLaunchUpdate: () => check, loadLaunchUpdate: async () => { reloads++; } },
+      "../services/appFonts": { loadAppFonts: async () => true },
     }).default;
     let renderer;
     await act(async () => { renderer = create(React.createElement(Component, null, React.createElement("Home"))); });

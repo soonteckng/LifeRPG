@@ -462,7 +462,7 @@ const s = StyleSheet.create({
   confirmStartText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   confirmPlay: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
   confirmCancel: { minHeight: 50, alignItems: "center", justifyContent: "center" }, confirmDisabled: { opacity: 0.5 }, cancelText: { color: colors.text, fontSize: 16, fontWeight: "500" },
-  removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
+  removeButton: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
   removeText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   sheetRow: { ...edge, backgroundColor: colors.sheetCard, borderRadius: radius.row },
   grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
@@ -478,9 +478,10 @@ const s = StyleSheet.create({
   newIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft, marginBottom: 4 },
   newText: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
   newHint: { color: colors.muted, fontSize: 12, lineHeight: 17 },
-  startCard: { ...edge, padding: 16, gap: 12, borderRadius: radius.card, backgroundColor: colors.surface },
+  // The one lilac card on Today: what to start.
+  startCard: { padding: 16, gap: 12, borderRadius: radius.card, borderTopLeftRadius: 30, borderTopRightRadius: 30, backgroundColor: colors.focusSurface, borderWidth: 1, borderColor: colors.focusBorder },
   startHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 28 },
-  startTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700", letterSpacing: -0.2 },
+  startTitle: { color: colors.text, fontSize: 23, lineHeight: 28, fontFamily: "display", fontWeight: "500", letterSpacing: -0.3 },
   // Two chips to a row, wrapping, so every way to start is visible at once.
   startChips: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   // Every Start chip is the same size, whether it's a routine, a subject or Any activity.

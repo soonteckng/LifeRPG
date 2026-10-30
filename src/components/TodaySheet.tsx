@@ -29,7 +29,7 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
       <View style={s.flex}><Text style={s.title} accessibilityRole="header">Today</Text><Text style={s.caption}>{!goalKnown ? "Today’s goal is not available yet" : !todayKnown ? "Checking today’s progress…" : complete ? "Goal reached" : `${Math.ceil(left / 60)} min to your goal`}</Text></View>
       {visible && <MoreMenu label="Goal options" options={[
         { label: canChangeGoal ? "Change daily goal" : "Change goal · needs internet", icon: "flag-outline", onPress: () => after(onChangeGoal), disabled: !canChangeGoal },
-        { label: "Open Progress", icon: "stats-chart-outline", onPress: () => after(onOpenProgress) },
+        { label: "Open your rhythm", icon: "stats-chart-outline", onPress: () => after(onOpenProgress) },
       ]} />}
       <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Close" hitSlop={8} style={s.close}><Ionicons name="close" size={18} color={colors.secondary} /></Pressable>
     </View>}>
@@ -42,12 +42,12 @@ export default function TodaySheet({ visible, onClose, completedSeconds, goalMin
       </View>
       <View style={s.stats}>
         <Stat icon="flame" tint={colors.streak} value={streakKnown ? `${streak}` : "–"} label="day streak" />
-        <Stat icon="time-outline" tint="#64D2FF" value={week ? durationLabel(week.seconds) : "–"} label="this week" />
+        <Stat icon="time-outline" tint={colors.progress} value={week ? durationLabel(week.seconds) : "–"} label="this week" />
         <Stat icon="checkmark-circle-outline" tint={colors.success} value={week ? `${week.goalDays}/7` : "–"} label="goal days" />
       </View>
       {streakKnown && <View style={[s.card, s.rest]} testID="today-rest-days" accessible
         accessibilityLabel={`${restDays} rest ${restDays === 1 ? "day" : "days"} ready. ${restedYesterday ? "Yesterday was a rest day. " : ""}Every 7 days in your streak earns one, and you can keep 2. Miss a day and one is used for you, so your streak carries on.`}>
-        <Ionicons name="moon-outline" size={20} color="#A5B4FC" />
+        <Ionicons name="moon-outline" size={20} color={colors.progress} />
         <View style={s.flex}>
           <Text style={s.restTitle}>{restDays === 0 ? "No rest days yet" : restDays === 1 ? "1 rest day ready" : `${restDays} rest days ready`}{restedYesterday ? " · yesterday was a rest day" : ""}</Text>
           <Text style={s.caption}>{"Every 7 days in your streak earns one (keep up to 2). Miss a day and one is used for you, so your streak carries on."}</Text>

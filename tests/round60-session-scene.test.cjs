@@ -150,14 +150,14 @@ test("the saving portal dims uniformly without elevating a rectangular Android s
   const Saving=load("src/components/SessionSavingOverlay.tsx",{
     "react-native":{View:host("View"),ActivityIndicator:host("Spinner"),StyleSheet:{create:value=>value},Animated:{View:host("Motion"),Value:class{constructor(value){this.value=value;}},
       timing:(value,config)=>({start(done){animations.push(config);value.value=config.toValue;done?.({finished:true});},stop(){}})}},
-    "./AppText":{Text:host("Text")},"../constants/theme":{colors:{primary:"#7C3AED",text:"white",secondary:"gray",sheetCard:"#20243D"}},"../hooks/useReducedMotion":{useReducedMotion:()=>false},
+    "./AppText":{Text:host("Text")},"../constants/theme":{colors:{primary:"#3B2737",text:"#2A2028",secondary:"gray",sheetCard:"#F0EAE2",scrim:"rgba(42,32,40,0.45)"}},"../hooks/useReducedMotion":{useReducedMotion:()=>false},
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Saving,{visible:true}));});
   try {
     const scrim=renderer.root.findByProps({testID:"session-saving"});
     const style=Object.assign({},...scrim.props.style);
     assert.equal(style.elevation,undefined);
-    assert.equal(style.backgroundColor,"rgba(0,0,0,0.62)");
+    assert.equal(style.backgroundColor,"rgba(42,32,40,0.45)","the shared aubergine scrim from the paper theme");
     assert.deepEqual([style.top,style.right,style.bottom,style.left],[0,0,0,0]);
     assert.equal(renderer.root.findByProps({accessibilityLabel:"Saving your session"}).props.style.borderRadius,24);
     await act(async()=>renderer.update(React.createElement(Saving,{visible:false})));

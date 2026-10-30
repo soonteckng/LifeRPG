@@ -32,6 +32,15 @@ export const SQUAD_GOALS = [300, 600, 900, 1200, 1800] as const;
 export function squadTotal(squad: Squad): number { return squad.members.reduce((sum, member) => sum + member.weekSeconds, 0); }
 export function focusingCount(squad: Squad): number { return squad.members.filter(member => member.focusingNow).length; }
 export type Standing = { member: SquadMember; place: number | null };
+/**
+ * Members as a circle, never a ranking: whoever is focusing now first, then
+ * everyone by name, and you last, so your eye lands on your friends.
+ */
+export function circleOrder(squad: Squad): SquadMember[] {
+  const others = squad.members.filter(member => !member.isYou), you = squad.members.filter(member => member.isYou);
+  return [...others.filter(member => member.focusingNow).sort(byNameOf), ...others.filter(member => !member.focusingNow).sort(byNameOf), ...you];
+}
+function byNameOf(a: SquadMember, b: SquadMember) { return a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id); }
 const byName = (a: SquadMember, b: SquadMember) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id);
 /**
  * This week's leaderboard. Only someone who has focused this week is ranked;

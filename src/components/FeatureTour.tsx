@@ -27,18 +27,10 @@ import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
  */
 export type TourStep = { id: string; route: string; kind: "info" | "tap"; target?: string; expect?: string; title: string; body: string; next?: string };
 export const TOUR_STEPS: readonly TourStep[] = [
-  { id: "welcome", route: "/", kind: "info", title: "Welcome to LifeRPG!", body: "Let’s take a quick look around. It only takes a minute, and the app waits for you while we go.", next: "Let’s go" },
+  { id: "welcome", route: "/", kind: "info", title: "Welcome to LifeRPG", body: "A quick look around. It takes a minute, and the app waits for you.", next: "Let’s go" },
   { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. Tap the card for your day, and the three dots let you change your goal." },
   { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Start a session", body: "Sessions start here. Your routines wait as one-tap buttons, and you can always focus on anything else. Hold a routine to change it." },
-  { id: "tap-routines", route: "/", kind: "tap", target: "tab-routines", expect: "/routines", title: "Tap on Routines", body: "" },
-  { id: "routines-mine", route: "/routines", kind: "info", target: "routines-mine", title: "Make it yours", body: "Save what you keep coming back to as a routine, with its own length and category. Tap Add routine, or grab one of the ideas below. Just focus at the top is for anything else." },
-  { id: "tap-study", route: "/routines", kind: "tap", target: "tab-study", expect: "/study", title: "Tap on Study", body: "" },
-  { id: "study-subjects", route: "/study", kind: "info", target: "study-subjects", title: "Subjects and exams", body: "Add what you’re studying and tap ▶ to start a session for it. Add an exam date too, and we’ll count down to it here and on Home." },
-  { id: "tap-squads", route: "/study", kind: "tap", target: "tab-squads", expect: "/squads", title: "Tap on Squads", body: "" },
-  { id: "squads-overview", route: "/squads", kind: "info", title: "Better together", body: "Make a squad or join a friend’s, and you’ll cheer each other on through the week. Totally optional, jump in whenever you like." },
-  { id: "tap-progress", route: "/squads", kind: "tap", target: "tab-progress", expect: "/progress", title: "Tap on Progress", body: "" },
-  { id: "progress-overview", route: "/progress", kind: "info", title: "Watch it grow", body: "Every minute you focus shows up here, sorted by category. Switch between one day and the whole week or month, and tap a category to see its sessions. Your streak is further down." },
-  { id: "tap-home", route: "/progress", kind: "tap", target: "tab-index", expect: "/", title: "Tap on Home", body: "" },
+  { id: "home-places", route: "/", kind: "info", target: "home-places", title: "Everything else is here", body: "Your routines, study subjects, squads and your rhythm open from here, and each one comes straight back to Today." },
   { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your initials for your profile. The gear opens Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
@@ -365,7 +357,7 @@ const s = StyleSheet.create({
   root: { flex: 1 }, anchor: { width: "100%", alignSelf: "stretch" },
   overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 },
   block: { position: "absolute" },
-  dimFull: { backgroundColor: guideColors.scrim }, overviewDim: { backgroundColor: "rgba(0,0,0,0.18)" },
+  dimFull: { backgroundColor: guideColors.scrim }, overviewDim: { backgroundColor: "rgba(42,32,40,0.14)" },
   ring: { position: "absolute", borderWidth: 2.5, borderColor: guideColors.action },
   ringTap: { borderWidth: 3, backgroundColor: "rgba(245,184,75,0.14)" },
   meta: { flexDirection: "row", alignItems: "center", gap: 10 },

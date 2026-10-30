@@ -47,6 +47,6 @@ const s = StyleSheet.create({
   chipText: { flex: 1, textAlign: "right", color: colors.secondary, fontSize: 16, lineHeight: 22, fontVariant: ["tabular-nums"] },
   rowIcon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
   chipFlat: { borderBottomWidth: 0, paddingHorizontal: 14 },
-  rowIconFlat: { backgroundColor: "rgba(255,255,255,0.08)" },
+  rowIconFlat: { backgroundColor: colors.accentSoft },
   rowLabel: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
 });

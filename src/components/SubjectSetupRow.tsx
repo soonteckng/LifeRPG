@@ -70,7 +70,7 @@ const s = StyleSheet.create({
   row: { minHeight: 52, paddingVertical: 11, paddingHorizontal: 16, flexDirection: "row", alignItems: "center", gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
   icon: { width: 30, height: 30, borderRadius: 9, alignItems: "center", justifyContent: "center" },
   label: { color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "500" },
-  labelColumn: { flexShrink: 1, minWidth: 0 }, exam: { color: colors.secondary, fontSize: 13, lineHeight: 17 }, examSoon: { color: "#FFB4AE" },
+  labelColumn: { flexShrink: 1, minWidth: 0 }, exam: { color: colors.secondary, fontSize: 13, lineHeight: 17 }, examSoon: { color: colors.danger },
   value: { flex: 1, textAlign: "right", fontSize: 16, lineHeight: 22 }, chosen: { color: colors.text }, prompt: { color: colors.accent, fontWeight: "600" },
   list: { paddingHorizontal: 16, paddingBottom: 16, gap: 8 },
   error: { color: colors.danger, fontSize: 14, lineHeight: 20, paddingHorizontal: 4 },

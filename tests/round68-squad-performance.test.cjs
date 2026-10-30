@@ -41,7 +41,7 @@ test('opening the Home squad peek draws only the new initials, not the four alre
   assert.equal(h.counters.pictures,4);
   await act(async()=>ui.root.findAllByType('Press').find(p=>p.props.testID==='home-squad').props.onPress());
   const changed=delta(before,h.counters);
-  assert.equal(changed.pictures,6,'the unchanged four Home faces do not redraw while the sheet mounts');
+  assert.equal(changed.pictures,7,'only the sheet\'s own faces draw (three in its summary, four in its circle); the unchanged four Home faces do not redraw');
   assert.equal(changed.svg,0,'faces are initials, with no character drawing');
   assert.ok(ui.root.findAllByType('Sheet').some(x=>x.props.label==='squad peek'));
  }finally{await act(async()=>ui.unmount());}

@@ -72,13 +72,13 @@ export default function SheetConfirmation(props: SheetConfirmationProps) {
 
 const styles = StyleSheet.create({
   overlay: { ...StyleSheet.absoluteFill, zIndex: 100, elevation: 20, justifyContent: "flex-end", paddingHorizontal: 8 },
-  scrim: { ...StyleSheet.absoluteFill, backgroundColor: "rgba(0,0,0,0.55)" },
+  scrim: { ...StyleSheet.absoluteFill, backgroundColor: colors.scrim },
   // The same floating card as a remove sheet: rounded all round, inside the screen.
   card: { ...edge, borderRadius: radius.sheet, backgroundColor: colors.surfaceRaised, paddingHorizontal: 16, paddingBottom: 12 },
-  handle: { alignSelf: "center", width: 36, height: 5, borderRadius: 2, marginTop: 11, marginBottom: 12, backgroundColor: "rgba(255,255,255,0.24)" },
+  handle: { alignSelf: "center", width: 36, height: 5, borderRadius: 2, marginTop: 11, marginBottom: 12, backgroundColor: colors.border },
   title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4, paddingHorizontal: 4 },
   message: { color: colors.secondary, fontSize: 14, lineHeight: 20, marginTop: 6, marginBottom: 18, paddingHorizontal: 4 },
-  confirm: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,105,97,0.16)" },
+  confirm: { minHeight: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
   confirmText: { color: colors.danger, fontSize: 17, fontWeight: "600" },
   confirmCalm: { backgroundColor: colors.accentSoft }, confirmCalmText: { color: colors.accent },
   cancel: { minHeight: 50, marginTop: 4, alignItems: "center", justifyContent: "center" },

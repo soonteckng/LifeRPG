@@ -217,7 +217,7 @@ test("area groups retain legacy labels and reject unsafe chart colors", () => {
   );
   assert.equal(
     result.areas.find((a) => a.title === "Learning").color,
-    "#FF9F0A",
+    "#B4651E",
   );
   assert.equal(result.areas.length, 2);
   assert.equal(durationLabel(30), "30s");
@@ -242,7 +242,7 @@ test("legacy Wellbeing aliases form one 16-minute group with both original sessi
     const group = result.areas[0];
     assert.equal(group.title, "Wellbeing");
     assert.equal(group.seconds, 960);
-    assert.equal(group.color, "#FF9F0A");
+    assert.equal(group.color, "#B4651E");
     assert.equal(group.sessions.length, 16);
     assert.equal(new Set(group.sessions.map(row => row.id)).size, 16);
     assert.equal(group.sessions.filter(row => row.subject_id === 2).length, 1);
@@ -290,7 +290,7 @@ test("distinct custom IDs and legacy activities remain separate while single-are
   assert.equal(result.areas.length, 4);
   assert.equal(result.areas.filter(area => area.title === "My ceramics").length, 2);
   assert.equal(new Set(result.areas.map(area => area.key)).size, 4);
-  assert.equal(result.areas.find(area => area.title === "Learning").color, "#64D2FF");
+  assert.equal(result.areas.find(area => area.title === "Learning").color, "#2E6A9E");
   assert.equal(analytics.sessionAreaSegments(rows, areaRows).length, 4);
 });
 
@@ -498,7 +498,7 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
 
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
-async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false, offline = false } = {}) {
+async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false, offline = false, history = null } = {}) {
   const today = dateKey(new Date(), TZ),
     stamp = new Date(Date.now() - 1000).toISOString();
   let refreshes = 0,
@@ -558,6 +558,8 @@ async function screenHarness({ empty = false, historyFailure = false, sessionRow
     },
     "../../hooks/useReducedMotion": { useReducedMotion: () => true },
     "../hooks/useReducedMotion": { useReducedMotion: () => true },
+    // All-time history for the quiet markers; none unless a test passes it.
+    "../../hooks/useCharacterData": { useCharacterData: () => ({ data: history ?? null }) },
     "../../hooks/useProgressData": {
       useProgressData: (period) => ({
         data: {
@@ -730,7 +732,7 @@ test("mixed Life areas retain proportional colours in a day instead of becoming 
   try {
     const segments = ui.renderer.root.findAllByType("View").filter(node => node.props.testID?.startsWith(`focus-segment-${ui.today}`));
     assert.equal(segments.length, 2);
-    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#64D2FF", 60], ["#FF9F0A", 60]]);
+    assert.deepEqual(segments.map(node => [node.props.style.backgroundColor, node.props.style.flex]).sort(), [["#2E6A9E", 60], ["#B4651E", 60]]);
     await ui.press("Categories for selected week");
     assert.equal(ui.historyCalls(), 0, "period entry must not query unrelated dates");
     const cards = ui.renderer.root.findByProps({ testID: "progress-categories" }).findAllByType("Button").filter(node => node.props.accessibilityLabel?.endsWith("View sessions"));
@@ -1059,12 +1061,15 @@ test("historical periods show an actual labeled day rather than calling a period
   assert.equal(analytics.progressHeroDay(result, period, "2026-09-29").key, "2026-10-09", "a day outside this period is never reused");
 });
 
-test("colours saved by the previous palette keep their place in the new one", () => {
+test("colours saved by both earlier palettes keep their place in the paper one", () => {
   const { lifeAreaColor, areaTint } = load("src/utils/lifeAreaColor.ts");
-  const pairs = [["#6DD4B5", "#30D158"], ["#F4AA88", "#FF9F0A"], ["#79BFF2", "#64D2FF"], ["#AAB3FF", "#5E5CE6"], ["#E98ABC", "#FF6482"], ["#C1A8FA", "#BF5AF2"]];
-  for (const [previous, next] of pairs) { assert.equal(lifeAreaColor(1, previous), next); assert.equal(lifeAreaColor(1, next.toLowerCase()), next); }
+  // Round 84: [pastel, bright (dark theme), deep (paper)] for each slot.
+  const slots = [["#6DD4B5", "#30D158", "#3F7A5A"], ["#F4AA88", "#FF9F0A", "#B4651E"], ["#79BFF2", "#64D2FF", "#2E6A9E"], ["#AAB3FF", "#5E5CE6", "#5A4FA0"], ["#E98ABC", "#FF6482", "#A84569"], ["#C1A8FA", "#BF5AF2", "#7A4C9C"]];
+  for (const [pastel, bright, next] of slots) {
+    assert.equal(lifeAreaColor(1, pastel), next); assert.equal(lifeAreaColor(1, bright), next); assert.equal(lifeAreaColor(1, next.toLowerCase()), next);
+  }
   assert.equal(areaTint("#64D2FF", 0.2), "rgba(100,210,255,0.2)");
-  assert.equal(areaTint("not a colour"), "rgba(255,255,255,0.16)");
+  assert.equal(areaTint("not a colour"), "rgba(42,32,40,0.12)", "an unknown colour falls back to a faint ink tint on paper");
 });
 
 test("offline, Progress says so calmly instead of offering a retry that cannot work", async () => {
@@ -1089,4 +1094,18 @@ test("a category's sessions sit under their day: the chosen day only, or the who
   assert.equal(ui.renderer.root.findByType('Sheet').findAllByProps({testID:'sessions-by-day'}).length>0,true);
   assert.match(ui.text(),/2 sessions · 3m/,'Monday heads its two sessions');
  }finally{await ui.cleanup();}
+});
+
+test("Round 84: Your rhythm shows quiet markers from your whole history, under the streak, and none before there are any", async () => {
+  const none = await screenHarness();
+  try { assert.doesNotMatch(none.text(), /Along the way/, "no history loaded, no empty section"); } finally { await none.cleanup(); }
+  const now = Date.now();
+  const sessions = Array.from({ length: 12 }, (_, i) => ({ id: `h${i}`, subject_id: 1, activity_type: "other", duration_seconds: 3600, xp_earned: 0, completed_at: new Date(now - i * 86400000).toISOString() }));
+  const ui = await screenHarness({ history: { userId: "me", areas: [], sessions } });
+  try {
+    const shown = ui.text();
+    assert.match(shown, /Along the way10 hours focused in totalShowed up on 10 different days10 sessions finishedLongest run: 12 days in a rowLongest session: 1h 00m/);
+    assert.ok(shown.indexOf("streak") < shown.indexOf("Along the way"), "the markers sit under the streak");
+    assert.match(shown, /Your rhythm/);
+  } finally { await ui.cleanup(); }
 });

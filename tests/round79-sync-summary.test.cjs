@@ -27,7 +27,7 @@ test('three confirmed one-minute receipts produce one accurate sync summary with
   const b = batch([entry(1, 60, TODAY, 300), entry(2, 60, TODAY, 360), entry(3, 60, TODAY, 420)]);
   const summary = summarizeOfflineSync(b, subjects);
   assert.equal(summary.seconds, 180); assert.equal('xpEarned' in summary, false, 'the card shows no XP');
-  assert.deepEqual(summary.syncSummary, { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: 'Learning', color: '#64D2FF' }] });
+  assert.deepEqual(summary.syncSummary, { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: 'Learning', color: '#2E6A9E' }] });
   assert.equal(b.entries[2].receipt.result.daily_completed_seconds, 420);
 });
 
@@ -43,7 +43,7 @@ test('mixed durations and legacy focus-area names give one canonical category ro
   a.setup.subjectId = 3; b.setup.subjectId = 2;
   const summary = summarizeOfflineSync(batch([a, b, entry(3, 120, TODAY, 300)]), subjects);
   assert.deepEqual(summary.syncSummary.durations, [{ seconds: 60, count: 1 }, { seconds: 120, count: 2 }]);
-  assert.deepEqual(summary.syncSummary.areas, [{ title: 'Learning', color: '#64D2FF' }, { title: 'Wellbeing', color: '#FF9F0A' }]);
+  assert.deepEqual(summary.syncSummary.areas, [{ title: 'Learning', color: '#2E6A9E' }, { title: 'Wellbeing', color: '#B4651E' }]);
 });
 
 test('a session without a known category adds its time but no category row', () => {

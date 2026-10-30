@@ -40,7 +40,7 @@ async function guide({receipt='pending',measureTabs=true}={}){
   '/NotificationOnboardingPrompt':host('Invite'),'/AppText':{Text:host('Text')},'/MotionPressable':host('Button'),
  });
  // Every highlighted target sits somewhere sensible; tab targets only when measurable.
- const spots={'home-focus':{x:20,y:200,width:350,height:220},'home-quests':{x:20,y:440,width:350,height:160},'home-identity':{x:20,y:60,width:350,height:100},'routines-mine':{x:20,y:240,width:350,height:200},'study-subjects':{x:20,y:120,width:350,height:260}};
+ const spots={'home-focus':{x:20,y:200,width:350,height:220},'home-quests':{x:20,y:440,width:350,height:160},'home-identity':{x:20,y:60,width:350,height:100},'routines-mine':{x:20,y:240,width:350,height:200},'study-subjects':{x:20,y:120,width:350,height:260},'home-places':{x:20,y:620,width:350,height:260}};
  ['index','routines','study','squads','progress'].forEach((tab,i)=>{spots[`tab-${tab}`]={x:20+i*70,y:720,width:70,height:66};});
  function Targets(){const tour=api.useFeatureTour();React.useEffect(()=>{const offs=Object.entries(spots).map(([id,rect])=>tour.register(id,{measure:done=>{if(id.startsWith('tab-')&&!measureTabs)return;measures.push(id);done(rect);},reveal:()=>{reveals.push(id);return false;}}));return()=>offs.forEach(off=>off());},[tour]);return React.createElement('App');}
  const element=()=>React.createElement(api.FeatureTourProvider,null,React.createElement(Targets));
@@ -58,14 +58,12 @@ async function guide({receipt='pending',measureTabs=true}={}){
   cleanup:async()=>{await act(async()=>tree.unmount());Object.assign(global,saved);}};
 }
 
-test('the guide is one connected walk: each tap step opens the page the next step explains, and it ends on Home',()=>{
+test('the guide is one short walk on Today: no tab bar to tap, it starts with a welcome and ends on your initials',()=>{
  const {TOUR_STEPS}=load('src/components/FeatureTour.tsx',{'react-native':{StyleSheet:{create:s=>s}},'expo-router':{},'expo-haptics':{},'@expo/vector-icons':{},'react-native-safe-area-context':{},'react-native-svg':{},'@react-native-async-storage/async-storage':{},'/UserContext':{},'/TimerContext':{},'/useReducedMotion':{},'/notificationOnboardingStore':{},'/NotificationOnboardingPrompt':{},'/AppText':{},'/MotionPressable':{}});
- assert.equal(TOUR_STEPS[0].id,'welcome');assert.equal(TOUR_STEPS.at(-1).route,'/');
- TOUR_STEPS.forEach((step,index)=>{
-  if(step.kind==='tap'){assert.ok(step.target?.startsWith('tab-'),`${step.id} points at a real tab`);assert.equal(TOUR_STEPS[index+1].route,step.expect,`${step.id} leads to the page it opens`);}
-  if(index>0&&TOUR_STEPS[index-1].kind!=='tap')assert.equal(step.route,TOUR_STEPS[index-1].route,`${step.id} stays on the page until a tab is tapped`);
- });
- assert.deepEqual(TOUR_STEPS.filter(step=>step.kind==='tap').map(step=>step.expect),['/routines','/study','/squads','/progress','/']);
+ assert.equal(TOUR_STEPS[0].id,'welcome');assert.equal(TOUR_STEPS.at(-1).id,'home-identity');
+ assert.deepEqual(TOUR_STEPS.map(step=>step.route),TOUR_STEPS.map(()=>'/'),'every tip is on Today, which opens everything else');
+ assert.equal(TOUR_STEPS.filter(step=>step.kind==='tap').length,0,'Round 84: no tab steps, because there is no tab bar');
+ assert.ok(TOUR_STEPS.some(step=>step.target==='home-places'),'one tip shows where Routines, Study, Squads and Your rhythm open');
 });
 
 test('a new account sees a welcome, with the app paused, no Skip and nothing to go back to; other taps and hardware Back only point at the glow',async()=>{
@@ -73,14 +71,14 @@ test('a new account sees a welcome, with the app paused, no Skip and nothing to 
  try{
   assert.equal(ui.find('tour-overlay').length,1,'the app is paused while the guide gets ready');
   await ui.advance(700);
-  assert.equal(ui.title(),'Welcome to LifeRPG!');
+  assert.equal(ui.title(),'Welcome to LifeRPG');
   assert.equal(ui.find('tour-banner').length,0,'no banner over the page: the count lives in the tip');
-  assert.match(ui.text(),/1 of 13/);
+  assert.match(ui.text(),/1 of 5/);
   assert.equal(ui.tree.root.findByProps({testID:'tour-app-content'}).props.importantForAccessibility,'no-hide-descendants');
   assert.equal(ui.tree.root.findAll(n=>/Skip|Back/.test(n.props.accessibilityLabel??'')).length,0,'not skippable, and the first tip has no Back');
   await ui.tapPaused();
-  assert.match(ui.text(),/Tap Let’s go to keep going/);assert.equal(ui.title(),'Welcome to LifeRPG!','tapping elsewhere never moves on');
-  assert.ok(ui.hasBack());await ui.back();assert.equal(ui.title(),'Welcome to LifeRPG!','hardware Back stays in the guide');
+  assert.match(ui.text(),/Tap Let’s go to keep going/);assert.equal(ui.title(),'Welcome to LifeRPG','tapping elsewhere never moves on');
+  assert.ok(ui.hasBack());await ui.back();assert.equal(ui.title(),'Welcome to LifeRPG','hardware Back stays in the guide');
   // Copy stays warm and plain: no em dashes and no "glowing" instructions.
   for(const step of ui.api.TOUR_STEPS)assert.doesNotMatch(`${step.title} ${step.body}`,/—|glowing/,step.id);
  }finally{await ui.cleanup();}
@@ -104,67 +102,22 @@ test('a reminder only grows the card: the page underneath is not measured or scr
  }finally{await ui.cleanup();}
 });
 
-test('a tap step leaves a hole over its real tab: only that tab works, and opening it moves the guide on',async()=>{
- const ui=await guide();
- try{
-  await ui.advance(700);await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Tap on Routines');
-  assert.equal(ui.find('tour-next').length,0,'no Next: the tab itself is the button');
-  const blockers=ui.tree.root.findAll(n=>n.type==='Paused');
-  assert.equal(blockers.length,4,'four paused panes surround the glowing tab');
-  // The Routines slot (x 90, y 720, 70 by 66) with the highlight's 4pt margin.
-  const hole={x:86,y:716,width:78,height:74};
-  const box=node=>Object.assign({},...[].concat(node.props.style).filter(Boolean));
-  const [above,left,right,below]=blockers.map(box);
-  assert.equal(above.height,hole.y);assert.equal(left.width,hole.x);
-  assert.equal(right.left,hole.x+hole.width);assert.equal(below.top,hole.y+hole.height,'nothing covers the tab itself');
-  // The glow is a pill inside the slot, so it sits within the round tab bar.
-  const ring=Object.assign({},...[].concat(ui.find('tour-outline')[0].props.style).filter(Boolean));
-  assert.ok(ring.left>=hole.x&&ring.left+ring.width<=hole.x+hole.width&&ring.top>=hole.y&&ring.top+ring.height<=hole.y+hole.height,'ring stays inside the slot');
-  assert.equal(ring.borderRadius,ring.height/2,'a full pill');
-  const hand=Object.assign({},...[].concat(ui.find('tour-hand')[0].props.style).filter(Boolean));
-  assert.ok(hand.top+hand.height<=ring.top,'a hand points down at the tab, above its glow');assert.match(ui.text(),/Tap here/);
-  const tip=Object.assign({},...[].concat(ui.find('tour-tip')[0].props.style).filter(Boolean));
-  assert.ok(tip.top+220<=hand.top,'the card sits above the hand, never over it');
-  assert.doesNotMatch(ui.text(),/Everything else waits/,'a tap step only says what to tap');
-  await ui.tapPaused();assert.match(ui.text(),/Tap Routines to keep going/);
-  await ui.openTab('/routines');
-  assert.equal(ui.title(),'Make it yours');
- }finally{await ui.cleanup();}
-});
-
-test('if a tab cannot be measured, the card offers its own button instead of trapping the guide',async()=>{
- const ui=await guide({measureTabs:false});
- try{
-  await ui.advance(700);await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Tap on Routines');
-  await ui.advance(1200);
-  const open=ui.tree.root.findAll(n=>n.props.testID==='tour-open-tab')[0];
-  assert.equal(open.props.accessibilityLabel,'Open Routines');
-  await act(async()=>open.props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Make it yours');
- }finally{await ui.cleanup();}
-});
-
-test('Back returns to the previous tip, skips tap steps and takes the page with it; hardware Back does the same',async()=>{
+test('Back returns to the previous tip; hardware Back does the same',async()=>{
  const ui=await guide();
  try{
   await ui.advance(700);await ui.next();
   assert.equal(ui.title(),'Your day at a glance');
   await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Welcome to LifeRPG!');
-  await ui.next();await ui.next();await ui.next();await ui.openTab('/routines');
-  assert.equal(ui.title(),'Make it yours');
-  await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Start a session','skips "Tap Routines" back to the last tip');
-  assert.equal(ui.routes.at(-1),'/','and returns to its page');
-  await ui.next();assert.equal(ui.title(),'Tap on Routines');
+  assert.equal(ui.title(),'Welcome to LifeRPG');
+  await ui.next();await ui.next();await ui.next();
+  assert.equal(ui.title(),'Everything else is here');
   await ui.back();await ui.advance(1200);
-  assert.equal(ui.title(),'Start a session','hardware Back on a tap step goes back too');
+  assert.equal(ui.title(),'Start a session','hardware Back goes to the previous tip');
+  assert.ok(ui.routes.every(route=>route==='/'),'the whole guide stays on Today');
  }finally{await ui.cleanup();}
 });
 
-test('walking the whole guide visits every tab, then finishes once, readies the notification invitation and never returns',async()=>{
+test('walking the whole guide finishes once on Today, readies the notification invitation and never returns',async()=>{
  const ui=await guide();
  try{
   await ui.advance(700);
@@ -174,7 +127,7 @@ test('walking the whole guide visits every tab, then finishes once, readies the 
   }
   assert.equal(ui.find('tour-overlay').length,0,'the guide has closed');
   assert.equal(ui.store.get('liferpg:tour:v1:alice'),'done');assert.deepEqual(ui.invitations,['alice']);
-  for(const route of ['/routines','/study','/squads','/progress'])assert.ok(ui.routes.includes(route),`visited ${route}`);
+  assert.ok(ui.routes.every(route=>route==='/'),'nothing to open: every tip is on Today');
  }finally{await ui.cleanup();}
  const again=await guide({receipt:'done'});
  try{await again.advance(2000);assert.equal(again.find('tour-overlay').length,0,'a finished guide never runs again');}finally{await again.cleanup();}
@@ -203,13 +156,13 @@ test("the guide describes today's layout and every highlight still exists", () =
     assert.doesNotMatch(tour, old); assert.doesNotMatch(page, old);
   }
   const screens = ["src/app/(tabs)/index.tsx", "src/app/(tabs)/routines.tsx", "src/app/(tabs)/study.tsx"].map(read).join("\n");
-  // Routines points at your own routines (title, + and grid), not only Just focus.
-  assert.match(tour, /target: "routines-mine", title: "Make it yours"/);
-  assert.doesNotMatch(tour, /target: "routines-just-focus"/);
-  // Tips with no highlight keep the page visible behind them.
-  assert.match(tour, /overviewDim: \{ backgroundColor: "rgba\(0,0,0,0\.18\)" \}/);
+  // Round 84: the guide stays on Today and shows where everything else opens.
+  assert.match(tour, /target: "home-places", title: "Everything else is here"/);
+  assert.doesNotMatch(tour, /target: "tab-/);
+  // Tips with no highlight keep the page visible behind them (a faint ink wash on paper).
+  assert.match(tour, /overviewDim: \{ backgroundColor: "rgba\(42,32,40,0\.14\)" \}/);
   const targets = [...tour.matchAll(/kind: "info", target: "([\w-]+)"/g)].map(match => match[1]);
-  assert.ok(targets.length >= 4);
+  assert.ok(targets.length >= 3);
   for (const target of targets) assert.match(screens, new RegExp(`TourAnchor id="${target}"`), `${target} is still on screen`);
   assert.match(read("src/components/SavedRoutinesCard.tsx"), /layout === "grid" && wrapMine/);
 });
