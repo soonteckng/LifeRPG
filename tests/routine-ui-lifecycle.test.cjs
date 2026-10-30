@@ -166,7 +166,7 @@ test('routine editor requests no permission until chosen and preserves a reminde
     assert.deepEqual(h.calls, []);
     const allow = tree.root.findAllByType('Press').find(node => node.props.children?.props?.children === 'Allow notifications');
     assert.ok(allow);
-    const save = tree.root.findAllByType('Press').find(node => node.props.children?.props?.children === 'Save routine');
+    const save = tree.root.findAllByType('Press').find(node => node.props.children?.props?.children === 'Save');
     await act(async () => save.props.onPress());
     assert.equal(saved.reminder.enabled, true); assert.equal(saved.durationSeconds, 75);
     assert.deepEqual(h.calls, [], 'saving a preference does not force a permission prompt');

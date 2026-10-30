@@ -4,6 +4,7 @@ import { AppState } from "react-native";
 import {
   getCompletedSessions,
   getFocusStreak,
+  getFocusStreakDetail,
   getLongestFocusStreak,
   getProgressGoals,
   getProgressSubjects,
@@ -21,6 +22,9 @@ export interface ProgressData {
   areas: Subject[];
   streak: number;
   longestStreak: number;
+  /** Rest days still held, and the days they covered (Your rhythm's week). */
+  restDays?: number;
+  rested?: string[];
 }
 type Cached = ProgressData & { at: number; cloudSaveVersion: number; completion: unknown };
 // Periods already seen stay ready across tab visits, scoped to the account.
@@ -39,10 +43,12 @@ async function loadProgress(period: ProgressPeriod, timeZone: string, key: strin
     getCompletedSessions(bounds.since, bounds.until, who),
     getProgressGoals(period.start, period.end, who),
     getProgressSubjects(who),
-    getFocusStreak(timeZone, now, who),
+    // The detail adds rest days; the plain count stays as the fallback.
+    typeof getFocusStreakDetail === "function" ? getFocusStreakDetail(timeZone, now, who)
+      : getFocusStreak(timeZone, now, who).then(current => ({ current, restDays: 0, rested: [] as string[] })),
     getLongestFocusStreak(timeZone, now, who),
   ]);
-  return { key, sessions, goals, areas, streak, longestStreak };
+  return { key, sessions, goals, areas, streak: streak.current, longestStreak, restDays: streak.restDays, rested: streak.rested };
 }
 const periodKey = (period: ProgressPeriod, timeZone: string) => `${period.start}:${period.mode}:${timeZone}`;
 function readProgress(period: ProgressPeriod, timeZone: string, key: string, owner: string, cloudSaveVersion: number, completion: unknown): PendingProgress {

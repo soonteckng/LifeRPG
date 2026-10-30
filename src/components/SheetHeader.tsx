@@ -20,7 +20,7 @@ export default function SheetHeader({ title, subtitle, onClose, closeLabel = "Cl
 const s = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "flex-start", gap: 12, paddingHorizontal: 20, paddingBottom: 14 },
   copy: { flex: 1, minWidth: 0, gap: 2 },
-  title: { color: colors.text, fontSize: 22, lineHeight: 28, fontWeight: "700", letterSpacing: -0.4 },
+  title: { color: colors.text, fontSize: 28, lineHeight: 34, fontFamily: "display", fontWeight: "400", letterSpacing: -0.5 },
   subtitle: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
   close: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.sheetCard },
 });

@@ -13,7 +13,7 @@ test('the whole name block on Home opens Profile', () => {
 test('one-word names shrink to stay whole; longer names wrap with hyphens', () => {
   const src = fs.readFileSync(path.join(root, 'src/components/SavedRoutinesCard.tsx'), 'utf8');
   const fn = src.slice(src.indexOf('export function fitName'), src.indexOf('export default function SavedRoutinesCard'));
-  const code = ts.transpileModule(fn.replace('export ', ''), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const code = ts.transpileModule(fn.replace(/export /g, ''), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   const fitName = new Function(`${code}; return fitName;`)();
   assert.deepEqual(fitName('Mathematics'), { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 });
   assert.deepEqual(fitName('  Read before bed '), { numberOfLines: 2, android_hyphenationFrequency: 'normal' });

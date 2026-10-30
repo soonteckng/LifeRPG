@@ -712,7 +712,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   sessionCalls.length = 0;
 
   const layout = renderer.root.findByProps({testID: "home-layout"}).props.style;
-  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 16);assert.equal(layout.minHeight,undefined);
+  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 22);assert.equal(layout.minHeight,undefined);
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
   assert.equal(identity.findAllByProps({testID:"home-compact-goal"}).length,0);assert.ok(focus.findByProps({testID:"home-compact-goal"}));
@@ -727,9 +727,10 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.equal(viewportMargin(), initialMargin);
   // With no exam this week the Start row offers Any activity beside the routines.
   const startRow = () => renderer.root.findAllByType("TourAnchor").find(node=>node.props.id === "home-quests");
-  // The Start row is the routines card in its "start" layout, handed Any activity.
+  // The Start row is the routines card in its "today" layout (Up next and
+  // Later today, mockup 01), handed Any activity.
   const startCard = startRow().findByType("SavedRoutinesBoundary");
-  assert.equal(startCard.props.layout,"start");
+  assert.equal(startCard.props.layout,"today");
   await act(async()=>startCard.props.onAnyActivity());
   assert.deepEqual(sessionCalls.filter(call=>call[0]==="navigate"),[["navigate","/session"]]);
   sessionCalls.length = 0;
@@ -738,7 +739,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   for(const count of [0,1,2]){
     homeTasks=Array.from({length:count},(_,i)=>task({id:200+i,title:`Focus ${i}`}));
     await act(async()=>renderer.update(React.createElement(Home)));
-    assert.equal(renderer.root.findByProps({testID:"home-layout"}).props.style.gap,16);
+    assert.equal(renderer.root.findByProps({testID:"home-layout"}).props.style.gap,22);
     assert.equal(viewportMargin(),initialMargin);
     assert.equal(routines().props.legacyTasks.length,count);
   }
@@ -779,7 +780,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   creditFields.completed_seconds = 3660;
   await act(async () => refresh());
   assert.match(output(), /61 \/ 60 min/);
-  assert.match(output(), /Goal reached/);
+  assert.match(output(), /Time for yourself today · goal reached/);
   const goalBar = renderer.root.findAllByType("View").find(node => node.props.accessibilityRole === "progressbar");
   assert.equal(goalBar.props.accessibilityValue.now, 3600, "only the bar is capped, while 61 minutes stays visible");
   creditFields.completed_seconds = 0;
@@ -1092,7 +1093,9 @@ test("Today and All occupy equal native containers with identical full-width tou
 });
 
 // Quick focus moved from Home to the Routines tab; both screens share these mocks.
-const quickFocusSetup = (history, start, durationStorage) => quickHomeSetup(history, start, durationStorage, "src/app/(tabs)/routines.tsx");
+// Round 85: Just focus lives on Today as "Something else" (mockup 01); Your
+// activities no longer repeats it. The same hook runs behind it.
+const quickFocusSetup = (history, start, durationStorage) => quickHomeSetup(history, start, durationStorage, "src/app/(tabs)/index.tsx");
 async function quickHomeSetup(history = null, start = async () => true, durationStorage = null, file = "src/app/(tabs)/index.tsx", extra = {}) {
   const calls=[];
   let owner="owner-a", timerFlags={}, historyValue=history;
@@ -1135,10 +1138,13 @@ test("An exam this week leads the Start row with Revise; Any activity is always 
     "../../context/QuestContext":{useQuests:()=>({tasks:[],subjects:withRevision,loading:false,refresh:async()=>{}})},"../context/QuestContext":{useQuests:()=>({tasks:[],subjects:withRevision,loading:false,refresh:async()=>{}})}});
   try {
     const start=()=>ui.renderer.root.findByType("SavedRoutines").props;
-    const revise=start().lead;
-    assert.equal(revise.props.testID,"home-revise");
-    assert.equal(revise.props.accessibilityLabel,"Revise Maths. Exam in 3 days");
-    await act(async()=>revise.props.onPress());
+    // Round 85: the exam is Today's lilac Up next card (mockup 01).
+    const revise=start().upNext;
+    assert.equal(revise.testID,"home-revise");
+    assert.equal(revise.action,"Revise Maths");
+    assert.equal(revise.label,"Revise · exam in 3 days");
+    assert.equal(revise.title,"Maths");
+    await act(async()=>revise.onPress());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",3]],"an exam this week makes it Revision");
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
     ui.calls.length=0;
@@ -1147,16 +1153,16 @@ test("An exam this week leads the Start row with Revise; Any activity is always 
     assert.deepEqual(ui.calls.filter(c=>c[0]==="navigate"),[["navigate","/session"]]);
     plan.exams=plan.exams.slice(1);
     await ui.update();
-    assert.equal(start().lead,undefined,"an exam weeks away does not lead the Start row");
+    assert.equal(start().upNext,null,"an exam weeks away is not up next");
     assert.equal(typeof start().onAnyActivity,"function");
   }finally{await ui.cleanup();}
 });
 test("Just focus in Routines opens the session screen with Everyday focus and the saved length, and never starts by itself", async()=>{
   const ui=await quickFocusSetup();
   try {
-    const just=()=>ui.button("routines-just-focus");
-    assert.equal(just().props.accessibilityLabel,"Just focus. Any activity, your time");
-    await act(async()=>just().props.onPress());
+    const just=()=>ui.renderer.root.findByType("SavedRoutines").props.onAnyActivity;
+    assert.equal(typeof just(),"function");
+    await act(async()=>just()());
     assert.deepEqual(ui.calls.filter(c=>c[0]==="area"),[["area",1]],"any activity starts from Everyday focus");
     assert.deepEqual(ui.calls.filter(c=>c[0]==="seconds"),[["seconds",1800]],"the length from Settings › Sessions");
     assert.deepEqual(ui.calls.filter(c=>c[0]==="task"),[["task",null]]);
@@ -1172,8 +1178,7 @@ test("with a session open, Just focus returns to it and changes nothing",async()
     for(const isRunning of [true,false]) {
       await ui.update({hasOpenSession:true,isRunning,timeLeft:125,targetAttributeId:2});
       ui.calls.length=0;
-      assert.match(ui.button("routines-just-focus").props.accessibilityLabel,/Return to your session/);
-      await act(async()=>ui.button("routines-just-focus").props.onPress());
+      await act(async()=>ui.renderer.root.findByType("SavedRoutines").props.onAnyActivity());
       assert.deepEqual(ui.calls,[["navigate","/session"]]);
     }
   }finally{await ui.cleanup();}

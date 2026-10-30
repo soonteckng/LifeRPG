@@ -25,13 +25,13 @@ test('a late cache read after account switch cannot prepare a routine or navigat
  let release;const hold=new Promise(resolve=>{release=resolve;}),calls=[];let state={ready:true,scope,online:true,routines:[routine],pendingCount:0,conflicts:[]};const Component=load('src/components/SavedRoutinesCard.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'expo-router':{useRouter:()=>({push:()=>calls.push('route')})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>state},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../context/TimerContext':{useTimer:()=>prepTimer(calls)},'../services/savedRoutineService':{resolveSavedRoutine:()=>hold},'../services/routineWidgetService':{routineWidgetsSupported:async()=>false,pinSavedRoutine:async()=>true},'./RoutineEditorSheet':host('Editor')}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects}));});try{await act(async()=>{press(ui.root,'Start routine Review notes');});state={...state,scope:{...scope,ownerId:'22222222-2222-4222-8222-222222222222'}};await act(async()=>ui.update(React.createElement(Component,{subjects})));await act(async()=>{release(routine);await hold;});assert.deepEqual(calls,[]);}finally{await act(async()=>ui.unmount());}
 });
 test('routine editor preloads exact settings and saves an editable name without creating a quest',async()=>{
- const saved=[],mocks={...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async(...args)=>{saved.push(args);return true;},remove:async()=>true})}};const Component=load('src/components/RoutineEditorSheet.tsx',mocks).default;let ui,closed=0;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine,visible:true,onClose:()=>closed++}));});try{assert.equal(ui.root.findByType('Duration').props.seconds,75);const input=ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Routine name');assert.equal(input.props.value,'Review notes');await act(async()=>input.props.onChangeText('  New name  '));await act(async()=>ui.root.findAllByType('Press').find(x=>typeof x.props.onPress==='function'&&x.props.children?.props?.children==='Save routine').props.onPress());assert.equal(saved[0][0].name,'New name');assert.equal(saved[0][0].durationSeconds,75);assert.equal(saved[0][1],routine.id);assert.equal(closed,1);}finally{await act(async()=>ui.unmount());}
+ const saved=[],mocks={...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async(...args)=>{saved.push(args);return true;},remove:async()=>true})}};const Component=load('src/components/RoutineEditorSheet.tsx',mocks).default;let ui,closed=0;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine,visible:true,onClose:()=>closed++}));});try{assert.equal(ui.root.findByType('Duration').props.seconds,75);const input=ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Routine name');assert.equal(input.props.value,'Review notes');await act(async()=>input.props.onChangeText('  New name  '));await act(async()=>ui.root.findAllByType('Press').find(x=>typeof x.props.onPress==='function'&&x.props.children?.props?.children==='Save').props.onPress());assert.equal(saved[0][0].name,'New name');assert.equal(saved[0][0].durationSeconds,75);assert.equal(saved[0][1],routine.id);assert.equal(closed,1);}finally{await act(async()=>ui.unmount());}
 });
 
 test('Round 69: an older short routine stays editable but must reach one minute before saving',async()=>{
  const saved=[],Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async(...args)=>{saved.push(args);return true;}})}}).default;
  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,durationSeconds:30},visible:true,onClose:()=>{}}));});
- const save=()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress();
+ const save=()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save').props.onPress();
  try{
   assert.equal(ui.root.findByType('Duration').props.seconds,30,'opening an existing record does not rewrite it');
   await act(async()=>save());assert.equal(saved.length,0);
@@ -54,7 +54,7 @@ test('Round 69: a legacy short routine cannot partially prepare or start a new s
  }
 });
 test('routine editor keeps invalid reminder errors visible and removal requires confirmation',async()=>{
- const saved=[],removed=[];const Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async d=>{saved.push(d);return true;},remove:async id=>{removed.push(id);return true;}})}}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,reminder:{enabled:true,hour:18,minute:0}},visible:true,onClose:()=>{}}));});try{await act(async()=>ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Reminder hour').props.onChangeText('24'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());assert.equal(saved.length,0);assert.ok(ui.root.findAllByType('Text').some(x=>x.props.accessibilityRole==='alert'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Remove routine').props.onPress());assert.equal(removed.length,0);assert.equal(ui.root.findByType('Confirm').props.title,'Remove this routine?');await act(async()=>ui.root.findByType('Confirm').props.onConfirm());assert.deepEqual(removed,[routine.id]);}finally{await act(async()=>ui.unmount());}
+ const saved=[],removed=[];const Component=load('src/components/RoutineEditorSheet.tsx',{...base(),'expo-haptics':{selectionAsync:async()=>{}},'../context/UserContext':{useUser:()=>({hapticsEnabled:false})},'../hooks/useSavedRoutines':{useSavedRoutines:()=>({scope,ready:true,save:async d=>{saved.push(d);return true;},remove:async id=>{removed.push(id);return true;}})}}).default;let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:{...routine,reminder:{enabled:true,hour:18,minute:0}},visible:true,onClose:()=>{}}));});try{await act(async()=>ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Reminder hour').props.onChangeText('24'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save').props.onPress());assert.equal(saved.length,0);assert.ok(ui.root.findAllByType('Text').some(x=>x.props.accessibilityRole==='alert'));await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.accessibilityLabel==='Remove routine').props.onPress());assert.equal(removed.length,0);assert.equal(ui.root.findByType('Confirm').props.title,'Remove this routine?');await act(async()=>ui.root.findByType('Confirm').props.onConfirm());assert.deepEqual(removed,[routine.id]);}finally{await act(async()=>ui.unmount());}
 });
 async function heldStartCard(extra={},online=true) {
  const calls=[];let release;const read=new Promise(resolve=>{release=resolve;});let state={ready:true,scope,online,routines:[routine],pendingCount:0,conflicts:[]};
@@ -188,7 +188,7 @@ test('a nameless routine says so right above Save',async()=>{
  let ui;await act(async()=>{ui=create(React.createElement(Component,{subjects,routine:null,visible:true,onClose(){}}));});
  try{
   const sheet=()=>ui.root.findByType('Sheet');
-  await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());
+  await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save').props.onPress());
   assert.equal(saved.length,0);
   const alert=ui.root.findAllByType('Text').find(x=>x.props.accessibilityRole==='alert');
   assert.equal(alert.props.children,'Give your routine a name first.');
@@ -302,7 +302,7 @@ test('an idea keeps its category until renamed; a new routine starts in the cate
  await act(async()=>{ui=create(React.createElement(Component,{subjects,visible:true,onClose:()=>{}}));});
  try{
   await act(async()=>ui.root.findAllByType('Input').find(x=>x.props.accessibilityLabel==='Routine name').props.onChangeText('Guitar'));
-  await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save routine').props.onPress());
+  await act(async()=>ui.root.findAllByType('Press').find(x=>x.props.children?.props?.children==='Save').props.onPress());
   assert.equal(saved[0].focusAreaId,subjects[1].id,'starts in the category picked last');
   assert.deepEqual(remembered,[['owner',subjects[1].id]]);
  }finally{await act(async()=>ui.unmount());}
@@ -363,7 +363,7 @@ test('a new routine can go on the home screen as it is saved, without opening it
   const Component = load('src/components/RoutineEditorSheet.tsx', { ...base(), 'expo-haptics': { selectionAsync: async () => {} }, '../context/UserContext': { useUser: () => ({ hapticsEnabled: false }) },
     '../hooks/useSavedRoutines': { useSavedRoutines: () => ({ scope, ready: true, save: async (...args) => { saved.push(args); return true; }, remove: async () => true }) } }).default;
   const widgetSwitch = ui => ui.root.findAllByType('Switch').find(x => x.props.accessibilityLabel === 'Add a home screen widget after saving');
-  const saveButton = ui => ui.root.findAllByType('Press').find(x => x.props.children?.props?.children === 'Save routine');
+  const saveButton = ui => ui.root.findAllByType('Press').find(x => x.props.children?.props?.children === 'Save');
   let ui;
   // Phones without widgets, and routines that already exist, show no switch.
   for (const props of [{ widgetOnSave: false }, { widgetOnSave: true, routine }]) {
@@ -421,7 +421,9 @@ test('Home passes up to two study subjects, most recently studied first, and rou
   assert.match(home, /\.sort\(\(a, b\) => \(lastStudied\.get\(b\.id\) \?\? 0\) - \(lastStudied\.get\(a\.id\) \?\? 0\)/);
   assert.match(home, /course\.id !== nextCourse\?\.id/, 'the subject already shown as Revise is not repeated');
   assert.match(home, /\.slice\(0, 2\)/);
-  assert.match(home, /limit=\{Math\.max\(1, 3 - studyChips\.length\)\} suggestions=\{false\} studyChips=\{studyChips\}/);
+  // Round 85: Later today shows four rows in all; the card fills them with
+  // routines first, then the subjects (SavedRoutinesCard slices to the limit).
+  assert.match(home, /limit=\{4\} suggestions=\{false\} studyChips=\{studyChips\}/);
 });
 test('Home Start: See all lists your routines and every study subject, and a subject starts once the sheet has closed',async()=>{
  const studied=[];const chip=(key,name,caption)=>({key,name,caption,color:'#60A5FA',onPress:()=>studied.push(key)});

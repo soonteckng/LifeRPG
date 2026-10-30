@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 84 (Claude) on Round 83: the awhile look (lilac and aubergine on warm paper, Newsreader and Inter), Today as home with no tab bar, squads as a circle (no ranking), Progress renamed Your rhythm with quiet markers, Profile categories by time. See `docs/round84-new-look.md`. No SQL. Round 83 removed the reward layer (`docs/round83-remove-rewards.md`). Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
+| Latest delivered round | Round 85 (Claude) on Round 84: every page follows the awhile mockups (Today with Up next and Later today, Your activities, routine setup, the Focus arch and Break, "You made room.", Your rhythm with History, the Circle with Join). See `docs/round85-mock-layouts.md`. No SQL. Round 84 (Claude) on Round 83: the awhile look (lilac and aubergine on warm paper, Newsreader and Inter), Today as home with no tab bar, squads as a circle (no ranking), Progress renamed Your rhythm with quiet markers, Profile categories by time. See `docs/round84-new-look.md`. No SQL. Round 83 removed the reward layer (`docs/round83-remove-rewards.md`). Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 84: 1,626 tests pass (1,616 at Round 83). Typecheck and lint clean; fingerprint unchanged. |
+| Code health | Round 85: 1,636 tests pass (1,626 at Round 84). Typecheck and lint clean; fingerprint unchanged. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | Round 66 is live. Rest days (`20261029120000_round82_rest_days.sql`) came with Round 82 for Soon Teck to run after publishing. Chosen rewards will **never** run: Round 83 moved its migration out of `supabase/migrations` to `docs/archive/never-run-round80_chosen_rewards.sql`, so a migration push can't pick it up. The server's reward tables and RPCs are untouched and unused; dropping them is a later SQL step that needs approval. The old R64 file must never run. |
-| Waiting on the phone | Round 84: the whole app in the paper look; check Today, each page's Today link and Android Back, a running session (light text over the dark scene, light status bar icons), the result card, Squads, Your rhythm, Profile, switches and the launch logo (fonts load behind it). Native frame pacing remains unverified. |
+| Waiting on the phone | Round 85: Today's Up next and Later today (Start on each row, Something else), Your activities (+ New, Repeats and Any time, Study), routine setup (Repeats or Any time), a running session in the arch (protected pill, ends-at time, Take a break, the peach break, End session), the finished card (tiles, Back to today, See your rhythm), Your rhythm (this week, History and back) and the Circle (Join on a friend who is focusing). Round 84's checks still apply. Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -42,8 +42,10 @@ aubergine on warm paper; Newsreader titles, Inter text; light only until the
 November build can follow the phone's dark setting). You run focus sessions
 (routines or study subjects). **No currencies, rewards, character, outfits, XP
 or levels** (Round 83 removed them; the server keeps its old tables untouched).
-**Today is home and there is no tab bar**: Routines, Study, Squads and Your
-rhythm open from Today's list and come back with a "Today" link. Squads are a
+**Today is home and there is no tab bar**: Up next and Later today start
+things in one tap; Your activities (with Study inside), the Circle and Your rhythm
+open from Today and come back with a "Today" link. Since Round 85 every page
+follows the awhile mockups. Squads are a
 circle, never ranked. Your rhythm shows time, focus days, the streak and quiet
 markers. No guilt or punishment mechanics; no ads during focus, auth or recovery.
 
@@ -156,12 +158,27 @@ patch into the chat.
 ```powershell
 git am "$HOME\Downloads\round-77.patch"
 git push
-npx eas-cli update --channel preview --environment preview --platform android --message "Round 77: <short summary>"
+npx expo-updates fingerprint:generate --platform android
+Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
+npx eas-cli update --channel preview --environment preview --platform android --clear-cache --message "Round 77: <short summary>"
 ```
+
+**Two traps found in Round 83 and 84 (30 Oct):**
+- The fingerprint on his PC must print `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`
+  before publishing. It depends on his **local, uncommitted** `.gitignore`
+  (Windows line endings, last two lines Unix). If that file is reset (checkout,
+  stash, another tool), the hash changes and the phone silently ignores the
+  update. `restore-gitignore.cjs` (in the Round 55 outputs) writes it back.
+- Always delete `dist` and publish with `--clear-cache`. Round 84 first went out
+  with **old code** under the new name (the phone reported the Round 84 update ID
+  but drew Round 83), from a stale `dist` or build cache. Use the zip fallback
+  only when bundling really crashes, and then only right after `Expand-Archive`
+  of **this** round's zip.
 
 If Windows crashes during the bundle step:
 
 ```powershell
+Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue
 Expand-Archive "$HOME\Downloads\dist-round-77.zip" -DestinationPath dist -Force
 npx eas-cli update --channel preview --environment preview --platform android --message "Round 77" --skip-bundler --input-dir dist
 ```
@@ -462,7 +479,7 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 
 - Squads: no join approval (the code is enough); stats are public inside a squad (no share setting); free tier leads 1 squad and joins up to 3.
 - **Round 83 (30 Oct):** no currencies, rewards, character, outfits, XP or levels. The app has no real users yet, so they are deleted, not hidden. People show as initials.
-- **Next (agreed, not built):** Routines and Study merge into activities (reminder only, timed, protected; needs a small database change, approval first); the session redesign (arch timer, break, finish); Circle's Join and "hide my sessions"; the streak rule to settle. Done in Round 84: the look, Today as home with no tab bar, no squad rankings. **November build:** `userInterfaceStyle` to `"automatic"` for dark mode (dark palette planned: deeper aubergine, lifted cards with a faint lilac edge) and the notification accent colour.
+- **Next (agreed, not built):** the activities database change (reminder only, days of the week, timed, protected; approval first), which also unlocks "ticked off 2 of 3 times" in Your rhythm; Circle's activity and time left for friends, and "Show my sessions here" (database); the streak rule to settle. Done in Round 84: the look, Today as home with no tab bar, no squad rankings. Done in Round 85: the mockup layouts on every page, the arch timer, break and finish, Circle's Join. **November build:** `userInterfaceStyle` to `"automatic"` for dark mode (dark palette planned: deeper aubergine, lifted cards with a faint lilac edge) and the notification accent colour.
 - Monetisation later: everyone gets the same features; a few ads (never during focus), or a small one-off ad-free purchase.
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
@@ -505,6 +522,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R85 (Claude):** every page follows the awhile mockups: Today (wordmark, serif Today, lilac Up next from the next reminder or an exam, Later today with Start on each row, Time for yourself today, Your circle); Your activities (+ New, tags, Repeats and Any time, a Study row); routine setup (Make it yours, When: Repeats or Any time); the Focus arch on paper with segments and the peach Break; the finished card (You made room., warm card with today against the goal, streak and this-week tiles, Back to today, See your rhythm); Your rhythm opens on this week (days here with rest days, time by activity) with History for the old charts; the Circle (Here, together., Join starts your own session). No SQL/native/config/dependency change. See `docs/round85-mock-layouts.md`.
 - **R84 (Claude):** the awhile look across the app (paper palette, Newsreader and Inter bundled and loaded behind the logo, status bar per screen, light ink over the night scene, app-coloured switches and spinners); Today as home with no tab bar and Today links on each page; a five-tip guide on Today; squads as a circle (`circleOrder`), no ranking anywhere; Progress renamed Your rhythm with "Along the way" quiet markers; Profile categories by time. Dark mode and the notification colour wait for the November build. No SQL.
 - **R83 (Claude):** the reward layer comes out for the new direction ("awhile", a calm focus app): Stardust, Outfits, trail and finds, packs and chosen rewards, milestones, XP and levels, celebrations, the character and the walk back are deleted. People are initials (`InitialsAvatar`); the session camp stays with nobody in it; the result card opens straight away; `GlobalRewardListener` is now `SessionResultHost`; the offline catch-up is one summary card. Chosen-rewards migration archived. No SQL. 1,616 tests pass.
 - **R82 (Claude):** phone fixes (wrapped offline title, preview card fades into a prepared map, next-frame session entrance, waiting error scoped to the selected record, refused start shows setup at once); chosen rewards client (Home card replaces the pack once enabled, four-offer sheet, "You earned it" reveal, acknowledgement, developer lab controls); camp decorations; rest days (one rule in `utils/focusDays.ts` and SQL `focus_streak`, PGlite equivalence test); guide and launch-readiness list. Two SQL files to run after publishing.

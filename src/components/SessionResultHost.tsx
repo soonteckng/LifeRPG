@@ -1,5 +1,6 @@
 import { readSuggestedFocus } from "../constants/guidedQuests";
 import { readRoutineSession } from "../utils/routineSession";
+import { router } from "expo-router";
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import SessionResultSheet, { type SessionResultSheetProps } from "./SessionResultSheet";
 import SaveSuggestedQuest, { type SuggestedQuestCompletion } from "./SaveSuggestedQuest";
@@ -14,6 +15,7 @@ import { sessionBackendIdentity } from "../utils/sessionBackend";
 import { sessionTrail } from "../services/sessionTrail";
 import { launchIntroState } from "../services/launchIntroState";
 import { useOfflineSyncPresentation } from "../hooks/useOfflineSyncPresentation";
+import { useResultExtras } from "../hooks/useResultExtras";
 
 const OfflineSyncHost = lazy(() => import("./OfflineSyncHost"));
 
@@ -144,12 +146,18 @@ export default function SessionResultHost() {
   useEffect(() => {
     if (online && summary) void reloadProfile();
   }, [online, summary, reloadProfile]);
+  // The two small tiles on the finished card, read once the result is confirmed.
+  const shownExtras = useResultExtras(online ? auth.user?.id : undefined, ending || rejected ? undefined : summary?.sessionId ?? undefined,
+    timer.linkedTaskId ?? null, profile?.timezone);
   // Never over the launch logo: the card appears once the app has opened.
   const introDone = useSyncExternalStore(launchIntroState.subscribe, launchIntroState.isDone, launchIntroState.isDone);
   const shown = visible && introDone;
   const savingShown = waiting && !expired && saving.key === pendingKey && saving.phase === "saving" && !!ownerId && terminal
     && !timer.hasOpenSession && !timer.summaryViewed && introDone;
   return <><SessionResultSheet {...displayed?.props} visible={shown}
+    streakDays={shownExtras?.streakDays} weekSeconds={shownExtras?.weekSeconds}
+    weekLabel={shownExtras?.onThis ? "on this, past 7 days" : "focused, past 7 days"}
+    onOpenRhythm={() => { done(); if (closeRequested.current) router?.navigate?.("/progress"); }}
     saveAction={displayed?.saveCompletion && <SaveSuggestedQuest inSheet compact disabled={!shown} completion={displayed.saveCompletion} />}
     onClose={done} onDismiss={() => {
       if (closingOwner !== currentOwner.current || presentationScope !== currentScope.current) return;

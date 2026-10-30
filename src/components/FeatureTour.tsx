@@ -28,10 +28,10 @@ import NotificationOnboardingPrompt from "./NotificationOnboardingPrompt";
 export type TourStep = { id: string; route: string; kind: "info" | "tap"; target?: string; expect?: string; title: string; body: string; next?: string };
 export const TOUR_STEPS: readonly TourStep[] = [
   { id: "welcome", route: "/", kind: "info", title: "Welcome to LifeRPG", body: "A quick look around. It takes a minute, and the app waits for you.", next: "Let’s go" },
-  { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Your day at a glance", body: "Here’s today’s goal, how much you’ve done and your streak. Tap the card for your day, and the three dots let you change your goal." },
-  { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "Start a session", body: "Sessions start here. Your routines wait as one-tap buttons, and you can always focus on anything else. Hold a routine to change it." },
-  { id: "home-places", route: "/", kind: "info", target: "home-places", title: "Everything else is here", body: "Your routines, study subjects, squads and your rhythm open from here, and each one comes straight back to Today." },
-  { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your initials for your profile. The gear opens Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
+  { id: "home-quests", route: "/", kind: "info", target: "home-quests", title: "What’s next", body: "Up next is the next thing on your day, with Start right there. Later today lists the rest, and Something else is for anything at all." },
+  { id: "home-focus", route: "/", kind: "info", target: "home-focus", title: "Time for yourself today", body: "Your daily goal, how much you’ve done and your streak. Tap the bar for your day, and the three dots let you change your goal." },
+  { id: "home-places", route: "/", kind: "info", target: "home-places", title: "Your circle", body: "Friends you focus with. Your activities open from Later today, and Your rhythm sits beside the date. Each one comes straight back to Today." },
+  { id: "home-identity", route: "/", kind: "info", target: "home-identity", title: "You’re all set!", body: "Tap your initials for your profile. The sliders open Settings, and How LifeRPG works is there whenever you want a refresher.", next: "Start using LifeRPG" },
 ] as const;
 const receiptKey = (owner: string) => `liferpg:tour:v1:${owner}`;
 const pendingOwners = new Set<string>();

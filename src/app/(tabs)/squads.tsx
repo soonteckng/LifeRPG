@@ -14,6 +14,7 @@ import MoreMenu from "../../components/MoreMenu";
 import { PinnedRoute } from "../../components/PinnedAction";
 import { colors, edge, radius } from "../../constants/theme";
 import { useSquads } from "../../hooks/useSquads";
+import { useJustFocus } from "../../hooks/useJustFocus";
 import { useTabDockInset } from "../../hooks/useTabDockInset";
 import { squadSelection } from "../../services/squadSelection";
 import { squadTotal } from "../../utils/squads";
@@ -40,10 +41,11 @@ function SquadsTab() {
   const leading = squads.squads.find(item => item.ownerIsYou)?.name ?? null;
   const open = (id: string) => { squadSelection.choose(id); router.navigate("/squad"); };
   const only = squads.squads.length === 1 ? squads.squads[0] : null;
-  const detail = useSquadDetail(only, squads);
+  const detail = useSquadDetail(only, squads, useJustFocus());
   if (only) return <View style={s.screen}>
     {/* Joining or starting another squad sits up top, beside the squad's options. */}
-    <PersonalPage title="Squads" subtitle="" compact today bottomContentInset={bottomInset}
+    {/* The board's own "Here, together." is the title (mockup 09). */}
+    <PersonalPage title="" subtitle="" compact today bottomContentInset={bottomInset}
       action={squads.online ? <View style={s.actions}>
         <CircleButton size={36} label="Join or start another squad" onPress={detail.join} />
         <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" />

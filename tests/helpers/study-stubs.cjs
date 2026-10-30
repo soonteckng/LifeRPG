@@ -10,7 +10,7 @@ module.exports = name => {
   if (name.endsWith('/SlidingSelection')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('View', props) }; }
   if (name.endsWith('/useSavedRoutines')) return { __esModule: true, useSavedRoutines: () => ({ ready: true, routines: [], scope: null, online: true, pendingCount: 0, conflicts: [] }) };
   // Home's summary sections and Progress's milestones row have their own tests.
-  if (name.endsWith('/HomeSections')) return { __esModule: true, HomeExams: () => null, HomeSquad: () => null, HomeWeek: () => null, HomeMilestones: () => null,
+  if (name.endsWith('/HomeSections')) return { __esModule: true, HomeExams: () => null, HomeSquad: () => null, HomeWeek: () => null, HomeMilestones: () => null, HomeCircle: () => null,
     useWeekProgress: () => ({ week: null, period: { today: '' } }), WeekBars: () => null };
   // Home's drag-to-rearrange runs on the native gesture system; tests see its props.
   if (name.endsWith('/TodaySheet')) { const React = require('react'); return { __esModule: true, default: props => React.createElement('TodaySheet', props) }; }

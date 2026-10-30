@@ -663,8 +663,8 @@ test("a fresh ready Android Start persists protection and renders the break cont
     assert.equal(started.schemaVersion, 3);
     assert.deepEqual(started.records[0].protection, { breakStartedAtMs: null, breakEndsAtMs: null });
     screen = await screenSetup(provider.state());
-    assert.ok(screen.button("5-min break"), "a new protected session exposes its one break");
-    assert.equal(screen.button("5-min break").props.disabled, false);
+    assert.ok(screen.button("Take a break"), "a new protected session exposes its one break");
+    assert.equal(screen.button("Take a break").props.disabled, false);
     assert.equal(screen.button("Pause"), undefined);
     assert.equal(screen.button("Resume"), undefined);
 
@@ -676,7 +676,7 @@ test("a fresh ready Android Start persists protection and renders the break cont
     assert.equal(provider.state().protectedSession, true);
     assert.deepEqual(provider.persistedJournal().records[0].protection, started.records[0].protection);
     await screen.update(provider.state());
-    assert.ok(screen.button("5-min break"), "server reconciliation cannot turn the break into legacy Pause");
+    assert.ok(screen.button("Take a break"), "server reconciliation cannot turn the break into legacy Pause");
     assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
   } finally {
     await screen?.cleanup();
@@ -1741,16 +1741,17 @@ test("completion message shows saved exact duration; Done only closes the messag
     assert.equal(scroll.props.style.flex,1);
     assert.equal(scroll.findAllByType('Button').length,0,'Done and Save as quest must not require scrolling through result details');
     assert.equal(actions.findByType('Button').props.accessibilityRole,'button');
-    assert.equal(text(actions.findByType('Button')),'Done');
+    assert.equal(text(actions.findByType('Button')),'Back to today');
     assert.equal(actions.findByType('GuidedBoundary').props.compact,true);
-    assert.equal(renderer.root.findAllByProps({testID:'session-arrival'}).length,1,'the card opens on the arrival banner');
+    assert.equal(renderer.root.findAll(node=>node.props.testID==='session-result-card'&&typeof node.type==='string').length,1,'the card opens on the warm time card (mockup 07)');
     assert.deepEqual(scrollResets,[{y:0,animated:false}]);
-    assert.match(text(renderer.root),/1 min 30 sec/);
+    assert.equal(renderer.root.findByProps({testID:'session-result-card'}).findAll(node=>node.props.accessibilityLabel==='1 min 30 sec focused').length>0,true,'the exact saved duration');
+    assert.match(text(renderer.root),/1min 30 sec focused/);
     assert.match(text(renderer.root),/Focus day recorded/);assert.doesNotMatch(text(renderer.root),/XP|Level/);
     assert.doesNotMatch(text(renderer.root),/Daily goal reached|Gold earned|seconds carried/);
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-a',pending:true,recovered:true,durationSeconds:90,saveAction,onClose:()=>calls.push('close')})));
     // Online and still confirming: laid out as finished, numbers filling in, never claimed as recorded yet.
-    assert.match(text(renderer.root),/Session complete.*…/);
+    assert.match(text(renderer.root),/You made room\..*Adding this to your day…/);
     assert.doesNotMatch(text(renderer.root),/Focus day recorded|Progress saved|Recorded ✓|recorded ✓/);
     assert.doesNotMatch(text(renderer.root),/now saved to your account/);
     assert.ok(sheet.props.heightRatio <= 0.85, 'pending results keep actions within the capped sheet');
@@ -1763,7 +1764,7 @@ test("completion message shows saved exact duration; Done only closes the messag
     assert.equal(scrollResets.length,2, 'a new result always begins at the top');
     fontScale=1.6;
     await act(async()=>renderer.update(React.createElement(Modal,{visible:true,sessionId:'result-b',durationSeconds:60,saveAction,onClose:()=>calls.push('close')})));
-    assert.equal(renderer.root.findAllByProps({testID:'session-arrival'}).length,1,'large text keeps the arrival banner, which grows with its words, and the actions');
+    assert.equal(renderer.root.findAll(node=>node.props.testID==='session-result-card'&&typeof node.type==='string').length,1,'large text keeps the time card, which grows with its words, and the actions');
     assert.equal(renderer.root.findByProps({testID:'session-result-actions'}).findByType('Button').props.accessibilityRole,'button');
     assert.equal(scrollResets.length,2);
     await act(async()=>renderer.root.findByType("Button").props.onPress());
@@ -1981,7 +1982,7 @@ test("reopening running and paused timers uses shared choices without another re
 test("saving a completed session leaves no hidden progress SVG composited over the trail", async () => {
   const ui=await screenSetup({hasOpenSession:true,isRunning:true,duration:60,timeLeft:1});
   try {
-    assert.ok(ui.root().findAllByType("Svg").length>0,"the live timer has a ring");
+    assert.ok(ui.root().findAllByProps({testID:"session-arch"}).length>0,"the live timer sits in the arch (Round 85)");
     const stage=ui.root().findByProps({testID:"session-timer-stage"});
     await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0});
     assert.equal(ui.root().findByProps({testID:"session-timer-stage"}),stage,"geometry stays mounted while saving");
@@ -2097,7 +2098,7 @@ test("the 5-minute break asks first; keeping focus changes nothing", async () =>
   try {
     const confirm = () => ui.root().findAllByType("Confirm").find(node => node.props.title === "Take your 5-minute break?");
     assert.equal(confirm(), undefined);
-    await ui.press("5-min break");
+    await ui.press("Take a break");
     assert.ok(confirm(), "a tap asks before the break starts");
     assert.equal(confirm().props.confirmLabel, "Start break");
     assert.equal(confirm().props.cancelLabel, "Keep focusing");
@@ -2105,7 +2106,7 @@ test("the 5-minute break asks first; keeping focus changes nothing", async () =>
     await act(async () => confirm().props.onCancel());
     assert.equal(confirm(), undefined);
     assert.equal(ui.calls.filter(c => c[0] === "pause").length, 0, "keeping focus changes nothing");
-    await ui.press("5-min break");
+    await ui.press("Take a break");
     await act(async () => confirm().props.onConfirm());
     assert.equal(ui.calls.filter(c => c[0] === "pause").length, 1, "Start break starts it once");
     assert.equal(confirm(), undefined);
@@ -2125,13 +2126,13 @@ test("a finished session goes back to the app as soon as Done closes the result"
 test("a pending protected control keeps its label and shows busy feedback after the first tap", async () => {
   const ui = await screenSetup({hasOpenSession:true,isRunning:true,protectedSession:true,breakUsed:false,breakSecondsLeft:0,actionBusy:true});
   try {
-    const control = ui.button('5-min break');
+    const control = ui.button('Take a break');
     assert.ok(control);
     assert.equal(control.props.disabled,true);
     assert.equal(control.props.accessibilityState.busy,true);
     assert.equal(ui.root().findAllByType('Spinner').length,1);
     await ui.update({actionBusy:false});
-    assert.equal(ui.button('5-min break').props.disabled,false);
+    assert.equal(ui.button('Take a break').props.disabled,false);
     assert.equal(ui.root().findAllByType('Spinner').length,0);
   } finally { await ui.cleanup(); }
 });

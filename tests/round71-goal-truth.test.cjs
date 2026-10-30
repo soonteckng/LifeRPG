@@ -45,7 +45,7 @@ async function setup(kind,{cached=null,fallback=null}={}){
     '../../hooks/useCharacterData':{prefetchCharacterData(){}},'../../hooks/useProgressData':{prefetchProgress(){}},
     '../../hooks/useRewards':{useRewards:()=>({stardust:0,pack:null,online:true})},'../../services/levelPreview':{useShownLevel:()=>({level:1})},
     '../../components/FeatureTour':{TourAnchor:props=>props.children,TourScrollView:host('Scroll')},
-    '../../components/HomeSections':{HomeExams:()=>null,HomeMilestones:()=>null,HomeSquad:()=>null,HomeWeek:()=>null},
+    '../../components/HomeSections':{HomeExams:()=>null,HomeMilestones:()=>null,HomeSquad:()=>null,HomeWeek:()=>null,HomeCircle:()=>null},
     '../../components/SectionHeader':{CircleButton:host('Button')},'../../components/adventurer/ItemArt':{StardustArt:()=>null},'../../components/rewards/PackArt':{__esModule:true,default:()=>null,PACK_COLORS:[]},
   };
   for(const name of ['LevelTierSheet','rewards/TrailSheet','DailyGoalSheet','CharacterMark','SavedRoutinesCard','TodaySheet','MoreMenu'])mocks[`../../components/${name}`]=host(name);

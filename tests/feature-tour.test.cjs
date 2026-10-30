@@ -88,7 +88,7 @@ test('a reminder only grows the card: the page underneath is not measured or scr
  const ui=await guide();
  try{
   await ui.advance(700);await ui.next();
-  assert.equal(ui.title(),'Your day at a glance');
+  assert.equal(ui.title(),'What’s next');
   const before={measures:ui.measures.length,reveals:ui.reveals.length};
   const lines=()=>ui.find('tour-tip')[0].findAllByType('Text').length;
   const before_lines=lines();
@@ -106,13 +106,13 @@ test('Back returns to the previous tip; hardware Back does the same',async()=>{
  const ui=await guide();
  try{
   await ui.advance(700);await ui.next();
-  assert.equal(ui.title(),'Your day at a glance');
+  assert.equal(ui.title(),'What’s next');
   await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
   assert.equal(ui.title(),'Welcome to LifeRPG');
   await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Everything else is here');
+  assert.equal(ui.title(),'Your circle');
   await ui.back();await ui.advance(1200);
-  assert.equal(ui.title(),'Start a session','hardware Back goes to the previous tip');
+  assert.equal(ui.title(),'Time for yourself today','hardware Back goes to the previous tip');
   assert.ok(ui.routes.every(route=>route==='/'),'the whole guide stays on Today');
  }finally{await ui.cleanup();}
 });
@@ -156,8 +156,9 @@ test("the guide describes today's layout and every highlight still exists", () =
     assert.doesNotMatch(tour, old); assert.doesNotMatch(page, old);
   }
   const screens = ["src/app/(tabs)/index.tsx", "src/app/(tabs)/routines.tsx", "src/app/(tabs)/study.tsx"].map(read).join("\n");
-  // Round 84: the guide stays on Today and shows where everything else opens.
-  assert.match(tour, /target: "home-places", title: "Everything else is here"/);
+  // Round 84: the guide stays on Today. Round 85: Up next comes first, as on the page (mockup 01).
+  assert.match(tour, /target: "home-places", title: "Your circle"/);
+  assert.ok(tour.indexOf('target: "home-quests"') < tour.indexOf('target: "home-focus"'), 'the tips follow the page from top to bottom');
   assert.doesNotMatch(tour, /target: "tab-/);
   // Tips with no highlight keep the page visible behind them (a faint ink wash on paper).
   assert.match(tour, /overviewDim: \{ backgroundColor: "rgba\(42,32,40,0\.14\)" \}/);

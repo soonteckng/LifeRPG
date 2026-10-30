@@ -78,11 +78,11 @@ test('measured result anchors actions in the native footer and excludes its scro
     assert.equal(ui.scroll().props.enableFooterMarginAdjustment,true);
     assert.equal(ui.scroll().props.onContentSizeChange,undefined,'library footer padding cannot feed back into the natural body measurement');
     assert.equal(ui.scroll().findAllByType('Button').length,0);
-    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Done']);
+    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Back to today']);
     assert.equal([].concat(ui.actions().props.style)[0].flexShrink,0);
     ui.removeSave(); await ui.update({}); await ui.measure(42,285,94);
     assert.equal(ui.sheet().props.heightRatio*844,449,'a result without a Save action does not keep its missing button space');
-    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Done']);
+    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Back to today']);
   } finally {await ui.cleanup();}
 });
 
@@ -95,8 +95,8 @@ test('short screen with large text keeps measured actions visible while details 
     assert.ok(height-28-72-210>0,'the body has remaining space after real header and action heights');
     assert.equal(ui.scroll().props.style.flex,1);
     assert.equal([].concat(ui.actions().props.style)[0].flexShrink,0);
-    assert.equal(ui.tree.root.findAllByProps({testID:'session-arrival'}).length,1,'large text keeps the same arrival banner');
-    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Done']);
+    assert.equal(ui.tree.root.findAll(node=>node.props.testID==='session-result-card'&&typeof node.type==='string').length,1,'large text keeps the same time card');
+    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Save as quest','Back to today']);
   } finally {await ui.cleanup();}
 });
 
@@ -107,7 +107,7 @@ test('content sizing never presents pending local work as confirmed rewards',asy
     assert.equal(Math.round(ui.sheet().props.heightRatio*844),429);
     assert.match(text(ui.tree.root),/saved on this phone.*Reconnect to confirm/);
     assert.doesNotMatch(text(ui.tree.root),/Character XP|Focus day recorded|Daily goal progress saved/);
-    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Done']);
+    assert.deepEqual(ui.actions().findAllByType('Button').map(text),['Back to today']);
   } finally {await ui.cleanup();}
 });
 
@@ -128,8 +128,8 @@ test('offline pending Done stays reachable during sync and the same result becom
     await ui.update({visible:true,pending:false,localSaved:false,syncBusy:false,recovered:true,completedAtMs:Date.UTC(2026,9,13,4)});
     assert.match(text(ui.tree.root),/Earlier session saved/);
     assert.match(text(ui.tree.root),/Finished.*13 Oct 2026/);
-    assert.equal(ui.tree.root.findAllByProps({testID:'session-arrival'}).length,1,'online and offline use the same arrival banner');
-    assert.match(text(ui.tree.root),/Focus day recorded ✓/);
+    assert.equal(ui.tree.root.findAll(node=>node.props.testID==='session-result-card'&&typeof node.type==='string').length,1,'online and offline use the same time card');
+    assert.match(text(ui.tree.root),/Focus day recorded\./);
     assert.doesNotMatch(text(ui.tree.root),/XP|Level/);
   } finally {await ui.cleanup();}
 });

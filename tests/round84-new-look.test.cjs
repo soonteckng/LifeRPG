@@ -110,10 +110,18 @@ test('there is no tab bar: the bottom dock only holds the way back into a sessio
   assert.doesNotMatch(dock, /register\(`tab-/, 'the guide never points at tabs');
   assert.match(dock, /bannerVisible && <TouchableOpacity/, 'an open session can still be reopened from anywhere');
   const home = read('src/app/(tabs)/index.tsx');
-  for (const [key, route] of [['routines', '/routines'], ['study', '/study'], ['squads', '/squads'], ['rhythm', '/progress']]) assert.match(home, new RegExp(`key: "${key}", path: "${route}"`));
-  assert.match(home, /testID=\{`home-open-\$\{place\.key\}`\}/);
+  // Round 85 (mockup 01): Later today's "Your activities" link, the circle card
+  // and "Your rhythm" beside the date replace the old list of places.
+  assert.match(home, /onSeeAll=\{\(\) => router\.navigate\("\/routines"\)\}/);
+  assert.match(home, /openProgress = \(\) => \{ if \(currentMenuView\.current === menuView\) router\.navigate\("\/progress"\); \}/);
+  assert.match(home, /testID="home-open-rhythm"/);
+  assert.match(home, /<HomeCircle \/>/);
+  const sections = read('src/components/HomeSections.tsx');
+  assert.match(sections, /testID=\{squad \? "home-circle" : "home-squad-empty"\}/);
+  assert.match(sections, /export function HomeCircle\(\)[\s\S]*?router\.navigate\("\/squads"\)/);
+  assert.match(read('src/app/(tabs)/routines.tsx'), /router\.navigate\("\/study"\)\} accessibilityRole="button" testID="activities-study"/, 'Study opens from Your activities');
   for (const page of ['src/app/(tabs)/routines.tsx', 'src/app/(tabs)/study.tsx', 'src/app/(tabs)/squads.tsx']) assert.match(read(page), /compact today /, `${page} links back to Today`);
-  assert.match(read('src/app/(tabs)/progress.tsx'), /<AppHeader title="Your rhythm" onToday=/);
+  assert.match(read('src/app/(tabs)/progress.tsx'), /<AppHeader title=\{showHistory \? "History" : "Your rhythm\."\} onToday=/);
 });
 
 test('a page opened from Today shows a Today link above its title that goes back', async () => {
@@ -161,9 +169,12 @@ test('quiet markers note round numbers from your own history, plainly, with noth
 test('Your rhythm lists the quiet markers under the streak', () => {
   const source = read('src/app/(tabs)/progress.tsx');
   assert.match(source, /quietMarkers\(history\.sessions, timeZone\)/);
-  assert.match(source, /<Section title="Along the way" \/>/);
-  assert.match(source, /testID="quiet-markers"/);
-  assert.ok(source.indexOf('title="Consistency"') < source.indexOf('title="Along the way"'));
+  // Round 85: they sit on the week overview (mockup 08), under the streak card.
+  assert.match(source, /markers=\{markers\} \/>/);
+  const overview = read('src/components/RhythmOverview.tsx');
+  assert.match(overview, />Along the way<\/Text>/);
+  assert.match(overview, /testID="quiet-markers"/);
+  assert.ok(overview.indexOf('-day streak') < overview.indexOf('Along the way'));
 });
 
 test('over the dark session scene the timer, header and words stay light', async () => {
@@ -179,8 +190,9 @@ test('over the dark session scene the timer, header and words stay light', async
   assert.equal(colour(texts.find(t => t.props.children === '20:00')), sceneInk.text);
   assert.equal(colour(texts.find(t => t.props.children === 'of 30:00')), sceneInk.secondary);
   const screen = read('src/components/SessionScreen.tsx');
-  assert.match(screen, /<AppHeader centered light=\{onTrail\}/);
-  assert.match(screen, /onScene=\{onTrail\}/);
+  // Round 85: the arch replaces the scene by default; whenever the scene shows, the ink stays light.
+  assert.match(screen, /<AppHeader centered light=\{sceneShowing\}/);
+  assert.match(screen, /onScene=\{sceneShowing\}/);
   assert.match(screen, /StatusBar\?\.pushStackEntry\?\.\(\{ barStyle: "light-content" \}\)/, 'light status bar icons over the scene');
   assert.match(read('src/app/_layout.tsx'), /<StatusBar barStyle="dark-content" \/>/, 'dark status bar icons on paper');
 });

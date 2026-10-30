@@ -126,31 +126,49 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
   // Sized to its content, so Save sits right under the last row with no empty gap.
   return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} attached compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="routine editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
-    header={<SheetHeader title={routine ? "Edit routine" : "New routine"} subtitle="A saved starting point for something that matters." onClose={close} closeLabel="Close routine editor" />}
+    header={<SheetHeader title="Make it yours." subtitle={routine ? "Change it any time. Your recorded sessions stay." : "Something you’d like to come back to."} onClose={close} closeLabel="Close routine editor" />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? "Remove this routine?" : "Discard your changes?"} message={confirm === "remove" ? "Your recorded sessions and progress stay saved." : "Your previous routine stays saved."} confirmLabel={confirm === "remove" ? "Remove routine" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)} onConfirm={() => { if (confirm === "remove") void remove(); else { setConfirm(null); onClose(); } }} />}
     footer={<View style={[s.footerArea, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
       {/* Problems show right above Save, so they are never half hidden below the fold. */}
       {!!error && <Text accessibilityRole="alert" style={s.footerError}>{error}</Text>}
       <View style={s.footer}>
       {routine && <TouchableOpacity disabled={busy} accessibilityRole="button" accessibilityLabel="Remove routine" onPress={() => setConfirm("remove")} style={s.remove}><Ionicons name="trash-outline" size={21} color={colors.danger} /></TouchableOpacity>}
-      <View style={s.saveCell}><TouchableOpacity accessibilityRole="button" disabled={busy || !routines.ready} onPress={() => void save()} style={s.primary}><Text style={s.primaryText}>{busy ? "Saving…" : "Save routine"}</Text></TouchableOpacity></View>
+      <View style={s.saveCell}><TouchableOpacity accessibilityRole="button" disabled={busy || !routines.ready} onPress={() => void save()} style={s.primary}><Text style={s.primaryText}>{busy ? "Saving…" : "Save"}</Text></TouchableOpacity></View>
     </View></View>}>
     <BottomSheetScrollView enableFooterMarginAdjustment keyboardShouldPersistTaps="handled" contentContainerStyle={s.body}>
-      <Text style={s.label}>Routine name</Text>
+      <Text style={s.label}>Name</Text>
       <SheetTextInput value={draft.name} maxLength={80} editable={!busy} onChangeText={name => { setDraft(previous => ({ ...previous, name })); setError(""); }} placeholder="For example, Review my notes" placeholderTextColor={colors.secondary} accessibilityLabel="Routine name" style={[s.input, !!error && !draft.name.trim() && s.inputError]} returnKeyType="done" onSubmitEditing={() => Keyboard.dismiss()} />
-      <Text style={s.label}>Category</Text>
+      <Text style={s.label}>Tag</Text>
       {locked ? <View style={s.lockedArea} testID="routine-idea-category" accessible accessibilityLabel={`Category, ${focusAreaTitle(lockedArea?.title)}`}>
         <View style={[s.lockedDot, { backgroundColor: lifeAreaColor(lockedArea?.id ?? null, lockedArea?.color_code) }]} />
         <Text style={[s.rowTitle, { flex: 1 }]}>{focusAreaTitle(lockedArea?.title)}</Text>
       </View> : <FocusAreaPicker disabled={busy} selectedId={generalSelected ? general?.id ?? null : draft.focusAreaId}
         areas={[{ id: general?.id ?? null, title: "Everyday focus", color_code: general?.color_code }, ...focusAreaChoices(subjects, draft.focusAreaId).filter(item => focusAreaTitle(item.title) !== "Everyday focus")]}
         onSelect={focusAreaId => { feedback(); setDraft(previous => ({ ...previous, focusAreaId })); }} />}
-      {/* Length, reminder and widget sit in one tidy card, like Settings. The
-          length uses the same choices as a session: 15, 30, 45, 60, 90 or your own. */}
-      <Text style={s.label}>Details</Text>
+      {/* When (mockup 04): it repeats every day at its reminder time, or waits for any time. */}
+      <Text style={s.label}>When</Text>
+      <View style={s.when} accessibilityRole="radiogroup">
+        {([[true, "Repeats"], [false, "Any time"]] as const).map(([enabled, title]) => {
+          const selected = draft.reminder.enabled === enabled;
+          return <TouchableOpacity key={title} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected, disabled: busy }} accessibilityLabel={enabled ? "Repeats every day with a reminder" : "Any time, no reminder"}
+            testID={enabled ? "routine-when-repeats" : "routine-when-any"} onPress={() => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }}
+            style={[s.whenOption, selected && s.whenOn]}><Text style={[s.whenText, selected && s.whenTextOn]}>{title}</Text></TouchableOpacity>;
+        })}
+      </View>
+      {draft.reminder.enabled && <>
+        <View style={s.days} accessible accessibilityLabel="Every day">{["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <View key={index} style={s.day}><Text style={s.dayText}>{day}</Text></View>)}</View>
+        <View style={s.remindRow}><Text style={[s.rowTitle, { flex: 1 }]}>Remind me at</Text>
+          <SheetTextInput accessibilityLabel="Reminder hour" value={hour} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setHour} style={s.clock} />
+          <Text style={s.colon}>:</Text>
+          <SheetTextInput accessibilityLabel="Reminder minute" value={minute} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setMinute} style={s.clock} />
+        </View>
+        <Text style={s.caption}>Every day, on a 24-hour clock (0–23 : 0–59).</Text>
+      </>}
+      {/* Length and widget sit in one tidy card. The length uses the same
+          choices as a session: 15, 30, 45, 60, 90 or your own. */}
+      <Text style={s.label}>Length</Text>
       <View style={s.group}>
       <FocusLengthControl compact flat showLabel={false} seconds={draft.durationSeconds} disabled={busy} onChange={durationSeconds => setDraft(previous => ({ ...previous, durationSeconds }))} />
-      <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="notifications-outline" size={17} color={colors.secondary} /></View><View style={{ flex: 1 }}><Text style={s.rowTitle}>Daily reminder</Text><Text style={s.caption}>At the same local time on this phone.</Text></View><Switch accessibilityLabel="Daily routine reminder" value={draft.reminder.enabled} disabled={busy} onValueChange={enabled => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }} trackColor={{ false: colors.track, true: colors.accentFill }} thumbColor={colors.surfaceRaised} /></View>
       {!routine && widgetOnSave && <View style={[s.groupRow, s.divider]}><View style={s.groupIcon}><Ionicons name="grid-outline" size={17} color={colors.secondary} /></View>
         <View style={{ flex: 1 }}><Text style={s.rowTitle}>Add widget</Text><Text style={s.caption}>Put it on your home screen once it’s saved.</Text></View>
         <Switch accessibilityLabel="Add a home screen widget after saving" value={addWidget} disabled={busy} onValueChange={value => { feedback(); setAddWidget(value); }} trackColor={{ false: colors.track, true: colors.accentFill }} thumbColor={colors.surfaceRaised} /></View>}
@@ -160,7 +178,7 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
         <Ionicons name="chevron-forward" size={15} color={colors.tertiary} />
       </TouchableOpacity>}
       </View>
-      {draft.reminder.enabled && <><View style={s.time}><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Hour (0–23)</Text><SheetTextInput accessibilityLabel="Reminder hour" value={hour} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setHour} style={s.input} /></View><View style={{ flex: 1, gap: 6 }}><Text style={s.caption}>Minute (0–59)</Text><SheetTextInput accessibilityLabel="Reminder minute" value={minute} maxLength={2} keyboardType="number-pad" editable={!busy} onChangeText={setMinute} style={s.input} /></View></View>
+      {draft.reminder.enabled && <>
         <View style={s.permission}><Text accessibilityLiveRegion="polite" style={s.rowTitle}>{permission?.label ?? "Checking notifications…"}</Text>
           <Text style={s.caption}>Routine reminders use ordinary notification permission. They do not need Usage Access or Display over other apps.</Text>
           {!permission?.granted && permission?.action && <TouchableOpacity accessibilityRole="button" disabled={permissionBusy || busy} onPress={() => void allowReminderNotifications()} style={s.permissionAction}><Text style={s.permissionActionText}>{permissionBusy ? "Please wait…" : permission.action === "enable" ? "Allow notifications" : permission.action === "settings" ? "Open phone settings" : "Check notifications again"}</Text></TouchableOpacity>}
@@ -184,4 +202,14 @@ const s = StyleSheet.create({
   permission: { ...edge, padding: 14, borderRadius: 16, backgroundColor: colors.sheetCard, gap: 8 }, permissionAction: { minHeight: 44, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: colors.selection }, permissionActionText: { color: colors.accent, fontSize: 14, fontWeight: "500" },
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 }, primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
+  when: { flexDirection: "row", padding: 4, borderRadius: 18, backgroundColor: colors.sheetCard },
+  whenOption: { flex: 1, minHeight: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  whenOn: { backgroundColor: colors.surfaceRaised, shadowColor: colors.text, shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  whenText: { color: colors.secondary, fontSize: 16, fontWeight: "600" }, whenTextOn: { color: colors.text },
+  days: { flexDirection: "row", justifyContent: "space-between", gap: 6 },
+  day: { flex: 1, aspectRatio: 1, maxWidth: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
+  dayText: { color: colors.primaryText, fontSize: 15, fontWeight: "600" },
+  remindRow: { minHeight: 56, flexDirection: "row", alignItems: "center", gap: 6 },
+  clock: { ...edge, width: 58, minHeight: 48, textAlign: "center", color: colors.text, fontSize: 18, fontWeight: "600", borderRadius: 14, backgroundColor: colors.sheetCard },
+  colon: { color: colors.text, fontSize: 18, fontWeight: "600" },
 });

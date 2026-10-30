@@ -11,6 +11,7 @@ import { Text } from "../../components/AppText";
 import ProgressRing from "../../components/ProgressRing";
 import ContentReveal from "../../components/ContentReveal";
 import AppHeader from "../../components/AppHeader";
+import RhythmOverview, { type RhythmActivity } from "../../components/RhythmOverview";
 import { creditedDailySeconds } from "../../utils/progressionAccounting";
 import { dailyGoalRatio } from "../../utils/dailyGoalPresentation";
 import { useBottomTabBarHeight } from "expo-router/js-tabs";
@@ -305,10 +306,34 @@ export default function ProgressScreen() {
   // A current period with nothing yet gets one welcoming card, not a page of empty sections.
   const freshPeriod = !!analytics && currentPeriod && !analytics.sessions.length;
   const leadArea = analytics && analytics.areas.length > 1 ? analytics.areas[0] : undefined;
+  // Mockup 08: this week at a glance first; the detailed charts sit under History.
+  const [showHistory, setShowHistory] = useState(false);
+  const toggleHistory = () => {
+    tick();
+    if (showHistory) { setMode("week"); setAnchor(null); setSelectedDayKey(null); setSessionScope("day"); }
+    setShowHistory(!showHistory);
+  };
+  const overviewReady = !showHistory && mode === "week" && anchor === null;
+  const activities = useMemo<RhythmActivity[]>(() => {
+    if (!analytics || !data) return [];
+    const groups = new Map<string, RhythmActivity>();
+    for (const session of analytics.sessions) {
+      const title = readSuggestedFocus(session.notes)?.title ?? readRoutineSession(session.notes) ?? sessionCategory(session, data.areas);
+      const entry = groups.get(title) ?? { key: title, title, seconds: 0 };
+      entry.seconds += Math.max(0, session.duration_seconds);
+      groups.set(title, entry);
+    }
+    return [...groups.values()].filter(item => item.seconds > 0).sort((a, b) => b.seconds - a.seconds).slice(0, 6);
+  }, [analytics, data]);
 
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
-      <AppHeader title="Your rhythm" onToday={() => router.navigate("/")} />
+      <AppHeader title={showHistory ? "History" : "Your rhythm."} onToday={() => router.navigate("/")}
+        action={<Pressable onPress={toggleHistory} accessibilityRole="button" testID="rhythm-history"
+          accessibilityLabel={showHistory ? "Back to this week" : "Open your history"} style={s.historyLink} hitSlop={6}>
+          <Text style={s.historyText}>{showHistory ? "This week" : "History"}</Text>
+          {!showHistory && <Ionicons name="arrow-up-outline" size={17} color={colors.text} style={s.northEast} />}
+        </Pressable>} />
       <TourScrollView
         contentContainerStyle={[s.page, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={
@@ -321,7 +346,7 @@ export default function ProgressScreen() {
           />
         }
       >
-        <View style={s.periodToolbar}>
+        {showHistory && <View style={s.periodToolbar}>
         <View style={s.segment} accessibilityRole="tablist">
           <View pointerEvents="none" testID="period-track" style={s.segmentTrack}>
             <SlidingSelection testID="period-selection" index={mode === "week" ? 0 : 1} style={s.segmentSelected} />
@@ -396,7 +421,7 @@ export default function ProgressScreen() {
             />
           </Pressable>
         </View>
-        </View>
+        </View>}
         {(error || offline && !data) && (
           <View style={s.error} testID="progress-status">
             <Ionicons
@@ -433,7 +458,11 @@ export default function ProgressScreen() {
             )}
           </View>
         ) : (
-          analytics && (
+          analytics && (overviewReady ? <ContentReveal>
+            <RhythmOverview start={period.start} end={period.end} seconds={analytics.seconds} days={analytics.days} today={today}
+              streak={data.streak} restDays={data.restDays} rested={data.rested} activities={activities}
+              goalMinutes={profile?.daily_goal_minutes} markers={markers} />
+          </ContentReveal> :
             <ContentReveal>
               <View style={s.card}>
                 {/* The period's story leads; the chart and the chosen day follow in one card. */}
@@ -642,15 +671,6 @@ export default function ProgressScreen() {
                   color={colors.muted}
                 />
               </Pressable>
-              {markers.length > 0 && <>
-                <Section title="Along the way" />
-                <View style={s.markers} testID="quiet-markers">
-                  {markers.map((marker, index) => <View key={marker.id} style={[s.marker, index > 0 && s.markerLine]} accessible accessibilityLabel={marker.text}>
-                    <Ionicons name={marker.icon} size={18} color={colors.accent} />
-                    <Text style={s.markerText}>{marker.text}</Text>
-                  </View>)}
-                </View>
-              </>}
             </ContentReveal>
           )
         )}
@@ -825,6 +845,9 @@ export default function ProgressScreen() {
 }
 
 const s = StyleSheet.create({
+  historyLink: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4 },
+  historyText: { color: colors.text, fontSize: 17, fontWeight: "600" },
+  northEast: { transform: [{ rotate: "45deg" }] },
   screen: { flex: 1, backgroundColor: colors.background },
   periodToolbar: { flexDirection: "column", alignItems: "stretch" },
   dayGroups: { gap: 14 }, dayGroup: { gap: 8 },

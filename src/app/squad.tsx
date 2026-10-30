@@ -6,6 +6,7 @@ import { PinnedActionHost, PinnedActionProvider, PinnedRoute } from "../componen
 import SlideUpPage from "../components/SlideUpPage";
 import { useSquadDetail } from "../components/SquadDetail";
 import { useSquads } from "../hooks/useSquads";
+import { useJustFocus } from "../hooks/useJustFocus";
 import { squadSelection } from "../services/squadSelection";
 
 /**
@@ -17,7 +18,7 @@ export default function SquadScreen() {
   return <PinnedActionProvider><PinnedRoute name="squad"><SquadPage /></PinnedRoute></PinnedActionProvider>;
 }
 function SquadPage() {
-  const squads = useSquads();
+  const squads = useSquads(), justFocus = useJustFocus();
   const chosen = useSyncExternalStore(squadSelection.subscribe, squadSelection.get, squadSelection.get);
   const refresh = squads.refresh;
   useFocusEffect(useCallback(() => { void refresh(); }, [refresh]));
@@ -27,7 +28,7 @@ function SquadPage() {
   if (squad && squad.id !== shownId) setShownId(squad.id);
   // Leaving this squad (or being removed from it) leaves nothing to show: slide away.
   const gone = squads.ready && !squad;
-  const detail = useSquadDetail(squad, squads);
+  const detail = useSquadDetail(squad, squads, justFocus);
   return <View style={s.screen}>
     <SlideUpPage title="My Squad" fallback="/squads" gone={gone} footer={squad ? <PinnedActionHost /> : undefined}
       action={squads.online && squad ? <MoreMenu options={detail.options} label="Squad options" size={36} testID="squad-options" /> : undefined}>

@@ -47,7 +47,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="routines"
         options={{
-          title: "Routines",
+          title: "Your activities",
           tabBarIcon: ({ color, focused }) => (
             <TabIcon focused={focused} name="repeat-outline" size={22} color={color} />
           ),

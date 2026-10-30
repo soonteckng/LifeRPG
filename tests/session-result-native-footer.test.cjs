@@ -120,8 +120,8 @@ test('the real completion receipt ignores native dismissal and closes once throu
     assert.equal(sheet.props.enableHandlePanningGesture,false);
     await act(async()=>ui.tree.root.findByType('Modal').props.onRequestClose());
     await act(async()=>sheet.props.onClose());assert.equal(ui.closes,0);
-    const done=ui.tree.root.findAllByType('Button').find(item=>text(item)==='Done');
-    assert.equal(done.props.testID,'session-result-done');assert.equal(done.props.accessibilityLabel,'Done');
+    const done=ui.tree.root.findAllByType('Button').find(item=>text(item)==='Back to today');
+    assert.equal(done.props.testID,'session-result-done');assert.equal(done.props.accessibilityLabel,'Back to today');
     await act(async()=>{done.props.onPress();done.props.onPress();});assert.equal(ui.closes,1);
   }finally{await ui.cleanup();}
 });
@@ -130,7 +130,7 @@ test('real native footer remains on screen when an End receipt removes pending c
   const ui=await setup();
   try{
     await ui.measure({body:258});
-    const button=ui.tree.root.findAllByType('Button').find(item=>text(item)==='Done');
+    const button=ui.tree.root.findAllByType('Button').find(item=>text(item)==='Back to today');
     const originalFooter=ui.tree.root.findByType('NativeSheet').props.footerComponent;
     assert.equal(ui.bounds().bottom,844);
     assert.equal(ui.bounds().position,'absolute');
@@ -138,7 +138,7 @@ test('real native footer remains on screen when an End receipt removes pending c
     await ui.update({pending:false,offline:false});await ui.measure({body:156});
     assert.equal(ui.tree.root.findByType('NativeSheet').props.footerComponent,originalFooter,'receipt and measurements do not remount the measured footer');
     assert.equal(ui.unmountedFooters,0);
-    assert.equal(ui.tree.root.findAllByType('Button').find(item=>text(item)==='Done'),button);
+    assert.equal(ui.tree.root.findAllByType('Button').find(item=>text(item)==='Back to today'),button);
     assert.equal(ui.bounds().bottom,844,'Done stays above the phone bottom after the shorter sheet settles');
     assert.ok(ui.bounds().top>=ui.bounds().bodyStart);
     assert.equal(ui.bounds().padding,94,'the body can scroll completely above Done');
@@ -159,7 +159,7 @@ test('large text, capped sheets and late save actions retain visible native acti
     assert.ok(ui.bounds().top>ui.bounds().bodyStart,'the scroll body retains a visible viewport');
     assert.equal(ui.tree.root.findByType('NativeSheet').props.footerComponent,footer);
     assert.equal(ui.bounds().reduceMotion,'system');
-    assert.deepEqual(ui.tree.root.findByType('NativeFooter').findAllByType('Button').map(text),['Save as routine','Done']);
+    assert.deepEqual(ui.tree.root.findByType('NativeFooter').findAllByType('Button').map(text),['Save as routine','Back to today']);
     assert.equal(ui.tree.root.findByType('NativeScroll').findAllByType('Button').length,0);
     assert.equal(ui.unmountedFooters,0);
   }finally{await ui.cleanup();}
@@ -170,14 +170,14 @@ test('normal online End never flashes Retry connection before its confirmation o
   const ui=await setup({initialProps:{offline:false,syncBusy:true,onRetry(){}}});
   try{
     const buttons=()=>ui.tree.root.findAllByType('Button').map(text);
-    const done=ui.tree.root.findAllByType('Button').find(n=>text(n)==='Done');
-    assert.deepEqual(buttons(),['Done']);
+    const done=ui.tree.root.findAllByType('Button').find(n=>text(n)==='Back to today');
+    assert.deepEqual(buttons(),['Back to today']);
     await act(async()=>t.mock.timers.tick(600));
-    assert.deepEqual(buttons(),['Done']);
+    assert.deepEqual(buttons(),['Back to today']);
     await ui.update({pending:false,syncBusy:false});
     await act(async()=>t.mock.timers.tick(4000));
-    assert.deepEqual(buttons(),['Done']);
-    assert.equal(ui.tree.root.findAllByType('Button').find(n=>text(n)==='Done'),done);
+    assert.deepEqual(buttons(),['Back to today']);
+    assert.equal(ui.tree.root.findAllByType('Button').find(n=>text(n)==='Back to today'),done);
     await act(async()=>done.props.onPress());assert.equal(ui.closes,1);
   }finally{await ui.cleanup();}
 });
@@ -187,14 +187,14 @@ test('End offers retry for a real failure, offline stop or prolonged confirmatio
   const ui=await setup({initialProps:{offline:false,syncBusy:true,onRetry(){}}});
   try{
     const buttons=()=>ui.tree.root.findAllByType('Button');
-    await act(async()=>t.mock.timers.tick(2999));assert.deepEqual(buttons().map(text),['Done']);
-    await act(async()=>t.mock.timers.tick(1));assert.deepEqual(buttons().map(text),['Retry connection','Done']);
+    await act(async()=>t.mock.timers.tick(2999));assert.deepEqual(buttons().map(text),['Back to today']);
+    await act(async()=>t.mock.timers.tick(1));assert.deepEqual(buttons().map(text),['Retry connection','Back to today']);
     assert.equal(buttons()[0].props.disabled,true);
-    await ui.update({pending:false,syncBusy:false});assert.deepEqual(buttons().map(text),['Done']);
+    await ui.update({pending:false,syncBusy:false});assert.deepEqual(buttons().map(text),['Back to today']);
     await ui.update({sessionId:'failed-end',pending:true,syncError:'Connection lost'});
-    assert.deepEqual(buttons().map(text),['Retry connection','Done']);assert.equal(buttons()[0].props.disabled,false);
+    assert.deepEqual(buttons().map(text),['Retry connection','Back to today']);assert.equal(buttons()[0].props.disabled,false);
     await ui.update({sessionId:'offline-end',syncError:null,offline:true});
-    assert.deepEqual(buttons().map(text),['Retry connection','Done']);
+    assert.deepEqual(buttons().map(text),['Retry connection','Back to today']);
     assert.match(text(ui.tree.root),/confirm it when you reconnect/);
   }finally{await ui.cleanup();}
 });

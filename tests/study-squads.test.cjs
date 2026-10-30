@@ -80,8 +80,11 @@ const mocks = (state, extra = {}) => ({
   '/AppSheet': props => props.visible ? React.createElement('Sheet', props, props.header, props.children) : null,
   '/SheetHeader': host('Header'), '/Segmented': host('Segmented'), '/CharacterPortrait': host('Portrait'), '/CharacterMark': host('Mark'), '/UserContext': { useUser: () => ({ profile: { id: 'me', level: 2, streak_count: 1 } }) }, '/levelPreview': { useShownLevel: () => ({ level: 2 }) }, '/ProgressRing': host('Ring'), '/ProfilePicture': host('Picture'), '/Adventurer': host('Character'), '/useRewards': { useRewards: () => ({ look: { skin: '2', hair: 'short', hairColor: 'darkbrown', glasses: false }, equipped: { pet: 'pet_owl' }, background: 'bg_forest' }) }, 'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), LinearGradient: host('LG'), Rect: host('Rect'), Stop: host('Stop') }, '/ItemArt': host('ItemArt'),
   '/usePlayer': { usePlayerCard: () => ({ card: null, loading: false, failed: false, online: false }) },
-  '/useSquads': { useSquads: () => state() }, ...extra,
+  '/useSquads': { useSquads: () => state() },
+  // Round 85: Join on a focusing friend starts your own session (useJustFocus has its own tests).
+  '/useJustFocus': { useJustFocus: () => () => joins.push('join') }, ...extra,
 });
+const joins = [];
 const squadsTab = (state, navigate = () => {}, choose = () => {}) => load('src/app/(tabs)/squads.tsx', mocks(state, { 'expo-router': { useFocusEffect: () => {}, useRouter: () => ({ navigate }) },
   '/squadSelection': { squadSelection: { get: () => null, choose } } })).default;
 const squadsPage = state => load('src/app/squad.tsx', mocks(state)).default;
@@ -98,7 +101,14 @@ test('the squad page shows the whole squad as a circle, never ranked: it shares 
   await act(async () => { ui = create(React.createElement(Tab)); });
   assert.equal(ui.root.findByType('Page').props.title, 'My Squad');
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-board').length > 0, 'the squad itself, not a shortcut to it');
-  assert.ok(words(ui.root).includes('Calc crew')); assert.ok(words(ui.root).includes('2 members · you lead this squad · 1 focusing now'));
+  // Round 85 (mockup 09): the squad's name sits in the small label over "Here, together."
+  assert.ok(words(ui.root).includes('CALC CREW · 2 FRIENDS · YOU LEAD')); assert.ok(words(ui.root).includes('Here, together.'));
+  assert.ok(words(ui.root).some(t => /^Resets on Monday · \d+ days? left · 1 focusing now$/.test(t)));
+  // A friend focusing now gets a lilac card; Join starts your own session, never theirs.
+  const join = ui.root.findAll(n => n.props.testID === `squad-join-${member(2, 0).id}` && n.type === 'Press')[0];
+  assert.equal(join.props.accessibilityLabel, 'Join User 2. Starts your own session');
+  joins.length = 0; await act(async () => join.props.onPress()); assert.deepEqual(joins, ['join']);
+  assert.ok(words(ui.root).includes('Join starts your own timer next to theirs. Your activity, your pace.'));
   assert.ok(ui.root.findAll(n => n.props.testID === 'squad-members').length > 0, 'one list, however many members');
   assert.equal(ui.root.findAll(n => n.props.testID === 'squad-leaderboard').length, 0, 'no leaderboard');
   assert.doesNotMatch(words(ui.root).join(' | '), /Leaderboard|#1|1st/);
@@ -175,7 +185,7 @@ test('leaders rename, set a weekly goal and get a new code from the menu; the go
     update: async (id, change) => { calls.push(change); return null; } });
   const Tab = squadsPage(state); let ui;
   await act(async () => { ui = create(React.createElement(Tab)); });
-  assert.ok(words(ui.root).includes('of 1h goal')); assert.ok(words(ui.root).some(t => /^20m to go · \d+ days? left$/.test(t)));
+  assert.ok(words(ui.root).some(t => /^20m to go of 1h · \d+ days? left$/.test(t)), 'the goal is named beside what is left');
   const byText = label => ui.root.findAllByType('Press').find(x => x.findAllByType('Text').some(t => t.props.children === label));
   await choose(ui.root, 'Edit name and goal');
   assert.equal(ui.root.findByType('Sheet').props.label, 'edit squad');
@@ -195,7 +205,8 @@ test('leaders rename, set a weekly goal and get a new code from the menu; the go
   current = { ...squad(), ownerIsYou: false, goalMinutes: null };
   await act(async () => ui.update(React.createElement(Tab)));
   assert.equal(byText('Set a weekly goal'), undefined, 'members cannot set the goal');
-  assert.ok(words(ui.root).some(t => /^Resets on Monday · \d+ days? left$/.test(t)));
+  // Round 85: who is focusing now moved from the old header into this line.
+  assert.ok(words(ui.root).some(t => /^Resets on Monday · \d+ days? left · 1 focusing now$/.test(t)));
   await act(async () => ui.unmount());
 });
 test('the Squads tab shows a card for every squad; a card opens that squad, and an empty tab invites you to start one', async () => {
@@ -258,7 +269,7 @@ test('the squad page stays on the squad it opened with, and slides away once you
   const state = () => ({ ready: true, online: true, squads: current, refresh: async () => {}, join: async () => null, create: async () => null, update: async () => null, leave: async () => null, remove: async () => null });
   const Page = squadsPage(state); let ui;
   await act(async () => { ui = create(React.createElement(Page)); });
-  assert.ok(words(ui.root).includes('Calc crew')); assert.equal(ui.root.findByType('Page').props.gone, false);
+  assert.ok(words(ui.root).includes('CALC CREW · 2 FRIENDS · YOU LEAD')); assert.equal(ui.root.findByType('Page').props.gone, false);
   current = [{ ...squad(2), ownerIsYou: false, name: 'Library' }];
   await act(async () => ui.update(React.createElement(Page)));
   assert.equal(ui.root.findByType('Page').props.gone, true, 'never swaps in another squad');
@@ -274,7 +285,9 @@ test('in one squad, the Squads tab is that squad in full, with its menu and a wa
   try {
     assert.ok(ui.root.findAll(n => n.props.testID === 'squads-single').length > 0);
     assert.equal(ui.root.findAll(n => n.props.testID === 'squad-card' && n.type === 'Press').length, 0, 'no list for a single squad');
-    assert.equal(ui.root.findByType('Page').props.title, 'Squads', 'titled like the tab; the squad’s own name is on the board');
+    // Round 85: the board's "Here, together." is the page title (mockup 09), so the page adds none.
+    assert.equal(ui.root.findByType('Page').props.title, '', 'the board carries the title; the squad’s own name is in its label');
+    assert.ok(words(ui.root).includes('Here, together.'));
     assert.ok(ui.root.findAll(n => n.props.testID === 'squad-board').length > 0, 'the leaderboard and invite are right here');
     assert.ok(menu(ui.root).some(option => option.label === 'Leave squad'), 'the same options as the squad page');
     await act(async () => pressLabel(ui.root, 'Join or start another squad').props.onPress());

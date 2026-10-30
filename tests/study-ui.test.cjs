@@ -336,10 +336,12 @@ test('offline, the last saved squad stays readable on Home; only joining or star
   }
 });
 
-test('the Routines tab starts with Just focus, holds every routine, and starts old routines the same way Home does', async () => {
+test('Your activities holds every routine and the study row, adds new ones from the header, and starts old routines the same way Home does', async () => {
   const calls = [];
   const Screen = load('src/app/(tabs)/routines.tsx', { ...base(), ...startMocks(calls), 'expo-router': { useRouter: () => ({ navigate: to => calls.push(['nav', to]) }), useFocusEffect: () => {} },
     '/ContentReveal': host('Reveal'), '/PersonalUI': { PersonalPage: host('Page') }, '/SavedRoutinesCard': host('Routines'),
+    '/useStudyPlan': { useStudyPlan: () => ({ courses: [{ id: 'c1', deletedAt: null }, { id: 'c2', deletedAt: null }], exams: [{ id: 'e1', examDate: '2999-01-01' }] }) },
+    '/HowItWorksSheet': props => React.createElement('Sheet', props),
     'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
     '/setupMode': { setupMode: { choose: v => calls.push(['mode', v]), chooseRoutine: v => calls.push(['routine', v]) } },
     '/QuestContext': { useQuests: () => ({ tasks: [{ id: 5 }], subjects: areas, refresh: async () => {} }) }, '/SheetTouchable': host('Press'),
@@ -347,18 +349,27 @@ test('the Routines tab starts with Just focus, holds every routine, and starts o
   }).default;
   let ui; await act(async () => { ui = create(React.createElement(Screen)); });
   const card = ui.root.findByType('Routines').props;
-  assert.equal(ui.root.findByType('Page').props.title, 'Routines'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
-  assert.ok(texts(ui.root).includes('Just focus')); assert.equal(texts(ui.root).includes('Quick focus'), false, 'the old quick focus card is gone');
-  const help = ui.root.findByType('Page').props.action;
-  assert.equal(help.props.label, 'How Routines work', 'a ? beside the title, like Study');
+  // Round 85 (mockup 03): "Your activities", Repeats and Any time inside the card, Study as its own row.
+  assert.equal(ui.root.findByType('Page').props.title, 'Your activities'); assert.equal(card.active, true); assert.ok(card.limit > 100, 'nothing is cut off here');
+  assert.equal(card.layout, 'activities');
+  assert.equal(texts(ui.root).includes('Quick focus'), false, 'the old quick focus card is gone');
+  let after; await act(async () => { after = create(card.afterList); });
+  const study = after.root.findAll(x => x.props.testID === 'activities-study' && typeof x.props.onPress === 'function')[0];
+  assert.equal(study.props.accessibilityLabel, 'Subjects and exams. 2 subjects, 1 exam coming up');
+  await act(async () => study.props.onPress()); assert.deepEqual(calls.at(-1), ['nav', '/study']); calls.length = 0;
+  const before = card.newRequest;
+  let header; await act(async () => { header = create(ui.root.findByType('Page').props.action); });
+  await act(async () => header.root.findAll(x => x.props.testID === 'activities-new' && typeof x.props.onPress === 'function')[0].props.onPress());
+  assert.equal(ui.root.findByType('Routines').props.newRequest, before + 1, '+ New opens the routine editor');
+  const help = header.root.findAll(x => x.props.label === 'How activities work')[0];
+  assert.ok(help, 'a ? beside the title, like Study');
   await act(async () => help.props.onPress());
   const how = ui.root.findAllByType('Sheet').find(x => x.props.label === 'how routines work');
   assert.equal(how.props.visible, true); assert.equal(/\battached\b/.test(Object.keys(how.props).join(' ')), false, 'info only, so it floats');
   await act(async () => card.onStartLegacy({ id: 5, target_minutes: 25, subject_id: 2 }));
   assert.deepEqual(calls.filter(c => c[0] !== 'mode'), [['quest', 5], ['minutes', 25], ['area', 2], ['nav', '/session']]);
-  calls.length = 0;
-  await act(async () => ui.root.findAll(x => x.props.testID === 'routines-just-focus' && x.type === 'Press')[0].props.onPress());
-  assert.deepEqual(calls, [['quest', null], ['area', 1], ['seconds', 1800], ['mode', 'routine'], ['routine', null], ['nav', '/session']], 'Just focus opens the session in Everyday focus at your saved length, starting nothing yet');
+  // Just focus lives on Today now ("Something else"); its behaviour is covered in quests.test.
+  assert.equal(ui.root.findAll(x => x.props.testID === 'routines-just-focus').length, 0);
   await act(async () => ui.unmount());
 });
 test('the exam name follows the subject until it is edited, and a typed subject stays pickable', async () => {

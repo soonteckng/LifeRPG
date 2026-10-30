@@ -51,20 +51,33 @@ export function fitName(name: string) {
     : { numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 };
 }
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [], allStudyChips = studyChips }: {
+/** Today's Up next card when it isn't one of your routines. */
+export interface UpNext { label: string; title: string; detail: string; action: string; onPress: () => void; testID?: string }
+/** "8:00 PM" for a routine's daily reminder. */
+export function reminderClock(hour: number, minute: number) {
+  return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [], allStudyChips = studyChips, upNext = null, newRequest = 0, afterList }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
   /** Home hands "See all" to the Routines tab instead of opening a sheet. */
   onSeeAll?: () => void;
   /** "start": Home's Start row, routines as chips that start at once, then Any activity. */
-  layout?: "list" | "start" | "grid"; lead?: ReactNode; onAnyActivity?: () => void;
+  layout?: "list" | "start" | "grid" | "today" | "activities"; lead?: ReactNode; onAnyActivity?: () => void;
   /** On Home's Start row, study subjects sit beside your routines, each one tap from a session. */
   studyChips?: readonly StudyChip[];
   /** Every study subject, for "See all" on Home's Start row (the row itself shows up to two). */
   allStudyChips?: readonly StudyChip[];
   /** On Routines, the guide wraps your own routines (title, + and grid) to point at them. */
   wrapMine?: (mine: ReactNode) => ReactNode;
+  /** Today: what goes in the Up next card when no routine is due later today (an exam, say). */
+  upNext?: UpNext | null;
+  /** Your activities: bumping this opens a new routine's editor (the page's + New). */
+  newRequest?: number;
+  /** Your activities: shown after your routines, before the ideas. */
+  afterList?: ReactNode;
 }) {
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -130,6 +143,14 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     } finally { if (locked.current === operation) locked.current = null; }
   };
   const edit = (routine: SavedRoutine | null) => { feedback(); if (manage || menu) { nextEditor.current = routine; setManage(false); setMenu(null); } else setEditor({ routine }); };
+  // Your activities' "+ New" sits in the page header, outside this card.
+  // Only a new request opens the editor: compared during render, like other
+  // prop changes, so no effect has to set state.
+  const [seenRequest, setSeenRequest] = useState(newRequest);
+  if (seenRequest !== newRequest) {
+    setSeenRequest(newRequest);
+    if (active && routines.ready && routines.routines.length < 32) { setManage(false); setMenu(null); setEditor({ routine: null }); }
+  }
   const editLegacy = (task: Task) => {
     if (!active || !routines.online) return;
     feedback();
@@ -203,12 +224,12 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   const savedRow = (routine: SavedRoutine, inSheet = false) => {
     const area = areaOf(routine.focusAreaId), entry = savedEntry(routine), editingRows = arranging && !inSheet;
     const tint = lifeAreaColor(routine.focusAreaId, area?.color_code);
-    return <View key={`routine:${routine.id}`} style={[s.row, inSheet && s.sheetRow]}>
-      <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name="repeat" size={18} color={tint} /></View>
+    return <View key={`routine:${routine.id}`} style={[s.row, inSheet && s.sheetRow, layout === "activities" && !inSheet && s.rowFlat]}>
+      {layout !== "activities" && <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name="repeat" size={18} color={tint} /></View>}
       <Pressable disabled={!active} onPress={() => editingRows ? finish() : edit(routine)} onLongPress={inSheet ? undefined : hold} delayLongPress={350}
         accessibilityRole="button" accessibilityLabel={`${editingRows ? "" : "Edit "}${routine.name}, ${routineDuration(routine.durationSeconds)}${editingRows ? ". Done editing" : ""}`}
         accessibilityActions={inSheet ? undefined : [{ name: "longpress", label: "Edit routines" }]} onAccessibilityAction={hold} style={s.detail}>
-        <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routineDuration(routine.durationSeconds)} · {focusAreaTitle(area?.title)}{routine.reminder.enabled ? ` · ${String(routine.reminder.hour).padStart(2,"0")}:${String(routine.reminder.minute).padStart(2,"0")}` : ""}</Text>
+        <Text style={s.name} numberOfLines={2}>{routine.name}</Text><Text style={s.caption}>{routine.reminder.enabled ? `Every day · ${reminderClock(routine.reminder.hour, routine.reminder.minute)} · ` : ""}{routineDuration(routine.durationSeconds)} · {focusAreaTitle(area?.title)}</Text>
       </Pressable>
       {editingRows ? <EditBadges name={routine.name} onEdit={() => { setArranging(false); edit(routine); }} onRemove={() => { feedback(); setMenu({ entry, mode: "remove" }); }} />
         : <StartButton disabled={blocked} onPress={() => ask(entry)} label={`Start routine ${routine.name}`} />}
@@ -218,8 +239,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     const disabled = blocked || completed || !task.is_due_today || !onStartLegacy || !routines.online;
     const area = areaOf(task.subject_id), entry = legacyEntry(task), editingRows = arranging && !inSheet && !completed;
     const tint = completed ? colors.success : lifeAreaColor(task.subject_id, area?.color_code);
-    return <View key={`task:${task.id}`} style={[s.row, inSheet && s.sheetRow]}>
-      <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={completed ? "checkmark" : "repeat"} size={18} color={tint} /></View>
+    return <View key={`task:${task.id}`} style={[s.row, inSheet && s.sheetRow, layout === "activities" && !inSheet && s.rowFlat]}>
+      {(layout !== "activities" || inSheet) && <View style={[s.rowIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={completed ? "checkmark" : "repeat"} size={18} color={tint} /></View>}
       <Pressable disabled={!active || !routines.online} onPress={() => editingRows ? finish() : editLegacy(task)} onLongPress={inSheet || completed ? undefined : hold} delayLongPress={350}
         accessibilityRole="button" accessibilityLabel={`${editingRows ? "" : "Edit "}${task.title}, ${task.target_minutes || 30} minutes${editingRows ? ". Done editing" : ""}`} style={s.detail}>
         <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
@@ -310,32 +331,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     {!routines.ready && !!routines.error && <Text style={s.caption}>{routines.error}</Text>}
     {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
   </View> : null;
-  const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
-  return <>
-    {startView ?? <View style={s.card} testID="saved-routines-card">
-      {/* On Home, See all opens every routine in a sheet, like Upcoming Exams; in Routines the header has +. */}
-      {(layout === "grid" && wrapMine ? wrapMine : (node: ReactNode) => node)(<>
-      {arranging ? <SectionHeader title="My Routines" subtitle="Tap ✎ to edit or − to remove." right={<DoneButton label="Done editing routines" onPress={finish} />} />
-        : onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
-          onPress={() => { feedback(); if (active && routines.ready && (entries.length || done.length)) { setShowDone(false); setManage(true); } else onSeeAll(); }} />} />
-        : <SectionHeader title="My Routines" right={<CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />} />}
-      <OneTimeHint id="routine-hold" text="Hold a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
-      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : layout === "grid" ? <View style={s.grid}>
-        {visibleEntries.map(tile)}
-        {/* Like Add subject: the dashed tile helps you start; from four routines on, the + by the title is enough. */}
-        {!arranging && entries.length < 4 && <Pressable disabled={!active || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create a new routine" testID="routine-new-tile" style={[s.gridCell, s.newTile]}>
-          <View style={s.newIcon}><Ionicons name="add" size={20} color={colors.accent} /></View>
-          <Text style={s.newText}>Add routine</Text><Text style={s.newHint}>Name it and pick a length</Text>
-        </Pressable>}
-      </View> : visibleEntries.length ? <View style={s.stack}>
-        {/* Each routine is its own small card; in edit mode they wiggle together. */}
-        {visibleEntries.map(entry => <Wiggle key={entry.key} active={arranging} seed={entry.key} degrees={0.4} style={s.itemCard}>{row(entry)}</Wiggle>)}
-      </View> : <View style={s.itemCard}>
-        <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
-      </View>}
-      </>)}
-      {/* Ready-made starting points stay offered until each one is saved. */}
-      {offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
+  // Ready-made starting points stay offered until each one is saved.
+  const ideasBlock = offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
         {/* Once areas are picked, changing them is one quiet button by the title. */}
         <SectionHeader title="Ideas to start with" right={active && forYou.length ? <CircleButton icon="options-outline" testID="ideas-for-you-change"
           label={`For you: ${forYou.map(ideaAreaTitle).join(", ")}. Change`} onPress={() => { feedback(); setAreasOpen(true); }} /> : undefined} />
@@ -368,7 +365,117 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
               invisible cell shares the row's gap without being a control. */}
           {suggestions.length % 2 === 1 && <View testID="routine-idea-spacer" style={[s.idea, s.ideaSpacer]} pointerEvents="none" accessible={false} accessibilityElementsHidden importantForAccessibility="no-hide-descendants" />}
         </View>
+      </View>;
+  // Today: the next routine due later today in the lilac Up next card, then
+  // the rest of today (later reminders, then any-time routines and subjects).
+  const minutesNow = (() => { const now = new Date(); return now.getHours() * 60 + now.getMinutes(); })();
+  const reminderAt = (entry: RoutineEntry) => entry.kind === "saved" && entry.routine.reminder.enabled ? entry.routine.reminder.hour * 60 + entry.routine.reminder.minute : null;
+  const dueLater = entries.filter(entry => { const at = reminderAt(entry); return at !== null && at >= minutesNow - 10; }).sort((a, b) => reminderAt(a)! - reminderAt(b)!);
+  const anyTime = entries.filter(entry => reminderAt(entry) === null);
+  const nextEntry = dueLater[0] ?? null;
+  const clockOf = (entry: RoutineEntry) => entry.kind === "saved" ? reminderClock(entry.routine.reminder.hour, entry.routine.reminder.minute) : "";
+  const later = [
+    // An exam this week stays one tap away even when a routine is up next.
+    ...(nextEntry && upNext ? [<TodayRow key="up-next" time="Soon" title={upNext.title} caption={upNext.label} label="Start" a11y={`${upNext.action}. ${upNext.label}`} disabled={anyBlocked} onPress={upNext.onPress} active={active} testID={upNext.testID} />] : []),
+    ...[...dueLater.slice(1), ...anyTime].map(entry => <TodayRow key={entry.key} time={reminderAt(entry) === null ? "Any time" : clockOf(entry)} title={entry.name}
+      caption={`${routineDuration(entry.seconds)} · ${focusAreaTitle(areaOf(entry.areaId)?.title)}`} label="Start" a11y={`Start routine ${entry.name}`}
+      disabled={chipDisabled(entry)} entry={entry} onStartEntry={ask} onEditRoutine={entry.kind === "saved" ? edit : undefined} active={active} />),
+    ...studyChips.map(chip => <TodayRow key={chip.key} time="Any time" title={chip.name} caption={chip.caption} label="Start" a11y={`Study ${chip.name}. ${chip.caption}`}
+      disabled={anyBlocked} onPress={chip.onPress} active={active} testID={`home-study-${chip.key}`} />),
+  ].slice(0, Math.max(1, limit));
+  const fallback: UpNext | null = nextEntry ? null : upNext ?? (onAnyActivity ? { label: "Whenever you’re ready", title: "Just focus", detail: "Any activity, your time", action: "Start a session", onPress: onAnyActivity, testID: "home-just-focus" } : null);
+  const todayView = layout === "today" ? <View style={s.todayStack} testID="saved-routines-card">
+    {(nextEntry || fallback) && <View style={s.upNext} testID="today-up-next">
+      <Text style={s.upNextLabel} numberOfLines={1}>{nextEntry ? `UP NEXT · ${clockOf(nextEntry)}` : fallback!.label.toUpperCase()}</Text>
+      <Text style={s.upNextTitle} numberOfLines={2}>{nextEntry ? nextEntry.name : fallback!.title}</Text>
+      <View style={s.upNextMeta}><Ionicons name="time-outline" size={15} color={colors.neutral} />
+        <Text style={s.upNextDetail} numberOfLines={1}>{nextEntry ? `${routineDuration(nextEntry.seconds)} · ${focusAreaTitle(areaOf(nextEntry.areaId)?.title)}` : fallback!.detail}</Text></View>
+      <Pressable disabled={nextEntry ? chipDisabled(nextEntry) : anyBlocked} testID={nextEntry ? "today-start-next" : fallback!.testID}
+        onPress={() => { if (nextEntry) ask(nextEntry); else fallback!.onPress(); }} onLongPress={nextEntry?.kind === "saved" ? () => edit(nextEntry.routine) : undefined} delayLongPress={350}
+        accessibilityRole="button" accessibilityState={{ disabled: nextEntry ? chipDisabled(nextEntry) : anyBlocked }}
+        accessibilityLabel={nextEntry ? `Start routine ${nextEntry.name}, ${routineDuration(nextEntry.seconds)}` : `${fallback!.action}. ${fallback!.title}`}
+        style={[s.upNextButton, (nextEntry ? chipDisabled(nextEntry) : anyBlocked) && s.startChipOff]}>
+        <Text style={s.upNextButtonText} numberOfLines={1}>{nextEntry ? `Start ${nextEntry.name}` : fallback!.action}</Text>
+        <Ionicons name="arrow-forward" size={20} color={colors.primaryText} />
+      </Pressable>
+    </View>}
+    <View style={s.todayList}>
+      <View style={s.todayHead}>
+        <Text style={s.todayHeading} accessibilityRole="header">Later today</Text>
+        {onSeeAll && <Pressable onPress={() => { feedback(); onSeeAll(); }} accessibilityRole="button" accessibilityLabel="Your activities" testID="today-activities" hitSlop={8} style={s.todayLink}>
+          <Text style={s.todayLinkText}>Your activities</Text><Ionicons name="arrow-up-outline" size={15} color={colors.accent} style={s.northEast} /></Pressable>}
+      </View>
+      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text>
+        : later.length ? later : <Pressable disabled={!active} onPress={() => { feedback(); onSeeAll?.(); }} accessibilityRole="button" accessibilityLabel="Save something you return to as a routine" style={s.todayEmpty}>
+          <Text style={s.todayCaption}>Nothing else planned. Save something you return to as a routine, with a reminder.</Text></Pressable>}
+      {!!nextEntry && onAnyActivity && <TodayRow time="" title="Something else" caption="Any activity, your time" label="Start" a11y="Any activity. Start focusing, your time"
+        disabled={anyBlocked} onPress={onAnyActivity} active={active} testID="home-just-focus" />}
+    </View>
+    {!routines.ready && !!routines.error && <Text style={s.caption}>{routines.error}</Text>}
+    {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
+  </View> : null;
+  // Your activities: one quiet list, grouped by when (Repeats, Any time), with a tag filter.
+  const [tag, setTag] = useState<number | "all">("all");
+  const tags = [...new Map(entries.filter(entry => entry.areaId != null).map(entry => [entry.areaId as number, focusAreaTitle(areaOf(entry.areaId)?.title)])).entries()];
+  const shownTag = tag !== "all" && tags.some(([id]) => id === tag) ? tag : "all";
+  const tagged = entries.filter(entry => shownTag === "all" || entry.areaId === shownTag);
+  const repeats = tagged.filter(entry => reminderAt(entry) !== null).sort((a, b) => reminderAt(a)! - reminderAt(b)!), whenever = tagged.filter(entry => reminderAt(entry) === null);
+  const activitiesView = layout === "activities" ? <View style={s.card} testID="saved-routines-card">
+    {(wrapMine ?? ((node: ReactNode) => node))(<View style={s.activities}>
+      {tags.length > 1 && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} accessibilityRole="tablist">
+        {([["all", "All"], ...tags] as [number | "all", string][]).map(([id, title]) => {
+          const selected = shownTag === id;
+          return <Pressable key={String(id)} onPress={() => { feedback(); setTag(id); }} accessibilityRole="tab" accessibilityState={{ selected }} accessibilityLabel={`${title} activities`}
+            style={[s.chip, selected && s.chipOn]}><Text style={[s.chipText, selected && s.chipTextOn]} numberOfLines={1}>{title}</Text></Pressable>;
+        })}
+      </ScrollView>}
+      {arranging && <SectionHeader title="Editing" subtitle="Tap ✎ to edit or − to remove." right={<DoneButton label="Done editing routines" onPress={finish} />} />}
+      <OneTimeHint id="routine-hold" text="Hold a routine to edit or remove it." show={routines.ready && entries.some(entry => entry.kind === "saved")} />
+      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : !entries.length
+        ? <Pressable disabled={!active} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create your first routine" testID="routine-new-tile" style={s.empty}>
+          <View style={s.emptyIcon}><Ionicons name="add" size={19} color={colors.accent} /></View>
+          <View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save something you’d like to return to, with a reminder if you like.</Text></View>
+        </Pressable>
+        : <>
+          {!!repeats.length && <View style={s.group}><Text style={s.groupLabel} accessibilityRole="header">REPEATS</Text>
+            {repeats.map((entry, index) => <Wiggle key={entry.key} active={arranging} seed={entry.key} degrees={0.4} style={[s.flatRow, index > 0 && s.flatLine]}>{row(entry)}</Wiggle>)}</View>}
+          {!!whenever.length && <View style={s.group}><Text style={s.groupLabel} accessibilityRole="header">ANY TIME</Text>
+            {whenever.map((entry, index) => <Wiggle key={entry.key} active={arranging} seed={entry.key} degrees={0.4} style={[s.flatRow, index > 0 && s.flatLine]}>{row(entry)}</Wiggle>)}</View>}
+        </>}
+    </View>)}
+    {afterList}
+    {ideasBlock}
+    {!!done.length && <Pressable disabled={!active} onPress={() => { feedback(); setShowDone(true); setManage(true); }} accessibilityRole="button" accessibilityLabel={`Done today, ${done.length}`} style={s.manage}><Text style={s.link}>Done today ({done.length})</Text></Pressable>}
+    {routines.ready && conflictRows}
+    {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
+    {!!routines.pendingCount && <Text style={s.caption}>Saved on this phone. {routines.online ? routines.busy ? "Syncing routine changes…" : routines.error ? "Couldn't sync yet. We'll retry automatically." : "Waiting to sync routine changes…" : "Syncs when you reconnect."}</Text>}
+    {!routines.ready && routines.error && <Pressable accessibilityRole="button" onPress={() => void routines.retry()} style={s.manage}><Text style={s.link}>Retry loading routines</Text></Pressable>}
+  </View> : null;
+  const startMenu = () => { if (!menu) return; if (menu.entry.kind === "saved") void start(menu.entry.routine); else void startLegacy(menu.entry.task); };
+  return <>
+    {todayView ?? activitiesView ?? startView ?? <View style={s.card} testID="saved-routines-card">
+      {/* On Home, See all opens every routine in a sheet, like Upcoming Exams; in Routines the header has +. */}
+      {(layout === "grid" && wrapMine ? wrapMine : (node: ReactNode) => node)(<>
+      {arranging ? <SectionHeader title="My Routines" subtitle="Tap ✎ to edit or − to remove." right={<DoneButton label="Done editing routines" onPress={finish} />} />
+        : onSeeAll ? <SectionHeader title="My Routines" right={<SeeAll count={entries.length > limit ? entries.length : undefined} accessibilityLabel="See all your routines"
+          onPress={() => { feedback(); if (active && routines.ready && (entries.length || done.length)) { setShowDone(false); setManage(true); } else onSeeAll(); }} />} />
+        : <SectionHeader title="My Routines" right={<CircleButton disabled={!active || !routines.ready || routines.routines.length >= 32} onPress={() => edit(null)} label="New routine" />} />}
+      <OneTimeHint id="routine-hold" text="Hold a routine to edit or remove it." show={routines.ready && visibleEntries.some(entry => entry.kind === "saved")} />
+      {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text> : layout === "grid" ? <View style={s.grid}>
+        {visibleEntries.map(tile)}
+        {/* Like Add subject: the dashed tile helps you start; from four routines on, the + by the title is enough. */}
+        {!arranging && entries.length < 4 && <Pressable disabled={!active || routines.routines.length >= 32} onPress={() => edit(null)} accessibilityRole="button" accessibilityLabel="Create a new routine" testID="routine-new-tile" style={[s.gridCell, s.newTile]}>
+          <View style={s.newIcon}><Ionicons name="add" size={20} color={colors.accent} /></View>
+          <Text style={s.newText}>Add routine</Text><Text style={s.newHint}>Name it and pick a length</Text>
+        </Pressable>}
+      </View> : visibleEntries.length ? <View style={s.stack}>
+        {/* Each routine is its own small card; in edit mode they wiggle together. */}
+        {visibleEntries.map(entry => <Wiggle key={entry.key} active={arranging} seed={entry.key} degrees={0.4} style={s.itemCard}>{row(entry)}</Wiggle>)}
+      </View> : <View style={s.itemCard}>
+        <Pressable disabled={!active} onPress={() => { if (onSeeAll) { feedback(); onSeeAll(); } else edit(null); }} accessibilityRole="button" accessibilityLabel={onSeeAll ? "Create your first routine in Routines" : "Create your first routine"} style={s.empty}><View style={s.emptyIcon}><Ionicons name="repeat" size={19} color={colors.accent} /></View><View style={{ flex: 1, gap: 3 }}><Text style={s.emptyTitle}>Make room for a little routine</Text><Text style={s.caption}>Save an activity you’d like to return to.</Text></View><Ionicons name="chevron-forward" size={15} color={colors.tertiary} /></Pressable>
       </View>}
+      </>)}
+      {ideasBlock}
       {!!done.length && (onSeeAll ? <Text style={s.caption}>{done.length} completed today</Text>
         : <Pressable disabled={!active} onPress={() => { feedback(); setShowDone(true); setManage(true); }} accessibilityRole="button" accessibilityLabel={`Done today, ${done.length}`} style={s.manage}><Text style={s.link}>Done today ({done.length})</Text></Pressable>)}
       {!onSeeAll && routines.ready && conflictRows}
@@ -428,6 +535,25 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   </>;
 }
 
+
+/** One row of Today's "Later today" list. */
+function TodayRow({ time, title, caption, label, a11y, disabled, onPress: press, entry, onStartEntry, onEditRoutine, active, testID }: {
+  time: string; title: string; caption: string; label: string; a11y: string; disabled: boolean;
+  onPress?: () => void; active: boolean; testID?: string;
+  /** A routine row starts and edits its own entry. */
+  entry?: RoutineEntry; onStartEntry?: (entry: RoutineEntry) => void; onEditRoutine?: (routine: SavedRoutine) => void;
+}) {
+  const onPress = () => { if (entry && onStartEntry) onStartEntry(entry); else press?.(); };
+  const onEdit = entry?.kind === "saved" && onEditRoutine ? () => onEditRoutine(entry.routine) : undefined;
+  return <View style={s.todayRow} testID={testID}>
+    <Text style={s.todayTime} numberOfLines={2}>{time}</Text>
+    <Pressable disabled={!onEdit || !active} onPress={onEdit} accessibilityRole={onEdit ? "button" : undefined} accessibilityLabel={onEdit ? `Edit ${title}` : undefined} style={s.detail}>
+      <Text style={s.todayName} numberOfLines={1}>{title}</Text><Text style={s.todayCaption} numberOfLines={1}>{caption}</Text>
+    </Pressable>
+    <Pressable disabled={disabled} onPress={onPress} accessibilityRole="button" accessibilityState={{ disabled }} accessibilityLabel={a11y}
+      style={[s.todayAction, disabled && s.startChipOff]}><Text style={s.todayActionText}>{label}</Text></Pressable>
+  </View>;
+}
 
 const s = StyleSheet.create({
   card: { gap: 10 },
@@ -496,5 +622,34 @@ const s = StyleSheet.create({
   startWide: { minHeight: 56, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 10, borderRadius: 28, backgroundColor: colors.primary },
   startWideText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },
   startLink: { color: colors.secondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
+  // Today (mockup 01): the lilac Up next card, then a quiet list.
+  todayStack: { gap: 22 },
+  upNext: { padding: 22, gap: 8, borderRadius: 30, backgroundColor: colors.focusSurface },
+  upNextLabel: { color: colors.neutral, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1.2 },
+  upNextTitle: { color: colors.text, fontSize: 32, lineHeight: 38, fontFamily: "display", letterSpacing: -0.6 },
+  upNextMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
+  upNextDetail: { flexShrink: 1, color: colors.neutral, fontSize: 15, lineHeight: 20 },
+  upNextButton: { minHeight: 58, borderRadius: 29, paddingHorizontal: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, backgroundColor: colors.primary },
+  upNextButtonText: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },
+  todayList: { gap: 0 },
+  todayHead: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  todayHeading: { color: colors.text, fontSize: 17, lineHeight: 22, fontWeight: "600" },
+  todayLink: { minHeight: 40, flexDirection: "row", alignItems: "center", gap: 3 },
+  todayLinkText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600" },
+  northEast: { transform: [{ rotate: "45deg" }] },
+  todayRow: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  todayTime: { width: 64, color: colors.secondary, fontSize: 14, lineHeight: 19 },
+  todayName: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  todayCaption: { color: colors.secondary, fontSize: 14, lineHeight: 19 },
+  todayAction: { minHeight: 44, minWidth: 72, paddingHorizontal: 18, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  todayActionText: { color: colors.text, fontSize: 15, fontWeight: "600" },
+  todayEmpty: { paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  // Your activities (mockup 03): flat rows, grouped, no cards.
+  activities: { gap: 18 },
+  group: { gap: 0 },
+  groupLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1.2, paddingBottom: 6 },
+  flatRow: { borderRadius: 0, overflow: "hidden" },
+  rowFlat: { backgroundColor: "transparent", paddingLeft: 0, paddingRight: 0, minHeight: 76 },
+  flatLine: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
 });
 

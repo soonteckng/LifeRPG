@@ -17,7 +17,7 @@ type Confirm = { kind: "leave" } | { kind: "code" } | { kind: "remove"; member: 
  * menu, and the sheets for joining, editing and confirming. The full squad
  * page and the Squads tab (when you're in one squad) both use it.
  */
-export function useSquadDetail(squad: Squad | null, squads: ReturnType<typeof useSquads>): { options: MoreOption[]; board: ReactNode; sheets: ReactNode; join: () => void } {
+export function useSquadDetail(squad: Squad | null, squads: ReturnType<typeof useSquads>, onJoin?: () => void): { options: MoreOption[]; board: ReactNode; sheets: ReactNode; join: () => void } {
   const [joining, setJoining] = useState(false), [editing, setEditing] = useState(false);
   const [confirm, setConfirm] = useState<Confirm>(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
   // Native sheet portals sit above the retained online page. Cloud-only
@@ -51,7 +51,7 @@ export function useSquadDetail(squad: Squad | null, squads: ReturnType<typeof us
   } })) : [];
   const board = <View style={s.stack}>
     {!squads.online && <Text style={s.offline} testID="squads-offline">Offline · showing your squad as last saved. Changes need internet.</Text>}
-    {squad && <SquadBoard squad={squad} busy={busy} onSetGoal={() => setEditing(true)} onRemove={(member, newCode) => { if (squads.online) setConfirm({ kind: "remove", member, newCode }); }} onInvite={share} />}
+    {squad && <SquadBoard squad={squad} busy={busy} onSetGoal={() => setEditing(true)} onRemove={(member, newCode) => { if (squads.online) setConfirm({ kind: "remove", member, newCode }); }} onInvite={share} onJoin={onJoin} />}
     {!!error && <Text accessibilityRole="alert" style={s.error}>{error}</Text>}
   </View>;
   const sheets = <>

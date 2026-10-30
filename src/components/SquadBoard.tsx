@@ -3,7 +3,7 @@ import { StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Pressable from "./MotionPressable";
 import { Text } from "./AppText";
-import { SquadFace, SquadMemberSheet } from "./SquadSheets";
+import { SquadMemberSheet } from "./SquadSheets";
 import { PinnedAction } from "./PinnedAction";
 import { daysLeftInWeek } from "./SquadsSection";
 import { colors, edge, radius } from "../constants/theme";
@@ -19,8 +19,10 @@ const SQUAD_SIZE = 8;
  * everyone by name. Tap someone to see their week; the leader removes people
  * from there, never with a stray hold.
  */
-export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite }: {
+export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite, onJoin }: {
   squad: Squad; busy: boolean; onSetGoal: () => void; onRemove: (member: SquadMember, newCode: boolean) => void; onInvite: () => void;
+  /** Join starts your own session; it never touches theirs. */
+  onJoin?: () => void;
 }) {
   const total = squadTotal(squad), progress = goalProgress(squad), goal = squad.goalMinutes ? squad.goalMinutes * 60 : 0, live = focusingCount(squad);
   const members = circleOrder(squad), left = daysLeftInWeek();
@@ -28,32 +30,42 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
   const [open, setOpen] = useState<string | null>(null), [shown, setShown] = useState<string | null>(null);
   if (open && open !== shown) setShown(open);
   const picked = members.find(member => member.id === shown) ?? null;
+  // Mockup 09: whoever is focusing now gets a lilac card with Join.
+  const focusing = members.filter(member => member.focusingNow && !member.isYou);
   const label = (member: SquadMember) => `${member.name}${member.isYou ? ", you" : ""}, ${member.weekSeconds > 0 ? `${studyTime(member.weekSeconds)} this week` : "not started this week"}${member.focusingNow ? ", focusing now" : ""}`;
   return <View style={s.board} testID="squad-board">
     <View style={s.hero}>
-      <View style={s.faces}>{squad.members.slice(0, 5).map((member, i) => <View key={member.id} style={[s.faceSlot, i > 0 && { marginLeft: -12 }]}><SquadFace member={member} size={54} ring={colors.background} /></View>)}</View>
-      <Text style={s.name} accessibilityRole="header" numberOfLines={2}>{squad.name}</Text>
-      <Text style={s.caption}>{squad.members.length} {squad.members.length === 1 ? "member" : "members"}{squad.ownerIsYou ? " · you lead this squad" : ""}{live ? ` · ${live} focusing now` : ""}</Text>
+      <Text style={s.kicker} numberOfLines={2}>{squad.name.toUpperCase()} · {squad.members.length} {squad.members.length === 1 ? "PERSON" : "FRIENDS"}{squad.ownerIsYou ? " · YOU LEAD" : ""}</Text>
+      <Text style={s.name} accessibilityRole="header" accessibilityLabel={`${squad.name}. Here, together.`}>Here, together.</Text>
     </View>
 
-    <View style={s.card} accessible accessibilityLabel={`Together this week, ${studyTime(total)}${goal ? ` of a ${squad.goalMinutes! / 60} hour goal` : ""}`}>
-      <Text style={s.label}>Together this week</Text>
-      <View style={s.bigRow}><Text style={s.big}>{studyTime(total)}</Text>{goal > 0 && <Text style={s.of}>of {squad.goalMinutes! / 60}h goal</Text>}</View>
-      {progress !== null && <View style={s.track}><View style={[s.fill, { width: `${Math.max(progress > 0 ? 3 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
-      <Text style={s.caption}>{!total ? `Nobody has focused yet this week. Be the first · ${left} ${left === 1 ? "day" : "days"} left` : progress !== null && progress >= 1 ? "Goal reached. Nice work, everyone." : goal ? `${studyTime(goal - total)} to go · ${left} ${left === 1 ? "day" : "days"} left` : `Resets on Monday · ${left} ${left === 1 ? "day" : "days"} left`}</Text>
-      {squad.ownerIsYou && !goal && <Pressable onPress={onSetGoal} accessibilityRole="button" hitSlop={8}><Text style={s.link}>Set a weekly goal</Text></Pressable>}
-    </View>
+    {focusing.length > 0 && <View style={s.focusing} testID="squad-focusing">
+      {focusing.map(member => <View key={member.id} style={s.focusCard} accessible={false}>
+        <View style={s.focusFace}><Text style={s.focusInitial}>{(member.name.trim()[0] ?? "?").toUpperCase()}</Text></View>
+        <View style={s.flex}>
+          <Text style={s.focusName} numberOfLines={1}>{member.name}</Text>
+          <Text style={s.focusMeta} numberOfLines={2}>Focusing now{member.weekSeconds > 0 ? ` · ${studyTime(member.weekSeconds)} this week` : ""}</Text>
+        </View>
+        {!!onJoin && <Pressable onPress={onJoin} accessibilityRole="button" accessibilityLabel={`Join ${member.name}. Starts your own session`} testID={`squad-join-${member.id}`} style={s.join}>
+          <Text style={s.joinText}>Join</Text>
+        </Pressable>}
+      </View>)}
+      {!!onJoin && <Text style={s.hint}>Join starts your own timer next to theirs. Your activity, your pace.</Text>}
+    </View>}
 
     <View style={s.section}>
-      <View style={s.sectionHead}><Text style={s.sectionTitle} accessibilityRole="header">Your circle</Text><Text style={s.caption}>This week · resets Monday</Text></View>
-      <View style={s.table} testID="squad-members">{members.map((member, index) => <Pressable key={member.id} onPress={() => setOpen(member.id)}
-        accessibilityRole="button" accessibilityLabel={label(member)} accessibilityHint="Shows their week" style={[s.row, index > 0 && s.line, member.isYou && s.rowYou]}>
-        <SquadFace member={member} ring={member.isYou ? colors.sheetCard : colors.surface} />
-        <View style={s.flex}>
-          <Text style={s.rowName} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
-          <Text style={[s.idle, member.focusingNow && s.live]} numberOfLines={1}>{member.focusingNow ? "Focusing now" : member.weekSeconds > 0 ? `${studyTime(member.weekSeconds)} this week` : "Not started this week"}</Text>
-        </View>
-        <Ionicons name="chevron-forward" size={16} color={colors.tertiary} />
+      <View style={s.togetherRow} accessible accessibilityLabel={`Together this week, ${studyTime(total)}${goal ? ` of a ${squad.goalMinutes! / 60} hour goal` : ""}`}>
+        <Text style={s.sectionTitle} accessibilityRole="header">This week together</Text>
+        <Text style={s.together}>{studyTime(total)}</Text>
+      </View>
+      {progress !== null && <View style={s.track}><View style={[s.fill, { width: `${Math.max(progress > 0 ? 3 : 0, Math.round(progress * 100))}%` }, progress >= 1 && { backgroundColor: colors.success }]} /></View>}
+      <Text style={s.caption}>{!total ? `Nobody has focused yet this week. Be the first · ${left} ${left === 1 ? "day" : "days"} left` : progress !== null && progress >= 1 ? "Goal reached. Nice work, everyone." : goal ? `${studyTime(goal - total)} to go of ${squad.goalMinutes! / 60}h · ${left} ${left === 1 ? "day" : "days"} left` : `Resets on Monday · ${left} ${left === 1 ? "day" : "days"} left${live ? ` · ${live} focusing now` : ""}`}</Text>
+      {squad.ownerIsYou && !goal && <Pressable onPress={onSetGoal} accessibilityRole="button" hitSlop={8}><Text style={s.link}>Set a weekly goal</Text></Pressable>}
+      <View testID="squad-members">{members.map((member, index) => <Pressable key={member.id} onPress={() => setOpen(member.id)}
+        accessibilityRole="button" accessibilityLabel={label(member)} accessibilityHint="Shows their week" style={[s.row, index > 0 && s.line]}>
+        <View style={s.initial}><Text style={s.initialText}>{member.isYou ? "Y" : (member.name.trim()[0] ?? "?").toUpperCase()}</Text></View>
+        <Text style={s.rowName} numberOfLines={1}>{member.isYou ? "You" : member.name}</Text>
+        <Text style={[s.idle, member.focusingNow && s.live]} numberOfLines={1}>{member.focusingNow ? "Focusing now" : member.weekSeconds > 0 ? `${studyTime(member.weekSeconds)} this week` : "Away for now"}</Text>
       </Pressable>)}</View>
       {/* A small squad shows its empty seats, each one an invite. */}
       {Array.from({ length: seats }, (_, index) => <Pressable key={`seat-${index}`} onPress={onInvite} accessibilityRole="button" accessibilityLabel="Open seat. Invite a friend" testID="squad-open-seat" style={[s.row, s.seat]}>
@@ -74,9 +86,23 @@ export default function SquadBoard({ squad, busy, onSetGoal, onRemove, onInvite 
 }
 const s = StyleSheet.create({
   board: { gap: 16 }, flex: { flex: 1, minWidth: 0 },
-  hero: { gap: 8, paddingHorizontal: 4 },
+  hero: { gap: 6, paddingHorizontal: 4 },
+  kicker: { color: colors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", letterSpacing: 1.3 },
+  focusing: { gap: 12 },
+  focusCard: { flexDirection: "row", alignItems: "center", gap: 14, borderRadius: radius.card + 4, backgroundColor: colors.focusSurface, paddingHorizontal: 16, paddingVertical: 16 },
+  focusFace: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.background, alignItems: "center", justifyContent: "center" },
+  focusInitial: { color: colors.text, fontSize: 18, fontWeight: "700" },
+  focusName: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "600" },
+  focusMeta: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
+  join: { minHeight: 48, minWidth: 76, paddingHorizontal: 20, borderRadius: 24, backgroundColor: colors.primary, alignItems: "center", justifyContent: "center" },
+  joinText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" },
+  hint: { color: colors.secondary, fontSize: 15, lineHeight: 22, paddingHorizontal: 4 },
+  togetherRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 8 },
+  together: { color: colors.text, fontSize: 20, lineHeight: 26, fontWeight: "700" },
+  initial: { width: 40, height: 40, borderRadius: 20, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
+  initialText: { color: colors.text, fontSize: 15, fontWeight: "700" },
   faces: { flexDirection: "row", alignItems: "flex-start", marginBottom: 2 }, faceSlot: {},
-  name: { color: colors.text, fontSize: 30, lineHeight: 36, fontFamily: "display", letterSpacing: -0.6 },
+  name: { color: colors.text, fontSize: 44, lineHeight: 50, fontFamily: "display", letterSpacing: -0.9 },
   card: { ...edge, gap: 8, borderRadius: radius.card, backgroundColor: colors.surface, padding: 16 },
   label: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 0.8, textTransform: "uppercase" },
   bigRow: { flexDirection: "row", alignItems: "baseline", gap: 8 },
@@ -85,16 +111,16 @@ const s = StyleSheet.create({
   caption: { color: colors.secondary, fontSize: 14, lineHeight: 20 }, link: { color: colors.accent, fontSize: 15, fontWeight: "600", marginTop: 2 },
   section: { gap: 10, marginTop: 6 },
   sectionHead: { gap: 1, paddingHorizontal: 4 },
-  sectionTitle: { color: colors.text, fontSize: 22, lineHeight: 28, fontFamily: "display", fontWeight: "500", letterSpacing: -0.3 },
+  sectionTitle: { color: colors.text, fontSize: 18, lineHeight: 24, fontWeight: "700" },
   table: { ...edge, borderRadius: radius.card, backgroundColor: colors.surface, overflow: "hidden" },
-  row: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+  row: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 14, paddingVertical: 10 },
   rowYou: { backgroundColor: colors.sheetCard },
   line: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
   seat: { ...edge, borderRadius: 18, borderStyle: "dashed", borderColor: colors.border, backgroundColor: "transparent" },
   seatFace: { width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, borderStyle: "dashed", borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   seatText: { color: colors.secondary, fontSize: 15 }, seatInvite: { color: colors.accent, fontSize: 14, fontWeight: "600" },
-  rowName: { flex: 1, color: colors.text, fontSize: 16, lineHeight: 22, fontWeight: "600" },
-  idle: { color: colors.secondary, fontSize: 13, lineHeight: 18 }, live: { color: colors.success, fontWeight: "600" },
+  rowName: { flex: 1, color: colors.text, fontSize: 17, lineHeight: 22 },
+  idle: { color: colors.secondary, fontSize: 15, lineHeight: 20, flexShrink: 0 }, live: { color: colors.success, fontWeight: "600" },
   invite: { flexDirection: "row", gap: 10 },
   code: { ...edge, flex: 1, minHeight: 54, borderRadius: 27, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center" },
   codeLabel: { color: colors.secondary, fontSize: 12, lineHeight: 15 }, codeText: { color: colors.text, fontSize: 17, lineHeight: 21, fontWeight: "700", letterSpacing: 2 },

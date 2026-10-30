@@ -34,7 +34,7 @@ async function fixture({ fontScale = 1, height = 844, width = 390, initial = {} 
   const mocks = {
     'react-native': native, './AppText': { Text: host('Text') }, './MotionPressable': host('Button'),
     '../context/UserContext': { useUser: () => ({ profile: { id: 'fixture-owner', level: 2, current_xp: 10 }, hapticsEnabled: true }) },
-    './CompletionDetails': { CompletionHero: host('Hero'), CompletionRows: host('Rows') },
+    './CompletionDetails': { CompletionHero: host('Hero'), CompletionRows: host('Rows'), CompletionCard: host('Card'), CompletionTiles: host('Tiles') },
     './AppSheet': props => React.createElement('Sheet', props, props.header, React.createElement('Body', null, props.children), React.createElement('Footer', null, props.footer)),
     '@expo/vector-icons': { Ionicons: host('Icon') }, './CharacterMark': host('Character'), './ProgressRing': host('Ring'),
     '@gorhom/bottom-sheet': { BottomSheetScrollView: React.forwardRef(function Scroll(props, ref) {
@@ -61,10 +61,11 @@ test('synced offline sessions have one honest total, the exact duration groups a
   const f = await fixture({ initial: { dailyCompletedSeconds: 7200, dailyGoalMinutes: 30, goalReachedNow: true, recovered: true } });
   try {
     const header = f.root().findByProps({ testID: 'session-result-header' });
-    assert.equal(text(header), 'Sessions synced');
-    assert.equal(header.findByType('Text').props.accessibilityRole, 'header');
-    const hero = f.root().findByType('Hero');
-    assert.equal(hero.props.seconds, 180); assert.equal(hero.props.title, '3 offline sessions');
+    // Round 85: a small label sits over the title (mockup 07); the title stays the header.
+    assert.equal(text(header), 'WELCOME BACKSessions synced');
+    assert.equal(header.findAllByType('Text').find(node => node.props.accessibilityRole === 'header').props.children, 'Sessions synced');
+    const card = f.root().findByType('Card');
+    assert.equal(card.props.seconds, 180); assert.equal(card.props.label, '3 offline sessions'); assert.equal(card.props.sync, true, 'no invented daily total on a sync card');
     const groups = f.root().findByProps({ testID: 'session-sync-durations' });
     assert.equal(text(groups), '3 × 1 min');
     assert.equal(groups.findByType('Text').props.accessibilityLabel, '3 sessions of 1 min each');
@@ -86,7 +87,7 @@ test('one sync receipt retains the existing Done-only fade and acknowledges dism
     const sheet = f.root().findByType('Sheet');
     assert.equal(sheet.props.dismissible, false); assert.equal(sheet.props.closeMotion, 'fade'); assert.equal(sheet.props.closeFadeDuration, 400);
     const done = f.root().findByProps({ testID: 'session-result-done' });
-    assert.equal(done.props.accessibilityRole, 'button'); assert.equal(done.props.accessibilityLabel, 'Done');
+    assert.equal(done.props.accessibilityRole, 'button'); assert.equal(done.props.accessibilityLabel, 'Back to today');
     await f.done(); await f.done(); assert.equal(f.closed(), 1); assert.equal(f.dismissed(), 0);
     await f.update({ visible: false }); await f.finish(); await f.finish();
     assert.equal(f.dismissed(), 1);
@@ -120,7 +121,7 @@ test('mixed durations retain seconds and plural pending copy without invented to
   const f = await fixture({ initial: { syncSummary: { sessionCount: 3, durations: [{ seconds: 60, count: 1 }, { seconds: 75, count: 2 }], areas: [], pendingCount: 2 }, durationSeconds: 210 } });
   try {
     assert.equal(text(f.root().findByProps({ testID: 'session-sync-durations' })), '1 × 1 min2 × 1 min 15 sec');
-    assert.equal(f.root().findByType('Hero').props.seconds, 210);
+    assert.equal(f.root().findByType('Card').props.seconds, 210);
     assert.equal(f.root().findAllByProps({ testID: 'session-sync-areas' }).length, 0, 'no category rows when no category is known');
     assert.ok(text(f.root()).includes('2 more sessions are saved on this phone, waiting to sync.'));
   } finally { await f.cleanup(); }
@@ -129,10 +130,11 @@ test('mixed durations retain seconds and plural pending copy without invented to
 test('ordinary single-session presentation stays unchanged without syncSummary, and Done never queues a celebration', async () => {
   const f = await fixture({ initial: { syncSummary: undefined, recovered: false, durationSeconds: 60, questTitle: 'Review notes', goalReachedNow: true } });
   try {
-    assert.equal(text(f.root().findByProps({ testID: 'session-result-header' })), 'Session complete');
+    assert.equal(text(f.root().findByProps({ testID: 'session-result-header' })), 'SESSION COMPLETEYou made room.');
     assert.equal(f.root().findByType('Sheet').props.label, 'session completion');
-    assert.equal(f.root().findByType('Hero').props.title, 'Review notes');
-    assert.deepEqual(f.root().findByType('Rows').props.summary, { goalReachedNow: true });
+    assert.equal(f.root().findByType('Card').props.line, 'Review notes');
+    assert.equal(f.root().findByType('Card').props.goalReachedNow, true);
+    assert.equal(f.root().findByType('Card').props.sync, undefined);
     assert.equal(f.root().findAllByProps({ testID: 'session-sync-areas' }).length, 0);
     await f.done(); await f.update({ visible: false }); await f.finish();
     assert.equal(f.celebrations.length, 0);

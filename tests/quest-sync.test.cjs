@@ -170,7 +170,7 @@ async function pickerSetup(rows,initial={}){
     '../context/QuestContext':{useQuests:()=>({tasks:rows,subjects,loading:false,error:false,refresh:async fresh=>calls.push(['refresh',!!fresh])})},
     '../hooks/useReducedMotion':{useReducedMotion:()=>true},'./AppText':{Text:host('Text')},'./MotionPressable':host('Button'),
     './AppHeader':host('Header'),'./AppSheet':props=>props.visible?React.createElement('Sheet',props,props.header,props.children):null,
-    './CompletionDetails':{CompletionHero:host('Hero'),CompletionRows:host('Rows')},
+    './CompletionDetails':{CompletionHero:host('Hero'),CompletionRows:host('Rows'),CompletionCard:host('Card'),CompletionTiles:host('Tiles')},
     '../hooks/useRewards':require('./helpers/rewards-store-mock.cjs'),
   };
   for(const child of ['SaveSuggestedQuest','LevelUpModal','ProgressRing','SessionCountdown','FocusLengthControl','FocusDurationSheet','SheetConfirmation','session/SessionBackdrop','session/SessionReveal']) mocks[`./${child}`]=host(child);

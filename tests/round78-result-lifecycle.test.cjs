@@ -107,7 +107,7 @@ async function fixture({ compiled = true, delayReceipt = false, delayCancel = fa
     },
     'react-native-svg': { __esModule: true, default: host('Svg'), Defs: host('Defs'), RadialGradient: host('RadialGradient'), Stop: host('Stop'), Rect: host('Rect') },
     'react-native-gesture-handler': { GestureHandlerRootView: host('GestureRoot') },
-    './CompletionDetails': { CompletionHero: host('Hero'), CompletionRows: host('Rows') }, './CharacterMark': host('Character'),
+    './CompletionDetails': { CompletionHero: host('Hero'), CompletionRows: host('Rows'), CompletionCard: host('Card'), CompletionTiles: host('Tiles') }, './CharacterMark': host('Character'),
     'react-native-safe-area-context': { SafeAreaView: host('SafeArea'), useSafeAreaInsets: () => ({ top: 24, bottom: 20 }) },
     '../adventurer/AdventurerBack': host('Walker'), './TrailScenes': { FireGlow: host('Glow'), Fireflies: host('Fireflies'), TrailScene: host('Scene') },
     '../../hooks/useRewards': { useRewards: () => ({ look: {}, equipped: {}, today: { seconds: 0 }, trail: { findSeconds: 1800, stops: 4 } }) },

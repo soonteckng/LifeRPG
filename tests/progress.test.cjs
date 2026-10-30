@@ -498,7 +498,7 @@ test("returning to Progress reuses fresh data; off-tab completion invalidates th
 
 const host = (name) => (props) =>
   React.createElement(name, props, props.children);
-async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false, offline = false, history = null } = {}) {
+async function screenHarness({ empty = false, historyFailure = false, sessionRows, areaRows, hapticsEnabled = false, offline = false, history = null, overview = false } = {}) {
   const today = dateKey(new Date(), TZ),
     stamp = new Date(Date.now() - 1000).toISOString();
   let refreshes = 0,
@@ -588,6 +588,14 @@ async function screenHarness({ empty = false, historyFailure = false, sessionRow
   await act(async () => {
     renderer = create(React.createElement(screen));
   });
+  // Round 85: the page opens on this week's overview (mockup 08). The detailed
+  // charts these tests cover sit one tap away, under History.
+  if (!overview) {
+    const open = renderer.root.findAllByType("Button").find(b => b.props.testID === "rhythm-history");
+    assert.ok(open, "History opens the detailed charts");
+    await act(async () => open.props.onPress());
+    haptics = 0;
+  }
   const text = (node) =>
     typeof node === "string" ? node : (node.children ?? []).map(text).join("");
   const buttons = () => renderer.root.findAllByType("Button");
@@ -1097,15 +1105,44 @@ test("a category's sessions sit under their day: the chosen day only, or the who
 });
 
 test("Round 84: Your rhythm shows quiet markers from your whole history, under the streak, and none before there are any", async () => {
-  const none = await screenHarness();
+  // Round 85: the markers live on the week overview, under the streak card.
+  const none = await screenHarness({ overview: true });
   try { assert.doesNotMatch(none.text(), /Along the way/, "no history loaded, no empty section"); } finally { await none.cleanup(); }
   const now = Date.now();
   const sessions = Array.from({ length: 12 }, (_, i) => ({ id: `h${i}`, subject_id: 1, activity_type: "other", duration_seconds: 3600, xp_earned: 0, completed_at: new Date(now - i * 86400000).toISOString() }));
-  const ui = await screenHarness({ history: { userId: "me", areas: [], sessions } });
+  const ui = await screenHarness({ overview: true, history: { userId: "me", areas: [], sessions } });
   try {
     const shown = ui.text();
     assert.match(shown, /Along the way10 hours focused in totalShowed up on 10 different days10 sessions finishedLongest run: 12 days in a rowLongest session: 1h 00m/);
     assert.ok(shown.indexOf("streak") < shown.indexOf("Along the way"), "the markers sit under the streak");
     assert.match(shown, /Your rhythm/);
   } finally { await ui.cleanup(); }
+});
+
+test("Round 85: Your rhythm opens on this week: total, days here with rest days, time by activity, and History for the charts", async () => {
+  const ui = await screenHarness({ overview: true });
+  try {
+    const shown = ui.text();
+    assert.match(shown, /Your rhythm\./);
+    assert.match(shown, /This week · /);
+    assert.match(shown, /30sfocused/, "the week's total leads");
+    assert.match(shown, /1 day here/, "the lilac card counts the days you showed up");
+    assert.match(shown, /2-day streak/);
+    assert.ok(ui.renderer.root.findAllByProps({ testID: "rhythm-week" }).length > 0);
+    assert.match(shown, /Time by activity/);
+    assert.doesNotMatch(shown, /Week total|By category/, "the detailed charts wait under History");
+    await ui.press("Open your history");
+    assert.match(ui.text(), /Week total/, "History shows the detailed charts");
+    await ui.press("Back to this week");
+    assert.match(ui.text(), /Time by activity/);
+  } finally { await ui.cleanup(); }
+});
+
+test("Round 85: the rest-day line names a rest day this week and the ones still ready", () => {
+  const host = name => props => React.createElement(name, props, props.children);
+  const { restLine } = load("src/components/RhythmOverview.tsx", { "@expo/vector-icons": { Ionicons: host("Icon") }, "./AppText": { Text: host("Text") }, "./MotionPressable": host("Button"), "react-native": { StyleSheet: { create: styles => styles }, View: host("View") } });
+  assert.equal(restLine(["2026-10-28"], 1, 4), "Wednesday was a rest day, so your streak kept going. 1 more rest day is ready if you need it.");
+  assert.equal(restLine([], 2, 3), "Missed a day? 2 more rest days are ready if you need them.");
+  assert.equal(restLine([], 0, 0), "Your first session starts this week’s story. Even 15 minutes counts.");
+  assert.doesNotMatch(restLine(["2026-10-28", "2026-10-29"], 0, 2), /—/);
 });

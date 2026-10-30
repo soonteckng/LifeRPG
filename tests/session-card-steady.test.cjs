@@ -27,11 +27,12 @@ test('while the result is confirmed online, the card already looks finished and 
  const {Sheet,props}=sheet();let ui;
  await act(async()=>{ui=create(React.createElement(Sheet,{...base,pending:true,localSaved:true,sessionId:'s1'}));});
  const shown=text(ui.toJSON());
- assert.match(shown,/Session complete/,'no "Session finished" title swap');
- assert.match(shown,/Learning/);assert.match(shown,/…/);assert.doesNotMatch(shown,/XP|Level/,'no XP or level rows since Round 83');
+ // Round 85 (mockup 07): the finished title is "You made room." from the first frame.
+ assert.match(shown,/You made room\./,'no "Session finished" title swap');assert.doesNotMatch(shown,/Session finished/);
+ assert.match(shown,/LEARNING/);assert.match(shown,/…/);assert.doesNotMatch(shown,/XP|Level/,'no XP or level rows since Round 83');
  assert.doesNotMatch(shown,/Saved on this phone/,'no long saving message online');
  await act(async()=>ui.update(React.createElement(Sheet,{...base,pending:false,sessionId:'s1'})));
- const done=text(ui.toJSON());assert.match(done,/Time added/);assert.match(done,/Focus day recorded/);assert.doesNotMatch(done,/…/);
+ const done=text(ui.toJSON());assert.match(done,/1min focused/);assert.match(done,/Focus day recorded/);assert.doesNotMatch(done,/…/);
  await act(async()=>ui.unmount());
 });
 
@@ -61,7 +62,7 @@ test('a finished session shows the time and the focus day, with no level, XP or 
  const {Sheet}=sheet();let ui;
  await act(async()=>{ui=create(React.createElement(Sheet,{...base,pending:false,sessionId:'s2'}));});
  const shown=text(ui.toJSON());
- assert.match(shown,/Session complete/);assert.match(shown,/Focus day recorded/);
+ assert.match(shown,/SESSION COMPLETE/);assert.match(shown,/You made room\./);assert.match(shown,/1min focused/);assert.match(shown,/Focus day recorded/);
  assert.equal(ui.root.findAll(n=>n.props.testID==='session-level-up').length,0);
  assert.equal(ui.root.findAllByType('Companion').length,0);assert.doesNotMatch(shown,/Level|XP/);
  await act(async()=>ui.unmount());

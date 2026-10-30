@@ -5,8 +5,12 @@ import { sessionTime } from "../utils/sessionSetup";
 import { timerLayout } from "../utils/timerLayout";
 
 // Display-only countdown. Duration editing belongs to FocusLengthControl.
-export default function SessionCountdown({ seconds, compact = true, caption, onScene = false }: {
+export default function SessionCountdown({ seconds, compact = true, caption, onScene = false, serif = false, progress }: {
   seconds: number; compact?: boolean; caption?: string;
+  /** The running timer in Newsreader, inside the arch. */
+  serif?: boolean;
+  /** Share of the session done, drawn as eight segments under the digits. */
+  progress?: number;
   /** Over the dark session scene: light digits. */
   onScene?: boolean;
 }) {
@@ -21,10 +25,13 @@ export default function SessionCountdown({ seconds, compact = true, caption, onS
     <View style={{ height: rowHeight * 3 }}>
       <View testID="session-countdown" accessible accessibilityLabel={sessionTime(seconds)}
         pointerEvents="none" style={[s.digits, { top: rowHeight, height: rowHeight }]}>
-        <Text allowFontScaling={false} style={[s.time, { fontSize, height: rowHeight, lineHeight: rowHeight }, onScene && { color: sceneInk.text }]}>{sessionTime(seconds)}</Text>
+        <Text allowFontScaling={false} style={[s.time, { fontSize, height: rowHeight, lineHeight: rowHeight }, serif && s.serif, onScene && { color: sceneInk.text }]}>{sessionTime(seconds)}</Text>
       </View>
     </View>
-    {compact && caption && <Text style={[s.caption, { top: labelHeight + rowHeight * 2 + 8 }, onScene && { color: sceneInk.secondary }]}>{caption}</Text>}
+    {progress !== undefined && <View testID="session-segments" style={[s.segments, { top: labelHeight + rowHeight * 2 + 6 }]} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      {Array.from({ length: 8 }, (_, index) => <View key={index} style={[s.segment, index < Math.round(8 * progress) && s.segmentOn]} />)}
+    </View>}
+    {compact && caption && <Text style={[s.caption, { top: labelHeight + rowHeight * 2 + (progress !== undefined ? 20 : 8) }, onScene && { color: sceneInk.secondary }]}>{caption}</Text>}
     <View style={{ height: 44 }} />
   </View>;
 }
@@ -33,5 +40,9 @@ const s = StyleSheet.create({
   labels: { flexDirection: "row", alignItems: "center" }, unit: { flex: 1, textAlign: "center", color: colors.secondary, fontSize: 15 },
   digits: { position: "absolute", left: 0, right: 0, alignItems: "center" },
   time: { width: "100%", includeFontPadding: false, textAlignVertical: "center", textAlign: "center", fontVariant: ["tabular-nums"], color: colors.text, fontWeight: "500" },
+  serif: { fontFamily: "display", fontWeight: "400" },
+  segments: { position: "absolute", left: 0, right: 0, flexDirection: "row", justifyContent: "center", gap: 6 },
+  segment: { width: 22, height: 4, borderRadius: 2, backgroundColor: "rgba(59,39,55,0.18)" },
+  segmentOn: { backgroundColor: colors.primary },
   caption: { position: "absolute", width: "100%", textAlign: "center", color: colors.secondary, fontSize: 15 },
 });

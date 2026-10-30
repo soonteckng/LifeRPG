@@ -79,6 +79,41 @@ export function HomeExams() {
 }
 
 /** Your squad's week. Tapping it peeks at who's in it; the Squads tab has the whole squad. */
+/** Who's focusing, in plain words: "Aina and Jun are focusing". */
+export function focusingLine(names: string[]): string {
+  if (!names.length) return "";
+  if (names.length === 1) return `${names[0]} is focusing`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are focusing`;
+  return `${names[0]}, ${names[1]} and ${names.length - 2} more are focusing`;
+}
+
+/**
+ * Today's circle card (mockup 01): your circle's faces and who is focusing
+ * now, one tap from the whole squad. Without a squad, an invitation to start one.
+ */
+export function HomeCircle() {
+  const squads = useSquads(), router = useRouter();
+  const chosen = squadSelection.get();
+  const squad = squads.squads.find(item => item.id === chosen) ?? squads.squads[0];
+  const open = () => { if (squad) squadSelection.choose(squad.id); router.navigate("/squads"); };
+  if (!squads.ready && !squad) return null;
+  const members = squad ? circleOrder(squad) : [];
+  const focusing = members.filter(member => member.focusingNow && !member.isYou).map(member => member.name);
+  const caption = !squad ? squads.online ? "Start a circle or join a friend’s" : "Needs internet to start or join a circle"
+    : focusing.length ? focusingLine(focusing) : `${squad.members.length} ${squad.members.length === 1 ? "person" : "people"} · ${studyTime(squadTotal(squad))} together this week`;
+  return <Pressable onPress={open} disabled={!squad && !squads.online} accessibilityRole="button" testID={squad ? "home-circle" : "home-squad-empty"}
+    accessibilityLabel={squad ? `Your circle, ${squad.name}. ${caption}` : `Focus with friends. ${caption}`} style={s.circle}>
+    {squad ? <View style={s.circleFaces}>{members.slice(0, 3).map((member, index) => <View key={member.id} style={[s.circleFace, index > 0 && { marginLeft: -10 }]}>
+      <SquadFace member={member} size={34} ring={colors.surface} /></View>)}</View>
+      : <View style={s.circleIcon}><Ionicons name="people-outline" size={19} color={colors.accent} /></View>}
+    <View style={s.flex}>
+      <Text style={s.circleTitle} numberOfLines={1}>{squad ? "Your circle" : "Focus with friends"}</Text>
+      <Text style={s.caption} numberOfLines={2}>{caption}</Text>
+    </View>
+    <Ionicons name="arrow-up-outline" size={18} color={colors.accent} style={s.northEast} />
+  </Pressable>;
+}
+
 export function HomeSquad({ tile = false }: { tile?: boolean } = {}) {
   const router = useRouter(), squads = useSquads(), insets = useSafeAreaInsets();
   const chosen = squadSelection.get();
@@ -239,6 +274,12 @@ export function HomeWeek({ tile = false }: { tile?: boolean } = {}) {
 }
 
 const s = StyleSheet.create({
+  circle: { minHeight: 72, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 14, paddingHorizontal: 16, borderRadius: 22, backgroundColor: colors.surface },
+  circleFaces: { flexDirection: "row", alignItems: "center" },
+  circleFace: { borderRadius: 19, borderWidth: 2, borderColor: colors.surface },
+  circleIcon: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center", backgroundColor: colors.accentSoft },
+  circleTitle: { color: colors.text, fontSize: 16, lineHeight: 21, fontWeight: "600" },
+  northEast: { transform: [{ rotate: "45deg" }] },
   section: { gap: 10 }, flex: { flex: 1, minWidth: 0, gap: 2 },
   // Home's half-width tiles: a small label, the number, and a footer.
   tileSection: { flex: 1, minWidth: 0 },
