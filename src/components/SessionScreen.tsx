@@ -10,14 +10,14 @@ import SheetButton from "./SheetTouchable";
 import { Stack, useFocusEffect, useNavigation } from "expo-router";
 import { usePreventRemove } from "expo-router/react-navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StatusBar, StyleSheet, View, useWindowDimensions } from "react-native";
+import { ActivityIndicator, Animated, BackHandler, Keyboard, KeyboardAvoidingView, PanResponder, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import AppSheet from "./AppSheet";
 import ProgressRing from "./ProgressRing";
 import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import AppHeader from "./AppHeader";
 import SheetConfirmation from "./SheetConfirmation";
-import { colors, sceneInk, radius, edge } from "../constants/theme";
+import { colors, radius, edge } from "../constants/theme";
 import SessionCountdown from "./SessionCountdown";
 import FocusLengthControl from "./FocusLengthControl";
 import FocusAreaPicker from "./FocusAreaPicker";
@@ -27,7 +27,7 @@ import { useQuests } from "../context/QuestContext";
 import { useTimer } from "../context/TimerContext";
 import { useAuth } from "../context/AuthContext";
 import { useReducedMotion } from "../hooks/useReducedMotion";
-import { validSessionSeconds, sessionTime } from "../utils/sessionSetup";
+import { validSessionSeconds } from "../utils/sessionSetup";
 import { traceSession } from "../utils/sessionTransition";
 import { afterTransition } from "../utils/afterTransition";
 import { offlineAppAvailable } from "../utils/offlineApp";
@@ -43,14 +43,14 @@ import { setupMode, type SetupMode } from "../services/setupMode";
 import { studySelection } from "../services/studySelection";
 import { useStudyPlan } from "../hooks/useStudyPlan";
 import { countdownLabel, daysUntil, studyTime, upcomingExams, weekSeconds } from "../utils/studyPlan";
-import SessionBackdrop, { SessionIntroWords } from "./session/SessionBackdrop";
-import type { FocusSceneBand } from "../utils/focusSceneLayout";
 import { sessionTrail } from "../services/sessionTrail";
 import { sessionEntry } from "../services/sessionEntry";
 
 type Picker = "duration" | "area" | null;
 /** At most this long the night scene waits for a started session to show. */
 const LAUNCH_WAIT_MS = 4000;
+// The fade from setup into the session, before it starts.
+const SETTLE_MS = 320;
 /** How long a requested pop may take before the screen shows itself again. */
 const LOST_EXIT_MS = 900;
 // useTimer merges its live clock into a new object on each render. Comparing
@@ -146,25 +146,6 @@ export default function SessionScreen() {
   const timerBounds = useRef({ top: 0, bottom: 0 });
   const timerView = useRef<View>(null);
   const surfaceView = useRef<View>(null), ringView = useRef<View>(null);
-  const laneScope = JSON.stringify([presentationScope, width, height, fontScale]);
-  const currentLaneScope = useRef(laneScope), laneRequest = useRef(0);
-  useLayoutEffect(() => { currentLaneScope.current = laneScope; }, [laneScope]);
-  const [focusLane, setFocusLane] = useState<(FocusSceneBand & { scope: string }) | null>(null);
-  const measureFocusLane = () => {
-    const surface = surfaceView.current, ring = ringView.current, area = timerView.current;
-    if (!surface || !ring || !area) return;
-    const request = ++laneRequest.current;
-    // Ancestor-relative layout excludes the surface's slide transform. Screen
-    // coordinates measured during entry would put the walker off screen.
-    ring.measureLayout(surface, (_x, y, _w, h) => {
-      area.measureLayout(surface, (_ax, ay, _aw, ah) => {
-        if (!surfaceView.current || request !== laneRequest.current || currentLaneScope.current !== laneScope || h <= 0 || ah <= 0) return;
-        const ringBottom = Math.round(y + h), areaBottom = Math.round(ay + ah);
-        setFocusLane(previous => previous?.scope === laneScope && previous.ringBottom === ringBottom && previous.areaBottom === areaBottom
-          ? previous : { scope: laneScope, ringBottom, areaBottom });
-      });
-    });
-  };
   const detailsOffset = useRef(0);
   const closing = useRef(false);
   const [exitReady, setExitReady] = useState(false);
@@ -263,12 +244,16 @@ export default function SessionScreen() {
   const suggestion = !isQuest ? readSuggestedFocus(timer.notes) : null;
   const missingQuest = isQuest && (!task || !locked && !selectableQuests.some(item => item.id === timer.linkedTaskId));
   const phase = timer.isCompleted ? "completed" : endingPresentation && endSnapshot ? "ended" : timer.awaitingStart ? "running" : timer.hasOpenSession ? timer.isRunning ? "running" : "paused" : "setup";
+  // Round 87: an open session keeps you here until you end it (a session that
+  // couldn't be restored can always be left, so nobody is ever stuck).
+  const lockedIn = timer.hasOpenSession && !timer.restoreError && !timer.isCompleted && phase !== "ended";
+  const lockedInRef = useRef(lockedIn);
+  useLayoutEffect(() => { lockedInRef.current = lockedIn; }, [lockedIn]);
   // Setting off: Start first walks you out of camp at dusk and into the night,
   // and only then starts the session, so the walk never takes time from it.
   // Skipping ends the walk early and starts it then. Reopening a session that
   // is already running goes straight to it.
   const [departing, setDeparting] = useState<{ scope: string; seconds: number; title: string | undefined } | null>(null);
-  const [skipToken, setSkipToken] = useState(0);
   // Between the walk ending and the session showing as started, the night
   // scene stays (never a flash of setup); a failed start shows setup again.
   const [launching, setLaunching] = useState(false);
@@ -282,9 +267,6 @@ export default function SessionScreen() {
   }, [launching]);
   const intro = departing !== null;
   const settingOff = intro || launching;
-  // Round 85: the night scene only plays the "Settling in" moment; focus itself
-  // happens on paper, under the lilac arch (mockup 05).
-  const sceneShowing = settingOff;
   const startNow = useRef(timer.startTimer);
   useEffect(() => { startNow.current = timer.startTimer; });
   const departingRef = useRef(departing), scopeRef = useRef(presentationScope), openRef = useRef(timer.hasOpenSession);
@@ -304,6 +286,13 @@ export default function SessionScreen() {
     }, () => { setLaunching(false); setStartRefused(true); });
   }, []);
   const cancelDeparture = useCallback(() => { departingRef.current = null; setDeparting(null); }, []);
+  // Round 87: no walk from camp into the night. Setup fades out, and the
+  // session starts once the fade is done (at once with reduced motion).
+  useEffect(() => {
+    if (!departing) return;
+    const go = setTimeout(finishIntro, reducedMotion ? 0 : SETTLE_MS);
+    return () => clearTimeout(go);
+  }, [departing, finishIntro, reducedMotion]);
   if (departing && (departing.scope !== presentationScope || timer.hasOpenSession || timer.isCompleted || timer.isRestoring)) setDeparting(null);
   const [introFade] = useState(() => new Animated.Value(1));
   useLayoutEffect(() => {
@@ -421,7 +410,7 @@ export default function SessionScreen() {
   // eslint-disable-next-line react-hooks/refs
   const panResponder = useMemo(() => PanResponder.create({
     onMoveShouldSetPanResponderCapture: (_event, gesture) => {
-      return !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
+      return !lockedInRef.current && !picker && !confirmEnd && !keyboardVisible && !rewardsVisible && !closing.current
  && (gesture.y0 < timerBounds.current.top || detailsOffset.current <= 0)
         && gesture.dy > 12 && gesture.dy > Math.abs(gesture.dx) * 1.5;
     },
@@ -462,7 +451,8 @@ export default function SessionScreen() {
     return () => { start(); end(); };
   }, [navigation]);
   usePreventRemove((!!picker || keyboardVisible || confirmEnd) || !exitReady, () => {
-    traceSession("removal deferred", { picker, keyboardVisible, confirmEnd, exitReady });
+    traceSession("removal deferred", { picker, keyboardVisible, confirmEnd, exitReady, lockedIn });
+    if (lockedIn) { if (!dismissLayer()) setConfirmEnd(true); return; }
     minimise("navigation-back");
   });
   // Release the removal guard before dispatching the pop; no timeout or native
@@ -517,16 +507,10 @@ export default function SessionScreen() {
   }, [liveTimer.hasOpenSession, liveTimer.isCompleted, liveTimer.endingSession, liveTimer.sessionEnded,
     liveTimer.isRestoring, liveTimer.actionBusy, liveTimer.restoreError, liveTimer.summaryViewed,
     liveTimer.sessionId, ownerId, endRequested, minimise]);
-  const focusActions = useRef({ enterScreen, recoverFromLostExit, cancelDeparture, minimise });
-  useLayoutEffect(() => { focusActions.current = { enterScreen, recoverFromLostExit, cancelDeparture, minimise }; },
-    [enterScreen, recoverFromLostExit, cancelDeparture, minimise]);
-  // The camp scene shows only while setting off ("Settling in"); its dark sky
-  // turns the status bar's icons light for that moment.
-  useFocusEffect(useCallback(() => {
-    if (!sceneShowing) return;
-    const entry = StatusBar?.pushStackEntry?.({ barStyle: "light-content" });
-    return () => { if (entry) StatusBar.popStackEntry(entry); };
-  }, [sceneShowing]));
+  const askToEnd = useCallback(() => setConfirmEnd(true), []);
+  const focusActions = useRef({ enterScreen, recoverFromLostExit, cancelDeparture, minimise, dismissLayer, askToEnd });
+  useLayoutEffect(() => { focusActions.current = { enterScreen, recoverFromLostExit, cancelDeparture, minimise, dismissLayer, askToEnd }; },
+    [enterScreen, recoverFromLostExit, cancelDeparture, minimise, dismissLayer, askToEnd]);
   useFocusEffect(useCallback(() => {
     // Coming back to this screen after an exit that never finished: it must
     // be visible and usable again, never a see-through screen that eats taps.
@@ -537,6 +521,8 @@ export default function SessionScreen() {
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
       // Back while setting off stays here, ready, without starting.
       if (departingRef.current) { focusActions.current.cancelDeparture(); return true; }
+      // Locked in: Back asks to end the session instead of leaving it.
+      if (lockedInRef.current) { if (!focusActions.current.dismissLayer()) focusActions.current.askToEnd(); return true; }
       focusActions.current.minimise("android-back"); return true;
     });
     return () => subscription.remove();
@@ -575,7 +561,7 @@ export default function SessionScreen() {
     else if (timer.hasOpenSession) void timer.retryAction();
     else start(true);
   };
-  const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading routine…" : "Routine unavailable") : suggestion?.title ?? routineName ?? "Free session");
+  const title = (timer.sessionSummary?.questTitle !== "Quest session" ? timer.sessionSummary?.questTitle : undefined) || (isQuest ? task?.title ?? (loading ? "Loading routine…" : "Focus") : suggestion?.title ?? routineName ?? "Focus");
   const contextExam = chosenCourse ? upcomingExams(study.exams).find(exam => exam.courseId === chosenCourse.id) : undefined;
   const contextTitle = sessionMode === "study" ? chosenCourse?.name ?? "Choose a subject" : isRoutine ? title : focusAreaTitle(area?.title);
   const contextDetail = sessionMode === "study"
@@ -608,60 +594,55 @@ export default function SessionScreen() {
     : timer.syncStatus === "waiting" ? timer.isCompleted ? "Your finished session is saved on this phone. We’ll confirm it when you reconnect." : "Waiting to confirm your saved session state."
     : timer.actionError ?? "Couldn’t restore your session. Retry before starting a new one.";
 
-  // While you focus, you walk the trail behind the timer (see SessionBackdrop),
-  // and a finished or ended session keeps its scene behind its card.
-  const scenePhase = settingOff ? "running" : phase;
-  const onTrail = scenePhase === "running" || scenePhase === "paused" || scenePhase === "completed" || scenePhase === "ended";
+  // Round 87: once a session is open you stay here until you end it. The
+  // header has no way out, Back asks to end, and a swipe does nothing. A
+  // session that couldn't be restored can still be left, so nobody is stuck.
+  const focusing = phase === "running" || phase === "paused";
   return (
     <Animated.View ref={surfaceView} collapsable={false} testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
-    <Animated.View pointerEvents="none" testID="session-scene" style={[StyleSheet.absoluteFill, { opacity: introFade.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) }]}>
-    <SessionBackdrop phase={scenePhase} secondsLeft={timer.timeLeft} progress={timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-      walking={settingOff || phase === "running" && !breakActive && !timer.awaitingStart && !hideCountdown} intro={intro} skipToken={skipToken} onIntroEnd={finishIntro}
-      focusBand={focusLane?.scope === laneScope ? focusLane : null} />
-    </Animated.View>
     <Animated.View style={[styles.flex, { opacity: introFade }]}>
-    <SafeAreaView collapsable={false} style={[styles.screen, onTrail && styles.onTrail]} {...panResponder.panHandlers}
+    <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered light={sceneShowing} backText={phase !== "setup" ? "Today" : undefined} title={phase === "running" || phase === "paused" ? "" : phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={() => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={focusing ? "" : phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={lockedIn ? undefined : () => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       {!online && <View style={styles.offline}><OfflineStatus /></View>}
-      {/* What you're doing, and until when (mockup 05); a break says so (mockup 06). */}
-      {(phase === "running" || phase === "paused") && <Animated.View style={[styles.focusHead, { opacity }]} testID="session-focus-head">
-        {breakActive ? <Text style={styles.breakLabel}>ON A BREAK</Text>
-          : timer.protectedSession ? <View style={styles.pill}><Ionicons name="shield-checkmark-outline" size={15} color={colors.accent} /><Text style={styles.pillText}>Distracting apps set aside</Text></View> : null}
-        <Text style={styles.focusTitle} numberOfLines={2} accessibilityRole="header">{breakActive ? "A small pause." : title}</Text>
-        <Text style={styles.focusMeta} numberOfLines={1}>{breakActive ? `${title} · paused at ${sessionTime(timer.timeLeft)}`
-          : `${Math.round(timer.duration / 60)} min${timer.isRunning && !timer.awaitingStart ? ` · ends at ${endClock(timer.timeLeft)}` : " · paused"}`}</Text>
+      {/* Round 87: just what you're doing, small, above the timer. */}
+      {focusing && <Animated.View style={[styles.focusHead, { opacity }]} testID="session-focus-head">
+        <View style={styles.focusName}>
+          {breakActive ? <Ionicons name="cafe-outline" size={16} color={colors.streak} />
+            : timer.protectedSession ? <Ionicons name="shield-checkmark-outline" size={16} color={colors.accent} accessibilityLabel="Distracting apps set aside" /> : null}
+          <Text style={[styles.focusTitle, breakActive && styles.breakTitle]} numberOfLines={1} accessibilityRole="header">{breakActive ? "On a break" : title}</Text>
+        </View>
+        <Text style={styles.focusMeta} numberOfLines={1}>{breakActive ? `Back to ${title} at ${endClock(timer.breakSecondsLeft)}`
+          : timer.isRunning && !timer.awaitingStart ? `Ends at ${endClock(timer.timeLeft)}` : "Paused"}</Text>
       </Animated.View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-        <View ref={timerView} collapsable={false} onLayout={() => { measureFocusLane(); timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; }); }}
+        <View ref={timerView} collapsable={false} onLayout={() => { timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; }); }}
           importantForAccessibility={hideCountdown ? "no-hide-descendants" : "auto"}
           testID="session-timer-anchor" style={[styles.timerAnchor, (phase !== "setup" || isQuest) && styles.activeTimerAnchor,
             compactSetup ? { height: rowHeight + 24 + setupTop, paddingTop: setupTop, justifyContent: "flex-start" } : { minHeight: timerStageHeight }, hideCountdown && {opacity:0}]}>
           {/* While setting up, only the digits row shows; the full stage sits above
             it unseen, so starting glides the same digits into the ring. */}
-          <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => { settleTimerStage(event.nativeEvent.layout.y); measureFocusLane(); }}
+          <Animated.View testID="session-timer-stage" pointerEvents={compactSetup ? "none" : "auto"} onLayout={event => { settleTimerStage(event.nativeEvent.layout.y); }}
             style={[styles.timerStage, { height:timerStageHeight, transform:[{translateY:timerTranslate}] }, compactSetup && { marginTop: -(labelHeight + rowHeight) }]}>
-          <Animated.View ref={ringView} testID="session-ring-layer" collapsable={false} onLayout={measureFocusLane} pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop, height: ringSize }]}>
+          <Animated.View ref={ringView} testID="session-ring-layer" collapsable={false} pointerEvents="none" style={[styles.ringLayer, { opacity, top: ringTop, height: ringSize }]}>
             {/* Keep the timer's geometry, but don't composite a hidden SVG over
               the scene while the completed result is being saved. */}
             {!hideCountdown && phase !== "setup" && <View testID="session-arch" style={[styles.arch, { width: Math.min(ringSize + 40, width - 56), height: ringSize * 1.02, top: -ringSize * 0.08,
               borderTopLeftRadius: Math.min(ringSize + 40, width - 56) / 2, borderTopRightRadius: Math.min(ringSize + 40, width - 56) / 2 }, breakActive && styles.archBreak]}>
-              <Text style={[styles.archLabel, { top: ringSize * 0.2 }, breakActive && styles.archLabelBreak]}>{breakActive ? "BREAK ENDS IN" : phase === "ended" ? "SESSION ENDED" : "FOCUS TIME REMAINING"}</Text>
+              {(breakActive || phase === "ended") && <Text style={[styles.archLabel, { top: ringSize * 0.2 }, breakActive && styles.archLabelBreak]}>{breakActive ? "BREAK" : "SESSION ENDED"}</Text>}
             </View>}
             {!hideCountdown && phase === "setup" && isQuest && <ProgressRing size={ringSize}
               progress={breakActive ? 1 - timer.breakSecondsLeft / 300 : phase === "setup" ? 0 : timer.finishing ? 1 : Math.max(0, Math.min(1, 1 - timer.timeLeft / Math.max(1, timer.duration)))}
-              track={sceneShowing ? sceneInk.track : undefined}
               color={phase === "setup" && isQuest ? lifeAreaColor(timer.targetAttributeId, area?.color_code) : colors.accent} />}
           </Animated.View>
           <View style={[styles.timerControl, { width: controlWidth }]}>
-            <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds} onScene={sceneShowing} serif={phase !== "setup"}
+            <SessionCountdown seconds={breakActive ? timer.breakSecondsLeft : displayedSeconds} serif={phase !== "setup"}
               progress={phase === "running" || phase === "paused" ? breakActive ? undefined : Math.max(0, Math.min(1, timer.finishing ? 1 : 1 - timer.timeLeft / Math.max(1, timer.duration))) : undefined}
-              compact caption={breakActive ? "Break time doesn’t count as focus" : phase === "setup" ? isQuest ? "Planned focus" : undefined : timer.finishing ? "Finishing up…"
-                : `${Math.floor(Math.max(0, timer.duration - timer.timeLeft) / 60)} of ${Math.round(timer.duration / 60)} min focused`} />
+              compact caption={phase === "setup" ? isQuest ? "Planned focus" : undefined : timer.finishing ? "Finishing up…" : undefined} />
           </View>
-          <Text style={[styles.status, sceneShowing && ink.secondary, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
+          <Text style={[styles.status, (phase === "running" || phase === "paused" || phase === "ended" || (phase === "completed" && !!sessionSummary)) && styles.hiddenStatus]} accessibilityLiveRegion="polite">{phase === "setup" ? "" : phase === "completed" && sessionSummary ? sessionSummary.goalReachedNow ? "Daily goal reached" : "Your progress has been saved." : status}</Text>
           <View accessible accessibilityRole="progressbar" accessibilityLabel="Session progress"
             accessibilityValue={{ min: 0, max: timer.duration, now: phase === "setup" ? 0 : timer.duration - timer.timeLeft }} />
           </Animated.View>
@@ -670,9 +651,8 @@ export default function SessionScreen() {
           onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); if (phase === "running" || phase === "paused") setActiveLayout(layout => layout.details === view ? layout : { ...layout, details: view }); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
           onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
-          {phase !== "setup" && !timer.isCompleted && <Text style={[breakActive ? styles.breakLine : styles.activeTitle, sceneShowing && ink.text]} accessibilityLiveRegion="polite">{phase === "ended" ? `${title} · Ended` : timer.startCheckVisible ? "Checking your saved start…"
-              : breakActive ? "Your apps are open for now. Protection comes back when the break ends." : timer.isRunning ? "Just this, for a while." : "Paused. Take your time."}</Text>}
-            {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }, sceneShowing && ink.secondary]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
+          {(phase === "ended" || timer.startCheckVisible) && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityLiveRegion="polite">{phase === "ended" ? `${title} · Ended` : "Checking your saved start…"}</Text>}
+            {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setupStack}>
               {/* Floats, so a background refresh never pushes the setup around. */}
               {(loading || timer.isRestoring) && <ActivityIndicator size="small" style={styles.setupSpinner} color={colors.accent} />}
@@ -711,20 +691,29 @@ export default function SessionScreen() {
           {startRefused && !needsRecovery && !timer.protectionSetupRequired && phase === "setup" && <Text testID="session-start-refused" style={styles.status} accessibilityLiveRegion="polite">
             {"This session couldn’t start just yet. Your saved sessions are safe. Try again in a moment."}</Text>}
           {needsRecovery && <View testID="session-recovery-actions">
-            <Text style={[timer.syncStatus === "waiting" ? styles.secondary : styles.error, onTrail && (timer.syncStatus === "waiting" ? ink.secondary : ink.error)]} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
-            <Action label="Retry" light={onTrail} disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
+            <Text style={timer.syncStatus === "waiting" ? styles.secondary : styles.error} accessibilityRole={timer.syncStatus === "waiting" ? undefined : "alert"}>{recoveryMessage}</Text>
+            <Action label="Retry" disabled={ timer.actionBusy || timer.isRestoring} onPress={retry} />
           </View>}
           {!timer.isCompleted && <>
-            {timer.protectedSession && timer.hasOpenSession && timer.isRunning && !breakActive && !breakSpent && phase !== "ended" && <Text style={[styles.breakHint, sceneShowing && ink.secondary]}>One 5 min break is here if you need it.</Text>}
-            <View style={styles.actionColumn}>
-            <TouchableOpacity style={[styles.primary, timer.hasOpenSession && !breakActive && timer.isRunning && styles.activePrimary, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
+            {/* Round 87: while focusing, two small round buttons and nothing else. */}
+            <View style={focusing ? styles.roundRow : styles.actionColumn}>
+            <View style={focusing && styles.roundCell}>
+            <TouchableOpacity style={[focusing ? styles.round : styles.primary, focusing && breakActive && styles.roundOn, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
               onPress={timer.hasOpenSession ? () => { if (breakActive) void timer.resumeTimer(); else if (timer.isRunning && timer.protectedSession) setConfirmBreak(true); else void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()); } : () => start()}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
-              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={colors.primaryText} /> : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? timer.protectedSession ? "cafe-outline" : "pause" : "play"} size={18} color={timer.hasOpenSession && !breakActive && timer.isRunning ? colors.text : colors.primaryText} />}<Text style={[styles.primaryText, timer.hasOpenSession && !breakActive && timer.isRunning && { color: colors.text }]}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
+              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={focusing ? colors.text : colors.primaryText} /> : focusing
+                ? controlPending ? <ActivityIndicator color={breakActive ? colors.primaryText : colors.text} /> : <Ionicons name={breakActive ? "play" : timer.protectedSession ? breakSpent ? "cafe" : "cafe-outline" : timer.isRunning ? "pause" : "play"} size={24} color={breakActive ? colors.primaryText : colors.text} />
+                : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? timer.protectedSession ? "cafe-outline" : "pause" : "play"} size={18} color={colors.primaryText} />}<Text style={styles.primaryText}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
-            {timer.hasOpenSession && (phase === "ended" ? <View style={[styles.endControl, styles.endedControl]} importantForAccessibility="no-hide-descendants" /> : <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[styles.endControl, endQueued && styles.disabled]}>{endQueued ? <ActivityIndicator color={colors.text} /> : <Text style={styles.endText}>End session</Text>}</TouchableOpacity>)}
+            {focusing && <Text style={styles.roundLabel} numberOfLines={1}>{checkingStart ? "Checking start" : breakActive ? "Focus" : timer.protectedSession ? breakSpent ? "Break used" : "Break" : timer.isRunning ? "Pause" : "Resume"}</Text>}
             </View>
-            {timer.hasOpenSession && <Text style={[styles.cancelHint, sceneShowing && ink.secondary, phase === "ended" && styles.endedControl]} accessibilityElementsHidden={phase === "ended"} importantForAccessibility={phase === "ended" ? "no-hide-descendants" : "auto"}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
+            {timer.hasOpenSession && (phase === "ended" ? <View style={[styles.endControl, styles.endedControl]} importantForAccessibility="no-hide-descendants" /> : <View style={focusing && styles.roundCell}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[focusing ? styles.round : styles.endControl, endQueued && styles.disabled]}>
+                {endQueued ? <ActivityIndicator color={colors.text} /> : focusing ? <Ionicons name="stop" size={22} color={colors.text} /> : <Text style={styles.endText}>End session</Text>}</TouchableOpacity>
+              {focusing && <Text style={styles.roundLabel}>End</Text>}
+            </View>)}
+            </View>
+            {timer.hasOpenSession && (timer.finishing || endQueued || phase === "ended") && <Text style={[styles.cancelHint, phase === "ended" && styles.endedControl]} accessibilityElementsHidden={phase === "ended"} importantForAccessibility={phase === "ended" ? "no-hide-descendants" : "auto"}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
           </>}
         </Animated.View>
       </KeyboardAvoidingView>
@@ -743,47 +732,44 @@ export default function SessionScreen() {
         cancelLabel="Keep focusing" confirmLabel="Start break" onCancel={() => setConfirmBreak(false)} onConfirm={() => { setConfirmBreak(false); void timer.pauseTimer(); }} />}
     </SafeAreaView>
     </Animated.View>
-    {intro && <SessionIntroWords minutes={Math.round(timer.duration / 60)} onSkip={() => setSkipToken(n => n + 1)}
-      area={sessionMode === "study" ? chosenCourse?.name ?? "Study" : isRoutine ? title : focusAreaTitle(area?.title)} />}
     </Animated.View>
   );
 }
 
-function Action({ label, onPress, disabled = false, light = false }: { label: string; onPress: () => void; disabled?: boolean; light?: boolean }) {
-  return <TouchableOpacity style={styles.smallAction} disabled={disabled} onPress={onPress} accessibilityRole="button"><Text style={[styles.link, light && { color: sceneInk.link }]}>{label}</Text></TouchableOpacity>;
+function Action({ label, onPress, disabled = false }: { label: string; onPress: () => void; disabled?: boolean }) {
+  return <TouchableOpacity style={styles.smallAction} disabled={disabled} onPress={onPress} accessibilityRole="button"><Text style={styles.link}>{label}</Text></TouchableOpacity>;
 }
-// Text over the night scene stays light, whatever the app's own colours.
-const ink = { text: { color: sceneInk.text }, secondary: { color: sceneInk.secondary }, error: { color: sceneInk.error } } as const;
 function SheetChoice({ label, detail, onPress }: { label: string; detail?: string; onPress: () => void }) {
   return <SheetButton style={styles.pickerRow} onPress={onPress} accessibilityRole="button"><Text style={styles.label}>{label}</Text>{detail && <Text style={styles.secondary}>{detail}</Text>}</SheetButton>;
 }
 
 const styles = StyleSheet.create({
+  // Round 87: the locked session's two small round buttons.
+  roundRow: { flexDirection: "row", justifyContent: "center", gap: 48, paddingBottom: 8 },
+  roundCell: { alignItems: "center", gap: 8 },
+  round: { width: 64, height: 64, borderRadius: 32, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border },
+  roundOn: { backgroundColor: colors.primary, borderColor: colors.primary },
+  roundLabel: { color: colors.secondary, fontSize: 14, lineHeight: 18, fontWeight: "500" },
+  focusName: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, maxWidth: "100%" },
+  breakTitle: { color: colors.streak },
   suggestionInstruction: { paddingHorizontal: 12, paddingVertical: 6, marginTop: 6, marginBottom: 8 },
   screen: { flex: 1, backgroundColor: colors.background }, flex: { flex: 1 },
-  onTrail: { backgroundColor: "transparent" },
   ringLayer: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center" },
   activeDetails: { flexGrow: 0, maxHeight: 260 },
   timerStage: { width: "100%", alignItems: "center", paddingTop: 4 },
   activeTitle: { color: colors.text, fontSize: 24, lineHeight: 30, fontFamily: "display", textAlign: "center", marginTop: 6 },
   actionRow: { flexDirection: "row", gap: 10 },
   actionColumn: { gap: 4 },
-  activePrimary: { backgroundColor: colors.surfaceRaised, borderWidth: 1, borderColor: colors.border },
   endControl: { minHeight: 48, alignItems: "center", justifyContent: "center", borderRadius: 24 },
   endText: { color: colors.text, fontSize: 16, fontWeight: "600" },
-  breakHint: { color: colors.secondary, fontSize: 14, lineHeight: 20, textAlign: "center", paddingBottom: 8 },
   // Mockups 05 and 06: the arch holds the time; lilac in focus, peach on a break.
   arch: { position: "absolute", alignSelf: "center", borderBottomLeftRadius: 36, borderBottomRightRadius: 36, backgroundColor: colors.focusSurface },
   archBreak: { backgroundColor: colors.warmSurface },
   archLabel: { position: "absolute", left: 0, right: 0, textAlign: "center", color: colors.neutral, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1.4 },
-  archLabelBreak: { color: "#7A3E1F" },
-  focusHead: { alignItems: "center", gap: 8, paddingHorizontal: 24, paddingBottom: 8 },
-  pill: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 14, borderRadius: 16, backgroundColor: colors.focusSurface },
-  pillText: { color: colors.accent, fontSize: 13, fontWeight: "600" },
-  breakLabel: { color: "#7A3E1F", fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1.4 },
-  focusTitle: { color: colors.text, fontSize: 34, lineHeight: 40, fontFamily: "display", letterSpacing: -0.6, textAlign: "center" },
+  archLabelBreak: { color: "#F2C3A4" },
+  focusHead: { alignItems: "center", gap: 4, paddingHorizontal: 24, paddingTop: 12, paddingBottom: 8 },
+  focusTitle: { flexShrink: 1, color: colors.text, fontSize: 20, lineHeight: 26, fontFamily: "display", textAlign: "center" },
   focusMeta: { color: colors.secondary, fontSize: 15, lineHeight: 20, textAlign: "center" },
-  breakLine: { color: colors.secondary, fontSize: 15, lineHeight: 22, textAlign: "center", marginTop: 6, paddingHorizontal: 12 },
   endedControl: { opacity: 0 },
   cancelHint: { color: colors.secondary, fontSize: 12, textAlign: "center", lineHeight: 18, paddingTop: 8 },
   activeTimerAnchor: { flex: 1 },

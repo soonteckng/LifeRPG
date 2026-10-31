@@ -776,7 +776,10 @@ test("empty selected period has no all-history escape or unbounded query", async
   } finally { await ui.cleanup(); }
 });
 
-test("week and month session lists exclude comparison dates and unrelated historical months",async()=>{
+test("week and month session lists exclude comparison dates and unrelated historical months",async(t)=>{
+ // A fixed mid-month Thursday: on the first day of a week or month the "this
+ // week" and "this month" lists can't be told apart (found 1 Nov in KL time).
+ t.mock.timers.enable({apis:['Date'],now:Date.parse('2026-10-15T04:00:00Z')});
  const today=dateKey(new Date(),TZ),week=periodFor('week',today,TZ),month=periodFor('month',today,TZ);
  const previousWeek=shiftDay(week.start,-1),previousMonth=shiftDay(month.start,-1);
  const rows=[session('current',60,new Date(Date.now()-1000).toISOString()),session('comparison',120,previousWeek+'T04:00:00Z'),session('old-month',180,previousMonth+'T04:00:00Z')];
@@ -904,7 +907,9 @@ test("daily-goal ratios keep both sides in minutes without discarding over-goal 
   assert.equal(dailyGoalRatio(NaN, 60), "0 / 60 min");
 });
 
-test("Progress separates today's effort from the period total and keeps a tapped day as the primary value", async () => {
+test("Progress separates today's effort from the period total and keeps a tapped day as the primary value", async (t) => {
+  // A fixed mid-month day, so yesterday is in the same month (found 1 Nov in KL time).
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-10-15T04:00:00Z") });
   const today = dateKey(new Date(), TZ);
   const previousDay = shiftDay(today, -1);
   const rows = [session("today", 120, new Date(Date.now() - 1000).toISOString()), session("earlier", 1800, previousDay + "T04:00:00Z")];

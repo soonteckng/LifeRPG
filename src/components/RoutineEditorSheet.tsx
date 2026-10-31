@@ -150,9 +150,11 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
       <View style={s.when} accessibilityRole="radiogroup">
         {([[true, "Repeats"], [false, "Any time"]] as const).map(([enabled, title]) => {
           const selected = draft.reminder.enabled === enabled;
-          return <TouchableOpacity key={title} disabled={busy} accessibilityRole="radio" accessibilityState={{ selected, disabled: busy }} accessibilityLabel={enabled ? "Repeats every day with a reminder" : "Any time, no reminder"}
+          // Each half sits in its own flex cell: the sheet's touchable wraps itself
+          // in a container that would otherwise shrink to its words (Round 87).
+          return <View key={title} style={s.whenCell}><TouchableOpacity disabled={busy} accessibilityRole="radio" accessibilityState={{ selected, disabled: busy }} accessibilityLabel={enabled ? "Repeats every day with a reminder" : "Any time, no reminder"}
             testID={enabled ? "routine-when-repeats" : "routine-when-any"} onPress={() => { feedback(); setDraft(previous => ({ ...previous, reminder: { ...previous.reminder, enabled } })); }}
-            style={[s.whenOption, selected && s.whenOn]}><Text style={[s.whenText, selected && s.whenTextOn]}>{title}</Text></TouchableOpacity>;
+            style={[s.whenOption, selected && s.whenOn]}><Text style={[s.whenText, selected && s.whenTextOn]}>{title}</Text></TouchableOpacity></View>;
         })}
       </View>
       {draft.reminder.enabled && <>
@@ -203,8 +205,9 @@ const s = StyleSheet.create({
   primary: { minHeight: 54, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, borderRadius: 27 }, primaryText: { color: colors.primaryText, fontSize: 17, fontWeight: "600" }, error: { color: colors.danger, fontSize: 14, lineHeight: 20 },
   remove: { width: 54, height: 54, borderRadius: 27, alignItems: "center", justifyContent: "center", backgroundColor: colors.dangerSoft },
   when: { flexDirection: "row", padding: 4, borderRadius: 18, backgroundColor: colors.sheetCard },
-  whenOption: { flex: 1, minHeight: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  whenOn: { backgroundColor: colors.surfaceRaised, shadowColor: colors.text, shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  whenCell: { flex: 1 },
+  whenOption: { alignSelf: "stretch", minHeight: 46, borderRadius: 14, alignItems: "center", justifyContent: "center" },
+  whenOn: { backgroundColor: colors.selection },
   whenText: { color: colors.secondary, fontSize: 16, fontWeight: "600" }, whenTextOn: { color: colors.text },
   days: { flexDirection: "row", justifyContent: "space-between", gap: 6 },
   day: { flex: 1, aspectRatio: 1, maxWidth: 48, borderRadius: 24, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },

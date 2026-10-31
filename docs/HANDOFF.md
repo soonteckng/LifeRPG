@@ -13,14 +13,14 @@ reply) is in section 4.2, with a full worked example. Use that exact format.
 | What | State |
 |---|---|
 | Working branch | `feature/next` (pushed to GitHub `soonteckng/LifeRPG`) |
-| Latest delivered round | Round 86 (Claude) on Round 85: no white gap at the bottom of any page, Up next leads back to an open session, Today's goal in one card, the finished card in lilac, a smooth progress line, hours and minutes on the tiles, plum initials. See `docs/round86-polish.md`. No SQL. Round 85 (Claude) on Round 84: every page follows the awhile mockups (Today with Up next and Later today, Your activities, routine setup, the Focus arch and Break, "You made room.", Your rhythm with History, the Circle with Join). See `docs/round85-mock-layouts.md`. No SQL. Round 84 (Claude) on Round 83: the awhile look (lilac and aubergine on warm paper, Newsreader and Inter), Today as home with no tab bar, squads as a circle (no ranking), Progress renamed Your rhythm with quiet markers, Profile categories by time. See `docs/round84-new-look.md`. No SQL. Round 83 removed the reward layer (`docs/round83-remove-rewards.md`). Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
+| Latest delivered round | Round 87 (Claude) on Round 86: everything dark, Today stays still with Later today scrolling inside it, a started session locks you on a minimal page (timer, Break or Pause, End) until you end it, the camp scene and its walk removed, the When control fixed. See `docs/round87-dark-locked.md`. No SQL. Round 86 (Claude) on Round 85: no white gap at the bottom of any page, Up next leads back to an open session, Today's goal in one card, the finished card in lilac, a smooth progress line, hours and minutes on the tiles, plum initials. See `docs/round86-polish.md`. No SQL. Round 85 (Claude) on Round 84: every page follows the awhile mockups (Today with Up next and Later today, Your activities, routine setup, the Focus arch and Break, "You made room.", Your rhythm with History, the Circle with Join). See `docs/round85-mock-layouts.md`. No SQL. Round 84 (Claude) on Round 83: the awhile look (lilac and aubergine on warm paper, Newsreader and Inter), Today as home with no tab bar, squads as a circle (no ranking), Progress renamed Your rhythm with quiet markers, Profile categories by time. See `docs/round84-new-look.md`. No SQL. Round 83 removed the reward layer (`docs/round83-remove-rewards.md`). Do **not** run `round-82-chosen-rewards.sql`; `round-82-rest-days.sql` is still fine. |
 | `main` | Many rounds behind `feature/next`. Never commit to `main`. |
-| Code health | Round 86: 1,642 tests pass (1,636 at Round 85). Typecheck and lint clean; fingerprint unchanged. |
+| Code health | Round 87: 1,612 tests pass (1,642 at Round 86; 29 tests of the removed camp scene went with it). Typecheck and lint clean; fingerprint unchanged. |
 | Native fingerprint | Unchanged since Round 58. In a clean Linux checkout it's `de0355adda848fb7ff4453b91b284c71253e25c9`; the installed preview APK's runtime (computed on Soon Teck's Windows repo) is `4f07392040ace293bbe1cdb4176b5b7840d9e9b3`. Both stay the same as long as no native or config input changes. Compare like with like. |
 | Supabase project | `msuelivxpsfizkddjjfg` (https://msuelivxpsfizkddjjfg.supabase.co) |
 | Round 58 SQL | Applied (some of it by hand in the SQL Editor, so it isn't all in `list_migrations`). |
 | SQL | Round 66 is live. Rest days (`20261029120000_round82_rest_days.sql`) came with Round 82 for Soon Teck to run after publishing. Chosen rewards will **never** run: Round 83 moved its migration out of `supabase/migrations` to `docs/archive/never-run-round80_chosen_rewards.sql`, so a migration push can't pick it up. The server's reward tables and RPCs are untouched and unused; dropping them is a later SQL step that needs approval. The old R64 file must never run. |
-| Waiting on the phone | Round 86: no page scrolls into a white gap when it fits on screen (with and without a session open); Up next shows Back to your session while one is open; the lilac finished card and its tiles; the smooth line in the arch. Round 85: Today's Up next and Later today (Start on each row, Something else), Your activities (+ New, Repeats and Any time, Study), routine setup (Repeats or Any time), a running session in the arch (protected pill, ends-at time, Take a break, the peach break, End session), the finished card (tiles, Back to today, See your rhythm), Your rhythm (this week, History and back) and the Circle (Join on a friend who is focusing). Round 84's checks still apply. Native frame pacing remains unverified. |
+| Waiting on the phone | Round 87: the dark look on every page; Today never moves (Later today scrolls inside); start a session and try to leave it (header, swipe, Back: Back asks to end); Break, Pause and End on the minimal page; a break; the short fade on Start; routine setup's When. Round 86: no page scrolls into a white gap when it fits on screen (with and without a session open); Up next shows Back to your session while one is open; the lilac finished card and its tiles; the smooth line in the arch. Round 85: Today's Up next and Later today (Start on each row, Something else), Your activities (+ New, Repeats and Any time, Study), routine setup (Repeats or Any time), a running session in the arch (protected pill, ends-at time, Take a break, the peach break, End session), the finished card (tiles, Back to today, See your rhythm), Your rhythm (this week, History and back) and the Circle (Join on a friend who is focusing). Round 84's checks still apply. Native frame pacing remains unverified. |
 | Native work | **Explicitly deferred by Soon Teck until November 2026, after his Expo quota resets.** In particular, combining the countdown and protection notifications is NOT implemented in Round 69. Preserve this in every Claude handoff; see section 10. |
 
 Note: `20261024140100_round58_dev_protection.sql` was run in the SQL Editor, so it
@@ -37,9 +37,9 @@ or keeps you company. For anyone (study, workouts, reading), students first.
 The full brief is the "awhile: direction and handover" doc and
 `awhile-handover.md` (given to Soon Teck as a file), with nine mockups.
 
-Today (after Round 84): Android-first Expo app in the awhile look (lilac and
-aubergine on warm paper; Newsreader titles, Inter text; light only until the
-November build can follow the phone's dark setting). You run focus sessions
+Today (after Round 87): Android-first Expo app in the awhile look, dark only
+since Round 87 (deep aubergine, plum cards, lilac buttons; Newsreader titles,
+Inter text). A started session locks you on its page until you end it. You run focus sessions
 (routines or study subjects). **No currencies, rewards, character, outfits, XP
 or levels** (Round 83 removed them; the server keeps its old tables untouched).
 **Today is home and there is no tab bar**: Up next and Later today start
@@ -479,7 +479,7 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 
 - Squads: no join approval (the code is enough); stats are public inside a squad (no share setting); free tier leads 1 squad and joins up to 3.
 - **Round 83 (30 Oct):** no currencies, rewards, character, outfits, XP or levels. The app has no real users yet, so they are deleted, not hidden. People show as initials.
-- **Next (agreed, not built):** the activities database change (reminder only, days of the week, timed, protected; approval first), which also unlocks "ticked off 2 of 3 times" in Your rhythm; Circle's activity and time left for friends, and "Show my sessions here" (database); the streak rule to settle. Done in Round 84: the look, Today as home with no tab bar, no squad rankings. Done in Round 85: the mockup layouts on every page, the arch timer, break and finish, Circle's Join. **November build:** `userInterfaceStyle` to `"automatic"` for dark mode (dark palette planned: deeper aubergine, lifted cards with a faint lilac edge) and the notification accent colour.
+- **Next (agreed, not built):** the activities database change (reminder only, days of the week, timed, protected; approval first), which also unlocks "ticked off 2 of 3 times" in Your rhythm; Circle's activity and time left for friends, and "Show my sessions here" (database); the streak rule to settle. Done in Round 84: the look, Today as home with no tab bar, no squad rankings. Done in Round 85: the mockup layouts on every page, the arch timer, break and finish, Circle's Join. Round 88 (agreed): Your rhythm as one page with week arrows (no History switch, no month view), study as activities with an exam date (no separate Study page, no calendar sync or AI guessing for now), three rotating ideas plus More ideas, and Profile, Settings and sign-in in the new style. **November build:** see section 10.
 - Monetisation later: everyone gets the same features; a few ads (never during focus), or a small one-off ad-free purchase.
 - Protection (allow/block apps) is one global setting.
 - The dev account can change its daily goal any time.
@@ -492,14 +492,34 @@ Codex already reviewed `feature/next` after Round 59 (Rounds 60 and 61 came out 
 **User decision, 26 Oct: all native work waits until November 2026, after Expo's
 build quota resets. Round 69 is JS-only. Do not build or publish for him.**
 
-**Add to the next approved native round (Round 84): dark mode and the paper
-look's native colours.** Change `userInterfaceStyle` in `app.json` from `"dark"`
-to `"automatic"`, then give `constants/theme.ts` a dark palette chosen with
-`useColorScheme` (deeper aubergine background, lifted cards with a faint lilac
-edge; the scene ink already exists). Also set the `expo-notifications` plugin
-colour from `#AAB3FF` to aubergine `#3B2737`, and check the splash and adaptive
-icon backgrounds (`#080809`) against the new look. All of these change the
-fingerprint, so they belong in the build.
+**ONE build for everything (Soon Teck, 31 Oct).** He gets 15 builds a month, so
+all native work goes into a single November build, made only after every
+OTA-able change is done and checked on his phone. Never split native features
+into separate builds. Keep the rest of the quota for fixes.
+
+**The November build list (agreed 31 Oct):**
+1. **Blocked apps open the session.** When a blocked app is opened during a
+   protected session, bring LifeRPG to the front on the locked session page
+   (the real one, not a copy). Changes `modules/focus-protection-spike` natively.
+2. **Combine the two protected-session notifications** (details below).
+3. **The widget redesign** (native `RoutineWidgetProvider` in
+   `modules/session-countdown`): dark aubergine, rounded, lilac Start. A small
+   size (one routine, its length, ▶) and a wide size (Up next with its time and
+   Start, and a thin goal bar). While a session runs it shows the time left and
+   opens the locked session page. No streaks or stats beyond the goal bar.
+4. **Notification colour** from `#AAB3FF` to lilac `#D9C2E6` (`expo-notifications`
+   plugin), and check the splash and adaptive icon backgrounds (`#080809`).
+5. **Only if he approves:** a banner ad on the finish card (below Back to today,
+   never on the timer, sign-in or recovery; AdMob plus the consent prompt) and a
+   one-time "Supporter" purchase (Play billing) that removes it. New packages:
+   ask first.
+6. **Keep the screen awake** during a session (`expo-keep-awake`): it is in
+   `node_modules` through `expo`, but declaring and using it should go with the
+   build so the fingerprint change is tested on an installed APK.
+
+Dark mode is **not** on the list: since Round 87 the app is dark only, the
+palette is in `constants/theme.ts`, and `app.json` already says `"dark"`.
+Orientation stays portrait.
 
 **Add to the next approved native round: combine the two protected-session
 notifications.** `ProtectionService` owns foreground ID `84103` (channel
@@ -522,6 +542,7 @@ when something new needs native code.
 
 ## 11. Round log (recent)
 
+- **R87 (Claude):** everything dark (deep aubergine, plum cards, lilac buttons, light status bar; the system parts were already dark); Today fits the screen and only Later today scrolls; an open session is locked (no header exit, no swipe, Back asks to end) on a minimal page with two round buttons; the day-to-night walk, camp scene and arrival banner removed (Start fades for 320 ms); When split evenly. No SQL/native/config/dependency change. See `docs/round87-dark-locked.md`.
 - **R86 (Claude):** the white gap at the bottom of every page (the old tab pill height was still reserved); Gemini's notes, which Soon Teck chose to follow: Up next leads back to an open session, Today's goal, streak and menu in one card, an empty Later today as a plain row, the finished card in lilac (peach only for the break), hours and minutes on the tiles, a smooth progress line in the arch, plum and lilac initials instead of brown and olive. The name stays LifeRPG. No SQL/native/config/dependency change. See `docs/round86-polish.md`.
 - **R85 (Claude):** every page follows the awhile mockups: Today (wordmark, serif Today, lilac Up next from the next reminder or an exam, Later today with Start on each row, Time for yourself today, Your circle); Your activities (+ New, tags, Repeats and Any time, a Study row); routine setup (Make it yours, When: Repeats or Any time); the Focus arch on paper with segments and the peach Break; the finished card (You made room., warm card with today against the goal, streak and this-week tiles, Back to today, See your rhythm); Your rhythm opens on this week (days here with rest days, time by activity) with History for the old charts; the Circle (Here, together., Join starts your own session). No SQL/native/config/dependency change. See `docs/round85-mock-layouts.md`.
 - **R84 (Claude):** the awhile look across the app (paper palette, Newsreader and Inter bundled and loaded behind the logo, status bar per screen, light ink over the night scene, app-coloured switches and spinners); Today as home with no tab bar and Today links on each page; a five-tip guide on Today; squads as a circle (`circleOrder`), no ranking anywhere; Progress renamed Your rhythm with "Along the way" quiet markers; Profile categories by time. Dark mode and the notification colour wait for the November build. No SQL.

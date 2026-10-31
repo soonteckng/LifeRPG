@@ -28,9 +28,10 @@ const luminance = hex => {
 };
 const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
-test('the paper palette keeps every reading colour at 4.5:1 on every surface it sits on', () => {
+test('the palette keeps every reading colour at 4.5:1 on every surface it sits on', () => {
   const { colors, sceneInk } = load('src/constants/theme.ts');
-  assert.equal(colors.background, '#F6F2EC'); assert.equal(colors.primary, '#3B2737'); assert.equal(colors.focusSurface, '#EADFF0');
+  // Round 87: dark only (deep aubergine page, lilac buttons and the one lilac card).
+  assert.equal(colors.background, '#1C1519'); assert.equal(colors.primary, '#D9C2E6'); assert.equal(colors.focusSurface, '#3B2D44');
   for (const surface of ['background', 'surface', 'surfaceRaised', 'sheetCard', 'focusSurface'])
     for (const ink of ['text', 'neutral', 'secondary', 'muted', 'accent', 'danger', 'progress', 'protection'])
       assert.ok(contrast(colors[ink], colors[surface]) >= 4.5, `${ink} on ${surface}: ${contrast(colors[ink], colors[surface]).toFixed(2)}`);
@@ -191,10 +192,10 @@ test('over the dark session scene the timer, header and words stay light', async
   assert.equal(colour(texts.find(t => t.props.children === 'of 30:00')), sceneInk.secondary);
   const screen = read('src/components/SessionScreen.tsx');
   // Round 85: the arch replaces the scene by default; whenever the scene shows, the ink stays light.
-  assert.match(screen, /<AppHeader centered light=\{sceneShowing\}/);
-  assert.match(screen, /onScene=\{sceneShowing\}/);
-  assert.match(screen, /StatusBar\?\.pushStackEntry\?\.\(\{ barStyle: "light-content" \}\)/, 'light status bar icons over the scene');
-  assert.match(read('src/app/_layout.tsx'), /<StatusBar barStyle="dark-content" \/>/, 'dark status bar icons on paper');
+  // Round 87: the scene is gone and the whole app is dark, so the light ink is
+  // the app's own text and the status bar icons are light everywhere.
+  assert.doesNotMatch(screen, /SessionBackdrop|onScene=|pushStackEntry/);
+  assert.match(read('src/app/_layout.tsx'), /<StatusBar barStyle="light-content" \/>/, 'light status bar icons on the dark app');
 });
 
 test('switches, spinners and pull-to-refresh use the app colours instead of the phone accent', () => {

@@ -161,7 +161,8 @@ test("the guide describes today's layout and every highlight still exists", () =
   assert.ok(tour.indexOf('target: "home-quests"') < tour.indexOf('target: "home-focus"'), 'the tips follow the page from top to bottom');
   assert.doesNotMatch(tour, /target: "tab-/);
   // Tips with no highlight keep the page visible behind them (a faint ink wash on paper).
-  assert.match(tour, /overviewDim: \{ backgroundColor: "rgba\(42,32,40,0\.14\)" \}/);
+  // Round 87: on the dark page the wash is a deeper shade instead of ink.
+  assert.match(tour, /overviewDim: \{ backgroundColor: "rgba\(0,0,0,0\.28\)" \}/);
   const targets = [...tour.matchAll(/kind: "info", target: "([\w-]+)"/g)].map(match => match[1]);
   assert.ok(targets.length >= 3);
   for (const target of targets) assert.match(screens, new RegExp(`TourAnchor id="${target}"`), `${target} is still on screen`);

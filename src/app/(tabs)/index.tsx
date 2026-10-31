@@ -79,6 +79,11 @@ export default function HomeScreen() {
   }
 
   const [completedSeconds, setCompletedSeconds] = useState(0);
+  const [viewportHeight, setViewportHeight] = useState(0);
+  // Today is sized to the screen, so it never moves and Later today scrolls
+  // inside. On a short screen or with very large text there isn't room for
+  // that, so the page scrolls as before and nothing is cut off.
+  const fitted = viewportHeight >= 600 && fontScale <= 1.3;
   const [focusStreak, setFocusStreak] = useState<number | null>(null);
   // Rest days ready, and whether one kept the streak going yesterday.
   const [rest, setRest] = useState({ days: 0, yesterday: false });
@@ -225,10 +230,15 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={["top", "left", "right"]}>
+      {/* Round 87: Today fills the screen and stays still; only Later today
+          scrolls, inside its own space. The page itself scrolls only when even
+          that can't fit (a very small phone or very large text). */}
       <TourScrollView testID="home-viewport" tourRoute="/" tourBottomInset={dockHeight} style={styles.viewport} showsVerticalScrollIndicator={false}
-        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 24 }]}>
-        <ContentReveal>
-        <View testID="home-layout" style={styles.layout}>
+        scrollEnabled={!fitted} overScrollMode="never" bounces={false}
+        onLayout={event => setViewportHeight(event.nativeEvent.layout.height)}
+        contentContainerStyle={[styles.content, { paddingBottom: dockHeight + 16 }, fitted && { height: viewportHeight }]}>
+        <ContentReveal style={fitted && styles.fill}>
+        <View testID="home-layout" style={[styles.layout, fitted && styles.fill]}>
           {/* The name, then Settings and you. */}
           <TourAnchor id="home-identity"><View style={styles.topRow}>
             <Text style={styles.wordmark} accessibilityRole="header">LifeRPG.</Text>
@@ -258,8 +268,8 @@ export default function HomeScreen() {
           </TouchableOpacity>}
 
           {/* Up next, then the rest of today: one tap from a session. */}
-          <TourAnchor id="home-quests"><SavedRoutinesCard layout="today" subjects={subjects} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={openQuestSession}
-            limit={4} suggestions={false} studyChips={studyChips} allStudyChips={allStudyChips} onSeeAll={() => router.navigate("/routines")} onAnyActivity={justFocus} upNext={examUpNext} /></TourAnchor>
+          <TourAnchor id="home-quests" style={fitted && styles.fill}><SavedRoutinesCard layout="today" fitted={fitted} subjects={subjects} active={accessMode === "online" || subjects.length > 0} legacyTasks={tasks} onStartLegacy={openQuestSession}
+            limit={Number.MAX_SAFE_INTEGER} suggestions={false} studyChips={studyChips} allStudyChips={allStudyChips} onSeeAll={() => router.navigate("/routines")} onAnyActivity={justFocus} upNext={examUpNext} /></TourAnchor>
 
           {/* Time for yourself today: minutes against the goal, and the streak. */}
           <TourAnchor id="home-focus"><View style={styles.today} testID="home-today">
@@ -300,26 +310,27 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   viewport: { flex: 1 },
-  content: { paddingHorizontal: 22, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
-  layout: { gap: 22 },
-  topRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 8 },
+  content: { flexGrow: 1, paddingHorizontal: 22, paddingTop: 8, paddingBottom: 16, maxWidth: 600, width: "100%", alignSelf: "center" },
+  layout: { gap: 16 },
+  fill: { flex: 1 },
+  topRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingTop: 4 },
   wordmark: { flex: 1, color: colors.text, fontSize: 28, lineHeight: 34, fontFamily: "display", letterSpacing: -0.5 },
   avatarFrame: { width: 44, alignItems: "center" },
   titleRow: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginTop: -6 },
   nameButton: { flexShrink: 1, minWidth: 0, gap: 2 },
   dateLabel: { color: colors.secondary, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1.2 },
-  title: { color: colors.text, fontSize: 54, lineHeight: 60, fontFamily: "display", letterSpacing: -1.4 },
+  title: { color: colors.text, fontSize: 46, lineHeight: 52, fontFamily: "display", letterSpacing: -1.2 },
   link: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 3, paddingBottom: 6 },
   linkText: { color: colors.accent, fontSize: 15, lineHeight: 20, fontWeight: "600" },
   northEast: { transform: [{ rotate: "45deg" }] },
   // Round 86: goal, streak and menu sit together in one quiet card.
-  today: { gap: 10, borderRadius: 22, backgroundColor: colors.surface, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  today: { gap: 8, borderRadius: 22, backgroundColor: colors.surface, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 },
   goalBody: { gap: 10 },
   goalHead: { flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", gap: 10 },
   goalLabel: { flexShrink: 1, color: colors.text, fontSize: 16, lineHeight: 21 },
   goalNumbers: { flexDirection: "row", alignItems: "baseline", gap: 4 },
   goalCopy: { flex: 1, minWidth: 0, gap: 2 },
-  goalTrack: { height: 8, borderRadius: 4, backgroundColor: "rgba(42,32,40,0.10)", overflow: "hidden" },
+  goalTrack: { height: 8, borderRadius: 4, backgroundColor: colors.track, overflow: "hidden" },
   goalFill: { height: 8, borderRadius: 4, backgroundColor: colors.primary },
   todayFoot: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 10 },
   streakRow: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: 6 },

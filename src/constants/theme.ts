@@ -1,52 +1,54 @@
-// awhile: warm paper, aubergine ink and soft lilac. Each colour has one job:
-// aubergine for text and the main buttons, lilac only for the one card that
-// matters on a screen (the next thing, a focus card), and calm earthy tones for
-// progress, protection, streaks and warnings. Lists stay on plain paper.
+// awhile, after dark (Round 87): Soon Teck found the paper too bright, so the
+// whole app is dark. Deep aubergine for the page, lifted plum cards with a
+// faint lilac edge, light warm text, and lilac for the main button and the one
+// card that matters on a screen. Earthy tones stay for progress, protection,
+// streaks and warnings, lifted so they read on the dark.
 export const colors = {
-  background: "#F6F2EC",
+  background: "#1C1519",
   // Quiet cards on the page.
-  surface: "#EDE6DD",
+  surface: "#2A2027",
   // Sheets and floating panels sit a little lighter than the page.
-  surfaceRaised: "#FBF8F4",
-  // Cards inside sheets sit on the lighter sheet, a step darker.
-  sheetCard: "#F0EAE2",
+  surfaceRaised: "#261D23",
+  // Cards inside sheets sit on the sheet, a step lighter.
+  sheetCard: "#332830",
   // The one lilac card: what's next, or the session you're in.
-  focusSurface: "#EADFF0",
-  focusBorder: "rgba(59,39,55,0.10)",
+  focusSurface: "#3B2D44",
+  focusBorder: "rgba(217,194,230,0.16)",
   // The break: the arch turns warm while you rest.
-  warmSurface: "#F4DFD3",
-  protection: "#3A6853",
-  text: "#2A2028",
-  neutral: "#3E3340",
-  secondary: "#5E5360",
-  muted: "#665A67",
-  // Chevrons and quiet glyphs only; too light for reading text.
-  tertiary: "#9A8E98",
+  warmSurface: "#47302C",
+  protection: "#9DD3B4",
+  text: "#F4EDF1",
+  neutral: "#E3D7DF",
+  secondary: "#BFB1BC",
+  muted: "#AE9FAB",
+  // Chevrons and quiet glyphs only; too dim for reading text.
+  tertiary: "#7F717C",
   // Small links and icons.
-  accent: "#3B2737",
-  accentFill: "#3B2737",
-  accentSoft: "rgba(59,39,55,0.08)",
-  primary: "#3B2737",
-  primaryText: "#F6F2EC",
-  // Progress that is still filling: goal rings, timers and bars.
-  progress: "#6E4F7A",
+  accent: "#E2CDEA",
+  accentFill: "#D9C2E6",
+  accentSoft: "rgba(217,194,230,0.12)",
+  // The main buttons are lilac with dark ink.
+  primary: "#D9C2E6",
+  primaryText: "#22191F",
+  // Progress that is still filling: goal bars and timers.
+  progress: "#CDB0DE",
   // The empty part of a bar or ring.
-  track: "#DDD3C8",
-  selection: "#E4D8EA",
-  success: "#36694D",
-  level: "#8A5110",
-  levelSoft: "rgba(138,81,16,0.12)",
-  streak: "#934C14",
-  line: "rgba(42,32,40,0.09)",
-  border: "rgba(42,32,40,0.15)",
-  glass: "rgba(251,248,244,0.97)",
-  glassTint: "rgba(251,248,244,0.88)",
-  danger: "#A8322A",
-  dangerSoft: "rgba(168,50,42,0.10)",
+  track: "rgba(244,237,241,0.12)",
+  selection: "#43354B",
+  success: "#9DD3B4",
+  level: "#E9B776",
+  levelSoft: "rgba(233,183,118,0.14)",
+  streak: "#F2AE7A",
+  line: "rgba(244,237,241,0.08)",
+  border: "rgba(244,237,241,0.14)",
+  glass: "rgba(38,29,35,0.97)",
+  glassTint: "rgba(38,29,35,0.88)",
+  danger: "#F3A69D",
+  dangerSoft: "rgba(243,166,157,0.14)",
   // Behind sheets and dialogs.
-  scrim: "rgba(42,32,40,0.45)",
+  scrim: "rgba(0,0,0,0.6)",
   // Text fields.
-  inputFill: "rgba(42,32,40,0.04)",
+  inputFill: "rgba(244,237,241,0.06)",
 } as const;
 
 // Text and rings drawn over the session's night scene, which stays dark
@@ -62,17 +64,20 @@ export const sceneInk = {
 } as const;
 
 // The guide is a distinct instruction layer above the ordinary app surfaces:
-// an aubergine card, so it never blends into the paper underneath.
+// a lilac card with dark ink, so it never blends into the dark page.
 export const guideColors = {
-  surface: "#3B2737",
-  text: "#F6F2EC",
-  secondary: "#E3D6E6",
-  action: "#EADFF0",
-  tag: "rgba(234,223,240,0.18)",
-  line: "rgba(246,242,236,0.22)",
-  scrim: "rgba(42,32,40,0.62)",
-  overviewScrim: "rgba(42,32,40,0.08)",
-  outline: "rgba(59,39,55,0.55)",
+  surface: "#D9C2E6",
+  text: "#22191F",
+  secondary: "#4A3A48",
+  action: "#22191F",
+  // Words on the guide's dark button, and the ring around what it points at.
+  actionText: "#F4EDF1",
+  ring: "#D9C2E6",
+  tag: "rgba(34,25,31,0.12)",
+  line: "rgba(34,25,31,0.18)",
+  scrim: "rgba(0,0,0,0.62)",
+  overviewScrim: "rgba(0,0,0,0.12)",
+  outline: "rgba(217,194,230,0.6)",
 } as const;
 
 // Newsreader for titles and big numbers; Inter for everything else. AppText
@@ -91,4 +96,4 @@ export const radius = { card: 24, tile: 20, row: 16, sheet: 32 } as const;
 
 // Every card, tile and grouped list shares this thin edge, on pages and in
 // sheets alike, so surfaces read as one family.
-export const edge = { borderWidth: 1, borderColor: "rgba(42,32,40,0.07)" } as const;
+export const edge = { borderWidth: 1, borderColor: "rgba(244,237,241,0.07)" } as const;

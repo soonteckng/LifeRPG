@@ -91,8 +91,7 @@ test('a fresh timer completion opens its result straight away, with no walk back
   try {
     await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0,sessionSummary:{...summary,recovered:false}});
     assert.equal(ui.result().props.visible,true,'the card opens as soon as the result is ready');
-    const backdrop=ui.root().findByType('Backdrop');
-    assert.equal(backdrop.props.returning,undefined);assert.equal(backdrop.props.onReturnEnd,undefined);
+    assert.equal(ui.root().findAllByType('Backdrop').length,0,'no camp scene since Round 87');
     assert.equal(ui.root().findAllByType('RewardMoments').length,0);assert.equal(ui.root().findAllByType('Celebration').length,0);
     for(const removed of ['xpEarned','isLevelUp','newLevel','currentXP','requiredXP'])assert.equal(ui.result().props[removed],undefined,`${removed} is gone`);
     await ui.update({sessionSummary:{...summary,recovered:false,dailyCompletedSeconds:120}});
@@ -360,8 +359,10 @@ test('compiled retained Session replays its bottom-up entrance on widget and rep
   try {
     const surface=ui.root().findByProps({testID:'session-surface'});
     assert.equal(entrances(ui).length,1);
+    // Round 87: an open session has no way out of its own; the route only
+    // loses focus when something else comes in front (a widget, Home).
+    assert.equal(ui.root().findByType('Header').props.onBack,undefined,'locked in');
     for(let count=2;count<=4;count++) {
-      await act(async()=>ui.root().findByType('Header').props.onBack());
       await ui.focus(false);
       // Widget return may preserve this exact native route. A later server id
       // does not change the durable client id used by the entrance request.
@@ -377,7 +378,7 @@ test('compiled retained Session replays its bottom-up entrance on widget and rep
     }
     await ui.focus(false);await ui.focus(true);
     assert.equal(entrances(ui).length,4,'a temporary visit away has no new entrance request');
-    assert.equal(ui.calls.filter(call=>call==='route-close').length,3);
+    assert.equal(ui.calls.filter(call=>call==='route-close').length,0,'nothing closed the locked session');
   } finally {await ui.cleanup();}
 });
 
@@ -403,7 +404,7 @@ test('Reduce Motion swaps retained Session entries instantly, with no slide or o
   try {
     assert.equal(entrances(ui).length,0);
     for(let count=0;count<2;count++) {
-      await act(async()=>ui.root().findByType('Header').props.onBack());await ui.focus(false);
+      await ui.focus(false);
       const before=ui.animations.length;
       await act(async()=>ui.entry.request('client-id'));await ui.focus(true);
       assert.equal(ui.animations.length,before,'entrance creates no animation with Reduce Motion');
@@ -417,10 +418,13 @@ test('Reduce Motion swaps retained Session entries instantly, with no slide or o
 
 test('an already queued old close callback cannot pop or snap a reopened timer',async()=>{
   for(const finished of [true,false]) {
-    const ui=await setup({hasOpenSession:true,isRunning:true,timeLeft:80,sessionId:'client-id'},'online','/session',true,{compiled:true,deferExits:true});
+    // Round 87: closing happens from setup (an open session is locked); a
+    // widget start then reopens the same route while the close is queued.
+    const ui=await setup({timeLeft:80,sessionId:'client-id'},'online','/session',true,{compiled:true,deferExits:true});
     try {
       await act(async()=>ui.root().findByType('Header').props.onBack());
       assert.equal(ui.deferredExits.length,1);
+      await ui.update({hasOpenSession:true,isRunning:true});
       await act(async()=>ui.entry.request('client-id'));
       assert.equal(entrances(ui).length,2,'the explicit entry starts its own slide');
       const surface=ui.root().findByProps({testID:'session-surface'});

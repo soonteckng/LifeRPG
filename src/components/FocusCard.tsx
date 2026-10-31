@@ -136,6 +136,6 @@ const s = StyleSheet.create({
   barTitle: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600", letterSpacing: -0.3 },
   barTime: { color: colors.primaryText, opacity: 0.68, fontSize: 14, lineHeight: 20, fontWeight: "500", fontVariant: ["tabular-nums"] },
   bannerCircle: { width: 42, height: 42, borderRadius: 21, alignItems: "center", justifyContent: "center", backgroundColor: colors.primaryText },
-  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(246,242,236,0.28)" },
-  progressFill: { height: 4, backgroundColor: "rgba(246,242,236,0.92)" },
+  progressTrack: { position: "absolute", left: 0, right: 0, bottom: 0, height: 4, backgroundColor: "rgba(34,25,31,0.16)" },
+  progressFill: { height: 4, backgroundColor: "rgba(34,25,31,0.7)" },
 });

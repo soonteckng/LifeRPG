@@ -342,10 +342,10 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
             <Animated.View testID="tour-next-ring" pointerEvents="none" style={[s.nextRing, { opacity: reduced ? 1 : glow.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }),
               transform: [{ scale: reduced ? 1 : Animated.add(glow.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }), bump.interpolate({ inputRange: [0, 1], outputRange: [0, 0.06] })) }] }]} />
             <Pressable testID="tour-next" onPress={advance} accessibilityRole="button" accessibilityLabel={current.next ?? (step === TOUR_STEPS.length - 1 ? "Done" : "Next")} style={s.action}>
-              <Text style={s.actionText}>{current.next ?? "Next"}</Text><Ionicons name="arrow-forward" size={17} color={guideColors.text} />
+              <Text style={s.actionText}>{current.next ?? "Next"}</Text><Ionicons name="arrow-forward" size={17} color={guideColors.actionText} />
             </Pressable>
           </View> : fallbackTap ? <Pressable testID="tour-open-tab" onPress={() => router.navigate(current.expect!)} accessibilityRole="button" accessibilityLabel={`Open ${tapLabel}`} style={[s.action, s.next]}>
-            <Text style={s.actionText}>Open {tapLabel}</Text><Ionicons name="arrow-forward" size={17} color={guideColors.text} />
+            <Text style={s.actionText}>Open {tapLabel}</Text><Ionicons name="arrow-forward" size={17} color={guideColors.actionText} />
           </Pressable> : null}
         </View>}
       </Animated.View>}
@@ -357,8 +357,8 @@ const s = StyleSheet.create({
   root: { flex: 1 }, anchor: { width: "100%", alignSelf: "stretch" },
   overlay: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, zIndex: 1000, elevation: 24 },
   block: { position: "absolute" },
-  dimFull: { backgroundColor: guideColors.scrim }, overviewDim: { backgroundColor: "rgba(42,32,40,0.14)" },
-  ring: { position: "absolute", borderWidth: 2.5, borderColor: guideColors.action },
+  dimFull: { backgroundColor: guideColors.scrim }, overviewDim: { backgroundColor: "rgba(0,0,0,0.28)" },
+  ring: { position: "absolute", borderWidth: 2.5, borderColor: guideColors.ring },
   ringTap: { borderWidth: 3, backgroundColor: "rgba(245,184,75,0.14)" },
   meta: { flexDirection: "row", alignItems: "center", gap: 10 },
   count: { color: guideColors.secondary, fontSize: 13, lineHeight: 18, fontWeight: "600", fontVariant: ["tabular-nums"] },
@@ -372,9 +372,9 @@ const s = StyleSheet.create({
   titleRow: { flexDirection: "row", alignItems: "center", gap: 12 }, flexTitle: { flex: 1 },
   backSmall: { width: 44, height: 44, borderRadius: 12 },
   back: { width: 50, height: 50, borderRadius: 14, alignItems: "center", justifyContent: "center", backgroundColor: guideColors.tag },
-  nextRing: { position: "absolute", top: -5, bottom: -5, left: -5, right: -5, borderWidth: 2.5, borderRadius: 19, borderColor: guideColors.action },
+  nextRing: { position: "absolute", top: -5, bottom: -5, left: -5, right: -5, borderWidth: 2.5, borderRadius: 19, borderColor: guideColors.ring },
   action: { minHeight: 50, borderRadius: 14, backgroundColor: guideColors.action, paddingHorizontal: 16, flexDirection: "row", gap: 8, alignItems: "center", justifyContent: "center" },
-  actionText: { color: guideColors.text, fontSize: 17, lineHeight: 22, fontWeight: "700" },
+  actionText: { color: guideColors.actionText, fontSize: 17, lineHeight: 22, fontWeight: "700" },
   hand: { position: "absolute", width: 100, height: HAND, alignItems: "center", justifyContent: "flex-end" },
   handLabel: { color: guideColors.text, backgroundColor: guideColors.surface, overflow: "hidden", borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2, fontSize: 13, lineHeight: 18, fontWeight: "700" },
 });

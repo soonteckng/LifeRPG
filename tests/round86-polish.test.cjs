@@ -22,7 +22,7 @@ test('an empty dock reserves only the safe area, so a page that fits does not sc
   for (const pill of [0, 49, 66]) assert.equal(floatingTabInset(pill, 24, {}), 34, 'the old tab pill height is ignored');
   assert.equal(floatingTabInset(49, 24, { hasOpenSession: true }), 94, 'the session banner still gets its room');
   // Pages that fit end 24 px above the safe area, not a tab bar's height above it.
-  assert.match(read('src/app/(tabs)/index.tsx'), /paddingBottom: dockHeight \+ 24/);
+  assert.match(read('src/app/(tabs)/index.tsx'), /paddingBottom: dockHeight \+ 16/, 'Round 87: 16 now that Today fits the screen');
   assert.match(read('src/components/PersonalUI.tsx'), /Math\.max\(48, insets\.bottom \+ 24, bottomContentInset \+ 24\)/);
 });
 
@@ -36,7 +36,7 @@ test('with a session open, Up next is the way back to it, never a greyed-out but
 });
 
 test('Today groups the goal, streak and menu in one card, and an empty list is a plain row', () => {
-  assert.match(read('src/app/(tabs)/index.tsx'), /today: \{ gap: 10, borderRadius: 22, backgroundColor: colors\.surface,/);
+  assert.match(read('src/app/(tabs)/index.tsx'), /today: \{ gap: 8, borderRadius: 22, backgroundColor: colors\.surface,/, 'Round 87: a little tighter so Today fits');
   const card = read('src/components/SavedRoutinesCard.tsx');
   assert.match(card, />Nothing else planned today\.<\/Text>/);
   assert.match(card, /accessibilityLabel="Save something you return to as a routine"/, 'the empty row still opens Your activities');

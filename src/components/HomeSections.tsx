@@ -312,7 +312,7 @@ const s = StyleSheet.create({
   bars: { flexDirection: "row", gap: 5, alignItems: "flex-end" }, barsWide: { justifyContent: "space-between", gap: 0 },
   barColumn: { width: 12, alignItems: "center", gap: 4 }, barColumnWide: { width: 28 },
   barTrack: { width: 12, justifyContent: "flex-end", borderRadius: 4, backgroundColor: colors.track }, barTrackWide: { width: 22, borderRadius: 6 },
-  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(110,79,122,0.42)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.progress },
+  bar: { width: 12, borderRadius: 4, backgroundColor: "rgba(205,176,222,0.35)" }, barWide: { width: 22, borderRadius: 6 }, barToday: { backgroundColor: colors.progress },
   day: { color: colors.tertiary, fontSize: 10, fontWeight: "600" }, dayToday: { color: colors.text },
   goalDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "transparent" }, goalDotOn: { backgroundColor: colors.success },
   rankRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14 },

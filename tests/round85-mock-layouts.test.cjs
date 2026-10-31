@@ -97,7 +97,7 @@ test('the result tiles read once per confirmed session, and a failed read just l
 
 test('Today follows mockup 01: Up next, Later today, time for yourself, then your circle', () => {
   const home = read('src/app/(tabs)/index.tsx');
-  const order = ['testID="home-settings"', 'testID="home-open-rhythm"', '<TourAnchor id="home-quests">', '<TourAnchor id="home-focus">', '<TourAnchor id="home-places">'].map(mark => home.indexOf(mark));
+  const order = ['testID="home-settings"', 'testID="home-open-rhythm"', '<TourAnchor id="home-quests"', '<TourAnchor id="home-focus">', '<TourAnchor id="home-places">'].map(mark => home.indexOf(mark));
   assert.ok(order.every(i => i >= 0) && order.every((i, k) => k === 0 || i > order[k - 1]), order.join(','));
   assert.match(home, /layout="today"/);
   const card = read('src/components/SavedRoutinesCard.tsx');

@@ -58,7 +58,7 @@ export function reminderClock(hour: number, minute: number) {
   return `${hour % 12 || 12}:${String(minute).padStart(2, "0")} ${hour < 12 ? "AM" : "PM"}`;
 }
 
-export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [], allStudyChips = studyChips, upNext = null, newRequest = 0, afterList }: {
+export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, initialAreaId = null, active = true, onStarted, legacyTasks = [], onStartLegacy, limit = 3, suggestions: offerSuggestions = true, onSeeAll, layout = "list", lead, onAnyActivity, wrapMine, studyChips = [], allStudyChips = studyChips, upNext = null, newRequest = 0, afterList, fitted = false }: {
   subjects: Pick<Subject, "id" | "title" | "color_code">[]; initialSeconds?: number; initialAreaId?: number | null; active?: boolean; onStarted?: () => void; legacyTasks?: Task[]; onStartLegacy?: (task: Task) => void;
   /** How many routines show before "See all"; the Routines tab shows them all. */
   limit?: number; suggestions?: boolean;
@@ -78,6 +78,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   newRequest?: number;
   /** Your activities: shown after your routines, before the ideas. */
   afterList?: ReactNode;
+  /** Today sizes itself to the screen: the card fills what is left and Later today scrolls inside it. */
+  fitted?: boolean;
 }) {
   const routines = useSavedRoutines(), timer = useTimer({ live: false }), { hapticsEnabled, profile } = useUser(), router = useRouter(), insets = useSafeAreaInsets();
   const [manage, setManage] = useState(false), [editor, setEditor] = useState<{ routine: SavedRoutine | null; template?: RoutineTemplate } | null>(null), [widget, setWidget] = useState(false), [message, setMessage] = useState("");
@@ -385,7 +387,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   ].slice(0, Math.max(1, limit));
   const fallback: UpNext | null = nextEntry ? null : upNext ?? (onAnyActivity ? { label: "Whenever you’re ready", title: "Just focus", detail: "Any activity, your time", action: "Start a session", onPress: onAnyActivity, testID: "home-just-focus" } : null);
   const returning = !!timer.hasOpenSession && !!onAnyActivity;
-  const todayView = layout === "today" ? <View style={s.todayStack} testID="saved-routines-card">
+  const todayView = layout === "today" ? <View style={[s.todayStack, fitted && s.todayFill]} testID="saved-routines-card">
     {/* With a session open the card is the way back to it, never a dead
         button (Round 86). */}
     {returning ? <View style={s.upNext} testID="today-up-next">
@@ -411,12 +413,14 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <Ionicons name="arrow-forward" size={20} color={colors.primaryText} />
       </Pressable>
     </View>}
-    <View style={s.todayList}>
+    <View style={[s.todayList, fitted && s.todayFill]}>
       <View style={s.todayHead}>
         <Text style={s.todayHeading} accessibilityRole="header">Later today</Text>
         {onSeeAll && <Pressable onPress={() => { feedback(); onSeeAll(); }} accessibilityRole="button" accessibilityLabel="Your activities" testID="today-activities" hitSlop={8} style={s.todayLink}>
           <Text style={s.todayLinkText}>Your activities</Text><Ionicons name="arrow-up-outline" size={15} color={colors.accent} style={s.northEast} /></Pressable>}
       </View>
+      {/* Fitted: the list scrolls inside its own space. Otherwise the page scrolls and the list just shows in full. */}
+      <ScrollView style={fitted ? s.todayScroll : undefined} scrollEnabled={fitted} nestedScrollEnabled showsVerticalScrollIndicator={false} overScrollMode="never" testID="today-later-scroll">
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text>
         : later.length ? later : <Pressable disabled={!active} onPress={() => { feedback(); onSeeAll?.(); }} accessibilityRole="button" accessibilityLabel="Save something you return to as a routine" style={s.todayEmpty}>
           {/* A plain row like the others, not loose text (Round 86). */}
@@ -424,6 +428,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
           <View style={s.todayAction}><Text style={s.todayActionText}>Add</Text></View></Pressable>}
       {!!nextEntry && onAnyActivity && <TodayRow time="" title="Something else" caption="Any activity, your time" label="Start" a11y="Any activity. Start focusing, your time"
         disabled={anyBlocked} onPress={onAnyActivity} active={active} testID="home-just-focus" />}
+      </ScrollView>
     </View>
     {!routines.ready && !!routines.error && <Text style={s.caption}>{routines.error}</Text>}
     {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
@@ -637,13 +642,17 @@ const s = StyleSheet.create({
   startWideText: { color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },
   startLink: { color: colors.secondary, fontSize: 14, lineHeight: 20, textAlign: "center" },
   // Today (mockup 01): the lilac Up next card, then a quiet list.
-  todayStack: { gap: 22 },
-  upNext: { padding: 22, gap: 8, borderRadius: 30, backgroundColor: colors.focusSurface },
+  // Round 87: on Today the card takes the room that's left, and Later today
+  // scrolls inside it, so the page itself never moves.
+  todayStack: { gap: 16 },
+  todayFill: { flex: 1 },
+  todayScroll: { flex: 1, minHeight: 136 },
+  upNext: { paddingHorizontal: 20, paddingVertical: 18, gap: 6, borderRadius: 28, backgroundColor: colors.focusSurface },
   upNextLabel: { color: colors.neutral, fontSize: 12, lineHeight: 16, fontWeight: "600", letterSpacing: 1.2 },
-  upNextTitle: { color: colors.text, fontSize: 32, lineHeight: 38, fontFamily: "display", letterSpacing: -0.6 },
+  upNextTitle: { color: colors.text, fontSize: 28, lineHeight: 34, fontFamily: "display", letterSpacing: -0.6 },
   upNextMeta: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 },
   upNextDetail: { flexShrink: 1, color: colors.neutral, fontSize: 15, lineHeight: 20 },
-  upNextButton: { minHeight: 58, borderRadius: 29, paddingHorizontal: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, backgroundColor: colors.primary },
+  upNextButton: { minHeight: 52, borderRadius: 26, paddingHorizontal: 24, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12, backgroundColor: colors.primary },
   upNextButtonText: { flexShrink: 1, color: colors.primaryText, fontSize: 17, lineHeight: 22, fontWeight: "600" },
   todayList: { gap: 0 },
   todayHead: { minHeight: 40, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8 },

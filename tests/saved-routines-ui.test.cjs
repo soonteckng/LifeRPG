@@ -423,7 +423,8 @@ test('Home passes up to two study subjects, most recently studied first, and rou
   assert.match(home, /\.slice\(0, 2\)/);
   // Round 85: Later today shows four rows in all; the card fills them with
   // routines first, then the subjects (SavedRoutinesCard slices to the limit).
-  assert.match(home, /limit=\{4\} suggestions=\{false\} studyChips=\{studyChips\}/);
+  // Round 87: Later today scrolls inside its own space, so nothing is cut off.
+  assert.match(home, /limit=\{Number\.MAX_SAFE_INTEGER\} suggestions=\{false\} studyChips=\{studyChips\}/);
 });
 test('Home Start: See all lists your routines and every study subject, and a subject starts once the sheet has closed',async()=>{
  const studied=[];const chip=(key,name,caption)=>({key,name,caption,color:'#60A5FA',onPress:()=>studied.push(key)});

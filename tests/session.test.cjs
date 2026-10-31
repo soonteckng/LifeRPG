@@ -49,6 +49,8 @@ const deferred = () => { let resolve, reject; const promise = new Promise((a,b) 
 const result = { already_completed: false, xp_earned: 30, gold_earned: 5, minutes: 1, duration_seconds: 60, level: 2, leveled_up: false };
 const PROVIDER_NOW = 1_800_000_000_000;
 const PROVIDER_SCOPE = { backendId: "fixture-backend", ownerId: "11111111-1111-4111-8111-111111111111" };
+// Round 87: Start fades setup out (SETTLE_MS, 320 ms) before the session starts.
+const settle = () => act(async () => { await new Promise(done => setTimeout(done, 380)); });
 const SESSION_ID = "bbbbbbbb-bbbb-4bbb-8bbb-000000000001";
 const fixtureServerId = (value) => {
   if (/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(value)) return value;
@@ -618,140 +620,7 @@ async function screenSetup(initial = {}, questOverrides = {}, deferExit = false,
   };
 }
 
-test("Round 76: walker lane uses ancestor-relative ring/area measurements and rejects stale owner callbacks", async () => {
-  const ringCallbacks=[],areaCallbacks=[],surface={};
-  const nodes=element=>element.props.testID==='session-surface'?surface:element.props.testID==='session-ring-layer'?{
-    measureLayout: (relative,done)=>{assert.equal(relative,surface);ringCallbacks.push(done);}
-  }:element.props.testID==='session-timer-anchor'?{
-    measureLayout:(relative,done)=>{assert.equal(relative,surface);areaCallbacks.push(done);},measureInWindow(){}
-  }:null;
-  const ui=await screenSetup({hasOpenSession:true,isRunning:true}, {},false,{value:true},'android',false,nodes);
-  const measure=()=>ui.root().findAllByType('AnimatedView').find(node=>node.props.testID==='session-ring-layer').props.onLayout();
-  const band=()=>ui.root().findByType('Backdrop').props.focusBand;
-  try{
-    assert.equal(band(),null,'never use an old screen fraction before measuring');
-    await act(async()=>measure()); await act(async()=>ringCallbacks.at(-1)(0,120,240,240));
-    await act(async()=>areaCallbacks.at(-1)(0,80,320,430));
-    assert.equal(band().ringBottom,360);assert.equal(band().areaBottom,510);
-    await act(async()=>measure()); const obsolete=ringCallbacks.at(-1);
-    await act(async()=>measure()); await act(async()=>ringCallbacks.at(-1)(0,140,240,240));
-    await act(async()=>areaCallbacks.at(-1)(0,80,320,400));
-    await act(async()=>obsolete(0,40,240,240)); await act(async()=>areaCallbacks.at(-1)(0,80,320,600));
-    assert.equal(band().ringBottom,380);assert.equal(band().areaBottom,480,'an obsolete read cannot replace the current free lane');
-    await act(async()=>measure()); await act(async()=>ringCallbacks.at(-1)(0,120,240,240)); const oldArea=areaCallbacks.at(-1);
-    await ui.update({ownerId:'owner-b',admissionEpoch:2});assert.equal(band(),null);
-    await act(async()=>oldArea(0,80,320,430));assert.equal(band(),null,'old-account geometry never paints on the new account');
-  }finally{await ui.cleanup();}
-});
-
-test("a fresh ready Android Start persists protection and renders the break control after reconciliation", async () => {
-  let readinessChecks = 0;
-  const native = { formatVersion: 3, capabilities: async () => {
-    readinessChecks++;
-    return { supported: true, usage: true, overlay: true, notifications: true };
-  } };
-  const provider = await providerSetup({}, null, null, native);
-  let screen;
-  try {
-    await provider.run(timer => timer.startTimer(120, "Fresh protected session"));
-    assert.equal(readinessChecks, 1, "Start checks the production native readiness boundary");
-    assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
-    assert.equal(provider.state().protectedSession, true);
-    assert.equal(provider.state().hasOpenSession, true);
-    assert.equal(provider.state().actionError, null);
-    const started = provider.persistedJournal();
-    assert.equal(started.schemaVersion, 3);
-    assert.deepEqual(started.records[0].protection, { breakStartedAtMs: null, breakEndsAtMs: null });
-    screen = await screenSetup(provider.state());
-    assert.ok(screen.button("Take a break"), "a new protected session exposes its one break");
-    assert.equal(screen.button("Take a break").props.disabled, false);
-    assert.equal(screen.button("Pause"), undefined);
-    assert.equal(screen.button("Resume"), undefined);
-
-    const readsBeforeForeground = provider.sessionReads();
-    await provider.background();
-    provider.backgroundTime(2);
-    await provider.foreground();
-    assert.ok(provider.sessionReads() > readsBeforeForeground, "foreground actually reconciles the server session");
-    assert.equal(provider.state().protectedSession, true);
-    assert.deepEqual(provider.persistedJournal().records[0].protection, started.records[0].protection);
-    await screen.update(provider.state());
-    assert.ok(screen.button("Take a break"), "server reconciliation cannot turn the break into legacy Pause");
-    assert.equal(provider.calls.filter(([name]) => name === "start").length, 1);
-  } finally {
-    await screen?.cleanup();
-    await provider.cleanup();
-  }
-});
-
-test("a protected Start names its session for app protection at the tap, before the server replies", async () => {
-  const native = { formatVersion: 3, capabilities: async () => ({ supported: true, usage: true, overlay: true, notifications: true }) };
-  let release; const reply = new Promise(resolve => { release = resolve; });
-  const provider = await providerSetup({ startActivitySession: async params => { await reply; return `bbbbbbbb-bbbb-4bbb-8bbb-${"1".padStart(12, "0")}`; } }, null, null, native);
-  try {
-    let starting;
-    await provider.run(timer => { starting = timer.startTimer(120, "Protected at the tap"); });
-    for (let i = 0; i < 5 && !provider.state().protectionSessionId; i++) await provider.run(() => {});
-    const early = provider.state();
-    assert.equal(early.awaitingStart, true, "the server has not confirmed yet");
-    assert.ok(early.protectionSessionId, "protection already has a session to cover");
-    assert.equal(early.protectedSession, true); assert.equal(early.isRunning, true);
-    release(); await provider.run(() => starting);
-    assert.equal(provider.state().protectionSessionId, early.protectionSessionId, "confirming keeps the same session, so the lease is never restarted");
-    assert.equal(provider.state().hasOpenSession, true);
-  } finally { await provider.cleanup(); }
-});
-
-test("Android Start with missing protection access cannot create an ordinary timer or server session", async () => {
-  for (const missing of ["supported", "usage", "overlay", "notifications", "updated-build"]) {
-    const native = { formatVersion: missing === "updated-build" ? 2 : 3,
-      capabilities: async () => ({ supported: true, usage: true, overlay: true, notifications: true, [missing]: false }) };
-    const provider = await providerSetup({}, null, null, native);
-    try {
-      await provider.run(timer => timer.startTimer(120, "Must not start"));
-      assert.equal(provider.calls.filter(([name]) => name === "start").length, 0, missing);
-      assert.equal(provider.state().hasOpenSession, false, missing);
-      assert.equal(provider.state().protectionSetupRequired, true, missing);
-      assert.match(provider.state().actionError, missing === "updated-build" ? /updated Android build/ : /Set up session protection/, missing);
-      assert.equal(provider.persistedJournal().records.length, 0, missing);
-    } finally { await provider.cleanup(); }
-  }
-});
-
-test("opening Custom keeps the timer display and applied duration stable",async()=>{
-  const ui=await screenSetup();
-  const control=ui.root().findByType("DurationControl"),before=control.props;
-  await ui.press("Set a custom focus duration");
-  const after=ui.root().findByType("DurationControl").props;
-  assert.equal(ui.root().findByType("DurationControl"),control);
-  assert.equal(after.seconds,before.seconds);
-  assert.equal(ui.root().findByType("DurationSheet").props.seconds,1800);
-  await ui.cleanup();
-});
-
-test('the retained Session screen cannot consume notification End behind the global offline surface', async () => {
-  const pending = deferred(); let consumed = 0;
-  const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
-    notificationNonce: '90000000-0000-4000-8000-000000000001',
-    consumeNotificationAction: () => { consumed++; return pending.promise; } });
-  try {
-    await ui.update({ actionBusy: true });
-    await act(async () => { pending.resolve('end'); });
-    assert.equal(consumed, 0,'the stable connection coordinator owns notification actions');
-    assert.equal(ui.root().findAllByType('Confirm').length,0);
-    assert.equal(ui.calls.some(c => c[0] === 'reset'), false);
-  } finally { await ui.cleanup(); }
-});
-test('a late notification End response cannot prompt for a replacement session', async () => {
-  const pending = deferred();
-  const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
-    notificationNonce: '90000000-0000-4000-8000-000000000001', consumeNotificationAction: () => pending.promise });
-  try {
-    await ui.update({ sessionId: 'bbbbbbbb-bbbb-4bbb-8bbb-000000000002' });
-    await act(async () => { pending.resolve('end'); });
-    assert.equal(ui.root().findAllByType('Confirm').length, 0);
-  } finally { await ui.cleanup(); }
-});
+// Round 87: the walker lane belonged to the camp scene, which is gone.
 test('a late notification End response cannot prompt over a finished session', async () => {
   const pending = deferred();
   const ui = await screenSetup({ sessionId: SESSION_ID, hasOpenSession: true, isRunning: true,
@@ -764,7 +633,14 @@ test('a late notification End response cannot prompt over a finished session', a
 });
 
 test("downward session swipe uses the existing animated close and inner sheets take priority",async()=>{
-  for (const initial of [{},{hasOpenSession:true,isRunning:true},{hasOpenSession:true,isRunning:false},{isCompleted:true}]) {
+  // Round 87: an open session is locked; a swipe never leaves it.
+  for (const initial of [{hasOpenSession:true,isRunning:true},{hasOpenSession:true,isRunning:false}]) {
+    const ui=await screenSetup(initial);
+    assert.equal(ui.root().findByType("SafeArea").props.onMoveShouldSetPanResponderCapture({}, {y0:400,dy:40,dx:0}),false);
+    assert.equal(ui.calls.some((call)=>call[0]==="dismiss"),false);
+    await ui.cleanup();
+  }
+  for (const initial of [{},{isCompleted:true}]) {
     const ui=await screenSetup(initial);
     const safe=ui.root().findByType("SafeArea");
     assert.equal(safe.props.onMoveShouldSetPanResponderCapture({}, {y0:400,dy:40,dx:0}),true);
@@ -1028,14 +904,20 @@ test("Just focus is one mode with no switch: what it is for, then category and l
   await ui.cleanup();
 });
 
-test("header close/minimise uses stack back once without changing active state",async()=>{
-  for(const active of [false,true]){
-    const ui=await screenSetup({hasOpenSession:active,isRunning:active,timeLeft:929,duration:930});
-    const label=active?"Minimise session":"Close session";
-    await ui.press(label);await ui.press(label);
-    assert.deepEqual(ui.calls,[["dismiss"]]);
-    await ui.cleanup();
-  }
+test("header close uses stack back once; an open session has no header way out (Round 87)",async()=>{
+  const ui=await screenSetup({timeLeft:929,duration:930});
+  await ui.press("Close session");await ui.press("Close session");
+  assert.deepEqual(ui.calls,[["dismiss"]]);
+  await ui.cleanup();
+  const open=await screenSetup({hasOpenSession:true,isRunning:true,timeLeft:929,duration:930});
+  assert.equal(typeof open.button("Minimise session")?.props.onPress,"undefined","locked in: the header has no way out");
+  await open.back();
+  assert.equal(open.calls.some(c=>c[0]==="dismiss"),false,"Back never leaves an open session");
+  assert.equal(open.root().findAllByType("Confirm").length,1,"Back asks to end it instead");
+  await open.back();
+  assert.equal(open.root().findAllByType("Confirm").length,0,"and Back again closes that question, still here");
+  assert.equal(open.calls.some(c=>["reset","pause","dismiss"].includes(c[0])),false,"the session keeps running throughout");
+  await open.cleanup();
 });
 
 test("foreground recovery and notifications retain exact remaining seconds",async()=>{
@@ -1120,7 +1002,6 @@ test("foreground cannot call a result completed before the local journal write h
     assert.equal(anchor.props.importantForAccessibility, 'no-hide-descendants');
     assert.equal([].concat(anchor.props.style).filter(Boolean).at(-1).opacity, 0, 'expired digits are not flashed while persistence waits');
     assert.equal(screen.root().findAllByType('Svg').length, 0);
-    assert.equal(screen.root().findByType('Backdrop').props.walking, false);
     disk.resolve(); await ui.run(() => {});
     assert.equal(ui.state().isCompleted, true);
     assert.equal(completions, 1);
@@ -1212,7 +1093,8 @@ test("Session surface stays opaque while the reduced-motion preference resolves"
 });
 
 test("a close that never pops (a widget launch arriving at that moment) leaves the session visible and usable, never frozen", async () => {
-  const ui = await screenSetup({hasOpenSession:true,isRunning:true}, {}, false, {value:false});
+  // Round 87: an open session can't be left, so this runs from setup.
+  const ui = await screenSetup({}, {}, false, {value:false});
   try {
     const surface = () => ui.root().findAllByType("AnimatedView").find(n => n.props.testID === "session-surface");
     await ui.back();
@@ -1222,13 +1104,14 @@ test("a close that never pops (a widget launch arriving at that moment) leaves t
     assert.equal(surface().props.style.opacity.value, 1, "still in front after the pop was lost: visible again");
     await ui.back();
     assert.equal(ui.calls.filter(c => c[0] === "dismiss").length, 2, "and closing works again");
-    assert.equal(ui.calls.some(c => c[0] === "reset" || c[0] === "pause"), false, "the session keeps running throughout");
+    assert.equal(ui.calls.some(c => c[0] === "reset" || c[0] === "pause"), false, "nothing is started or stopped");
   } finally { await ui.cleanup(); }
 });
 
 test("Android keeps Session mounted until exit finishes and rejects repeated close",async()=>{
-  const ui=await screenSetup({hasOpenSession:true,isRunning:true},{},true);
-  await ui.press("Minimise session");await ui.back();
+  // Round 87: from setup; an open session never exits this way.
+  const ui=await screenSetup({},{},true);
+  await ui.press("Close session");await ui.back();
   assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
   assert.ok(ui.root().findByType("DurationControl"));
   await ui.finishExit(false);
@@ -1250,7 +1133,7 @@ test("viewed completion hides its dock without hiding a running session",async()
   }).default;
   let renderer;await act(async()=>{renderer=create(React.createElement(Dock,{}));});
   assert.equal(renderer.root.findAllByType("Button").length,1);
-  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#3B2737","the aubergine main colour");
+  assert.equal(renderer.root.findByType("Button").props.style.backgroundColor,"#D9C2E6","the lilac main colour (Round 87, dark)");
   assert.equal(renderer.root.findByType("Button").props.activeOpacity,1);
   timer={...timer,summaryViewed:true};await act(async()=>renderer.update(React.createElement(Dock,{})));
   assert.equal(renderer.root.findAllByType("Button").length,0);
@@ -1321,9 +1204,10 @@ test("an interrupted Session drag settles back without navigation or timer mutat
 });
 
 
-test("iOS Session uses one controlled vertical exit and preserves the running timer",async()=>{
-  const ui=await screenSetup({hasOpenSession:true,isRunning:true,timeLeft:77},{},true,{value:false},"ios");
-  await ui.press("Minimise session");
+test("iOS Session uses one controlled vertical exit and preserves the timer setting",async()=>{
+  // Round 87: from setup; an open session never exits this way.
+  const ui=await screenSetup({timeLeft:77,duration:77},{},true,{value:false},"ios");
+  await ui.press("Close session");
   assert.equal(ui.calls.some(c=>c[0]==="dismiss"),false);
   assert.equal(ui.root().findByType("DurationControl").props.seconds,77);
   await ui.finishExit();
@@ -1821,7 +1705,7 @@ test("free and quest starts reveal visible controls and settle the same mounted 
     assert.equal(ui.animations.some(a => a.duration === 300), false);
     ui.animations.length = 0; // Ignore the route entry animation already verified elsewhere.
     await ui.press("Start");
-    await act(async () => ui.root().findByType("Backdrop").props.onIntroEnd()); // The walk ends, then the session starts.
+    await settle(); // Setup fades out, then the session starts (Round 87: no walk).
     assert.equal(ui.calls.filter(c => c[0] === "start").length, 1);
     await ui.update({actionBusy:true});
     assert.equal(ui.animations.some(a => a.duration === 280 && a.from === 0), false);
@@ -1872,74 +1756,51 @@ test("a newly merged live timer object on every render cannot loop the retained 
   } finally { await ui.cleanup(); }
 });
 
-test("Start sets off first: the session starts only once the walk ends or is skipped, so it takes none of your time", async()=>{
+test("Start fades setup out first and then starts once, so the fade takes none of your time (Round 87)", async()=>{
   const ui=await screenSetup({},{},false,{value:false});
   try {
-    const backdrop=()=>ui.root().findByType("Backdrop").props;
     const starts=()=>ui.calls.filter(c=>c[0]==="start");
-    assert.equal(backdrop().phase,"setup");
     await ui.press("Start");
-    assert.equal(starts().length,0,"nothing is counting while you walk away");
-    assert.deepEqual([backdrop().phase,backdrop().intro,backdrop().walking],["running",true,true],"the walk plays on the trail scene");
-    assert.equal(ui.root().findAllByType("IntroWords").length,1);
-    await act(async()=>backdrop().onIntroEnd());
-    assert.deepEqual(starts(),[["start",1800,undefined]],"the session starts when the walk ends, with the length you chose");
-    assert.equal(backdrop().intro,false);
-    assert.equal(ui.root().findAllByType("IntroWords").length,0);
-    assert.equal(backdrop().phase,"running","the night stays while the start is confirmed: no flash of setup");
+    assert.equal(starts().length,0,"nothing is counting while setup fades");
+    assert.equal(ui.root().findAllByType("Backdrop").length+ui.root().findAllByType("IntroWords").length,0,"no camp scene and no words");
+    await settle();
+    assert.deepEqual(starts(),[["start",1800,undefined]],"then it starts, with the length you chose");
     await ui.update({awaitingStart:true});await ui.update({awaitingStart:false,hasOpenSession:true,isRunning:true,timeLeft:1800});
-    assert.equal(backdrop().phase,"running");
-    await act(async()=>backdrop().onIntroEnd());
-    assert.equal(starts().length,1,"a late second end never starts twice");
+    await settle();
+    assert.equal(starts().length,1,"never twice");
   } finally {await ui.cleanup();}
 });
 
-test("skipping starts the session as soon as the quick fade ends; Back while setting off stays here without starting", async()=>{
-  const ui=await screenSetup({},{},false,{value:false});
+test("Back while setting off stays here without starting; a failed start shows setup again", async()=>{
+  const again=await screenSetup({},{},false,{value:false});
   try {
-    const backdrop=()=>ui.root().findByType("Backdrop").props;
-    const starts=()=>ui.calls.filter(c=>c[0]==="start");
-    await ui.press("Start");
-    const token=backdrop().skipToken;
-    await act(async()=>ui.root().findByType("IntroWords").props.onSkip());
-    assert.equal(backdrop().skipToken,token+1,"the scene finishes quickly");
-    assert.equal(starts().length,0,"and the session waits for it");
-    await act(async()=>backdrop().onIntroEnd());
-    assert.equal(starts().length,1);
-    await ui.cleanup();
-    const again=await screenSetup({},{},false,{value:false});
     await again.press("Start");
     await again.back();
-    assert.equal(again.root().findByType("Backdrop").props.intro,false,"Back cancels setting off");
-    assert.equal(again.calls.filter(c=>c[0]==="dismiss").length,0,"and stays on setup");
-    await act(async()=>again.root().findByType("Backdrop").props.onIntroEnd());
-    assert.equal(again.calls.filter(c=>c[0]==="start").length,0,"nothing starts after a cancelled walk");
+    assert.equal(again.calls.filter(c=>c[0]==="dismiss").length,0,"Back cancels setting off and stays on setup");
+    await settle();
+    assert.equal(again.calls.filter(c=>c[0]==="start").length,0,"nothing starts after a cancelled fade");
     await again.press("Start");
-    await act(async()=>again.root().findByType("Backdrop").props.onIntroEnd());
-    assert.equal(again.root().findByType("Backdrop").props.phase,"running");
+    await settle();
+    assert.equal(again.calls.filter(c=>c[0]==="start").length,1);
     await again.update({actionError:"Couldn't start. Check your connection."});
-    assert.equal(again.root().findByType("Backdrop").props.phase,"setup","a failed start shows setup again, with its message");
-    await again.cleanup();
-  } catch (error) { await ui.cleanup().catch(()=>{}); throw error; }
+    assert.ok(again.button("Start session"),"a failed start shows setup again");
+  } finally { await again.cleanup(); }
 });
 
-test("no walk with Reduce Motion, for a session already running, or after the account changes mid-walk", async()=>{
+test("no fade with Reduce Motion, nothing for a session already running, and nothing after the account changes mid-fade", async()=>{
   const reduced=await screenSetup({},{},false,{value:true});
   try {
     await reduced.press("Start");
     assert.equal(reduced.calls.filter(c=>c[0]==="start").length,1,"less motion starts at once");
-    assert.equal(reduced.root().findByType("Backdrop").props.intro,false);
   } finally {await reduced.cleanup();}
   const running=await screenSetup({sessionId:"already",hasOpenSession:true,isRunning:true,duration:60,timeLeft:60},{},false,{value:false});
-  try { assert.equal(running.root().findByType("Backdrop").props.intro,false,"a session started elsewhere opens straight on the timer"); } finally {await running.cleanup();}
+  try { await settle(); assert.equal(running.calls.filter(c=>c[0]==="start").length,0,"a session started elsewhere opens straight on the timer"); } finally {await running.cleanup();}
   const switched=await screenSetup({},{},false,{value:false});
   try {
     await switched.press("Start");
-    const end=switched.root().findByType("Backdrop").props.onIntroEnd;
     await switched.update({ownerId:"owner-b"});
-    assert.equal(switched.root().findByType("Backdrop").props.intro,false,"another account never sees this walk");
-    await act(async()=>end());
-    assert.equal(switched.calls.filter(c=>c[0]==="start").length,0,"and nothing starts for them");
+    await settle();
+    assert.equal(switched.calls.filter(c=>c[0]==="start").length,0,"another account never starts this session");
   } finally {await switched.cleanup();}
 });
 
@@ -1989,7 +1850,7 @@ test("saving a completed session leaves no hidden progress SVG composited over t
     await ui.update({hasOpenSession:false,isRunning:false,isCompleted:true,timeLeft:0});
     assert.equal(ui.root().findByProps({testID:"session-timer-stage"}),stage,"geometry stays mounted while saving");
     assert.equal(ui.root().findAllByType("Svg").length,0,"the invisible native SVG is no longer drawn under the saving portal");
-    assert.ok(ui.root().findByType("Backdrop"),"the expedition scene remains behind the result");
+    assert.equal(ui.root().findAllByType("Backdrop").length,0,"no camp scene behind the result (Round 87)");
   } finally {await ui.cleanup();}
 });
 

@@ -42,7 +42,7 @@ const s = StyleSheet.create({
   time: { width: "100%", includeFontPadding: false, textAlignVertical: "center", textAlign: "center", fontVariant: ["tabular-nums"], color: colors.text, fontWeight: "500" },
   serif: { fontFamily: "display", fontWeight: "400" },
   lineRow: { position: "absolute", left: 0, right: 0, alignItems: "center" },
-  line: { width: 200, maxWidth: "80%", height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: "rgba(59,39,55,0.16)" },
+  line: { width: 200, maxWidth: "80%", height: 4, borderRadius: 2, overflow: "hidden", backgroundColor: colors.track },
   lineFill: { height: 4, borderRadius: 2, backgroundColor: colors.primary },
   caption: { position: "absolute", width: "100%", textAlign: "center", color: colors.secondary, fontSize: 15 },
 });

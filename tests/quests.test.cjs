@@ -712,8 +712,10 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   assert.deepEqual(sessionCalls, [["navigate","/session"]]);
   sessionCalls.length = 0;
 
-  const layout = renderer.root.findByProps({testID: "home-layout"}).props.style;
-  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 22);assert.equal(layout.minHeight,undefined);
+  // Round 87: the layout may also stretch to fill the screen (Today fits), so flatten it.
+  const layoutStyle = () => Object.assign({}, ...[].concat(renderer.root.findByProps({testID: "home-layout"}).props.style).filter(Boolean));
+  const layout = layoutStyle();
+  assert.equal(layout.justifyContent, undefined); assert.equal(layout.gap, 16);assert.equal(layout.minHeight,undefined);
   const anchors = renderer.root.findAllByType("TourAnchor");
   const identity = anchors.find(node=>node.props.id === "home-identity"), focus = anchors.find(node=>node.props.id === "home-focus");
   assert.equal(identity.findAllByProps({testID:"home-compact-goal"}).length,0);assert.ok(focus.findByProps({testID:"home-compact-goal"}));
@@ -740,7 +742,7 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   for(const count of [0,1,2]){
     homeTasks=Array.from({length:count},(_,i)=>task({id:200+i,title:`Focus ${i}`}));
     await act(async()=>renderer.update(React.createElement(Home)));
-    assert.equal(renderer.root.findByProps({testID:"home-layout"}).props.style.gap,22);
+    assert.equal(layoutStyle().gap,16);
     assert.equal(viewportMargin(),initialMargin);
     assert.equal(routines().props.legacyTasks.length,count);
   }

@@ -151,6 +151,8 @@ async function fixture({ compiled = true, reduced = false, usage = true } = {}) 
     now: () => now,
     advance: milliseconds => act(async () => { now += milliseconds; tick?.(); await flush(); await flush(); }),
     finish: animation => act(async () => { assert.equal(typeof animation?.done, 'function'); animation.done(true); await flush(); await flush(); }),
+    // Round 87: setting off is a short fade (320 ms of real time), then the start.
+    settle: () => act(async () => { await new Promise(done => setTimeout(done, 380)); await flush(); await flush(); }),
     cleanup: () => act(async () => { renderer.unmount(); await flush(); Date.now = oldNow; }),
     // The session screen closed after Done, then opened again (a fresh screen).
     reopen: () => act(async () => { screenKey++; renderer.update(React.createElement(Tree)); await flush(); await flush(); }),
@@ -163,16 +165,12 @@ for (const compiled of [false, true]) test(`offline setup starts through real de
     assert.equal(f.timer().offlineAvailable, true);
     assert.equal(f.timer().duration, 60); assert.deepEqual(f.records(), []);
     await f.press('Start');
-    assert.equal(f.root().findAllByType('Motion').filter(node => node.props.testID === 'session-setting-off').length, 1);
-    assert.ok(f.root().findAllByType('Scene').some(node => node.props.light === 'dusk'));
-    assert.ok(f.animations.some(animation => animation.config?.duration === 2400 && animation.to === 1));
-    const night = f.animations.findLast(animation => animation.config?.duration === 2000 && animation.to === 0 && animation.done);
-    assert.equal(night.delay, 2400, 'night follows the real walk-away');
-    await f.advance(15000);
-    assert.equal(f.timer().hasOpenSession, false, 'the walk never spends focus time');
-    assert.deepEqual(f.records(), [], 'no durable session exists during departure');
-    assert.deepEqual(f.commands, [], 'coverage does not start while the setup is still departing');
-    const startAt = f.now(); await f.finish(night);
+    // Round 87: no walk or night scene; setup fades out, then the session starts.
+    assert.equal(f.root().findAllByType('Scene').length, 0);
+    assert.equal(f.timer().hasOpenSession, false, 'the fade never spends focus time');
+    assert.deepEqual(f.records(), [], 'no durable session exists while setting off');
+    assert.deepEqual(f.commands, [], 'coverage does not start while the setup is still fading');
+    const startAt = f.now(); await f.settle();
     assert.equal(f.timer().hasOpenSession, true); assert.equal(f.timer().isRunning, true);
     assert.equal(f.timer().timeLeft, 60); assert.equal(f.timer().clientReported, true);
     assert.equal(f.timer().protectedSession, true); assert.equal(f.protection().active, true);
@@ -182,8 +180,8 @@ for (const compiled of [false, true]) test(`offline setup starts through real de
     assert.equal(saved.setup.targetSeconds, 60); assert.equal(saved.setup.subjectId, 1);
     assert.equal(saved.setup.notes, 'liferpg:routine:v1:{"name":"Offline revision"}');
     assert.equal(f.commands.filter(([kind]) => kind === 'start').length, 1);
-    await f.finish(night);
-    assert.equal(f.records().length, 1, 'a repeated animation callback cannot create a second timer');
+    await f.settle();
+    assert.equal(f.records().length, 1, 'waiting longer cannot create a second timer');
     assert.equal(f.commands.filter(([kind]) => kind === 'start').length, 1);
     await f.advance(60000);
     assert.equal(f.timer().isCompleted, true); assert.equal(f.timer().hasOpenSession, false);
@@ -196,23 +194,7 @@ for (const compiled of [false, true]) test(`offline setup starts through real de
   } finally { await f.cleanup(); }
 });
 
-test('offline Skip finishes the actual quick night fade, then starts exactly once', async () => {
-  const f = await fixture();
-  try {
-    await f.press('Start');
-    const natural = f.animations.findLast(animation => animation.config?.duration === 2000 && animation.done);
-    await f.press('Skip');
-    const skipped = f.animations.findLast(animation => animation.config?.duration === 700 && animation.done);
-    assert.ok(skipped); assert.deepEqual(f.records(), []); assert.deepEqual(f.commands, []);
-    await f.finish(natural);
-    assert.equal(f.timer().hasOpenSession, false, 'the cancelled natural completion cannot bypass the quick fade');
-    await f.advance(950); await f.finish(skipped);
-    assert.equal(f.timer().isRunning, true); assert.equal(f.timer().timeLeft, 60);
-    await f.finish(natural); await f.finish(skipped);
-    assert.equal(f.records().length, 1); assert.equal(f.commands.filter(([kind]) => kind === 'start').length, 1);
-    assert.deepEqual(f.cloud, []);
-  } finally { await f.cleanup(); }
-});
+// Round 87: Skip went with the night walk (setting off is a short fade now).
 
 test('offline Reduce Motion skips departure and starts the same durable protected timer immediately', async () => {
   const f = await fixture({ reduced: true });
@@ -231,8 +213,7 @@ test('offline departure cannot bypass the existing protection permission gate', 
   const f = await fixture({ usage: false });
   try {
     await f.press('Start');
-    const night = f.animations.findLast(animation => animation.config?.duration === 2000 && animation.done);
-    await f.finish(night);
+    await f.settle();
     assert.equal(f.timer().hasOpenSession, false); assert.equal(f.timer().protectionSetupRequired, true);
     assert.deepEqual(f.records(), []); assert.deepEqual(f.commands, []); assert.deepEqual(f.cloud, []);
   } finally { await f.cleanup(); }
@@ -242,7 +223,7 @@ test('Round 82: after a finished offline session and Done, the next offline sess
   const f = await fixture();
   try {
     await f.press('Start');
-    await f.finish(f.animations.findLast(animation => animation.config?.duration === 2000 && animation.done));
+    await f.settle();
     await f.advance(60000);
     assert.equal(f.timer().isCompleted, true); assert.equal(f.timer().syncStatus, 'waiting');
     // Done on the saved-on-this-phone card.
@@ -252,7 +233,7 @@ test('Round 82: after a finished offline session and Done, the next offline sess
     assert.doesNotMatch(words(), /Waiting to confirm your saved session state/, 'a finished session waiting to sync is not a problem with the next one');
     assert.equal(f.root().findAllByProps({ testID: 'session-recovery-actions' }).length, 0, 'no Retry for it either');
     await f.press('Start');
-    await f.finish(f.animations.findLast(animation => animation.config?.duration === 2000 && animation.done));
+    await f.settle();
     assert.equal(f.timer().hasOpenSession, true, 'the second offline session starts');
     assert.equal(f.timer().isRunning, true);
     assert.equal(f.records().length, 2); assert.deepEqual(f.cloud, []);

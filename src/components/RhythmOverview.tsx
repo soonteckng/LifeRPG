@@ -111,7 +111,7 @@ const s = StyleSheet.create({
   circles: { flexDirection: "row", justifyContent: "space-between" },
   dayCol: { alignItems: "center", gap: 8, flex: 1 },
   letter: { color: colors.neutral, fontSize: 14, lineHeight: 18, fontWeight: "600" },
-  circle: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: "rgba(59,39,55,0.22)", alignItems: "center", justifyContent: "center" },
+  circle: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: colors.border, alignItems: "center", justifyContent: "center" },
   circleDone: { backgroundColor: colors.primary, borderColor: colors.primary },
   circleRest: { borderStyle: "dashed", borderColor: colors.secondary },
   circleToday: { borderColor: colors.primary, borderWidth: 1.5 },

@@ -335,7 +335,7 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
       {/* Dark icons on the paper background; the session scene turns them light. */}
-      <StatusBar barStyle="dark-content" />
+      <StatusBar barStyle="light-content" />
       <LaunchIntro><AuthProvider>
         <AuthGate />
       </AuthProvider></LaunchIntro>
