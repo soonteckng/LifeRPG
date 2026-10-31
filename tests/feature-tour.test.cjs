@@ -66,54 +66,15 @@ test('the guide is one short walk on Today: no tab bar to tap, it starts with a 
  assert.ok(TOUR_STEPS.some(step=>step.target==='home-places'),'one tip shows where Routines, Study, Squads and Your rhythm open');
 });
 
-test('a new account sees a welcome, with the app paused, no Skip and nothing to go back to; other taps and hardware Back only point at the glow',async()=>{
+// Round 88: the guided walk no longer runs. Its three walk tests (the paused
+// welcome, the growing reminder card, Back between tips) went with it.
+test('a new account\'s pending guide closes by itself without showing, and readies the notification invitation (Round 88)',async()=>{
  const ui=await guide();
  try{
-  assert.equal(ui.find('tour-overlay').length,1,'the app is paused while the guide gets ready');
-  await ui.advance(700);
-  assert.equal(ui.title(),'Welcome to LifeRPG');
-  assert.equal(ui.find('tour-banner').length,0,'no banner over the page: the count lives in the tip');
-  assert.match(ui.text(),/1 of 5/);
-  assert.equal(ui.tree.root.findByProps({testID:'tour-app-content'}).props.importantForAccessibility,'no-hide-descendants');
-  assert.equal(ui.tree.root.findAll(n=>/Skip|Back/.test(n.props.accessibilityLabel??'')).length,0,'not skippable, and the first tip has no Back');
-  await ui.tapPaused();
-  assert.match(ui.text(),/Tap Let’s go to keep going/);assert.equal(ui.title(),'Welcome to LifeRPG','tapping elsewhere never moves on');
-  assert.ok(ui.hasBack());await ui.back();assert.equal(ui.title(),'Welcome to LifeRPG','hardware Back stays in the guide');
-  // Copy stays warm and plain: no em dashes and no "glowing" instructions.
-  for(const step of ui.api.TOUR_STEPS)assert.doesNotMatch(`${step.title} ${step.body}`,/—|glowing/,step.id);
- }finally{await ui.cleanup();}
-});
-
-test('a reminder only grows the card: the page underneath is not measured or scrolled again',async()=>{
- const ui=await guide();
- try{
-  await ui.advance(700);await ui.next();
-  assert.equal(ui.title(),'What’s next');
-  const before={measures:ui.measures.length,reveals:ui.reveals.length};
-  const lines=()=>ui.find('tour-tip')[0].findAllByType('Text').length;
-  const before_lines=lines();
-  await ui.tapPaused();
-  assert.match(ui.text(),/Tap Next to keep going/);
-  assert.equal(lines(),before_lines,'the reminder replaces the count, so the card keeps its size');
-  assert.equal(ui.find('tour-count').length,0);
-  await act(async()=>ui.find('tour-tip')[0].props.onLayout({nativeEvent:{layout:{height:300}}}));
-  await ui.advance(1500);
-  assert.deepEqual({measures:ui.measures.length,reveals:ui.reveals.length},before,'no re-measure, no scroll');
- }finally{await ui.cleanup();}
-});
-
-test('Back returns to the previous tip; hardware Back does the same',async()=>{
- const ui=await guide();
- try{
-  await ui.advance(700);await ui.next();
-  assert.equal(ui.title(),'What’s next');
-  await act(async()=>ui.tree.root.findAll(n=>n.props.testID==='tour-back')[0].props.onPress());await ui.advance(1200);
-  assert.equal(ui.title(),'Welcome to LifeRPG');
-  await ui.next();await ui.next();await ui.next();
-  assert.equal(ui.title(),'Your circle');
-  await ui.back();await ui.advance(1200);
-  assert.equal(ui.title(),'Time for yourself today','hardware Back goes to the previous tip');
-  assert.ok(ui.routes.every(route=>route==='/'),'the whole guide stays on Today');
+  await ui.advance(2000);
+  assert.equal(ui.find('tour-overlay').length,0,'nothing pauses or covers Today');
+  assert.equal(ui.title(),undefined);
+  assert.equal(ui.store.get('liferpg:tour:v1:alice'),'done');assert.deepEqual(ui.invitations,['alice'],'the one-time notification ask is readied exactly once');
  }finally{await ui.cleanup();}
 });
 

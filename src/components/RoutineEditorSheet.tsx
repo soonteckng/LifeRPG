@@ -124,7 +124,10 @@ export default function RoutineEditorSheet({ visible, onClose, onDismiss, routin
     finally { lock.current = false; if (epoch === generation.current) setBusy(false); }
   };
   // Sized to its content, so Save sits right under the last row with no empty gap.
-  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} attached compact maxHeightRatio={0.9} guardDismiss={dirty || busy} label="routine editor"
+  // Round 88: a fixed height. Sized to its content, the sheet grew while it was
+  // still sliding up (the reminder permission and your last tag load a moment
+  // later), which made opening it from an idea look jerky.
+  return <AppSheet visible={visible} onRequestClose={close} onDismiss={onDismiss} attached expanded heightRatio={0.88} maxHeightRatio={0.9} guardDismiss={dirty || busy} label="routine editor"
     keyboardBehavior="interactive" androidKeyboardInputMode="adjustPan" motionMode="timed"
     header={<SheetHeader title="Make it yours." subtitle={routine ? "Change it any time. Your recorded sessions stay." : "Something you’d like to come back to."} onClose={close} closeLabel="Close routine editor" />}
     overlay={confirm && <SheetConfirmation title={confirm === "remove" ? "Remove this routine?" : "Discard your changes?"} message={confirm === "remove" ? "Your recorded sessions and progress stay saved." : "Your previous routine stays saved."} confirmLabel={confirm === "remove" ? "Remove routine" : "Discard changes"} cancelLabel="Keep editing" onCancel={() => setConfirm(null)} onConfirm={() => { if (confirm === "remove") void remove(); else { setConfirm(null); onClose(); } }} />}

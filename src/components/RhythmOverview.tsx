@@ -27,18 +27,27 @@ export function restLine(restedThisWeek: string[], restDays: number, daysHere: n
 /**
  * Mockup 08: this week at a glance. The detailed charts live under History.
  */
-export default function RhythmOverview({ start, end, seconds, days, today, streak, restDays = 0, rested = [], activities, goalMinutes, markers, onGoal }: {
+export default function RhythmOverview({ start, end, seconds, days, today, streak, restDays = 0, rested = [], activities, goalMinutes, markers, onGoal,
+  current = true, onPrevious, onNext, onDay, onMore }: {
   start: string; end: string; seconds: number; days: ProgressDay[]; today: string;
   streak: number; restDays?: number; rested?: string[];
   activities: RhythmActivity[]; goalMinutes?: number | null; markers: QuietMarker[];
   onGoal?: () => void;
+  /** Round 88: step through weeks here, tap a day for its sessions, and find the detailed charts at the bottom. */
+  current?: boolean; onPrevious?: () => void; onNext?: () => void; onDay?: (key: string) => void; onMore?: () => void;
 }) {
   const daysHere = days.filter(day => day.seconds > 0).length;
   const restedThisWeek = days.filter(day => day.seconds <= 0 && rested.includes(day.key)).map(day => day.key);
   const top = Math.max(1, ...activities.map(item => item.seconds));
   return <View style={s.page} testID="rhythm-overview">
     <View style={s.total}>
-      <Text style={s.range}>This week · {calendarLabel(start, { day: "numeric", month: "short" })} to {calendarLabel(end, { day: "numeric", month: "short" })}</Text>
+      <View style={s.weekNav}>
+        {onPrevious && <Pressable onPress={onPrevious} accessibilityRole="button" accessibilityLabel="Previous week" testID="rhythm-previous" hitSlop={8} style={s.arrow}>
+          <Ionicons name="chevron-back" size={18} color={colors.text} /></Pressable>}
+        <Text style={s.range} numberOfLines={1}>{current ? "This week · " : ""}{calendarLabel(start, { day: "numeric", month: "short" })} to {calendarLabel(end, { day: "numeric", month: "short" })}</Text>
+        {onNext && <Pressable onPress={onNext} disabled={current} accessibilityRole="button" accessibilityLabel="Next week" accessibilityState={{ disabled: current }} testID="rhythm-next" hitSlop={8} style={[s.arrow, current && s.arrowOff]}>
+          <Ionicons name="chevron-forward" size={18} color={colors.text} /></Pressable>}
+      </View>
       <View style={s.totalRow} accessible accessibilityLabel={`${totalLabel(seconds)} focused this week`}>
         <Text style={s.totalValue} adjustsFontSizeToFit numberOfLines={1} minimumFontScale={0.6}>{totalLabel(seconds)}</Text>
         <Text style={s.totalUnit}>focused</Text>
@@ -54,12 +63,13 @@ export default function RhythmOverview({ start, end, seconds, days, today, strea
         {days.map(day => {
           const done = day.seconds > 0, rest = !done && rested.includes(day.key), future = day.key > today;
           const label = `${WEEKDAYS[weekday(day.key)]}, ${done ? `${totalLabel(day.seconds)} focused` : rest ? "rest day" : future ? "still ahead" : "no session"}`;
-          return <View key={day.key} style={s.dayCol} accessible accessibilityLabel={label} testID={`rhythm-day-${day.key}`}>
+          return <Pressable key={day.key} style={s.dayCol} disabled={!onDay || future} onPress={() => onDay?.(day.key)} accessibilityRole={onDay && !future ? "button" : undefined}
+            accessibilityLabel={onDay && !future ? `${label}. Show its sessions` : label} testID={`rhythm-day-${day.key}`}>
             <Text style={s.letter}>{LETTERS[weekday(day.key)]}</Text>
             <View style={[s.circle, done && s.circleDone, rest && s.circleRest, day.key === today && !done && s.circleToday]}>
               {done ? <Ionicons name="checkmark" size={16} color={colors.primaryText} /> : rest ? <Text style={s.restText}>rest</Text> : null}
             </View>
-          </View>;
+          </Pressable>;
         })}
       </View>
       <Text style={s.weekLine}>{restLine(restedThisWeek, restDays, daysHere)}</Text>
@@ -85,6 +95,10 @@ export default function RhythmOverview({ start, end, seconds, days, today, strea
       </Pressable>
     </>}
 
+    {onMore && <Pressable onPress={onMore} accessibilityRole="button" accessibilityLabel="Open your history" testID="rhythm-history" style={s.more}>
+      <Text style={s.moreText}>More detail</Text><Ionicons name="chevron-forward" size={16} color={colors.secondary} />
+    </Pressable>}
+
     {markers.length > 0 && <View style={s.section}>
       <Text style={s.sectionTitle} accessibilityRole="header">Along the way</Text>
       <View testID="quiet-markers">
@@ -100,7 +114,12 @@ export default function RhythmOverview({ start, end, seconds, days, today, strea
 const s = StyleSheet.create({
   page: { gap: 24 },
   total: { gap: 2 },
-  range: { color: colors.secondary, fontSize: 15, lineHeight: 20 },
+  range: { flexShrink: 1, color: colors.secondary, fontSize: 15, lineHeight: 20 },
+  weekNav: { flexDirection: "row", alignItems: "center", gap: 6 },
+  arrow: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
+  arrowOff: { opacity: 0.35 },
+  more: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 4 },
+  moreText: { color: colors.secondary, fontSize: 15, fontWeight: "600" },
   totalRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   totalValue: { color: colors.text, fontFamily: "display", fontWeight: "400", fontSize: 56, lineHeight: 64, letterSpacing: -1.2, flexShrink: 1 },
   totalUnit: { color: colors.secondary, fontSize: 18, lineHeight: 24, paddingBottom: 10 },

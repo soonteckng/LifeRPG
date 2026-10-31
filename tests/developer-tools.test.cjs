@@ -100,6 +100,7 @@ async function tools({ developer = true, online = true, session = false, restart
     "./SessionSavingOverlay": host("Saving"),
     "./SheetConfirmation": props => React.createElement("Confirm", props),
     "./FeatureTour": { useFeatureTour: () => ({ start: () => log.push("tour") }) },
+    "../services/notificationOnboardingStore": { notificationOnboardingStore: { reopen: async owner => { log.push(`notify:${owner}`); } } },
     "../context/TimerContext": { useTimer: () => ({ hasOpenSession: session }) },
     "../context/UserContext": { useUser: () => ({ profile: { id: profileOwner, level: 4, current_xp: 30 }, reloadProfile: async () => { log.push("reload"); return reload(); } }) },
     "../context/AuthContext": { useAuth: authValue },
@@ -127,12 +128,15 @@ test("every session card opens on the real result card with sample numbers, and 
   const ui = await tools();
   try {
     assert.deepEqual(ui.renderer.root.findAllByType("Row").map(node => node.props.title),
-      ["Share session log", "Replay the guide", "Restart the intro",
+      ["Share session log", "Replay first-time setup", "Show the notification ask again",
         "Session complete", "Earlier session saved", "Session ended early", "Saved offline result", "Offline sync summary", "Session could not be credited", "Saving screen"]);
     assert.equal(ui.result(), undefined);
     await ui.press("Session complete");
     let card = ui.result().props;
     assert.equal(card.visible, true); assert.equal(card.recovered, false); assert.equal(card.goalReachedNow, true);
+    // Round 88: the finished card shows everything it can: today against the goal and both tiles.
+    assert.deepEqual([card.dailyCompletedSeconds, card.dailyGoalMinutes, card.streakDays, card.weekSeconds], [5100, 60, 12, 13200]);
+    assert.equal(typeof card.onOpenRhythm, "function");
     assert.equal(card.saveAction, undefined, "a preview never offers to save a quest");
     for (const removed of ["isLevelUp", "newLevel", "xpEarned", "currentXP", "requiredXP"]) assert.equal(card[removed], undefined, `${removed} is gone`);
     await act(async () => card.onClose());
@@ -183,19 +187,23 @@ test("the server check exists only for signed-in accounts and is in a migration"
   assert.doesNotMatch(sql, /insert into/i, "accounts are added by hand, never by a migration");
 });
 
-test("Replay the guide starts the real tour and saves nothing", async () => {
+test("Show the notification ask again resets only the ask, for this account (Round 88)", async () => {
   const ui = await tools();
-  try { await ui.press("Replay the guide"); assert.deepEqual(ui.log, ["tour"]); } finally { await ui.cleanup(); }
+  try {
+    await ui.press("Show the notification ask again"); await flush();
+    assert.deepEqual(ui.log, ["notify:dev"]);
+    assert.match(ui.group().props.footer, /Go to Today to see the notification ask/);
+  } finally { await ui.cleanup(); }
 });
 
 test("Restart the intro asks first, then restarts and reloads the profile so the intro opens", async () => {
   const ui = await tools();
   try {
-    await ui.press("Restart the intro");
+    await ui.press("Replay first-time setup");
     assert.ok(ui.confirm()); assert.deepEqual(ui.log, [], "nothing happens until you confirm");
     await act(async () => ui.confirm().props.onCancel());
     assert.equal(ui.confirm(), undefined);
-    await ui.press("Restart the intro");
+    await ui.press("Replay first-time setup");
     await act(async () => { ui.confirm().props.onConfirm(); ui.confirm().props.onConfirm(); });
     await flush();
     assert.deepEqual(ui.log, ["restart:dev", "reload"], "one restart, even with a double tap");
@@ -207,7 +215,7 @@ test("a refused restart explains itself and leaves you where you are", async () 
   for (const [options, pattern] of [[{ restart: async () => false }, /Couldn't restart the intro/], [{ reload: async () => false }, /Close and reopen the app/]]) {
     const ui = await tools(options);
     try {
-      await ui.press("Restart the intro");
+      await ui.press("Replay first-time setup");
       await act(async () => ui.confirm().props.onConfirm()); await flush();
       assert.equal(ui.confirm(), undefined);
       assert.match(ui.group().props.footer, pattern);
@@ -215,11 +223,11 @@ test("a refused restart explains itself and leaves you where you are", async () 
   }
 });
 
-test("during a session the guide and intro wait", async () => {
+test("during a session the setup replay and the notification ask wait", async () => {
   const ui = await tools({ session: true });
   try {
-    assert.equal(ui.row("Replay the guide").props.disabled, true);
-    assert.equal(ui.row("Restart the intro").props.disabled, true);
+    assert.equal(ui.row("Show the notification ask again").props.disabled, true);
+    assert.equal(ui.row("Replay first-time setup").props.disabled, true);
     assert.match(ui.group().props.footer, /Finish or end your session first/);
   } finally { await ui.cleanup(); }
 });

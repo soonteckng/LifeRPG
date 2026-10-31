@@ -4,7 +4,7 @@ import { SettingsGroup, SettingsRow } from "./SettingsList";
 import SessionResultSheet from "./SessionResultSheet";
 import SessionSavingOverlay from "./SessionSavingOverlay";
 import SheetConfirmation from "./SheetConfirmation";
-import { useFeatureTour } from "./FeatureTour";
+import { notificationOnboardingStore } from "../services/notificationOnboardingStore";
 import { useUser } from "../context/UserContext";
 import { useAuth } from "../context/AuthContext";
 import { useTimer } from "../context/TimerContext";
@@ -24,7 +24,6 @@ const SAVING_PREVIEW_MS = 3000;
 export default function DeveloperTools() {
   const { profile, reloadProfile } = useUser();
   const auth = useAuth();
-  const tour = useFeatureTour();
   const { hasOpenSession } = useTimer({ live: false });
   const restartLock = useRef(false);
   const [restarting, setRestarting] = useState<"ask" | "busy" | null>(null), [message, setMessage] = useState("");
@@ -75,10 +74,13 @@ export default function DeveloperTools() {
     <SettingsGroup title="Developer" footer={message || busySession || "Only your developer account sees this. Previews never save anything."}>
       <SettingsRow first icon="share-outline" title="Share session log" subtitle="Share this phone's recent timer events" testID="dev-share-session-log"
         busy={sharingLog} disabled={sharingLog} onPress={() => void shareLog()} />
-      <SettingsRow icon="map-outline" title="Replay the guide" disabled={hasOpenSession || !tour} onPress={() => { setMessage(""); tour?.start(); }} />
-      <SettingsRow icon="refresh-outline" title="Restart the intro" disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
+      {/* Round 88: the tour is gone; first-time setup and the notification ask are what a new person sees now. */}
+      <SettingsRow icon="refresh-outline" title="Replay first-time setup" subtitle="Welcome, your areas, name, goal, protection and How it works" wrap testID="dev-replay-setup"
+        disabled={hasOpenSession || restarting === "busy"} onPress={() => { setMessage(""); setRestarting("ask"); }} />
+      <SettingsRow icon="notifications-outline" title="Show the notification ask again" subtitle="It appears on Today, as it does after setup" wrap testID="dev-notification-ask"
+        disabled={hasOpenSession} onPress={() => { setMessage(""); void notificationOnboardingStore.reopen(profile.id ?? "").then(() => setMessage("Go to Today to see the notification ask."), () => setMessage("Couldn't reset the notification ask.")); }} />
     </SettingsGroup>
-    <SettingsGroup title="Developer: session cards" footer="The real cards with sample numbers. They don't add time, streak days or squad time.">
+    <SettingsGroup title="Developer: session cards" footer="The real cards with sample numbers. They don't add time, streak days or squad time. To try the locked session page, start a 1-minute session.">
       <SettingsRow wrap first icon="checkmark-circle-outline" title="Session complete" testID="dev-preview-complete" disabled={hasOpenSession} onPress={() => open("complete")} />
       <SettingsRow wrap icon="cloud-done-outline" title="Earlier session saved" testID="dev-preview-recovered" disabled={hasOpenSession} onPress={() => open("recovered")} />
       <SettingsRow wrap icon="stop-circle-outline" title="Session ended early" testID="dev-ended-result" disabled={hasOpenSession} onPress={() => open("ended")} />
@@ -90,11 +92,13 @@ export default function DeveloperTools() {
     {preview && <SessionResultSheet visible={shown} sessionId={`preview-${preview.id}`}
       minutesSpent={kind === "sync" ? 3 : 25} durationSeconds={kind === "sync" ? 180 : 1500} recovered={kind === "recovered" || kind === "sync"}
       questTitle="Preview session" areaTitle="Study" goalReachedNow={kind === "complete"}
+      completedAtMs={preview.id} dailyCompletedSeconds={kind === "complete" ? 5100 : undefined} dailyGoalMinutes={kind === "complete" ? 60 : undefined}
+      streakDays={kind === "complete" ? 12 : undefined} weekSeconds={kind === "complete" ? 13200 : undefined} weekLabel="on this, past 7 days" onOpenRhythm={() => setShown(false)}
       ending={kind === "ended"} pending={kind === "offline"} offline={kind === "offline"} localSaved={kind === "offline"} rejected={kind === "rejected"}
       syncSummary={kind === "sync" ? { sessionCount: 3, durations: [{ seconds: 60, count: 3 }], areas: [{ title: "Study", color: colors.accent }] } : undefined}
       onClose={() => setShown(false)} onDismiss={() => setPreview(null)} />}
     {restarting && <SheetConfirmation elevated title="Go through the intro again?"
-      message="You'll see the intro and the guide like a new player. Your name and goal are filled in, and your sessions, routines and squads all stay."
+      message="You'll go through first-time setup like someone new. Your name and goal are filled in, and your sessions, routines and squads all stay."
       confirmLabel={restarting === "busy" ? "Restarting…" : "Restart intro"} cancelLabel="Not now"
       onCancel={() => { if (restarting !== "busy") setRestarting(null); }} onConfirm={() => void restart()} />}
     <Modal visible={saving} transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={() => setSaving(false)}>

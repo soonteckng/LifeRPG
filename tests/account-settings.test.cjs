@@ -404,11 +404,10 @@ test("optional onboarding preserves the saved legacy avatar for older app versio
   });
   try {
     await ui.press("Skip for now");
+    // Round 88: name, goal, then one "How it works" page.
     await ui.press("Continue");
     await ui.press("Continue");
-    await ui.press("Continue");
-    await ui.press("Continue");
-    await ui.press("Start my journey");
+    await ui.press("Go to Today");
     assert.equal(saved[1],legacyAvatar);
     assert.match(ui.text(), /Couldn’t save/);
   } finally { await ui.cleanup(); }

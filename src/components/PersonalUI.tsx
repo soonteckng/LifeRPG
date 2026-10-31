@@ -157,7 +157,6 @@ export function PersonalPage({
       style={[StyleSheet.absoluteFill, { backgroundColor: "#2A2028", opacity: position.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0], extrapolate: "clamp" }) }]} />}
       {/* Home dims softly behind a page growing out of its button. */}
       <ParallaxLayer above={above} width={width}><SwipeBack enabled={slides && !exitReady} onBack={swiped} offset={offset}><Animated.View
-      renderToHardwareTextureAndroid={controlled}
       testID="personal-page-surface"
       style={{
         flex: 1,

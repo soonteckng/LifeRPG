@@ -367,14 +367,13 @@ test("onboarding failure keeps choices and retries before entering Home", async 
   try {
     await ui.press("Skip for now");
     await ui.input("Your name", "Soon Teck");
+    // Round 88: goal, then one "How it works" page.
     await ui.press("Continue");
     await ui.press("Continue");
-    await ui.press("Continue");
-    await ui.press("Continue");
-    await ui.press("Start my journey");
+    await ui.press("Go to Today");
     assert.match(ui.text(), /Couldn’t save/);
     assert.deepEqual(routes, []);
-    await ui.press("Start my journey");
+    await ui.press("Go to Today");
     assert.deepEqual(routes, ["/"]);
   } finally {
     await ui.cleanup();
@@ -401,11 +400,11 @@ test("new users finish tutorial before Home; failed finish can retry", async () 
     },
   });
   try {
-    for (let i = 0; i < 2; i++) await ui.press("Continue");
+    // Round 88: the introduction is one page, so it opens on its last step.
     assert.deepEqual(routes, []);
-    await ui.press("Start my journey");
+    await ui.press("Go to Today");
     assert.match(ui.text(), /Couldn’t save your setup/);
-    await ui.press("Start my journey");
+    await ui.press("Go to Today");
     assert.deepEqual(routes, ["/"]);
     assert.equal(calls, 2);
   } finally {

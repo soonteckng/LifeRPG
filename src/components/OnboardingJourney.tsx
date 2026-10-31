@@ -21,8 +21,8 @@ import { INTRO_PAGES, ONBOARDING_NAME_LIMIT } from "../constants/onboarding";
 import { useSessionProtection } from "../context/SessionProtectionContext";
 
 const TITLES = ["What would you like to make time for?", "What should we call you?", "A little time for you", "Keep distractions away"];
-// Steps: 0 areas you'd like to make time for, 1 name, 2 goal, 3 app protection (Android only), 4–6 intro pages.
-const NAME_STEP = 1, GOAL_STEP = 2, PROTECTION_STEP = 3, LAST_STEP = 6;
+// Steps: 0 areas you'd like to make time for, 1 name, 2 goal, 3 app protection (Android only), 4 how it works.
+const NAME_STEP = 1, GOAL_STEP = 2, PROTECTION_STEP = 3, LAST_STEP = 4;
 export const FIRST_INTRO = 4;
 export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: number }) {
   const router = useRouter();
@@ -147,8 +147,8 @@ export default function OnboardingJourney({ initialStep = 0 }: { initialStep?: n
   const phoneApps = protection.apps ?? [];
   const apps = [...phoneApps].sort((a, b) => a.label.localeCompare(b.label)).filter(app => !query || app.label.toLowerCase().includes(query));
   const toggleApp = (pkg: string) => setAllowed(current => current.includes(pkg) ? current.filter(item => item !== pkg) : current.length < 64 ? [...current, pkg] : current);
-  return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 6 : 7) + offset} title={appsPage ? "Choose your apps" : intro?.title ?? TITLES[step]} subtitle={appsPage ? "Tick the apps you need while you focus. Everything else is covered during a session." : intro?.body ?? subtitles[step]} opacity={transition.opacity}
-    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === NAME_STEP ? "Checking…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Start my journey" : step === PROTECTION_STEP && !appsReady ? "Maybe later" : "Continue"} onNext={() => void next()}
+  return <OnboardingFrame step={step + 1 + (step >= NAME_STEP ? offset : 0) - (skipped && step > PROTECTION_STEP ? 1 : 0)} total={(skipped ? 4 : 5) + offset} title={appsPage ? "Choose your apps" : intro?.title ?? TITLES[step]} subtitle={appsPage ? "Tick the apps you need while you focus. Everything else is covered during a session." : intro?.body ?? subtitles[step]} opacity={transition.opacity}
+    busy={busy || (step === LAST_STEP && !guided.ready)} transitioning={transition.moving} primary={busy ? step === NAME_STEP ? "Checking…" : "Finishing setup…" : step === 0 ? firstLabel : step === LAST_STEP ? "Go to Today" : step === PROTECTION_STEP && !appsReady ? "Maybe later" : "Continue"} onNext={() => void next()}
     onBack={appsPage ? () => transition.change(() => setChoosingApps(false)) : step > 0 && !confirmed ? () => changeStep(step === FIRST_INTRO && skipped ? GOAL_STEP : step - 1) : undefined}
     error={(step === NAME_STEP ? "" : error) || (guided.error ? "Your preferences couldn’t be loaded. Please try again." : "")} retry={guided.error && !guided.ready ? () => void guided.retry() : undefined}>
     {step === 0 && <IdeaAreaPicker value={areas} onChange={setAreas} disabled={busy} />}

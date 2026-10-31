@@ -171,7 +171,8 @@ test('Your rhythm lists the quiet markers under the streak', () => {
   const source = read('src/app/(tabs)/progress.tsx');
   assert.match(source, /quietMarkers\(history\.sessions, timeZone\)/);
   // Round 85: they sit on the week overview (mockup 08), under the streak card.
-  assert.match(source, /markers=\{markers\} \/>/);
+  // Round 88: only on this week's overview; an earlier week shows its own days without them.
+  assert.match(source, /markers=\{currentPeriod \? markers : \[\]\}/);
   const overview = read('src/components/RhythmOverview.tsx');
   assert.match(overview, />Along the way<\/Text>/);
   assert.match(overview, /testID="quiet-markers"/);

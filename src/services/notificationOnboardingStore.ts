@@ -30,6 +30,8 @@ export function createNotificationOnboardingStore(storage: Storage) {
     prepare: (owner: string, current: () => boolean = () => true) => change(owner, current, previous => previous ?? "pending-guide"),
     finishGuide: (owner: string, current: () => boolean) => change(owner, current, previous => previous === "pending-guide" ? "ready" : previous),
     dismiss: (owner: string, current: () => boolean) => change(owner, current, previous => previous === "ready" ? "handled" : previous),
+    /** Developer only: show the one-time notification ask again (Round 88). */
+    reopen: (owner: string, current: () => boolean = () => true) => change(owner, current, () => "ready"),
   };
 }
 

@@ -717,7 +717,9 @@ test("a pending End keeps timing controls disabled while its result is owned by 
   try {
     assert.match(ui.output(),/Session ended/);
     assert.equal(ui.button("Start"),undefined);assert.equal(ui.button("Stopped").props.disabled,true);
-    assert.equal(ui.button("End session"),undefined);assert.equal(ui.button("Retry ending session"),undefined);
+    // Round 88: the ended page keeps both round buttons in place, faded; End can no longer be pressed.
+    assert.equal(ui.button("End session").props.disabled,true);assert.equal(typeof ui.button("Retry ending session"),"undefined");
+    assert.match(ui.output(),/Ended early/);
     assert.equal(ui.root().findAllByType("CompletionPopup").length,0);
     assert.doesNotMatch(ui.output(),/New session|Ready when you are|Planned focus|· Paused/);
   } finally {await ui.cleanup();}
@@ -728,7 +730,7 @@ test("restored End keeps its stopped countdown and suggestion until global Done 
     syncStatus:'waiting',actionError:'Your stop is saved on this phone.',notes:api.encodeSuggestedFocus(focus)}, {}, true);
   try {
     const control=ui.root().findByType('DurationControl');assert.equal(control.props.seconds,17);
-    assert.match(ui.output(),/Review your notes · Ended/);assert.equal(ui.button('Stopped').props.disabled,true);
+    assert.match(ui.output(),/Review your notes[\s\S]*Ended early/,'Round 88: the name, then Ended early, at the top of the timer page');assert.equal(ui.button('Stopped').props.disabled,true);
     await ui.update({endingSession:false,sessionEnded:true,actionError:null,syncStatus:'saved'});
     assert.equal(control.props.seconds,17);assert.equal(ui.calls.filter(c=>c[0]==='dismiss').length,0);
     await ui.update({sessionEnded:false,summaryViewed:true,duration:1800,timeLeft:1800,notes:''});
@@ -1821,7 +1823,8 @@ test("manual End preserves measured details and action space and never animates 
     assert.equal(flatten(ui.root().findByProps({testID:"session-actions-motion"}).props.style).height,116);
     await act(async()=>stage.props.onLayout({nativeEvent:{layout:{y:44}}}));
     assert.equal(ui.animations.some(animation=>animation.duration===300),false,"a terminal layout must not bounce back to its old position");
-    assert.equal(ui.button("End session"),undefined,"the spacer cannot remain an interactive End button");
+    // Round 88: End stays in place on the ended page, faded and disabled.
+    { const end=ui.button("End session"); assert.ok(!end||end.props.disabled===true,"the ended page cannot keep an interactive End button"); }
     assert.equal(ui.button("Stopped").props.disabled,true);
     assert.equal(ui.root().findByType("DurationControl").props.seconds,47);
   } finally { await ui.cleanup(); }

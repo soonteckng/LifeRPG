@@ -109,7 +109,9 @@ test('Today follows mockup 01: Up next, Later today, time for yourself, then you
 
 test('Your rhythm opens on this week; History holds the detailed charts and comes back to this week', () => {
   const page = read('src/app/(tabs)/progress.tsx');
-  assert.match(page, /const overviewReady = !showHistory && mode === "week" && anchor === null;/);
+  // Round 88: the overview has its own week arrows, so it stays up for earlier weeks too.
+  assert.match(page, /const overviewReady = !showHistory && mode === "week";/);
+  assert.match(page, /if \(direction < 0\) setAnchor\(previousAnchor\(period\)\);\n {4}else if \(!currentPeriod\) setAnchor\(nextAnchor\(period\)\);/, 'never steps past this week');
   assert.match(page, /if \(showHistory\) \{ setMode\("week"\); setAnchor\(null\); setSelectedDayKey\(null\); setSessionScope\("day"\); \}/);
   assert.match(read('src/hooks/useProgressData.ts'), /restDays: streak\.restDays, rested: streak\.rested/, 'rest days come from the same streak read');
 });

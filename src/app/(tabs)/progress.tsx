@@ -313,7 +313,14 @@ export default function ProgressScreen() {
     if (showHistory) { setMode("week"); setAnchor(null); setSelectedDayKey(null); setSessionScope("day"); }
     setShowHistory(!showHistory);
   };
-  const overviewReady = !showHistory && mode === "week" && anchor === null;
+  // Round 88: the week overview steps through weeks with its own arrows; the
+  // detailed charts sit behind a quiet "More detail" at the bottom.
+  const overviewReady = !showHistory && mode === "week";
+  const stepWeek = (direction: -1 | 1) => {
+    tick(); setSelectedDayKey(null); setSessionScope("day");
+    if (direction < 0) setAnchor(previousAnchor(period));
+    else if (!currentPeriod) setAnchor(nextAnchor(period));
+  };
   const activities = useMemo<RhythmActivity[]>(() => {
     if (!analytics || !data) return [];
     const groups = new Map<string, RhythmActivity>();
@@ -329,11 +336,10 @@ export default function ProgressScreen() {
   return (
     <SafeAreaView style={s.screen} edges={["top", "left", "right"]}>
       <AppHeader title={showHistory ? "History" : "Your rhythm."} onToday={() => router.navigate("/")}
-        action={<Pressable onPress={toggleHistory} accessibilityRole="button" testID="rhythm-history"
-          accessibilityLabel={showHistory ? "Back to this week" : "Open your history"} style={s.historyLink} hitSlop={6}>
-          <Text style={s.historyText}>{showHistory ? "This week" : "History"}</Text>
-          {!showHistory && <Ionicons name="arrow-up-outline" size={17} color={colors.text} style={s.northEast} />}
-        </Pressable>} />
+        action={showHistory ? <Pressable onPress={toggleHistory} accessibilityRole="button" testID="rhythm-back"
+          accessibilityLabel="Back to this week" style={s.historyLink} hitSlop={6}>
+          <Text style={s.historyText}>This week</Text>
+        </Pressable> : undefined} />
       <TourScrollView
         contentContainerStyle={[s.page, { paddingBottom: tabBarHeight + 24 }]}
         refreshControl={
@@ -461,7 +467,9 @@ export default function ProgressScreen() {
           analytics && (overviewReady ? <ContentReveal>
             <RhythmOverview start={period.start} end={period.end} seconds={analytics.seconds} days={analytics.days} today={today}
               streak={data.streak} restDays={data.restDays} rested={data.rested} activities={activities}
-              goalMinutes={profile?.daily_goal_minutes} markers={markers} />
+              goalMinutes={profile?.daily_goal_minutes} markers={currentPeriod ? markers : []}
+              current={currentPeriod} onPrevious={() => stepWeek(-1)} onNext={() => stepWeek(1)}
+              onDay={key => open({ kind: "day", key })} onMore={toggleHistory} />
           </ContentReveal> :
             <ContentReveal>
               <View style={s.card}>

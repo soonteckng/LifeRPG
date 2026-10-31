@@ -181,11 +181,11 @@ export default function ProfileScreen() {
           <View style={s.subjects}>{study.courses.map((course, index) => {
             const exam = upcomingExams(study.exams).find(item => item.courseId === course.id);
             return <View key={course.id} accessible
-              accessibilityLabel={`${course.name}, ${studyTime(course.totalSeconds)} in total${exam ? `, ${exam.title} ${countdownLabel(daysUntil(exam.examDate))}` : ""}`} style={[s.subjectRow, index > 0 && s.subjectLine]}>
+              accessibilityLabel={`${course.name}, ${studyTime(course.totalSeconds ?? 0)} in total${exam ? `, ${exam.title} ${countdownLabel(daysUntil(exam.examDate))}` : ""}`} style={[s.subjectRow, index > 0 && s.subjectLine]}>
               <View style={[s.subjectDot, { backgroundColor: courseColor(course.id) }]} />
               <View style={s.detail}><Text style={p.rowTitle} numberOfLines={1}>{course.name}</Text>
                 {exam && <Text style={s.history} numberOfLines={1}>{exam.title} · {countdownLabel(daysUntil(exam.examDate))}</Text>}</View>
-              <Text style={s.subjectTime}>{studyTime(course.totalSeconds)}</Text>
+              <Text style={s.subjectTime}>{studyTime(course.totalSeconds ?? 0)}</Text>
             </View>;
           })}</View>
         </View>}

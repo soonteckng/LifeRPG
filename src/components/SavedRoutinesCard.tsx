@@ -12,7 +12,8 @@ import { pinNewSavedRoutine, pinSavedRoutine, routineWidgetsSupported } from "..
 import { resolveSavedRoutine } from "../services/savedRoutineService";
 import { setupMode } from "../services/setupMode";
 import { encodeRoutineSession } from "../utils/routineSession";
-import { FOCUS_AREAS, focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
+import { FOCUS_AREAS, focusAreaKind, focusAreaTitle, suggestedArea, type FocusAreaKind } from "../utils/focusAreas";
+import { IDEAS_FULL_UNTIL, ideaDay, pickIdeas } from "../utils/ideaPicks";
 import { areaTint, lifeAreaColor } from "../utils/lifeAreaColor";
 import { routineDuration } from "../utils/savedRoutine";
 import { validSessionSeconds } from "../utils/sessionSetup";
@@ -88,6 +89,7 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
   // the other chips narrow to one area, and All shows everything.
   const forYou = useGuidedPreference(profile?.id ?? "").value.ideaAreas ?? [];
   const [chosenFilter, setIdeaFilter] = useState<IdeaArea | "all" | "for-you" | null>(null);
+  const [allIdeas, setAllIdeas] = useState(false);
   const ideaFilter = chosenFilter === "for-you" && !forYou.length ? "all" : chosenFilter ?? (forYou.length ? "for-you" : "all");
   const [areasOpen, setAreasOpen] = useState(false);
   // Tapping a row edits it, play starts it, and removing asks first in one small card.
@@ -248,7 +250,8 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
         <Text style={[s.name, completed && s.completed]} numberOfLines={2}>{task.title}</Text>
         <Text style={s.caption}>{routineDuration((task.target_minutes || 30) * 60)} · {focusAreaTitle(area?.title)}{task.is_recurring ? task.repeat_rule === "daily" ? " · Daily" : ` · ${task.repeat_rule.split(",").join(", ")}` : " · Once"}{completed ? " · Done today" : !task.is_due_today ? " · Upcoming" : ""}</Text>
       </Pressable>
-      {editingRows ? <EditBadges name={task.title} onEdit={() => { setArranging(false); editLegacy(task); }} />
+      {/* An older routine is removed from its own editor, which asks first. */}
+      {editingRows ? <EditBadges name={task.title} onEdit={() => { setArranging(false); editLegacy(task); }} onRemove={() => { setArranging(false); editLegacy(task); }} />
         : <StartButton disabled={disabled} onPress={() => ask(entry)} label={`Start routine ${task.title}`} />}
     </View>;
   };
@@ -334,10 +337,35 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
     {!!message && <Text accessibilityLiveRegion="polite" style={s.caption}>{message}</Text>}
   </View> : null;
   // Ready-made starting points stay offered until each one is saved.
-  const ideasBlock = offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
+  // Round 88: three ideas that change daily, and the whole list one tap away.
+  const usedIdeaAreas = entries.map(entry => focusAreaKind(areaOf(entry.areaId)?.title)).filter((kind): kind is IdeaArea => !!kind && (IDEA_AREAS as readonly string[]).includes(kind));
+  const picks = pickIdeas(unsaved, usedIdeaAreas, ideaDay());
+  const shortIdeas = layout === "activities" && offerSuggestions && routines.ready && !!unsaved.length && !allIdeas && (entries.length >= IDEAS_FULL_UNTIL
+    ? <Pressable onPress={() => { feedback(); setAllIdeas(true); }} accessibilityRole="button" accessibilityLabel="Need ideas? Show ideas" testID="ideas-more" style={s.moreIdeas}>
+      <Ionicons name="bulb-outline" size={16} color={colors.accent} /><Text style={s.forYouLink}>Need ideas?</Text></Pressable>
+    : <View style={s.suggested} testID="ideas-short">
+      <SectionHeader title="Ideas" />
+      <View>{picks.map((template, index) => {
+        const area = suggestedArea(subjects as Subject[], template.area), tint = kindColor(template.area);
+        return <Pressable key={template.name} disabled={!active} onPress={() => { feedback(); setEditor({ routine: null, template }); }} accessibilityRole="button"
+          accessibilityLabel={`Add ${template.name}, ${template.minutes} minutes, ${focusAreaTitle(area?.title)}`} style={[s.ideaLine, index > 0 && s.flatLine]}>
+          <View style={[s.ideaIcon, { backgroundColor: areaTint(tint) }]}><Ionicons name={template.icon} size={17} color={tint} /></View>
+          <View style={s.detail}><Text style={s.name} numberOfLines={1}>{template.name}</Text>
+            <Text style={s.caption} numberOfLines={1}>{template.minutes} min · {focusAreaTitle(area?.title)}</Text></View>
+          <Ionicons name="add-circle" size={26} color={colors.accent} />
+        </Pressable>;
+      })}</View>
+      {unsaved.length > picks.length && <Pressable onPress={() => { feedback(); setAllIdeas(true); }} accessibilityRole="button" accessibilityLabel="More ideas" testID="ideas-more" style={s.moreIdeas}>
+        <Text style={s.forYouLink}>More ideas</Text><Ionicons name="chevron-down" size={16} color={colors.accent} /></Pressable>}
+    </View>);
+  const ideasBlock = shortIdeas || offerSuggestions && routines.ready && !!unsaved.length && <View style={s.suggested}>
         {/* Once areas are picked, changing them is one quiet button by the title. */}
-        <SectionHeader title="Ideas to start with" right={active && forYou.length ? <CircleButton icon="options-outline" testID="ideas-for-you-change"
-          label={`For you: ${forYou.map(ideaAreaTitle).join(", ")}. Change`} onPress={() => { feedback(); setAreasOpen(true); }} /> : undefined} />
+        <SectionHeader title="Ideas to start with" right={<View style={s.ideaHeadActions}>
+          {active && forYou.length ? <CircleButton icon="options-outline" testID="ideas-for-you-change"
+            label={`For you: ${forYou.map(ideaAreaTitle).join(", ")}. Change`} onPress={() => { feedback(); setAreasOpen(true); }} /> : null}
+          {layout === "activities" && <Pressable onPress={() => { feedback(); setAllIdeas(false); }} accessibilityRole="button" accessibilityLabel="Fewer ideas" testID="ideas-fewer" hitSlop={8}>
+            <Text style={s.forYouLink}>Fewer</Text></Pressable>}
+        </View>} />
         {/* The chips always sit in the same order; All is always first. */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.chips} accessibilityRole="tablist">
           {([...(forYou.length ? ["for-you" as const] : []), "all" as const, ...IDEA_AREAS]).map(kind => {
@@ -575,6 +603,9 @@ function TodayRow({ time, title, caption, label, a11y, disabled, onPress: press,
 }
 
 const s = StyleSheet.create({
+  ideaLine: { minHeight: 64, flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 10 },
+  moreIdeas: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 6, alignSelf: "flex-start" },
+  ideaHeadActions: { flexDirection: "row", alignItems: "center", gap: 12 },
   card: { gap: 10 },
   heading: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, paddingLeft: 4 },
   suggested: { gap: 10, marginTop: 14 },

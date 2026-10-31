@@ -130,7 +130,7 @@ test('new users can skip picking routines and retain their badge through the jou
   '../services/onboardingService':{ usernameAvailable: async () => true,saveOnboardingProfile:async(...args)=>calls.push(args),finishOnboarding:async()=>{}},
  })).default;
  const ui=await render(Screen);assert.doesNotMatch(text(ui.tree.root),/Skip suggestions/);await ui.press('Skip for now');await ui.press('Continue');await ui.press('Continue');
- assert.deepEqual(routes,[]);await ui.press('Previous step');assert.equal(ui.tree.root.findByType('Frame').props.step,3);await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');assert.deepEqual(routes,['/']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
+ assert.deepEqual(routes,[]);await ui.press('Previous step');assert.equal(ui.tree.root.findByType('Frame').props.step,3);/* Round 88: one intro page */await ui.press('Continue');await ui.press('Go to Today');assert.deepEqual(routes,['/']);assert.equal(calls[0][1],'🌱');assert.equal(JSON.parse(db.values.get('liferpg:guided:v1:new-user')).enabled,false);await ui.cleanup();
 });
 test('new users can pick up to three areas to make time for; nothing is created, and the picks are saved at the end',async()=>{
  const db=storage(),saved=[];
@@ -146,7 +146,7 @@ test('new users can pick up to three areas to make time for; nothing is created,
  const area=label=>ui.tree.root.findAll(n=>n.props.accessibilityLabel===label&&typeof n.props.onPress==='function')[0];
  await act(async()=>area('Wellbeing').props.onPress());await act(async()=>area('Learning').props.onPress());await act(async()=>area('Work & projects').props.onPress());
  assert.equal(frame().primary,'Continue');assert.equal(area('Creativity').props.disabled,true,'three is the most');
- await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Start my journey');
+ /* Round 88: name, goal, one intro page */await ui.press('Continue');await ui.press('Continue');await ui.press('Continue');await ui.press('Go to Today');
  assert.deepEqual(saved,[],'the intro creates no routines');
  assert.deepEqual(JSON.parse(db.values.get('liferpg:guided:v1:student')).ideaAreas,['learning','work','wellbeing']);
  await ui.cleanup();

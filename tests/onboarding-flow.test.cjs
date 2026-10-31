@@ -90,7 +90,8 @@ test('every page shares Back navigation, keeps choices and saves only at the fin
   const press = async label => act(async () => button(label).props.onPress());
   try {
     const frame = () => tree.root.findByType('Frame').props;
-    assert.equal(frame().title, 'What would you like to make time for?'); assert.equal(frame().total, 6);
+    // Round 88: one "How it works" page instead of three, so four steps without protection.
+    assert.equal(frame().title, 'What would you like to make time for?'); assert.equal(frame().total, 4);
     await press('Skip for now'); assert.equal(frame().step, 2);
     const input = () => tree.root.findByType('Input'); assert.equal(input().props.maxLength, 15);
     await press('Continue');assert.equal(frame().step,2);assert.ok(tree.root.findByProps({testID:'onboarding-name-error'}));assert.equal(frame().error,'');
@@ -105,9 +106,10 @@ test('every page shares Back navigation, keeps choices and saves only at the fin
     // The first page is a calm choice of areas; nothing is created there.
     await press('Learning'); assert.equal(frame().primary, 'Continue');
     await press('Continue'); assert.equal(frame().step, 2);
-    for (let expected = 3; expected <= 6; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
+    for (let expected = 3; expected <= 4; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
+    assert.equal(frame().title, 'How it works');
     assert.equal(profiles.length, 0); assert.equal(finishes, 0);
-    await act(async () => { button('Start my journey').props.onPress(); button('Start my journey').props.onPress(); });
+    await act(async () => { button('Go to Today').props.onPress(); button('Go to Today').props.onPress(); });
     assert.deepEqual(profiles, [['Soon', '🌱', 90]]); assert.equal(preferences[0].invited, true); assert.deepEqual(preferences[0].ideaAreas, ['learning']); assert.equal(finishes, 1); assert.deepEqual(routes, []);
     await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   } finally { await act(async () => tree.unmount()); }
@@ -124,12 +126,11 @@ test('completion waits for its animation before Home, and retries a failed refre
   await act(async () => { tree = create(React.createElement(Screen)); });
   const press = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress();
   assert.equal(tree.root.findAllByType('Button').some(node=>node.props.accessibilityLabel==='Skip introduction'),false);
-  await act(async () => press('Continue'));
-  await act(async () => press('Continue'));
-  await act(async () => { press('Start my journey'); press('Start my journey'); });
+  // Round 88: the introduction is a single page now.
+  await act(async () => { press('Go to Today'); press('Go to Today'); });
   assert.equal(writes, 1); assert.equal(refreshes, 0); assert.deepEqual(routes, []);
   await act(async () => env.pending.shift()({ finished: true })); assert.equal(refreshes, 1); assert.deepEqual(routes, []);
-  await act(async () => press('Start my journey')); assert.equal(writes, 1);
+  await act(async () => press('Go to Today')); assert.equal(writes, 1);
   await act(async () => env.pending.shift()({ finished: true })); assert.deepEqual(routes, ['/']);
   await act(async () => tree.unmount());
 });
@@ -185,7 +186,7 @@ test('Android setup asks about app protection with Allow buttons, names what can
   const button = label => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label);
   try {
     assert.equal(tree.root.findByType('Frame').props.title, 'Keep distractions away');
-    assert.equal(tree.root.findByType('Frame').props.total, 7);
+    assert.equal(tree.root.findByType('Frame').props.total, 5, 'Round 88: areas, name, goal, protection, How it works');
     assert.ok(button('Maybe later'), 'protection stays optional');
     await act(async () => button('Allow Usage Access').props.onPress());
     assert.deepEqual(calls.filter(call => Array.isArray(call)), [['open', 'usage']]);
@@ -244,11 +245,11 @@ test('after creating an account in the intro, it carries on from the name step w
   const press = async label => act(async () => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === label).props.onPress());
   try {
     assert.equal(frame().title, 'What should we call you?', 'no welcome or area choice again');
-    assert.equal(frame().step, 3, 'areas and the account step came first'); assert.equal(frame().total, 7);
+    assert.equal(frame().step, 3, 'areas and the account step came first'); assert.equal(frame().total, 5);
     await act(async () => tree.root.findByType('Input').props.onChangeText('Soon'));
     await press('Continue'); assert.equal(frame().step, 4);
-    for (let expected = 5; expected <= 7; expected++) { await press('Continue'); assert.equal(frame().step, expected); }
-    await act(async () => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === 'Start my journey').props.onPress());
+    await press('Continue'); assert.equal(frame().step, 5); assert.equal(frame().title, 'How it works');
+    await act(async () => tree.root.findAllByType('Button').find(node => node.props.accessibilityLabel === 'Go to Today').props.onPress());
     assert.deepEqual(calls.preferences[0].ideaAreas, ['learning', 'wellbeing']);
     assert.equal(calls.profiles[0][0], 'Soon'); assert.equal(calls.cleared, 1, 'the draft is cleared once saved');
   } finally { await act(async () => tree.unmount()); }
@@ -268,8 +269,8 @@ test('the name step checks a name is free, refuses "@", and a name taken meanwhi
     await press('Continue'); assert.equal(frame().step, 3); assert.match(error(), /That name is taken/);
     await act(async () => input().props.onChangeText('Free'));
     await press('Continue'); assert.equal(frame().step, 4);
-    for (let i = 0; i < 3; i++) await press('Continue');
-    await press('Start my journey');
+    await press('Continue');
+    await press('Go to Today');
     assert.equal(frame().step, 3, 'someone took it meanwhile: back to the name, nothing lost');
     assert.match(error(), /That name is taken/); assert.equal(input().props.value, 'Free');
   } finally { await act(async () => tree.unmount()); }

@@ -598,6 +598,10 @@ export default function SessionScreen() {
   // header has no way out, Back asks to end, and a swipe does nothing. A
   // session that couldn't be restored can still be left, so nobody is stuck.
   const focusing = phase === "running" || phase === "paused";
+  // Round 88: a session ended early keeps the same quiet page (the time where
+  // it stopped and its name), with no buttons, until its card takes over.
+  const stopped = phase === "ended";
+  const timerPage = focusing || stopped;
   return (
     <Animated.View ref={surfaceView} collapsable={false} testID="session-surface" style={{ flex: 1, backgroundColor: colors.background, opacity: surfaceOpacity,
       transform: [{ translateY: !reducedMotion ? screenMotion.interpolate({ inputRange: [-0.12, 0, 1], outputRange: [height + insets.top + insets.bottom + 32, height, 0] }) : 0 }] }}>
@@ -605,16 +609,16 @@ export default function SessionScreen() {
     <SafeAreaView collapsable={false} style={styles.screen} {...panResponder.panHandlers}
       onTouchStart={() => timerView.current?.measureInWindow((_x, y, _width, height) => { timerBounds.current = { top: y, bottom: y + height }; })}>
       <Stack.Screen options={{ gestureEnabled: false }} />
-      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={focusing ? "" : phase === "ended" ? "Session ended" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={lockedIn ? undefined : () => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
+      <Animated.View testID="session-header-motion" style={{ opacity }}><AppHeader centered title={timerPage ? "" : phase === "setup" ? sessionMode === "study" ? "Study session" : isRoutine ? "Routine session" : "Quick focus" : phase === "completed" && sessionSummary ? "Session complete" : area?.title ? focusAreaTitle(area.title) : "Session"} dismiss onBack={lockedIn ? undefined : () => minimise("header")} backLabel={timer.hasOpenSession ? "Minimise session" : "Close session"} /></Animated.View>
       {!online && <View style={styles.offline}><OfflineStatus /></View>}
       {/* Round 87: just what you're doing, small, above the timer. */}
-      {focusing && <Animated.View style={[styles.focusHead, { opacity }]} testID="session-focus-head">
+      {timerPage && <Animated.View style={[styles.focusHead, { opacity }]} testID="session-focus-head">
         <View style={styles.focusName}>
           {breakActive ? <Ionicons name="cafe-outline" size={16} color={colors.streak} />
             : timer.protectedSession ? <Ionicons name="shield-checkmark-outline" size={16} color={colors.accent} accessibilityLabel="Distracting apps set aside" /> : null}
           <Text style={[styles.focusTitle, breakActive && styles.breakTitle]} numberOfLines={1} accessibilityRole="header">{breakActive ? "On a break" : title}</Text>
         </View>
-        <Text style={styles.focusMeta} numberOfLines={1}>{breakActive ? `Back to ${title} at ${endClock(timer.breakSecondsLeft)}`
+        <Text style={styles.focusMeta} numberOfLines={1}>{stopped ? "Ended early" : breakActive ? `Back to ${title} at ${endClock(timer.breakSecondsLeft)}`
           : timer.isRunning && !timer.awaitingStart ? `Ends at ${endClock(timer.timeLeft)}` : "Paused"}</Text>
       </Animated.View>}
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
@@ -651,7 +655,7 @@ export default function SessionScreen() {
           onLayout={event => { const view = Math.round(event.nativeEvent.layout.height); if (phase === "running" || phase === "paused") setActiveLayout(layout => layout.details === view ? layout : { ...layout, details: view }); setSetupFit(fit => fit.view === view ? fit : { ...fit, view }); }}
           onContentSizeChange={(_width, contentHeight) => { const content = Math.round(contentHeight); setSetupFit(fit => fit.content === content ? fit : { ...fit, content }); }} keyboardDismissMode="on-drag" scrollEventThrottle={16} onScroll={(event) => { detailsOffset.current = Math.max(0, event.nativeEvent.contentOffset.y); }}>
           <Animated.View testID="session-details-motion" style={{ opacity, transform:[{ translateY:opacity.interpolate({inputRange:[0,1],outputRange:[8,0]}) }] }}>
-          {(phase === "ended" || timer.startCheckVisible) && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityLiveRegion="polite">{phase === "ended" ? `${title} · Ended` : "Checking your saved start…"}</Text>}
+          {timer.startCheckVisible && !stopped && !timer.isCompleted && <Text style={styles.activeTitle} accessibilityLiveRegion="polite">Checking your saved start…</Text>}
             {suggestion && !timer.isCompleted && <View style={styles.suggestionInstruction}><Text style={[styles.secondary, { textAlign: "center" }]} numberOfLines={3}>{suggestion.instruction}</Text></View>}
             {phase === "setup" && <View style={styles.setupStack}>
               {/* Floats, so a background refresh never pushes the setup around. */}
@@ -696,24 +700,24 @@ export default function SessionScreen() {
           </View>}
           {!timer.isCompleted && <>
             {/* Round 87: while focusing, two small round buttons and nothing else. */}
-            <View style={focusing ? styles.roundRow : styles.actionColumn}>
-            <View style={focusing && styles.roundCell}>
-            <TouchableOpacity style={[focusing ? styles.round : styles.primary, focusing && breakActive && styles.roundOn, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
+            <View style={[timerPage ? styles.roundRow : styles.actionColumn, stopped && styles.endedControl]} importantForAccessibility={stopped ? "no-hide-descendants" : "auto"} pointerEvents={stopped ? "none" : "auto"}>
+            <View style={timerPage && styles.roundCell}>
+            <TouchableOpacity style={[timerPage ? styles.round : styles.primary, timerPage && breakActive && styles.roundOn, disabled && (!immediateControl || controlPending) && styles.disabled]} disabled={disabled}
               onPress={timer.hasOpenSession ? () => { if (breakActive) void timer.resumeTimer(); else if (timer.isRunning && timer.protectedSession) setConfirmBreak(true); else void (timer.isRunning ? timer.pauseTimer() : timer.resumeTimer()); } : () => start()}
               accessibilityRole="button" accessibilityState={{ busy: timer.actionBusy, disabled }} accessibilityLabel={actionLabel}>
-              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={focusing ? colors.text : colors.primaryText} /> : focusing
+              {timer.actionBusy && !immediateControl ? <ActivityIndicator color={timerPage ? colors.text : colors.primaryText} /> : timerPage
                 ? controlPending ? <ActivityIndicator color={breakActive ? colors.primaryText : colors.text} /> : <Ionicons name={breakActive ? "play" : timer.protectedSession ? breakSpent ? "cafe" : "cafe-outline" : timer.isRunning ? "pause" : "play"} size={24} color={breakActive ? colors.primaryText : colors.text} />
                 : <>{controlPending ? <ActivityIndicator color={timer.hasOpenSession ? colors.text : colors.primaryText} /> : breakSpent ? null : <Ionicons name={breakActive ? "play" : timer.isRunning ? timer.protectedSession ? "cafe-outline" : "pause" : "play"} size={18} color={colors.primaryText} />}<Text style={styles.primaryText}>{timer.hasOpenSession ? actionLabel : "Start session"}</Text></>}
             </TouchableOpacity>
-            {focusing && <Text style={styles.roundLabel} numberOfLines={1}>{checkingStart ? "Checking start" : breakActive ? "Focus" : timer.protectedSession ? breakSpent ? "Break used" : "Break" : timer.isRunning ? "Pause" : "Resume"}</Text>}
+            {timerPage && <Text style={styles.roundLabel} numberOfLines={1}>{stopped ? "Stopped" : checkingStart ? "Checking start" : breakActive ? "Focus" : timer.protectedSession ? breakSpent ? "Break used" : "Break" : timer.isRunning ? "Pause" : "Resume"}</Text>}
             </View>
-            {timer.hasOpenSession && (phase === "ended" ? <View style={[styles.endControl, styles.endedControl]} importantForAccessibility="no-hide-descendants" /> : <View style={focusing && styles.roundCell}>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[focusing ? styles.round : styles.endControl, endQueued && styles.disabled]}>
-                {endQueued ? <ActivityIndicator color={colors.text} /> : focusing ? <Ionicons name="stop" size={22} color={colors.text} /> : <Text style={styles.endText}>End session</Text>}</TouchableOpacity>
-              {focusing && <Text style={styles.roundLabel}>End</Text>}
+            {timer.hasOpenSession && (<View style={timerPage && styles.roundCell}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="End session" disabled={stopped || timer.endingSession || !!timer.finishing || endQueued} onPress={() => setConfirmEnd(true)} style={[timerPage ? styles.round : styles.endControl, endQueued && styles.disabled]}>
+                {endQueued ? <ActivityIndicator color={colors.text} /> : timerPage ? <Ionicons name="stop" size={22} color={colors.text} /> : <Text style={styles.endText}>End session</Text>}</TouchableOpacity>
+              {timerPage && <Text style={styles.roundLabel}>End</Text>}
             </View>)}
             </View>
-            {timer.hasOpenSession && (timer.finishing || endQueued || phase === "ended") && <Text style={[styles.cancelHint, phase === "ended" && styles.endedControl]} accessibilityElementsHidden={phase === "ended"} importantForAccessibility={phase === "ended" ? "no-hide-descendants" : "auto"}>{timer.finishing ? "Saving your full session in a moment." : endQueued ? "Ending as soon as your session is confirmed…" : "Ending now doesn’t save this session."}</Text>}
+            {timer.hasOpenSession && !stopped && (timer.finishing || endQueued) && <Text style={styles.cancelHint}>{timer.finishing ? "Saving your full session in a moment." : "Ending as soon as your session is confirmed…"}</Text>}
           </>}
         </Animated.View>
       </KeyboardAvoidingView>

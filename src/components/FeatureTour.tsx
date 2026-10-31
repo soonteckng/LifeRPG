@@ -125,13 +125,6 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
   const previewLines = screen.fontScale > 1.2 || screen.height < 700 ? 1 : 2;
   const value = useMemo(() => ({ register, registerScroll, layoutChanged, start, active, targetId: current?.target ?? null, previewFocus, previewLines, reportDock }),
     [register, registerScroll, layoutChanged, start, active, current, previewFocus, previewLines, reportDock]);
-  // Only a new account's setup leaves a pending receipt, so the guide runs once.
-  useEffect(() => {
-    let live = true; const request = epoch.current;
-    if (owner && eligible) void Promise.resolve(pendingOwners.has(owner) ? "pending" : AsyncStorage.getItem(receiptKey(owner)))
-      .then(receipt => { if (live && request === epoch.current && receipt === "pending") start(); }).catch(() => {});
-    return () => { live = false; };
-  }, [owner, eligible, start]);
   // Home settles first; then the welcome card appears.
   useEffect(() => {
     if (!armed) return;
@@ -239,6 +232,16 @@ export function FeatureTourProvider({ children }: { children: ReactNode }) {
     const live = () => alive.current && generation === epoch.current;
     void notificationOnboardingStore.finishGuide(owner, live).then(() => { if (live()) setInvitationRevision(value => value + 1); }).catch(() => {});
   }, [owner]);
+  // Round 88: the guided tour no longer runs on its own. The app is simple
+  // enough now, and "How LifeRPG works" in Settings explains it. A new
+  // account's pending guide is closed straight away instead, which readies the
+  // one-time notification invitation on Today exactly as finishing it did.
+  useEffect(() => {
+    let live = true; const request = epoch.current;
+    if (owner && eligible) void Promise.resolve(pendingOwners.has(owner) ? "pending" : AsyncStorage.getItem(receiptKey(owner)))
+      .then(receipt => { if (live && request === epoch.current && receipt === "pending") close(); }).catch(() => {});
+    return () => { live = false; };
+  }, [owner, eligible, close]);
   // Back returns to the previous tip, skipping "tap" steps (their tab is
   // already open), and the page follows that tip.
   const previous = step === null ? -1 : (() => { let index = step - 1; while (index >= 0 && TOUR_STEPS[index].kind === "tap") index--; return index; })();
