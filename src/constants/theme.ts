@@ -13,10 +13,8 @@ export const colors = {
   // The one lilac card: what's next, or the session you're in.
   focusSurface: "#EADFF0",
   focusBorder: "rgba(59,39,55,0.10)",
-  // The warm card: a break, and the time you just finished.
+  // The break: the arch turns warm while you rest.
   warmSurface: "#F4DFD3",
-  warmText: "#6E4434",
-  warmLine: "rgba(110,68,52,0.16)",
   protection: "#3A6853",
   text: "#2A2028",
   neutral: "#3E3340",

@@ -706,7 +706,8 @@ test("Home preserves loaded progress on failure and exposes a retry instead of a
   const initialMargin = viewportMargin();
   openSession = true;
   await act(async () => renderer.update(React.createElement(Home)));
-  assert.equal(viewportMargin(), initialMargin + 70);
+  // Round 86: the banner adds its own 60 px; no tab pill was ever there to add 70 on top of.
+  assert.equal(viewportMargin(), initialMargin + 60);
   await act(async () => routines().props.onStartLegacy(record(16)));
   assert.deepEqual(sessionCalls, [["navigate","/session"]]);
   sessionCalls.length = 0;

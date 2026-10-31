@@ -3,8 +3,12 @@ import { StyleSheet, View } from "react-native";
 import { Text } from "./AppText";
 import { colors } from "../constants/theme";
 
-/** Quiet, readable tints; text stays light on every one of them. */
-const TINTS = ["#3B2737", "#6E4F7A", "#3F6F5A", "#7A4E35", "#2E5A7A", "#8A3F5E", "#55602F", "#4F4A85"] as const;
+/**
+ * Quiet, readable tints; text stays light on every one of them. Round 86: the
+ * brown and olive gave way to plum and deep lilac, so initials sit in the
+ * aubergine family with a cool green and blue for telling friends apart.
+ */
+const TINTS = ["#3B2737", "#6E4F7A", "#3F6F5A", "#7A4F6E", "#2E5A7A", "#8A3F5E", "#5B4A8A", "#4F4A85"] as const;
 
 /** Up to two letters from a name: "Soon Teck" → "ST", "aina" → "A". */
 export function initialsOf(name: string | null | undefined): string {

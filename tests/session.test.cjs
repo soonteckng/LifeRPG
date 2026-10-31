@@ -1778,10 +1778,12 @@ test("completion message shows saved exact duration; Done only closes the messag
 
 test("floating dock reserves the safe area and only visible banners",()=>{
   const {floatingTabInset}=load("src/utils/floatingTabInset.ts",{});
-  assert.equal(floatingTabInset(66,34,{}),110);
-  assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),158);
-  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),158);
-  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),88);
+  // Round 86: no tab pill is reserved (there has been none since Round 84).
+  assert.equal(floatingTabInset(66,34,{}),44,"an empty dock is the safe area and its padding");
+  assert.equal(floatingTabInset(66,0,{hasOpenSession:true}),82);
+  assert.equal(floatingTabInset(66,34,{hasOpenSession:true}),104);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:false}),82);
+  assert.equal(floatingTabInset(66,0,{sessionSummary:{},summaryViewed:true}),10);
 });
 
 test('switching offline suppresses online pickers and End confirmation without losing the active session',async()=>{

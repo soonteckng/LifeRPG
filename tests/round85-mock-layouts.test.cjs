@@ -55,7 +55,7 @@ test('the warm card adds today against the goal only once the server has confirm
   await act(async () => ui.update(React.createElement(CompletionCard, { seconds: 1500, label: 'Learning', todaySeconds: 1800, goalMinutes: 60, held: true })));
   assert.doesNotMatch(words(ui.toJSON()), /Your total today|Focus day recorded|Adding/, 'saved on this phone: the time only');
   await act(async () => ui.update(React.createElement(CompletionTiles, { streakDays: 12, weekSeconds: 13200, weekLabel: 'on this, past 7 days' })));
-  assert.equal(words(ui.toJSON()), '12 daysfocus streak220 minon this, past 7 days');
+  assert.equal(words(ui.toJSON()), '12 daysfocus streak3h 40mon this, past 7 days', 'Round 86: hours and minutes, so the tile never wraps');
   await act(async () => ui.update(React.createElement(CompletionTiles, { weekLabel: 'x' })));
   assert.equal(ui.toJSON(), null, 'no tiles until a number is known');
   await act(async () => ui.unmount());

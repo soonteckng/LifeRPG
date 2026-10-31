@@ -5,6 +5,7 @@ import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { colors, edge } from "../constants/theme";
 import { type } from "../constants/typography";
 import { durationLabel } from "../utils/sessionSetup";
+import { totalLabel } from "../utils/progressAnalytics";
 import { Text } from "./AppText";
 import ProgressRing from "./ProgressRing";
 import ArrivalBanner from "./ArrivalBanner";
@@ -70,18 +71,18 @@ const s = StyleSheet.create({
   value: {...type.body, fontWeight:"500"},
   success: {...type.secondary, color:colors.success, fontWeight:"500"},
   waiting: {color:colors.tertiary},
-  card: {borderRadius:28, backgroundColor:colors.warmSurface, paddingHorizontal:24, paddingTop:22, paddingBottom:22, gap:10},
-  cardLabel: {color:colors.warmText, fontSize:13, lineHeight:18, fontWeight:"600", letterSpacing:1.3},
+  card: {borderRadius:28, backgroundColor:colors.focusSurface, paddingHorizontal:24, paddingTop:22, paddingBottom:22, gap:10},
+  cardLabel: {color:colors.neutral, fontSize:13, lineHeight:18, fontWeight:"600", letterSpacing:1.3},
   bigRow: {flexDirection:"row", alignItems:"flex-end", flexWrap:"wrap", columnGap:10},
   big: {color:colors.text, fontFamily:"display", fontWeight:"400", fontSize:72, lineHeight:80, letterSpacing:-1.5},
   bigUnit: {color:colors.text, fontSize:20, lineHeight:28, fontWeight:"600", paddingBottom:12},
-  cardLine: {color:colors.warmText, fontSize:15, lineHeight:21},
-  cardDivider: {height:1, backgroundColor:colors.warmLine, marginVertical:6},
+  cardLine: {color:colors.neutral, fontSize:15, lineHeight:21},
+  cardDivider: {height:1, backgroundColor:colors.focusBorder, marginVertical:6},
   goal: {gap:12},
   goalRow: {flexDirection:"row", flexWrap:"wrap", alignItems:"center", justifyContent:"space-between", gap:8},
   goalLabel: {color:colors.text, fontSize:17, lineHeight:22},
   goalValue: {color:colors.text, fontSize:17, lineHeight:22, fontWeight:"700"},
-  goalTrack: {height:8, borderRadius:4, backgroundColor:colors.warmLine, overflow:"hidden"},
+  goalTrack: {height:8, borderRadius:4, backgroundColor:"rgba(59,39,55,0.12)", overflow:"hidden"},
   goalFill: {height:8, borderRadius:4, backgroundColor:colors.primary},
   waitingWarm: {opacity:0.7},
   tiles: {flexDirection:"row", gap:12},
@@ -100,7 +101,7 @@ export function focusedAmount(seconds: number) {
 }
 
 /**
- * Mockup 07: the warm card with the time you just finished, and, once the
+ * Mockup 07: the lilac card (Round 86: lilac like Up next, so the app keeps one accent) with the time you just finished, and, once the
  * server has confirmed it, today's total against your daily goal.
  */
 export function CompletionCard({ seconds, label, line, todaySeconds, goalMinutes, goalReachedNow, loading = false, held = false, sync = false, children }: {
@@ -144,10 +145,10 @@ export function CompletionTiles({ streakDays, weekSeconds, weekLabel }: { streak
   if (streak === null && week === null) return null;
   return <View style={s.tiles} testID="session-result-tiles">
     {streak !== null && <View style={s.tile} accessible accessibilityLabel={`${streak} ${streak === 1 ? "day" : "days"} focus streak`}>
-      <Text style={s.tileValue}>{streak} {streak === 1 ? "day" : "days"}</Text><Text style={s.tileLabel}>focus streak</Text>
+      <Text style={s.tileValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{streak} {streak === 1 ? "day" : "days"}</Text><Text style={s.tileLabel}>focus streak</Text>
     </View>}
     {week !== null && <View style={s.tile} accessible accessibilityLabel={`${durationLabel(week)} ${weekLabel}`}>
-      <Text style={s.tileValue}>{durationLabel(week)}</Text><Text style={s.tileLabel}>{weekLabel}</Text>
+      <Text style={s.tileValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{totalLabel(week)}</Text><Text style={s.tileLabel}>{weekLabel}</Text>
     </View>}
   </View>;
 }

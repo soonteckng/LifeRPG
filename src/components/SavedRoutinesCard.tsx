@@ -384,8 +384,20 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       disabled={anyBlocked} onPress={chip.onPress} active={active} testID={`home-study-${chip.key}`} />),
   ].slice(0, Math.max(1, limit));
   const fallback: UpNext | null = nextEntry ? null : upNext ?? (onAnyActivity ? { label: "Whenever you’re ready", title: "Just focus", detail: "Any activity, your time", action: "Start a session", onPress: onAnyActivity, testID: "home-just-focus" } : null);
+  const returning = !!timer.hasOpenSession && !!onAnyActivity;
   const todayView = layout === "today" ? <View style={s.todayStack} testID="saved-routines-card">
-    {(nextEntry || fallback) && <View style={s.upNext} testID="today-up-next">
+    {/* With a session open the card is the way back to it, never a dead
+        button (Round 86). */}
+    {returning ? <View style={s.upNext} testID="today-up-next">
+      <Text style={s.upNextLabel} numberOfLines={1}>{timer.isRunning ? "IN A SESSION" : "SESSION PAUSED"}</Text>
+      <Text style={s.upNextTitle} numberOfLines={2}>{timer.isRunning ? "You’re in a session." : "Your session is paused."}</Text>
+      <View style={s.upNextMeta}><Ionicons name="time-outline" size={15} color={colors.neutral} />
+        <Text style={s.upNextDetail} numberOfLines={1}>{nextEntry ? `Up next after it: ${nextEntry.name}` : "Pick up where you left off"}</Text></View>
+      <Pressable testID="today-back-to-session" onPress={() => { feedback(); onAnyActivity!(); }} accessibilityRole="button" accessibilityLabel="Back to your session" style={s.upNextButton}>
+        <Text style={s.upNextButtonText} numberOfLines={1}>Back to your session</Text>
+        <Ionicons name="arrow-forward" size={20} color={colors.primaryText} />
+      </Pressable>
+    </View> : (nextEntry || fallback) && <View style={s.upNext} testID="today-up-next">
       <Text style={s.upNextLabel} numberOfLines={1}>{nextEntry ? `UP NEXT · ${clockOf(nextEntry)}` : fallback!.label.toUpperCase()}</Text>
       <Text style={s.upNextTitle} numberOfLines={2}>{nextEntry ? nextEntry.name : fallback!.title}</Text>
       <View style={s.upNextMeta}><Ionicons name="time-outline" size={15} color={colors.neutral} />
@@ -407,7 +419,9 @@ export default function SavedRoutinesCard({ subjects, initialSeconds = 1800, ini
       </View>
       {!routines.ready ? <Text style={s.caption}>{routines.error ?? "Loading your routines…"}</Text>
         : later.length ? later : <Pressable disabled={!active} onPress={() => { feedback(); onSeeAll?.(); }} accessibilityRole="button" accessibilityLabel="Save something you return to as a routine" style={s.todayEmpty}>
-          <Text style={s.todayCaption}>Nothing else planned. Save something you return to as a routine, with a reminder.</Text></Pressable>}
+          {/* A plain row like the others, not loose text (Round 86). */}
+          <Text style={[s.todayCaption, s.flex]} numberOfLines={2}>Nothing else planned today.</Text>
+          <View style={s.todayAction}><Text style={s.todayActionText}>Add</Text></View></Pressable>}
       {!!nextEntry && onAnyActivity && <TodayRow time="" title="Something else" caption="Any activity, your time" label="Start" a11y="Any activity. Start focusing, your time"
         disabled={anyBlocked} onPress={onAnyActivity} active={active} testID="home-just-focus" />}
     </View>
@@ -643,7 +657,7 @@ const s = StyleSheet.create({
   todayCaption: { color: colors.secondary, fontSize: 14, lineHeight: 19 },
   todayAction: { minHeight: 44, minWidth: 72, paddingHorizontal: 18, borderRadius: 22, alignItems: "center", justifyContent: "center", backgroundColor: colors.surface },
   todayActionText: { color: colors.text, fontSize: 15, fontWeight: "600" },
-  todayEmpty: { paddingVertical: 14, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
+  todayEmpty: { minHeight: 68, flexDirection: "row", alignItems: "center", gap: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border },
   // Your activities (mockup 03): flat rows, grouped, no cards.
   activities: { gap: 18 },
   group: { gap: 0 },
